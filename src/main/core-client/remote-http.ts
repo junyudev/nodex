@@ -247,6 +247,7 @@ export class RemoteHttpTransport extends LocalHttpTransport {
             "session_control",
             "session_inspect",
             "session_history",
+            "session_native_child_work",
             "session_prompt_turns",
             "session_prompt_index",
             "session_queue_read",

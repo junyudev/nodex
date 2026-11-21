@@ -260,6 +260,15 @@ it.live(
           Effect.provideService(HostInvocation, "observation-proof"),
           Effect.provideService(PhoneRequests, entitlement as never),
         );
+        // Readiness can publish before model capabilities. This assertion needs the completed catalog.
+        yield* runtime.request("providers.read", { instanceIds: ["codex"] }).pipe(
+          Effect.repeat({
+            until: ([provider]) =>
+              provider?.modelsProvisional !== true &&
+              provider?.models.some(({ slug }) => slug === "gpt-5.5") === true,
+            schedule: Schedule.spaced("50 millis"),
+          }),
+        );
         const opened = yield* Effect.flatten(phone.handlers["chat.open"]({ sessionId })).pipe(
           Effect.provideService(HostInvocation, "request-proof"),
           Effect.provideService(PhoneRequests, entitlement as never),

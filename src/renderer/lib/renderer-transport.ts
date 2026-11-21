@@ -44,8 +44,10 @@ export interface RendererTransport {
   subscribeAgentRuntimeConnectionChanges?: (
     callback: (state: import("../../shared/agent-runtime-api").AgentRuntimeConnectionState) => void,
   ) => () => void;
-  subscribeClaudeUsageChanges?: (
-    callback: (snapshot: import("../../shared/agent-runtime-api").ClaudeUsageSnapshot) => void,
+  subscribeSubscriptionUsageChanges?: (
+    callback: (
+      snapshot: import("../../shared/agent-runtime-api").SubscriptionUsageSnapshot,
+    ) => void,
   ) => () => void;
   subscribeModelPolicyChanges: (
     callback: (settings: import("../../shared/model-policy").ModelPolicy) => void,
@@ -62,6 +64,11 @@ export interface RendererTransport {
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
   subscribeProviderKeyChanges: (
     callback: (settings: import("../../shared/provider-keys").ProviderKeySettings) => void,
+  ) => () => void;
+  subscribeAntigravityRuntimeChanges?: (
+    callback: (
+      state: import("../../shared/antigravity-runtime").AntigravityRuntimeSnapshot,
+    ) => void,
   ) => () => void;
   subscribeOpenCodeSetupChanges: (
     callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,

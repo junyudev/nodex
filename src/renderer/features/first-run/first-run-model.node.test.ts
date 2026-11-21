@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_MODEL_POLICY, withFreeModelsOn } from "../../../shared/model-policy";
+import {
+  antigravityInspection,
+  managedAntigravityExecutable,
+} from "../../../shared/antigravity-runtime.test-support";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import {
   INITIAL_FIRST_RUN_STATE,
   arrangeFirstRunAgents,
   candidateActivity,
-  firstRunAgentsSettled,
   decideFirstRun,
   firstRunAgentRows,
   firstTaskForChoice,
@@ -44,7 +47,7 @@ const inputs = (overrides: Partial<FirstRunAgentInputs> = {}): FirstRunAgentInpu
     notice: null,
   },
   openCodeInstall: "installable",
-  localAgents: [],
+  antigravityInspection: antigravityInspection(),
   acpAgents: [],
   providerKeys: [],
   ...overrides,
@@ -356,7 +359,7 @@ describe("first-run Agents", () => {
       const before = firstRunAgentRows(
         inputs({
           providers: [provider({ instanceId: "codex", driver: "codex" })],
-          localAgents: null,
+          antigravityInspection: antigravityInspection(),
         }),
       );
       const placed = placeFirstRunAgents([], before);
@@ -373,19 +376,25 @@ describe("first-run Agents", () => {
               issue: "unresponsive",
             }),
           ],
-          localAgents: [
+          acpAgents: [
             {
-              id: "antigravity",
-              executable: "/u/.local/bin/agy",
-              version: "1.5.4",
-              supported: true,
+              id: "late",
+              label: "Late Agent",
+              agentDefinitionId: "late-acp",
+              status: {
+                kind: "sign-in",
+                label: "Sign in",
+                action: "sign-in",
+                tone: "default",
+                detail: null,
+              },
             },
           ],
         }),
       );
       expect(
         arrangeFirstRunAgents(after, placeFirstRunAgents(placed, after)).map((entry) => entry.id),
-      ).toEqual(["codex", "found:antigravity", "claude", "api-key", "opencode"]);
+      ).toEqual(["codex", "acp:late", "claude", "antigravity", "api-key", "opencode"]);
     });
   });
 
@@ -406,12 +415,6 @@ describe("first-run Agents", () => {
   });
 
   describe("Agents on this computer", () => {
-    const agy = {
-      id: "antigravity",
-      executable: "/u/.local/bin/agy",
-      version: "1.5.4",
-      supported: true,
-    } as const;
     const status = (overrides: Partial<AcpInstanceStatus>): AcpInstanceStatus => ({
       kind: "ready",
       label: "Ready",
@@ -422,45 +425,80 @@ describe("first-run Agents", () => {
     });
     const instance = (overrides: Partial<AcpInstanceStatus>) => ({
       id: "i1",
-      label: "Google Antigravity",
-      agentDefinitionId: "antigravity-acp",
+      label: "Custom Agent",
+      agentDefinitionId: "custom-acp",
       status: status(overrides),
     });
 
-    it("offers a found Agent until the Profile runs it, then shows it in the same place", () => {
-      const found = firstRunAgentRows(inputs({ localAgents: [agy] }));
-      expect(row(found, "found:antigravity")).toMatchObject({
-        detail: "Found on this computer · agy 1.5.4",
-        action: { kind: "local-agent-connect", target: "antigravity" },
+    it("offers Antigravity setup as its own built-in Agent", () => {
+      expect(row(firstRunAgentRows(inputs()), "antigravity")).toMatchObject({
+        mark: { kind: "antigravity" },
+        detail: "Not set up",
+        action: { kind: "antigravity-settings", label: "Set up" },
       });
-      const order = placeFirstRunAgents([], found);
-      // An Agent that is already here sits above the ones that start from nothing.
-      expect(arrangeFirstRunAgents(found, order)[0]?.id).toBe("found:antigravity");
-
-      const connected = firstRunAgentRows(
-        inputs({ localAgents: [agy], acpAgents: [instance({})] }),
-      );
-      expect(row(connected, "found:antigravity")).toBeUndefined();
-      expect(row(connected, "acp:i1")).toMatchObject({ state: "ready", detail: "6 models" });
-      expect(arrangeFirstRunAgents(connected, order)[0]?.id).toBe("acp:i1");
     });
 
-    it("says what a found Agent needs when its version is too old to connect", () => {
-      const rows = firstRunAgentRows(
-        inputs({ localAgents: [{ ...agy, version: "1.4.9", supported: false }] }),
-      );
-      expect(row(rows, "found:antigravity")).toMatchObject({
+    it("groups a PATH or downloaded runtime above Agents that need installing", () => {
+      const path = {
+        ...managedAntigravityExecutable,
+        executablePath: "/tools/agy",
+        source: "path",
+        managedVersionDirectory: null,
+      } as const;
+      for (const inspection of [
+        antigravityInspection({ path }),
+        antigravityInspection({ managed: managedAntigravityExecutable }),
+      ]) {
+        const rows = firstRunAgentRows(inputs({ antigravityInspection: inspection }));
+        expect(row(rows, "antigravity")).toMatchObject({
+          found: true,
+          action: { kind: "antigravity-settings", label: "Set up" },
+        });
+        expect(arrangeFirstRunAgents(rows, placeFirstRunAgents([], rows))[0]?.id).toBe(
+          "antigravity",
+        );
+      }
+    });
+
+    it("shows the required version and lets the person check again after updating", () => {
+      const path = {
+        executablePath: "/tools/agy",
+        source: "path",
+        version: "1.4.9",
+        managedVersionDirectory: null,
+      } as const;
+      const inspect = antigravityInspection({ path });
+      expect(
+        row(firstRunAgentRows(inputs({ antigravityInspection: inspect })), "antigravity"),
+      ).toMatchObject({
         found: true,
         detail: "Found agy 1.4.9 · Update to 1.5.0 or newer to connect",
         action: { kind: "check-again" },
       });
     });
 
-    it("waits for the computer's answer before every row has answered", () => {
-      const scanning = inputs({ localAgents: null });
-      expect(firstRunAgentsSettled(scanning, firstRunAgentRows(scanning))).toBe(false);
-      const scanned = inputs({ localAgents: [agy] });
-      expect(firstRunAgentsSettled(scanned, firstRunAgentRows(scanned))).toBe(true);
+    it("marks Antigravity ready when an installed profile is signed in", () => {
+      const account = provider({
+        instanceId: "antigravity_work",
+        driver: "antigravity",
+        auth: { status: "authenticated", email: "work@example.test" },
+      });
+      const project = (providers: readonly Provider[]) =>
+        row(firstRunAgentRows(inputs({ providers })), "antigravity");
+      expect(project([account])).toMatchObject({
+        state: "ready",
+        detail: "work@example.test",
+        action: null,
+      });
+      expect(project([{ ...account, checkPending: true }])).toMatchObject({ state: "checking" });
+      expect(project([{ ...account, auth: { status: "unauthenticated" } }])).toMatchObject({
+        state: "action",
+        action: { kind: "antigravity-settings", label: "Sign in" },
+      });
+      expect(project([{ ...account, status: "error", issue: "unresponsive" }])).toMatchObject({
+        detail: "Didn’t respond in time",
+        action: { kind: "check-again" },
+      });
     });
 
     it("asks a configured Agent for its next step", () => {

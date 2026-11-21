@@ -16,18 +16,23 @@ type OpenAgentSettings = (kind?: AgentSettingsKind, instanceId?: string) => void
 export const AGENT_SETTINGS_KINDS = [
   "codex",
   "claude",
+  "antigravity",
   "keys",
   "opencode",
   "acp",
 ] as const satisfies readonly AgentSettingsKind[];
 
-/** The Settings > Agents anchor for a section, or for one ACP instance or API key in it. */
+export const antigravityAgentAnchor = (instanceId: string) => `antigravity-agent-${instanceId}`;
+
+/** The Settings > Agents anchor for a section or one of its configured profiles. */
 export const agentSettingsAnchor = (kind: AgentSettingsKind, instanceId?: string) =>
   kind === "acp" && instanceId
     ? acpAgentAnchor(instanceId)
     : kind === "keys" && instanceId
       ? providerKeyAnchor(instanceId)
-      : kind;
+      : kind === "antigravity" && instanceId
+        ? antigravityAgentAnchor(instanceId)
+        : kind;
 
 /** Where an Agent's settings live: an API key's connection, an ACP instance or its backend. */
 export function agentSettingsTarget(binding: AgentBackendBinding): {
@@ -40,6 +45,8 @@ export function agentSettingsTarget(binding: AgentBackendBinding): {
   if (connectionId) return { kind: "keys", instanceId: connectionId };
   if (binding.kind === "acp" && binding.instanceConfigId)
     return { kind: "acp", instanceId: binding.instanceConfigId };
+  if (binding.kind === "antigravity" && !binding.runtimeInstanceId && binding.instanceConfigId)
+    return { kind: "antigravity", instanceId: binding.instanceConfigId };
   return { kind: binding.kind };
 }
 
@@ -50,6 +57,7 @@ export function agentSettingsKindForAnchor(
   if (!anchor) return null;
   if (isAcpAgentsAnchor(anchor)) return "acp";
   if (isProviderKeyAnchor(anchor)) return "keys";
+  if (anchor.startsWith(antigravityAgentAnchor(""))) return "antigravity";
   return AGENT_SETTINGS_KINDS.find((kind) => kind === anchor) ?? null;
 }
 

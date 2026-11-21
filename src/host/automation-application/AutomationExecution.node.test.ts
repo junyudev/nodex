@@ -167,6 +167,24 @@ const setup = (
                         : [],
                   },
                   openCodeAgents: { instances: [] },
+                  antigravityAgents: {
+                    instances:
+                      binding.kind === "antigravity"
+                        ? [
+                            {
+                              id: binding.instanceConfigId,
+                              displayName: "Antigravity work",
+                              enabled: true,
+                              authMethod: "oauth-personal",
+                              gcpProject: "",
+                              gcpLocation: "",
+                              binaryPath: "",
+                              apiKey: null,
+                              hasApiKey: false,
+                            },
+                          ]
+                        : [],
+                  },
                   acpAgents: {
                     instances:
                       binding.kind === "acp" && state.instanceAvailable
@@ -295,6 +313,19 @@ const setup = (
                 status: "ready",
                 models: [
                   { slug: "model", capabilities: { optionDescriptors: [] } },
+                  {
+                    slug: "gemini",
+                    capabilities: {
+                      optionDescriptors: [
+                        {
+                          id: "thinking_level",
+                          type: "select",
+                          role: "reasoning",
+                          options: [{ id: "high" }],
+                        },
+                      ],
+                    },
+                  },
                   {
                     slug: "reviewed-model",
                     capabilities: {
@@ -1008,6 +1039,26 @@ it.effect("runs a Fast task on the id its model's catalog gives the tier", () =>
     assert.deepEqual(fixture.launches[0]!.modelSelection.options, [
       { id: "serviceTier", value: "priority" },
     ]);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("runs an Antigravity Automation with its selected thinking level", () => {
+  const binding = { kind: "antigravity", instanceConfigId: "work" } as const;
+  const fixture = setup(binding);
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      model: "gemini",
+      reasoningEffort: "high",
+    };
+    yield* execution.executeClaimed(fixture.state.definition, context);
+    assert.deepEqual(fixture.launches[0]!.modelSelection, {
+      instanceId: agentRuntimeProviderId(binding)!,
+      model: "gemini",
+      options: [{ id: "thinking_level", value: "high" }],
+    });
+    assert.equal([...fixture.runs.values()][0]?.agentSelection?.effort, "high");
   }).pipe(Effect.provide(fixture.layer));
 });
 

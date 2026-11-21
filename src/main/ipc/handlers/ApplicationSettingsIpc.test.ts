@@ -190,6 +190,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:acp-agents:update",
       "settings:agent-runtime:get",
       "settings:agent-runtime:update",
+      "settings:antigravity-agents:get",
+      "settings:antigravity-agents:update",
       "settings:backup:get",
       "settings:backup:update",
       "settings:claude-agents:get",
@@ -304,22 +306,24 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       ),
     );
     assert.deepEqual(yield* handlers.get("settings:usage-meters:get")!(event), {
+      antigravity: true,
       claude: true,
       codex: true,
       nodexCredit: true,
     });
     assert.deepEqual(
       yield* handlers.get("settings:usage-meters:update")!(event, {
+        antigravity: false,
         claude: false,
         codex: true,
         nodexCredit: false,
       }),
-      { claude: false, codex: true, nodexCredit: false },
+      { antigravity: false, claude: false, codex: true, nodexCredit: false },
     );
     yield* Effect.yieldNow;
     assert.deepEqual(
       broadcasts.filter(({ channel }) => channel === "usage-meter-settings-changed").at(-1)?.value,
-      { claude: false, codex: true, nodexCredit: false },
+      { antigravity: false, claude: false, codex: true, nodexCredit: false },
     );
     assert.strictEqual(
       yield* handlers.get("settings:notification-authorization:read")!(event),
@@ -404,12 +408,13 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     );
     assert.strictEqual(providerRefreshes, 1);
     for (const channel of [
+      "settings:antigravity-agents:update",
       "settings:claude-agents:update",
       "settings:opencode-agents:update",
       "settings:acp-agents:update",
     ] as const)
       yield* handlers.get(channel)!(event, { instances: [] });
-    assert.strictEqual(providerRefreshes, 4);
+    assert.strictEqual(providerRefreshes, 5);
     const acpInstance = {
       id: "acp-work",
       agentDefinitionId: "generic",

@@ -32,7 +32,7 @@ const SecretPayloadSchema = z
   .strict();
 
 export interface AgentEnvironmentStorage {
-  readonly backend: "claude" | "opencode" | "acp" | "provider-keys";
+  readonly backend: "claude" | "opencode" | "antigravity" | "acp" | "provider-keys";
   readonly settingsPath: string;
   readonly hostHomeDirectory?: string;
   readonly secretEncryption?: SecretEncryptionAdapter;

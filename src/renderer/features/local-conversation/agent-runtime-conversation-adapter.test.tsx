@@ -247,6 +247,127 @@ describe("Agent Runtime composer readiness", () => {
     );
   };
 
+  it("keeps the Antigravity profile and sends its advertised thinking option with the next message", async () => {
+    const binding = { kind: "antigravity" as const, instanceConfigId: "work" };
+    const configured = [{ binding, label: "Work", enabled: true }];
+    const instanceId = agentRuntimeProviderId(binding)!;
+    const modelSelection = { instanceId, model: "gemini" };
+    const antigravity: AgentRuntimeProvider = {
+      ...provider,
+      instanceId,
+      driver: "antigravity",
+      auth: { status: "unknown" },
+      status: "warning",
+      showInteractionModeToggle: false,
+      supportedRuntimeModes: ["approval-required", "full-access"],
+      models: [
+        {
+          slug: "gemini",
+          name: "Gemini",
+          isCustom: false,
+          capabilities: {
+            inputModalities: ["text", "image"],
+            optionDescriptors: [
+              {
+                id: "thinking_level",
+                role: "reasoning",
+                label: "Thinking level",
+                type: "select",
+                currentValue: "low",
+                options: [
+                  { id: "low", label: "Low" },
+                  { id: "high", label: "High" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([antigravity, provider]);
+    const sessionId = "antigravity-ready";
+    const send = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
+    const conversation = {
+      sessionId,
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: { modelSelection },
+      }),
+    };
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const openSettings = vi.fn();
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId,
+          sessionUnread: false,
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances: configured,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: sessionId }),
+        }),
+      {
+        wrapper: ({ children }) => (
+          <RuntimeWorkbench>
+            <AgentSettingsNavigationProvider openAgentSettings={openSettings}>
+              {children}
+            </AgentSettingsNavigationProvider>
+          </RuntimeWorkbench>
+        ),
+      },
+    );
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.selectedEffort).toBe("low"));
+    expect(result.current.provider.notice).toBeNull();
+    expect(result.current.modes).toEqual([]);
+    expect(result.current.supportedRuntimeModes).toEqual(["approval-required", "full-access"]);
+    expect(result.current.provider.controls?.images).toBe(true);
+    await act(async () =>
+      result.current.provider.modelCatalog?.changeConfig?.("thinking_level", "high"),
+    );
+    expect(result.current.selectedEffort).toBe("high");
+    expect(result.current.provider.modelCatalog?.selected).toMatchObject({
+      binding,
+      model: "gemini",
+      options: [{ id: "thinking_level", value: "high" }],
+    });
+    await act(async () =>
+      result.current.actions.onSendPrompt?.("Check the notes", {
+        promptInput: {
+          text: "Check the notes",
+          fileAttachments: [
+            { label: "notes.pdf", path: "/test/notes.pdf", fsPath: "/test/notes.pdf" },
+          ],
+        },
+      }),
+    );
+    expect(send.mock.calls[0]?.[0].message).toMatchObject({
+      modelSelection: { ...modelSelection, options: [{ id: "thinking_level", value: "high" }] },
+      uploads: [{ name: "notes.pdf", path: "/test/notes.pdf" }],
+    });
+
+    vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([
+      { ...antigravity, models: [{ ...antigravity.models[0]!, slug: "another-model" }] },
+      provider,
+    ]);
+    await act(async () => result.current.provider.modelCatalog?.reload?.());
+    await waitFor(() =>
+      expect(result.current.provider.notice?.title).toBe(
+        "That model is no longer available. Choose another model.",
+      ),
+    );
+    expect(result.current.selectedModel).toBe("gemini");
+    await act(async () => result.current.provider.notice?.actions?.[0]?.run());
+    expect(openSettings).toHaveBeenCalledExactlyOnceWith("antigravity", "work");
+    await act(async () => unmount());
+  });
+
   it("asks an unstarted chat for an Agent while offering Codex sign-in in the model picker", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([signedOutCodex]);
     const { result, unmount } = mountChat(false);

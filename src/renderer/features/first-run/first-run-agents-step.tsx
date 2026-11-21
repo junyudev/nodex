@@ -191,9 +191,11 @@ function NodexCredits({
 export function FirstRunAgentsStep({
   entry,
   onContinue,
+  onOpenAgentSettings,
 }: {
   readonly entry: FirstRunEntry;
   readonly onContinue: () => void;
+  readonly onOpenAgentSettings: () => void;
 }) {
   const intl = useIntl();
   const agents = useFirstRunAgents();
@@ -206,7 +208,9 @@ export function FirstRunAgentsStep({
 
   const act = (row: FirstRunAgentRow) => {
     const kind = row.action?.kind;
-    if (kind === "api-key-add") {
+    if (kind === "antigravity-settings") {
+      onOpenAgentSettings();
+    } else if (kind === "api-key-add") {
       setAddingKey((current) => !current);
     } else if (kind === "acp-sign-in") {
       setSigningIn((current) =>

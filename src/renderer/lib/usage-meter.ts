@@ -2,8 +2,11 @@ import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PlanType } from "@nodex/codex-app-server-protocol";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
-import type { ClaudeUsageSnapshot } from "../../shared/agent-runtime-api";
-import { hasClaudeSubscriptionLimits, meteredClaudeProviders } from "../../shared/claude-usage";
+import type { SubscriptionUsageSnapshot } from "../../shared/agent-runtime-api";
+import {
+  hasClaudeSubscriptionLimits,
+  meteredSubscriptionProviders,
+} from "../../shared/subscription-usage";
 import type { CodexAccountSnapshot, CodexRateLimitsSnapshot } from "./types";
 import { agentRuntimeProviderBackendKind } from "./agent-runtime-model-selection";
 
@@ -561,7 +564,7 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
     return {
       id: window.id,
       label:
-        scope === "account"
+        kind !== "antigravity" && scope === "account"
           ? (formatRateLimitWindowLabel(window.windowDurationMins) ?? window.label)
           : window.label,
       usedPercent: window.usedPercent,
@@ -570,14 +573,20 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
       scope,
     };
   });
-  const identity =
-    auth.email || auth.workspaceId
-      ? `${auth.email ?? ""}|${auth.workspaceId ?? ""}`
-      : (limits?.credentialFingerprint ?? `instance:${provider.instanceId}`);
+  const accountIdentity =
+    auth.email || auth.workspaceId ? `${auth.email ?? ""}|${auth.workspaceId ?? ""}` : null;
+  const configuredIdentity =
+    kind === "antigravity"
+      ? (limits?.credentialFingerprint ?? accountIdentity)
+      : (accountIdentity ?? limits?.credentialFingerprint);
+  const identity = configuredIdentity ?? `instance:${provider.instanceId}`;
   return {
     provider: kind,
     key: `${kind}:${identity}`,
-    title: provider.displayName ?? (kind === "claude" ? "Claude" : provider.instanceId),
+    title:
+      kind === "antigravity"
+        ? "Antigravity"
+        : (provider.displayName ?? (kind === "claude" ? "Claude" : provider.instanceId)),
     account: auth.email ?? null,
     plan: auth.label ?? null,
     // Only Claude says when an account has no subscription limits. Another Agent that reports
@@ -591,22 +600,22 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
   };
 }
 
-/** One Claude account's meter and the Agents that read it. */
-export interface ClaudeUsageAccount {
+/** One subscription account's meter and the Agents that read it. */
+export interface SubscriptionUsageAccount {
   readonly reading: UsageReading;
   readonly instanceIds: readonly string[];
 }
 
 /**
- * One meter per Claude subscription account in Main's snapshot. Agents that read one account
+ * One meter per subscription account in Main's snapshot. Agents that read one account
  * collapse into its freshest reading; a read that failed marks every reading it kept.
  */
-export function claudeUsageAccounts(
-  snapshot: ClaudeUsageSnapshot | null | undefined,
-): readonly ClaudeUsageAccount[] {
+export function subscriptionUsageAccounts(
+  snapshot: SubscriptionUsageSnapshot | null | undefined,
+): readonly SubscriptionUsageAccount[] {
   const readFailed = snapshot?.status === "unavailable";
-  const byAccount = new Map<string, ClaudeUsageAccount>();
-  for (const provider of meteredClaudeProviders(snapshot?.providers)) {
+  const byAccount = new Map<string, SubscriptionUsageAccount>();
+  for (const provider of meteredSubscriptionProviders(snapshot?.providers)) {
     const reading = runtimeUsageReading(provider, readFailed);
     const existing = byAccount.get(reading.key);
     if (!existing) {
@@ -616,7 +625,7 @@ export function claudeUsageAccounts(
     const fresher =
       (reading.observedAt ?? -1) > (existing.reading.observedAt ?? -1) ? reading : existing.reading;
     byAccount.set(reading.key, {
-      reading: { ...fresher, title: "Claude" },
+      reading: { ...fresher, title: fresher.provider === "claude" ? "Claude" : fresher.title },
       instanceIds: [...existing.instanceIds, provider.instanceId],
     });
   }
@@ -629,7 +638,7 @@ export type ClaudeUsagePlaceholder =
   | { readonly kind: "unavailable"; readonly reason: string | null };
 
 export function claudeUsagePlaceholder(
-  snapshot: ClaudeUsageSnapshot | null | undefined,
+  snapshot: SubscriptionUsageSnapshot | null | undefined,
 ): ClaudeUsagePlaceholder | null {
   if (!snapshot || snapshot.providers !== null) return null;
   if (snapshot.status === "loading") return { kind: "loading" };

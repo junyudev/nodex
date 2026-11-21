@@ -40,6 +40,7 @@ const STATUS_LABEL: Record<DelegatedTaskRowStatus, MessageDescriptor> = defineMe
   },
   failed: { id: "conversation.delegatedTaskPresentation.failed", defaultMessage: "Failed" },
   completed: { id: "conversation.delegatedTaskPresentation.completed", defaultMessage: "Done" },
+  idle: { id: "conversation.delegatedTaskPresentation.idle", defaultMessage: "Idle" },
 });
 
 export const delegatedTaskStatusLabel = (
@@ -56,6 +57,7 @@ const SUMMARY_STATUS_ORDER: readonly DelegatedTaskRowStatus[] = [
   "cancelled",
   "stopped",
   "completed",
+  "idle",
 ];
 
 /** A mixed group keeps every outcome visible instead of projecting a false shared lifecycle. */
@@ -110,6 +112,14 @@ export function delegatedTaskGroupStatusLabel(
           {
             id: "conversation.delegatedTaskPresentation.groupCancelled",
             defaultMessage: "{count, plural, one {was cancelled} other {were cancelled}}",
+          },
+          { count },
+        );
+      case "idle":
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupIdle",
+            defaultMessage: "{count, plural, one {is idle} other {are idle}}",
           },
           { count },
         );

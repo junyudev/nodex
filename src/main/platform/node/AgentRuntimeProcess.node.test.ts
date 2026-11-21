@@ -26,6 +26,7 @@ import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
+import { agentRuntimeHostEnvironment } from "../../agent-runtime/AgentRuntimeHostEnvironment";
 import { acquireAgentRuntimeProcess, AGENT_RUNTIME_NODE_FLAGS } from "./AgentRuntimeProcess";
 
 let fixtureHome: string;
@@ -112,6 +113,52 @@ it.live("withdraws an interrupted utility over the existing Runtime connection",
     );
     assert.equal((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "finds Antigravity in the login-shell environment of a desktop-launched Runtime",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const shellBin = path.join(fixtureHome, "shell-bin");
+      yield* fs.makeDirectory(shellBin);
+      const agy = path.join(shellBin, "agy");
+      yield* fs.writeFileString(agy, "#!/bin/sh\nprintf 'agy 1.5.13\\n'\n", { mode: 0o700 });
+      const environment = yield* agentRuntimeHostEnvironment({
+        host: {
+          platform: process.platform,
+          homeDirectory: fixtureHome,
+          environment: { HOME: fixtureHome, PATH: "/usr/bin:/bin" },
+          systemInstallDirectories: [],
+        },
+        loginEnvironment: { PATH: shellBin },
+        additionalSearchPaths: [],
+        overrides: { NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+      });
+      const instanceId = "antigravity_shell";
+      const connection = yield* acquireAgentRuntimeProcess({
+        executable: process.execPath,
+        entryPath: fileURLToPath(
+          new URL("../../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
+        ),
+        environment,
+        configuration: {
+          home: fixtureHome,
+          cwd: fixtureHome,
+          providers: {
+            [instanceId]: { driver: "antigravity", config: { authMethod: "oauth-personal" } },
+          },
+        },
+        host: () => Effect.void,
+      });
+      const read = (refresh = false) =>
+        connection.request("providers.install.read", { driver: "antigravity", refresh });
+      assert.include((yield* read()).path, { executablePath: agy, version: null });
+      const checked = yield* read(true);
+      assert.include(checked.path, { executablePath: agy, version: "1.5.13" });
+      assert.include(checked.instances[0], { instanceId, executablePath: agy, version: "1.5.13" });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 for (const provider of ["codex", "claude CLI", "claude SDK"] as const) {
@@ -517,7 +564,7 @@ it.live("preserves typed ACP recovery metadata while discarding untrusted failur
   Effect.gen(function* () {
     const connection = yield* acquire();
     const rejected = yield* connection
-      .request("acp.auth.logout", { instanceId: "work" })
+      .request("providers.auth.logout", { instanceId: "work" })
       .pipe(Effect.flip);
     assert.deepEqual(rejected.acp, {
       reason: "busy",

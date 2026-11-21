@@ -1,15 +1,17 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import type { AgentWire, ModelSelection } from "@nodex/agent-runtime/contracts";
+import {
+  isProviderInstanceId,
+  type AgentWire,
+  type ModelSelection,
+} from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "./agent-backend";
 import { fitCodexServiceTier, normalizeCodexServiceTier } from "./codex-service-tier";
 
 /** Provider keys are shared by desktop configuration and model selection. */
 export function agentRuntimeProviderId(binding: AgentBackendBinding): string | null {
-  if (binding.runtimeInstanceId)
-    return /^[a-z][a-z0-9_-]{0,127}$/u.test(binding.runtimeInstanceId)
-      ? binding.runtimeInstanceId
-      : null;
+  if (binding.runtimeInstanceId !== undefined)
+    return isProviderInstanceId(binding.runtimeInstanceId) ? binding.runtimeInstanceId : null;
   if (binding.kind === "codex") return "codex";
   const id = binding.instanceConfigId;
   if (!id || id.trim() !== id || id.length > 128) return null;
@@ -61,9 +63,14 @@ export interface AgentRuntimeOptionIntent {
   readonly serviceTier?: string | null;
 }
 
-/** Codex calls it `reasoningEffort`, Claude `effort`; both are the model's effort select. */
-export const isAgentRuntimeEffortOption = (descriptor: AgentRuntimeOptionDescriptor): boolean =>
-  descriptor.type === "select" && /effort|reasoning/iu.test(descriptor.id);
+const isEffortOptionId = (id: string) => /effort|reasoning|thought|thinking/iu.test(id);
+
+/** The model's native effort select: Codex `reasoningEffort`, Claude `effort`, Antigravity `thought_level`. */
+export const isAgentRuntimeEffortOption = (
+  descriptor: AgentRuntimeOptionDescriptor,
+): descriptor is Extract<AgentRuntimeOptionDescriptor, { type: "select" }> =>
+  descriptor.type === "select" &&
+  (descriptor.role === "reasoning" || isEffortOptionId(descriptor.id));
 const SERVICE_TIER_OPTION = "serviceTier";
 const STANDARD_SERVICE_TIER = "default";
 
@@ -125,12 +132,17 @@ export function applyAgentRuntimeOptionIntent(
   return [...next].map(([id, value]) => ({ id, value }));
 }
 
-/** The effort a selection chose: Codex `reasoningEffort`, Claude `effort` or OpenCode `variant`. */
+/** The effort a selection chose: Codex `reasoningEffort`, Claude `effort`, Antigravity `thought_level` or OpenCode `variant`. */
 export function readAgentRuntimeEffort(
   options: AgentWire<ModelSelection>["options"],
+  descriptor?: AgentRuntimeOptionDescriptor,
 ): string | null {
   const value = options?.find(
-    (option) => /effort|reasoning/iu.test(option.id) || option.id === "variant",
+    (option) =>
+      typeof option.value === "string" &&
+      (descriptor
+        ? option.id === descriptor.id
+        : isEffortOptionId(option.id) || option.id === "variant"),
   )?.value;
   return typeof value === "string" ? value : null;
 }

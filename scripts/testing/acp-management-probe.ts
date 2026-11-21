@@ -6,7 +6,7 @@ import type { AgentRuntimeOperations } from "../../packages/agent-runtime/src/no
 import type { AgentRuntimeNode } from "../agent-runtime-native";
 import { hasCompletePtyLine, probePtyResize } from "./pty-resize-probe";
 
-type Auth = AgentRuntimeOperations["acp.auth.read"]["output"];
+type Auth = AgentRuntimeOperations["providers.auth.read"]["output"];
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const within = async <A>(promise: Promise<A>, label: string, timeoutMs = 15_000): Promise<A> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -128,7 +128,7 @@ export async function probeAcpManagement(input: {
     ).finally(() => pending.delete(id));
   };
   const read = async () => {
-    const state = await request("acp.auth.read", { instanceId, ownerId });
+    const state = await request("providers.auth.read", { instanceId, ownerId });
     const visible = JSON.stringify(state);
     if (visible.includes(injectedSecret) || visible.includes(injectedSecret.slice(0, 12)))
       throw new Error("A secret escaped through authentication state");
@@ -149,7 +149,7 @@ export async function probeAcpManagement(input: {
   const respond = (state: Auth, data: string, size?: { cols: number; rows: number }) => {
     if (!state.flowId || state.interaction?.type !== "terminal")
       throw new Error("No active terminal interaction");
-    return request("acp.auth.respond", {
+    return request("providers.auth.respond", {
       instanceId,
       ownerId,
       flowId: state.flowId,
@@ -158,7 +158,7 @@ export async function probeAcpManagement(input: {
     });
   };
   const start = async () => {
-    await request("acp.auth.start", { instanceId, ownerId, methodId: "terminal" });
+    await request("providers.auth.start", { instanceId, ownerId, methodId: "terminal" });
     return wait(
       (state) =>
         state.interaction?.type === "terminal" && state.interaction.output.includes("READY"),
@@ -252,7 +252,7 @@ export async function probeAcpManagement(input: {
         state.interaction?.type === "terminal" && state.interaction.output.includes("CHILD:"),
       "terminal descendant",
     );
-    await request("acp.auth.cancel", { instanceId, ownerId, flowId: third.flowId! });
+    await request("providers.auth.cancel", { instanceId, ownerId, flowId: third.flowId! });
     await wait((state) => state.phase === "cancelled", "terminal cancellation");
     let staleRejected = false;
     try {

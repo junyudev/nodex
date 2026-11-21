@@ -18,6 +18,7 @@ import {
   StandingInstructionsRow,
 } from "./agent-instructions-settings-control";
 import { CodexAgentSettingsSection } from "./codex-home-settings-control";
+import { AntigravityAgentSettingsControl } from "./antigravity-agent-settings-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
@@ -59,6 +60,11 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
         </SectionBlock>
         <CodexAgentSettingsSection open={open} disclosure={disclosure("codex")} />
         <ClaudeAgentSettingsControl open={open} disclosure={disclosure("claude")} />
+        <AntigravityAgentSettingsControl
+          open={open}
+          anchor={settingsAnchor ?? null}
+          disclosure={disclosure("antigravity")}
+        />
         <ProviderKeysSettingsSection
           anchor={settingsAnchor ?? null}
           disclosure={disclosure("keys")}

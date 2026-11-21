@@ -17,7 +17,11 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
 import { subscribe as subscribeExecutionChanges } from "../../main/agent-runtime/AgentRuntimeExecutionChanges";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import {
+  agentRuntimeProviderId,
+  agentRuntimeWorkSelection,
+  isAgentRuntimeEffortOption,
+} from "../../shared/agent-runtime-provider";
 import { offeredCodexServiceTier } from "../../shared/codex-service-tier";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import type {
@@ -96,16 +100,15 @@ const modelOption = (
     throw new Error(`This Agent doesn't offer model '${model}'. Choose another model.`);
   const options: Array<{ id: string; value: string | boolean }> = [];
   const descriptors = selected.capabilities?.optionDescriptors ?? [];
-  for (const [pattern, value, offered] of [
+  for (const [option, value, offered] of [
     [
-      /effort|reasoning/i,
+      descriptors.find(isAgentRuntimeEffortOption),
       effort,
       (ids: readonly string[], chosen: string) => (ids.includes(chosen) ? chosen : null),
     ],
-    [/tier/i, tier, offeredCodexServiceTier],
+    [descriptors.find((item) => /tier/i.test(item.id)), tier, offeredCodexServiceTier],
   ] as const) {
     if (value === null) continue;
-    const option = descriptors.find((item) => pattern.test(item.id));
     const id =
       option?.type === "select"
         ? offered(
@@ -471,14 +474,7 @@ export const live: Layer.Layer<
                 }
               : context.admission?.agent,
           );
-          const resolvedEffort = selected.options?.find((option) =>
-            /effort|reasoning/iu.test(option.id),
-          )?.value;
-          const agentSelection = {
-            instanceId: selected.instanceId,
-            model: selected.model,
-            effort: typeof resolvedEffort === "string" ? resolvedEffort : null,
-          };
+          const agentSelection = agentRuntimeWorkSelection(selected);
           const runbook = definition.runbookPageId
             ? yield* readRunbook(definition.runbookPageId)
             : null;

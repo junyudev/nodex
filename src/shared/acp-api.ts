@@ -1,10 +1,7 @@
 import type { AgentAcpFailure, AgentAcpManagementOperations } from "@nodex/agent-runtime/contracts";
-export type AcpFailure = AgentAcpFailure & {
-  readonly affectedSessions?: readonly { readonly sessionId: string; readonly threadId: string }[];
-};
-export type AcpResult<Value> =
-  | { readonly ok: true; readonly value: Value }
-  | { readonly ok: false; readonly error: AcpFailure };
+import type { AgentManagementFailure, AgentManagementResult } from "./agent-management-result";
+export type AcpFailure = AgentManagementFailure;
+export type AcpResult<Value> = AgentManagementResult<Value>;
 
 type RuntimeMethod = Exclude<keyof AgentAcpManagementOperations, "acp.activity">;
 type PublicInput<Input> = Omit<Input, "ownerId" | "cwd" | "returnUrl" | "callbackMode"> &

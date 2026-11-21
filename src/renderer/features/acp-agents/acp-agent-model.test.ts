@@ -1,3 +1,4 @@
+import { authTerminalDelta } from "../agent-account/auth-terminal-output";
 import { describe, expect, test } from "vite-plus/test";
 import {
   acpAgentsSummary,
@@ -11,7 +12,6 @@ import {
   acpProgressText,
   acpRegistryUnavailableText,
   acpSignInMethods,
-  acpTerminalDelta,
   acpUpdateVersion,
   splitPastedAcpArguments,
   type AcpActivity,
@@ -344,11 +344,11 @@ describe("ACP composer setup", () => {
 
 describe("ACP sign-in terminal output", () => {
   test("appends only unseen output and redraws after a gap the tail no longer covers", () => {
-    expect(acpTerminalDelta(0, "Login: ", 7)).toEqual({ reset: false, data: "Login: " });
-    expect(acpTerminalDelta(7, "Login: ok\r\n", 11)).toEqual({ reset: false, data: "ok\r\n" });
-    expect(acpTerminalDelta(11, "Login: ok\r\n", 11)).toEqual({ reset: false, data: "" });
+    expect(authTerminalDelta(0, "Login: ", 7)).toEqual({ reset: false, data: "Login: " });
+    expect(authTerminalDelta(7, "Login: ok\r\n", 11)).toEqual({ reset: false, data: "ok\r\n" });
+    expect(authTerminalDelta(11, "Login: ok\r\n", 11)).toEqual({ reset: false, data: "" });
     // 40 characters were produced but the bounded tail keeps 10.
-    expect(acpTerminalDelta(11, "0123456789", 51)).toEqual({ reset: true, data: "0123456789" });
+    expect(authTerminalDelta(11, "0123456789", 51)).toEqual({ reset: true, data: "0123456789" });
   });
 });
 

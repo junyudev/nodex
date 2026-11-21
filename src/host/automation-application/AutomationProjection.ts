@@ -50,7 +50,12 @@ export type CorePageOccurrenceSchedulePatch = Extract<
 >["updates"];
 
 const requireAutomationBackendBinding = (binding: AgentBackendBinding): AgentBackendBinding => {
-  if (binding.kind === "codex" || binding.kind === "claude" || binding.kind === "opencode")
+  if (
+    binding.kind === "codex" ||
+    binding.kind === "claude" ||
+    binding.kind === "opencode" ||
+    binding.kind === "antigravity"
+  )
     return binding;
   if (binding.kind === "acp" && binding.instanceConfigId?.trim()) return binding;
   throw new Error("Choose an available Agent for this Automation.");

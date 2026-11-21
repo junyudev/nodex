@@ -20,20 +20,6 @@ masked, edits preserve unchanged secrets, and removal releases owned secret refe
 holds launch configuration in memory. Explicit environment, credential-home and proxy choices
 determine inheritance; native software may additionally choose its own configuration roots.
 
-Nodex recognizes Agents that serve ACP from their installed command line, including Google
-Antigravity's `agy acp` in version 1.5 or later. Local discovery searches the Desktop PATH, the
-recovered login-shell PATH, and common and Agent-specific installation directories. A supported
-install in a known directory can be found while the login shell is still starting. Nodex reads
-`--version` without installing or updating the Agent. It selects the first compatible copy in
-search order, reports the newest outdated copy when all recognized versions are too old, and
-uses a copy with an unknown version only when it finds no recognizable version. Launchers that
-identify themselves as another product are skipped.
-
-Connecting a found Agent saves a local instance with its executable, ACP arguments,
-Registry identity and the host profile's credentials, so its existing sign-in, models and
-history work as in its own command line. Recent nonempty scans can be reused for 30 seconds.
-A refresh checks the computer again and retries login-shell recovery if it previously failed.
-
 Searching and reading installation state are passive. Installing, updating, connecting, logging in
 and uninstalling require their corresponding explicit actions. Installation has bounded diagnostics,
 progress, cancellation and retry; duplicate operation IDs do not repeat the work. Private staging is
@@ -60,7 +46,9 @@ terminal exit triggers a new authentication check; it does not itself establish 
 The Agent owns its native credential files. Environment secrets submitted to Nodex use the Profile's
 encrypted secret store and are never copied into Runtime settings or installation receipts.
 
-Operations bind their instance, owner, configuration and Runtime lifetime. Closing an authentication
+Account requests share Nodex’s Agent authentication path. Main resolves the saved instance and
+assigns the initiating window as its owner. Operations bind their instance, owner, configuration
+and Runtime lifetime. Closing an authentication
 flow cancels its interaction and owned terminal. Closing an installation observer allows installation
 to continue. Main observes completion independently of the originating window and refreshes connected
 catalog consumers after successful installation, connection or authentication. Expired, cancelled and

@@ -272,6 +272,37 @@ models, key hint, and encrypted secret reference. For a custom gateway, use the 
 base URL before `/v1/messages`. Nodex runs these models through bundled Claude Code with a
 separate configuration directory for each connection.
 
+## Antigravity instances
+
+Antigravity is a separate Agent backend. Profiles start with no Antigravity accounts.
+Each entry in `[[server.antigravity_agent_instances]]` represents one account; up to 32
+entries may be saved, each with a unique `id`.
+
+| Field                       | Meaning                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `id`                        | Stable profile identity, 1–128 ASCII letters, digits, underscores or hyphens                                |
+| `displayName`               | Name shown in Agent choices                                                                                 |
+| `enabled`                   | Whether the account may receive new work                                                                    |
+| `authMethod`                | `oauth-personal` (default), `oauth-business`, `gemini-api-key` or `agent-platform`                          |
+| `gcpProject`, `gcpLocation` | Google Cloud project and region; empty when unused                                                          |
+| `binaryPath`                | Empty selects the Nodex-managed runtime, then a compatible `agy` on PATH; otherwise the explicit executable |
+| `apiKeyRef`                 | Nodex-owned reference to an encrypted API key; never a plaintext key                                        |
+
+Supply keys through Agent settings. Main stages encrypted values under
+`<Profile>/agent-secrets/antigravity`, publishes their settings references last and
+releases retired references after a successful save or removal. Settings reads expose
+only `apiKey: null` and `hasApiKey`. Saving `apiKey: null` preserves that account's key;
+an empty string clears it. Resolved keys cross only the private runtime bootstrap boundary.
+Disabling an account keeps its key. Antigravity owns isolated credentials per account and
+strips ambient Google credentials; there is no environment-variable or custom-model editor.
+Models come from that account and default on under model policy.
+
+Nodex stores the managed download under
+`<Profile>/agent-runtime/tools/antigravity-acp/<os>-<arch>/`. All Antigravity profiles
+in this Profile share the installation. Each profile can select its own executable
+with `binaryPath`. See [Antigravity runtime](product-specs/antigravity-agent-behavior.md#runtime)
+for installation and removal behavior.
+
 ## OpenCode instances
 
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the
@@ -454,6 +485,12 @@ opens links externally. See [Workbench link opening](product-specs/workbench-she
 - [Security](SECURITY.md) for diagnostics, sandbox, and trust boundaries.
 - [Settings Route Behavior](product-specs/settings-route-behavior.md) for UI
   routing and ownership.
+
+## Usage meters
+
+The `[server.usage_meters]` table holds the `antigravity`, `claude`, `codex`, and
+`nodexCredit` switches. Each defaults to `true`. Settings → General → Usage meters
+applies changes to every window in the Profile.
 
 ## Model policy
 

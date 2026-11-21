@@ -26,6 +26,7 @@ import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/th
 import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../shared/codex-client-thread";
 import { useAgentRuntimeSessionLaunch } from "./use-agent-runtime-session-launch";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { readAgentRuntimeEffort } from "../../shared/agent-runtime-provider";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { prepareAgentMessage } from "../../shared/agent-prompt";
 import { readPastedTextAttachment } from "./api";
@@ -1022,6 +1023,7 @@ export function useWorkbenchSessionCommands({
         selectedThreadId: string | null;
         selectedDisplayName: string | null;
         selectedCanInteract: boolean;
+        selectedNativeWork?: SubagentsPanelTab["selectedNativeWork"];
         selectedHydration: SubagentsPanelTab["selectedHydration"];
       }): SubagentsPanelTab => ({
         subagentsPanel: true,
@@ -1117,6 +1119,18 @@ export function useWorkbenchSessionCommands({
                 selectedCanInteract:
                   inspected.thread.archivedAt === null &&
                   inspected.thread.creationSource !== "provider",
+                ...(inspected.thread.creationSource === "provider" &&
+                inspected.thread.lineage.relationshipToParent === "subagent" &&
+                inspected.thread.providerDriver === "antigravity"
+                  ? {
+                      selectedNativeWork: {
+                        kind: "antigravity" as const,
+                        providerInstanceId: inspected.thread.modelSelection.instanceId,
+                        model: inspected.thread.modelSelection.model,
+                        effort: readAgentRuntimeEffort(inspected.thread.modelSelection.options),
+                      },
+                    }
+                  : {}),
                 selectedHydration: {
                   status: "ready",
                   revision: 0,

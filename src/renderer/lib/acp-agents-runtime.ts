@@ -32,10 +32,6 @@ const installStart = command("acp_agents.install.start", "acp:install:start");
 const uninstall = command("acp_agents.registry.uninstall", "acp:registry:uninstall");
 const connectionStart = command("acp_agents.connection.start", "acp:connection:start");
 const operationCancel = command("acp_agents.operation.cancel", "acp:operation:cancel");
-const authStart = command("acp_agents.auth.start", "acp:auth:start");
-const authRespond = command("acp_agents.auth.respond", "acp:auth:respond");
-const authCancel = command("acp_agents.auth.cancel", "acp:auth:cancel");
-const authLogout = command("acp_agents.auth.logout", "acp:auth:logout");
 const urlAuthAccept = command("acp_agents.url_auth.accept", "acp:urlAuth:accept");
 const sessionsImport = command("acp_agents.sessions.import", "acp:sessions:import");
 const sessionsDelete = command("acp_agents.sessions.delete", "acp:sessions:delete");
@@ -77,11 +73,6 @@ export interface AcpAgentsRuntime {
   readonly cancelOperation: (
     input: Input<"acp.operation.cancel">,
   ) => Promise<Output<"acp.operation.cancel">>;
-  readonly readAuth: (input: Input<"acp.auth.read">) => Promise<Output<"acp.auth.read">>;
-  readonly startAuth: (input: Input<"acp.auth.start">) => Promise<Output<"acp.auth.start">>;
-  readonly respondAuth: (input: Input<"acp.auth.respond">) => Promise<Output<"acp.auth.respond">>;
-  readonly cancelAuth: (input: Input<"acp.auth.cancel">) => Promise<Output<"acp.auth.cancel">>;
-  readonly logout: (input: Input<"acp.auth.logout">) => Promise<Output<"acp.auth.logout">>;
   readonly acceptUrlAuth: (
     input: Input<"acp.urlAuth.accept">,
   ) => Promise<Output<"acp.urlAuth.accept">>;
@@ -121,11 +112,6 @@ export const acpAgentsRuntime: AcpAgentsRuntime = {
   connect: (input) => invokePlainCommand(connectionStart, input),
   readOperation: (input) => invokeRendererQuery("acp:operation:read", input),
   cancelOperation: (input) => invokePlainCommand(operationCancel, input),
-  readAuth: (input) => invokeRendererQuery("acp:auth:read", input),
-  startAuth: (input) => invokePlainCommand(authStart, input),
-  respondAuth: (input) => invokePlainCommand(authRespond, input),
-  cancelAuth: (input) => invokePlainCommand(authCancel, input),
-  logout: (input) => invokePlainCommand(authLogout, input),
   acceptUrlAuth: (input) => invokePlainCommand(urlAuthAccept, input),
   listSessions: (input) => invokeRendererQuery("acp:sessions:list", input),
   prepareImport: (input) => invokeRendererQuery("acp:sessions:prepareImport", input),

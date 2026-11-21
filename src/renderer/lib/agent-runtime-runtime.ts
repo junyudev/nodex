@@ -25,6 +25,8 @@ import type {
   AgentRuntimeSideChatCreateInput,
   AgentRuntimeSideChatDeleteInput,
   AgentRuntimeHistoryInput,
+  AgentRuntimeNativeChildWork,
+  AgentRuntimeNativeChildWorkTarget,
   AgentRuntimeQueueReadInput,
   AgentRuntimeQueuePage,
   AgentRuntimeRunInput,
@@ -38,7 +40,7 @@ import type {
   AgentRuntimeSessionActivitySnapshot,
   AgentRuntimeSessionMoveInput,
   AgentRuntimeConnectionState,
-  ClaudeUsageSnapshot,
+  SubscriptionUsageSnapshot,
   AgentRuntimeIpcApi,
 } from "../../shared/agent-runtime-api";
 import { isRemoteSpace } from "./renderer-space";
@@ -214,10 +216,10 @@ const moveSession = defineRendererCommand({
 });
 
 const logoutClaude = defineRendererCommand({
-  key: "agent_runtime.claude_usage.logout",
-  channel: "agent-runtime:claude-usage:logout",
+  key: "agent_runtime.subscription_usage.logout_claude",
+  channel: "agent-runtime:subscription-usage:logout-claude",
   authority: "external",
-  owner: "AgentRuntimeClaudeUsage",
+  owner: "AgentRuntimeSubscriptionUsage",
   protocol: { kind: "returned_value" },
 });
 
@@ -296,12 +298,15 @@ export interface AgentRuntimeRendererTransport {
   readonly cancelWindowsSandbox: (
     input: AgentRuntimeOperations["providers.windows-sandbox.cancel"]["input"],
   ) => Promise<AgentRuntimeOperations["providers.windows-sandbox.cancel"]["output"]>;
-  /** Main's one Claude usage snapshot, shared by every window. */
-  readonly claudeUsage: () => Promise<ClaudeUsageSnapshot>;
-  /** Reads Claude usage again now, unless it was read moments ago. */
-  readonly refreshClaudeUsage: () => Promise<ClaudeUsageSnapshot>;
+  /** Main's one subscription usage snapshot, shared by every window. */
+  readonly subscriptionUsage: () => Promise<SubscriptionUsageSnapshot>;
+  /** Reads subscription usage again now, unless it was read moments ago. */
+  readonly refreshSubscriptionUsage: () => Promise<SubscriptionUsageSnapshot>;
   /** Signs the named Claude Agents out of Claude Code. */
-  readonly logoutClaude: (instanceIds: readonly string[]) => Promise<ClaudeUsageSnapshot>;
+  readonly logoutClaude: (instanceIds: readonly string[]) => Promise<SubscriptionUsageSnapshot>;
+  readonly nativeChildWork: (
+    input: AgentRuntimeNativeChildWorkTarget,
+  ) => Promise<AgentRuntimeNativeChildWork>;
   readonly history: (input: AgentRuntimeHistoryInput) => Promise<AgentHistoryPage>;
   readonly promptTurns: (
     input: import("../../shared/prompt-turn").PromptTurnsInput,
@@ -360,9 +365,10 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   cancelWindowsSandbox: (input) =>
     invokeRendererControl("agent-runtime:windows-sandbox:cancel", input),
   knownCatalog: () => invokeRendererQuery("agent-runtime:providers:known"),
-  claudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:read"),
-  refreshClaudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:refresh"),
+  subscriptionUsage: () => invokeRendererQuery("agent-runtime:subscription-usage:read"),
+  refreshSubscriptionUsage: () => invokeRendererQuery("agent-runtime:subscription-usage:refresh"),
   logoutClaude: (instanceIds) => invokePlainCommand(logoutClaude, { instanceIds }),
+  nativeChildWork: (input) => invokeRendererQuery("agent-runtime:session:native-child-work", input),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
   promptTurns: (input) => invokeRendererQuery("agent-runtime:session:prompt-turns", input),
   promptIndex: (input) => invokeRendererQuery("agent-runtime:session:prompt-index", input),

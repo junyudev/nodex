@@ -1179,10 +1179,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     threadId: string,
     message: AgentRuntimeMessage,
   ) {
-    if (!message.images?.length) return message;
-    if (!options.prepareImages) return yield* failure("images", "Image preparation is unavailable");
-    const images = yield* options.prepareImages(message.images);
-    const attachments = [...(message.attachments ?? [])];
+    const { uploads, ...prepared } = message;
+    const resources = uploads?.length ? yield* messageResources.localFiles(uploads) : [];
+    const imported = resources.length
+      ? yield* connection.request("attachments.import", {
+          threadId,
+          messageId: message.messageId,
+          attachments: resources,
+        })
+      : null;
+    if (!message.images?.length && !imported) return prepared;
+    const images = message.images?.length
+      ? yield* options.prepareImages
+          ? options.prepareImages(message.images)
+          : Effect.fail(failure("images", "Image preparation is unavailable"))
+      : [];
+    const attachments = [...(message.attachments ?? []), ...(imported?.attachments ?? [])];
     for (const [index, image] of images.entries()) {
       // One attachment per request keeps transport frames bounded independently of total image input.
       const persisted = yield* connection.request("attachments.persist", {
@@ -1191,7 +1203,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         attachments: [
           {
             type: "image",
-            name: message.images[index]?.caption?.slice(0, 255) || `Image ${index + 1}`,
+            name: message.images?.[index]?.caption?.slice(0, 255) || `Image ${index + 1}`,
             mimeType: image.mediaType,
             sizeBytes: Buffer.from(image.data, "base64").byteLength,
             dataUrl: `data:${image.mediaType};base64,${image.data}`,
@@ -1200,7 +1212,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       });
       attachments.push(...persisted.attachments);
     }
-    return { ...message, attachments };
+    return { ...prepared, attachments };
   });
   const messageCommand = (
     threadId: string,
@@ -5319,6 +5331,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     /** A provider read only while execution already runs; null when it is stopped. */
     catalogWhileRunning: (input: AgentRuntimeOperations["providers.read"]["input"]) =>
       owned("catalog", liveCatalog(input)),
+    nativeChildWork: (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeNativeChildWorkTarget,
+    ) =>
+      owned(
+        "native-child-work",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const { threadId } = yield* targetInfo(connection, input);
+          return yield* connection.request("native-child-work.read", { threadId });
+        }),
+      ),
     history: (
       input: AgentRuntimeSessionTarget &
         Omit<AgentRuntimeOperations["thread.history"]["input"], "threadId">,

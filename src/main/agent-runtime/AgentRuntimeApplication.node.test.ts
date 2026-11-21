@@ -1237,6 +1237,8 @@ const setup = (
           sequence: 1,
         } as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "native-child-work.read")
+        return { children: [] } as AgentRuntimeOperations[M]["output"];
       if (method === "thread.history")
         return {
           snapshotSequence: 9,
@@ -3756,6 +3758,26 @@ it.effect(
       );
       fixture.snapshots.set("foreign", snapshot("foreign", result.threadId, "other-project"));
       fixture.snapshots.set("unrelated", snapshot("unrelated", "another-root"));
+      assert.deepEqual(
+        yield* owner.nativeChildWork({ sessionId: launch.sessionId, threadId: "child" }),
+        { children: [] },
+      );
+      assert.deepEqual(fixture.calls.at(-1), {
+        method: "native-child-work.read",
+        input: { threadId: "child" },
+      });
+      const beforeRefusal = fixture.calls.length;
+      assert.equal(
+        (yield* owner
+          .nativeChildWork({ sessionId: launch.sessionId, threadId: "unrelated" })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.isFalse(
+        fixture.calls
+          .slice(beforeRefusal)
+          .some(({ method }) => method === "native-child-work.read"),
+      );
       assert.equal(
         (yield* owner.read({ sessionId: launch.sessionId, threadId: "foreign" })).threadId,
         "foreign",
@@ -6395,6 +6417,39 @@ it.effect("promotes a resource-only draft through one launch and one first-messa
     assert.equal(message.messageId, "message:draft-resource");
     assert.equal(message.attachments[0]?.name, "draft.txt");
   }),
+);
+
+it.effect("copies selected audio and documents into the launched Thread as file attachments", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-chat-file-fixture-" });
+    const files = ["notes.pdf", "recording.wav"].map((name) => ({ name, path: join(root, name) }));
+    for (const file of files) yield* fs.writeFileString(file.path, "fixture");
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const created = yield* owner.launch({
+      ...launch,
+      message: { messageId: "with-files", text: "Read the attachments", uploads: files },
+    });
+    const imported = fixture.calls.find(({ method }) => method === "attachments.import");
+    assert.isDefined(imported);
+    const input = imported?.input as AgentRuntimeOperations["attachments.import"]["input"];
+    assert.equal(input.threadId, created.threadId);
+    assert.deepEqual(
+      input.attachments.map(({ name, mimeType, sizeBytes }) => ({ name, mimeType, sizeBytes })),
+      [
+        { name: "notes.pdf", mimeType: "application/pdf", sizeBytes: 7 },
+        { name: "recording.wav", mimeType: "audio/wav", sizeBytes: 7 },
+      ],
+    );
+    const message = [...fixture.commands.values()].find(
+      (command) => command.type === "message.dispatch",
+    );
+    assert.deepEqual(
+      message?.attachments.map(({ name }) => name),
+      files.map(({ name }) => name),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 const largeImageResources = () =>

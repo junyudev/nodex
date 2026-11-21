@@ -81,7 +81,7 @@ function Composer({
 describe("ACP setup in the Composer", () => {
   test("unusable Agents get one setup entry each and the selected one asks to sign in", async () => {
     const main = fakeAcpRuntime({ instances: [qoder, scripted] });
-    main.runtime.readAuth.mockResolvedValue(
+    main.accounts.read.mockResolvedValue(
       ok(
         authState({
           methods: [{ id: "agent", name: "Qoder account", description: null, type: "agent" }],
@@ -95,6 +95,7 @@ describe("ACP setup in the Composer", () => {
     main.runtime.knownProviders.mockResolvedValue(providers);
     const owner = createAcpAgentsOwner({
       runtime: main.runtime,
+      accountRuntime: main.accounts,
       subscribeChanges: () => () => {},
       journal: memoryJournal(),
     });
@@ -112,8 +113,8 @@ describe("ACP setup in the Composer", () => {
     const signIn = await view.findByRole("button", { name: "Sign in with Qoder account" });
     await press(signIn);
     await waitFor(() =>
-      expect(main.runtime.startAuth).toHaveBeenCalledWith({
-        instanceId: "qoder-main",
+      expect(main.accounts.start).toHaveBeenCalledWith({
+        backend: { kind: "acp", instanceConfigId: "qoder-main" },
         methodId: "agent",
       }),
     );

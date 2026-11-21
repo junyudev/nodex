@@ -13,10 +13,11 @@ export const analyticsModelName = (model: string | null | undefined): string => 
 /** Runtime driver identifiers are not product vocabulary; analytics reports the Agent family. */
 export const analyticsProviderName = (
   driver: string | null | undefined,
-): "codex" | "claude" | "opencode" | "acp" | "other" => {
+): "codex" | "claude" | "opencode" | "antigravity" | "acp" | "other" => {
   if (driver === "codex") return "codex";
   if (driver === "claudeAgent") return "claude";
   if (driver === "opencode" || driver === "opencode2") return "opencode";
+  if (driver === "antigravity") return "antigravity";
   if (driver === "acpRegistry") return "acp";
   return "other";
 };

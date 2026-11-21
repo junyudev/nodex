@@ -735,6 +735,10 @@ persist the same way until it starts. Choosing another Agent's model starts from
 options last chosen for that model, so a round trip between Agents keeps each model's
 effort and speed.
 
+Antigravity lists models offered by the selected account. The session default resolves to an
+available model, and each model shows the thinking levels it has reported. Changing Agents
+and returning restores the model's saved options. See [Antigravity chats](antigravity-agent-behavior.md#chats).
+
 ### Agent readiness and failures around the composer
 
 The composer's text field never carries status or error text. What keeps a chat from
@@ -751,9 +755,10 @@ checks the Agents again.
 
 Only the Agent a chat runs on, or one the person chose, raises a readiness notice. While no
 Agent is usable, the stand-in the composer offers stays quiet: the model picker asks for a
-model and lists each turned-on Codex or Claude that cannot run yet with its next step
-(`Sign in`, `Install` or `Unavailable`), and the account rail offers sign-in. A notice never
-blocks sending, since an Agent that missed its check can still answer.
+model and lists turned-on Agents that offer setup there, including Codex, Claude and
+Antigravity. An Antigravity chat reports a missing installation, a checked sign-in failure,
+an empty model catalog or a withdrawn model, with a Settings action for its profile.
+An unchecked sign-in alone leaves sending available.
 
 A started chat always shows its composer; only a request that needs an answer takes its
 place. What keeps the chat itself from taking a message holds sending instead: the draft
@@ -855,7 +860,7 @@ stood at their source Run, so a fork from before the clear keeps the earlier con
 ## Delegated work in the conversation
 
 Wherever a conversation shows another Agent's work, Nodex identifies that Agent the same way.
-Its mark stands for the harness that runs it — Claude Code, Codex, OpenCode or an ACP Agent —
+Its mark stands for the harness that runs it — Claude Code, Codex, OpenCode, Antigravity or an ACP Agent —
 not for the model's maker, so an OpenCode Agent running a GPT model carries the OpenCode mark.
 Rows, references and dividers show the mark beside the model, such as GPT-6.1 Sol; cards
 and tooltips spell the configured Agent's name too, and assistive text always does. A
@@ -900,6 +905,12 @@ nor hover reads child history. Stop is available from the task's information sur
 its owner permits it, shows Stopping immediately, and keeps that state until the subagent
 reports how it ended. A provider-native subagent is stopped through its owning parent Run.
 An application-owned subagent's own conversation ends with a Stopped marker.
+
+An Antigravity subagent batch appears in the transcript and the Subagents tab. Opening
+it loads the children Antigravity can identify and their recent steps in the same
+read-only detail view, without a composer. Each child's transcript can be unavailable
+or truncated. When the launch has no matching records, the detail says so. An idle
+batch reports only its own state. Its children have no individual message or stop action.
 
 Input the user did not type names its sender: Sent by, then the sending conversation's mark
 and title, so a delegated task names the chat that sent it. Answers another Agent gave to a
@@ -1410,10 +1421,10 @@ is stopped, model pickers, launch defaults and provider checks see the catalog i
 as long as the execution build and the provider settings and installation it described are
 unchanged; otherwise the listing starts the process. A running process always answers live,
 and an explicit refresh always reaches it; a refresh that names Agents checks only those, from
-scratch, so the usage they report is read again rather than reused from a recent check. Claude
-usage meters never start the process on their own: their five-minute refresh is such a named
-refresh made only while the process runs, and only opening a Claude usage card starts it to read
-(see the rail foot in [Workbench shell](workbench-shell.md)). A provider check that ends without an answer, such
+scratch so the Agents check their reported usage again. Claude and Antigravity share a
+five-minute usage refresh that runs only while Agent execution is running. Opening a usage card
+or enabling its meter can start execution for an immediate refresh.
+See [Workbench shell](workbench-shell.md) for the rail's usage behavior. A provider check that ends without an answer, such
 as when the provider's service cannot be reached, is retried on its own after 15 seconds,
 doubling up to the provider health interval, until a check settles; a signed-out provider
 waits for the user instead. Opening the model menu reads the catalog again without forcing a

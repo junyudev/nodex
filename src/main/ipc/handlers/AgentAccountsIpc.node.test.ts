@@ -12,7 +12,11 @@ import { layer as callbacks, ScopedCallbackRuntime } from "../../app/ScopedCallb
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { live } from "./AcpAgentsIpc";
+import { live as acpIpc } from "./AcpAgentsIpc";
+import { live as accountIpc } from "./AgentAccountsIpc";
+import { AgentAccounts } from "../../agent-accounts/AgentAccounts";
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
+import { isSpaceIpcChannel } from "../../../shared/space-ipc-policy";
 import type { AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { AgentRuntimeProcessError } from "../../platform/node/AgentRuntimeProcess";
 
@@ -31,7 +35,7 @@ it.effect(
       const callbackContext = yield* Layer.build(callbacks);
       const runtime = Context.get(callbackContext, ScopedCallbackRuntime);
       yield* Layer.build(
-        live.pipe(
+        Layer.merge(acpIpc, accountIpc).pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(AcpAgents, {
@@ -55,14 +59,18 @@ it.effect(
                       },
                     }),
                   ),
-                "acp.auth.start": (ownerId: string, input: unknown) =>
+              } as unknown as AcpAgents["Service"]),
+              Layer.succeed(AgentAccounts, {
+                changes: Stream.empty,
+                start: (ownerId: string, input: unknown) =>
                   Effect.sync(() => {
                     calls.push({ ownerId, input });
                     return {};
                   }),
                 releaseOwner: (ownerId: string) =>
                   PubSub.publish(releases, ownerId).pipe(Effect.asVoid),
-              } as unknown as AcpAgents["Service"]),
+              } as unknown as AgentAccounts["Service"]),
+              Layer.succeed(AgentRuntimeApplication, {} as AgentRuntimeApplication["Service"]),
               Layer.succeed(
                 ElectronIpc,
                 makeTestElectronIpc({
@@ -99,21 +107,29 @@ it.effect(
         getType: () => "window",
       });
       const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-      const start = handlers.get("acp:auth:start")!;
-      yield* start(event, { instanceId: "personal" });
-      yield* start(event, { instanceId: "work" });
+      const start = handlers.get("agent-accounts:start")!;
+      assert.isTrue(isSpaceIpcChannel("agent-accounts:start"));
+      assert.isTrue(isSpaceIpcChannel("agent-accounts:read"));
+      const backend = { kind: "antigravity", instanceConfigId: "personal" };
+      yield* start(event, { backend });
+      yield* start(event, { backend: { kind: "acp", instanceConfigId: "work" } });
       assert.equal(calls[0]?.ownerId, calls[1]?.ownerId);
       assert.isNotEmpty(calls[0]!.ownerId);
       const foreign = {
         ...event,
         senderFrame: { url: "https://foreign.example" },
       } as IpcMainInvokeEvent;
-      const unauthorized = (yield* start(foreign, { instanceId: "personal" })) as { ok: boolean };
-      const forged = (yield* start(event, { instanceId: "personal", ownerId: "forged" })) as {
+      const unauthorized = (yield* start(foreign, { backend })) as { ok: boolean };
+      const forged = (yield* start(event, { backend, ownerId: "forged" })) as {
         ok: boolean;
       };
       assert.isFalse(unauthorized.ok);
       assert.isFalse(forged.ok);
+      const injected = (yield* start(event, {
+        backend: { ...backend, runtimeInstanceId: "forged" },
+        methodId: "key",
+      })) as { ok: boolean };
+      assert.isFalse(injected.ok);
       assert.equal(calls.length, 2);
       const read = handlers.get("acp:operation:read")!;
       yield* read(event, { operationId: "operation" });
@@ -142,15 +158,19 @@ it.effect(
       assert.deepEqual(broadcasts, ["agent-settings-changed"]);
       const secondSender = Object.assign(new EventEmitter(), {
         id: 2,
+        isDestroyed: () => false,
         mainFrame: frame,
         getType: () => "window",
       });
-      yield* read({ sender: secondSender, senderFrame: frame } as unknown as IpcMainInvokeEvent, {
-        operationId: "operation",
+      yield* start({ sender: secondSender, senderFrame: frame } as unknown as IpcMainInvokeEvent, {
+        backend,
       });
+      assert.notEqual(calls[0]?.ownerId, calls[2]?.ownerId);
       assert.deepEqual(broadcasts, ["agent-settings-changed"]);
       sender.emit("destroyed");
       assert.equal(yield* PubSub.take(released), calls[0]?.ownerId);
-      assert.equal(sender.listenerCount("render-process-gone"), 0);
+      secondSender.emit("render-process-gone");
+      assert.equal(yield* PubSub.take(released), calls[2]?.ownerId);
+      assert.equal(secondSender.listenerCount("render-process-gone"), 0);
     }),
 );

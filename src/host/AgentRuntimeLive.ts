@@ -1,4 +1,5 @@
-import { withoutDesktopToolHostBindings } from "../main/codex/desktop-tool-environment";
+import type { AntigravitySettings } from "../../packages/agent-runtime/vendor/contracts/src/settings";
+
 import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
@@ -67,9 +68,9 @@ import {
 } from "./HostAgentPolicy";
 import { make as makeProviderCatalog } from "../main/agent-runtime/AgentRuntimeProviderCatalog";
 import {
-  AgentRuntimeClaudeUsage,
-  make as makeClaudeUsage,
-} from "../main/agent-runtime/AgentRuntimeClaudeUsage";
+  AgentRuntimeSubscriptionUsage,
+  make as makeSubscriptionUsage,
+} from "../main/agent-runtime/AgentRuntimeSubscriptionUsage";
 import {
   HostToolExecutor,
   HostAppToolCatalog,
@@ -106,11 +107,8 @@ import { acquireAgentRuntimeProcess } from "../main/platform/node/AgentRuntimePr
 import { codexAccountHistoryEnvironment } from "../main/platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../main/platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../main/platform/node/NodexCliShell";
-import {
-  hostEnvironmentValue,
-  hostInstallDirectories,
-} from "../main/platform/node/HostExecutableSearch";
-import { mergeProcessEnvironments } from "../main/platform/node/child-process-environment";
+import { hostEnvironmentValue } from "../main/platform/node/HostExecutableSearch";
+import { agentRuntimeHostEnvironment } from "../main/agent-runtime/AgentRuntimeHostEnvironment";
 import { resolveOpenCodeLaunch } from "../main/platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
@@ -261,6 +259,7 @@ const supervisor = Layer.effectContext(
           providers: [
             snapshot.claudeAgents,
             snapshot.openCodeAgents,
+            snapshot.antigravityAgents,
             snapshot.acpAgents,
             snapshot.providerKeys,
           ],
@@ -507,22 +506,12 @@ const supervisor = Layer.effectContext(
       });
       const snapshot = yield* settings.snapshot();
       const loginEnvironment = yield* shell.load;
-      const separator = config.platform === "win32" ? ";" : ":";
-      const path = [
-        ...platform.runtime.additionalSearchPaths.map((directory) => resolve(directory)),
-        ...[config.environment, loginEnvironment].flatMap((environment) =>
-          (hostEnvironmentValue(environment, "PATH", config.platform) ?? "").split(separator),
-        ),
-        ...(yield* hostInstallDirectories(config)),
-      ];
-      const inheritedEnvironment = withoutDesktopToolHostBindings(
-        mergeProcessEnvironments(config.platform, config.environment, loginEnvironment, {
-          ...explicitCodexEndpoints,
-          NODEX_HOME: config.nodexHome,
-          PATH: [...new Set(path.filter(Boolean))].join(separator),
-        }),
-        config.platform,
-      );
+      const inheritedEnvironment = yield* agentRuntimeHostEnvironment({
+        host: config,
+        loginEnvironment,
+        additionalSearchPaths: platform.runtime.additionalSearchPaths,
+        overrides: { ...explicitCodexEndpoints, NODEX_HOME: config.nodexHome },
+      });
       const environment = hostPolicy
         ? scrubHostAgentEnvironment(inheritedEnvironment, hostPolicy.coreHome)
         : inheritedEnvironment;
@@ -632,6 +621,31 @@ const supervisor = Layer.effectContext(
             serverUrl: configured.serverUrl ?? "",
             serverPassword: launch?.environment.OPENCODE_SERVER_PASSWORD ?? "",
           },
+        };
+      }
+      for (const configured of snapshot.antigravityAgents.instances) {
+        const id = agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: configured.id });
+        if (!id) continue;
+        const launch = configured.enabled
+          ? yield* settings.antigravityLaunchConfiguration(configured.id)
+          : null;
+        providers[id] = {
+          driver: "antigravity",
+          displayName: configured.displayName,
+          enabled: configured.enabled,
+          environment: ["PATH", "PATHEXT"].flatMap((name) => {
+            const value = hostEnvironmentValue(environment, name, config.platform);
+            return value === undefined ? [] : [{ name, value, sensitive: false }];
+          }),
+          config: {
+            enabled: configured.enabled,
+            authMethod: configured.authMethod,
+            apiKey: launch?.apiKey ?? "",
+            gcpProject: configured.gcpProject,
+            gcpLocation: configured.gcpLocation,
+            binaryPath: configured.binaryPath,
+            customModels: [],
+          } satisfies AntigravitySettings,
         };
       }
       for (const configured of snapshot.acpAgents.instances) {
@@ -870,20 +884,27 @@ const supervisor = Layer.effectContext(
             .pipe(Effect.orDie),
         }),
       );
-    const claudeUsage = yield* makeClaudeUsage({
-      meterEnabled: (yield* settings.snapshot()).usageMeters.claude,
-      meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
-        Stream.map((value) => value.claude),
-      ),
+    const subscriptionUsage = yield* makeSubscriptionUsage({
+      meters: (yield* settings.snapshot()).usageMeters,
+      meterChanges: settings.usageMeterSettingsChanges,
       declared: settings.snapshot().pipe(
-        Effect.map((snapshot) =>
-          snapshot.claudeAgents.instances.flatMap((configured) => {
-            const id = configured.enabled
-              ? agentRuntimeProviderId({ kind: "claude", instanceConfigId: configured.id })
+        Effect.map((snapshot) => ({
+          claude: snapshot.claudeAgents.instances.flatMap((profile) => {
+            const id = profile.enabled
+              ? agentRuntimeProviderId({ kind: "claude", instanceConfigId: profile.id })
               : null;
             return id ? [id] : [];
           }),
-        ),
+          antigravity: snapshot.antigravityAgents.instances.flatMap((profile) => {
+            const google =
+              profile.authMethod === "oauth-personal" || profile.authMethod === "oauth-business";
+            const id =
+              profile.enabled && google
+                ? agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: profile.id })
+                : null;
+            return id ? [id] : [];
+          }),
+        })),
       ),
       known: product.knownCatalog(),
       refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true }),
@@ -931,11 +952,11 @@ const supervisor = Layer.effectContext(
         connection: runtime.connectionState,
         connectionChanges: runtime.connectionChanges,
       }),
-      // Changed Agent settings change which Claude accounts there are.
+      // Changed Agent settings can add, remove, or change subscription accounts.
       Context.add(AgentRuntimeProviderConfiguration, {
-        refresh: refresh.pipe(Effect.ensuring(claudeUsage.reread)),
+        refresh: refresh.pipe(Effect.ensuring(subscriptionUsage.reread)),
       }),
-      Context.add(AgentRuntimeClaudeUsage, claudeUsage),
+      Context.add(AgentRuntimeSubscriptionUsage, subscriptionUsage),
       Context.add(AgentRuntimeApplication, product),
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),

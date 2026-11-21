@@ -67,7 +67,7 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     send({id:request.id,success:false,error:{tag:"SessionSearchError",reason:request.input.query,message:"Restart search"}});
     continue;
   }
-  if (request.method === "acp.auth.logout") {
+  if (request.method === "providers.auth.logout") {
     send({ id: request.id, success: false, error: {
       message: "Stop active work first.", tag: "AcpManagementError",
       acp: { reason: "busy", message: "Stop active work first.", affectedThreadIds: ["thread:root"], cause: "must-not-cross-transport" },

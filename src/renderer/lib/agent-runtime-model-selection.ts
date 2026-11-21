@@ -1,7 +1,10 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
 import { managedRuntimeBinding } from "../../shared/managed-runtime-instances";
-import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import {
+  ANTIGRAVITY_DEFAULT_MODEL,
+  type AgentRuntimeOperations,
+} from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentModelSelection } from "../../shared/agent-model-catalog";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
@@ -30,6 +33,7 @@ export interface AgentRuntimeNewChatDefaults {
 export const isAgentRuntimeProviderAvailable = (provider: Provider): boolean =>
   provider.enabled &&
   provider.installed &&
+  (provider.driver !== "antigravity" || provider.auth.status !== "unauthenticated") &&
   provider.status !== "error" &&
   provider.status !== "disabled";
 
@@ -94,6 +98,23 @@ export function defaultAgentRuntimeModelSelection(
   );
 }
 
+/** The session default is the one alias that may resolve to a different model ID in chat. */
+export function resolveAgentRuntimeChatModel(
+  kind: AgentBackendBinding["kind"],
+  model: string,
+  provider: Provider | undefined,
+): string {
+  if (kind !== "antigravity" || model !== ANTIGRAVITY_DEFAULT_MODEL) return model;
+  return (
+    provider?.models.find(
+      (entry) =>
+        entry.slug !== ANTIGRAVITY_DEFAULT_MODEL &&
+        (entry.aliases?.includes(ANTIGRAVITY_DEFAULT_MODEL) || entry.isDefault) &&
+        modelIsOn(entry),
+    )?.slug ?? ""
+  );
+}
+
 /** An explicit choice keeps its exact identity and options, or fails without choosing another. */
 export function requireAgentRuntimeModelSelection(
   providers: readonly Provider[],
@@ -144,6 +165,7 @@ export function agentRuntimeProviderBackendKind(provider: Provider): AgentBacken
   if (provider.driver === "codex") return "codex";
   if (provider.driver === "claudeAgent") return "claude";
   if (provider.driver === "opencode" || provider.driver === "opencode2") return "opencode";
+  if (provider.driver === "antigravity") return "antigravity";
   return "acp";
 }
 

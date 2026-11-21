@@ -7,6 +7,8 @@ import * as InsightsIpc from "../ipc/handlers/InsightsIpc";
 import * as SkillInventoryIpc from "../ipc/handlers/SkillInventoryIpc";
 import * as PluginManagerIpc from "../ipc/handlers/PluginManagerIpc";
 import * as McpAppDataIpc from "../ipc/handlers/McpAppDataIpc";
+import * as AgentAccountsIpc from "../ipc/handlers/AgentAccountsIpc";
+import * as AgentAccounts from "../agent-accounts/AgentAccounts";
 import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
 import * as AcpAgents from "../acp-agents/AcpAgents";
 import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAssetRuntime";
@@ -22,10 +24,9 @@ import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
 import * as ProductAnalyticsIpc from "../ipc/handlers/ProductAnalyticsIpc";
 import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
-import * as LocalAgentsIpc from "../ipc/handlers/LocalAgentsIpc";
-import * as LocalAgentDiscovery from "../host-runtime/LocalAgentDiscovery";
-import * as LocalAgentDiscoveryPlatform from "../platform/node/LocalAgentDiscoveryPlatform";
 import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
+import * as AntigravityRuntimeIpc from "../ipc/handlers/AntigravityRuntimeIpc";
+import * as AntigravityInstallation from "../agent-runtime/AgentRuntimeAntigravityInstallation";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
 import * as NodexAccountIpc from "../ipc/handlers/NodexAccountIpc";
 import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
@@ -48,7 +49,7 @@ import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc"
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
 import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
-import * as ClaudeUsageIpc from "../ipc/handlers/ClaudeUsageIpc";
+import * as SubscriptionUsageIpc from "../ipc/handlers/SubscriptionUsageIpc";
 import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
 import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
@@ -97,10 +98,8 @@ export const live = Layer.mergeAll(
   ProductAnalyticsIpc.live,
   WindowsStartupIpc.live,
   NodexAccountIpc.live,
-  LocalAgentsIpc.live.pipe(
-    Layer.provide(LocalAgentDiscovery.live.pipe(Layer.provide(LocalAgentDiscoveryPlatform.live))),
-  ),
   ProviderKeysIpc.live,
+  AntigravityRuntimeIpc.live.pipe(Layer.provide(AntigravityInstallation.live)),
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
   ),
@@ -144,7 +143,8 @@ export const live = Layer.mergeAll(
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
   ChatMemberActionsIpc.live,
-  ClaudeUsageIpc.live,
+  SubscriptionUsageIpc.live,
+  AgentAccountsIpc.live.pipe(Layer.provide(AgentAccounts.live)),
   AcpAgentsIpc.live.pipe(Layer.provide(AcpAgents.live)),
   NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
   AutomationIpc.live,

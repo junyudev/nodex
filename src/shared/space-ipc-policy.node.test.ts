@@ -23,7 +23,6 @@ test("device-wide queries and commands run on this desktop in every Space", () =
     "codex:dictation:state:read",
     "product-analytics:record",
     "product-analytics:notice:read",
-    "local-agents:scan",
     "terminal-shells:list",
   ] as const)
     expect(isSpaceIpcChannel(channel), channel).toBe(false);
@@ -31,7 +30,7 @@ test("device-wide queries and commands run on this desktop in every Space", () =
   for (const channel of [
     "codex:sidebar:sync",
     "codex:composer-skills:list",
-    "agent-runtime:claude-usage:read",
+    "agent-runtime:subscription-usage:read",
     "thread-execution:location",
   ] as const)
     expect(isSpaceIpcChannel(channel), channel).toBe(true);

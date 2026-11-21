@@ -30,6 +30,10 @@ import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "../../shared/opencode-agent-settings";
+import type {
+  AntigravityAgentSettings,
+  UpdateAntigravityAgentSettingsInput,
+} from "../../shared/antigravity-agent-settings";
 import type { InboxSettings, UpdateInboxSettingsInput } from "../../shared/inbox";
 import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
@@ -81,6 +85,9 @@ import { MainConfig } from "../app/MainConfig";
 import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
   getOpenCodeAgentSettings,
+  getAntigravityAgentSettings,
+  getAntigravityLaunchConfiguration,
+  updateAntigravityAgentSettings,
   getOpenCodeLaunchConfiguration,
   updateOpenCodeAgentSettings,
   getAcpAgentSettings,
@@ -154,6 +161,7 @@ export interface ApplicationSettingsSnapshot {
   readonly claudeAgents: ClaudeAgentSettings;
   readonly providerKeys: ProviderKeySettings;
   readonly openCodeAgents: OpenCodeAgentSettings;
+  readonly antigravityAgents: AntigravityAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly terminalShell: TerminalShellSettings;
@@ -197,6 +205,10 @@ export type ApplicationSettingsCommand =
     }
   | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
   | { readonly type: "update-opencode-agents"; readonly input: UpdateOpenCodeAgentSettingsInput }
+  | {
+      readonly type: "update-antigravity-agents";
+      readonly input: UpdateAntigravityAgentSettingsInput;
+    }
   | { readonly type: "update-provider-keys"; readonly input: ProviderKeySettingsMutation }
   | { readonly type: "update-claude-agents"; readonly input: UpdateClaudeAgentSettingsInput }
   | {
@@ -245,6 +257,12 @@ export class ApplicationSettings extends Context.Service<
     readonly openCodeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
+    readonly antigravityLaunchConfiguration: (
+      instanceId: string,
+    ) => Effect.Effect<
+      ReturnType<typeof getAntigravityLaunchConfiguration>,
+      ApplicationSettingsError
+    >;
     readonly providerKeySecret: (
       id: string,
     ) => Effect.Effect<Redacted.Redacted, ApplicationSettingsError>;
@@ -341,6 +359,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     claudeAgents: getClaudeAgentSettings(snapshotSource),
     providerKeys: getProviderKeySettings(snapshotSource),
     openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
+    antigravityAgents: getAntigravityAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource),
     windowRestore: getWindowRestoreSettings(snapshotSource),
@@ -389,6 +408,9 @@ function applyCommand(
       return;
     case "update-execution-hosts":
       updateCodexExecutionHostSettings(command.input, source);
+      return;
+    case "update-antigravity-agents":
+      updateAntigravityAgentSettings(command.input, source);
       return;
     case "update-opencode-agents":
       updateOpenCodeAgentSettings(command.input, source);
@@ -549,6 +571,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       writes.withPermits(1)(
         attempt("opencode-launch-configuration", () =>
           getOpenCodeLaunchConfiguration(source, instanceId),
+        ),
+      ),
+    antigravityLaunchConfiguration: (instanceId) =>
+      writes.withPermits(1)(
+        attempt("antigravity-launch-configuration", () =>
+          getAntigravityLaunchConfiguration(source, instanceId),
         ),
       ),
     providerKeySecret: (id) =>

@@ -1,5 +1,6 @@
+import { fakeAccountRuntime, ok } from "../agent-account/agent-account.test-fixtures";
+export { authState, deferred, ok } from "../agent-account/agent-account.test-fixtures";
 import { vi } from "vite-plus/test";
-import type { AcpResult } from "../../../shared/acp-api";
 import type {
   AcpAgentInstanceConfig,
   AcpAgentSettings,
@@ -8,8 +9,6 @@ import type {
 } from "../../../shared/acp-agent-settings";
 import type { AcpAgentsRuntime } from "../../lib/acp-agents-runtime";
 import {
-  isAcpAuthActive,
-  type AcpAuthState,
   type AcpInspection,
   type AcpOperation,
   type AcpProviderSnapshot,
@@ -17,15 +16,6 @@ import {
 } from "./acp-agent-model";
 
 type Input<Method extends keyof AcpAgentsRuntime> = Parameters<AcpAgentsRuntime[Method]>[0];
-
-export const ok = <Value>(value: Value): AcpResult<Value> => ({ ok: true, value });
-
-/** A result a test settles when the step it holds back should finish. */
-export const deferred = <Value>() => {
-  let resolve!: (value: Value) => void;
-  const promise = new Promise<Value>((done) => (resolve = done));
-  return { promise, resolve };
-};
 
 export const registryInstance = (
   patch: Partial<AcpAgentInstanceConfig> = {},
@@ -91,30 +81,6 @@ export const operation = (patch: Partial<AcpOperation> = {}): AcpOperation => {
   };
 };
 
-/** Like the Runtime, only a live flow this window can see (it has a flow ID) is cancellable. */
-export const authState = (patch: Partial<AcpAuthState> = {}): AcpAuthState => {
-  const state: AcpAuthState = {
-    instanceId: "qoder-main",
-    runtimeGeneration: "runtime-1",
-    configurationRevision: 1,
-    revision: 1,
-    cancellable: false,
-    phase: "idle",
-    flowId: null,
-    authorizationUrl: null,
-    expiresAt: null,
-    message: null,
-    methods: [],
-    interaction: null,
-    ...patch,
-  };
-  return {
-    ...state,
-    cancellable: patch.cancellable ?? (state.flowId !== null && isAcpAuthActive(state)),
-  };
-};
-
-/** The Runtime's record that a real connection reported the Agent's capabilities. */
 export const discovered = (
   patch: { readonly supportsModelSelection?: boolean; readonly status?: "ready" | "failed" } = {},
 ) => ({
@@ -211,11 +177,6 @@ export function fakeAcpRuntime(initial: AcpAgentSettings = { instances: [] }) {
     cancelOperation: vi.fn(async ({ operationId }: { operationId: string }) =>
       ok(operation({ operationId, phase: "cancelled" })),
     ),
-    readAuth: vi.fn(async (_input: Input<"readAuth">) => ok(authState())),
-    startAuth: vi.fn(async (_input: Input<"startAuth">) => ok(authState())),
-    respondAuth: vi.fn(async (_input: Input<"respondAuth">) => ok(authState())),
-    cancelAuth: vi.fn(async (_input: Input<"cancelAuth">) => ok(authState({ phase: "cancelled" }))),
-    logout: vi.fn(async (_input: Input<"logout">) => ok(authState())),
     acceptUrlAuth: vi.fn(async () => ok({ accepted: true })),
     listSessions: vi.fn<AcpAgentsRuntime["listSessions"]>(),
     prepareImport: vi.fn<AcpAgentsRuntime["prepareImport"]>(),
@@ -227,6 +188,7 @@ export function fakeAcpRuntime(initial: AcpAgentSettings = { instances: [] }) {
   };
   return {
     runtime: runtime as typeof runtime & AcpAgentsRuntime,
+    accounts: fakeAccountRuntime(),
     settings: () => settings,
     /** Main's current reconcile result, returned by saves and status reads alike. */
     setFailed: (value: boolean) => {

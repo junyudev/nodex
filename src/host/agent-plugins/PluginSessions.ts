@@ -236,7 +236,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
   const open = (id: string, request: SessionPluginsRequest) =>
     gate.withPermit(
       Effect.gen(function* () {
-        if (request.backend === "opencode") return null;
+        if (request.backend === "opencode" || request.backend === "antigravity") return null;
         yield* release(id);
         const read = input.catalog(request.projectId);
         const snapshot = yield* read;

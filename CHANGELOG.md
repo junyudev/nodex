@@ -6,9 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Google Antigravity is a built-in Agent with its own section in **Settings > Agents**. Add a profile for each account, then sign in with Google or connect a Gemini API key, Gemini Enterprise or Agent Platform. Nodex downloads and updates the Antigravity runtime for you, or runs the `agy` you point it at. Chats use the models on your plan with each model's thinking levels, list what Antigravity's subagents did, and its limits sit beside your other usage meters.
+
 ### Changed
 
 - Setup lists the Agents that are ready first, then the ones already on your computer that need one more step, then the rest. A row keeps its place once it has one.
+- Antigravity now signs in separately for Nodex instead of sharing your terminal's sign-in. An `agy` on your computer is no longer offered under **Other agents**: add an Antigravity profile and sign in once. Each profile keeps its own account, so several Google accounts can run side by side.
 
 ### Fixed
 

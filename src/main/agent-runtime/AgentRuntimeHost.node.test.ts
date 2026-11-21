@@ -215,6 +215,7 @@ const fixture = Effect.gen(function* () {
     providers: {
       acp: { driver: "acpRegistry", config: {} },
       claude: { driver: "claudeAgent", config: {} },
+      antigravity: { driver: "antigravity", config: {} },
       codex: { driver: "codex", config: {} },
       "codex-wsl": { driver: "codex", config: { binaryPath: "C:/Windows/System32/wsl.exe" } },
       external: { driver: "opencode", config: { serverUrl: "https://opencode.example" } },
@@ -376,16 +377,27 @@ it.effect("a projectless Turn contributes no Project directory scope", () =>
 
 it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
   Effect.gen(function* () {
-    const f = yield* fixture;
-    const identity = codexTurn("run:one");
-    f.bind(identity);
-    yield* f.execute(prepareTurn(identity));
-    assert.deepEqual(f.recordedRuns, [
-      { session_id: "session", run_id: "run:one", message_id: "message", backend: "codex" },
-    ]);
-    assert.deepEqual(f.attributions, [
-      { session_id: "session", run_id: "run:one", backend: "codex" },
-    ]);
+    for (const backend of ["codex", "antigravity"] as const) {
+      const f = yield* fixture;
+      const identity =
+        backend === "codex"
+          ? codexTurn("run:one")
+          : {
+              ...codexTurn("run:one"),
+              providerInstanceId: "antigravity",
+              nativeThreadRef: {
+                driver: "antigravity",
+                nativeId: "google-session",
+                strength: "strong" as const,
+              },
+            };
+      f.bind(identity);
+      yield* f.execute(prepareTurn(identity));
+      assert.deepEqual(f.recordedRuns, [
+        { session_id: "session", run_id: "run:one", message_id: "message", backend },
+      ]);
+      assert.deepEqual(f.attributions, [{ session_id: "session", run_id: "run:one", backend }]);
+    }
   }).pipe(Effect.scoped),
 );
 

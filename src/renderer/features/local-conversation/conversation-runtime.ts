@@ -100,7 +100,7 @@ export interface ConversationRuntime {
   /** Present where the execution owner holds asynchronous questions; native chats use their manager. */
   readonly asyncQuestions?: ConversationAsyncQuestionPort;
   /** Provider presentation only; reads and lifecycle must use this runtime's owner ports. */
-  readonly kind: "codex" | "claude" | "acp" | "opencode";
+  readonly kind: "codex" | "claude" | "acp" | "opencode" | "antigravity";
   readonly hostId: string;
   /** App-owned execution descendants share this Core Session. Native observation IDs do not. */
   readonly sessionId?: string;

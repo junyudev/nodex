@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     catalog: vi.fn(),
     readClaude: vi.fn<() => Promise<ClaudeAgentSettings>>(),
     readOpenCode: vi.fn<() => Promise<OpenCodeAgentSettings>>(),
+    readAntigravity: vi.fn(async () => ({ instances: [] })),
     readAcp: vi.fn<() => Promise<AcpAgentSettings>>(),
     subscribe: vi.fn((listener: () => void) => {
       listeners.add(listener);
@@ -38,6 +39,9 @@ vi.mock("../../lib/workbench-settings-runtime", () => ({
 }));
 vi.mock("../../lib/opencode-agent-settings-runtime", () => ({
   readOpenCodeAgentSettings: mocks.readOpenCode,
+}));
+vi.mock("../../lib/antigravity-agent-settings-runtime", () => ({
+  readAntigravityAgentSettings: mocks.readAntigravity,
 }));
 vi.mock("../../lib/renderer-transport", () => ({
   resolveRendererTransport: () => ({ subscribeAgentSettingsChanges: mocks.subscribe }),

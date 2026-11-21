@@ -1,3 +1,14 @@
+import { parse as parseToml } from "smol-toml";
+import { AntigravityAgentSettingsUpdateSchema } from "../../shared/antigravity-agent-settings";
+import {
+  getAntigravityAgentSettings,
+  getAntigravityLaunchConfiguration,
+  updateAntigravityAgentSettings,
+} from "./application-settings-persistence";
+import {
+  readStoredAntigravityInstances,
+  writeAntigravityInstances,
+} from "./antigravity-agent-environment";
 import { afterEach, expect, it } from "vite-plus/test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -159,4 +170,97 @@ it("rejects credential-bearing server URLs and overrides of native profile paths
       OpenCodeAgentSettingsUpdateSchema.safeParse({ instances: [{ ...instance(), ...overrides }] })
         .success,
     ).toBe(false);
+});
+
+// Antigravity uses the same Profile secret transaction with one account key per instance.
+it("starts Antigravity empty, redacts keys and preserves them through edits and disable", () => {
+  const source = fixture();
+  expect(getAntigravityAgentSettings(source)).toEqual({ instances: [] });
+  const saved = updateAntigravityAgentSettings(
+    {
+      instances: [
+        {
+          id: "google-work",
+          displayName: "Work",
+          enabled: true,
+          apiKey: "fixture-google-key",
+          gcpProject: "project",
+          gcpLocation: "us-central1",
+          binaryPath: "",
+        },
+      ],
+    },
+    source,
+  );
+  expect(saved.instances[0]).toMatchObject({
+    authMethod: "oauth-personal",
+    apiKey: null,
+    hasApiKey: true,
+  });
+  expect(readFileSync(source.settingsPath, "utf8")).not.toContain("fixture-google-key");
+  const directory = path.join(source.root, "agent-secrets/antigravity");
+  const refs = readdirSync(directory);
+  const { hasApiKey: _saved, ...instance } = saved.instances[0]!;
+  updateAntigravityAgentSettings(
+    { instances: [{ ...instance, displayName: "Renamed", enabled: false }] },
+    source,
+  );
+  expect(() => getAntigravityLaunchConfiguration(source, instance.id)).toThrow("disabled");
+  expect(readdirSync(directory)).toEqual(refs);
+  updateAntigravityAgentSettings({ instances: [instance] }, source);
+  expect(getAntigravityLaunchConfiguration(source, instance.id).apiKey).toBe("fixture-google-key");
+  updateAntigravityAgentSettings(
+    { instances: [{ ...instance, apiKey: "replacement-key" }] },
+    source,
+  );
+  expect(readdirSync(directory)).toHaveLength(1);
+  expect(readdirSync(directory)).not.toEqual(refs);
+  updateAntigravityAgentSettings({ instances: [{ ...instance, apiKey: "" }] }, source);
+  expect(getAntigravityAgentSettings(source).instances[0]?.hasApiKey).toBe(false);
+  expect(readdirSync(directory)).toEqual([]);
+  updateAntigravityAgentSettings({ instances: [{ ...instance, apiKey: "remove-me" }] }, source);
+  updateAntigravityAgentSettings({ instances: [] }, source);
+  expect(readdirSync(directory)).toEqual([]);
+});
+
+it("keeps Antigravity keys bound to an account and rolls back staged keys on failed publication", () => {
+  const source = fixture();
+  const instance = {
+    id: "account",
+    displayName: "Account",
+    enabled: true,
+    authMethod: "gemini-api-key" as const,
+    apiKey: "original-key",
+    gcpProject: "",
+    gcpLocation: "",
+    binaryPath: "",
+  };
+  updateAntigravityAgentSettings({ instances: [instance] }, source);
+  const document = parseToml(readFileSync(source.settingsPath, "utf8")) as {
+    server: { antigravity_agent_instances: unknown[] };
+  };
+  const previous = readStoredAntigravityInstances(document.server.antigravity_agent_instances);
+  const directory = path.join(source.root, "agent-secrets/antigravity");
+  const refs = readdirSync(directory);
+  expect(() =>
+    writeAntigravityInstances(
+      source,
+      { instances: [{ ...instance, apiKey: "staged-key" }] },
+      previous,
+      () => {
+        throw new Error("publish failed");
+      },
+    ),
+  ).toThrow("publish failed");
+  expect(readdirSync(directory)).toEqual(refs);
+  expect(getAntigravityLaunchConfiguration(source, "account").apiKey).toBe("original-key");
+  expect(() => getAntigravityLaunchConfiguration(source, "other-account")).toThrow("unavailable");
+  for (const instances of [
+    [instance, instance],
+    Array.from({ length: 33 }, (_, index) => ({ ...instance, id: `a${index}` })),
+    [{ ...instance, authMethod: "ambient-google" }],
+    [{ ...instance, environment: [] }],
+    [{ ...instance, customModels: [] }],
+  ])
+    expect(AntigravityAgentSettingsUpdateSchema.safeParse({ instances }).success).toBe(false);
 });

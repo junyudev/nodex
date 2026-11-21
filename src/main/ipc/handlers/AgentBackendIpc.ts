@@ -48,6 +48,7 @@ const CatalogInput = z
           binding: z.discriminatedUnion("kind", [
             z.object({ kind: z.literal("claude"), instanceConfigId: id }).strict(),
             z.object({ kind: z.literal("opencode"), instanceConfigId: id }).strict(),
+            z.object({ kind: z.literal("antigravity"), instanceConfigId: id }).strict(),
             z
               .object({
                 kind: z.literal("acp"),

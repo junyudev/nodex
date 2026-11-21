@@ -4,29 +4,7 @@ const id = z.string().trim().min(1).max(256);
 const nativeSessionId = z.string().min(1).max(1024);
 const instance = { instanceId: id };
 const target = { ...instance, projectId: z.string().min(1).max(128).nullable().optional() };
-const flow = { ...instance, flowId: id };
 const operation = z.object({ operationId: id }).strict();
-const response = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("browser"), action: z.enum(["accept", "decline"]) }).strict(),
-  z
-    .object({
-      type: z.literal("terminal"),
-      data: z.string().max(4096),
-      size: z
-        .object({ cols: z.number().int().min(1).max(500), rows: z.number().int().min(1).max(200) })
-        .strict()
-        .optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("credentials"),
-      values: z
-        .record(z.string().min(1).max(128), z.string().max(16384))
-        .refine((values) => Object.keys(values).length <= 16),
-    })
-    .strict(),
-]);
 export const AcpInputSchemas = {
   "acp.registry.search": z.object({ query: z.string().trim().max(120) }).strict(),
   "acp.inspect": z.object(instance).strict(),
@@ -48,14 +26,6 @@ export const AcpInputSchemas = {
   "acp.connection.start": z.object({ ...target, operationId: id }).strict(),
   "acp.operation.read": operation,
   "acp.operation.cancel": operation,
-  "acp.auth.read": z.object(instance).strict(),
-  "acp.auth.start": z.object({ ...instance, methodId: id.optional() }).strict(),
-  "acp.auth.respond": z.object({ ...flow, interactionId: id, response }).strict(),
-  "acp.auth.complete": z
-    .object({ ...flow, callbackUrl: z.string().trim().min(1).max(16384) })
-    .strict(),
-  "acp.auth.cancel": z.object(flow).strict(),
-  "acp.auth.logout": z.object(instance).strict(),
   "acp.urlAuth.accept": z.object({ ...instance, elicitationId: id }).strict(),
   "acp.sessions.list": z.object({ ...target, cursor: z.string().max(8192).optional() }).strict(),
   "acp.sessions.prepareImport": z.object({ ...target, sessionId: nativeSessionId }).strict(),

@@ -1,8 +1,10 @@
+import { getIntl } from "@/lib/i18n";
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
   agentReadinessNotice,
   agentReadinessProblem,
   agentReadinessSetupHint,
+  antigravityReadinessNotice,
 } from "./agent-readiness-notice";
 
 type Snapshot = Parameters<typeof agentReadinessProblem>[0] & {};
@@ -241,6 +243,62 @@ describe("agentReadinessSetupHint", () => {
     ).toEqual({ hint: "Can’t connect", tone: "default" });
     expect(agentReadinessSetupHint(snapshot({ status: "error", issue: "unresponsive" }))).toEqual({
       hint: "Not responding",
+      tone: "default",
+    });
+  });
+});
+
+describe("Antigravity readiness", () => {
+  const model = { slug: "gemini", name: "Gemini", isCustom: false, capabilities: null };
+  const profile = {
+    ...ready,
+    instanceId: "antigravity_work",
+    driver: "antigravity",
+    models: [model],
+  };
+  const read = (patch: Partial<typeof profile>, chosen = "gemini", open = vi.fn()) =>
+    antigravityReadinessNotice(
+      profile.instanceId,
+      { ...profile, ...patch },
+      chosen,
+      { openSettings: open, checkAgain: vi.fn() },
+      getIntl(),
+    );
+
+  test("an unchecked sign-in can still use an offered model", () => {
+    expect(read({ status: "warning", auth: { status: "unknown" } })).toBeNull();
+    expect(read({ models: [] }, "")?.title).toBe("Choose an Antigravity model.");
+    expect(read({}, "retired")?.title).toBe(
+      "That model is no longer available. Choose another model.",
+    );
+  });
+
+  test("ignores a partial check and names a checked transient failure", () => {
+    expect(read({ checkPending: true, models: [], installed: false })).toBeNull();
+    const offline = { status: "error", issue: "account-unavailable" } as const;
+    expect(read(offline)?.title).toBe("Antigravity is signed in but can’t connect");
+    expect(actionLabels(read(offline))).toEqual(["Check again", "Settings"]);
+    expect(read({ status: "error", issue: "unresponsive" })?.title).toBe(
+      "Antigravity didn’t respond in time",
+    );
+  });
+
+  test("a checked setup problem sends the person to the selected profile's Settings", async () => {
+    const open = vi.fn();
+    const uninstalled = read(
+      { status: "error", installed: false, auth: { status: "unauthenticated" } },
+      "gemini",
+      open,
+    );
+    expect(uninstalled?.title).toBe("Antigravity isn’t installed. Install it in Settings.");
+    expect(actionLabels(uninstalled)).toEqual(["Settings"]);
+    await uninstalled?.actions?.[0]?.run();
+    expect(open).toHaveBeenCalledOnce();
+    expect(read({ status: "warning", auth: { status: "unauthenticated" } })?.title).toBe(
+      "Sign in to Antigravity to keep going.",
+    );
+    expect(agentReadinessSetupHint({ ...profile, models: [] })).toEqual({
+      hint: "Set up",
       tone: "default",
     });
   });

@@ -67,10 +67,20 @@ import {
   resolveOpenCodeLaunchConfiguration,
   writeOpenCodeInstances,
 } from "./opencode-agent-environment";
+import {
+  presentAntigravityInstances,
+  readStoredAntigravityInstances,
+  resolveAntigravityLaunchConfiguration,
+  writeAntigravityInstances,
+} from "./antigravity-agent-environment";
 import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "../../shared/opencode-agent-settings";
+import type {
+  AntigravityAgentSettings,
+  UpdateAntigravityAgentSettingsInput,
+} from "../../shared/antigravity-agent-settings";
 import {
   presentClaudeInstances,
   readStoredClaudeInstances,
@@ -225,6 +235,7 @@ interface ServerTomlConfig {
   claude_agent_instances?: unknown[];
   provider_keys?: unknown[];
   opencode_agent_instances?: unknown[];
+  antigravity_agent_instances?: unknown[];
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
@@ -1195,6 +1206,38 @@ export function updateOpenCodeAgentSettings(
       writeProfileServerTomlConfig(source, { ...previous, opencode_agent_instances: instances }),
   );
   return getOpenCodeAgentSettings(source);
+}
+
+export function getAntigravityAgentSettings(
+  source: ApplicationSettingsDocumentSource,
+): AntigravityAgentSettings {
+  return presentAntigravityInstances(
+    readStoredAntigravityInstances(loadProfileServerTomlConfig(source).antigravity_agent_instances),
+  );
+}
+export function getAntigravityLaunchConfiguration(
+  source: ApplicationSettingsDocumentSource,
+  instanceId: string,
+) {
+  return resolveAntigravityLaunchConfiguration(
+    source,
+    readStoredAntigravityInstances(loadProfileServerTomlConfig(source).antigravity_agent_instances),
+    instanceId,
+  );
+}
+export function updateAntigravityAgentSettings(
+  input: UpdateAntigravityAgentSettingsInput,
+  source: ApplicationSettingsDocumentSource,
+): AntigravityAgentSettings {
+  const previous = loadProfileServerTomlConfig(source);
+  writeAntigravityInstances(
+    source,
+    input,
+    readStoredAntigravityInstances(previous.antigravity_agent_instances),
+    (instances) =>
+      writeProfileServerTomlConfig(source, { ...previous, antigravity_agent_instances: instances }),
+  );
+  return getAntigravityAgentSettings(source);
 }
 
 export function getAcpAgentSettings(source: ApplicationSettingsDocumentSource): AcpAgentSettings {

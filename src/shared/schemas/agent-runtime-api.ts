@@ -1,6 +1,7 @@
 import { ProjectSessionPlacementSchema } from "./session-order";
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
+import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@nodex/agent-runtime/contracts";
 import type {
   AgentRuntimeHostLaunchField,
   AgentRuntimeLaunch,
@@ -18,6 +19,9 @@ const id = z
 export const AgentRuntimeTargetSchema = z
   .object({ sessionId: id, threadId: id.optional() })
   .strict();
+export const AgentRuntimeNativeChildWorkSchema = AgentRuntimeTargetSchema.required({
+  threadId: true,
+});
 export const AgentRuntimeThreadIdentitySchema = z.object({ threadId: id }).strict();
 export const AgentRuntimePromptTurnsSchema = z
   .object({
@@ -80,6 +84,12 @@ export const AgentRuntimeMessageSchema = z
           .strict(),
       )
       .max(20)
+      .optional(),
+    uploads: z
+      .array(
+        z.strictObject({ name: z.string().min(1).max(512), path: z.string().min(1).max(8_192) }),
+      )
+      .max(PROVIDER_SEND_TURN_MAX_ATTACHMENTS)
       .optional(),
     context: z.record(z.string(), z.unknown()).optional(),
     modelSelection: AgentRuntimeModelSelectionSchema.optional(),
@@ -429,6 +439,6 @@ export const AgentWindowsSandboxCancelSchema = z
     generation: z.string().min(1).max(128),
   })
   .strict();
-export const ClaudeUsageLogoutSchema = z
+export const SubscriptionUsageLogoutClaudeSchema = z
   .object({ instanceIds: z.array(z.string().trim().min(1).max(128)).min(1).max(32) })
   .strict();

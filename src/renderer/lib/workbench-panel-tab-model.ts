@@ -1,3 +1,4 @@
+import type { ConversationAgent } from "../../shared/conversation-identity";
 import type { WorkspaceFilesTab } from "@/features/workspace-files";
 import type { NormalizedUserAttachmentImageEditorOptions } from "@/lib/content-image";
 import type {
@@ -156,6 +157,8 @@ export interface SubagentsPanelTab {
   selectedThreadId: string | null;
   selectedDisplayName: string | null;
   selectedCanInteract?: boolean;
+  /** This provider-owned batch has detail records in place of a child transcript. */
+  selectedNativeWork?: ConversationAgent;
   selectedHydration: SelectedSubagentHydrationState | null;
   title: "Subagents";
   stateKey: number;

@@ -140,7 +140,10 @@ const ensureOwnedRootShape = async (
  * without one), and every catalog read would wait for that probe. Scenarios configure their own
  * peers.
  */
-const SCENARIO_PROFILE_SETTINGS = `[[server.claude_agent_instances]]
+const SCENARIO_PROFILE_SETTINGS = `[server]
+antigravity_agent_instances = []
+
+[[server.claude_agent_instances]]
 id = "claude-default"
 displayName = "Claude Code"
 binaryPath = "claude"

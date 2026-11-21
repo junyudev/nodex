@@ -772,6 +772,7 @@ it.effect(
             Effect.succeed({
               claudeAgents: { instances: [] },
               openCodeAgents: { instances: [] },
+              antigravityAgents: { instances: [] },
               acpAgents: {
                 instances: ["personal", "work"].map((id) => ({
                   id,

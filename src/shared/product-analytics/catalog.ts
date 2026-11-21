@@ -11,7 +11,7 @@ import { z } from "zod";
 const Code = z.string().regex(/^[a-zA-Z0-9_.:-]{1,64}$/);
 const Count = z.number().int().nonnegative();
 const Outcome = z.enum(["success", "failure", "aborted"]);
-const Provider = z.enum(["codex", "claude", "opencode", "acp", "other"]);
+const Provider = z.enum(["codex", "claude", "opencode", "antigravity", "acp", "other"]);
 const ImageSource = Code;
 
 const event = <const Name extends string, Fields extends z.ZodRawShape>(

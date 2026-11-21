@@ -28,6 +28,7 @@ flowchart LR
     Agent --> ACP["Capability-negotiated ACP Agents"]
     Agent --> Claude["Native Claude Code via Agent SDK"]
     Agent --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
+    Agent --> Antigravity["Isolated Antigravity accounts via agy"]
     Phone["Nodex Mobile · Member Device"] --> TLS["Core pinned-TLS listener"]
     TLS --> Core
     Core --> Facade["Host phone façade · Member invocation"]
@@ -1097,11 +1098,12 @@ frozen source context and independent provider conversations; Core owns temporar
 and exclusion from ordinary Session catalogs. Renderer-local panel lifetime requests disposal
 through the semantic Session Interface. The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
-ACP instance configuration and encrypted environment references belong to Main. Typed management
-operations delegate installation, authentication, connection probes and native-session work to
-the supervised Runtime. Core remains the product Session admission owner. Runtime receives launch
-configuration in memory and cannot persist a second configuration source. See
-[ACP Agent behavior](product-specs/acp-agent-behavior.md) and
+Agent profile configuration and encrypted credential references belong to Main. Agent Accounts
+resolves the saved backend and binds the initiating window to the Runtime's authentication controller
+for that instance. ACP installation, connection probes and native-session work use ACP management.
+Core remains the product Session admission owner. Runtime receives launch configuration in memory
+without persisting a second configuration source. See [ACP Agent behavior](product-specs/acp-agent-behavior.md),
+[Antigravity Agent behavior](product-specs/antigravity-agent-behavior.md) and
 [ADR 0071](adr/0071-configured-acp-agents-and-explicit-management.md).
 
 Inbox routing enters the Profile's persistent Coordinator through queued Host messages.

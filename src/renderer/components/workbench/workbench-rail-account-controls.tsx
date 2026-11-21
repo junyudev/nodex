@@ -3,6 +3,7 @@ import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
+import { SUBSCRIPTION_USAGE_PROVIDERS } from "../../../shared/subscription-usage";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
 import { NodexCreditMeter } from "@/features/nodex-account/nodex-credit-meter";
 import { NodexButton } from "@/components/ui/button";
@@ -17,12 +18,12 @@ import {
 import { QuotaResetTooltipSection } from "@/features/local-conversation/view/shared/auth-rate-limits";
 import { resolveRailAccountState } from "@/features/local-conversation/view/shared/rail-account-state";
 import { cn } from "@/lib/utils";
-import { useClaudeUsage, type ClaudeUsage } from "@/lib/use-claude-usage";
+import { useSubscriptionUsage, type SubscriptionUsage } from "@/lib/use-subscription-usage";
 import {
-  claudeUsageAccounts,
+  subscriptionUsageAccounts,
   claudeUsagePlaceholder,
   codexUsageReading,
-  type ClaudeUsageAccount,
+  type SubscriptionUsageAccount,
   type UsageProvider,
 } from "@/lib/usage-meter";
 import type {
@@ -48,8 +49,8 @@ export interface WorkbenchRailAccountControlsProps {
   onCancelLogin?: (loginId: string) => Promise<unknown>;
   onLogout?: () => Promise<void>;
   onErrorMessage?: (message: string | null) => void;
-  /** Claude subscription usage as Main keeps it: one meter per account. */
-  claudeUsage?: ClaudeUsage;
+  /** Subscription usage as Main keeps it: one meter per account. */
+  subscriptionUsage?: SubscriptionUsage;
 }
 
 type RailUsagePlaceholderState =
@@ -256,17 +257,16 @@ function CodexUsageMeter({
 }
 
 /**
- * One Claude account's meter. Opening its card asks Main for a fresh reading, starting Agent
- * execution if it must; on its own Main reads only while execution runs. Signing out signs out
- * every Claude profile that reads it.
+ * Opening a subscription card asks Main for a fresh reading. Claude also offers sign-out
+ * across the profiles that share its account.
  */
-function ClaudeUsageMeter({
+function SubscriptionUsageMeter({
   account,
   usage,
   onErrorMessage,
 }: {
-  readonly account: ClaudeUsageAccount;
-  readonly usage: ClaudeUsage;
+  readonly account: SubscriptionUsageAccount;
+  readonly usage: SubscriptionUsage;
   readonly onErrorMessage?: (message: string | null) => void;
 }) {
   const refreshOnOpen = useRefreshOnOpen(usage.refresh);
@@ -275,10 +275,12 @@ function ClaudeUsageMeter({
       reading={account.reading}
       onOpenChange={refreshOnOpen}
       action={
-        <UsageSignOutButton
-          onSignOut={() => usage.logout(account.instanceIds)}
-          onErrorMessage={onErrorMessage}
-        />
+        account.reading.provider === "claude" ? (
+          <UsageSignOutButton
+            onSignOut={() => usage.logoutClaude(account.instanceIds)}
+            onErrorMessage={onErrorMessage}
+          />
+        ) : undefined
       }
     />
   );
@@ -289,8 +291,8 @@ function ClaudeUsageMeter({
  * menu, which shows the current Space and the Nodex Account, the Nodex credit meter while signed
  * in, then the Codex account control (its usage meter when signed in, an open Codex
  * ring that signs in when signed out, an unread Codex meter while the account is unknown), then
- * one usage meter per Claude subscription account (an unread Claude meter until Main has read
- * any). The slots that always exist sit lowest, so Claude meters coming and going never move
+ * one usage meter per subscription account (an unread Claude meter until Main has read
+ * any). The slots that always exist sit lowest, so subscription meters coming and going never move
  * them.
  */
 export function WorkbenchRailAccountControls({
@@ -306,7 +308,7 @@ export function WorkbenchRailAccountControls({
   onCancelLogin,
   onLogout,
   onErrorMessage,
-  claudeUsage,
+  subscriptionUsage,
 }: WorkbenchRailAccountControlsProps) {
   const intl = useIntl();
   const { settings: meters } = useUsageMeterSettings();
@@ -324,8 +326,8 @@ export function WorkbenchRailAccountControls({
     onStartApiKeyLogin &&
     onCancelLogin,
   );
-  const claudeAccounts = claudeUsageAccounts(claudeUsage?.snapshot);
-  const claudePlaceholder = claudeUsagePlaceholder(claudeUsage?.snapshot);
+  const subscriptionAccounts = subscriptionUsageAccounts(subscriptionUsage?.snapshot);
+  const claudePlaceholder = claudeUsagePlaceholder(subscriptionUsage?.snapshot);
 
   const handleChatGptLogin = async () => {
     if (!onStartChatGptLogin) return;
@@ -411,21 +413,25 @@ export function WorkbenchRailAccountControls({
       className="mt-auto flex flex-col items-center gap-2"
     >
       <div data-workbench-rail-account="" className="contents">
-        {meters.claude && claudeUsage
-          ? claudeAccounts.map((claude) => (
+        {subscriptionUsage
+          ? SUBSCRIPTION_USAGE_PROVIDERS.flatMap((provider) =>
+              meters[provider]
+                ? subscriptionAccounts.filter(({ reading }) => reading.provider === provider)
+                : [],
+            ).map((account) => (
               <span
-                key={claude.reading.key}
+                key={account.reading.key}
                 className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none"
               >
-                <ClaudeUsageMeter
-                  account={claude}
-                  usage={claudeUsage}
+                <SubscriptionUsageMeter
+                  account={account}
+                  usage={subscriptionUsage}
                   onErrorMessage={onErrorMessage}
                 />
               </span>
             ))
           : null}
-        {meters.claude && claudeUsage && claudePlaceholder ? (
+        {meters.claude && subscriptionUsage && claudePlaceholder ? (
           <RailUsagePlaceholder
             provider="claude"
             subject={intl.formatMessage({
@@ -444,7 +450,7 @@ export function WorkbenchRailAccountControls({
                     detail: claudePlaceholder.reason,
                   }
             }
-            onRetry={claudeUsage.refresh}
+            onRetry={subscriptionUsage.refresh}
           />
         ) : null}
         {showUsageMeter && account && onRefreshAccount && onLogout ? (
@@ -508,9 +514,16 @@ export function WorkbenchRailAccountControls({
 }
 
 /**
- * The rail foot with Main's Claude usage. Kept as its own leaf so a new reading re-renders only
+ * The rail foot with Main's subscription usage. Kept as its own leaf so a new reading re-renders only
  * these controls.
  */
-export function WorkbenchRailFoot(props: Omit<WorkbenchRailAccountControlsProps, "claudeUsage">) {
-  return <WorkbenchRailAccountControls {...props} claudeUsage={useClaudeUsage() ?? undefined} />;
+export function WorkbenchRailFoot(
+  props: Omit<WorkbenchRailAccountControlsProps, "subscriptionUsage">,
+) {
+  return (
+    <WorkbenchRailAccountControls
+      {...props}
+      subscriptionUsage={useSubscriptionUsage() ?? undefined}
+    />
+  );
 }

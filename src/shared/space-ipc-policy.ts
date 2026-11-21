@@ -27,7 +27,6 @@ const desktopChannels: readonly (keyof IpcApi)[] = [
   "codex-command-keymap-state",
   "set-codex-command-keybinding",
   // Device-wide Agent and Terminal discovery.
-  "local-agents:scan",
   "terminal-shells:list",
 ];
 

@@ -971,7 +971,7 @@ it.effect(
       );
       const input = { environment: {}, hostHomeDirectory: root, settingsPath };
       const settings = yield* makeApplicationSettings(input);
-      const defaults = { claude: true, codex: false, nodexCredit: true };
+      const defaults = { antigravity: true, claude: true, codex: false, nodexCredit: true };
       assert.deepEqual((yield* settings.snapshot()).usageMeters, defaults);
       const changes = yield* settings.usageMeterSettingsChanges.pipe(
         Stream.take(3),
@@ -979,7 +979,7 @@ it.effect(
         Effect.forkScoped,
       );
       yield* Effect.yieldNow;
-      const hidden = { claude: false, codex: false, nodexCredit: false };
+      const hidden = { antigravity: false, claude: false, codex: false, nodexCredit: false };
       yield* settings.update({ type: "update-usage-meters", input: hidden });
       yield* settings.update({ type: "update-usage-meters", input: hidden });
       const reopened = yield* makeApplicationSettings(input);
@@ -992,7 +992,7 @@ it.effect(
       );
       assert.strictEqual(malformed._tag, "Failure");
       assert.deepEqual((yield* settings.snapshot()).usageMeters, hidden);
-      const shown = { claude: true, codex: true, nodexCredit: true };
+      const shown = { antigravity: true, claude: true, codex: true, nodexCredit: true };
       yield* settings.update({ type: "update-usage-meters", input: shown });
       assert.deepEqual(yield* Fiber.join(changes), [defaults, hidden, shown]);
       assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
@@ -1170,6 +1170,7 @@ it.effect(
       const reopened = yield* makeApplicationSettings(input);
       assert.deepEqual((yield* reopened.snapshot()).modelPolicy, policy);
       assert.deepEqual((yield* reopened.snapshot()).usageMeters, {
+        antigravity: true,
         codex: true,
         claude: true,
         nodexCredit: true,

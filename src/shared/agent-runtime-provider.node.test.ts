@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
+import { AgentBackendBindingSchema } from "./schemas/agent-backend";
 import { describe, expect, it } from "vite-plus/test";
 import {
   agentRuntimeModelSelection,
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeServiceTier,
+  readAgentRuntimeEffort,
   type AgentRuntimeOptionDescriptor,
 } from "./agent-runtime-provider";
 
@@ -22,8 +25,34 @@ describe("Agent Runtime provider identity", () => {
     expect(agentRuntimeProviderId({ ...binding, instanceConfigId: `${id}!` })).not.toBe(actual);
   });
 
+  it.each(["antigravity", "claude", "opencode"] as const)(
+    "routes a hosted %s profile using the host-generated instance ID",
+    (kind) => {
+      const runtimeInstanceId = agentRuntimeProviderId({ kind, instanceConfigId: "google-work" })!;
+      expect(runtimeInstanceId).toMatch(/[A-Z]/u);
+      expect(isProviderInstanceId(runtimeInstanceId)).toBe(true);
+      const binding = AgentBackendBindingSchema.parse({
+        kind,
+        instanceConfigId: runtimeInstanceId,
+        runtimeInstanceId,
+      });
+      expect(agentRuntimeModelSelection(binding, "host-model")?.instanceId).toBe(runtimeInstanceId);
+      for (const invalid of ["", "A".repeat(65), "1-agent"]) {
+        expect(
+          AgentBackendBindingSchema.safeParse({ ...binding, runtimeInstanceId: invalid }).success,
+        ).toBe(false);
+        expect(agentRuntimeProviderId({ ...binding, runtimeInstanceId: invalid })).toBeNull();
+      }
+    },
+  );
+
   it("requires an explicit configured native instance while retaining the canonical Codex instance", () => {
     expect(agentRuntimeProviderId({ kind: "codex" })).toBe("codex");
+    const google = { kind: "antigravity" as const, instanceConfigId: "work" };
+    expect(agentRuntimeProviderId(google)).toMatch(/^antigravity_/u);
+    expect(agentRuntimeProviderId(google)).not.toBe(
+      agentRuntimeProviderId({ ...google, kind: "opencode" }),
+    );
     expect(
       agentRuntimeProviderId({ kind: "acp", agentDefinitionId: "agent", instanceConfigId: null }),
     ).toBeNull();
@@ -157,6 +186,28 @@ describe("Agent Runtime model option intent", () => {
       { id: "fastMode", value: true },
       { id: "effort", value: "max" },
     ]);
+  });
+
+  it("preserves Antigravity's native thought-level choice through effort intent and handoff", () => {
+    const descriptors: AgentRuntimeOptionDescriptor[] = [
+      {
+        id: "thought_level",
+        label: "Thinking",
+        type: "select",
+        options: [
+          { id: "high", label: "High" },
+          { id: "low", label: "Low" },
+        ],
+      },
+    ];
+    const options = applyAgentRuntimeOptionIntent(descriptors, undefined, {
+      reasoningEffort: "high",
+    });
+    expect(options).toEqual([{ id: "thought_level", value: "high" }]);
+    expect(readAgentRuntimeEffort(options)).toBe("high");
+    expect(
+      applyAgentRuntimeOptionIntent(descriptors, options, { reasoningEffort: "unavailable" }),
+    ).toEqual([]);
   });
 
   it("never carries another provider's ids or values a model does not offer", () => {

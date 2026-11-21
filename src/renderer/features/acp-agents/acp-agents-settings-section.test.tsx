@@ -6,7 +6,7 @@ import { NodexModalHost } from "@/lib/modal-registry";
 import { renderWithAppMaitai } from "@/test/app-maitai";
 import { settleLazyRender } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import type AcpAuthTerminal from "./acp-auth-terminal";
+import type AgentAuthTerminal from "../agent-account/agent-auth-terminal";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import { AcpAgentsSettingsSection } from "./acp-agents-settings-section";
 import { acpProviderId } from "./acp-agent-model";
@@ -26,8 +26,8 @@ import {
 
 // xterm cannot open without a canvas 2D context, which jsdom lacks; the terminal's own
 // Chromium suite covers it. Here it shows what the account hands it.
-vi.mock("./acp-auth-terminal", () => ({
-  default: ({ output }: ComponentProps<typeof AcpAuthTerminal>) => (
+vi.mock("../agent-account/agent-auth-terminal", () => ({
+  default: ({ output }: ComponentProps<typeof AgentAuthTerminal>) => (
     <pre role="group" aria-label="Sign-in terminal">
       {output}
     </pre>
@@ -56,6 +56,7 @@ const type = async (element: HTMLElement, value: string) =>
 function mount(main: ReturnType<typeof fakeAcpRuntime>, anchor: string | null = null) {
   const owner = createAcpAgentsOwner({
     runtime: main.runtime,
+    accountRuntime: main.accounts,
     subscribeChanges: () => () => {},
     journal: memoryJournal(),
   });
@@ -74,61 +75,7 @@ function mount(main: ReturnType<typeof fakeAcpRuntime>, anchor: string | null = 
   return { owner, view };
 }
 
-const localAgents = vi.hoisted(() => ({
-  scan: vi.fn(async () => ({ agents: [] as unknown[] })),
-}));
-vi.mock("@/lib/local-agents-runtime", () => ({ localAgentsRuntime: localAgents }));
-
 describe("ACP Agents settings", () => {
-  test("retrying Settings refreshes local discovery even after an empty scan", async () => {
-    const main = fakeAcpRuntime({ instances: [] });
-    main.runtime.readSettings.mockRejectedValueOnce(new Error("Settings unavailable"));
-    const { view } = mount(main);
-    const retry = await view.findByRole("button", { name: "Try again" });
-    localAgents.scan.mockResolvedValueOnce({
-      agents: [
-        {
-          id: "antigravity",
-          executable: "/Users/me/.local/bin/agy",
-          version: "1.5.9",
-          supported: true,
-        },
-      ],
-    });
-
-    await press(retry);
-    expect(await view.findByText(/Found on this computer · agy 1\.5\.9/u)).toBeTruthy();
-    expect(localAgents.scan).toHaveBeenCalledWith({ fresh: true });
-  });
-
-  test("an Agent found on this computer connects in one step with its own command", async () => {
-    localAgents.scan.mockResolvedValueOnce({
-      agents: [
-        {
-          id: "antigravity",
-          executable: "/Users/me/.local/bin/agy",
-          version: "1.5.9",
-          supported: true,
-        },
-      ],
-    });
-    const main = fakeAcpRuntime({ instances: [] });
-    const { view } = mount(main);
-    expect(await view.findByText(/Found on this computer · agy 1\.5\.9/u)).toBeTruthy();
-
-    await press(view.getByRole("button", { name: "Connect" }));
-    await waitFor(() => expect(main.runtime.updateSettings).toHaveBeenCalledOnce());
-    expect(main.runtime.updateSettings.mock.calls[0]![0].instances).toEqual([
-      expect.objectContaining({
-        agentDefinitionId: "antigravity-acp",
-        displayName: "Google Antigravity",
-        source: { kind: "local", executable: "/Users/me/.local/bin/agy", args: ["acp"] },
-        credentials: { kind: "inherit-host-profile" },
-      }),
-    ]);
-    await waitFor(() => expect(view.queryByText(/Found on this computer/u)).toBeNull());
-  });
-
   test("each instance shows its live status and turning it off saves only that change", async () => {
     const qoder = registryInstance();
     const scripted = localInstance();
@@ -176,7 +123,7 @@ describe("ACP Agents settings", () => {
         auth: { status: "unauthenticated" },
       }),
     ]);
-    main.runtime.readAuth.mockResolvedValue(
+    main.accounts.read.mockResolvedValue(
       ok(
         authState({
           methods: [
@@ -195,7 +142,9 @@ describe("ACP Agents settings", () => {
     const { view } = mount(main);
     await press(await view.findByRole("button", { name: "Sign in" }));
     const terminal = await view.findByRole("button", { name: "Open Qoder login" });
-    expect(main.runtime.readAuth).toHaveBeenCalledWith({ instanceId: "qoder-main" });
+    expect(main.accounts.read).toHaveBeenCalledWith({
+      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+    });
 
     await press(view.getByRole("button", { name: "Set QODER_PERSONAL_ACCESS_TOKEN" }));
     const name = await view.findByDisplayValue("QODER_PERSONAL_ACCESS_TOKEN");
@@ -213,11 +162,11 @@ describe("ACP Agents settings", () => {
       flowId: "flow",
       interaction: { type: "terminal", id: "terminal", output, outputOffset: output.length },
     });
-    main.runtime.startAuth.mockResolvedValueOnce(ok(waiting));
-    main.runtime.readAuth.mockResolvedValue(ok(waiting));
+    main.accounts.start.mockResolvedValueOnce(ok(waiting));
+    main.accounts.read.mockResolvedValue(ok(waiting));
     await press(terminal);
-    expect(main.runtime.startAuth).toHaveBeenCalledWith({
-      instanceId: "qoder-main",
+    expect(main.accounts.start).toHaveBeenCalledWith({
+      backend: { kind: "acp", instanceConfigId: "qoder-main" },
       methodId: "login",
     });
     await view.findByText("Sign in using the terminal below.");
@@ -225,13 +174,13 @@ describe("ACP Agents settings", () => {
     expect(view.getByRole("group", { name: "Sign-in terminal" }).textContent).toBe(output);
 
     // Finishing the sign-in closes the terminal and ends the owner's polling with it.
-    main.runtime.readAuth.mockResolvedValue(ok(authState({ phase: "succeeded" })));
+    main.accounts.read.mockResolvedValue(ok(authState({ phase: "succeeded" })));
     await waitFor(() => expect(view.queryByRole("group", { name: "Sign-in terminal" })).toBeNull());
-    const reads = main.runtime.readAuth.mock.calls.length;
+    const reads = main.accounts.read.mock.calls.length;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 700));
     });
-    expect(main.runtime.readAuth).toHaveBeenCalledTimes(reads);
+    expect(main.accounts.read).toHaveBeenCalledTimes(reads);
   });
 
   test("only a sign-in started in this window can be cancelled from it", async () => {
@@ -247,24 +196,24 @@ describe("ACP Agents settings", () => {
       { id: "login", name: "Qoder login", description: null, type: "terminal" as const },
     ];
     // The Runtime shows another window's flow as underway, without the flow itself.
-    main.runtime.readAuth.mockResolvedValue(
+    main.accounts.read.mockResolvedValue(
       ok(
         authState({
           phase: "waiting",
-          message: "Sign-in is in progress in another client.",
+          message: "Sign-in is in progress in another window.",
           methods,
         }),
       ),
     );
     const { owner, view } = mount(main);
     await press(await view.findByRole("button", { name: "Sign in" }));
-    await view.findByText("Sign-in is in progress in another client.");
+    await view.findByText("Sign-in is in progress in another window.");
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
 
     // That flow ended, so this window can start its own.
-    main.runtime.readAuth.mockResolvedValue(ok(authState({ methods })));
+    main.accounts.read.mockResolvedValue(ok(authState({ methods })));
     await act(async () => {
-      owner.readAuth("qoder-main");
+      owner.account("qoder-main").read();
       await Promise.resolve();
     });
     const own = authState({
@@ -273,18 +222,18 @@ describe("ACP Agents settings", () => {
       methods,
       interaction: { type: "terminal", id: "terminal", output: "", outputOffset: 0 },
     });
-    main.runtime.startAuth.mockResolvedValueOnce(ok(own));
-    main.runtime.readAuth.mockResolvedValue(ok(own));
+    main.accounts.start.mockResolvedValueOnce(ok(own));
+    main.accounts.read.mockResolvedValue(ok(own));
     await press(await view.findByRole("button", { name: "Open Qoder login" }));
     await view.findByText("Sign in using the terminal below.");
     await settleLazyRender();
     expect(view.getByRole("group", { name: "Sign-in terminal" })).toBeTruthy();
-    expect(main.runtime.cancelAuth).not.toHaveBeenCalled();
+    expect(main.accounts.cancel).not.toHaveBeenCalled();
 
     await press(view.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(main.runtime.cancelAuth).toHaveBeenCalledExactlyOnceWith({
-        instanceId: "qoder-main",
+      expect(main.accounts.cancel).toHaveBeenCalledExactlyOnceWith({
+        backend: { kind: "acp", instanceConfigId: "qoder-main" },
         flowId: "flow",
       }),
     );
@@ -531,7 +480,7 @@ describe("ACP Agents settings", () => {
       providerSnapshot({ instanceId: acpProviderId(qoder)!, auth: { status: "unauthenticated" } }),
     ]);
     const methods = [{ id: "login", name: "Qoder", description: null, type: "agent" as const }];
-    main.runtime.readAuth.mockResolvedValue(ok(authState({ methods })));
+    main.accounts.read.mockResolvedValue(ok(authState({ methods })));
     const { view } = mount(main);
     // Sign in opens the row and goes away; focus stays on the row.
     const signIn = await view.findByRole("button", { name: "Sign in" });
@@ -542,7 +491,7 @@ describe("ACP Agents settings", () => {
       view.getByRole("button", { name: /^Qoder/u, expanded: true }),
     );
 
-    main.runtime.startAuth.mockResolvedValueOnce(
+    main.accounts.start.mockResolvedValueOnce(
       ok(
         authState({
           phase: "waiting",
@@ -564,7 +513,7 @@ describe("ACP Agents settings", () => {
     expect(document.activeElement).toBe(cancel);
 
     const cancelling = deferred<void>();
-    main.runtime.cancelAuth.mockImplementationOnce(async () => {
+    main.accounts.cancel.mockImplementationOnce(async () => {
       await cancelling.promise;
       return ok(authState({ phase: "cancelled", methods }));
     });

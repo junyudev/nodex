@@ -1,3 +1,4 @@
+import { agentBackendKindOfDriver } from "../../shared/conversation-identity";
 import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope";
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
@@ -49,7 +50,7 @@ export interface SessionListingSummary {
   readonly threadId: string | null;
   readonly title: string;
   readonly preview: string;
-  readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
+  readonly backend: "codex" | "acp" | "claude" | "opencode" | "antigravity" | null;
   readonly status: {
     readonly status_type: string;
     readonly active_flags: readonly ThreadActiveFlag[];
@@ -132,16 +133,7 @@ const decodePosition = Schema.decodeEffect(Schema.fromJsonString(Cursor));
 const encodePosition = Schema.encodeSync(Schema.fromJsonString(Cursor));
 const encode = (position: Position) =>
   `nxd1.${Buffer.from(encodePosition(position)).toString("base64url")}`;
-const backendOf = (driver: string | null): SessionListingSummary["backend"] =>
-  driver === null
-    ? null
-    : driver === "codex"
-      ? "codex"
-      : driver === "claudeAgent"
-        ? "claude"
-        : driver === "opencode"
-          ? "opencode"
-          : "acp";
+const backendOf = agentBackendKindOfDriver;
 
 const placementOf = (item: ListingItem): SessionListingSummary["placement"] => {
   if (item.task.session.pinned) return { kind: "pinned", source: "session" };
@@ -245,12 +237,7 @@ export const withSessionMetadata = (
   ...session,
   threadId: details.threadId,
   preview: details.preview,
-  backend:
-    details.providerDriver === "claudeAgent"
-      ? "claude"
-      : details.providerDriver === "codex" || details.providerDriver === "opencode"
-        ? details.providerDriver
-        : "acp",
+  backend: backendOf(details.providerDriver),
   recencyAt: details.recencyAt === null ? null : Date.parse(details.recencyAt),
   status: { status_type: statusOf(details), active_flags: details.activeFlags },
   createdBy: details.createdBy,

@@ -793,7 +793,12 @@ export function projectAgentRuntimeItem(
         ...(display.agentPath ? { agentPath: display.agentPath } : {}),
         providerInstanceId: item.providerInstanceId,
         agentKind: agentBackendKindOfDriver(item.driver),
-        status: agentRuntimeDelegatedTaskStatus(item.status),
+        status:
+          item.driver === "antigravity" &&
+          item.origin === "provider_native" &&
+          item.status === "idle"
+            ? "idle"
+            : agentRuntimeDelegatedTaskStatus(item.status),
         prompt: item.prompt,
         summary:
           (isLive(item.status)

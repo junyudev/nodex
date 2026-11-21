@@ -21,6 +21,7 @@ import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-pl
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
 import type { NativeResourceData, NativeResourceReadInput } from "./native-resource";
 import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
+import type { AgentAccountIpcApi } from "./agent-accounts-api";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
@@ -34,6 +35,10 @@ import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "./opencode-agent-settings";
+import type {
+  AntigravityAgentSettings,
+  UpdateAntigravityAgentSettingsInput,
+} from "./antigravity-agent-settings";
 import type {
   CodexHomeSettingsSnapshot,
   CodexHomeSettingsUpdateInput,
@@ -729,6 +734,7 @@ export interface IpcApi
   extends
     AgentRuntimeIpcApi,
     AcpIpcApi,
+    AgentAccountIpcApi,
     PluginManagementIpcApi,
     PluginAppIpcApi,
     McpAppDataIpcApi,
@@ -1506,6 +1512,7 @@ export interface IpcApi
     result: CodexHomeSettingsSnapshot;
   };
   "settings:opencode-agents:get": { args: []; result: OpenCodeAgentSettings };
+  "settings:antigravity-agents:get": { args: []; result: AntigravityAgentSettings };
   "nodex-account:read": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "nodex-account:sign-in": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "nodex-account:cancel-sign-in": {
@@ -1542,9 +1549,29 @@ export interface IpcApi
     args: [input: { readonly id: string }];
     result: import("./provider-keys").ProviderKeySettings;
   };
-  "local-agents:scan": {
-    args: [options?: import("./local-agents").LocalAgentScanOptions];
-    result: import("./local-agents").LocalAgentScan;
+  "antigravity-runtime:read": {
+    args: [];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  };
+  "antigravity-runtime:check": {
+    args: [];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  };
+  "antigravity-runtime:start": {
+    args: [];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  };
+  "antigravity-runtime:remove": {
+    args: [];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  };
+  "antigravity-runtime:operation:read": {
+    args: [operationId: string];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  };
+  "antigravity-runtime:operation:cancel": {
+    args: [operationId: string];
+    result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
   };
   "opencode-setup:read": {
     args: [];
@@ -1561,6 +1588,10 @@ export interface IpcApi
   "settings:opencode-agents:update": {
     args: [input: UpdateOpenCodeAgentSettingsInput];
     result: OpenCodeAgentSettings;
+  };
+  "settings:antigravity-agents:update": {
+    args: [input: UpdateAntigravityAgentSettingsInput];
+    result: AntigravityAgentSettings;
   };
   "settings:claude-agents:get": { args: []; result: ClaudeAgentSettings };
   "settings:claude-agents:update": {
@@ -3227,6 +3258,7 @@ export interface IpcEvents {
   "codex:plugins:changed": [PluginManagementChanged];
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
   "provider-keys:changed": import("./provider-keys").ProviderKeySettings;
+  "antigravity-runtime:changed": import("./antigravity-runtime").AntigravityRuntimeSnapshot;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
   "dictation:microphone-relinquish": { readonly sessionId: string };
@@ -3238,7 +3270,7 @@ export interface IpcEvents {
   "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
   "agent-runtime:providers:changed": void;
   "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;
-  "agent-runtime:claude-usage-changed": import("./agent-runtime-api").ClaudeUsageSnapshot;
+  "agent-runtime:subscription-usage-changed": import("./agent-runtime-api").SubscriptionUsageSnapshot;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;
   "document-sync:event": DocumentSyncRealtimeEvent;
   "persisted-atom:updated": PersistedAtomEvent;

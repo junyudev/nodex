@@ -35,17 +35,19 @@ export function useAutomationAgent({ draft, codexModels, onChange }: AutomationD
   const { instances } = useAgentInstances();
   const binding = draft.backendBinding;
   const value = bindingValue(binding);
-  // Claude profiles and ACP instances the user turned on; OpenCode isn't scheduled here.
   const scheduled = instances.filter(
     (instance) =>
-      instance.enabled && (instance.binding.kind === "claude" || instance.binding.kind === "acp"),
+      instance.enabled &&
+      (instance.binding.kind === "claude" ||
+        instance.binding.kind === "acp" ||
+        instance.binding.kind === "antigravity"),
   );
   const current = instances.find((instance) => bindingValue(instance.binding) === value);
   const label =
     binding.kind === "codex"
       ? "Codex"
       : (current?.label ??
-        (binding.kind === "acp"
+        (binding.kind === "acp" || binding.kind === "antigravity"
           ? intl.formatMessage({
               id: "workbench.workbenchAutomationIntelligence.unavailableAgent",
               defaultMessage: "Unavailable Agent",
@@ -69,12 +71,12 @@ export function useAutomationAgent({ draft, codexModels, onChange }: AutomationD
     const changed = {
       ...draft,
       backendBinding,
-      // An ACP instance runs its exact advertised model; its controls come with that model.
+      // Account-based Agents start with their own catalog and option choices.
       model: backendBinding.kind === "claude" ? "default" : "",
       reasoningEffort:
         backendBinding.kind === "claude"
           ? "default"
-          : backendBinding.kind === "acp"
+          : backendBinding.kind === "acp" || backendBinding.kind === "antigravity"
             ? ""
             : "medium",
       serviceTier: "",
@@ -132,8 +134,8 @@ export function AutomationModelPicker({
 }: AutomationDraftEditor & { readonly agent: AutomationAgent; readonly disabled: boolean }) {
   const binding = draft.backendBinding;
   const isClaude = binding.kind === "claude";
-  const isAcp = binding.kind === "acp";
-  const acp = useAcpAutomationModels(binding);
+  const usesRuntimeCatalog = binding.kind === "acp" || binding.kind === "antigravity";
+  const runtime = useAcpAutomationModels(binding);
   const catalog = useClaudeModelCatalog(
     isClaude
       ? { kind: "project", instanceConfigId: binding.instanceConfigId, projectId: draft.projectId }
@@ -151,16 +153,16 @@ export function AutomationModelPicker({
     ? catalog.options.map((option) =>
         projectNativeModelOption(option, option.value === catalog.discovery?.intelligence.model),
       )
-    : isAcp
-      ? acp.models
+    : usesRuntimeCatalog
+      ? runtime.models
       : codexModels;
-  /** An ACP model either names one of its advertised effort values or none at all. */
-  const acpEffort = (model: string, effort: string) => {
-    const efforts = acp.models.find((option) => option.id === model)?.supportedReasoningEfforts;
+  /** Retain only a thinking level the selected model offers. */
+  const runtimeEffort = (model: string, effort: string) => {
+    const efforts = runtime.models.find((option) => option.id === model)?.supportedReasoningEfforts;
     if (!efforts?.length) return "";
     return efforts.some((option) => option.reasoningEffort === effort)
       ? effort
-      : (acp.models.find((option) => option.id === model)?.defaultReasoningEffort ?? "");
+      : (runtime.models.find((option) => option.id === model)?.defaultReasoningEffort ?? "");
   };
   const picker = (
     <AgentIntelligenceDropdown
@@ -170,26 +172,33 @@ export function AutomationModelPicker({
       agent={{ binding, label: agent.label }}
       selection={{
         kind: binding.kind,
-        model: isClaude ? intelligence.model : isAcp ? draft.model : draft.model || "default",
+        model: isClaude
+          ? intelligence.model
+          : usesRuntimeCatalog
+            ? draft.model
+            : draft.model || "default",
         reasoningEffort: isClaude
           ? intelligence.effort
-          : isAcp
+          : usesRuntimeCatalog
             ? draft.reasoningEffort || "default"
             : draft.reasoningEffort || "medium",
-        serviceTier: isClaude || isAcp ? null : normalizeCodexServiceTier(draft.serviceTier),
+        serviceTier:
+          isClaude || usesRuntimeCatalog ? null : normalizeCodexServiceTier(draft.serviceTier),
       }}
       onSelectionChange={(next, change) => {
         const model = change === "model" ? next.model : draft.model;
         onChange({
           ...draft,
           model,
-          reasoningEffort: isAcp ? acpEffort(model, next.reasoningEffort) : next.reasoningEffort,
-          serviceTier: isClaude || isAcp ? "" : (next.serviceTier ?? ""),
+          reasoningEffort: usesRuntimeCatalog
+            ? runtimeEffort(model, next.reasoningEffort)
+            : next.reasoningEffort,
+          serviceTier: isClaude || usesRuntimeCatalog ? "" : (next.serviceTier ?? ""),
         });
       }}
     />
   );
-  if (!isAcp || acp.loading || acp.discovered) return picker;
+  if (!usesRuntimeCatalog || runtime.loading || runtime.discovered) return picker;
   return (
     <span className="flex min-w-0 flex-col items-end gap-1">
       {picker}

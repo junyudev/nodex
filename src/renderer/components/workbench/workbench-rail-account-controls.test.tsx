@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexAccountSnapshot } from "@/lib/types";
-import type { ClaudeUsage } from "@/lib/use-claude-usage";
+import type { SubscriptionUsage } from "@/lib/use-subscription-usage";
 import { nodexAccountQueryKey } from "@/lib/nodex-account-runtime";
 import { installWindowApi } from "@/test/browser-globals";
 import { textContent } from "@/test/dom";
-import type { ClaudeUsageSnapshot } from "../../../shared/agent-runtime-api";
+import type { SubscriptionUsageSnapshot } from "../../../shared/agent-runtime-api";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
@@ -25,7 +25,7 @@ function renderRail(ui: ReactElement) {
   installWindowApi({
     invoke: async (channel: string) =>
       channel === "settings:usage-meters:get"
-        ? { claude: true, codex: true, nodexCredit: true }
+        ? { antigravity: true, claude: true, codex: true, nodexCredit: true }
         : channel === "spaces:list"
           ? []
           : snapshot,
@@ -89,7 +89,7 @@ function codexMeter(container: HTMLElement): HTMLElement {
 
 const HOUR = 60 * 60_000;
 
-type ClaudeProvider = NonNullable<ClaudeUsageSnapshot["providers"]>[number];
+type ClaudeProvider = NonNullable<SubscriptionUsageSnapshot["providers"]>[number];
 
 function claudeProvider(overrides: { readonly readAt?: number | null } = {}): ClaudeProvider {
   const readAt = overrides.readAt === undefined ? Date.now() - 2 * HOUR : overrides.readAt;
@@ -133,32 +133,38 @@ function claudeProvider(overrides: { readonly readAt?: number | null } = {}): Cl
   } as unknown as ClaudeProvider;
 }
 
-function claudeUsage(
-  snapshot: ClaudeUsageSnapshot,
-  overrides: Partial<Omit<ClaudeUsage, "snapshot">> = {},
-): ClaudeUsage {
+function subscriptionUsage(
+  snapshot: SubscriptionUsageSnapshot,
+  overrides: Partial<Omit<SubscriptionUsage, "snapshot">> = {},
+): SubscriptionUsage {
   return {
     snapshot,
     refresh: async () => snapshot,
-    logout: async () => snapshot,
+    logoutClaude: async () => snapshot,
     ...overrides,
   };
 }
 
-const readClaude = (providers: ClaudeUsageSnapshot["providers"]): ClaudeUsageSnapshot => ({
+const readUsage = (
+  providers: SubscriptionUsageSnapshot["providers"],
+): SubscriptionUsageSnapshot => ({
   status: "ready",
   providers,
   reason: null,
 });
 
-async function openCard(view: ReturnType<typeof renderRail>, meter: HTMLElement) {
+async function openCard(
+  view: ReturnType<typeof renderRail>,
+  meter: HTMLElement,
+  provider = "claude",
+) {
   await act(async () => {
     fireEvent.focus(meter);
     await Promise.resolve();
   });
   return waitFor(() => {
-    const found = view.container.ownerDocument.querySelector('[data-usage-card="claude"]');
-    if (!found) throw new Error("Expected the Claude usage card");
+    const found = view.container.ownerDocument.querySelector(`[data-usage-card="${provider}"]`);
+    if (!found) throw new Error(`Expected the ${provider} usage card`);
     return found;
   });
 }
@@ -437,7 +443,7 @@ describe("WorkbenchRailAccountControls", () => {
   test("reads Nodex, Codex, then Claude from the bottom up while accounts arrive", () => {
     const renderControls = (
       account: typeof signedOutAccount | null,
-      claude: ClaudeUsageSnapshot = { status: "loading", providers: null, reason: null },
+      claude: SubscriptionUsageSnapshot = { status: "loading", providers: null, reason: null },
     ) => (
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
@@ -450,7 +456,7 @@ describe("WorkbenchRailAccountControls", () => {
           onStartApiKeyLogin={async () => ({ type: "apiKey" })}
           onCancelLogin={async () => ({ status: "canceled" })}
           onLogout={async () => undefined}
-          claudeUsage={claudeUsage(claude)}
+          subscriptionUsage={subscriptionUsage(claude)}
         />
       </NodexTooltipProvider>
     );
@@ -466,9 +472,9 @@ describe("WorkbenchRailAccountControls", () => {
     ]);
 
     // Codex and the Nodex menu always hold the lowest slots, so Claude coming and going never moves them.
-    view.rerender(renderControls(signedOutAccount, readClaude([])));
+    view.rerender(renderControls(signedOutAccount, readUsage([])));
     expect(labels()).toEqual(["Sign in to Codex", "Spaces and settings"]);
-    view.rerender(renderControls(signedOutAccount, readClaude([claudeProvider()])));
+    view.rerender(renderControls(signedOutAccount, readUsage([claudeProvider()])));
     expect(labels()).toEqual([
       "Claude usage: 12% left in 5-hour window, read 2 h ago",
       "Sign in to Codex",
@@ -509,7 +515,7 @@ describe("WorkbenchRailAccountControls", () => {
     let codexRefreshes = 0;
     let claudeRefreshes = 0;
     const signedOut: (readonly string[])[] = [];
-    const snapshot = readClaude([claudeProvider()]);
+    const snapshot = readUsage([claudeProvider()]);
     const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
@@ -522,14 +528,14 @@ describe("WorkbenchRailAccountControls", () => {
             return authenticatedAccount;
           }}
           onLogout={async () => undefined}
-          claudeUsage={claudeUsage(snapshot, {
+          subscriptionUsage={subscriptionUsage(snapshot, {
             refresh: async () => {
               claudeRefreshes += 1;
               return snapshot;
             },
-            logout: async (instanceIds) => {
+            logoutClaude: async (instanceIds) => {
               signedOut.push(instanceIds);
-              return readClaude([]);
+              return readUsage([]);
             },
           })}
         />
@@ -573,7 +579,7 @@ describe("WorkbenchRailAccountControls", () => {
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           onOpenAccountSettings={() => undefined}
-          claudeUsage={claudeUsage({
+          subscriptionUsage={subscriptionUsage({
             status: "unavailable",
             providers: [claudeProvider()],
             reason: "Agent execution could not start",
@@ -595,7 +601,7 @@ describe("WorkbenchRailAccountControls", () => {
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           onOpenAccountSettings={() => undefined}
-          claudeUsage={claudeUsage(readClaude([claudeProvider({ readAt: null })]))}
+          subscriptionUsage={subscriptionUsage(readUsage([claudeProvider({ readAt: null })]))}
         />
       </NodexTooltipProvider>,
     );
@@ -609,20 +615,77 @@ describe("WorkbenchRailAccountControls", () => {
     expect(view.queryAllByRole("meter")).toHaveLength(0);
   });
 
-  test("holds the Claude slot while Main first reads it and asks again when that fails", async () => {
-    let retries = 0;
-    const loading: ClaudeUsageSnapshot = { status: "loading", providers: null, reason: null };
-    const failed: ClaudeUsageSnapshot = {
-      status: "unavailable",
-      providers: null,
-      reason: "Agent execution could not start",
+  test("shows one Antigravity quota card per Google account, with all windows and no sign-out action", async () => {
+    const reading = claudeProvider({ readAt: Date.now() });
+    const antigravity: ClaudeProvider = {
+      ...reading,
+      instanceId: "antigravity-a" as ClaudeProvider["instanceId"],
+      driver: "antigravity",
+      auth: { status: "authenticated", type: "oauth-personal" },
+      usageLimits: {
+        checkedAt: new Date().toISOString(),
+        credentialFingerprint: "google-a",
+        windows: [
+          {
+            id: "gemini-5h",
+            label: "Gemini · 5-hour",
+            kind: "session",
+            usedPercent: 55,
+            windowDurationMins: 300,
+          },
+          {
+            id: "3p-weekly",
+            label: "Claude & GPT (shared) · Weekly",
+            kind: "weekly",
+            usedPercent: 96,
+            windowDurationMins: 10080,
+          },
+        ],
+      },
     };
-    const controls = (snapshot: ClaudeUsageSnapshot) => (
+    const snapshot = readUsage([
+      antigravity,
+      { ...antigravity, instanceId: "antigravity-b" as ClaudeProvider["instanceId"] },
+      { ...antigravity, auth: { status: "authenticated", type: "agent-platform" } },
+    ]);
+    let refreshes = 0;
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           onOpenAccountSettings={() => undefined}
-          claudeUsage={claudeUsage(snapshot, {
+          subscriptionUsage={subscriptionUsage(snapshot, {
+            refresh: async () => {
+              refreshes++;
+              return snapshot;
+            },
+          })}
+        />
+      </NodexTooltipProvider>,
+    );
+    const meter = view.getByRole("button", { name: /Antigravity usage: 4% left/ });
+    const card = await openCard(view, meter, "antigravity");
+    expect(card.querySelectorAll('[role="meter"]')).toHaveLength(2);
+    expect(textContent(card)).toContain("Gemini · 5-hour");
+    expect(textContent(card)).toContain("Claude & GPT (shared) · Weekly");
+    expect(textContent(card)).not.toContain("Sign out");
+    await waitFor(() => expect(refreshes).toBe(1));
+  });
+
+  test("holds the Claude slot while Main first reads it and asks again when that fails", async () => {
+    let retries = 0;
+    const loading: SubscriptionUsageSnapshot = { status: "loading", providers: null, reason: null };
+    const failed: SubscriptionUsageSnapshot = {
+      status: "unavailable",
+      providers: null,
+      reason: "Agent execution could not start",
+    };
+    const controls = (snapshot: SubscriptionUsageSnapshot) => (
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
+          subscriptionUsage={subscriptionUsage(snapshot, {
             refresh: async () => {
               retries += 1;
               return snapshot;
@@ -646,7 +709,7 @@ describe("WorkbenchRailAccountControls", () => {
     await waitFor(() => expect(retries).toBe(1));
 
     // Once Main has read the Agents, a profile without a subscription shows nothing.
-    view.rerender(controls(readClaude([])));
+    view.rerender(controls(readUsage([])));
     expect(view.queryByRole("button", { name: /Claude usage/ })).toBe(null);
     expect(view.container.querySelector('[data-usage-meter="claude"]')).toBe(null);
   });

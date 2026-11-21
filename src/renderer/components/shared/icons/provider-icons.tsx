@@ -1,6 +1,5 @@
 import type { ComponentType } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
-import { localAgentByDefinitionId } from "../../../../shared/local-agents";
 import { isNodexProviderId } from "../../../../shared/nodex-models";
 import {
   providerKeyPresetOfInstanceId,
@@ -80,6 +79,7 @@ export function AgentProviderIcon({
 }: ProviderIconProps & { readonly kind: AgentBackendBinding["kind"] }) {
   if (kind === "codex") return <OpenAIIcon className={className} />;
   if (kind === "claude") return <ClaudeIcon className={className} />;
+  if (kind === "antigravity") return <AntigravityIcon className={className} />;
   if (kind === "opencode") return <OpenCodeIcon className={className} />;
   return <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />;
 }
@@ -118,7 +118,7 @@ export function ProviderKeyPresetsIcon({ className }: ProviderIconProps) {
 
 /**
  * The mark for one configured Agent: Nodex for credits, the provider's own for an API key, a
- * recognized Agent's for its ACP instance, and otherwise the runtime's.
+ * runtime's mark for every other Agent.
  */
 export function AgentInstanceIcon({
   binding,
@@ -133,9 +133,5 @@ export function AgentInstanceIcon({
     return <NodexLogoMarkIcon monochrome className={cn("size-4 shrink-0", className)} />;
   const preset = instanceId ? providerKeyPresetOfInstanceId(instanceId) : null;
   if (preset) return <ProviderKeyIcon preset={preset} className={className} />;
-  if (binding.kind === "acp" && binding.agentDefinitionId) {
-    const local = localAgentByDefinitionId(binding.agentDefinitionId);
-    if (local?.id === "antigravity") return <AntigravityIcon className={className} />;
-  }
   return <AgentProviderIcon kind={binding.kind} className={className} />;
 }

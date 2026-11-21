@@ -12,7 +12,7 @@ import {
   localPathPresentationContextQueryOptions,
   projectSessionDetailQueryOptions,
 } from "./query-options";
-import { useClaudeUsage } from "./use-claude-usage";
+import { useSubscriptionUsage } from "./use-subscription-usage";
 import { useMcpServerStatuses } from "./use-mcp-queries";
 import { useSidebarThreadSyncModel } from "./use-sidebar-thread-sync-model";
 import { searchChats } from "./chat-search";
@@ -25,7 +25,7 @@ const DESKTOP_EXECUTION = [
   "codex:composer-skills:list",
   "codex:mcp-server-statuses:list",
   "shell:path-context:get",
-  "agent-runtime:claude-usage:read",
+  "agent-runtime:subscription-usage:read",
   "remote-hosted-pip:snapshot",
   "git:repository:identity",
 ];
@@ -69,7 +69,7 @@ describe("a team Space window", () => {
     renderHook(
       () => {
         useSidebarThreadSyncModel({ projects: [] });
-        useClaudeUsage();
+        useSubscriptionUsage();
         useMcpServerStatuses();
         useQuery(codexComposerSkillsListQueryOptions(["/srv/repo"]));
         useQuery(localPathPresentationContextQueryOptions());
@@ -124,13 +124,13 @@ describe("a team Space window", () => {
         return () => undefined;
       },
     });
-    const { result } = renderHook(() => useClaudeUsage(), { wrapper });
+    const { result } = renderHook(() => useSubscriptionUsage(), { wrapper });
     await act(async () => {
       await Promise.resolve();
     });
     // The rail draws no Claude usage, not even a passing placeholder, in a team window.
     expect(result.current).toBeNull();
-    expect(subscribed).not.toContain("agent-runtime:claude-usage-changed");
+    expect(subscribed).not.toContain("agent-runtime:subscription-usage-changed");
     expect(calls).toEqual([]);
   });
 });

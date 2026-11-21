@@ -3,7 +3,7 @@
 ## Execution ownership
 
 New local Sessions execute through Agent Runtime with an explicit configured Provider.
-Codex is the default. Enabled Profile-local Claude Code, OpenCode and ACP instances
+Codex is the default. Enabled Profile-local Claude Code, OpenCode, Antigravity and ACP instances
 retain their own account, native history, models and configuration. A Session never
 silently falls back to another Provider when its selected instance is unavailable. A
 person can explicitly continue a started Session on another enabled Provider; its next
@@ -36,6 +36,12 @@ permission modes it enforces; native permission requests follow
 [Agent Permissions and Approvals](agent-permissions-behavior.md).
 
 ## Configuration and discovery
+
+The five backend identities are Codex, Claude Code, OpenCode, Antigravity and ACP.
+Antigravity has an explicit profile identity for conversations, attribution and Automations;
+it never falls through to ACP. Its profiles start empty, isolate each account's credentials,
+and obtain models from the account. Models default on; only OpenCode has an opt-in model
+policy. See [Antigravity configuration](../CONFIGURATION.md#antigravity-instances).
 
 Instances are configured per Profile. Executables, native profile directories and
 external endpoint credentials remain explicit inputs. Sensitive environment rows use

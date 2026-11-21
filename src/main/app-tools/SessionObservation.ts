@@ -1,3 +1,4 @@
+import { agentBackendKindOfRuntimeDriver } from "../../shared/agent-backend";
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
 import { historyResultBytes, HISTORY_READ_MAX_BYTES } from "@nodex/agent-runtime/history-read";
 import { createHash } from "node:crypto";
@@ -48,7 +49,7 @@ export interface SessionObservationResult {
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
-  readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
+  readonly backend: "codex" | "acp" | "claude" | "opencode" | "antigravity" | null;
   readonly agent: SessionAgent | null;
   readonly archived: boolean;
   readonly pinned: boolean;
@@ -128,9 +129,9 @@ const bindingOf = ({ session, thread }: AuthorizedSession) => ({
     : null,
 });
 const backendOf = (driver: string | null): SessionObservationResult["backend"] =>
-  driver === "codex" || driver === "claude" || driver === "opencode" || driver === "acp"
+  driver === "claude" || driver === "acp"
     ? driver
-    : null;
+    : agentBackendKindOfRuntimeDriver(driver ?? undefined);
 const dispositionOf = (
   status: string,
   flags: readonly string[],

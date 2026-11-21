@@ -460,7 +460,7 @@ export function AgentModelPickerView({
           ) : null}
           {setups.map((setup) => (
             <NodexDropdownActionRow
-              key={`${setup.kind}:${setup.label}`}
+              key={setup.instanceId ?? `${setup.kind}:${setup.label}`}
               className="items-center gap-1.5"
               disabled={pending}
               onClick={() => {

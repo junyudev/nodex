@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import {
+  ANTIGRAVITY_DEFAULT_MODEL,
+  type AgentRuntimeOperations,
+} from "@nodex/agent-runtime/contracts";
 import {
   DEFAULT_MODEL_POLICY,
   projectModelPolicyCatalog,
@@ -7,7 +10,9 @@ import {
 } from "../../shared/model-policy";
 import {
   defaultAgentRuntimeModelSelection,
+  agentRuntimeProviderBackendKind,
   requireAgentRuntimeModelSelection,
+  resolveAgentRuntimeChatModel,
 } from "./agent-runtime-model-selection";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
@@ -77,6 +82,32 @@ const nodex: Provider = {
   source: "nodex",
   displayName: "Nodex",
 };
+
+it("keeps an Antigravity model on its own backend and exact account", () => {
+  const google: Provider = {
+    ...provider,
+    instanceId: "antigravity_work",
+    driver: "antigravity",
+    displayName: "Google Work",
+    models: [{ ...provider.models[0]!, aliases: [ANTIGRAVITY_DEFAULT_MODEL] }],
+  };
+  expect(agentRuntimeProviderBackendKind(google)).toBe("antigravity");
+  expect(defaultAgentRuntimeModelSelection([google])).toMatchObject({
+    instanceId: "antigravity_work",
+  });
+  expect(resolveAgentRuntimeChatModel("antigravity", ANTIGRAVITY_DEFAULT_MODEL, google)).toBe(
+    "sol",
+  );
+  expect(
+    resolveAgentRuntimeChatModel("antigravity", ANTIGRAVITY_DEFAULT_MODEL, {
+      ...google,
+      models: [],
+    }),
+  ).toBe("");
+  expect(resolveAgentRuntimeChatModel("antigravity", "retired-model", google)).toBe(
+    "retired-model",
+  );
+});
 
 it("automatic composer defaults skip off models while a remembered off model remains an explicit refusal", () => {
   const providers = projectModelPolicyCatalog(

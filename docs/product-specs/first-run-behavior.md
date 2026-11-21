@@ -46,29 +46,22 @@ ready come first. Next come the ones already on this computer or in the Profile 
 step: a sign-in, a `Connect`, an update or another look. The ones that start from nothing come last.
 Rows take their places once every Agent has answered, or after three seconds when one is slow to
 answer, and from then on a row never moves under the pointer. An Agent that turns up later joins the
-end of its group. A row that takes over from another, such as a connected Agent from the one found on
-the computer, or a new API key above the way to add one, appears in its place.
+end of its group. A new API key appears above the way to add one without moving the existing rows.
 
 | Agent                      | Ready when                           | Otherwise offers                                                       |
 | -------------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
 | Codex                      | Its account is signed in             | `Sign in` with ChatGPT in the browser, or `Use API key`                |
 | Claude Code                | A profile is installed and signed in | `Sign in` in a Terminal under the row when found, or `Install`         |
 | Nodex credits              | Signed in with a credit to spend     | `Get started`, then top-up tiers. Absent from a build without accounts |
-| An Agent on this computer  | Connected, with its models known     | `Connect`, then its own `Sign in` under the row if it asks             |
+| Antigravity                | A profile is installed and signed in | `Set up` or `Sign in` opens Settings → Agents → Antigravity            |
 | An Agent added in Settings | Connected, with its models known     | `Connect`, or its own `Sign in` under the row                          |
 | API key                    | One row per connected key            | `Add key`, with the form under the row                                 |
 | OpenCode                   | A model is on                        | `Install`, then `Use free models`. Absent where it can't run           |
 
-Nodex recognizes Agents whose own command line can serve the Agent Client Protocol when they are
-installed, today Google Antigravity's `agy`. It looks on the desktop and login-shell PATHs and in
-common install locations, so an Agent is found however Nodex was opened, including when the shell's
-startup files can't be read. A found Agent shows its command and version, such as
-`Found on this computer · agy 1.5.4`. `Connect` adds an ordinary
-[ACP Agent](acp-agent-behavior.md#configuration-and-installation) that runs that command with its
-existing sign-in, so an Agent
-the person already uses is ready in one step. An Agent the Profile already runs, from the Registry
-or as a local command, is not offered again. A version too old to serve ACP is still shown, with the
-version it needs, such as `Found agy 1.4.9 · Update to 1.5.0 or newer to connect`.
+Antigravity's built-in row recognizes a downloaded runtime or an `agy` on this computer,
+including installations on the login-shell PATH. An older command stays visible with the version
+needed to connect. Set up and Sign in open Settings → Agents → Antigravity, where each profile
+connects its own account.
 
 An installed Agent that can't take a message says which of the things a person can act on went
 wrong, and its row always offers `Check again`:
@@ -88,8 +81,7 @@ MiniMax or another Anthropic-compatible endpoint, paste the key, and `Connect`. 
 with the provider before saving it and lists the provider's models; a refused key or an unreachable
 endpoint is said under the form, with focus on the field to fix. Nothing needs installing.
 
-Nodex never copies credentials: each Agent keeps its own sign-in, and the page says so. An API key is
-the one credential the person gives Nodex, and it is stored encrypted with the system keychain. Installing
+Nodex never copies credentials: each Agent keeps its own sign-in, and the page says so. Keys given to Nodex are stored encrypted with the system keychain. Installing
 Claude Code shows the vendor's own command first, and only `Run` starts it. OpenCode uses its existing
 [install dialog](agent-backend-behavior.md). Its row says plainly that the free models' providers may
 keep what is sent, and those models stay off until the person chooses them. Coming back to the window

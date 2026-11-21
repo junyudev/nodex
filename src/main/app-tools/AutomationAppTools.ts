@@ -92,6 +92,9 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           ...configured.openCodeAgents.instances
             .filter((instance) => instance.enabled)
             .map((instance) => ({ kind: "opencode" as const, instanceConfigId: instance.id })),
+          ...configured.antigravityAgents.instances
+            .filter((instance) => instance.enabled)
+            .map((instance) => ({ kind: "antigravity" as const, instanceConfigId: instance.id })),
           ...configured.acpAgents.instances
             .filter((instance) => instance.enabled)
             .map((instance) => ({

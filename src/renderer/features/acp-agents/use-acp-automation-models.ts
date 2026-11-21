@@ -6,11 +6,14 @@ import { projectAgentRuntimeModel } from "@/lib/agent-runtime-model-selection";
 import type { AgentRuntimeProvider } from "../local-conversation/agent-runtime-conversation-adapter";
 
 /**
- * An ACP instance's advertised models for a scheduled run, read from what the Runtime already
+ * An Agent profile's advertised models for a scheduled run, read from what the Runtime already
  * knows. Nothing is listed until a real connection reported them, and nothing is started here.
  */
 export const useAcpAutomationModels = (binding: AgentBackendBinding) => {
-  const providerId = binding.kind === "acp" ? agentRuntimeProviderId(binding) : null;
+  const providerId =
+    binding.kind === "acp" || binding.kind === "antigravity"
+      ? agentRuntimeProviderId(binding)
+      : null;
   const [state, setState] = useState<{
     readonly providerId: string;
     readonly provider: AgentRuntimeProvider | null;
@@ -35,11 +38,15 @@ export const useAcpAutomationModels = (binding: AgentBackendBinding) => {
     };
   }, [providerId]);
   const provider = state?.providerId === providerId ? state.provider : null;
+  const discovered =
+    binding.kind === "antigravity"
+      ? Boolean(provider?.models.length && provider.auth.status !== "unauthenticated")
+      : provider?.discovery?.status === "ready";
   return {
     loading: providerId !== null && state?.providerId !== providerId,
-    discovered: provider?.discovery?.status === "ready",
+    discovered,
     models:
-      provider?.discovery?.status === "ready"
+      provider && discovered
         ? provider.models.map((model) => projectAgentRuntimeModel(provider, model))
         : [],
   };

@@ -1,3 +1,4 @@
+import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -44,6 +45,7 @@ function FirstRunFlow({
   onStartNewChat,
 }: FirstRunOverlayProps) {
   const intl = useIntl();
+  const openAgentSettings = useAgentSettingsNavigation();
   const { state, goTo, finish } = useFirstRunState();
   const reducedMotion = useReducedMotion();
   const progress = useChatImportProgress();
@@ -179,7 +181,15 @@ function FirstRunFlow({
             transition={{ duration: 0.18, ease: "easeOut" }}
           >
             {step === "agents" ? (
-              <FirstRunAgentsStep entry={entry} onContinue={advance} />
+              <FirstRunAgentsStep
+                entry={entry}
+                onContinue={advance}
+                onOpenAgentSettings={() => {
+                  void close(async () => {
+                    openAgentSettings?.("antigravity");
+                  });
+                }}
+              />
             ) : (
               <FirstRunProjectsStep
                 projects={projects}

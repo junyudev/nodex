@@ -26,10 +26,9 @@ export const queryKeys = {
   /** The Profile's API key connections. */
   providerKeys: () => spaceQueryKey(["providerKeys"] as const),
   /** Agent command lines found on this computer. */
-  localAgents: () => spaceQueryKey(["localAgents"] as const),
   agentRuntime: {
     providers: () => spaceQueryKey(["agentRuntime", "providers"] as const),
-    claudeUsage: () => spaceQueryKey(["agentRuntime", "claudeUsage"] as const),
+    subscriptionUsage: () => spaceQueryKey(["agentRuntime", "subscriptionUsage"] as const),
     memberActionsAll: () => spaceQueryKey(["agentRuntime", "memberActions"] as const),
     memberActionsOf: (sessionId: string) =>
       spaceQueryKey(["agentRuntime", "memberActions", sessionId] as const),

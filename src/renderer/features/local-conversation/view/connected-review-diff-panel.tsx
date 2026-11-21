@@ -276,6 +276,7 @@ export function ConnectedReviewDiffPanel({
       (item) => item.id === projection.thread.activeProviderThreadId,
     )?.driver;
     if (driver === "claudeAgent") return "claude";
+    if (driver === "antigravity") return "antigravity";
     if (driver === "opencode") return "opencode";
     if (driver === "acpRegistry") return "acp";
     return "codex";

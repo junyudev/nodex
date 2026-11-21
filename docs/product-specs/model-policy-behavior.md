@@ -133,6 +133,11 @@ must not be treated as a complete list of affected chats.
 
 ## Native limits
 
+ACP Agents use the model selected for the chat. Native model controls are reserved for
+that selection. Antigravity's Default choice and legacy thinking variants use the
+corresponding advertised model's switch. Nodex checks the Agent's effective model again
+immediately before submitting a prompt, including when session preparation changes it.
+
 Claude receives a managed exact `availableModels` list and `enforceAvailableModels`.
 An off model is absent from the list, so turning off an older version leaves newer
 versions in the same family available. The installed SDK's local settings resolver

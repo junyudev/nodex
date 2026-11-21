@@ -12,7 +12,7 @@ import type { AgentModelCatalogPresentation } from "./agent-model-catalog-presen
 import { useAgentModelCatalog, type AgentIntelligenceMenu } from "./use-agent-intelligence-menu";
 
 export interface AgentIntelligenceSelection {
-  readonly kind: "codex" | "claude" | "acp" | "opencode";
+  readonly kind: "codex" | "claude" | "acp" | "opencode" | "antigravity";
   readonly model: string;
   readonly reasoningEffort: CodexReasoningEffort;
   readonly serviceTier: CodexServiceTier;

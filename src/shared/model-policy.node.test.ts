@@ -22,6 +22,7 @@ describe("Profile model policy", () => {
       expect(isModelOn(defaults, { ...native, driver }, "opencode/x")).toBe(false);
     }
     expect(isModelOn(defaults, credit, "new-model")).toBe(true);
+    expect(isModelOn(defaults, { ...native, driver: "antigravity" }, "gemini")).toBe(true);
   });
   it("turns on a provider's free models and nothing else", () => {
     const provider = {

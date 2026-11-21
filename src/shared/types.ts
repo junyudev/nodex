@@ -1710,6 +1710,11 @@ export type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "./opencode-agent-settings";
+export type {
+  AntigravityAgentInstanceConfig,
+  AntigravityAgentSettings,
+  UpdateAntigravityAgentSettingsInput,
+} from "./antigravity-agent-settings";
 
 export type {
   ClaudeAgentInstanceConfig,

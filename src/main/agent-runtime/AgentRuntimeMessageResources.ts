@@ -9,6 +9,9 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import { lookup as lookupMimeType } from "mime-types";
+import type { AgentRuntimeMessageUpload } from "../../shared/agent-runtime-api";
+import { readLocalFile } from "../ipc/handlers/file-local-import";
 
 type Resources = AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
 
@@ -22,6 +25,50 @@ export const make = Effect.fn("AgentRuntimeMessageResources.make")(function* () 
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   return {
+    localFiles: Effect.fn("AgentRuntimeMessageResources.localFiles")(function* (
+      uploads: readonly AgentRuntimeMessageUpload[],
+    ) {
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-message-files-" });
+      const unique = [...new Map(uploads.map((upload) => [upload.path, upload])).values()];
+      const resources: Resources[number][] = [];
+      for (const [index, upload] of unique.entries()) {
+        if (!path.isAbsolute(upload.path)) continue;
+        const mimeType = lookupMimeType(upload.path);
+        if (
+          !mimeType ||
+          !(
+            mimeType.startsWith("audio/") ||
+            mimeType.startsWith("text/") ||
+            mimeType === "application/pdf" ||
+            mimeType === "application/json" ||
+            mimeType === "application/xml"
+          )
+        )
+          continue;
+        const info = yield* fs.lstat(upload.path).pipe(Effect.option);
+        if (info._tag === "None" || info.value.type !== "File") continue;
+        const sizeBytes = Number(info.value.size);
+        if (sizeBytes < 1 || sizeBytes > PROVIDER_SEND_TURN_MAX_FILE_BYTES) continue;
+        const source = path.join(directory, String(index));
+        const name = path.basename(upload.name).slice(0, 255);
+        const limit = getProviderAttachmentLimitError(
+          [...resources, { name, mimeType, sizeBytes, source }].map((resource) => ({
+            ...resource,
+            type: "file" as const,
+          })),
+        );
+        if (limit) return yield* new MessageResourceError({ message: limit });
+        const bytes = yield* Effect.tryPromise({
+          try: () => readLocalFile(upload.path),
+          catch: (cause) => new MessageResourceError({ message: `Couldn’t read ${name}`, cause }),
+        });
+        if (bytes.byteLength !== sizeBytes)
+          return yield* new MessageResourceError({ message: `Attachment changed: ${name}` });
+        yield* fs.writeFile(source, bytes, { flag: "wx", mode: 0o400 });
+        resources.push({ name, mimeType, sizeBytes, source });
+      }
+      return resources;
+    }),
     materialize: Effect.fn("AgentRuntimeMessageResources.materialize")(function* (
       resources: Resources,
     ) {

@@ -678,3 +678,38 @@ test("leads its gear to Models when the catalog can, and setup rows to their Age
   await waitFor(() => expect(manageModels).toHaveBeenCalledOnce());
   expect(manage).not.toHaveBeenCalled();
 });
+
+test("opens setup for the chosen Antigravity profile without picking a model", async () => {
+  const work = vi.fn();
+  const personal = vi.fn();
+  const choose = vi.fn();
+  const view = renderWithMaitai(
+    <MenuPicker
+      catalog={presentation({
+        choose,
+        setups: [
+          {
+            kind: "antigravity",
+            instanceId: "antigravity_work",
+            label: "Antigravity work",
+            hint: "Sign in",
+            tone: "default",
+            action: { kind: "open", open: work },
+          },
+          {
+            kind: "antigravity",
+            instanceId: "antigravity_personal",
+            label: "Antigravity personal",
+            hint: "Install",
+            tone: "default",
+            action: { kind: "open", open: personal },
+          },
+        ],
+      })}
+    />,
+  );
+  await click(await view.findByRole("button", { name: "Antigravity work Sign in" }));
+  await waitFor(() => expect(work).toHaveBeenCalledOnce());
+  expect(personal).not.toHaveBeenCalled();
+  expect(choose).not.toHaveBeenCalled();
+});

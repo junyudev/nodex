@@ -1,18 +1,16 @@
 import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import type { AcpFailure, AcpOperations, AcpResult } from "../../../shared/acp-api";
+import type { AcpFailure, AcpOperations } from "../../../shared/acp-api";
 import type {
   AcpAgentInstanceConfig,
   AcpAgentInstanceInput,
 } from "../../../shared/acp-agent-settings";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { formatBytes } from "../../lib/file-metadata-format";
-import { readableIpcError } from "../../lib/ipc-error-message";
+import type { AgentAccountState } from "../../../shared/agent-accounts-api";
 
 export type AcpInspection = AcpOperations["acp.inspect"]["output"];
 export type AcpOperation = AcpOperations["acp.operation.read"]["output"];
-export type AcpAuthState = AcpOperations["acp.auth.read"]["output"];
-export type AcpAuthInteraction = NonNullable<AcpAuthState["interaction"]>;
 export type AcpRegistryAgent = AcpOperations["acp.registry.search"]["output"]["agents"][number];
 export type AcpInstallPreview = AcpOperations["acp.install.preview"]["output"];
 export type AcpNativeSessionPage = AcpOperations["acp.sessions.list"]["output"];
@@ -24,31 +22,10 @@ export type AcpDistribution = "binary" | "npx" | "uvx";
 export type AcpDistributionChoice = "auto" | AcpDistribution;
 export type AcpUrlAuthAction = NonNullable<AcpFailure["authAction"]>;
 
-/** A rejected IPC call loses its structure; only its readable reason remains. */
-export const describeAcpCause = (cause: unknown): string =>
-  readableIpcError(
-    cause,
-    getIntl().formatMessage({
-      id: "acpAgents.acpAgentModel.somethingWentWrong",
-      defaultMessage: "Something went wrong.",
-    }),
-  );
-
-/** Transport and programming failures become an `invalid_request` failure with their message. */
-export const transportFailure = (cause: unknown): AcpFailure => ({
-  reason: "invalid_request",
-  message: describeAcpCause(cause),
-});
-
-export const settle = async <Value>(
-  run: () => Promise<AcpResult<Value>>,
-): Promise<AcpResult<Value>> => {
-  try {
-    return await run();
-  } catch (cause) {
-    return { ok: false, error: transportFailure(cause) };
-  }
-};
+export {
+  describeAgentManagementCause as describeAcpCause,
+  settleAgentManagement as settle,
+} from "../../lib/agent-management-result";
 
 export const acpProviderId = (instance: Pick<AcpAgentInstanceConfig, "id" | "agentDefinitionId">) =>
   agentRuntimeProviderId({
@@ -437,7 +414,7 @@ export type AcpSignInMethod =
     };
 
 type AdvertisedMethod =
-  | NonNullable<AcpAuthState["methods"]>[number]
+  | NonNullable<AgentAccountState["methods"]>[number]
   | NonNullable<AcpFailure["authMethods"]>[number];
 
 /** Normalizes methods from an auth read or a failed connection; ACP env methods become rows. */
@@ -490,10 +467,6 @@ export const acpSignInActionLabel = (
           );
   }
 };
-
-const ACTIVE_AUTH_PHASES = new Set<AcpAuthState["phase"]>(["starting", "waiting", "verifying"]);
-export const isAcpAuthActive = (state: AcpAuthState | null | undefined): boolean =>
-  state !== null && state !== undefined && ACTIVE_AUTH_PHASES.has(state.phase);
 
 export type AcpProgress = NonNullable<AcpOperation["progress"]>;
 /** The final phase repeats the Installing status, so it adds no detail. */
@@ -1018,20 +991,6 @@ export const ACP_ADD_AGENT_ID = "acp-add-agent";
 /** Whether a Settings anchor points inside Other agents: at one instance or at Add agent. */
 export const isAcpAgentsAnchor = (anchor: string) =>
   anchor.startsWith(acpAgentAnchor("")) || anchor === ACP_ADD_AGENT_ID;
-
-/**
- * The Runtime sends a bounded tail of the sign-in transcript and the total characters written.
- * Returns what to append since `written`, or the whole tail after a gap the tail no longer covers.
- */
-export function acpTerminalDelta(
-  written: number,
-  output: string,
-  outputOffset: number,
-): { readonly reset: boolean; readonly data: string } {
-  const unseen = outputOffset - written;
-  if (unseen < 0 || unseen > output.length) return { reset: true, data: output };
-  return { reset: false, data: unseen === 0 ? "" : output.slice(output.length - unseen) };
-}
 
 interface ImportProjection {
   readonly thread: { readonly activeProviderThreadId: string | null } | null;

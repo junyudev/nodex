@@ -98,6 +98,29 @@ describe("Runtime subagent overview", () => {
       canInteract: false,
     });
   });
+  it("keeps an idle Antigravity batch openable without inferring a child outcome", () => {
+    const batch: AgentSubagentOverviewItem = {
+      ...task,
+      driver: "antigravity",
+      origin: "provider_native",
+      providerInstanceId: "antigravity_work",
+      status: "idle",
+    };
+    const updated = applyAgentRuntimeOverviewTask(
+      { active: page([{ ...batch, status: "running" }]), terminal: page([]) },
+      { ...batch, createdBy: "agent", nativeTaskRef: null, prompt: "", result: null },
+    );
+    expect(updated.active.items).toEqual([]);
+    expect(projectAgentRuntimeSubagentOverview("root", updated).done.rows[0]).toMatchObject({
+      threadId: "child",
+      canOpen: true,
+      canInteract: false,
+      canStop: false,
+      showInlineActivity: false,
+      statusSummary: "Idle",
+    });
+  });
+
   it("offers Stop on a subagent only to whoever may stop the Run that started it", () => {
     const live = { ...task, status: "running" as const, runId: "bob-run" };
     const bobMayStop = (runId: string | null) => runId === "bob-run";

@@ -442,6 +442,7 @@ export interface CodexCanonicalRuntimeNoticeItem {
 }
 
 export type CodexDelegatedTaskStatus =
+  | "idle"
   | "running"
   | "waiting"
   | "completed"

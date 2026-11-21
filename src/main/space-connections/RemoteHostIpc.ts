@@ -125,6 +125,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:thread:identity", (_, input) =>
       call<"agent-runtime:thread:identity">("thread_identity", input),
     );
+    yield* ipc.handleQuery("agent-runtime:session:native-child-work", (_, input) =>
+      call<"agent-runtime:session:native-child-work">("session_native_child_work", input),
+    );
     yield* ipc.handleQuery("agent-runtime:session:history", (_, input) =>
       call<"agent-runtime:session:history">("session_history", input),
     );

@@ -8,7 +8,7 @@ import {
 
 describe("Agent settings navigation", () => {
   it("opens the section of every Agent kind, and the ACP section at one instance", () => {
-    for (const kind of ["codex", "claude", "keys", "opencode", "acp"] as const) {
+    for (const kind of ["codex", "claude", "antigravity", "keys", "opencode", "acp"] as const) {
       expect(agentSettingsKindForAnchor(agentSettingsAnchor(kind))).toBe(kind);
     }
     const instance = agentSettingsAnchor("acp", "personal");
@@ -29,10 +29,17 @@ describe("Agent settings navigation", () => {
     expect(
       agentSettingsTarget({
         kind: "acp",
-        agentDefinitionId: "antigravity-acp",
+        agentDefinitionId: "custom-acp",
         instanceConfigId: "i1",
       }),
     ).toEqual({ kind: "acp", instanceId: "i1" });
+    expect(agentSettingsTarget({ kind: "antigravity", instanceConfigId: "work" })).toEqual({
+      kind: "antigravity",
+      instanceId: "work",
+    });
+    expect(agentSettingsKindForAnchor(agentSettingsAnchor("antigravity", "work"))).toBe(
+      "antigravity",
+    );
     expect(agentSettingsTarget({ kind: "claude", instanceConfigId: "work" })).toEqual({
       kind: "claude",
     });

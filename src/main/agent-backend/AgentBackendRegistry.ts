@@ -1,3 +1,4 @@
+import type { AntigravityAgentInstanceConfig } from "../../shared/antigravity-agent-settings";
 import type { OpenCodeAgentInstanceConfig } from "../../shared/opencode-agent-settings";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,6 +17,12 @@ export type AgentBackendResolution =
       readonly binding: Extract<AgentBackendBinding, { kind: "opencode" }>;
       readonly displayName: string;
       readonly instance: OpenCodeAgentInstanceConfig;
+    }
+  | {
+      readonly kind: "antigravity";
+      readonly binding: Extract<AgentBackendBinding, { kind: "antigravity" }>;
+      readonly displayName: string;
+      readonly instance: AntigravityAgentInstanceConfig;
     }
   | {
       readonly kind: "claude";
@@ -54,7 +61,7 @@ export class AgentBackendRegistryError extends Schema.TaggedError<AgentBackendRe
   {
     message: Schema.String,
     reason: AgentBackendRegistryFailureReason,
-    backendKind: Schema.Literals(["codex", "acp", "claude", "opencode"]),
+    backendKind: Schema.Literals(["codex", "acp", "claude", "opencode", "antigravity"]),
     agentDefinitionId: Schema.optionalKey(Schema.String),
     instanceConfigId: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
@@ -83,7 +90,10 @@ const unavailable = (
 /** Resolves supported metadata and explicit Profile configuration; it never starts a process. */
 export const resolveAgentBackendBinding = (
   binding: AgentBackendBinding,
-  settings: Pick<ApplicationSettingsSnapshot, "acpAgents" | "claudeAgents" | "openCodeAgents">,
+  settings: Pick<
+    ApplicationSettingsSnapshot,
+    "acpAgents" | "claudeAgents" | "openCodeAgents" | "antigravityAgents"
+  >,
 ): AgentBackendResolution | AgentBackendRegistryError => {
   if (binding.kind === "codex") {
     return { kind: "codex", binding, displayName: "Codex" };
@@ -107,6 +117,16 @@ export const resolveAgentBackendBinding = (
     if (!instance.enabled)
       return unavailable(binding, "instance-disabled", "OpenCode instance is disabled");
     return { kind: "opencode", binding, displayName: instance.displayName, instance };
+  }
+  if (binding.kind === "antigravity") {
+    const instance = settings.antigravityAgents.instances.find(
+      ({ id }) => id === binding.instanceConfigId,
+    );
+    if (!instance)
+      return unavailable(binding, "instance-unavailable", "Antigravity instance is unavailable");
+    if (!instance.enabled)
+      return unavailable(binding, "instance-disabled", "Antigravity instance is disabled");
+    return { kind: "antigravity", binding, displayName: instance.displayName, instance };
   }
   if (binding.instanceConfigId === null) {
     return unavailable(

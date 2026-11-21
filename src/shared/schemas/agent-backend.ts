@@ -1,11 +1,9 @@
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
 import { z } from "zod";
 import type { AgentBackendBinding } from "../agent-backend";
 
 // A new backend must supply a boundary decoder before it can become a durable binding.
-const runtimeInstanceId = z
-  .string()
-  .regex(/^[a-z][a-z0-9_-]{0,127}$/u)
-  .optional();
+const runtimeInstanceId = z.string().refine(isProviderInstanceId).optional();
 const variants = {
   codex: z.object({ kind: z.literal("codex"), runtimeInstanceId }).strict(),
   claude: z
@@ -18,6 +16,13 @@ const variants = {
   opencode: z
     .object({
       kind: z.literal("opencode"),
+      runtimeInstanceId,
+      instanceConfigId: z.string().trim().min(1).max(128),
+    })
+    .strict(),
+  antigravity: z
+    .object({
+      kind: z.literal("antigravity"),
       runtimeInstanceId,
       instanceConfigId: z.string().trim().min(1).max(128),
     })

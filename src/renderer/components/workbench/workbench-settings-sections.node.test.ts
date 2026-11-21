@@ -47,7 +47,7 @@ describe("settings section catalog", () => {
     });
     expect(resolveSettingsCommandTarget(settingsCommandId("agent"), "Gemini")).toEqual({
       sectionId: "agent",
-      anchor: "acp",
+      anchor: "antigravity",
     });
     expect(
       resolveSettingsCommandTarget(settingsCommandId("general-settings"), "Spellcheck"),

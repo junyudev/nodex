@@ -4,23 +4,23 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { IpcMainInvokeEvent } from "electron";
-import { ClaudeUsageLogoutSchema } from "../../../shared/schemas/agent-runtime-api";
-import { AgentRuntimeClaudeUsage } from "../../agent-runtime/AgentRuntimeClaudeUsage";
+import { SubscriptionUsageLogoutClaudeSchema } from "../../../shared/schemas/agent-runtime-api";
+import { AgentRuntimeSubscriptionUsage } from "../../agent-runtime/AgentRuntimeSubscriptionUsage";
 import { MainConfig } from "../../app/MainConfig";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { safeBroadcastToPersonalWindows } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
-export class ClaudeUsageIpcError extends Schema.TaggedError<ClaudeUsageIpcError>()(
-  "ClaudeUsageIpcError",
+export class SubscriptionUsageIpcError extends Schema.TaggedError<SubscriptionUsageIpcError>()(
+  "SubscriptionUsageIpcError",
   { operation: Schema.String, cause: Schema.optionalKey(Schema.Defect()) },
 ) {}
 
-/** Every window shows Main's one Claude usage snapshot and hears each change to it. */
+/** Every window shows Main's one subscription usage snapshot and hears each change to it. */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
-    const usage = yield* AgentRuntimeClaudeUsage;
+    const usage = yield* AgentRuntimeSubscriptionUsage;
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
@@ -36,37 +36,41 @@ export const live = Layer.effectDiscard(
               isMainFrame: event.senderFrame === event.sender.mainFrame,
             })
           )
-            throw new Error("Claude usage requires an active Nodex window");
+            throw new Error("Subscription usage requires an active Nodex window");
         },
-        catch: (cause) => new ClaudeUsageIpcError({ operation: "authorize", cause }),
+        catch: (cause) => new SubscriptionUsageIpcError({ operation: "authorize", cause }),
       });
     yield* SubscriptionRef.changes(usage.snapshot).pipe(
       Stream.runForEach((snapshot) =>
         Effect.sync(() =>
-          // This desktop's Claude accounts; a team window's Agents run on its Space host.
-          safeBroadcastToPersonalWindows(windows.all(), "agent-runtime:claude-usage-changed", [
-            snapshot,
-          ]),
+          // This desktop's subscription accounts; a team window's Agents run on its Space host.
+          safeBroadcastToPersonalWindows(
+            windows.all(),
+            "agent-runtime:subscription-usage-changed",
+            [snapshot],
+          ),
         ),
       ),
       Effect.forkScoped,
     );
-    yield* ipc.handleQuery("agent-runtime:claude-usage:read", (event) =>
+    yield* ipc.handleQuery("agent-runtime:subscription-usage:read", (event) =>
       authorize(event).pipe(Effect.andThen(SubscriptionRef.get(usage.snapshot))),
     );
-    yield* ipc.handleQuery("agent-runtime:claude-usage:refresh", (event) =>
+    yield* ipc.handleQuery("agent-runtime:subscription-usage:refresh", (event) =>
       authorize(event).pipe(Effect.andThen(usage.refresh)),
     );
-    yield* ipc.handlePlainCommand("agent-runtime:claude-usage:logout", (event, input) =>
-      authorize(event).pipe(
-        Effect.andThen(
-          Effect.try({
-            try: () => ClaudeUsageLogoutSchema.parse(input),
-            catch: (cause) => new ClaudeUsageIpcError({ operation: "input", cause }),
-          }),
+    yield* ipc.handlePlainCommand(
+      "agent-runtime:subscription-usage:logout-claude",
+      (event, input) =>
+        authorize(event).pipe(
+          Effect.andThen(
+            Effect.try({
+              try: () => SubscriptionUsageLogoutClaudeSchema.parse(input),
+              catch: (cause) => new SubscriptionUsageIpcError({ operation: "input", cause }),
+            }),
+          ),
+          Effect.flatMap((parsed) => usage.logoutClaude(parsed.instanceIds)),
         ),
-        Effect.flatMap((parsed) => usage.logout(parsed.instanceIds)),
-      ),
     );
   }),
 );

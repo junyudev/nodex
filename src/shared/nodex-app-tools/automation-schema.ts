@@ -80,6 +80,7 @@ const definitionFields = {
       z.strictObject({ kind: z.literal("codex") }),
       z.strictObject({ kind: z.literal("claude"), instanceConfigId: id }),
       z.strictObject({ kind: z.literal("opencode"), instanceConfigId: id }),
+      z.strictObject({ kind: z.literal("antigravity"), instanceConfigId: id }),
       z.strictObject({ kind: z.literal("acp"), agentDefinitionId: id, instanceConfigId: id }),
     ])
     .optional()

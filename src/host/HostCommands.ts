@@ -68,6 +68,10 @@ export const executeHostCommand = (
         return yield* sessions.identify(
           Inputs.AgentRuntimeThreadIdentitySchema.parse(input).threadId,
         );
+      case "session_native_child_work":
+        return yield* sessions.nativeChildWork(
+          Inputs.AgentRuntimeNativeChildWorkSchema.parse(input),
+        );
       case "session_history":
         return yield* sessions.history(Inputs.AgentRuntimeHistorySchema.parse(input));
       case "session_message":

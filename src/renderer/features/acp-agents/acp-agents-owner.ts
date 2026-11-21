@@ -1,5 +1,10 @@
+import { agentAccountsRuntime, type AgentAccountsRuntime } from "../../lib/agent-accounts-runtime";
+import {
+  createAgentAccountOwner,
+  type AgentAccountOwner,
+} from "../agent-account/agent-account-owner";
 import { getIntl } from "@/lib/i18n";
-import type { AcpFailure, AcpResult } from "../../../shared/acp-api";
+import type { AcpResult } from "../../../shared/acp-api";
 import type {
   AcpAgentConfigurationStatus,
   AcpAgentInstanceInput,
@@ -11,10 +16,8 @@ import {
   acpProviderDiscovered,
   acpProviderId,
   describeAcpCause,
-  isAcpAuthActive,
   settle,
   type AcpActivity,
-  type AcpAuthState,
   type AcpDistributionChoice,
   type AcpInspectionState,
   type AcpInstallPreview,
@@ -27,16 +30,6 @@ import {
 
 type AcpRegistrySearch = { readonly agents: readonly AcpRegistryAgent[] };
 
-export interface AcpAuthView {
-  /** The latest flow state from the Runtime; null until the first read answers. */
-  readonly state: AcpAuthState | null;
-  readonly request: "read" | "start" | "respond" | "cancel" | "sign-out" | null;
-  readonly failure: {
-    readonly failure: AcpFailure;
-    readonly context: "sign-in" | "sign-out";
-  } | null;
-}
-
 export interface AcpAgentsSnapshot {
   readonly settings: AcpAgentSettings | null;
   readonly loadError: string | null;
@@ -48,7 +41,6 @@ export interface AcpAgentsSnapshot {
   readonly providers: ReadonlyMap<string, AcpProviderSnapshot>;
   readonly inspections: ReadonlyMap<string, AcpInspectionState>;
   readonly activities: ReadonlyMap<string, AcpActivity>;
-  readonly auth: ReadonlyMap<string, AcpAuthView>;
 }
 
 export type AcpSaveOutcome =
@@ -95,20 +87,11 @@ export interface AcpAgentsOwner {
    * Runtime briefly reserves them; that refusal names no chats and is retried a few times.
    */
   readonly uninstall: (agentId: string) => Promise<AcpResult<unknown>>;
-  readonly readAuth: (instanceId: string) => void;
-  readonly signIn: (instanceId: string, methodId?: string) => void;
-  readonly respondBrowser: (instanceId: string, accept: boolean) => Promise<boolean>;
-  readonly submitCredentials: (instanceId: string, values: Record<string, string>) => void;
-  readonly terminalInput: (instanceId: string, data: string) => void;
-  readonly terminalResize: (instanceId: string, size: { cols: number; rows: number }) => void;
-  readonly cancelSignIn: (instanceId: string) => void;
-  readonly signOut: (instanceId: string) => void;
+  readonly account: (instanceId: string) => AgentAccountOwner;
   readonly acceptUrlAuth: (
     instanceId: string,
     elicitationId: string,
   ) => Promise<AcpResult<boolean>>;
-  /** A mounted sign-in surface. Releasing the last one cancels its active flow. */
-  readonly retainAuth: (instanceId: string) => () => void;
   /** Passive catalog reads; neither installs nor starts an Agent. */
   readonly search: (query: string) => Promise<AcpResult<AcpRegistrySearch>>;
   readonly previewInstall: (
@@ -151,28 +134,11 @@ interface JournalEntry {
 }
 
 const OPERATION_POLL_MS = 500;
-const AUTH_POLL_MS = 300;
-const TERMINAL_CHUNK = 4_096;
 /** The Runtime's post-install reservation is bounded; four tries span it. */
 const UNINSTALL_ATTEMPTS = 4;
 const UNINSTALL_RETRY_MS = 10_000;
 /** Pending changes apply as soon as the Agent goes idle; a failed reconcile retries slower. */
 const CONFIGURATION_POLL_MS = { deferred: 2_000, failed: 10_000 } as const;
-
-interface TerminalChunk {
-  readonly flowId: string;
-  readonly interactionId: string;
-  readonly data: string;
-}
-
-/** Per-instance sign-in control: a new intent advances the epoch and fences older answers. */
-interface AuthControl {
-  epoch: number;
-  queue: TerminalChunk[];
-  sending: boolean;
-  /** The flow this window started; only its success counts as a new sign-in. */
-  startedFlowId: string | null;
-}
 
 const sameInput = (left: AcpAgentInstanceInput, right: AcpAgentInstanceInput) =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -186,7 +152,6 @@ const EMPTY_SNAPSHOT: AcpAgentsSnapshot = {
   providers: new Map(),
   inspections: new Map(),
   activities: new Map(),
-  auth: new Map(),
 };
 
 const withEntry = <Key, Value>(
@@ -208,6 +173,7 @@ const withEntry = <Key, Value>(
  */
 export function createAcpAgentsOwner(input: {
   readonly runtime: AcpAgentsRuntime;
+  readonly accountRuntime?: AgentAccountsRuntime;
   readonly subscribeChanges: (listener: () => void) => () => void;
   readonly journal: AcpOperationJournal;
   readonly createId?: () => string;
@@ -222,8 +188,7 @@ export function createAcpAgentsOwner(input: {
   let refreshAgain = false;
   let saveChain: Promise<unknown> = Promise.resolve();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const authViewers = new Map<string, number>();
-  const authControls = new Map<string, AuthControl>();
+  const accounts = new Map<string, AgentAccountOwner>();
   let journalEntries: JournalEntry[] = readJournal();
 
   function readJournal(): JournalEntry[] {
@@ -249,16 +214,6 @@ export function createAcpAgentsOwner(input: {
   };
   const setActivity = (instanceId: string, activity: AcpActivity | undefined) =>
     publish({ activities: withEntry(snapshot.activities, instanceId, activity) });
-  const patchAuth = (instanceId: string, patch: Partial<AcpAuthView>) =>
-    publish({
-      auth: withEntry(snapshot.auth, instanceId, {
-        state: null,
-        request: null,
-        failure: null,
-        ...snapshot.auth.get(instanceId),
-        ...patch,
-      }),
-    });
   const instanceOf = (instanceId: string) =>
     snapshot.settings?.instances.find((entry) => entry.id === instanceId);
 
@@ -296,13 +251,13 @@ export function createAcpAgentsOwner(input: {
     const ids = new Set(settings.instances.map(({ id }) => id));
     const keep = <Value>(map: ReadonlyMap<string, Value>) =>
       new Map([...map].filter(([id]) => ids.has(id)));
+    for (const id of accounts.keys()) if (!ids.has(id)) accounts.delete(id);
     publish({
       settings,
       loadError: null,
       inspections: keep(snapshot.inspections),
       providers: keep(snapshot.providers),
       activities: keep(snapshot.activities),
-      auth: keep(snapshot.auth),
       deferred: new Set([...snapshot.deferred].filter((id) => ids.has(id))),
     });
   };
@@ -589,202 +544,31 @@ export function createAcpAgentsOwner(input: {
     );
   };
 
-  // Auth flows -------------------------------------------------------------------------------
-
-  const authControl = (instanceId: string) => {
-    let control = authControls.get(instanceId);
-    if (!control) {
-      control = { epoch: 0, queue: [], sending: false, startedFlowId: null };
-      authControls.set(instanceId, control);
-    }
-    return control;
-  };
-  /** Starts a new intent: older answers, polls and typed input no longer apply. */
-  const supersede = (instanceId: string) => {
-    const control = authControl(instanceId);
-    control.epoch += 1;
-    control.queue = [];
-    control.startedFlowId = null;
-    clearTimer(`auth:${instanceId}`);
-    return control.epoch;
-  };
-  const currentFlowId = (instanceId: string) => {
-    const state = snapshot.auth.get(instanceId)?.state;
-    return state && isAcpAuthActive(state) ? state.flowId : null;
-  };
-  /** A flow nobody is looking at any more, such as one whose start returned after closing. */
-  const cancelOrphan = (instanceId: string, state: AcpAuthState) => {
-    if (!state.flowId || !isAcpAuthActive(state) || state.flowId === currentFlowId(instanceId))
-      return;
-    void settle(() => runtime.cancelAuth({ instanceId, flowId: state.flowId! }));
-  };
-
-  const admitAuth = (instanceId: string, state: AcpAuthState, request: AcpAuthView["request"]) => {
-    const previous = snapshot.auth.get(instanceId)?.state;
-    patchAuth(instanceId, { state, request, failure: null });
-    if (isAcpAuthActive(state)) {
-      const epoch = authControl(instanceId).epoch;
-      schedule(`auth:${instanceId}`, AUTH_POLL_MS, () => void pollAuth(instanceId, epoch));
-    } else {
-      clearTimer(`auth:${instanceId}`);
-      authControl(instanceId).queue = [];
-    }
-    // A passive read can report an earlier flow's success; only the flow started here is news.
-    const control = authControl(instanceId);
-    const completedHere =
-      state.phase === "succeeded" &&
-      state.flowId !== null &&
-      state.flowId === control.startedFlowId &&
-      previous?.phase !== "succeeded";
-    if (completedHere) {
-      control.startedFlowId = null;
-      // Verified sign-in answers the Connect that asked for it; other failures stay current.
-      const activity = snapshot.activities.get(instanceId);
-      const answered =
-        activity?.phase === "failed" && activity.failure?.reason === "authentication_failed";
-      if (answered) setActivity(instanceId, undefined);
-      void readInspection(instanceId);
-      // Signing in was the step before using the Agent: read its models unless already known.
-      void readProviders().then(() => {
-        const provider = snapshot.providers.get(instanceId);
-        const current = snapshot.activities.get(instanceId);
-        // A live operation or an unrelated failure keeps its place.
-        if (current && current.phase !== "succeeded") return;
-        if (!provider || !acpProviderDiscovered(provider)) connect(instanceId);
-      });
-    }
-  };
-  /**
-   * A failed read or answer means the flow this view shows can't continue (it expired, the
-   * configuration changed, or the request was refused). The view settles so sign-in can start
-   * again; a flow the Runtime may still hold is cancelled rather than left without a surface.
-   */
-  const failAuth = (
-    instanceId: string,
-    failure: AcpFailure,
-    context: "sign-in" | "sign-out" = "sign-in",
-  ) => {
-    const state = snapshot.auth.get(instanceId)?.state ?? null;
-    if (!state || !isAcpAuthActive(state)) {
-      patchAuth(instanceId, { request: null, failure: { failure, context } });
-      return;
-    }
-    const flowId = state.flowId;
-    supersede(instanceId);
-    patchAuth(instanceId, {
-      state: {
-        ...state,
-        phase: "failed",
-        flowId: null,
-        interaction: null,
-        message: null,
-        cancellable: false,
+  const account = (instanceId: string) => {
+    const existing = accounts.get(instanceId);
+    if (existing) return existing;
+    const created = createAgentAccountOwner({
+      backend: { kind: "acp", instanceConfigId: instanceId },
+      runtime: input.accountRuntime ?? agentAccountsRuntime,
+      onSignedIn: () => {
+        const activity = snapshot.activities.get(instanceId);
+        if (activity?.phase === "failed" && activity.failure?.reason === "authentication_failed")
+          setActivity(instanceId, undefined);
+        void readInspection(instanceId);
+        void readProviders().then(() => {
+          const provider = snapshot.providers.get(instanceId);
+          const current = snapshot.activities.get(instanceId);
+          if (current && current.phase !== "succeeded") return;
+          if (!provider || !acpProviderDiscovered(provider)) connect(instanceId);
+        });
       },
-      request: null,
-      failure: { failure, context },
+      onSignedOut: () => {
+        void readProviders();
+        void readInspection(instanceId);
+      },
     });
-    if (flowId && failure.reason !== "operation_expired")
-      void settle(() => runtime.cancelAuth({ instanceId, flowId }));
-  };
-
-  const pollAuth = async (instanceId: string, epoch: number) => {
-    const result = await settle(() => runtime.readAuth({ instanceId }));
-    if (authControl(instanceId).epoch !== epoch || !snapshot.auth.has(instanceId)) return;
-    if (result.ok)
-      admitAuth(instanceId, result.value, snapshot.auth.get(instanceId)?.request ?? null);
-    else failAuth(instanceId, result.error);
-  };
-
-  /**
-   * Runs one sign-in request. A superseding request (start, cancel, sign-out) begins a new
-   * intent; any answer that returns after a newer intent began is discarded, and a flow it
-   * started is cancelled so no terminal or browser wait outlives its surface.
-   */
-  const authRequest = async (
-    instanceId: string,
-    request: NonNullable<AcpAuthView["request"]>,
-    run: () => Promise<AcpResult<AcpAuthState>>,
-    options: { readonly supersedes: boolean; readonly context?: "sign-in" | "sign-out" },
-  ): Promise<boolean> => {
-    const epoch = options.supersedes ? supersede(instanceId) : authControl(instanceId).epoch;
-    patchAuth(instanceId, { request, failure: null });
-    const result = await settle(run);
-    if (authControl(instanceId).epoch !== epoch) {
-      if (result.ok) cancelOrphan(instanceId, result.value);
-      return false;
-    }
-    if (result.ok) {
-      if (request === "start") authControl(instanceId).startedFlowId = result.value.flowId;
-      admitAuth(instanceId, result.value, null);
-    } else failAuth(instanceId, result.error, options.context ?? "sign-in");
-    return result.ok;
-  };
-
-  const flowOf = (instanceId: string) => {
-    const state = snapshot.auth.get(instanceId)?.state;
-    return state?.flowId && state.interaction && isAcpAuthActive(state)
-      ? { flowId: state.flowId, interactionId: state.interaction.id }
-      : null;
-  };
-
-  /** Sends typed input in order, each chunk only to the interaction that received it. */
-  const flushTerminal = async (instanceId: string) => {
-    const control = authControl(instanceId);
-    if (control.sending) return;
-    control.sending = true;
-    try {
-      for (;;) {
-        const chunk = control.queue.shift();
-        if (!chunk) break;
-        const flow = flowOf(instanceId);
-        if (flow?.flowId !== chunk.flowId || flow.interactionId !== chunk.interactionId) {
-          control.queue = control.queue.filter((entry) => entry.flowId !== chunk.flowId);
-          continue;
-        }
-        const epoch = control.epoch;
-        const result = await settle(() =>
-          runtime.respondAuth({
-            instanceId,
-            flowId: chunk.flowId,
-            interactionId: chunk.interactionId,
-            response: { type: "terminal", data: chunk.data },
-          }),
-        );
-        if (control.epoch !== epoch) continue;
-        if (!result.ok) {
-          control.queue = [];
-          failAuth(instanceId, result.error);
-          break;
-        }
-        admitAuth(instanceId, result.value, snapshot.auth.get(instanceId)?.request ?? null);
-      }
-    } finally {
-      control.sending = false;
-    }
-  };
-
-  const cancelSignIn = (instanceId: string) => {
-    const view = snapshot.auth.get(instanceId);
-    const flowId = currentFlowId(instanceId);
-    if (!flowId) {
-      // A start still on its way is abandoned; its flow is cancelled when it arrives.
-      if (view?.request === "start") {
-        supersede(instanceId);
-        patchAuth(instanceId, { request: null });
-      }
-      return;
-    }
-    void authRequest(instanceId, "cancel", () => runtime.cancelAuth({ instanceId, flowId }), {
-      supersedes: true,
-    });
-  };
-
-  /** The last sign-in surface closed: end its flow and forget the view, so reopening reads fresh. */
-  const closeAuth = (instanceId: string) => {
-    const flowId = currentFlowId(instanceId);
-    supersede(instanceId);
-    publish({ auth: withEntry(snapshot.auth, instanceId, undefined) });
-    if (flowId) void settle(() => runtime.cancelAuth({ instanceId, flowId }));
+    accounts.set(instanceId, created);
+    return created;
   };
 
   return {
@@ -874,96 +658,10 @@ export function createAcpAgentsOwner(input: {
             void readInspection(instance.id);
       return result;
     },
-    readAuth: (instanceId) => {
-      if (snapshot.auth.get(instanceId)?.request) return;
-      void authRequest(instanceId, "read", () => runtime.readAuth({ instanceId }), {
-        supersedes: false,
-      });
-    },
-    signIn: (instanceId, methodId) => {
-      const view = snapshot.auth.get(instanceId);
-      if (view?.request === "start" || isAcpAuthActive(view?.state)) return;
-      void authRequest(
-        instanceId,
-        "start",
-        () => runtime.startAuth({ instanceId, ...(methodId ? { methodId } : {}) }),
-        { supersedes: true },
-      );
-    },
-    respondBrowser: async (instanceId, accept) => {
-      const flow = flowOf(instanceId);
-      if (!flow) return false;
-      return authRequest(
-        instanceId,
-        "respond",
-        () =>
-          runtime.respondAuth({
-            instanceId,
-            ...flow,
-            response: { type: "browser", action: accept ? "accept" : "decline" },
-          }),
-        { supersedes: false },
-      );
-    },
-    submitCredentials: (instanceId, values) => {
-      const flow = flowOf(instanceId);
-      if (!flow) return;
-      void authRequest(
-        instanceId,
-        "respond",
-        () =>
-          runtime.respondAuth({ instanceId, ...flow, response: { type: "credentials", values } }),
-        { supersedes: false },
-      );
-    },
-    terminalInput: (instanceId, data) => {
-      const flow = flowOf(instanceId);
-      if (!flow) return;
-      const control = authControl(instanceId);
-      for (let offset = 0; offset < data.length; offset += TERMINAL_CHUNK)
-        control.queue.push({ ...flow, data: data.slice(offset, offset + TERMINAL_CHUNK) });
-      void flushTerminal(instanceId);
-    },
-    terminalResize: (instanceId, size) => {
-      const flow = flowOf(instanceId);
-      if (!flow) return;
-      void settle(() =>
-        runtime.respondAuth({
-          instanceId,
-          ...flow,
-          response: { type: "terminal", data: "", size },
-        }),
-      );
-    },
-    cancelSignIn,
-    signOut: (instanceId) => {
-      void authRequest(instanceId, "sign-out", () => runtime.logout({ instanceId }), {
-        supersedes: true,
-        context: "sign-out",
-      }).then((ok) => {
-        if (!ok) return;
-        void readProviders();
-        void readInspection(instanceId);
-      });
-    },
+    account,
     acceptUrlAuth: async (instanceId, elicitationId) => {
       const result = await settle(() => runtime.acceptUrlAuth({ instanceId, elicitationId }));
       return result.ok ? { ok: true, value: result.value.accepted } : result;
-    },
-    retainAuth: (instanceId) => {
-      authViewers.set(instanceId, (authViewers.get(instanceId) ?? 0) + 1);
-      let retained = true;
-      return () => {
-        if (!retained) return;
-        retained = false;
-        const remaining = (authViewers.get(instanceId) ?? 1) - 1;
-        if (remaining > 0) {
-          authViewers.set(instanceId, remaining);
-          return;
-        }
-        authViewers.delete(instanceId);
-        closeAuth(instanceId);
-      };
     },
     search: (query) => settle(() => runtime.search({ query })),
     previewInstall: (agentId, distribution) =>

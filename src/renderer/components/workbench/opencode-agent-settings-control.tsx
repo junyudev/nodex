@@ -79,8 +79,7 @@ export function OpenCodeAgentSettingsControl({
       })}
       runtime={runtime}
       createInstance={createInstance}
-      environmentPolicy={OPENCODE_ENVIRONMENT_POLICY}
-      environmentSuggestions={environmentSuggestions}
+      environment={{ policy: OPENCODE_ENVIRONMENT_POLICY, suggestions: environmentSuggestions }}
       // Host status describes a saved local default that the unsaved draft still keeps; custom
       // paths, servers and an explicit PATH own their resolution.
       executableStatus={({ saved, draft, environment }) =>

@@ -9,6 +9,7 @@ const HARNESS_NAMES: Record<AgentBackendKind, string | null> = {
   codex: "Codex",
   claude: "Claude Code",
   opencode: "OpenCode",
+  antigravity: "Antigravity",
   acp: null,
 };
 

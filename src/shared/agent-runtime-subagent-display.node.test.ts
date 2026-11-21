@@ -1,7 +1,30 @@
 import { describe, expect, test } from "vite-plus/test";
-import { projectAgentRuntimeSubagentDisplay } from "./agent-runtime-subagent-display";
+import {
+  agentRuntimeSubagentAgent,
+  projectAgentRuntimeSubagentDisplay,
+} from "./agent-runtime-subagent-display";
 
 describe("Runtime subagent display names", () => {
+  test("attributes Antigravity child work to its own harness and native thinking option", () => {
+    expect(
+      agentRuntimeSubagentAgent({
+        driver: "antigravity",
+        providerInstanceId: "google",
+        model: "gemini",
+        modelSelection: {
+          instanceId: "google",
+          model: "gemini",
+          options: [{ id: "thought_level", value: "high" }],
+        },
+      }),
+    ).toEqual({
+      kind: "antigravity",
+      providerInstanceId: "google",
+      model: "gemini",
+      effort: "high",
+    });
+  });
+
   test("presents the last native path segment and retains the complete path", () => {
     expect(
       projectAgentRuntimeSubagentDisplay({

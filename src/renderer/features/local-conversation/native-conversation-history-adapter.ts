@@ -88,7 +88,14 @@ export function useNativeConversationHistoryAdapter(input: {
   );
   const provider: ConversationProviderPresentation = {
     kind: backend,
-    label: backend === "claude" ? "Claude" : backend === "opencode" ? "OpenCode" : "ACP",
+    label:
+      backend === "claude"
+        ? "Claude"
+        : backend === "opencode"
+          ? "OpenCode"
+          : backend === "antigravity"
+            ? "Antigravity"
+            : "ACP",
     selection: backend,
     commands: [],
     notice: state.error

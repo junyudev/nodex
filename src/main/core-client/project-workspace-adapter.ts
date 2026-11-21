@@ -75,7 +75,7 @@ export const projectAgentBackendBindingFromCore = (
 ): AgentBackendBinding =>
   binding.kind === "codex"
     ? { kind: "codex" }
-    : binding.kind === "claude" || binding.kind === "opencode"
+    : binding.kind === "claude" || binding.kind === "opencode" || binding.kind === "antigravity"
       ? { kind: binding.kind, instanceConfigId: binding.instance_config_id }
       : {
           kind: "acp",
@@ -86,7 +86,7 @@ export const projectAgentBackendBindingFromCore = (
 export const projectAgentBackendBindingToCore = (binding: AgentBackendBinding) =>
   binding.kind === "codex"
     ? { kind: "codex" as const }
-    : binding.kind === "claude" || binding.kind === "opencode"
+    : binding.kind === "claude" || binding.kind === "opencode" || binding.kind === "antigravity"
       ? { kind: binding.kind, instance_config_id: binding.instanceConfigId }
       : {
           kind: "acp" as const,

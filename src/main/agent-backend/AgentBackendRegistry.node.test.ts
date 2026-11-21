@@ -25,6 +25,7 @@ describe("AgentBackendRegistry", () => {
       resolveAgentBackendBinding(
         { kind: "codex" },
         {
+          antigravityAgents: { instances: [] },
           openCodeAgents: { instances: [] },
           claudeAgents: { instances: [] },
           acpAgents: { instances: [] },
@@ -37,6 +38,41 @@ describe("AgentBackendRegistry", () => {
     });
   });
 
+  it("resolves Antigravity only through its own enabled profile", () => {
+    const binding = { kind: "antigravity" as const, instanceConfigId: "work" };
+    const profile = {
+      id: "work",
+      displayName: "Work account",
+      enabled: true,
+      authMethod: "oauth-personal" as const,
+      apiKey: null,
+      hasApiKey: false,
+      binaryPath: "",
+      gcpProject: "",
+      gcpLocation: "",
+    };
+    const settings = {
+      antigravityAgents: { instances: [profile] },
+      claudeAgents: { instances: [] },
+      openCodeAgents: { instances: [] },
+      acpAgents: { instances: [] },
+    };
+    expect(resolveAgentBackendBinding(binding, settings)).toMatchObject({
+      kind: "antigravity",
+      displayName: "Work account",
+      binding,
+    });
+    expect(
+      resolveAgentBackendBinding(binding, {
+        ...settings,
+        antigravityAgents: { instances: [{ ...profile, enabled: false }] },
+      }),
+    ).toMatchObject({ reason: "instance-disabled" });
+    expect(
+      resolveAgentBackendBinding({ ...binding, instanceConfigId: "missing" }, settings),
+    ).toMatchObject({ reason: "instance-unavailable" });
+  });
+
   it("resolves a supported ACP definition only through its enabled matching instance", () => {
     const resolved = resolveAgentBackendBinding(
       {
@@ -45,6 +81,7 @@ describe("AgentBackendRegistry", () => {
         instanceConfigId: "claude-work",
       },
       {
+        antigravityAgents: { instances: [] },
         openCodeAgents: { instances: [] },
         claudeAgents: { instances: [] },
         acpAgents: { instances: [instance()] },
@@ -64,6 +101,7 @@ describe("AgentBackendRegistry", () => {
 
   it("accepts arbitrary ACP Agents and keeps instances with identical model names distinct", () => {
     const settings = {
+      antigravityAgents: { instances: [] },
       openCodeAgents: { instances: [] },
       claudeAgents: { instances: [] },
       acpAgents: {
@@ -125,6 +163,7 @@ describe("AgentBackendRegistry", () => {
     },
   ] as const)("fails closed for $label", ({ binding, instances, reason }) => {
     const result = resolveAgentBackendBinding(binding, {
+      antigravityAgents: { instances: [] },
       openCodeAgents: { instances: [] },
       claudeAgents: { instances: [] },
       acpAgents: { instances: [...instances] },

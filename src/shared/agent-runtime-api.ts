@@ -28,8 +28,8 @@ export interface AgentRuntimeMessage {
   /** Structured editor input is authoritative; absent input permits standalone Nodex Markdown lines. */
   readonly agentConfigs?: readonly import("./types").CodexPromptAgentConfigInput[];
   /**
-   * Files on this computer that a chat running on its Space's host receives as uploads. A chat
-   * on this computer names its files in the text instead and takes none here.
+   * Files chosen on this computer. Hosted chats upload them to their Space.
+   * A local Agent may read a copy as a native attachment.
    */
   readonly uploads?: readonly AgentRuntimeMessageUpload[];
 }
@@ -169,6 +169,12 @@ export const AGENT_RUNTIME_CONTROL_EVENT_TYPES = [
   "thread.model-selection-updated",
   "thread.provider-switched",
 ] as const satisfies readonly AgentEvent["event"]["type"][];
+
+export type AgentRuntimeNativeChildWorkTarget = AgentRuntimeSessionTarget & {
+  readonly threadId: string;
+};
+export type AgentRuntimeNativeChildWork =
+  AgentRuntimeOperations["native-child-work.read"]["output"];
 
 /** Metadata and verified lineage for navigation; this never hydrates transcript items. */
 export interface AgentRuntimeInspection extends AgentRuntimeLaunchResult {
@@ -386,13 +392,13 @@ export type AgentRuntimeSessionActivityChange =
   | { readonly type: "reset"; readonly sequence: number };
 
 /**
- * Claude subscription usage as Main last read it from the Claude Agents' own checks; every
+ * Runtime subscription usage as Main last read it from the Agents' own checks; every
  * window shows this one snapshot.
  */
-export interface ClaudeUsageSnapshot {
+export interface SubscriptionUsageSnapshot {
   /** `loading`: nothing read yet. `ready`: the latest read answered. `unavailable`: it failed. */
   readonly status: "loading" | "ready" | "unavailable";
-  /** The Claude Agents as last read, kept through a failed read; null before the first read. */
+  /** The subscription Agents as last read, kept through a failed read; null before the first read. */
   readonly providers: AgentRuntimeOperations["providers.read"]["output"] | null;
   /** Why the latest read failed. */
   readonly reason: string | null;
@@ -523,6 +529,10 @@ export interface AgentRuntimeIpcApi {
     args: [input: AgentRuntimeSessionMoveInput];
     result: { readonly sessionId: string; readonly projectId: string | null };
   };
+  "agent-runtime:session:native-child-work": {
+    args: [input: AgentRuntimeNativeChildWorkTarget];
+    result: AgentRuntimeNativeChildWork;
+  };
   "agent-runtime:session:history": {
     args: [input: AgentRuntimeHistoryInput];
     result: AgentHistoryPage;
@@ -587,12 +597,12 @@ export interface AgentRuntimeIpcApi {
     args: [];
     result: AgentRuntimeOperations["providers.read"]["output"] | null;
   };
-  "agent-runtime:claude-usage:read": { args: []; result: ClaudeUsageSnapshot };
-  /** Reads Claude usage again now, unless it was read moments ago. */
-  "agent-runtime:claude-usage:refresh": { args: []; result: ClaudeUsageSnapshot };
-  "agent-runtime:claude-usage:logout": {
+  "agent-runtime:subscription-usage:read": { args: []; result: SubscriptionUsageSnapshot };
+  /** Reads subscription usage again now, unless it was read moments ago. */
+  "agent-runtime:subscription-usage:refresh": { args: []; result: SubscriptionUsageSnapshot };
+  "agent-runtime:subscription-usage:logout-claude": {
     args: [input: { readonly instanceIds: readonly string[] }];
-    result: ClaudeUsageSnapshot;
+    result: SubscriptionUsageSnapshot;
   };
   "agent-runtime:session:observe": {
     args: [input: AgentRuntimeObserveInput];

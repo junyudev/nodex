@@ -71,8 +71,7 @@ export function ClaudeAgentSettingsControl({
       })}
       runtime={runtime}
       createInstance={createInstance}
-      environmentPolicy={CLAUDE_ENVIRONMENT_POLICY}
-      environmentSuggestions={environmentSuggestions}
+      environment={{ policy: CLAUDE_ENVIRONMENT_POLICY, suggestions: environmentSuggestions }}
       profileDetail={(instance) =>
         [
           instance.binaryPath || "claude",

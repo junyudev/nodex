@@ -45,6 +45,7 @@ export function subagentAttentionLabel(kind: SubagentAttentionKind, intl: IntlSh
 type Section = "active" | "terminal";
 
 const isTerminal = (status: AgentSubagentOverviewItem["status"]) =>
+  status === "idle" ||
   status === "completed" ||
   status === "failed" ||
   status === "cancelled" ||
@@ -112,7 +113,14 @@ export const projectAgentRuntimeSubagent = (
                     id: "conversation.agentRuntimeSubagentOverview.cancelled",
                     defaultMessage: "Cancelled",
                   })
-                : null,
+                : task.driver === "antigravity" &&
+                    task.origin === "provider_native" &&
+                    task.status === "idle"
+                  ? getIntl().formatMessage({
+                      id: "conversation.delegatedTaskPresentation.idle",
+                      defaultMessage: "Idle",
+                    })
+                  : null,
     startedAtMs: agentRuntimeTime(task.startedAt),
     lastActivityAtMs: agentRuntimeTime(task.updatedAt),
     completedAtMs: agentRuntimeTime(task.completedAt),
@@ -126,7 +134,9 @@ export const projectAgentRuntimeSubagent = (
       (task.childThreadId !== null || task.runId !== null) &&
       canStopRun(task.runId),
     canInteract: task.origin === "app_owned" && task.childThreadId !== null,
-    showInlineActivity: task.childThreadId !== null,
+    showInlineActivity:
+      task.childThreadId !== null &&
+      !(task.driver === "antigravity" && task.origin === "provider_native"),
   };
 };
 

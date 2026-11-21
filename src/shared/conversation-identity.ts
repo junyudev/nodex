@@ -46,5 +46,6 @@ export function agentBackendKindOfDriver(
   if (driver === "codex") return "codex";
   if (driver === "claudeAgent") return "claude";
   if (driver === "opencode" || driver === "opencode2") return "opencode";
+  if (driver === "antigravity") return "antigravity";
   return "acp";
 }

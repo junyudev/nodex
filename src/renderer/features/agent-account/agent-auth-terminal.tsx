@@ -6,10 +6,10 @@ import { applyTerminalTheme, readTerminalTheme } from "../../lib/terminal-appear
 import { bindTerminalInput } from "../../lib/terminal-keyboard";
 import { TerminalRenderer } from "../../lib/terminal-renderer";
 import { resolveTerminalTypography } from "../../lib/terminal-typography";
-import { acpTerminalDelta } from "./acp-agent-model";
+import { authTerminalDelta } from "./auth-terminal-output";
 
 /** An interactive terminal for an Agent's own sign-in command; input goes to its owned PTY. */
-export default function AcpAuthTerminal({
+export default function AgentAuthTerminal({
   output,
   outputOffset,
   onInput,
@@ -78,7 +78,7 @@ export default function AcpAuthTerminal({
     const display = renderer.current;
     if (!display) return;
     const offset = outputOffset ?? output.length;
-    const delta = acpTerminalDelta(written.current, output, offset);
+    const delta = authTerminalDelta(written.current, output, offset);
     if (delta.reset || written.current === 0) display.replaceOutput(delta.data);
     else if (delta.data) display.write(delta.data);
     written.current = offset;

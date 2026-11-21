@@ -21,6 +21,7 @@ export function makeTestApplicationSettings(input?: {
     threadNotificationSettingsChanges: Stream.never,
     telemetrySettingsChanges: Stream.empty,
     acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
+    antigravityLaunchConfiguration: () => Effect.die("Unused Antigravity launch configuration"),
     openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
     providerKeySecret: () => Effect.die("Unused API key"),
     claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),

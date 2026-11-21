@@ -1,3 +1,4 @@
+import { NativeChildWorkDetail } from "@/features/local-conversation/view/subagents-panel/native-child-work-detail";
 import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { ActivitySpinnerIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
@@ -233,6 +234,19 @@ export function SubagentsPanelSessionTab(
           <div className="min-h-0 flex-1">
             <BackgroundAgentLoadingPanel title={displayName} />
           </div>
+        </>
+      ) : props.tab.selectedNativeWork ? (
+        <>
+          <SubagentsPanelDetailHeader
+            agent={props.tab.selectedNativeWork}
+            threadId={props.tab.selectedThreadId}
+            displayName={displayName}
+            onBack={() => void props.onRouteSubagent(null)}
+          />
+          <NativeChildWorkDetail
+            sessionId={props.activeSession.id}
+            threadId={props.tab.selectedThreadId}
+          />
         </>
       ) : (
         <AgentRuntimeChildPanel

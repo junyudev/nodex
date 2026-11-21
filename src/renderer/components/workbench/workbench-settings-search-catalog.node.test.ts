@@ -134,8 +134,8 @@ describe("workbench settings search catalog", () => {
       "Server URL": "opencode",
       "Agent Client Protocol": "acp",
       "ACP Registry": "acp",
-      Gemini: "acp",
-      Antigravity: "acp",
+      Gemini: "antigravity",
+      Antigravity: "antigravity",
     };
     for (const [query, anchor] of Object.entries(anchors)) {
       expect(hasSectionResult(query, "agent")).toBe(true);
@@ -197,7 +197,7 @@ describe("workbench settings search catalog", () => {
       const results = searchCatalog(query);
       expect(results[0]?.sectionId).toBe("account");
       expect(results[1]?.sectionId).toBe("agent");
-      expect(settingsSearchAnchor("agent", query)).toBe("acp");
+      expect(settingsSearchAnchor("agent", query)).toBe("antigravity");
     }
   });
 

@@ -477,6 +477,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (Array.isArray(payload?.connections)) callback(payload);
       });
     },
+    subscribeAntigravityRuntimeChanges(callback) {
+      return bridge.on("antigravity-runtime:changed", (...args: unknown[]) => {
+        const snapshot = args[0] as
+          | import("../../shared/antigravity-runtime").AntigravityRuntimeSnapshot
+          | undefined;
+        if (typeof snapshot?.revision === "number") callback(snapshot);
+      });
+    },
     subscribeOpenCodeSetupChanges(callback) {
       return bridge.on("opencode-setup:changed", (...args: unknown[]) => {
         const payload = args[0] as
@@ -512,10 +520,10 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
-    subscribeClaudeUsageChanges(callback) {
-      return bridge.on("agent-runtime:claude-usage-changed", (...args: unknown[]) => {
+    subscribeSubscriptionUsageChanges(callback) {
+      return bridge.on("agent-runtime:subscription-usage-changed", (...args: unknown[]) => {
         const payload = args[0] as
-          | import("../../shared/agent-runtime-api").ClaudeUsageSnapshot
+          | import("../../shared/agent-runtime-api").SubscriptionUsageSnapshot
           | undefined;
         if (payload) callback(payload);
       });

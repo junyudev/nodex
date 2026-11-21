@@ -6,6 +6,7 @@ import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-setti
 import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings";
 
 const meters = [
+  ["antigravity", "Antigravity"],
   ["claude", "Claude"],
   ["codex", "Codex"],
   ["nodexCredit", settingsMessages.usageMetersNodexCredits],

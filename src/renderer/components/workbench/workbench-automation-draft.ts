@@ -94,7 +94,7 @@ function defaultAutomationReasoningEffort(
   binding: AgentBackendBinding,
 ): AutomationReasoningEffort | "" {
   if (binding.kind === "claude") return "default";
-  if (binding.kind === "acp") return "";
+  if (binding.kind === "acp" || binding.kind === "antigravity") return "";
   return DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
 }
 

@@ -30,12 +30,6 @@ import {
 import { AcpStatusText } from "./acp-status-text";
 import type { AcpAgentsOwner, AcpAgentsSnapshot } from "./acp-agents-owner";
 import { acpAgentsOwner, useAcpAgents } from "./use-acp-agents";
-import { localAgentDefinition } from "../../../shared/local-agents";
-import {
-  localAgentFoundDetail,
-  localAgentNeedsUpdateDetail,
-} from "../local-agents/local-agents-model";
-import { useLocalAgentSuggestions } from "../local-agents/use-local-agents";
 
 function AgentRow({
   instance,
@@ -233,7 +227,6 @@ export function AcpAgentsSettingsSection({
 }) {
   const intl = useIntl();
   const snapshot = useAcpAgents(owner);
-  const local = useLocalAgentSuggestions(owner);
   const appHandle = useScopeHandle(appScope);
   const instances = snapshot.settings?.instances ?? [];
   const anchored = instances.find(({ id }) => acpAgentAnchor(id) === anchor)?.id ?? null;
@@ -283,15 +276,7 @@ export function AcpAgentsSettingsSection({
       summary={
         summary ? (
           <>
-            {instances.length === 0 && local.suggestions[0]
-              ? intl.formatMessage(
-                  {
-                    id: "acpAgents.acpAgentsSettingsSection.agentFound",
-                    defaultMessage: "{agent} found",
-                  },
-                  { agent: localAgentDefinition(local.suggestions[0].id).name },
-                )
-              : summary.text}
+            {summary.text}
             {summary.attention ? <span className="text-danger"> · {summary.attention}</span> : null}
           </>
         ) : snapshot.loadError ? (
@@ -328,14 +313,7 @@ export function AcpAgentsSettingsSection({
             />{" "}
             {snapshot.loadError}
           </p>
-          <NodexButton
-            size="xs"
-            variant="secondary"
-            onClick={() => {
-              owner.refresh();
-              void local.rescan();
-            }}
-          >
+          <NodexButton size="xs" variant="secondary" onClick={() => owner.refresh()}>
             <FormattedMessage
               id="acpAgents.acpAgentsSettingsSection.tryAgain"
               defaultMessage="Try again"
@@ -358,66 +336,6 @@ export function AcpAgentsSettingsSection({
           }}
         />
       ))}
-      {local.found.map((agent) => {
-        const definition = localAgentDefinition(agent.id);
-        return (
-          <NodexSettingsRow
-            key={agent.id}
-            label={
-              <span className="flex items-center gap-2">
-                <AgentInstanceIcon
-                  binding={{ kind: "acp", agentDefinitionId: definition.agentDefinitionId }}
-                  className="size-3.5"
-                />
-                {definition.name}
-              </span>
-            }
-            description={
-              agent.supported
-                ? intl.formatMessage(
-                    {
-                      id: "acpAgents.acpAgentsSettingsSection.foundOnThisComputer",
-                      defaultMessage:
-                        "Found on this computer · {command}. Connects with its existing sign-in.",
-                    },
-                    { command: localAgentFoundDetail(agent) },
-                  )
-                : localAgentNeedsUpdateDetail(agent, intl)
-            }
-          >
-            {agent.supported ? (
-              <NodexButton
-                size="sm"
-                variant="secondary"
-                disabled={local.connecting !== null}
-                onClick={() =>
-                  void local.connect(agent).then((instanceId) => {
-                    if (instanceId) setExpanded(instanceId);
-                  })
-                }
-              >
-                {local.connecting === agent.id
-                  ? intl.formatMessage({
-                      id: "acpAgents.acpAgentsSettingsSection.connecting",
-                      defaultMessage: "Connecting",
-                    })
-                  : intl.formatMessage({
-                      id: "acpAgents.acpAgentsSettingsSection.connect",
-                      defaultMessage: "Connect",
-                    })}
-              </NodexButton>
-            ) : (
-              // Updating happens in a terminal; this looks again once it is done.
-              <NodexButton size="sm" variant="secondary" onClick={() => void local.rescan()}>
-                <FormattedMessage
-                  id="acpAgents.acpAgentsSettingsSection.checkAgain"
-                  defaultMessage="Check again"
-                />
-              </NodexButton>
-            )}
-          </NodexSettingsRow>
-        );
-      })}
       {snapshot.settings ? (
         instances.length === 0 ? (
           <NodexSettingsRow

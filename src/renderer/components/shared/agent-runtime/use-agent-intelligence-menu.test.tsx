@@ -161,62 +161,73 @@ test("uses Codex's default slider position and applies effort and speed to the s
   ]);
 });
 
-test("projects the Agent's first thought-level select from the same choices used in the footer", async () => {
-  const changeConfig = vi.fn(async () => {});
-  const { result } = renderHook(() =>
-    useAgentIntelligenceMenu({
-      catalog: {
-        entries: [],
-        selected: { binding: OPENCODE, model: "model" },
-        loading: false,
-        choose: () => {},
-        changeConfig,
-        configOptions: [
-          {
-            id: "thought-toggle",
-            type: "boolean",
-            category: "thought_level",
-            name: "Thinking",
-            description: null,
-            currentValue: true,
-          },
-          {
-            id: "variant",
-            type: "select",
-            category: "thought_level",
-            name: "Effort",
-            description: null,
-            currentValue: "deep",
-            options: [
-              {
-                group: "effort",
-                name: "Effort",
-                options: [
-                  { value: "light", name: "Light", description: null },
-                  { value: "deep", name: "Deep", description: "Think longer" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      models: [],
-      selection: { kind: "opencode", model: "model", reasoningEffort: "none", serviceTier: null },
-      onSelectionChange: () => {},
-    }),
-  );
-  const { effort, configOptions, fast, ultracode } = result.current;
-  expect(effort?.choices).toEqual([
-    { value: "light", label: "Light", description: null, current: false },
-    { value: "deep", label: "Deep", description: "Think longer", current: true },
-  ]);
-  expect(configOptions[1]?.choices).toBe(effort?.choices);
-  expect(fast).toBeNull();
-  expect(ultracode).toBeNull();
+test.each([
+  [OPENCODE, "variant"],
+  [{ kind: "antigravity", instanceConfigId: "work" } as const, "thinking_level"],
+])(
+  "projects %o's thought-level select from the same choices used in the footer",
+  async (binding, optionId) => {
+    const changeConfig = vi.fn(async () => {});
+    const { result } = renderHook(() =>
+      useAgentIntelligenceMenu({
+        catalog: {
+          entries: [],
+          selected: { binding, model: "model" },
+          loading: false,
+          choose: () => {},
+          changeConfig,
+          configOptions: [
+            {
+              id: "thought-toggle",
+              type: "boolean",
+              category: "thought_level",
+              name: "Thinking",
+              description: null,
+              currentValue: true,
+            },
+            {
+              id: optionId,
+              type: "select",
+              category: "thought_level",
+              name: "Effort",
+              description: null,
+              currentValue: "deep",
+              options: [
+                {
+                  group: "effort",
+                  name: "Effort",
+                  options: [
+                    { value: "light", name: "Light", description: null },
+                    { value: "deep", name: "Deep", description: "Think longer" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        models: [],
+        selection: {
+          kind: binding.kind,
+          model: "model",
+          reasoningEffort: "none",
+          serviceTier: null,
+        },
+        onSelectionChange: () => {},
+      }),
+    );
+    const { effort, configOptions, fast, ultracode } = result.current;
+    expect(effort?.choices).toEqual([
+      { value: "light", label: "Light", description: null, current: false },
+      { value: "deep", label: "Deep", description: "Think longer", current: true },
+    ]);
+    expect(configOptions[1]?.choices).toBe(effort?.choices);
+    expect(fast).toBeNull();
+    expect(ultracode).toBeNull();
 
-  await effort!.choose("light");
-  expect(changeConfig).toHaveBeenCalledExactlyOnceWith("variant", "light");
-});
+    await effort!.choose("light");
+    expect(changeConfig).toHaveBeenCalledExactlyOnceWith(optionId, "light");
+  },
+);
 
 function pendingWrite() {
   let resolve!: () => void;

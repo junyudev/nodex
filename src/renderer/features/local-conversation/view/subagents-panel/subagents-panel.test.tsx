@@ -1,4 +1,7 @@
 import { act } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { NativeChildWorkDetail } from "./native-child-work-detail";
 import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -543,5 +546,60 @@ test("updates an already-mounted subagent attention label when the display langu
     expect(screen.queryByText("Needs approval")).toBeNull();
   } finally {
     await act(async () => resetAppLocaleForTests());
+  }
+});
+
+test("reads only the opened native batch and keeps unavailable child history distinct from truncation", async () => {
+  const read = vi
+    .spyOn(agentRuntimeRuntime, "nativeChildWork")
+    .mockResolvedValueOnce({ children: [] })
+    .mockResolvedValueOnce({
+      children: [
+        {
+          conversationId: "child",
+          role: "Reviewer",
+          prompt: "Review the proposed change.",
+          steps: null,
+          truncated: false,
+        },
+        {
+          conversationId: "child-2",
+          role: "Researcher",
+          prompt: "Check the reported behavior.",
+          steps: [
+            {
+              index: 6,
+              type: "tool_call",
+              status: "running",
+              text: "Checking source",
+              toolCalls: [{ name: "read_file", input: "src/main.ts" }],
+            },
+          ],
+          truncated: true,
+        },
+      ],
+    });
+  const query = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = (threadId: string) => (
+    <QueryClientProvider client={query}>
+      <NativeChildWorkDetail sessionId="chat" threadId={threadId} />
+    </QueryClientProvider>
+  );
+  try {
+    const { rerender } = render(view("batch-without-records"));
+    await screen.findByText("Antigravity has no record of which subagents this call started.");
+    await act(async () => rerender(view("batch-with-children")));
+    await screen.findByRole("heading", { name: "Reviewer" });
+    expect(screen.getByText("Review the proposed change.")).toBeTruthy();
+    expect(screen.getByText("No transcript yet.")).toBeTruthy();
+    expect(screen.getByText("Earlier steps were omitted.")).toBeTruthy();
+    expect(screen.getByText("read_file")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(read.mock.calls).toEqual([
+      [{ sessionId: "chat", threadId: "batch-without-records" }],
+      [{ sessionId: "chat", threadId: "batch-with-children" }],
+    ]);
+  } finally {
+    read.mockRestore();
   }
 });

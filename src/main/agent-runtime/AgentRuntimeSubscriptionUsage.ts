@@ -14,23 +14,38 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type {
   AgentRuntimeConnectionState,
   AgentRuntimeSessionActivityChange,
-  ClaudeUsageSnapshot,
+  SubscriptionUsageSnapshot,
 } from "../../shared/agent-runtime-api";
-import { claudeUsageReadAt, meteredClaudeProviders } from "../../shared/claude-usage";
+import {
+  meteredSubscriptionProviders,
+  SUBSCRIPTION_USAGE_PROVIDERS,
+  subscriptionUsageProvider,
+  subscriptionUsageReadAt,
+  type SubscriptionUsageProvider,
+} from "../../shared/subscription-usage";
 import { AgentRuntimeApplicationError, agentRuntimeFailureReason } from "./AgentRuntimeApplication";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
+type MeterPreferences = Readonly<Record<SubscriptionUsageProvider, boolean>>;
+type DeclaredAgents = Readonly<Record<SubscriptionUsageProvider, readonly string[]>>;
 
-/** Claude usage is read again once the reading is this old. */
-export const CLAUDE_USAGE_POLL_INTERVAL = Duration.minutes(5);
+// Antigravity publishes quotas after its health check returns. Reconcile its async result
+// without starting execution or asking it to check the account again.
+const ANTIGRAVITY_QUOTA_RECONCILE_DELAY = Duration.seconds(32);
+
+const anyMeterEnabled = (meters: MeterPreferences) =>
+  SUBSCRIPTION_USAGE_PROVIDERS.some((provider) => meters[provider]);
+
+/** Subscription usage is read again once the reading is this old. */
+export const SUBSCRIPTION_USAGE_POLL_INTERVAL = Duration.minutes(5);
 /** An explicit refresh this soon after the last one reuses it, so passing over a meter reads once. */
-export const CLAUDE_USAGE_REFRESH_FLOOR = Duration.minutes(1);
+export const SUBSCRIPTION_USAGE_REFRESH_FLOOR = Duration.minutes(1);
 
 /**
- * When Claude usage is next read on its own: once the oldest reading is an interval old, and no
+ * When subscription usage is next read on its own: once the oldest reading is an interval old, and no
  * sooner than an interval after the last attempt, so a read that keeps failing never spins.
  */
-export function nextClaudeUsageReadAt(input: {
+export function nextSubscriptionUsageReadAt(input: {
   readonly readings: readonly (number | null)[];
   readonly lastAttemptAt: number | null;
   readonly intervalMs: number;
@@ -42,26 +57,26 @@ export function nextClaudeUsageReadAt(input: {
   );
 }
 
-export class AgentRuntimeClaudeUsage extends Context.Service<
-  AgentRuntimeClaudeUsage,
+export class AgentRuntimeSubscriptionUsage extends Context.Service<
+  AgentRuntimeSubscriptionUsage,
   {
-    readonly snapshot: SubscriptionRef.SubscriptionRef<ClaudeUsageSnapshot>;
-    /** Reads usage again now through the Claude Agents' own checks, unless it was just read. */
-    readonly refresh: Effect.Effect<ClaudeUsageSnapshot>;
+    readonly snapshot: SubscriptionRef.SubscriptionRef<SubscriptionUsageSnapshot>;
+    /** Reads usage again now through the Agents' own checks, unless it was just read. */
+    readonly refresh: Effect.Effect<SubscriptionUsageSnapshot>;
     /**
-     * Takes over what Nodex knows about the Claude Agents again, such as after a settings change;
+     * Takes over what Nodex knows about subscription Agents again, such as after a settings change;
      * never starts execution.
      */
     readonly reread: Effect.Effect<void>;
-    readonly logout: (
+    readonly logoutClaude: (
       instanceIds: readonly string[],
-    ) => Effect.Effect<ClaudeUsageSnapshot, AgentRuntimeApplicationError>;
+    ) => Effect.Effect<SubscriptionUsageSnapshot, AgentRuntimeApplicationError>;
   }
->()("nodex/main/agent-runtime/AgentRuntimeClaudeUsage") {}
+>()("nodex/main/agent-runtime/AgentRuntimeSubscriptionUsage") {}
 
-export interface AgentRuntimeClaudeUsageOptions {
-  /** The enabled Claude Agents declared now. */
-  readonly declared: Effect.Effect<readonly string[], unknown>;
+export interface AgentRuntimeSubscriptionUsageOptions {
+  /** The enabled subscription-capable Agents declared now. */
+  readonly declared: Effect.Effect<DeclaredAgents, unknown>;
   /** What Nodex knows about its Agents without starting execution; null when nothing is current. */
   readonly known: Effect.Effect<Providers | null, unknown>;
   /** Checks the named Agents again from scratch, starting execution when it is stopped. */
@@ -75,55 +90,55 @@ export interface AgentRuntimeClaudeUsageOptions {
   readonly served: Stream.Stream<Providers>;
   readonly connectionChanges: Stream.Stream<AgentRuntimeConnectionState>;
   readonly activityChanges: Stream.Stream<AgentRuntimeSessionActivityChange>;
-  readonly meterEnabled?: boolean;
-  readonly meterEnabledChanges?: Stream.Stream<boolean>;
+  readonly meters: MeterPreferences;
+  readonly meterChanges?: Stream.Stream<MeterPreferences>;
   readonly pollInterval?: Duration.Input;
   readonly refreshFloor?: Duration.Input;
 }
 
 /**
- * The user's own Claude accounts. Instances Nodex declares itself, for credits or an API key, pay
+ * The person's own subscription accounts. Instances Nodex declares itself, for credits or an API key, pay
  * per request and have no subscription limits to show.
  */
-const claudeRows = (providers: Providers): Providers =>
+const subscriptionRows = (providers: Providers): Providers =>
   providers.filter(
     (provider) =>
-      provider.driver === "claudeAgent" &&
+      subscriptionUsageProvider(provider) !== null &&
       provider.source !== "nodex" &&
       !isManagedRuntimeInstanceId(provider.instanceId),
   );
 
 /**
- * The Claude Agents a catalog describes, each as of its latest check. A kept catalog can be older
+ * The subscription Agents a catalog describes, each as of its latest check. A kept catalog can be older
  * than a from-scratch read that was never kept, so an Agent checked more recently stays as read.
  */
-export function adoptClaudeRows(current: Providers | null, catalog: Providers): Providers {
+export function adoptSubscriptionRows(current: Providers | null, catalog: Providers): Providers {
   const checkedAt = (row: Providers[number]) => Date.parse(row.checkedAt);
   const kept = new Map(current?.map((row) => [row.instanceId, row]));
-  return claudeRows(catalog).map((row) => {
+  return subscriptionRows(catalog).map((row) => {
     const previous = kept.get(row.instanceId);
     return previous && checkedAt(previous) > checkedAt(row) ? previous : row;
   });
 }
 
 /**
- * Main's one owner of Claude subscription usage, so every window shows the same reading. It reads
- * only through the Claude Agents' own checks. A shown meter is read again every interval while
+ * Main's one owner of runtime subscription usage, so every window shows the same reading. It reads
+ * only through the Agents' own checks. A shown meter is read again every interval while
  * execution runs anyway; only someone asking, by opening a card, starts it to read. Launching,
  * saving settings and every execution event merely take over what Nodex already knows.
  */
-export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
-  options: AgentRuntimeClaudeUsageOptions,
+export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
+  options: AgentRuntimeSubscriptionUsageOptions,
 ) {
   const intervalMs = Duration.toMillis(
-    Duration.fromInputUnsafe(options.pollInterval ?? CLAUDE_USAGE_POLL_INTERVAL),
+    Duration.fromInputUnsafe(options.pollInterval ?? SUBSCRIPTION_USAGE_POLL_INTERVAL),
   );
   const floorMs = Duration.toMillis(
-    Duration.fromInputUnsafe(options.refreshFloor ?? CLAUDE_USAGE_REFRESH_FLOOR),
+    Duration.fromInputUnsafe(options.refreshFloor ?? SUBSCRIPTION_USAGE_REFRESH_FLOOR),
   );
   // The first read of its own waits an interval after launch, like every later one.
   const startedAt = yield* Clock.currentTimeMillis;
-  const snapshot = yield* SubscriptionRef.make<ClaudeUsageSnapshot>({
+  const snapshot = yield* SubscriptionRef.make<SubscriptionUsageSnapshot>({
     status: "loading",
     providers: null,
     reason: null,
@@ -133,13 +148,15 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   /** Floors explicit refreshes: from-scratch reads that actually ran. */
   const lastFreshReadAt = yield* Ref.make<number | null>(null);
   const reads = yield* Semaphore.make(1);
-  const meterEnabled = yield* Ref.make(options.meterEnabled ?? true);
+  const meters = yield* Ref.make(options.meters);
+  const reconcileAt = yield* Ref.make<number | null>(null);
+  const antigravityDeclared = yield* Ref.make(false);
   // Each wakes its loop to reconsider; sliding so a burst of requests asks once.
   const schedule = yield* Queue.sliding<void>(1);
   const rereads = yield* Queue.sliding<void>(1);
   const scope = yield* Effect.scope;
 
-  const publish = (next: ClaudeUsageSnapshot) =>
+  const publish = (next: SubscriptionUsageSnapshot) =>
     SubscriptionRef.set(snapshot, next).pipe(Effect.andThen(Queue.offer(schedule, undefined)));
   const publishFailure = (cause: unknown) =>
     SubscriptionRef.get(snapshot).pipe(
@@ -158,9 +175,11 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
    */
   const readKnown = reads.withPermits(1)(
     Effect.gen(function* () {
-      if (!(yield* Ref.get(meterEnabled))) return;
+      if (!anyMeterEnabled(yield* Ref.get(meters))) return;
       const result = yield* Effect.result(
         options.declared.pipe(
+          Effect.tap((declared) => Ref.set(antigravityDeclared, declared.antigravity.length > 0)),
+          Effect.map((declared) => Object.values(declared).flat()),
           Effect.flatMap((instanceIds) =>
             instanceIds.length === 0
               ? Effect.succeed([instanceIds, [] as Providers] as const)
@@ -175,7 +194,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
       if (known !== null)
         return yield* publish({
           status: "ready",
-          providers: adoptClaudeRows(current.providers, known).filter((row) =>
+          providers: adoptSubscriptionRows(current.providers, known).filter((row) =>
             declared.has(row.instanceId),
           ),
           reason: null,
@@ -190,28 +209,55 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   );
 
   /**
-   * Reads the declared Claude Agents again from scratch; `start` lets it start execution to do
+   * Reads the declared Agents with enabled meters again from scratch; `start` lets it start execution to do
    * so. A failed read keeps what was read, and one skipped while stopped changes nothing.
    */
   const readNow = (start: boolean) =>
     Effect.gen(function* () {
-      if (!(yield* Ref.get(meterEnabled))) return;
+      if (!anyMeterEnabled(yield* Ref.get(meters))) return;
       const now = yield* Clock.currentTimeMillis;
       yield* Ref.set(lastAttemptAt, now);
       const result = yield* Effect.result(
         Effect.gen(function* () {
-          const instanceIds = yield* options.declared;
-          if (!(yield* Ref.get(meterEnabled))) return null;
-          if (instanceIds.length === 0) return [] as Providers;
-          return yield* start
-            ? options.refresh(instanceIds)
-            : options.refreshWhileRunning(instanceIds);
+          const declared = yield* options.declared;
+          const enabled = yield* Ref.get(meters);
+          if (!anyMeterEnabled(enabled)) return null;
+          const instanceIds = SUBSCRIPTION_USAGE_PROVIDERS.flatMap((provider) =>
+            enabled[provider] ? declared[provider] : [],
+          );
+          const providers =
+            instanceIds.length === 0
+              ? []
+              : yield* start
+                  ? options.refresh(instanceIds)
+                  : options.refreshWhileRunning(instanceIds);
+          return providers === null ? null : { declared, instanceIds, providers };
         }),
       );
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
       if (result.success === null) return;
+      const { declared, instanceIds, providers } = result.success;
+      yield* Ref.set(antigravityDeclared, declared.antigravity.length > 0);
+      const refreshedAntigravity = declared.antigravity.some((id) => instanceIds.includes(id));
+      if (refreshedAntigravity)
+        yield* Ref.set(
+          reconcileAt,
+          (yield* Clock.currentTimeMillis) + Duration.toMillis(ANTIGRAVITY_QUOTA_RECONCILE_DELAY),
+        );
+      const all = new Set(Object.values(declared).flat());
+      const refreshed = new Set(instanceIds);
+      const current = yield* SubscriptionRef.get(snapshot);
       yield* Ref.set(lastFreshReadAt, now);
-      yield* publish({ status: "ready", providers: claudeRows(result.success), reason: null });
+      yield* publish({
+        status: "ready",
+        providers: [
+          ...(current.providers ?? []).filter(
+            (row) => all.has(row.instanceId) && !refreshed.has(row.instanceId),
+          ),
+          ...subscriptionRows(providers).filter((row) => refreshed.has(row.instanceId)),
+        ],
+        reason: null,
+      });
     });
 
   /**
@@ -267,22 +313,33 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   // While execution runs, a shown meter is kept no older than the interval, and a read that
   // failed with nothing to show is retried at the same pace. Neither starts execution.
   const nextRead = Effect.gen(function* () {
-    if (!(yield* Ref.get(meterEnabled))) return null;
+    const enabled = yield* Ref.get(meters);
+    if (!anyMeterEnabled(enabled)) return null;
     const current = yield* SubscriptionRef.get(snapshot);
-    const metered = meteredClaudeProviders(current.providers);
+    const metered = meteredSubscriptionProviders(current.providers).filter((row) => {
+      const provider = subscriptionUsageProvider(row);
+      return provider !== null && enabled[provider];
+    });
     if (metered.length > 0)
-      return nextClaudeUsageReadAt({
-        readings: metered.map(claudeUsageReadAt),
+      return nextSubscriptionUsageReadAt({
+        readings: metered.map(subscriptionUsageReadAt),
         lastAttemptAt: yield* Ref.get(lastAttemptAt),
         intervalMs,
       });
-    if (current.status === "unavailable" && current.providers === null)
+    if (
+      (current.status === "unavailable" && current.providers === null) ||
+      (enabled.antigravity && (yield* Ref.get(antigravityDeclared)))
+    )
       return (yield* Ref.get(lastAttemptAt)) + intervalMs;
     return null;
   });
   yield* Effect.forever(
     Effect.gen(function* () {
-      const at = yield* nextRead;
+      const refreshAt = yield* nextRead;
+      const enabled = yield* Ref.get(meters);
+      const pendingReconcile = enabled.antigravity ? yield* Ref.get(reconcileAt) : null;
+      const at =
+        refreshAt === null ? pendingReconcile : Math.min(refreshAt, pendingReconcile ?? refreshAt);
       if (at === null) return yield* Queue.take(schedule);
       const delay = Math.max(0, at - (yield* Clock.currentTimeMillis));
       // Races the due time against a state change that may move it.
@@ -291,6 +348,12 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
         Queue.take(schedule).pipe(Effect.as(false)),
       );
       if (!due) return;
+      if (pendingReconcile === at) {
+        const reconcile = yield* Ref.modify(reconcileAt, (current) =>
+          current === pendingReconcile ? [true, null] : [false, current],
+        );
+        if (reconcile) return yield* readKnown;
+      }
       yield* reads.withPermits(1)(
         Effect.gen(function* () {
           const reconsidered = yield* nextRead;
@@ -308,7 +371,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
         Effect.flatMap((current) =>
           publish({
             status: "ready",
-            providers: adoptClaudeRows(current.providers, providers),
+            providers: adoptSubscriptionRows(current.providers, providers),
             reason: null,
           }),
         ),
@@ -317,7 +380,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     Effect.forkScoped,
   );
 
-  // Execution reports usage while Claude replies and checks Agents when it starts.
+  // Execution reports usage while Agents reply and checks Agents when it starts.
   let ready = false;
   yield* options.connectionChanges.pipe(
     Stream.runForEach((state) => {
@@ -350,26 +413,33 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     Effect.forkScoped,
   );
 
-  if (options.meterEnabledChanges)
-    yield* options.meterEnabledChanges.pipe(
+  if (options.meterChanges)
+    yield* options.meterChanges.pipe(
       Stream.runForEach((enabled) =>
         Effect.gen(function* () {
-          const previous = yield* Ref.getAndSet(meterEnabled, enabled);
-          if (previous === enabled) return;
+          const previous = yield* Ref.getAndSet(meters, enabled);
+          const changed = SUBSCRIPTION_USAGE_PROVIDERS.filter(
+            (provider) => previous[provider] !== enabled[provider],
+          );
+          if (changed.length === 0) return;
           yield* Queue.offer(schedule, undefined);
-          if (enabled) yield* reads.withPermits(1)(readNow(true)).pipe(Effect.forkIn(scope));
+          if (changed.some((provider) => enabled[provider]))
+            yield* reads.withPermits(1)(readNow(true)).pipe(Effect.forkIn(scope));
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),
     );
   yield* reread;
 
-  const logout = (instanceIds: readonly string[]) =>
+  const logoutClaude = (instanceIds: readonly string[]) =>
     reads
       .withPermits(1)(
         Effect.gen(function* () {
+          const declared = new Set((yield* options.declared).claude);
+          if (instanceIds.some((id) => !declared.has(id)))
+            return yield* Effect.fail(new Error("Choose a configured Claude Agent to sign out."));
           const signedOut = yield* options.logout(instanceIds);
-          const replaced = new Map(claudeRows(signedOut).map((row) => [row.instanceId, row]));
+          const replaced = new Map(subscriptionRows(signedOut).map((row) => [row.instanceId, row]));
           const current = yield* SubscriptionRef.get(snapshot);
           yield* publish({
             ...current,
@@ -384,12 +454,12 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
         Effect.mapError(
           (cause) =>
             new AgentRuntimeApplicationError({
-              operation: "claude-usage-logout",
+              operation: "subscription-usage-logout-claude",
               message: agentRuntimeFailureReason(cause),
               cause,
             }),
         ),
       );
 
-  return AgentRuntimeClaudeUsage.of({ snapshot, refresh, reread, logout });
+  return AgentRuntimeSubscriptionUsage.of({ snapshot, refresh, reread, logoutClaude });
 });

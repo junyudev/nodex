@@ -209,6 +209,90 @@ export function agentReadinessNotice(
   }
 }
 
+type AntigravityProvider = ProviderReadiness &
+  Pick<AgentRuntimeOperations["providers.read"]["output"][number], "models">;
+
+const ANTIGRAVITY_READINESS = defineMessages({
+  "not-installed": {
+    id: "conversation.agentReadinessNotice.antigravityNotInstalled",
+    defaultMessage: "Antigravity isn’t installed. Install it in Settings.",
+  },
+  "signed-out": {
+    id: "conversation.agentReadinessNotice.antigravitySignedOut",
+    defaultMessage: "Sign in to Antigravity to keep going.",
+  },
+  "choose-model": {
+    id: "conversation.agentReadinessNotice.antigravityChooseModel",
+    defaultMessage: "Choose an Antigravity model.",
+  },
+  "model-missing": {
+    id: "conversation.agentReadinessNotice.antigravityModelMissing",
+    defaultMessage: "That model is no longer available. Choose another model.",
+  },
+  "not-ready": {
+    id: "conversation.agentReadinessNotice.antigravityNotReady",
+    defaultMessage: "Antigravity isn’t ready.",
+  },
+  "turned-off": {
+    id: "conversation.agentReadinessNotice.antigravityTurnedOff",
+    defaultMessage: "Antigravity is turned off.",
+  },
+});
+
+function antigravitySetupProblem(provider: ProviderReadiness | undefined) {
+  if (provider?.enabled && provider.status === "error" && !provider.installed)
+    return "not-installed";
+  return agentReadinessProblem(provider);
+}
+
+/** Only a checked account failure or catalog problem blocks a chat on this profile. */
+export function antigravityReadinessMessage(
+  provider: AntigravityProvider | undefined,
+  model: string,
+): (typeof ANTIGRAVITY_READINESS)[keyof typeof ANTIGRAVITY_READINESS] | null {
+  const problem = antigravitySetupProblem(provider);
+  if (problem === "no-connection" || problem === "not-responding")
+    return ANTIGRAVITY_READINESS["not-ready"];
+  if (problem) return ANTIGRAVITY_READINESS[problem];
+  if (!provider) return ANTIGRAVITY_READINESS["not-ready"];
+  if (!model || provider.models.length === 0) return ANTIGRAVITY_READINESS["choose-model"];
+  return provider.models.some((entry) => entry.slug === model)
+    ? null
+    : ANTIGRAVITY_READINESS["model-missing"];
+}
+
+export function antigravityReadinessNotice(
+  instanceId: string,
+  provider: AntigravityProvider | undefined,
+  model: string,
+  fixes: AgentReadinessFixes,
+  intl: IntlShape,
+): ComposerNotice | null {
+  if (isAgentUnchecked(provider)) return null;
+  const problem = antigravitySetupProblem(provider);
+  if (problem === "no-connection" || problem === "not-responding" || problem === "not-ready") {
+    return agentReadinessNotice("Antigravity", provider, fixes, intl);
+  }
+  const message = antigravityReadinessMessage(provider, model);
+  if (!message) return null;
+  return {
+    key: `agent:${instanceId}:${message.id}`,
+    tone: "warning",
+    title: intl.formatMessage(message),
+    actions: fixes.openSettings
+      ? [
+          {
+            label: intl.formatMessage({
+              id: "conversation.agentReadinessNotice.settings",
+              defaultMessage: "Settings",
+            }),
+            run: fixes.openSettings,
+          },
+        ]
+      : [],
+  };
+}
+
 /** A new chat with no usable Agent at all: connecting one is the only way forward. */
 export const connectAgentNotice = (
   connect: () => void,
@@ -236,10 +320,25 @@ export const connectAgentNotice = (
  * place that explains why its models are missing. A turned-off Agent gets none.
  */
 export function agentReadinessSetupHint(
-  provider: ProviderReadiness | undefined,
+  provider: ProviderReadiness &
+    Partial<Pick<AntigravityProvider, "models">> & { readonly driver?: string },
   intl: IntlShape = getIntl(),
 ): { readonly hint: string; readonly tone: "default" | "danger" } | null {
-  switch (agentReadinessProblem(provider)) {
+  if (provider.driver === "antigravity" && isAgentUnchecked(provider)) return null;
+  const problem =
+    provider.driver === "antigravity"
+      ? (antigravitySetupProblem(provider) ??
+        (provider.models?.length === 0 ? "choose-model" : null))
+      : agentReadinessProblem(provider);
+  switch (problem) {
+    case "choose-model":
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.setUp",
+          defaultMessage: "Set up",
+        }),
+        tone: "default",
+      };
     case "signed-out":
       return {
         hint: intl.formatMessage({

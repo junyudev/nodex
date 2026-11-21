@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AgentIntelligenceSelection } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import type { AgentModelCatalogPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
@@ -29,7 +30,7 @@ export function resolveReasoningEffortForModelChange(input: {
 }
 
 /**
- * The effort a model change carries. Codex and Claude keep a choice the next model also offers;
+ * The effort a model change carries. Codex, Claude and Antigravity keep a choice the next model also offers;
  * other Agents start from none and let their owner fit it to the model.
  */
 export function resolveListedModelEffort(
@@ -43,7 +44,7 @@ export function resolveListedModelEffort(
       nextModelId: next.id,
       models,
     });
-  if (selection.kind === "claude")
+  if (selection.kind === "claude" || selection.kind === "antigravity")
     return next.supportedReasoningEfforts.some(
       (option) => option.reasoningEffort === selection.reasoningEffort,
     )
@@ -103,7 +104,13 @@ export function listedModelCatalog(input: {
           configOptions: [
             {
               id: LISTED_EFFORT_OPTION_ID,
-              name: "Effort",
+              name:
+                selection.kind === "antigravity"
+                  ? getIntl().formatMessage({
+                      id: "lib.listedAgentModelCatalog.thinkingLevel",
+                      defaultMessage: "Thinking level",
+                    })
+                  : "Effort",
               description: null,
               category: "thought_level",
               type: "select",
@@ -111,7 +118,9 @@ export function listedModelCatalog(input: {
                 (option) => option.reasoningEffort === selection.reasoningEffort,
               )
                 ? selection.reasoningEffort
-                : current.defaultReasoningEffort,
+                : (efforts.find(
+                    (option) => option.reasoningEffort === current.defaultReasoningEffort,
+                  )?.reasoningEffort ?? efforts[0]!.reasoningEffort),
               options: efforts.map((option) => ({
                 value: option.reasoningEffort,
                 name: agentEffortLabel(selection.kind, option.reasoningEffort),
@@ -120,7 +129,12 @@ export function listedModelCatalog(input: {
             },
           ],
           changeConfig: async (id, value) => {
-            if (id !== LISTED_EFFORT_OPTION_ID || typeof value !== "string") return;
+            if (
+              id !== LISTED_EFFORT_OPTION_ID ||
+              !efforts.some((option) => option.reasoningEffort === value) ||
+              typeof value !== "string"
+            )
+              return;
             onSelectionChange({ ...selection, reasoningEffort: value }, "reasoningEffort");
           },
         }

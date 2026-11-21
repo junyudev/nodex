@@ -14,7 +14,11 @@ import type {
   AgentRuntimeConnectionState,
   AgentRuntimeSessionActivityChange,
 } from "../../shared/agent-runtime-api";
-import { adoptClaudeRows, make, nextClaudeUsageReadAt } from "./AgentRuntimeClaudeUsage";
+import {
+  adoptSubscriptionRows,
+  make,
+  nextSubscriptionUsageReadAt,
+} from "./AgentRuntimeSubscriptionUsage";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
 type Provider = Providers[number];
@@ -62,13 +66,14 @@ const codex = { instanceId: "codex", driver: "codex" } as unknown as Provider;
 
 const harness = (options: {
   readonly meter?: SubscriptionRef.SubscriptionRef<boolean>;
+  readonly antigravity?: boolean;
   readonly declared?: readonly string[];
   /** Whether Agent execution is running; mutable so a test can stop or start it. */
   readonly execution?: { running: boolean };
   /** What Nodex knows without starting execution. */
   readonly known?: () => Effect.Effect<Providers | null, Error>;
   /** A from-scratch check of the Claude Agents. */
-  readonly check?: () => Effect.Effect<Providers, Error>;
+  readonly check?: (ids: readonly string[]) => Effect.Effect<Providers, Error>;
   readonly logout?: (instanceIds: readonly string[]) => Effect.Effect<Providers, Error>;
 }) =>
   Effect.gen(function* () {
@@ -83,29 +88,39 @@ const harness = (options: {
       Clock.currentTimeMillis.pipe(
         Effect.map((readAt): Providers => [codex, claude({ readAt, usedPercent })]),
       );
-    const check = () => options.check?.() ?? now(30);
+    const check = (ids: readonly string[]) => options.check?.(ids) ?? now(30);
     const usage = yield* make({
-      meterEnabled: options.meter ? yield* SubscriptionRef.get(options.meter) : true,
-      meterEnabledChanges: options.meter ? SubscriptionRef.changes(options.meter) : undefined,
-      declared: Effect.succeed(options.declared ?? ["claude-default"]),
+      meters: {
+        claude: options.meter ? yield* SubscriptionRef.get(options.meter) : true,
+        antigravity: options.antigravity ?? false,
+      },
+      meterChanges: options.meter
+        ? SubscriptionRef.changes(options.meter).pipe(
+            Stream.map((claude) => ({ claude, antigravity: options.antigravity ?? false })),
+          )
+        : undefined,
+      declared: Effect.succeed({
+        claude: options.declared ?? ["claude-default"],
+        antigravity: options.antigravity ? ["antigravity-a"] : [],
+      }),
       known: Effect.suspend(() => {
         reads.push("known");
         return options.known?.() ?? now(10);
       }),
-      refresh: () =>
+      refresh: (ids) =>
         Effect.suspend(() => {
           reads.push("asked");
           execution.running = true;
-          return check();
+          return check(ids);
         }),
-      refreshWhileRunning: () =>
+      refreshWhileRunning: (ids) =>
         Effect.suspend(() => {
           if (!execution.running) {
             skipped += 1;
             return Effect.succeed(null);
           }
           reads.push("poll");
-          return check();
+          return check(ids);
         }),
       logout: options.logout ?? (() => Effect.succeed([])),
       served: Stream.fromPubSub(served),
@@ -130,12 +145,16 @@ const harness = (options: {
 
 it("reads usage again once the oldest reading is an interval old, never sooner than an attempt", () => {
   assert.strictEqual(
-    nextClaudeUsageReadAt({ readings: [4 * MINUTE], lastAttemptAt: null, intervalMs: 5 * MINUTE }),
+    nextSubscriptionUsageReadAt({
+      readings: [4 * MINUTE],
+      lastAttemptAt: null,
+      intervalMs: 5 * MINUTE,
+    }),
     9 * MINUTE,
   );
   // A reading that keeps failing to refresh stays old; the last attempt paces the retry.
   assert.strictEqual(
-    nextClaudeUsageReadAt({
+    nextSubscriptionUsageReadAt({
       readings: [0, 20 * MINUTE],
       lastAttemptAt: 30 * MINUTE,
       intervalMs: 5 * MINUTE,
@@ -143,11 +162,15 @@ it("reads usage again once the oldest reading is an interval old, never sooner t
     35 * MINUTE,
   );
   assert.strictEqual(
-    nextClaudeUsageReadAt({ readings: [null], lastAttemptAt: null, intervalMs: 5 * MINUTE }),
+    nextSubscriptionUsageReadAt({ readings: [null], lastAttemptAt: null, intervalMs: 5 * MINUTE }),
     -Infinity,
   );
   assert.strictEqual(
-    nextClaudeUsageReadAt({ readings: [], lastAttemptAt: 2 * MINUTE, intervalMs: 5 * MINUTE }),
+    nextSubscriptionUsageReadAt({
+      readings: [],
+      lastAttemptAt: 2 * MINUTE,
+      intervalMs: 5 * MINUTE,
+    }),
     7 * MINUTE,
   );
 });
@@ -156,11 +179,11 @@ it("a kept catalog never replaces an Agent that was checked more recently", () =
   const checked = (at: number, usedPercent: number) =>
     ({ ...claude({ readAt: at, usedPercent }), checkedAt: new Date(at).toISOString() }) as Provider;
   const fresh = checked(10 * MINUTE, 60);
-  assert.deepEqual(adoptClaudeRows([fresh], [codex, checked(2 * MINUTE, 20)]), [fresh]);
+  assert.deepEqual(adoptSubscriptionRows([fresh], [codex, checked(2 * MINUTE, 20)]), [fresh]);
   const later = checked(12 * MINUTE, 70);
-  assert.deepEqual(adoptClaudeRows([fresh], [later]), [later]);
+  assert.deepEqual(adoptSubscriptionRows([fresh], [later]), [later]);
   // The catalog decides which Agents exist.
-  assert.deepEqual(adoptClaudeRows([fresh], []), []);
+  assert.deepEqual(adoptSubscriptionRows([fresh], []), []);
 });
 
 it("leaves Nodex-managed and API key Claude instances out of the subscription meters", () => {
@@ -170,7 +193,7 @@ it("leaves Nodex-managed and API key Claude instances out of the subscription me
     source: "nodex",
   } as Provider;
   const keyed = claude({ instanceId: "key_deepseek_3f2a" });
-  assert.deepEqual(adoptClaudeRows(null, [own, managed, keyed]), [own]);
+  assert.deepEqual(adoptSubscriptionRows(null, [own, managed, keyed]), [own]);
 });
 
 it.effect("keeps a shown reading no older than five minutes while execution runs", () =>
@@ -446,14 +469,14 @@ it.effect("signing out replaces the Agent's reading with its signed-out state", 
             : Effect.succeed([claude({ signedIn: false })]);
         },
       });
-      const snapshot = yield* usage.logout(["claude-default"]);
+      const snapshot = yield* usage.logoutClaude(["claude-default"]);
       assert.deepEqual(signedOut, [["claude-default"]]);
       assert.strictEqual(snapshot.providers?.[0]?.auth.status, "unauthenticated");
 
       // A refused sign-out says why and reads the Agents again in case some changed.
       refuse = true;
       const count = reads.length;
-      const failure = yield* usage.logout(["claude-default"]).pipe(Effect.flip);
+      const failure = yield* usage.logoutClaude(["claude-default"]).pipe(Effect.flip);
       yield* settle;
       assert.strictEqual(failure.message, "Claude Code is still signed in.");
       assert.strictEqual(reads.length, count + 1);
@@ -499,4 +522,48 @@ it.effect("idles every Claude usage read while hidden and reads once immediately
       assert.deepEqual(value.reads, ["asked", "asked", "poll"]);
     }),
   ).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect(
+  "uses the same refresh for enabled providers and picks up Antigravity's deferred quota",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const antigravity = (usedPercent: number): Provider => ({
+          ...claude({ instanceId: "antigravity-a", usedPercent }),
+          driver: "antigravity",
+          auth: { type: "oauth-personal", status: "authenticated" },
+        });
+        const checked: (readonly string[])[] = [];
+        const claudeMeter = yield* SubscriptionRef.make(true);
+        let latest = antigravity(10);
+        const { usage, reads, settle } = yield* harness({
+          meter: claudeMeter,
+          antigravity: true,
+          known: () => Effect.succeed([claude({}), latest]),
+          check: (ids) => {
+            checked.push(ids);
+            return Effect.succeed(ids.includes("claude-default") ? [claude({}), latest] : [latest]);
+          },
+        });
+        yield* usage.refresh;
+        assert.deepEqual(checked, [["antigravity-a", "claude-default"]]);
+        latest = antigravity(80);
+        yield* TestClock.adjust("32 seconds");
+        yield* settle;
+        assert.deepEqual(reads, ["known", "asked", "known"]);
+        const snapshot = yield* SubscriptionRef.get(usage.snapshot);
+        assert.equal(
+          snapshot.providers?.find((row) => row.driver === "antigravity")?.usageLimits?.windows[0]
+            ?.usedPercent,
+          80,
+        );
+        const reject = yield* Effect.result(usage.logoutClaude(["antigravity-a"]));
+        assert.equal(reject._tag, "Failure");
+        yield* SubscriptionRef.set(claudeMeter, false);
+        yield* settle;
+        yield* TestClock.adjust("5 minutes");
+        assert.deepEqual(checked.at(-1), ["antigravity-a"]);
+      }),
+    ).pipe(Effect.provide(TestClock.layer())),
 );

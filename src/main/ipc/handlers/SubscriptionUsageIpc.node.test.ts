@@ -4,21 +4,21 @@ import type { IpcMainInvokeEvent } from "electron";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type { ClaudeUsageSnapshot } from "../../../shared/agent-runtime-api";
-import { AgentRuntimeClaudeUsage } from "../../agent-runtime/AgentRuntimeClaudeUsage";
+import type { SubscriptionUsageSnapshot } from "../../../shared/agent-runtime-api";
+import { AgentRuntimeSubscriptionUsage } from "../../agent-runtime/AgentRuntimeSubscriptionUsage";
 import { testLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { live } from "./ClaudeUsageIpc";
+import { live } from "./SubscriptionUsageIpc";
 
 type Handler = (event: IpcMainInvokeEvent, input?: unknown) => Effect.Effect<unknown, unknown>;
 
-const signedOut: ClaudeUsageSnapshot = { status: "ready", providers: [], reason: null };
+const signedOut: SubscriptionUsageSnapshot = { status: "ready", providers: [], reason: null };
 
 const setup = Effect.gen(function* () {
   const handlers = new Map<string, Handler>();
-  const snapshot = yield* SubscriptionRef.make<ClaudeUsageSnapshot>({
+  const snapshot = yield* SubscriptionRef.make<SubscriptionUsageSnapshot>({
     status: "loading",
     providers: null,
     reason: null,
@@ -32,7 +32,7 @@ const setup = Effect.gen(function* () {
       getURL: () => url,
       isDestroyed: () => false,
       send: (channel: string, payload: unknown) => {
-        if (channel === "agent-runtime:claude-usage-changed")
+        if (channel === "agent-runtime:subscription-usage-changed")
           delivered.set(id, [...(delivered.get(id) ?? []), payload]);
       },
     },
@@ -41,11 +41,11 @@ const setup = Effect.gen(function* () {
     live.pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(AgentRuntimeClaudeUsage, {
+          Layer.succeed(AgentRuntimeSubscriptionUsage, {
             snapshot,
             refresh: SubscriptionRef.get(snapshot),
             reread: Effect.void,
-            logout: (instanceIds) =>
+            logoutClaude: (instanceIds) =>
               Effect.sync(() => logouts.push(instanceIds)).pipe(Effect.as(signedOut)),
           }),
           Layer.succeed(
@@ -86,7 +86,7 @@ it.effect("every personal window hears each change to this desktop's Claude usag
     Effect.gen(function* () {
       const fixture = yield* setup;
       yield* fixture.settle;
-      const read: ClaudeUsageSnapshot = {
+      const read: SubscriptionUsageSnapshot = {
         status: "unavailable",
         providers: null,
         reason: "Agent execution could not start",
@@ -98,7 +98,7 @@ it.effect("every personal window hears each change to this desktop's Claude usag
       // A team window's Agents run on its Space host; this desktop's accounts are not its own.
       assert.isUndefined(fixture.delivered.get(3));
       assert.deepEqual(
-        yield* fixture.handlers.get("agent-runtime:claude-usage:read")!(fixture.event),
+        yield* fixture.handlers.get("agent-runtime:subscription-usage:read")!(fixture.event),
         read,
       );
     }),
@@ -109,7 +109,7 @@ it.effect("signs out only well-formed Claude Agents", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fixture = yield* setup;
-      const logout = fixture.handlers.get("agent-runtime:claude-usage:logout")!;
+      const logout = fixture.handlers.get("agent-runtime:subscription-usage:logout-claude")!;
       assert.deepEqual(yield* logout(fixture.event, { instanceIds: ["claude_a"] }), signedOut);
       const rejected = yield* logout(fixture.event, { instanceIds: [] }).pipe(Effect.result);
       assert.equal(rejected._tag, "Failure");

@@ -23,6 +23,7 @@ export interface AgentModelPickerEntry {
 
 /** A runtime whose models become available after setup, offered beside the model list. */
 export interface AgentModelSetupPresentation {
+  readonly instanceId?: string;
   readonly kind: AgentBackendBinding["kind"];
   readonly label: string;
   /** The next step or live state, such as `Install` or `42%`. */

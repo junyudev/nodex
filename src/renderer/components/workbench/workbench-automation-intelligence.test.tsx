@@ -40,6 +40,11 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
       },
       { binding: { kind: "opencode", instanceConfigId: "open" }, label: "OpenCode", enabled: true },
       {
+        binding: { kind: "antigravity", instanceConfigId: "google-work" },
+        label: "Antigravity work",
+        enabled: true,
+      },
+      {
         binding: { kind: "acp", agentDefinitionId: "scripted-agent", instanceConfigId: "acp-work" },
         label: "ACP work",
         enabled: true,
@@ -47,9 +52,9 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
     ],
   }),
 }));
-const acpModels = vi.hoisted(() =>
+const runtimeModels = vi.hoisted(() =>
   vi.fn((binding: { kind: string }) =>
-    binding.kind === "acp"
+    binding.kind === "acp" || binding.kind === "antigravity"
       ? {
           loading: false,
           discovered: true,
@@ -85,7 +90,7 @@ const acpModels = vi.hoisted(() =>
   ),
 );
 vi.mock("@/features/acp-agents/use-acp-automation-models", () => ({
-  useAcpAutomationModels: acpModels,
+  useAcpAutomationModels: runtimeModels,
 }));
 
 function AgentAndModel({
@@ -255,4 +260,22 @@ test("a task that continues one chat chooses its Agent alone", async () => {
   const { view } = renderEditor({ ...createWorkbenchAutomationDraft(), kind: "heartbeat" });
   expect(view.getByRole("button", { name: "Automations agent" }).textContent).toBe("Codex");
   expect(view.queryByRole("button", { name: "Agent intelligence" })).toBeNull();
+});
+
+test("scheduled Antigravity chats choose a real model and its thinking level", async () => {
+  const { view, changed } = renderEditor(createWorkbenchAutomationDraft());
+  await click(view.getByRole("button", { name: "Automations agent" }));
+  await click(await view.findByRole("menuitem", { name: "Antigravity work" }));
+  expect(changed.mock.lastCall?.[0]).toMatchObject({
+    backendBinding: { kind: "antigravity", instanceConfigId: "google-work" },
+    model: "",
+    reasoningEffort: "",
+  });
+  await click(view.getByRole("button", { name: "Agent intelligence" }));
+  await click(await view.findByRole("option", { name: /scripted.deep/iu }));
+  expect(changed.mock.lastCall?.[0]).toMatchObject({
+    model: "scripted-deep",
+    reasoningEffort: "low",
+    serviceTier: "",
+  });
 });

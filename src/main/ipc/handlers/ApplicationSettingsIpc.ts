@@ -18,6 +18,7 @@ import {
   ComposerPredictionSettingsSchema,
 } from "../../../shared/composer-prediction-settings";
 import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
+import { AntigravityAgentSettingsUpdateSchema } from "../../../shared/antigravity-agent-settings";
 import { APP_LOCALES } from "../../../shared/i18n/locales";
 import {
   activateElectronLanguagePreference,
@@ -92,6 +93,7 @@ type SettingsReadChannel =
   | "settings:acp-agents:get"
   | "settings:claude-agents:get"
   | "settings:opencode-agents:get"
+  | "settings:antigravity-agents:get"
   | "settings:codex-home:get"
   | "settings:backup:get"
   | "settings:diagnostics:get"
@@ -276,7 +278,9 @@ export const live: Layer.Layer<
     ) =>
       applicationSettings.update(command).pipe(
         Effect.tap(() =>
-          command.type === "update-claude-agents" || command.type === "update-opencode-agents"
+          command.type === "update-claude-agents" ||
+          command.type === "update-opencode-agents" ||
+          command.type === "update-antigravity-agents"
             ? runtimeProviders.refresh.pipe(
                 Effect.catch(() =>
                   Effect.logWarning(
@@ -414,6 +418,32 @@ export const live: Layer.Layer<
             "update-opencode-agent-settings",
             { type: "update-opencode-agents", input: parsed },
             (value) => value.openCodeAgents,
+          ),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:antigravity-agents:get",
+      "Antigravity settings",
+      (value) => value.antigravityAgents,
+    );
+    yield* ipc.handlePlainCommand("settings:antigravity-agents:update", (event, input: unknown) =>
+      authorize(event, "Antigravity settings").pipe(
+        Effect.andThen(
+          parse("parse-antigravity-agent-settings", () =>
+            AntigravityAgentSettingsUpdateSchema.parse(input),
+          ),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-antigravity-agent-settings",
+            { type: "update-antigravity-agents", input: parsed },
+            (value) => value.antigravityAgents,
           ),
         ),
         Effect.tap(() =>

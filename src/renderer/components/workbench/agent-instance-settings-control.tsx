@@ -30,12 +30,15 @@ interface AgentInstanceFields {
   readonly displayName: string;
   readonly enabled: boolean;
   readonly binaryPath: string;
-  readonly environment: AgentEnvironmentVariable[];
+  /** Absent for an Agent whose profiles carry no environment of their own. */
+  readonly environment?: AgentEnvironmentVariable[];
 }
 
-type InstanceInput<Instance extends AgentInstanceFields> = Omit<Instance, "environment"> & {
-  readonly environment: AgentEnvironmentInput[];
-};
+type InstanceInput<Instance extends AgentInstanceFields> = Instance extends {
+  readonly environment: AgentEnvironmentVariable[];
+}
+  ? Omit<Instance, "environment"> & { readonly environment: AgentEnvironmentInput[] }
+  : Instance;
 
 export interface AgentInstanceSettingsRuntime<Instance extends AgentInstanceFields> {
   readonly read: () => Promise<{ readonly instances: Instance[] }>;
@@ -147,16 +150,34 @@ type AgentInstanceSettingsControlProps<Instance extends AgentInstanceFields> = {
   /** Explains what a profile chooses, shown while there are none. */
   readonly setupDescription: string;
   readonly disclosure: NodexSettingsDisclosureState;
+  /** A deep link into the section. One that names a profile opens it. */
+  readonly anchor?: string | null;
+  /** A profile's anchor, for an Agent whose profiles can be linked to. */
+  readonly profileAnchor?: (profileId: string) => string;
   readonly executablePlaceholder: string;
   readonly executableDescription: string;
+  /** An empty executable is a choice the Agent resolves itself, such as a runtime Nodex installs. */
+  readonly executableOptional?: boolean;
   readonly runtime: AgentInstanceSettingsRuntime<Instance>;
   readonly createInstance: () => Instance;
-  readonly environmentPolicy: AgentEnvironmentPolicy;
-  readonly environmentSuggestions: readonly string[];
+  /** The profile's own variables; omitted when the Agent's profiles carry none. */
+  readonly environment?: {
+    readonly policy: AgentEnvironmentPolicy;
+    readonly suggestions: readonly string[];
+  };
+  /** What every profile shares, shown above them. */
+  readonly shared?: (input: { readonly profileCount: number }) => ReactNode;
+  /**
+   * The profile's account, shown under its name. An account leads the editor and its executable
+   * closes it; `saved` is null until the profile is saved.
+   */
+  readonly account?: (input: { readonly saved: Instance | null }) => ReactNode;
   /** The collapsed row's secondary line. */
   readonly profileDetail: (instance: Instance) => string;
   readonly fields: (input: {
     readonly draft: Instance;
+    /** Null until the profile is saved. */
+    readonly saved: Instance | null;
     readonly disabled: boolean;
     readonly change: (patch: Partial<Instance>) => void;
   }) => ReactNode;
@@ -191,12 +212,16 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   description,
   setupDescription,
   disclosure,
+  anchor = null,
+  profileAnchor,
   executablePlaceholder,
   executableDescription,
+  executableOptional = false,
   runtime,
   createInstance,
-  environmentPolicy,
-  environmentSuggestions,
+  environment,
+  shared,
+  account,
   profileDetail,
   fields,
   executableStatus,
@@ -208,6 +233,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   >({});
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft<Instance>>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [openedAnchor, setOpenedAnchor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   /** A saved profile's switch while its new state is being saved. */
   const [toggling, setToggling] = useState<{
@@ -220,7 +246,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   const accept = (next: readonly Instance[]) => {
     setSaved(next);
     setSavedEnvironments(
-      Object.fromEntries(next.map((entry) => [entry.id, environmentRows(entry.environment)])),
+      Object.fromEntries(next.map((entry) => [entry.id, environmentRows(entry.environment ?? [])])),
     );
   };
   const {
@@ -235,6 +261,14 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   );
 
   const savedProfiles = saved ?? [];
+  const anchorOf = (profileId: string) =>
+    profileAnchor?.(profileId) ?? `${id}-profile-${profileId}`;
+  const anchored = savedProfiles.find((profile) => anchorOf(profile.id) === anchor)?.id ?? null;
+  // A deep link opens its profile once, when that profile first becomes known.
+  if (anchored && anchored !== openedAnchor) {
+    setOpenedAnchor(anchored);
+    setExpanded(anchored);
+  }
   const unsaved = Object.values(drafts)
     .map(({ instance }) => instance)
     .filter((instance) => !savedProfiles.some(({ id: savedId }) => savedId === instance.id));
@@ -288,15 +322,20 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     replace?: ProfileDraft<Instance>,
   ): Promise<PersistOutcome> => {
     if (!editable) return "superseded";
-    const instances = next.map((entry) => ({
-      ...entry,
-      environment: environmentDraftInput(
-        entry.id === replace?.instance.id
-          ? replace.environment
-          : (savedEnvironments[entry.id] ?? []),
-        environmentPolicy,
-      ),
-    }));
+    const instances = next.map(
+      (entry) =>
+        (environment
+          ? {
+              ...entry,
+              environment: environmentDraftInput(
+                entry.id === replace?.instance.id
+                  ? replace.environment
+                  : (savedEnvironments[entry.id] ?? []),
+                environment.policy,
+              ),
+            }
+          : entry) as InstanceInput<Instance>,
+    );
     setBusy(profileId);
     setError(profileId, null);
     return runWithCleanup<PersistOutcome>(
@@ -334,7 +373,9 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   const save = async (profileId: string) => {
     const draft = current(profileId);
     if (!drafts[profileId] || !draft) return;
-    const validation = validateEnvironmentDraft(draft.environment, environmentPolicy);
+    const validation = environment
+      ? validateEnvironmentDraft(draft.environment, environment.policy)
+      : null;
     if (validation) {
       setError(profileId, validation);
       return;
@@ -387,6 +428,32 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     const error = errors[profileId];
     const change = (patch: Partial<Instance>) =>
       edit(profileId, { instance: { ...instance, ...patch } });
+    const executable = (
+      <NodexSettingsRow
+        variant="nested"
+        label={intl.formatMessage(settingsMessages.agentProfilesExecutable)}
+        description={
+          executableStatus?.({
+            saved: entry,
+            draft: instance,
+            environment: draft.environment,
+          }) || executableDescription
+        }
+      >
+        <Input
+          aria-label={intl.formatMessage(
+            { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
+            { label: label },
+          )}
+          className={fieldClassName}
+          value={instance.binaryPath}
+          disabled={disabled}
+          placeholder={executablePlaceholder}
+          spellCheck={false}
+          onChange={(event) => change({ binaryPath: event.target.value } as Partial<Instance>)}
+        />
+      </NodexSettingsRow>
+    );
     return (
       <>
         <NodexSettingsRow
@@ -404,38 +471,18 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             onChange={(event) => change({ displayName: event.target.value } as Partial<Instance>)}
           />
         </NodexSettingsRow>
-        <NodexSettingsRow
-          variant="nested"
-          label={intl.formatMessage(settingsMessages.agentProfilesExecutable)}
-          description={
-            executableStatus?.({
-              saved: entry,
-              draft: instance,
-              environment: draft.environment,
-            }) || executableDescription
-          }
-        >
-          <Input
-            aria-label={intl.formatMessage(
-              { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
-              { label: label },
-            )}
-            className={fieldClassName}
-            value={instance.binaryPath}
+        {account ? account({ saved: entry }) : executable}
+        {fields({ draft: instance, saved: entry, disabled, change })}
+        {account ? executable : null}
+        {environment ? (
+          <AgentEnvironmentEditor
+            rows={draft.environment}
             disabled={disabled}
-            placeholder={executablePlaceholder}
-            spellCheck={false}
-            onChange={(event) => change({ binaryPath: event.target.value } as Partial<Instance>)}
+            policy={environment.policy}
+            suggestedNames={environment.suggestions}
+            onChange={(rows) => edit(profileId, { environment: rows })}
           />
-        </NodexSettingsRow>
-        {fields({ draft: instance, disabled, change })}
-        <AgentEnvironmentEditor
-          rows={draft.environment}
-          disabled={disabled}
-          policy={environmentPolicy}
-          suggestedNames={environmentSuggestions}
-          onChange={(environment) => edit(profileId, { environment })}
-        />
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           {confirmRemove === profileId ? (
             <>
@@ -524,7 +571,10 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             size="sm"
             variant="secondary"
             disabled={
-              disabled || !isChanged || !instance.binaryPath.trim() || !instance.displayName.trim()
+              disabled ||
+              !isChanged ||
+              !instance.displayName.trim() ||
+              (!executableOptional && !instance.binaryPath.trim())
             }
             onClick={() => void save(profileId)}
           >
@@ -582,19 +632,23 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
           })}
         </p>
       ) : profiles.length === 0 ? (
-        <NodexSettingsRow
-          label={intl.formatMessage(
-            { id: "settings.agentProfiles.setUp", defaultMessage: "Set up {label}" },
-            { label: label },
-          )}
-          description={setupDescription}
-        >
-          <NodexButton size="sm" variant="secondary" onClick={add}>
-            {intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
-          </NodexButton>
-        </NodexSettingsRow>
+        <>
+          {shared?.({ profileCount: 0 })}
+          <NodexSettingsRow
+            label={intl.formatMessage(
+              { id: "settings.agentProfiles.setUp", defaultMessage: "Set up {label}" },
+              { label: label },
+            )}
+            description={setupDescription}
+          >
+            <NodexButton size="sm" variant="secondary" onClick={add}>
+              {intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
+            </NodexButton>
+          </NodexSettingsRow>
+        </>
       ) : (
         <>
+          {shared?.({ profileCount: profiles.length })}
           {profiles.map((profile) => {
             const shown = current(profile.id)?.instance ?? profile;
             const isSaved = savedEntry(profile.id) !== null;
@@ -603,7 +657,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             return (
               <NodexSettingsExpandableRow
                 key={profile.id}
-                id={`${id}-profile-${profile.id}`}
+                id={anchorOf(profile.id)}
                 label={
                   shown.displayName ||
                   intl.formatMessage({

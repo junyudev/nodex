@@ -10,7 +10,7 @@ import { isRemoteSpace } from "./renderer-space";
 export const isHostedChat = (): boolean => isRemoteSpace();
 
 /** A path on this computer, as opposed to a Page, chat, app or other link a mention names. */
-const isLocalPath = (path: string) =>
+export const isLocalPath = (path: string) =>
   path.startsWith("/") || /^[a-zA-Z]:[\\/]/u.test(path) || /^\\\\[^\\]+\\[^\\]+/u.test(path);
 
 /**

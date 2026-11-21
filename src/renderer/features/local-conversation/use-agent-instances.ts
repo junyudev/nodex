@@ -7,6 +7,7 @@ import {
   readAcpAgentSettings,
   readClaudeAgentSettings,
 } from "../../lib/workbench-settings-runtime";
+import { readAntigravityAgentSettings } from "../../lib/antigravity-agent-settings-runtime";
 import { readOpenCodeAgentSettings } from "../../lib/opencode-agent-settings-runtime";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
 import type { AgentCatalogInstance } from "./use-agent-model-catalog";
@@ -41,9 +42,10 @@ const readInstances = async (): Promise<readonly AgentCatalogInstance[]> => {
       ];
     });
   }
-  const [claude, opencode, acp] = await Promise.all([
+  const [claude, opencode, antigravity, acp] = await Promise.all([
     readClaudeAgentSettings(),
     readOpenCodeAgentSettings(),
+    readAntigravityAgentSettings(),
     readAcpAgentSettings(),
   ]);
   return [
@@ -57,6 +59,11 @@ const readInstances = async (): Promise<readonly AgentCatalogInstance[]> => {
       label: instance.displayName,
       enabled: instance.enabled,
       usesHostExecutable: usesHostOpenCodeExecutable(instance),
+    })),
+    ...antigravity.instances.map((instance) => ({
+      binding: { kind: "antigravity" as const, instanceConfigId: instance.id },
+      label: instance.displayName,
+      enabled: instance.enabled,
     })),
     ...acp.instances.map((instance) => ({
       binding: {

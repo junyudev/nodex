@@ -22,7 +22,10 @@ import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { withFreeModelsOn } from "../../../shared/model-policy";
 import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { acpAgentsOwner, useAcpAgents } from "../acp-agents/use-acp-agents";
-import { useLocalAgentSuggestions } from "../local-agents/use-local-agents";
+import {
+  antigravityRuntimeOwner,
+  useAntigravityRuntime,
+} from "../antigravity-runtime/antigravity-runtime-owner";
 import { useProviderKeys } from "../provider-keys/use-provider-keys";
 import {
   arrangeFirstRunAgents,
@@ -78,24 +81,23 @@ export function useFirstRunAgents() {
   );
   const openCodeSetup = useOpenCodeSetup(openCodeSetupOwner, true);
   const acp = useAcpAgents(acpAgentsOwner);
-  const localAgents = useLocalAgentSuggestions(acpAgentsOwner);
+  const antigravity = useAntigravityRuntime();
   const providerKeys = useProviderKeys();
   const installView = openCodeInstallView(openCodeSetup);
   const pendingLogin = codexAccount?.pendingLogin ?? null;
 
-  const { rescan: rescanLocalAgents } = localAgents;
   const refresh = useCallback(async () => {
     // What is installed can change while the person is away, as much as who is signed in.
-    const scanned = rescanLocalAgents();
+    const scanned = antigravityRuntimeOwner.run("check");
     try {
       const next = await agentRuntimeRuntime.catalog({ refresh: true });
       client.setQueryData(queryKeys.agentRuntime.providers(), next);
     } catch {
       // The last answer stays on screen; the Composer reports what stays unusable.
     }
-    publishAgentCatalogRefresh();
     await scanned;
-  }, [client, rescanLocalAgents]);
+    publishAgentCatalogRefresh();
+  }, [client]);
 
   // One check at a time: a second request joins the one in flight, and its rows show the wait.
   const [checkingAgain, setCheckingAgain] = useState<Promise<void> | null>(null);
@@ -132,6 +134,10 @@ export function useFirstRunAgents() {
     if (signedInToCodex || openCodeInstalled || nodexSignedIn) void refresh();
   }, [refresh, nodexSignedIn, openCodeInstalled, signedInToCodex]);
 
+  useEffect(() => {
+    void antigravityRuntimeOwner.run("check");
+  }, []);
+
   const inputs: FirstRunAgentInputs = {
     providers: providers.data ?? (providers.isError ? [] : null),
     policy: policy.settings,
@@ -145,7 +151,10 @@ export function useFirstRunAgents() {
       notice: nodexView.notice?.message ?? null,
     },
     openCodeInstall: openCodeInstallState(installView),
-    localAgents: localAgents.settled ? localAgents.found : null,
+    antigravityInspection:
+      antigravity.pending === "check" && !antigravity.state?.inspection
+        ? undefined
+        : (antigravity.state?.inspection ?? (antigravity.error ? null : undefined)),
     acpAgents: acp.settings
       ? acp.settings.instances.map((instance) => ({
           id: instance.id,
@@ -206,11 +215,6 @@ export function useFirstRunAgents() {
         );
         publishAgentCatalogRefresh();
         return;
-      case "local-agent-connect": {
-        const found = localAgents.suggestions.find((agent) => agent.id === action.target);
-        if (found) await localAgents.connect(found);
-        return;
-      }
       case "acp-connect":
         if (action.target) acpAgentsOwner.connect(action.target);
         return;
@@ -220,6 +224,7 @@ export function useFirstRunAgents() {
       case "claude-sign-in":
       case "claude-install":
       case "acp-sign-in":
+      case "antigravity-settings":
       case "api-key-add":
         return;
     }

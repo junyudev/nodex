@@ -10,7 +10,7 @@
 
 export const SESSION_SKILLS_PLUGIN_NAME = "nodex-session-skills";
 
-export type SessionPluginBackend = "codex" | "claude" | "acp" | "opencode";
+export type SessionPluginBackend = "codex" | "claude" | "acp" | "opencode" | "antigravity";
 
 export interface SessionPluginsRequest {
   /** The Nodex Session (thread) the plugins are opened for. */

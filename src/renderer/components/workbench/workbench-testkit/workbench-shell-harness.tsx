@@ -2894,7 +2894,7 @@ export function renderWorkbench({
     if (channel === "agent-runtime:activity:read")
       return { sequence: 0, items: [], complete: true };
     if (channel === "agent-runtime:connection:read") return { status: "idle" };
-    if (channel === "agent-runtime:claude-usage:read")
+    if (channel === "agent-runtime:subscription-usage:read")
       return { status: "ready", providers: [], reason: null };
     if (channel === "thread-execution:location")
       return { hostId: "local", cwd: "/tmp/project", managedWorktreePath: null };

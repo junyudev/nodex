@@ -2,7 +2,7 @@ import type { CodexConversationTurn, CodexPromptInput, CodexUserAttachment } fro
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { CodexTranscriptStructure } from "../local-conversation/normalized-transcript-read-owner";
 
-export type FirstSubmissionBackend = "codex" | "acp" | "claude" | "opencode";
+export type FirstSubmissionBackend = "codex" | "acp" | "claude" | "opencode" | "antigravity";
 
 export type FirstSubmissionPhase =
   | "accepted"

@@ -95,6 +95,10 @@ checking the models of and removing [API key connections](agent-backend-behavior
 none connected, opening it shows the form directly. Manage from a model on an API key opens its row.
 Other agents owns ACP instance setup, sign-in and model services, as described in
 [ACP Agent behavior](acp-agent-behavior.md).
+The Antigravity backend uses the `antigravity` Agents anchor for search, Manage and
+first-run setup navigation. Its profile contract is described in
+[Configuration](../CONFIGURATION.md#antigravity-instances).
+
 Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 

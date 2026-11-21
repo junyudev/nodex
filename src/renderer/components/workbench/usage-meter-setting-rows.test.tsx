@@ -8,7 +8,12 @@ import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls"
 
 // Separate query clients model independent renderer windows sharing Main's Profile preference.
 test("switches persist independently and update an already-open rail in another window", async () => {
-  let saved: UsageMeterSettings = { claude: true, codex: true, nodexCredit: true };
+  let saved: UsageMeterSettings = {
+    antigravity: true,
+    claude: true,
+    codex: true,
+    nodexCredit: true,
+  };
   const listeners = new Set<(settings: UsageMeterSettings) => void>();
   const invoke = vi.fn(async (channel: string, input?: UsageMeterSettings) => {
     if (channel === "settings:usage-meters:get") return saved;
@@ -48,10 +53,10 @@ test("switches persist independently and update an already-open rail in another 
           onOpenSettings={() => {}}
           onOpenAccountSettings={() => {}}
           account={{ status: "ready", account: null, requiresOpenAiAuth: true }}
-          claudeUsage={{
+          subscriptionUsage={{
             snapshot: { status: "loading", providers: null, reason: null },
             refresh: async () => ({ status: "loading", providers: null, reason: null }),
-            logout: async () => ({ status: "loading", providers: null, reason: null }),
+            logoutClaude: async () => ({ status: "loading", providers: null, reason: null }),
           }}
           onStartChatGptLogin={async () => ({
             type: "chatgpt",
@@ -73,7 +78,7 @@ test("switches persist independently and update an already-open rail in another 
     );
     expect(view.getByRole("button", { name: "Loading Claude usage" })).not.toBeNull();
     expect(view.getByRole("button", { name: "Sign in to Codex" })).not.toBeNull();
-    for (const label of ["Claude", "Codex", "Nodex credits"]) {
+    for (const label of ["Antigravity", "Claude", "Codex", "Nodex credits"]) {
       const control = section.getByRole("switch", { name: label });
       await act(async () => {
         fireEvent.click(control);
@@ -84,7 +89,7 @@ test("switches persist independently and update an already-open rail in another 
         expect((control as HTMLButtonElement).disabled).toBe(false);
       });
     }
-    expect(saved).toEqual({ claude: false, codex: false, nodexCredit: false });
+    expect(saved).toEqual({ antigravity: false, claude: false, codex: false, nodexCredit: false });
     await waitFor(() => {
       expect(view.queryByRole("button", { name: "Loading Claude usage" })).toBeNull();
       expect(view.queryByRole("button", { name: "Sign in to Codex" })).toBeNull();
@@ -97,7 +102,7 @@ test("switches persist independently and update an already-open rail in another 
     await waitFor(() =>
       expect(view.getByRole("button", { name: "Sign in to Codex" })).not.toBeNull(),
     );
-    expect(saved).toEqual({ claude: false, codex: true, nodexCredit: false });
+    expect(saved).toEqual({ antigravity: false, claude: false, codex: true, nodexCredit: false });
   } finally {
     view.unmount();
     settingsClient.clear();
@@ -106,7 +111,7 @@ test("switches persist independently and update an already-open rail in another 
 });
 
 test("a failed save restores the saved switch and reports the failure", async () => {
-  const saved = { claude: true, codex: true, nodexCredit: true };
+  const saved = { antigravity: true, claude: true, codex: true, nodexCredit: true };
   installWindowApi({
     invoke: async (channel: string) => {
       if (channel === "settings:usage-meters:get") return saved;

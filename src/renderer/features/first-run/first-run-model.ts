@@ -8,14 +8,11 @@ import {
 } from "../../../shared/model-policy";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
-import { localAgentDefinition, type LocalAgentFound } from "../../../shared/local-agents";
 import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-instances";
 import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared/provider-keys";
+import type { AntigravityRuntimeInspection } from "../../../shared/antigravity-runtime";
+import { antigravityRequiredVersion } from "../antigravity-runtime/antigravity-runtime-model";
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
-import {
-  localAgentFoundDetail,
-  localAgentNeedsUpdateDetail,
-} from "../local-agents/local-agents-model";
 import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import {
   agentReadinessProblem,
@@ -113,7 +110,7 @@ export const firstTaskPrompt = (task: FirstTask): string => FIRST_TASK_PROMPTS[t
 type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 
 /**
- * A row's identity: a built-in Agent, an Agent found on this computer (`found:<id>`), an ACP
+ * A row's identity: a built-in Agent, an ACP
  * instance (`acp:<instance id>`), an API key connection (`key:<connection id>`) or the way to add
  * one (`api-key`).
  */
@@ -128,22 +125,21 @@ export type FirstRunAgentAction =
   | "nodex-cancel-sign-in"
   | "opencode-install"
   | "opencode-use"
-  | "local-agent-connect"
+  | "antigravity-settings"
   | "acp-connect"
   | "acp-sign-in"
   | "api-key-add"
   | "check-again";
 
 export type FirstRunAgentMark =
-  | { readonly kind: "codex" | "claude" | "opencode" | "nodex" }
+  | { readonly kind: "codex" | "claude" | "opencode" | "antigravity" | "nodex" }
   | { readonly kind: "key"; readonly preset: ProviderKeyPresetId | null }
   | { readonly kind: "acp"; readonly agentDefinitionId: string };
 
 export interface FirstRunAgentRow {
   readonly id: FirstRunAgentId;
   /**
-   * Where the row sits once the order settles. A row that takes over from another, such as a
-   * connected Agent from the one found on the computer, shares its slot and so its place.
+   * Where the row sits once the order settles. Rows sharing a slot keep their place.
    */
   readonly slot: string;
   readonly mark: FirstRunAgentMark;
@@ -160,7 +156,7 @@ export interface FirstRunAgentRow {
   readonly action: {
     readonly kind: FirstRunAgentAction;
     readonly label: string;
-    /** The found Agent or ACP instance the action is for. */
+    /** The configured instance the action is for. */
     readonly target?: string;
   } | null;
   /** The ways to add credits open beneath the row. */
@@ -190,11 +186,8 @@ export interface FirstRunAgentInputs {
     readonly notice: string | null;
   };
   readonly openCodeInstall: "checking" | "installing" | "installable" | "installed" | "unavailable";
-  /**
-   * Recognized Agents found on this computer that the Profile doesn't run yet, including a version
-   * too old to connect; null until scanned.
-   */
-  readonly localAgents: readonly LocalAgentFound[] | null;
+  /** Undefined until inspected, null if the inspection could not be read. */
+  readonly antigravityInspection: AntigravityRuntimeInspection | null | undefined;
   /** Null until ACP settings are read. */
   readonly acpAgents: readonly FirstRunAcpAgent[] | null;
   /** Null until API key connections are read. */
@@ -204,7 +197,7 @@ export interface FirstRunAgentInputs {
 const CLAUDE_DRIVER = "claudeAgent";
 const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
 
-const builtIn = (id: "codex" | "claude" | "opencode" | "nodex") => ({
+const builtIn = (id: "codex" | "claude" | "opencode" | "antigravity" | "nodex") => ({
   id,
   slot: id,
   mark: { kind: id },
@@ -228,7 +221,7 @@ const checkAgain = (intl: IntlShape): NonNullable<FirstRunAgentRow["action"]> =>
 });
 
 const checking = (
-  id: "codex" | "claude" | "opencode",
+  id: "codex" | "claude" | "opencode" | "antigravity",
   label: string,
   intl: IntlShape,
 ): FirstRunAgentRow => ({
@@ -282,7 +275,7 @@ type TroubledProblem = Extract<
  * said for itself sits beneath the row when the row's own words don't already cover it.
  */
 function troubledRow(
-  id: "codex" | "claude",
+  id: "codex" | "claude" | "antigravity",
   label: string,
   provider: RuntimeProvider,
   problem: TroubledProblem,
@@ -643,32 +636,8 @@ function openCodeRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgent
   };
 }
 
-/** An ACP Agent's place is its software, so connecting a found one keeps the row where it was. */
+/** ACP instances of the same Agent share a place in the setup list. */
 const acpSlot = (agentDefinitionId: string) => `acp-agent:${agentDefinitionId}`;
-
-function foundAgentRow(agent: LocalAgentFound, intl: IntlShape): FirstRunAgentRow {
-  const definition = localAgentDefinition(agent.id);
-  const row = {
-    id: `found:${agent.id}`,
-    slot: acpSlot(definition.agentDefinitionId),
-    mark: { kind: "acp", agentDefinitionId: definition.agentDefinitionId },
-    label: definition.name,
-    state: "action",
-    found: true,
-  } as const;
-  // Saying what was found and what it needs beats leaving an installed Agent off the page.
-  if (!agent.supported)
-    return {
-      ...row,
-      detail: localAgentNeedsUpdateDetail(agent, intl),
-      action: checkAgain(intl),
-    };
-  return {
-    ...row,
-    detail: foundDetail(localAgentFoundDetail(agent), intl),
-    action: { kind: "local-agent-connect", label: connectLabel(intl), target: agent.id },
-  };
-}
 
 function acpAgentRow(agent: FirstRunAcpAgent, intl: IntlShape): FirstRunAgentRow | null {
   const { status } = agent;
@@ -722,6 +691,87 @@ function acpAgentRow(agent: FirstRunAcpAgent, intl: IntlShape): FirstRunAgentRow
   }
 }
 
+function antigravityRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow {
+  const label = "Antigravity";
+  const profiles = input.providers?.filter((provider) => provider.driver === "antigravity") ?? [];
+  const ready = profiles.find(
+    (provider) =>
+      !isAgentUnchecked(provider) &&
+      provider.installed &&
+      provider.auth.status === "authenticated" &&
+      !agentReadinessProblem(provider),
+  );
+  const base = { ...builtIn("antigravity"), label };
+  if (ready)
+    return {
+      ...base,
+      detail: signedInDetail(ready, intl),
+      state: "ready",
+      found: true,
+      action: null,
+    };
+  const inspection = input.antigravityInspection;
+  if (!input.providers || inspection === undefined || profiles.some(isAgentUnchecked))
+    return checking("antigravity", label, intl);
+
+  const profile = profiles.find((provider) => provider.enabled && provider.installed);
+  const selected = inspection?.instances.find(
+    ({ instanceId }) => instanceId === profile?.instanceId,
+  );
+  const executable = selected?.executablePath
+    ? selected
+    : (inspection?.managed ?? inspection?.path);
+  const minimum =
+    inspection && executable && antigravityRequiredVersion(executable.version, inspection);
+  const found = Boolean(executable || profile);
+  const setup = {
+    ...base,
+    state: "action",
+    found,
+  } as const;
+  if (minimum && executable) {
+    const command = executable.executablePath?.split(/[\\/]/u).at(-1);
+    return {
+      ...setup,
+      detail: intl.formatMessage(
+        {
+          id: "firstRun.firstRunModel.foundNeedsUpdate",
+          defaultMessage: "Found {command} · Update to {minimum} or newer to connect",
+        },
+        { command: [command, executable.version].filter(Boolean).join(" "), minimum },
+      ),
+      action: checkAgain(intl),
+    };
+  }
+  const problem = agentReadinessProblem(profile);
+  if (
+    profile &&
+    (problem === "no-connection" || problem === "not-responding" || problem === "not-ready")
+  )
+    return troubledRow("antigravity", label, profile, problem, intl);
+
+  const signIn = profile && problem !== "turned-off";
+  const detail = signIn
+    ? intl.formatMessage({
+        id: "firstRun.firstRunModel.signInToUseItsModels",
+        defaultMessage: "Sign in to use its models",
+      })
+    : intl.formatMessage({ id: "agents.antigravity.notSetUp", defaultMessage: "Not set up" });
+  return {
+    ...setup,
+    detail: found ? foundDetail(detail, intl) : detail,
+    action: {
+      kind: "antigravity-settings",
+      label: signIn
+        ? signInLabel(intl)
+        : intl.formatMessage({
+            id: "firstRun.firstRunModel.setUpAntigravity",
+            defaultMessage: "Set up",
+          }),
+    },
+  };
+}
+
 function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly FirstRunAgentRow[] {
   const connections = (input.providerKeys ?? []).filter(({ enabled }) => enabled);
   return [
@@ -764,22 +814,19 @@ function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly 
 
 /**
  * The Agents the first step offers, in the order a person is most likely to want them: the
- * subscriptions they may already have, Agents found on this computer, an API key, then free models.
+ * subscriptions they may already have, configured Agents, an API key, then free models.
  * {@link placeFirstRunAgents} then lifts the usable and the found ones above the rest.
  */
 export function firstRunAgentRows(
   input: FirstRunAgentInputs,
   intl: IntlShape = getIntl(),
 ): readonly FirstRunAgentRow[] {
-  const configured = new Set((input.acpAgents ?? []).map((agent) => agent.agentDefinitionId));
   return [
     codexRow(input, intl),
     claudeRow(input, intl),
     nodexRow(input, intl),
     ...(input.acpAgents ?? []).map((agent) => acpAgentRow(agent, intl)),
-    ...(input.localAgents ?? [])
-      .filter((agent) => !configured.has(localAgentDefinition(agent.id).agentDefinitionId))
-      .map((agent) => foundAgentRow(agent, intl)),
+    antigravityRow(input, intl),
     ...providerKeyRows(input, intl),
     openCodeRow(input, intl),
   ].flatMap((row) => (row ? [row] : []));
@@ -787,10 +834,9 @@ export function firstRunAgentRows(
 
 /** Whether every row has its first answer. */
 export const firstRunAgentsSettled = (
-  input: Pick<FirstRunAgentInputs, "acpAgents" | "providerKeys" | "localAgents">,
+  input: Pick<FirstRunAgentInputs, "acpAgents" | "providerKeys">,
   rows: readonly FirstRunAgentRow[],
 ) =>
-  input.localAgents !== null &&
   input.acpAgents !== null &&
   input.providerKeys !== null &&
   rows.every((row) => row.state !== "checking");

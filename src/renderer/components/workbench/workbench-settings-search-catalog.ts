@@ -499,6 +499,10 @@ export const settingsMessages = defineMessages({
     id: "settings.usageMeters.usageMeters",
     defaultMessage: "Usage meters",
   },
+  generalShowAntigravityUsageInTheRail: {
+    id: "settings.general.showAntigravityUsageInTheRail",
+    defaultMessage: "Show Antigravity usage in the rail.",
+  },
   generalShowClaudeUsageInTheRail: {
     id: "settings.general.showClaudeUsageInTheRail",
     defaultMessage: "Show Claude usage in the rail.",
@@ -888,6 +892,25 @@ export const settingsMessages = defineMessages({
     id: "settings.agents.useDeepSeekKimiGlmMiniMax",
     defaultMessage:
       "Use DeepSeek, Kimi, GLM, MiniMax or any Anthropic-compatible endpoint with your own key.",
+  },
+  antigravityDescription: {
+    id: "settings.antigravity.description",
+    defaultMessage:
+      "Google's coding agent for Gemini and the other models on your plan. Use a profile for each account.",
+  },
+  antigravityRuntime: { id: "antigravityRuntime.label", defaultMessage: "Runtime" },
+  antigravityRuntimeDescription: {
+    id: "settings.antigravity.runtime.description",
+    defaultMessage: "Install, update or remove the runtime Antigravity profiles share.",
+  },
+  antigravitySignInMethod: {
+    id: "settings.antigravity.signInMethod",
+    defaultMessage: "Sign-in method",
+  },
+  antigravitySignInMethodDescription: {
+    id: "settings.antigravity.signInMethod.description",
+    defaultMessage:
+      "A Google account uses your plan. API keys and Agent Platform bill for what you use.",
   },
   agentsOtherAgents: { id: "settings.agents.otherAgents", defaultMessage: "Other agents" },
   agentsAgentClientProtocol: {
@@ -1522,6 +1545,12 @@ export const SETTINGS_SEARCH_PANELS = {
         anchor: "usage-meters",
         title: settingsMessages.usageMetersUsageMeters,
         entries: [
+          entry("Antigravity", settingsMessages.generalShowAntigravityUsageInTheRail, [
+            "usage",
+            "quota",
+            "rail",
+            "meter",
+          ]),
           entry("Claude", settingsMessages.generalShowClaudeUsageInTheRail, [
             "usage",
             "limits",
@@ -1955,6 +1984,38 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "antigravity",
+        title: "Antigravity",
+        entries: [
+          entry("Antigravity", settingsMessages.antigravityDescription, [
+            "agy",
+            "Gemini",
+            "Google",
+            settingsMessages.agentProfilesAddProfile,
+          ]),
+          entry(
+            settingsMessages.antigravityRuntime,
+            settingsMessages.antigravityRuntimeDescription,
+            ["Install", "Update", "Download", settingsMessages.agentProfilesExecutable],
+          ),
+          entry(
+            settingsMessages.antigravitySignInMethod,
+            settingsMessages.antigravitySignInMethodDescription,
+            [
+              "Account",
+              "Sign in",
+              "Sign out",
+              "Google account",
+              "Gemini Enterprise",
+              "Gemini API key",
+              "Agent Platform",
+              "Vertex AI",
+              "Google Cloud project",
+            ],
+          ),
+        ],
+      },
+      {
         anchor: "keys",
         title: settingsMessages.agentsApiKeys,
         entries: [
@@ -2014,11 +2075,6 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.agentsInstallAgentsFromTheACPRegistry,
             [
               "ACP",
-              "Found on this computer",
-              "Google Antigravity",
-              "Antigravity",
-              "agy",
-              "Gemini",
               "Add agent",
               "ACP Registry",
               "Local command",

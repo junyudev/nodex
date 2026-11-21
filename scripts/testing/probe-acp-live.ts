@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ElectronApplication, Page } from "playwright";
 import type { IpcApi } from "../../src/shared/ipc-api";
+import type { AgentAccountIpcApi } from "../../src/shared/agent-accounts-api";
 import type { AcpIpcApi, AcpOperations, AcpResult } from "../../src/shared/acp-api";
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -24,8 +25,9 @@ type Check = {
   status: "verified" | "failed" | "blocked" | "unsupported" | "not-run";
   detail?: unknown;
 };
-type InvokeResult<Channel extends keyof IpcApi> = Channel extends keyof AcpIpcApi
-  ? AcpIpcApi[Channel]["result"] extends AcpResult<infer Value>
+type ManagementIpcApi = AcpIpcApi & AgentAccountIpcApi;
+type InvokeResult<Channel extends keyof IpcApi> = Channel extends keyof ManagementIpcApi
+  ? ManagementIpcApi[Channel]["result"] extends AcpResult<infer Value>
     ? Value
     : never
   : IpcApi[Channel]["result"];
@@ -56,7 +58,8 @@ const invoke = async <Channel extends keyof IpcApi>(
         );
       }),
     ]);
-    if (!channel.startsWith("acp:")) return result as InvokeResult<Channel>;
+    if (!channel.startsWith("acp:") && !channel.startsWith("agent-accounts:"))
+      return result as InvokeResult<Channel>;
     const envelope = result as AcpResult<unknown>;
     if (!envelope.ok) throw new Error(`${envelope.error.reason}: ${envelope.error.message}`);
     return envelope.value as InvokeResult<Channel>;
@@ -366,15 +369,21 @@ async function main() {
       status: connected.phase === "succeeded" ? "verified" : "failed",
       detail: connected.result ?? connected.error,
     };
-    let auth = await invoke(page, "acp:auth:read", { instanceId });
+    const account = { backend: { kind: "acp", instanceConfigId: instanceId } } as const;
+    const readAuth = async () => {
+      const state = await invoke(page, "agent-accounts:read", account);
+      if (!state) throw new Error("The Agent account is unavailable.");
+      return state;
+    };
+    let auth = await readAuth();
     report.authenticationPhase = auth.phase;
     report.authenticationMethods = auth.methods?.map(({ id, name, type }) => ({ id, name, type }));
     if (args.includes("--authenticate")) {
-      auth = await invoke(page, "acp:auth:start", { instanceId });
+      auth = await invoke(page, "agent-accounts:start", account);
       const deadline = Date.now() + 45_000;
       while (["starting", "verifying"].includes(auth.phase) && Date.now() < deadline) {
         await delay(250);
-        auth = await invoke(page, "acp:auth:read", { instanceId });
+        auth = await readAuth();
       }
       if (auth.phase === "succeeded") connected = await connect();
     }
@@ -392,7 +401,7 @@ async function main() {
         const deadline = Date.now() + 15 * 60_000;
         while (Date.now() < deadline && auth.phase !== "succeeded") {
           await delay(1000);
-          auth = await invoke(page, "acp:auth:read", { instanceId });
+          auth = await readAuth();
         }
         if (auth.phase === "succeeded") connected = await connect();
       }

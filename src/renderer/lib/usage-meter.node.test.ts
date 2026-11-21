@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import type { ClaudeUsageSnapshot } from "../../shared/agent-runtime-api";
+import type { SubscriptionUsageSnapshot } from "../../shared/agent-runtime-api";
 import type { CodexAccountSnapshot } from "./types";
 import {
   USAGE_READING_STALE_AFTER_MS,
-  claudeUsageAccounts,
+  subscriptionUsageAccounts,
   claudeUsagePlaceholder,
   codexUsageReading,
   describeUsageMeter,
@@ -68,10 +68,10 @@ const reading = (overrides: Partial<UsageReading> = {}): UsageReading => ({
 
 const read = (
   providers: readonly RuntimeProvider[],
-  status: ClaudeUsageSnapshot["status"] = "ready",
-): ClaudeUsageSnapshot => ({ status, providers, reason: null });
+  status: SubscriptionUsageSnapshot["status"] = "ready",
+): SubscriptionUsageSnapshot => ({ status, providers, reason: null });
 const claudeReadings = (providers: readonly RuntimeProvider[]) =>
-  claudeUsageAccounts(read(providers)).map((account) => account.reading);
+  subscriptionUsageAccounts(read(providers)).map((account) => account.reading);
 
 const claudeProvider = (overrides: Partial<RuntimeProvider> = {}): RuntimeProvider =>
   ({
@@ -561,7 +561,7 @@ describe("usage readings", () => {
     expect(describeUsageMeter(account!, NOW).status).toBe("measured");
 
     // Main could not read at all: everything it kept is marked the same way.
-    const [unreachable] = claudeUsageAccounts(read([claudeProvider()], "unavailable"));
+    const [unreachable] = subscriptionUsageAccounts(read([claudeProvider()], "unavailable"));
     expect(unreachable?.reading.readFailed).toBe(true);
   });
 
@@ -617,7 +617,7 @@ describe("usage readings", () => {
       instanceId: "claude-c" as RuntimeProvider["instanceId"],
       auth: { status: "authenticated", email: "other@example.com", label: "Claude Pro" },
     });
-    const accounts = claudeUsageAccounts(read([older, newer, other]));
+    const accounts = subscriptionUsageAccounts(read([older, newer, other]));
     expect(
       accounts.map(({ reading, instanceIds }) => [
         reading.account,
@@ -629,5 +629,75 @@ describe("usage readings", () => {
       ["dev@example.com", NOW, "Claude", ["claude-a", "claude-b"]],
       ["other@example.com", NOW - 10 * 60_000, "Claude", ["claude-c"]],
     ]);
+  });
+  test("Antigravity binds the most constrained account quota and keeps every reported group label", () => {
+    const windows = [
+      {
+        id: "gemini-5h",
+        label: "Gemini · 5-hour",
+        kind: "session",
+        usedPercent: 60,
+        windowDurationMins: 300,
+      },
+      {
+        id: "gemini-weekly",
+        label: "Gemini · Weekly",
+        kind: "weekly",
+        usedPercent: 40,
+        windowDurationMins: 10080,
+      },
+      {
+        id: "3p-weekly",
+        label: "Claude & GPT (shared) · Weekly",
+        kind: "weekly",
+        usedPercent: 95,
+        windowDurationMins: 10080,
+      },
+      {
+        id: "3p-quota",
+        label: "Claude & GPT (shared) · Reported quota",
+        kind: "other",
+        usedPercent: 50,
+      },
+    ] as const;
+    const older = claudeProvider({
+      instanceId: "antigravity-a" as RuntimeProvider["instanceId"],
+      driver: "antigravity",
+      auth: { status: "authenticated", type: "oauth-personal", email: "dev@example.com" },
+      usageLimits: {
+        checkedAt: new Date(NOW - HOUR).toISOString(),
+        credentialFingerprint: "account-a",
+        windows: [],
+      },
+    });
+    const newer = claudeProvider({
+      ...older,
+      instanceId: "antigravity-b" as RuntimeProvider["instanceId"],
+      auth: { status: "authenticated", type: "oauth-business" },
+      usageLimits: {
+        checkedAt: new Date(NOW).toISOString(),
+        credentialFingerprint: "account-a",
+        windows: [...windows],
+      },
+    });
+    const accounts = subscriptionUsageAccounts(
+      read([
+        older,
+        newer,
+        { ...newer, auth: { status: "authenticated", type: "gemini-api-key" } },
+        { ...newer, auth: { status: "unauthenticated", type: "oauth-personal" } },
+      ]),
+    );
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.instanceIds).toEqual(["antigravity-a", "antigravity-b"]);
+    const view = describeUsageMeter(accounts[0]!.reading, NOW);
+    expect(view.binding).toMatchObject({
+      label: "Claude & GPT (shared) · Weekly",
+      remainingPercent: 5,
+    });
+    expect(new Set(view.windows.map(({ label }) => label))).toEqual(
+      new Set(windows.map(({ label }) => label)),
+    );
+    expect(view.windows.find(({ id }) => id === "3p-quota")?.durationMins).toBeNull();
   });
 });

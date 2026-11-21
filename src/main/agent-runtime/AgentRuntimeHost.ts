@@ -313,7 +313,10 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     const providerConfig = options.providers[proof.providerInstanceId]?.config;
     const externalOpenCode = hasExternalProviderServer(providerConfig);
     const supportsCli =
-      nativeId !== null || driver === "claudeAgent" || (driver === "opencode" && !externalOpenCode);
+      nativeId !== null ||
+      driver === "claudeAgent" ||
+      driver === "antigravity" ||
+      (driver === "opencode" && !externalOpenCode);
     const scopedConnection =
       scopedCore && supportsCli
         ? yield* scopedCore.issue({
