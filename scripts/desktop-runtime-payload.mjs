@@ -5,6 +5,8 @@ import { join, relative } from "node:path";
 import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
 import { assertPackagedAppArchive, readAppArchiveFilePaths } from "./packaged-app-archive.mjs";
 
+import { assertRipgrepRuntimePayload } from "./ripgrep-runtime-payload.mjs";
+
 /** Detached stock-Node entrypoints must match the exact prepared output. */
 export function assertDetachedRuntimeResources(resourcesPath) {
   assertPackagedAppArchive(join(resourcesPath, "app.asar"));
@@ -47,9 +49,28 @@ export function assertMacDesktopToolsDetached(resourcesPath) {
     throw new Error("macOS app must install Desktop Tools as a Component");
 }
 
+const codexPackagePath =
+  /(?:^|\/)(?:bin\/codex(?:-code-mode-host|-exec-server)?(?:\.exe)?|codex-path|codex-resources|codex-package\.json|agent-runtime\.json)(?:\/|$)/iu;
+
+export function assertMacCodexDetached(resourcesPath) {
+  const physical = readdirSync(resourcesPath, { recursive: true, withFileTypes: true }).map(
+    (entry) => relative(resourcesPath, join(entry.parentPath, entry.name)).split("\\").join("/"),
+  );
+  const archived = readAppArchiveFilePaths(join(resourcesPath, "app.asar")).find((file) =>
+    codexPackagePath.test(file),
+  );
+  const bundled =
+    physical.find((file) => codexPackagePath.test(file)) ??
+    (archived ? `app.asar/${archived}` : undefined);
+  if (bundled) throw new Error(`macOS app must install Codex as a Component; found: ${bundled}`);
+}
+
 /** Reject duplicate SDKs, foreign platform packages and redundant native/debug payload. */
 export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sourceRoot }) {
-  if (platform === "darwin") assertMacDesktopToolsDetached(resourcesPath);
+  if (platform === "darwin") {
+    assertMacDesktopToolsDetached(resourcesPath);
+    assertMacCodexDetached(resourcesPath);
+  }
   assertDetachedRuntimeResources(resourcesPath);
   const dependencyRoot = "agent-runtime/node_modules";
   const platformPackage = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
@@ -124,6 +145,9 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
     if (!existsSync(join(ptyRoot, file)))
       throw new Error(`Electron PTY runtime is missing: ${file}`);
   }
+  assertRipgrepRuntimePayload(join(resourcesPath, "ripgrep-runtime"), `${platform}-${arch}`, {
+    allowSigned: platform === "darwin",
+  });
   if (sourceRoot)
     assertPackagedAgentRuntimeNative({
       sourceRoot: join(sourceRoot, "out", dependencyRoot),

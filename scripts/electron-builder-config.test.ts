@@ -40,10 +40,18 @@ describe("electron-builder runtime resources", () => {
     const config = load(fs.readFileSync(configPath, "utf8")) as ElectronBuilderConfig;
 
     expect(config.afterPack).toBe("scripts/restore-packaged-runtime-closure.mjs");
-    expect(config.extraResources).toContainEqual({
+    const codexPackage = {
       from: ".generated/codex-runtime/agent-runtime",
       to: ".",
       filter: ["**/*", "!browser-runtime{,/**/*}"],
+    };
+    expect(config.extraResources).not.toContainEqual(codexPackage);
+    expect(config.mac?.extraResources).not.toContainEqual(codexPackage);
+    expect(config.win?.extraResources).toContainEqual(codexPackage);
+    expect(config.mac?.extraResources).toContainEqual({
+      from: "resources/third-party/codex",
+      to: "third-party/codex",
+      filter: ["LICENSE", "NOTICE"],
     });
     const desktopTools = {
       from: ".generated/codex-runtime/agent-runtime/browser-runtime",
@@ -56,6 +64,17 @@ describe("electron-builder runtime resources", () => {
       to: "node-runtime",
       filter: ["node", "node-runtime.json", "LICENSE"],
     });
+    expect(config.mac?.extraResources).toContainEqual({
+      from: ".generated/ripgrep-runtime/darwin-arm64",
+      to: "ripgrep-runtime",
+      filter: ["rg", "LICENSE"],
+    });
+    expect(config.win?.extraResources).toContainEqual({
+      from: ".generated/ripgrep-runtime/win32-${arch}",
+      to: "ripgrep-runtime",
+      filter: ["rg.exe", "LICENSE", "vcruntime140*.dll"],
+    });
+    expect(config.mac?.binaries).toContain("Contents/Resources/ripgrep-runtime/rg");
     expect(config.win?.extraResources).toContainEqual(desktopTools);
     expect(config.linux?.extraResources ?? []).not.toContainEqual(desktopTools);
     expect(config.extraResources).toContainEqual({
@@ -82,6 +101,7 @@ describe("electron-builder runtime resources", () => {
     });
     expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-code-mode-host");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-exec-server");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-path/rg");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-resources/zsh/bin/zsh");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/interpreter");

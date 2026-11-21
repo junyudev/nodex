@@ -124,7 +124,11 @@ async function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeP
     nodexHome: options.componentHome,
     isPackaged: Boolean(resourcesPath),
     ...(resourcesPath
-      ? { resourcesPath: path.resolve(resourcesPath) }
+      ? {
+          resourcesPath: path.resolve(resourcesPath),
+          platform: process.platform,
+          architecture: process.arch,
+        }
       : { projectRootPath: projectRoot }),
   });
   if (!options.conformanceCandidatePair) return runtime;

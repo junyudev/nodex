@@ -102,6 +102,7 @@ const makeFixture = (): {
     "packages/effect-codex-app-server/value.ts",
     "packages/nodex-app-tools-mcp/value.ts",
     "packages/agent-runtime/value.ts",
+    "resources/agent-runtime/codex-app-server.lock.json",
     "resources/icon.icon/value.json",
     "resources/icon.png",
     "resources/nodex-icon.svg",

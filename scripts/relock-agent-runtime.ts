@@ -102,6 +102,18 @@ export async function createAgentRuntimeRelockCandidate(
           ...candidate.builds,
           [key]: {
             ...candidate.builds[key],
+            ...(key === "darwin-arm64"
+              ? {
+                  artifactSizes: Object.fromEntries(
+                    staged.metadata.artifacts
+                      .filter(({ path }) => lock.requiredArtifacts.includes(path))
+                      .map(({ path, size }) => [path, size]),
+                  ),
+                  unpackedSize: staged.metadata.artifacts
+                    .filter(({ path }) => lock.requiredArtifacts.includes(path))
+                    .reduce((bytes, artifact) => bytes + artifact.size, 0),
+                }
+              : {}),
             entrypointSha256: staged.metadata.releaseAsset.entrypointSha256,
             runtimeMetadataSha256: staged.metadataSha256,
           },

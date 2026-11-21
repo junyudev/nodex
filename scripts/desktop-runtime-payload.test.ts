@@ -1,9 +1,24 @@
+import { ripgrepFixture, writeRipgrepFixture } from "./testing/ripgrep-runtime-fixture";
 import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, expect, test } from "vite-plus/test";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 import { assertDesktopRuntimePayload } from "./desktop-runtime-payload.mjs";
+
+vi.mock("./ripgrep-runtime-payload.mjs", async (importOriginal) => {
+  const { assertRipgrepRuntimePayload } =
+    await importOriginal<typeof import("./ripgrep-runtime-payload.mjs")>();
+  return {
+    assertRipgrepRuntimePayload: (
+      ...[directory, target, options]: Parameters<typeof assertRipgrepRuntimePayload>
+    ) =>
+      assertRipgrepRuntimePayload(directory, target, {
+        ...options,
+        release: ripgrepFixture(target).release,
+      }),
+  };
+});
 
 const roots: string[] = [];
 afterEach(() => {
@@ -59,6 +74,10 @@ function fixture(platform: string, arch: string) {
     write(join(resourcesPath, "app.asar.unpacked/node_modules/node-pty/build/Release", file));
   archive(join(resourcesPath, "app.asar"), ["out/main/bootstrap.js", "package.json"]);
   writePackagedStockNodeFixture(resourcesPath);
+  writeRipgrepFixture(
+    resourcesPath,
+    platform === "darwin" ? "darwin-arm64" : arch === "arm64" ? "win32-arm64" : "win32-x64",
+  );
   return { resourcesPath, sourceRoot, platform, arch, binary };
 }
 test.each([
@@ -156,4 +175,28 @@ test("rejects Desktop Tools in macOS Resources", () => {
   expect(() => assertDesktopRuntimePayload(input)).toThrow(
     "macOS app must install Desktop Tools as a Component",
   );
+});
+
+test.each([
+  "bin/codex",
+  "bin/codex-code-mode-host",
+  "bin/codex-exec-server",
+  "codex-resources/voice/NOTICE.md",
+  "codex-path/rg",
+  "codex-package.json",
+  "agent-runtime.json",
+])("rejects %s in macOS Resources", (file) => {
+  const input = fixture("darwin", "arm64");
+  write(join(input.resourcesPath, file));
+  expect(() => assertDesktopRuntimePayload(input)).toThrow("must install Codex as a Component");
+});
+
+test("rejects a Codex package embedded inside the macOS application archive", () => {
+  const input = fixture("darwin", "arm64");
+  archive(join(input.resourcesPath, "app.asar"), [
+    "out/main/bootstrap.js",
+    "out/main/bin/codex",
+    "package.json",
+  ]);
+  expect(() => assertDesktopRuntimePayload(input)).toThrow("app.asar/out/main/bin/codex");
 });

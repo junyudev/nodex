@@ -44,6 +44,16 @@ executable on demand. Release provenance binds the npm archive URL, size, and
 SHA-256 and the executable's identity. Distribution checks the archive is
 downloadable and rejects an app that contains the native Claude package.
 
+On Apple silicon, Codex installs on first use from the official `openai/codex`
+release archive pinned in [the Codex lock](../resources/agent-runtime/codex-app-server.lock.json).
+The app ships the license and notice files used by the Component installer. Nodex
+does not republish the archive. Distribution checks the upstream URL with HEAD
+or a one-byte range request and requires the published size to match the pin,
+even when a local cache is available. It then verifies the archive SHA-256 and
+staged package before running conformance. If upstream removes the asset, the
+build is not releasable until the lock is re-pinned to an available official
+release and its conformance checks pass.
+
 The Apple silicon architecture build generates `Nodex-<version>-components-arm64.json`
 from the packaged app's Component catalog and stamps it with the Build Identity's
 display version and build number. Assembly checks the manifest and includes it in the
@@ -97,10 +107,11 @@ Success requires the matching Electron host claim to reach full Main-runtime
 readiness and the matching Core generation descriptor to exist. Startup has a
 bounded CI deadline, captures bounded process and Profile logs on failure, and
 terminates the complete Electron process group before releasing the lease.
-For a local package staged with updates disabled, add
-`--launch-app --verify-desktop-tools-install --expected-updates disabled` to
-`verify-native-runtime.ts` to prove first-run download and activation from the
-published Desktop Tools pin in the disposable Profile.
+The Codex smoke seeds first-use demand in the disposable Profile and waits
+for the packaged app to download, verify, and activate the Component without
+credentials. Add `--launch-app --verify-codex-install --expected-updates disabled`
+to `verify-native-runtime.ts` for a local package staged with updates disabled.
+Add `--verify-desktop-tools-install` to also wait for Desktop Tools activation.
 Runtime-probe teardown uses bounded filesystem retries because a stopped macOS
 Browser helper can briefly race recursive removal of its temporary Profile.
 The in-process clipboard bridge is built for Apple silicon,
@@ -114,17 +125,19 @@ the materialized plugin, private host-services socket, `sky.node`, and canonical
 helper app. The primary app-server is the digest-pinned, unmodified package from
 the locked official Codex release; Nodex neither rebuilds it nor publishes a
 second copy.
-The managed Computer Use service starts with the verified bundled Codex CLI and
+The managed Computer Use service starts with the verified Desktop Tools Codex CLI and
 its owning Profile in an explicit process environment. Its short-lived native
 launcher preserves the vendor spawn behavior and gives disclaimed descendants
 non-pipe stdio; it never depends on another installed app or a PATH lookup.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
-Distribution materializes the pinned Desktop Tools archive into an isolated
-Component store and runs conformance with the extracted notarized full-update
-app's Codex app-server and packaged native peer authorization. The full-update
-and DMG checks both enforce the installed app's byte budget and reject a bundled
-Desktop Tools closure.
+Distribution materializes the pinned Codex and Desktop Tools archives into an
+isolated Component store and runs conformance with the extracted notarized full-update
+app and its packaged native peer authorization. Codex provenance binds the upstream
+URL, archive size and SHA-256, staged metadata and entrypoint digests, and protocol
+schema fingerprint. The Desktop Tools tested-pair check uses the app-server
+identity in the Codex lock. Both the full-update and DMG checks enforce the
+installed-size budget and reject bundled Component payloads.
 
 ## Nodex Mobile
 
@@ -488,20 +501,28 @@ own PTY dependency through ASAR. The macOS packaged smoke spawns a PTY with
 runs. The probe requires its output marker and exact exit status within the deadline.
 
 The Mac after-pack gate requires `Contents/Resources/node-runtime` to contain
-the locked executable, manifest, and license. It rejects a bundled
-`browser-runtime` or `workspace-runtime` and enforces the installed-size budget, counting physical
-files and skipping framework symlinks. Set the budget from an installed-size
+the locked executable, manifest, and license. It rejects a bundled Codex, Desktop
+Tools or Document Tools runtime and enforces the 694,000,000-byte installed-size
+budget, counting physical files and skipping framework symlinks. Set the budget from an installed-size
 measurement when intentionally adding payload. The signing hook requires the
 upstream Node.js Developer ID, hardened runtime, and secure timestamp, then
 rechecks the locked binary after signing Nodex. Distribution requires deep
 strict `codesign` verification, Gatekeeper assessment, notarization, and
 stapling for the app and verifies the upstream Desktop Tools signature closure
 in the Component store.
-The Codex package executables, including `codex-path/rg`, are verified against
-the release lock's upstream team by the Codex runtime verifier. The native
-verifier's Nodex signature and entitlement inventory contains only the native
-runtime manifest binaries and Nodex clipboard bridge; it must remain disjoint
-from the signing hook's preserved vendor inventory.
+Desktop packages ship the locked [ripgrep runtime](../resources/ripgrep/README.md)
+in `Resources/ripgrep-runtime`. The payload gate checks the closed executable and
+license set for each architecture. macOS signs the executable with Nodex's
+identity and verifies its pinned Mach-O content. Package provenance records the
+lock and signed payload hashes. The Windows installer preserves the official
+PE bytes and stages the retail Visual C++ dependency beside the arm64 executable.
+The installed-app probe runs ripgrep and checks its pinned
+version on both Windows architectures.
+
+The Codex runtime verifier checks the Component's Mach-O files, including
+`codex-path/rg`, against the OpenAI team in the release lock. The app's native
+signature and entitlement checks cover the Nodex code objects in the bundle.
+The signing hook continues to preserve the upstream standalone Node signature.
 The dictation helper build stamp and packaged handshake check use the production
 client's protocol version. Packaged conformance checks empty binding replacement,
 permission capability reads without prompting, and clean helper exit; an

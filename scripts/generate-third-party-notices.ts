@@ -229,6 +229,14 @@ async function collectBundledRuntimeEntries(
     ...(targetPlatform === "darwin" || targetPlatform === "win32"
       ? [
           {
+            homepage: "https://github.com/BurntSushi/ripgrep",
+            identity: "ripgrep standalone runtime",
+            license: "MIT OR Unlicense",
+            legalText: await readCombinedLegalFiles([
+              join(repositoryRoot, "resources/ripgrep/LICENSE"),
+            ]),
+          },
+          {
             homepage: "https://nodejs.org/",
             identity: "Node.js standalone runtime",
             license: "MIT and bundled third-party notices",

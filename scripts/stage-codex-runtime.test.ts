@@ -295,6 +295,10 @@ describe.skipIf(process.platform === "win32")("stage-codex-runtime", () => {
     });
 
     const metadata = await stageCodexRuntime(stageOptions(input));
+    expect(metadata.packageManifest).toEqual({
+      ...input.lock.packageManifest,
+      target: input.lock.builds["darwin-arm64"].targetTriple,
+    });
     expect(metadata.artifacts.map((artifact) => artifact.path)).toContain(
       "third-party/codex/LICENSE",
     );

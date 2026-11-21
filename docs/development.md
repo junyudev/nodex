@@ -290,6 +290,11 @@ to download Desktop Tools into the development Profile. This sets
 Both modes use the pinned archive and the same install and verification flow as
 the packaged app, alongside the staged Codex app-server and standalone Node.
 
+Set `NODEX_DEV_CODEX_ABSENT=1` for a development launch or `NODEX_TEST_CODEX_ABSENT=1`
+for an Electron test to start with Codex unavailable while leaving the staged package intact.
+In an isolated Electron test Profile, write `run/activate-codex` to request verification
+and activation in that process. Packaged apps ignore both switches and the test trigger.
+
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
 underlying Electron or electron-vite entrypoints directly; the launcher owns
 Profile isolation and supplies the required environment.
@@ -454,8 +459,10 @@ deduplicate hard links within each directory; filesystem clones can still share
 blocks across entries, so the report is not a reclaimable-space estimate.
 
 The production build remains fail-closed. It hashes the Electron input closure,
-build context, generated resources, and exact `out/` inventory. Packaging and
-installation verify the prepared build through the same internal module;
+build context, generated resources, and exact `out/` inventory. Codex keeps its
+development layout at `.generated/codex-runtime/agent-runtime`. The prepared
+macOS build records the Codex release lock SHA-256 for package provenance.
+Packaging and installation verify the prepared build through the same module;
 prepared-build reuse is not a manual launcher option.
 
 Desktop process isolation is keyed by `.nodex`. Different homes get independent

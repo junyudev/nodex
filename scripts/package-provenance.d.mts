@@ -1,14 +1,16 @@
 import type { TestedBrowserAppServerPair } from "../src/shared/browser-app-server-compatibility.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 10;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 12;
 
-export interface PackagedAgentRuntimeIdentity {
+export interface PackagedCodexIdentity {
+  readonly url: string;
   readonly archiveSha256: string;
   readonly archiveSize: number;
   readonly assetName: string;
   readonly entrypointSha256: string;
   readonly lockSha256: string;
   readonly metadataSha256: string;
+  readonly protocolSchemaFingerprint: string;
   readonly signingTeamId: "2DC432GLL2";
   readonly sourceCommit: string;
   readonly sourceTag: string;
@@ -18,7 +20,7 @@ export interface PackagedAgentRuntimeIdentity {
 
 export interface PackagedBuildProvenance {
   readonly schemaVersion: typeof PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
-  readonly agentRuntime: PackagedAgentRuntimeIdentity;
+  readonly codex: PackagedCodexIdentity;
   readonly desktopTools: {
     readonly url: string;
     readonly archiveSha256: string;
@@ -54,8 +56,6 @@ export interface PackagedBuildProvenance {
 
 interface PackagedBuildProvenanceOptions {
   readonly testedPairs?: readonly TestedBrowserAppServerPair[];
-  /** Test injection only. Rejected outside Vitest. */
-  readonly testOnlyAgentRuntimeLockPath?: string;
 }
 
 export function writePackagedBuildProvenance(

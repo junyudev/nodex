@@ -232,6 +232,7 @@ export function buildWindowsDistribution(options: {
     agentSha256: sha256File(join(cwd, "resources/agent-runtime/codex-app-server.lock.json")),
     browserSha256: sha256File(browserLockPath),
     sparkleSha256: sha256File(join(cwd, "resources/sparkle/sparkle.lock.json")),
+    ripgrepSha256: sha256File(join(cwd, "resources/ripgrep/ripgrep.lock.json")),
     nodeSha256: sha256File(join(cwd, "resources/agent-runtime/node-runtime.lock.json")),
   };
   const provenancePath = join(output, "windows-build-provenance.json");
