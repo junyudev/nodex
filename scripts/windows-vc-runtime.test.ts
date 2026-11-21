@@ -20,29 +20,32 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-test("stages only missing retail CRT dependencies beside each consumer, including transitive imports", () => {
-  const { payload, redistDirectory } = fixture();
-  mkdirSync(join(payload, "codex-path"));
-  const rg = windowsPeFixture(0xaa64, ["VCRUNTIME140.dll", "kernel32.dll"]);
-  writeFileSync(join(payload, "codex-path/rg.exe"), rg);
-  writeFileSync(
-    join(redistDirectory, "vcruntime140.dll"),
-    windowsPeFixture(0xaa64, [], ["vcruntime140_1.dll"]),
-  );
-  writeFileSync(
-    join(redistDirectory, "vcruntime140_1.dll"),
-    windowsPeFixture(0xaa64, ["ucrtbase.dll"]),
-  );
-  writeFileSync(join(redistDirectory, "msvcp140.dll"), windowsPeFixture(0xaa64));
-  expect(() => verifyWindowsArchitectureClosure(payload, "arm64")).toThrow("VCRUNTIME140.dll");
-  expect(stageWindowsVcRuntime(payload, "arm64", { redistDirectory })).toEqual([
-    "codex-path/vcruntime140.dll",
-    "codex-path/vcruntime140_1.dll",
-  ]);
-  expect(readFileSync(join(payload, "codex-path/rg.exe"))).toEqual(rg);
-  expect(verifyWindowsArchitectureClosure(payload, "arm64")).toHaveLength(3);
-  expect(stageWindowsVcRuntime(payload, "arm64", { redistDirectory })).toEqual([]);
-});
+test.each(["codex-path", "ripgrep-runtime"])(
+  "stages only missing retail CRT dependencies beside %s, including transitive imports",
+  (directory) => {
+    const { payload, redistDirectory } = fixture();
+    mkdirSync(join(payload, directory));
+    const rg = windowsPeFixture(0xaa64, ["VCRUNTIME140.dll", "kernel32.dll"]);
+    writeFileSync(join(payload, directory, "rg.exe"), rg);
+    writeFileSync(
+      join(redistDirectory, "vcruntime140.dll"),
+      windowsPeFixture(0xaa64, [], ["vcruntime140_1.dll"]),
+    );
+    writeFileSync(
+      join(redistDirectory, "vcruntime140_1.dll"),
+      windowsPeFixture(0xaa64, ["ucrtbase.dll"]),
+    );
+    writeFileSync(join(redistDirectory, "msvcp140.dll"), windowsPeFixture(0xaa64));
+    expect(() => verifyWindowsArchitectureClosure(payload, "arm64")).toThrow("VCRUNTIME140.dll");
+    expect(stageWindowsVcRuntime(payload, "arm64", { redistDirectory })).toEqual([
+      `${directory}/vcruntime140.dll`,
+      `${directory}/vcruntime140_1.dll`,
+    ]);
+    expect(readFileSync(join(payload, directory, "rg.exe"))).toEqual(rg);
+    expect(verifyWindowsArchitectureClosure(payload, "arm64")).toHaveLength(3);
+    expect(stageWindowsVcRuntime(payload, "arm64", { redistDirectory })).toEqual([]);
+  },
+);
 
 test("rejects the wrong CRT architecture and never fills arbitrary or first-party imports from the host", () => {
   const { payload, redistDirectory } = fixture();

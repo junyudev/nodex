@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "version": "15.2.0",
+  "licenseSha256": "7512c581dc2b633f7b342d086de33a6f02637ca67d01184afdf7b74670c5c593",
+  "builds": {
+    "darwin-arm64": {
+      "binarySha256": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e",
+      "binarySize": 4014576,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz",
+        "member": "ripgrep-15.2.0-aarch64-apple-darwin/rg",
+        "sha256": "3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4",
+        "size": 1764284
+      },
+      "machOContentSha256": "28053169d0f22dd7ad1a70db499f853e4884932410e6f24415ae957e6cc332fc"
+    },
+    "darwin-x64": {
+      "binarySha256": "0c9a0066db0d26b640777db88045b0ccdd58509a746700e43e1c4ff8707a5ed0",
+      "binarySize": 4387000,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-apple-darwin.tar.gz",
+        "member": "ripgrep-15.2.0-x86_64-apple-darwin/rg",
+        "sha256": "af7825fcc69a2afc7a7aea55fc9af90e26421d8f20fe59df32e233c0b8a231c1",
+        "size": 1878284
+      }
+    },
+    "win32-x64": {
+      "binarySha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680",
+      "binarySize": 4218880,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
+        "member": "ripgrep-15.2.0-x86_64-pc-windows-msvc/rg.exe",
+        "sha256": "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
+        "size": 1789611
+      }
+    },
+    "win32-arm64": {
+      "binarySha256": "d33a29a9ef03c9f4c03be9e8d88498e6e2d2e566d64cdbdef97f9afc8f13120c",
+      "binarySize": 3859456,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-pc-windows-msvc.zip",
+        "member": "ripgrep-15.2.0-aarch64-pc-windows-msvc/rg.exe",
+        "sha256": "e4abca10c3a64ebea742667dd7009449d49403db5460dd6873e389fa2945360f",
+        "size": 1640124
+      }
+    },
+    "linux-arm64": {
+      "binarySha256": "e36d0eb52e70696bdf1781392722e05a21bb91d3b7b762ef5ec20e5df2ec687b",
+      "binarySize": 4506992,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-unknown-linux-gnu.tar.gz",
+        "member": "ripgrep-15.2.0-aarch64-unknown-linux-gnu/rg",
+        "sha256": "a740b91c82eaf9914cfedd353572f2791cbe0162c84101ee0951058f4dcbc90d",
+        "size": 1854661
+      }
+    },
+    "linux-x64": {
+      "binarySha256": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849",
+      "binarySize": 5408904,
+      "archive": {
+        "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+        "member": "ripgrep-15.2.0-x86_64-unknown-linux-musl/rg",
+        "sha256": "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c",
+        "size": 2265718
+      }
+    }
+  }
+}

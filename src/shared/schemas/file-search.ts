@@ -1,7 +1,9 @@
-import type { FileSearchStartInput } from "../file-search";
+import type {
+  FileSearchSessionRef,
+  FileSearchStartInput,
+  FileSearchUpdateInput,
+} from "../file-search";
 import { isAbsoluteSearchPath } from "../file-search-paths";
-import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
-import type { FuzzyFileSearchSessionStopParams } from "@nodex/codex-app-server-protocol";
 import { z } from "zod";
 
 const sessionId = z.string().uuid();
@@ -17,7 +19,7 @@ export const FileSearchUpdateSchema = z
     sessionId,
     query: z.string().max(512),
   })
-  .strict() satisfies z.ZodType<FuzzyFileSearchSessionUpdateParams>;
+  .strict() satisfies z.ZodType<FileSearchUpdateInput>;
 export const FileSearchStopSchema = z
   .object({ sessionId })
-  .strict() satisfies z.ZodType<FuzzyFileSearchSessionStopParams>;
+  .strict() satisfies z.ZodType<FileSearchSessionRef>;
