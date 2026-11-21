@@ -1,7 +1,7 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-11-17
+Last updated: 2026-11-22
 
 On Windows, the per-user login registration launches Nodex with `--startup`.
 That activation acquires the normal application Scope, including the tray, Core,
@@ -105,6 +105,16 @@ Windows storage and loader evidence are specified in the
   before loading the application renderer.
 - The production build enforces a 24 KiB inline-document budget and a 20 KiB gzip budget for eager
   renderer bootstrap JavaScript, including parser-time classic scripts.
+- Activating an ordinary Workbench loads the application renderer, every chunk it reaches through
+  static imports, and the stylesheets preloaded with it. The production build measures that
+  closure from its emitted chunks and enforces 14.75 MiB of JavaScript and 712 KiB of CSS, about
+  2% above the measured size. A change that needs more raises the budget deliberately.
+- Excalidraw, Cytoscape, ELK, Mermaid, and PDF.js load only with the surfaces that use them. The
+  production build attributes every emitted chunk to its packages through the hidden source maps
+  and fails when code from any of them is statically reachable from the ordinary Workbench,
+  whichever chunk carries it, or when one of them no longer appears in the build.
+- The same check reports, without a budget yet, the Main application code evaluated before the
+  first window: the bootstrap entry and every application chunk it requires while loading.
 
 Runtime ownership is documented in [Architecture](../ARCHITECTURE.md), shutdown and failure
 semantics in [Reliability](../RELIABILITY.md), and the early authority boundary in

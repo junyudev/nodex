@@ -133,6 +133,7 @@ async function main(): Promise<void> {
     if (target.runtime === "macos") task("appshot-helper:build:dev");
     tsx("prepared-electron-build", "build");
     task("renderer-bootstrap:verify-build");
+    task("startup-closure:verify-build");
     return;
   }
   if (operation === "package" || operation === "package-prepared") {

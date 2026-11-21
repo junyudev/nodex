@@ -110,6 +110,7 @@
     "semantic-theme:verify": "tsx scripts/semantic-theme/cli.ts verify",
     "semantic-theme:verify-build": "tsx scripts/semantic-theme/cli.ts verify-build",
     "renderer-bootstrap:verify-build": "tsx scripts/verify-renderer-bootstrap.ts",
+    "startup-closure:verify-build": "tsx scripts/verify-startup-closure.ts",
     "agent-tools:measure": "tsx scripts/measure-nodex-agent-tools.ts",
     "agent-skills:generate": "tsx scripts/official-agent-skills.ts generate",
     "agent-skills:publish": "tsx scripts/publish-official-agent-skills.ts",

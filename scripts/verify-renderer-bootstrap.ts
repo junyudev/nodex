@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { rendererBootstrapImports } from "./lib/renderer-bootstrap-imports";
+import { emittedModuleImports, rendererHtmlEntry } from "./lib/emitted-module-graph";
 
 const rendererDirectory = path.resolve("out/renderer");
 const htmlPath = path.join(rendererDirectory, "index.html");
@@ -19,12 +19,12 @@ function resolveAsset(assetPath: string): string {
 }
 
 const html = readFileSync(htmlPath, "utf8");
-const entryMatch = html.match(/<script[^>]+type="module"[^>]+src="([^"]+\.js)"/u);
+const entry = rendererHtmlEntry(html);
 const modulePreloads = [...html.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/gu)].map(
   ([, assetPath]) => assetPath,
 );
 
-invariant(entryMatch?.[1], "index.html has no module entry");
+invariant(entry, "index.html has no module entry");
 invariant(html.includes('class="nodex-startup-shell"'), "parser-time startup shell is absent");
 invariant(html.includes('class="nodex-startup-logo-base"'), "base logo is absent");
 invariant(html.includes("data-startup-visible-status"), "visible status node is absent");
@@ -44,9 +44,7 @@ invariant(!existsSync(obsoleteStartupPreloadPath), "obsolete startup preload was
 const classicScripts = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+\.js)"[^>]*>/gu)]
   .filter(([tag]) => !/\btype="module"/u.test(tag))
   .map(([, assetPath]) => assetPath);
-const eagerJavaScriptPaths = [entryMatch[1], ...modulePreloads, ...classicScripts].map(
-  resolveAsset,
-);
+const eagerJavaScriptPaths = [entry, ...modulePreloads, ...classicScripts].map(resolveAsset);
 const eagerJavaScript = eagerJavaScriptPaths.map((assetPath) => readFileSync(assetPath));
 const eagerJavaScriptGzipBytes = eagerJavaScript.reduce(
   (total, source) => total + gzipSync(source).byteLength,
@@ -58,7 +56,7 @@ invariant(
 );
 
 const entrySource = eagerJavaScript[0].toString("utf8");
-const staticImports = rendererBootstrapImports(entryMatch[1], entrySource);
+const { staticImports } = emittedModuleImports(entry, entrySource);
 invariant(
   staticImports.every((specifier) =>
     path.basename(specifier).startsWith("renderer-bootstrap-runtime-"),
