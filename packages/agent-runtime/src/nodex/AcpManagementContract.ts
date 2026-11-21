@@ -11,11 +11,6 @@ import type {
   AcpRegistryListSessionsResult,
   AcpRegistryListProvidersResult,
   AcpRegistrySetProviderInput,
-  ProviderAuthStartInput,
-  ProviderAuthRespondInput,
-  ProviderAuthCompleteInput,
-  ProviderAuthCancelInput,
-  ProviderAuthState,
 } from "@nodex/runtime-contracts";
 import type { AcpRegistryInspection } from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
 import type { AgentWire } from "./Interface.ts";
@@ -58,12 +53,6 @@ export interface AgentAcpOperation {
     readonly totalBytes: number | null;
   };
 }
-export interface AgentAcpAuthentication extends AgentWire<ProviderAuthState> {
-  readonly runtimeGeneration: string;
-  readonly configurationRevision: number;
-  readonly revision: number;
-  readonly cancellable: boolean;
-}
 export interface AgentAcpManagementOperations {
   readonly "acp.activity": {
     readonly input: Record<string, never>;
@@ -105,30 +94,6 @@ export interface AgentAcpManagementOperations {
   readonly "acp.operation.cancel": {
     readonly input: { readonly operationId: string };
     readonly output: AgentAcpOperation;
-  };
-  readonly "acp.auth.read": {
-    readonly input: { readonly instanceId: string; readonly ownerId: string };
-    readonly output: AgentAcpAuthentication;
-  };
-  readonly "acp.auth.start": {
-    readonly input: AgentWire<ProviderAuthStartInput> & { readonly ownerId: string };
-    readonly output: AgentAcpAuthentication;
-  };
-  readonly "acp.auth.respond": {
-    readonly input: AgentWire<ProviderAuthRespondInput> & { readonly ownerId: string };
-    readonly output: AgentAcpAuthentication;
-  };
-  readonly "acp.auth.complete": {
-    readonly input: AgentWire<ProviderAuthCompleteInput> & { readonly ownerId: string };
-    readonly output: AgentAcpAuthentication;
-  };
-  readonly "acp.auth.cancel": {
-    readonly input: AgentWire<ProviderAuthCancelInput> & { readonly ownerId: string };
-    readonly output: AgentAcpAuthentication;
-  };
-  readonly "acp.auth.logout": {
-    readonly input: { readonly instanceId: string };
-    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.urlAuth.accept": {
     readonly input: { readonly instanceId: string; readonly elicitationId: string };

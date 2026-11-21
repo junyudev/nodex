@@ -1,3 +1,4 @@
+import { makeManagedOperations } from "./ManagedOperations.ts";
 import { NARROWEST_RUNTIME_MODE, RuntimeMode } from "@nodex/runtime-contracts";
 import { providerCredentialBindingsOverlap } from "@nodex/provider-core/server/auth";
 import {
@@ -5,11 +6,6 @@ import {
   AcpRegistryPrepareInput,
   AcpRegistrySetProviderInput,
   AcpRegistryAcceptUrlAuthInput,
-  ProviderAuthStartInput,
-  ProviderAuthRespondInput,
-  ProviderAuthCompleteInput,
-  ProviderAuthCancelInput,
-  type ProviderAuthState,
   ProviderInstanceId,
   ProviderDriverKind,
   ProviderSetupError,
@@ -19,12 +15,7 @@ import {
   type AcpRegistryListProvidersResult,
 } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
-import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import * as Fiber from "effect/Fiber";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
-import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 import { createHash } from "node:crypto";
@@ -44,7 +35,7 @@ import { deriveThreadFromProviderThread } from "@nodex/provider-core/server/IdAl
 import { ProviderPolicy } from "./ProviderConfiguration.ts";
 import { AcpManagementError, acpFailure } from "./AcpFailures.ts";
 import type { AgentAcpFailure, AgentAcpOperation } from "./AcpManagementContract.ts";
-import { makeAuthenticationProjection } from "./AcpAuthentication.ts";
+import * as ProviderAuthentication from "./ProviderAuthentication.ts";
 import { withCurrentAcpInstance } from "./AcpManagementLifecycle.ts";
 
 const request = <M extends string, S extends Schema.Constraint>(method: M, input: S) =>
@@ -54,8 +45,8 @@ const Target = {
   instanceId: ProviderInstanceId,
   cwd: Schema.NonEmptyString.check(Schema.isMaxLength(4096)),
 };
-const Owner = { ownerId: Id };
 export const Request = Schema.Union([
+  ...ProviderAuthentication.Request.members,
   request("acp.activity", Schema.Struct({})),
   request("acp.registry.search", AcpRegistrySearchInput),
   request("acp.inspect", Schema.Struct({ instanceId: ProviderInstanceId })),
@@ -72,12 +63,6 @@ export const Request = Schema.Union([
   request("acp.connection.start", Schema.Struct({ ...Target, operationId: Id })),
   request("acp.operation.read", Schema.Struct({ operationId: Id })),
   request("acp.operation.cancel", Schema.Struct({ operationId: Id })),
-  request("acp.auth.read", Schema.Struct({ instanceId: ProviderInstanceId, ...Owner })),
-  request("acp.auth.start", Schema.Struct({ ...ProviderAuthStartInput.fields, ...Owner })),
-  request("acp.auth.respond", Schema.Struct({ ...ProviderAuthRespondInput.fields, ...Owner })),
-  request("acp.auth.complete", Schema.Struct({ ...ProviderAuthCompleteInput.fields, ...Owner })),
-  request("acp.auth.cancel", Schema.Struct({ ...ProviderAuthCancelInput.fields, ...Owner })),
-  request("acp.auth.logout", Schema.Struct({ instanceId: ProviderInstanceId })),
   request("acp.urlAuth.accept", AcpRegistryAcceptUrlAuthInput),
   request(
     "acp.sessions.list",
@@ -142,126 +127,23 @@ const failure = (
 export const makeOperations = Effect.fn("AcpOperations.make")(function* (
   runtimeGeneration: string,
 ) {
-  const scope = yield* Effect.scope;
-  const lane = yield* Semaphore.make(1);
-  const records = yield* Ref.make(
-    new Map<string, { key: string; state: AgentAcpOperation; fiber?: Fiber.Fiber<void> }>(),
-  );
-  const read = Effect.fn("AcpOperations.read")(function* (id: string) {
-    const record = (yield* Ref.get(records)).get(id);
-    if (!record)
-      return yield* failure(
-        "This ACP operation has expired. Start a new operation.",
-        "operation_expired",
-      );
-    return record.state;
+  const operations = yield* makeManagedOperations<AgentAcpOperation, AcpManagementError>({
+    failure: (reason, message) => new AcpManagementError({ reason, message }),
+    mapError: acpFailure,
   });
-  const change = (
-    id: string,
-    patch: Partial<Pick<AgentAcpOperation, "phase" | "result" | "error" | "progress">>,
-  ) =>
-    Ref.update(records, (all) => {
-      const record = all.get(id);
-      if (!record || record.state.phase !== "running") return all;
-      const phase = patch.phase ?? record.state.phase;
-      return new Map(all).set(id, {
-        ...record,
-        state: {
-          ...record.state,
-          ...patch,
-          revision: record.state.revision + 1,
-          cancellable: phase === "running",
-        },
-      });
-    });
   return {
-    read,
+    ...operations,
     withInactiveInstallation: <A, E, R>(agentId: string, task: Effect.Effect<A, E, R>) =>
-      lane.withPermit(
-        Effect.gen(function* () {
-          const active = [...(yield* Ref.get(records)).values()].some(
-            ({ state }) =>
-              state.phase === "running" && state.kind === "install" && state.agentId === agentId,
-          );
-          if (active)
-            return yield* failure(
-              "Wait for this Agent installation to finish before uninstalling.",
-              "busy",
-            );
-          return yield* task;
-        }),
+      operations.withInactive(
+        (state) => state.kind === "install" && state.agentId === agentId,
+        task,
       ),
-    active: Ref.get(records).pipe(
-      Effect.map(
-        (records) =>
-          [...records.values()].filter((record) => record.state.phase === "running").length,
-      ),
-    ),
-    progress: (id: string, progress: NonNullable<AgentAcpOperation["progress"]>) =>
-      change(id, { progress }),
     start: <E, R>(
       input: Omit<AgentAcpOperation, "runtimeGeneration" | "revision" | "cancellable">,
       key: string,
       task: Effect.Effect<AgentAcpOperation["result"], E, R>,
     ) =>
-      lane.withPermit(
-        Effect.gen(function* () {
-          const state: AgentAcpOperation = {
-            ...input,
-            runtimeGeneration,
-            revision: 1,
-            cancellable: true,
-          };
-          const all = yield* Ref.get(records);
-          const previous = all.get(state.operationId);
-          if (previous) {
-            if (previous.key !== key)
-              return yield* failure("This operation ID belongs to another ACP request.");
-            return previous.state;
-          }
-          const running = [...all.values()].filter((record) => record.state.phase === "running");
-          const shared = running.find((record) => record.key === key);
-          if (shared) return shared.state;
-          if (running.length >= 8)
-            return yield* failure("Too many ACP operations are running. Wait or cancel one.");
-          const next = new Map(all);
-          while (next.size >= 64) {
-            const expired = [...next].find(([, record]) => record.state.phase !== "running");
-            if (!expired) break;
-            next.delete(expired[0]);
-          }
-          next.set(state.operationId, { key, state });
-          yield* Ref.set(records, next);
-          const fiber = yield* task.pipe(
-            Effect.tap((result) => change(state.operationId, { phase: "succeeded", result })),
-            Effect.catchCause((cause) =>
-              change(
-                state.operationId,
-                Cause.hasInterruptsOnly(cause)
-                  ? { phase: "cancelled" }
-                  : {
-                      phase: "failed",
-                      error: acpFailure(Cause.squash(cause)),
-                    },
-              ),
-            ),
-            Effect.onInterrupt(() => change(state.operationId, { phase: "cancelled" })),
-            Effect.asVoid,
-            Effect.forkIn(scope),
-          );
-          yield* Ref.update(records, (current) => {
-            const record = current.get(state.operationId)!;
-            return new Map(current).set(state.operationId, { ...record, fiber });
-          });
-          return yield* read(state.operationId);
-        }),
-      ),
-    cancel: Effect.fn("AcpOperations.cancel")(function* (id: string) {
-      const record = (yield* Ref.get(records)).get(id);
-      if (!record) return yield* failure("This ACP operation has expired.", "operation_expired");
-      if (record.state.phase === "running" && record.fiber) yield* Fiber.interrupt(record.fiber);
-      return yield* read(id);
-    }),
+      operations.start({ ...input, runtimeGeneration, revision: 1, cancellable: true }, key, task),
   };
 });
 
@@ -291,7 +173,6 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
   const hostEnvironment = yield* HostProcess.Environment;
   const fileSystem = yield* FileSystem.FileSystem;
   const operations = yield* makeOperations(runtimeGeneration);
-  const authentication = makeAuthenticationProjection(runtimeGeneration);
   const mutation = yield* Semaphore.make(1);
   const pagination = yield* Semaphore.make(1);
   // Cursors are issued by a particular instance generation and execution directory.
@@ -337,6 +218,23 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
     );
     return { entry, settings, environment, revision: captured.revision };
   });
+  const authTarget = Effect.fn("ProviderAuthentication.target")(function* (
+    id: ProviderInstanceId,
+    newWork = false,
+  ) {
+    const snapshot = yield* policy.snapshot;
+    const current = snapshot.config[id];
+    const desired = (yield* policy.desired)[id];
+    if (newWork && !Equal.equals(current, desired))
+      return yield* failure(
+        "This provider configuration is waiting for active work to finish.",
+        "configuration_pending",
+      );
+    const selected = yield* registry.getInstance(id);
+    if (!current || !selected?.auth)
+      return yield* failure("The Agent sign-in state is unavailable.");
+    return selected;
+  });
   const withCurrent = <A, E, R>(captured: ProviderInstance, task: Effect.Effect<A, E, R>) =>
     withCurrentAcpInstance(registry, captured, task);
   const relatedInstances = (selected: ProviderInstance) =>
@@ -375,7 +273,17 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
     checkCredentials = true,
   ) {
     const related = yield* relatedInstances(selected);
-    const activity = yield* activityForInstances(related.map((candidate) => candidate.instanceId));
+    const activity = yield* activityForInstances(
+      related.map((candidate) => candidate.instanceId),
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new AcpManagementError({
+            reason: "invalid_request",
+            message: "Could not read active provider work.",
+          }),
+      ),
+    );
     if (activity.busy)
       return yield* failure(
         "This sign-in is in use by active or queued chats. Stop their work before changing it.",
@@ -406,10 +314,10 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
       }),
     );
   type AwaitedInstance = Effect.Success<ReturnType<typeof instance>>;
-  const idleBeforeMutation = (selected: ProviderInstance) =>
+  const beforeCredentialMutation = (selected: ProviderInstance, stopActive = false) =>
     Effect.gen(function* () {
-      yield* instance(selected.instanceId);
-      yield* assertIdle(selected, false);
+      yield* authTarget(selected.instanceId, true);
+      if (!stopActive) yield* assertIdle(selected, false);
       for (const peer of yield* relatedInstances(selected)) {
         yield* sessions.closeInstance(peer.instanceId);
         if (peer.instanceId !== selected.instanceId) yield* peer.auth?.invalidate ?? Effect.void;
@@ -438,42 +346,31 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
             }),
         ),
       ),
-      idleBeforeMutation(selected),
+      beforeCredentialMutation(selected),
     );
   };
-  const projectAuth = Effect.fn("AcpManagement.projectAuth")(function* (
-    selected: ProviderInstance,
-    revision: number,
-    state: ProviderAuthState,
-  ) {
-    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
-    return authentication.project(selected.auth, revision, state);
-  });
-  const authAction = Effect.fn("AcpManagement.authAction")(function* <E, R>(
-    selected: ProviderInstance,
-    task: Effect.Effect<ProviderAuthState, E, R>,
-  ) {
-    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
-    const captured = yield* policy.snapshot;
-    return yield* withCurrent(selected, task).pipe(
-      Effect.flatMap((state) => projectAuth(selected, captured.revision, state)),
-    );
-  });
-  const readAuth = Effect.fn("AcpManagement.readAuth")(function* (input: {
-    instanceId: ProviderInstanceId;
-    ownerId: string;
-  }) {
-    const selected = yield* instance(input.instanceId);
-    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
-    const captured = yield* policy.snapshot;
-    return yield* withCurrent(
-      selected,
-      Effect.gen(function* () {
-        const state = yield* selected.auth!.subscribe(input.ownerId).pipe(Stream.runHead);
-        if (Option.isNone(state)) return yield* failure("The Agent sign-in state is unavailable.");
-        return yield* projectAuth(selected, captured.revision, state.value);
-      }),
-    );
+  const authentication = ProviderAuthentication.make(runtimeGeneration, {
+    target: authTarget,
+    revision: policy.snapshot.pipe(Effect.map((snapshot) => snapshot.revision)),
+    withCurrent,
+    beforeMutation: beforeCredentialMutation,
+    withLogout: (id, use) =>
+      mutation.withPermit(
+        Effect.gen(function* () {
+          const selected = yield* authTarget(id, true);
+          const stopActive = selected.driverKind === "antigravity";
+          if (!stopActive) yield* assertIdle(selected);
+          return yield* use(selected, beforeCredentialMutation(selected, stopActive));
+        }),
+      ),
+    withIdle: (id, use) =>
+      mutation.withPermit(
+        Effect.gen(function* () {
+          const selected = yield* authTarget(id, true);
+          yield* assertIdle(selected);
+          return yield* use(selected);
+        }),
+      ),
   });
 
   const importIdentity = (
@@ -654,60 +551,13 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
           withCurrent(selected, selected.acpSessionManagement.connect(request.input.cwd)),
         );
       }
-      case "acp.auth.read":
-        return yield* readAuth(request.input);
-      case "acp.auth.start": {
-        const existing = yield* readAuth(request.input);
-        if (existing.cancellable) return existing;
-        return yield* withIdle(request.input.instanceId, (selected) =>
-          Effect.gen(function* () {
-            const captured = yield* policy.snapshot;
-            const finish = authentication.begin(selected.auth!, captured.revision);
-            return yield* withCurrent(
-              selected,
-              selected.auth!.start(
-                request.input.ownerId,
-                idleBeforeMutation(selected),
-                request.input.methodId,
-                request.input.returnUrl,
-                request.input.callbackMode,
-              ),
-            ).pipe(
-              Effect.flatMap((state) => projectAuth(selected, captured.revision, state)),
-              Effect.ensuring(Effect.sync(finish)),
-            );
-          }),
-        );
-      }
-      case "acp.auth.respond": {
-        const selected = yield* registry.getInstance(request.input.instanceId);
-        if (!selected?.auth?.respond)
-          return yield* failure("The Agent sign-in state is unavailable.");
-        return yield* authAction(
-          selected,
-          selected.auth.respond(request.input.ownerId, request.input),
-        );
-      }
-      case "acp.auth.complete": {
-        const selected = yield* registry.getInstance(request.input.instanceId);
-        if (!selected?.auth) return yield* failure("The Agent sign-in state is unavailable.");
-        return yield* authAction(
-          selected,
-          selected.auth.complete(request.input.ownerId, request.input),
-        );
-      }
-      case "acp.auth.cancel": {
-        const selected = yield* registry.getInstance(request.input.instanceId);
-        if (!selected?.auth) return yield* failure("The Agent sign-in state is unavailable.");
-        return yield* authAction(
-          selected,
-          selected.auth.cancel(request.input.ownerId, request.input.flowId),
-        );
-      }
-      case "acp.auth.logout":
-        return yield* withIdle(request.input.instanceId, (selected) =>
-          authAction(selected, selected.auth!.logout(idleBeforeMutation(selected))),
-        );
+      case "providers.auth.read":
+      case "providers.auth.start":
+      case "providers.auth.respond":
+      case "providers.auth.complete":
+      case "providers.auth.cancel":
+      case "providers.auth.logout":
+        return yield* authentication.execute(request);
       case "acp.urlAuth.accept":
         return { accepted: yield* coordinator.acceptUrlAuthentication(request.input) };
       case "acp.sessions.list": {

@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { nodexCreditFailure, nodexProviderEvent } from "../nodex/NodexModelPolicy.ts";
 import { makeAssistantStreamingFilter } from "./assistantStreaming.ts";
 import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
@@ -799,6 +800,7 @@ export const layer: Layer.Layer<
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
+    const modelPolicy = yield* RuntimeModelPolicy;
 
     const observers = yield* Ref.make(new Map<OrchestrationV2Run["id"], RunObserver>());
     const observerFibers = new Map<
@@ -2033,6 +2035,8 @@ export const layer: Layer.Layer<
             key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
             text: entry.text,
           }));
+          const { instanceId } = input.modelSelection;
+          const modelPolicyOrigin = input.run.modelPolicyOrigin ?? "automatic";
           const turnInput = {
             ...(input.isRunTerminal === undefined ? {} : { isRunTerminal: input.isRunTerminal }),
             ...(input.reportUnavailableSkills
@@ -2059,8 +2063,10 @@ export const layer: Layer.Layer<
             rootNodeId: input.rootNode.id,
             providerThread: input.providerThread,
             message: input.message,
-            modelPolicyOrigin: input.run.modelPolicyOrigin ?? "automatic",
+            modelPolicyOrigin,
             modelSelection: input.modelSelection,
+            assertModelAdmission: (model: string) =>
+              modelPolicy.assert({ instanceId, model }, modelPolicyOrigin),
             runtimePolicy: input.runtimePolicy,
             ...(appContext.length === 0 ? {} : { appContext }),
           };

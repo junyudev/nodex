@@ -144,7 +144,12 @@ input.on("line", (line) => {
       const value = request.params?.value;
       if (value === "rejected") return invalid();
       if (configId === "model") model = String(value);
-      if (configId === "context") option = String(value);
+      if (configId === "context") {
+        option = String(value);
+        if (option === "" && process.env.NODEX_ACP_MODEL_CHANGE_DURING_PREPARATION === "1") {
+          model = "model-b";
+        }
+      }
       result({ configOptions: configOptions() });
       return;
     }

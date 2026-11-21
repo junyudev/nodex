@@ -120,6 +120,20 @@ async function startProcess(
   };
 }
 
+it("exits cleanly after shutdown while the Host still holds stdin open", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-runtime-shutdown-"));
+  const runtime = await startProcess(home);
+  try {
+    expect(await runtime.request("shutdown")).toMatchObject({ success: true });
+    expect(await runtime.exit).toBe(0);
+    expect(runtime.invalidLines).toEqual([]);
+  } finally {
+    if (runtime.child.exitCode === null && runtime.child.signalCode === null)
+      runtime.child.kill("SIGKILL");
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 it("cancels a utility request through stdin while keeping the Runtime and other requests alive", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-rewrite-cancel-"));
   const binary = path.join(home, "codex-fixture.mjs");

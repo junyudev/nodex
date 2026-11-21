@@ -2,6 +2,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Sink from "effect/Sink";
 import * as Stdio from "effect/Stdio";
 import { ChildProcessSpawner } from "effect/process";
@@ -53,11 +54,22 @@ export const makeTerminationError = (
   handle: ChildProcessTerminationHandle,
 ): Effect.Effect<AcpError.AcpError> =>
   Effect.match(handle.exitCode, {
-    onFailure: (cause) =>
-      new AcpError.AcpTransportError({
+    onFailure: (cause) => {
+      const reason = Predicate.isObject(cause) ? cause.reason : undefined;
+      const nested = Predicate.isObject(reason) ? reason.cause : undefined;
+      const signal =
+        nested instanceof Error
+          ? /^Process interrupted due to receipt of signal: '(SIG[A-Z0-9]+)'$/.exec(
+              nested.message,
+            )?.[1]
+          : undefined;
+      if (signal !== undefined)
+        return new AcpError.AcpProcessExitedError({ signal, pid: handle.pid, cause });
+      return new AcpError.AcpTransportError({
         operation: "read-process-exit-status",
         pid: handle.pid,
         cause,
-      }),
+      });
+    },
     onSuccess: (code) => new AcpError.AcpProcessExitedError({ code, pid: handle.pid }),
   });

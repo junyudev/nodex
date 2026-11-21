@@ -22,6 +22,7 @@ const MAX_ENVELOPE_NODES = 128;
 const MAX_CONTENT_RESULT_PAGES = 16;
 const MAX_CONTENT_RESULT_TEXT_LENGTH = 512;
 const encoder = new TextEncoder();
+const TERMINAL_OUTPUT_MARKER = "\nCommand output:\n";
 
 interface ResultReadBudget {
   remainingBytes: number;
@@ -100,7 +101,11 @@ function readResult(value: unknown, budget: ResultReadBudget, depth = 0): Result
     value.is_error === true ||
     value._tag === "OrchestratorMcpFailure" ||
     value.error != null;
-  const content = value.structuredContent ?? value.content;
+  const terminal = typeof value.output === "string" ? value.output : "";
+  const marker = terminal.indexOf(TERMINAL_OUTPUT_MARKER);
+  const content =
+    value.structuredContent ?? value.content ??
+    (marker === -1 ? undefined : terminal.slice(marker + TERMINAL_OUTPUT_MARKER.length));
   if (content !== undefined) {
     const nested = readResult(content, budget, depth + 1);
     return { ...nested, failed: failed || nested.failed };
@@ -381,4 +386,19 @@ export function omitToolOutputImageData(value: unknown): unknown {
     return { ...value, content: value.content.map(omit) };
   }
   return omit(value);
+}
+
+export function mcpToolResultOutput(result: {
+  readonly content?: unknown;
+  readonly structuredContent?: unknown;
+}): unknown {
+  const structuredContent =
+    (Array.isArray(result.structuredContent) || Predicate.isObject(result.structuredContent)) &&
+    Object.keys(result.structuredContent).length === 0
+      ? undefined
+      : result.structuredContent;
+  if (structuredContent != null && toolOutputImages(result.content).length > 0) {
+    return { content: result.content, structuredContent };
+  }
+  return structuredContent ?? result.content;
 }

@@ -1,5 +1,16 @@
+import * as DateTime from "effect/DateTime";
+import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import {
   ProviderDriverKind,
+  ThreadId,
+  OrchestrationV2ProviderThread,
+  ProviderInstanceId,
+  ModelSelection,
+  ProjectId,
+  RunId,
+  RunAttemptId,
+  NodeId,
+  MessageId,
   ProviderReplayEntry,
   type ProviderReplayTranscript,
 } from "@nodex/runtime-contracts";
@@ -284,4 +295,67 @@ export function makeAcpReplayRuntimeSequence(input: Parameters<typeof makeAcpRep
       return makeAcpReplayRuntime({ ...input, transcript: segment, statusPath })(runtimeInput);
     });
   return { makeRuntime, assertComplete, assertAllComplete };
+}
+
+export function makeTurnInput(input: {
+  readonly threadId: ThreadId;
+  readonly providerThread: OrchestrationV2ProviderThread;
+  readonly instanceId: ProviderInstanceId;
+  readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
+  readonly now: DateTime.Utc;
+  readonly ordinal?: number;
+  readonly modelSelection?: ModelSelection;
+  readonly messageCreatedBy?: "user" | "agent";
+  readonly messageCreationSource?: "web" | "mobile" | "mcp" | "provider" | "server";
+  readonly messageText?: string;
+}): ProviderAdapter.ProviderAdapterV2TurnInput {
+  const ordinal = input.ordinal ?? 1;
+  const suffix = `${input.threadId}:${ordinal}`;
+  const modelSelection =
+    input.modelSelection ?? ({ instanceId: input.instanceId, model: "default" } as const);
+  return {
+    appThread: {
+      createdBy: "user",
+      creationSource: "web",
+      id: input.threadId,
+      projectId: ProjectId.make(`project:${input.threadId}`),
+      title: "ACP adapter test",
+      providerInstanceId: input.instanceId,
+      modelSelection,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      activeProviderThreadId: input.providerThread.id,
+      lineage: {
+        parentThreadId: null,
+        relationshipToParent: null,
+        rootThreadId: input.threadId,
+      },
+      forkedFrom: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      lastVisitedAt: null,
+      deletedAt: null,
+    },
+    threadId: input.threadId,
+    runId: RunId.make(`run:${suffix}`),
+    runOrdinal: ordinal,
+    providerTurnOrdinal: ordinal,
+    attemptId: RunAttemptId.make(`attempt:${suffix}`),
+    rootNodeId: NodeId.make(`node:${suffix}`),
+    providerThread: input.providerThread,
+    message: {
+      createdBy: input.messageCreatedBy ?? "user",
+      creationSource: input.messageCreationSource ?? "web",
+      messageId: MessageId.make(`message:${suffix}`),
+      text: input.messageText ?? "test prompt",
+      attachments: [],
+    },
+    modelSelection,
+    runtimePolicy: input.runtimePolicy,
+  };
 }

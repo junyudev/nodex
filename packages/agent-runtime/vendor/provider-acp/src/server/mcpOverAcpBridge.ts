@@ -101,6 +101,7 @@ export interface AcpMcpOverAcpBridge {
   readonly disconnect: (
     request: AcpSchema.DisconnectMcpRequest,
   ) => Effect.Effect<AcpSchema.DisconnectMcpResponse, AcpMcpOverAcpError>;
+  readonly stopCalls: Effect.Effect<void>;
   readonly dispose: Effect.Effect<void>;
 }
 
@@ -119,6 +120,7 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
   }
   const requestScope = yield* Scope.make();
   let closed = false;
+  let callsStopped = Deferred.makeUnsafe<void>();
 
   // Native callbacks can outlive their process. Admission and pending HTTP work
   // belong to this physical bridge, never a later bridge using the same Thread.
@@ -141,7 +143,7 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
         : Effect.succeed(connection);
     });
 
-  const send = (
+  const sendNow = (
     connection: Connection,
     message: unknown,
   ): Effect.Effect<ReadonlyArray<unknown>, AcpMcpOverAcpError> =>
@@ -184,6 +186,16 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
       }
       return payloads;
     }).pipe(Effect.scoped, Effect.mapError(bridgeError));
+
+  const send = (connection: Connection, message: unknown) =>
+    Effect.suspend(() =>
+      Effect.raceFirst(
+        sendNow(connection, message),
+        Deferred.await(callsStopped).pipe(
+          Effect.andThen(Effect.fail(new AcpMcpOverAcpError("The MCP call was stopped."))),
+        ),
+      ),
+    );
 
   const closeConnection = (connection: Connection) =>
     Effect.gen(function* () {
@@ -373,6 +385,11 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
         }),
       ),
     disconnect: (request) => admit(disconnect(request)),
+    stopCalls: Effect.suspend(() => {
+      const stopped = callsStopped;
+      callsStopped = Deferred.makeUnsafe();
+      return Deferred.succeed(stopped, undefined);
+    }).pipe(Effect.asVoid),
     dispose: Effect.suspend(() => {
       if (closed) return Effect.void;
       closed = true;

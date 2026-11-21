@@ -67,7 +67,8 @@
     "./BoundedQueue": "./src/BoundedQueue.ts",
     "./searchableMessageText": "./src/searchableMessageText.ts",
     "./paletteSearch": "./src/paletteSearch.ts",
-    "./orchestrationV2Rewind": "./src/orchestrationV2Rewind.ts"
+    "./orchestrationV2Rewind": "./src/orchestrationV2Rewind.ts",
+    "./cliRelease": "./src/cliRelease.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

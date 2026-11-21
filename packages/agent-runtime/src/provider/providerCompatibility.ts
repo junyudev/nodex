@@ -1,10 +1,13 @@
 import {
+  ProviderSetupError,
+  type ProviderInstanceId,
   TrimmedNonEmptyString,
   ServerProviderCompatibilityStatus,
   type ProviderDriverKind,
   type ServerProvider,
   type ServerProviderCompatibilityAdvisory,
 } from "@nodex/runtime-contracts";
+import { brokenVersionDetail } from "@nodex/provider-core/server/compatibility";
 import { satisfiesSemverRange } from "@nodex/runtime-shared/semver";
 import * as Schema from "effect/Schema";
 import packageJson from "../../package.json" with { type: "json" };
@@ -74,7 +77,7 @@ export function resolveProviderCompatibility(
     driver === "cursor"
       ? unprefixed?.replace(/^(\d{4}\.\d{2}\.\d{2})-[a-f0-9]+$/, "$1")
       : driver === "antigravity"
-        ? unprefixed?.replace(/^agy_acp_server_(\d+\.\d+\.\d+)$/, "$1")
+        ? unprefixed?.replace(/^(?:agy_acp_server_)?(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$/, "$1")
         : driver === "muse"
           ? unprefixed?.replace(/^(\d+\.\d+\.\d+)-R\d+(?:\.\d+)?$/, "$1")
           : unprefixed;
@@ -103,6 +106,20 @@ export function resolveProviderCompatibility(
 }
 
 /** A remote policy replaces its matching bundled policy; omission keeps the bundle. */
+/** The one refusal for a runtime the policy rates `broken`; `action` names how this runtime is updated. */
+export function brokenRuntimeError(input: {
+  readonly instanceId: ProviderInstanceId;
+  readonly name: string;
+  readonly version: string;
+  readonly advisory: ServerProviderCompatibilityAdvisory | undefined;
+  readonly action?: string;
+}): ProviderSetupError | undefined {
+  const detail = brokenVersionDetail(input);
+  return detail === undefined
+    ? undefined
+    : new ProviderSetupError({ instanceId: input.instanceId, operation: "runtime", detail });
+}
+
 export function applyProviderCompatibility(
   snapshot: ServerProvider,
   policies: ReadonlyArray<ProviderCompatibilityPolicy> | undefined,

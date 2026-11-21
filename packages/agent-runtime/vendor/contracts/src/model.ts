@@ -25,6 +25,9 @@ export const SelectProviderOptionDescriptor = Schema.Struct({
   ...ProviderOptionDescriptorBase,
   type: Schema.Literal("select"),
   options: Schema.Array(ProviderOptionChoice),
+  promptInjectedValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** The native reasoning control, independent of its id. */
+  role: Schema.optional(Schema.Literal("reasoning")),
   currentValue: Schema.optional(TrimmedNonEmptyString),
 });
 export type SelectProviderOptionDescriptor = typeof SelectProviderOptionDescriptor.Type;

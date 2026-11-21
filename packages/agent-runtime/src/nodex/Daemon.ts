@@ -150,7 +150,10 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           await write({ id: envelope?.id ?? "", success: true, output });
         } catch (error) {
           const identity = errorIdentity(error);
-          const acp = envelope?.method?.startsWith("acp.") ? acpFailure(error) : undefined;
+          const acp =
+            envelope?.method?.startsWith("acp.") || envelope?.method?.startsWith("providers.auth.")
+              ? acpFailure(error)
+              : undefined;
           await write({
             id: envelope?.id ?? "",
             success: false,
@@ -253,6 +256,12 @@ export async function runAgentRuntimeProcess(): Promise<void> {
         });
       }
     } catch (error) {
+      // Closing stdin interrupts its pending byte read when the Host keeps the pipe open.
+      if (
+        closing &&
+        Schema.is(Schema.Struct({ code: Schema.Literal("ERR_STREAM_PREMATURE_CLOSE") }))(error)
+      )
+        return;
       process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
       if (error instanceof RuntimeHomeLeaseError && error.retryable) {
         const owner = error.conflict;

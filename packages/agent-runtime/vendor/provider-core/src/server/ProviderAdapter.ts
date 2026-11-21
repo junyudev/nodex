@@ -49,6 +49,7 @@ import type {
 
 export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   runtimeMode: RuntimeMode,
+  maxRuntimeMode: Schema.optional(RuntimeMode),
   interactionMode: ProviderInteractionMode,
   cwd: Schema.NullOr(Schema.String),
 
@@ -185,6 +186,7 @@ export class ProviderAdapterCapabilitiesError extends Schema.TaggedError<Provide
 export class ProviderAdapterOpenSessionError extends Schema.TaggedError<ProviderAdapterOpenSessionError>()(
   "ProviderAdapterOpenSessionError",
   {
+    requiresSignIn: Schema.optional(Schema.Boolean),
     driver: ProviderDriverKind,
     providerSessionId: ProviderSessionId,
     /** False when another startup attempt cannot recover the captured native session. */
@@ -367,6 +369,7 @@ export class ProviderAdapterProtocolError extends Schema.TaggedError<ProviderAda
   {
     driver: ProviderDriverKind,
     detail: Schema.String,
+    reason: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
     payload: Schema.optional(Schema.Unknown),
   },
@@ -389,7 +392,45 @@ export class ProviderTurnOwnershipConflictError extends Schema.TaggedError<Provi
   }
 }
 
+export class ProviderCompactionUnsupportedError extends Schema.TaggedError<ProviderCompactionUnsupportedError>()(
+  "ProviderCompactionUnsupportedError",
+  {
+    driver: ProviderDriverKind,
+    providerThreadId: ProviderThreadId,
+  },
+) {
+  override get message(): string {
+    return "This Agent does not support compaction. Start a new chat to continue with a fresh context.";
+  }
+}
+
+export class ProviderAdapterSteerDeclinedError extends Schema.TaggedError<ProviderAdapterSteerDeclinedError>()(
+  "ProviderAdapterSteerDeclinedError",
+  {
+    driver: ProviderDriverKind,
+    providerThreadId: ProviderThreadId,
+    providerTurnId: ProviderTurnId,
+  },
+) {}
+
+export class ProviderAdapterInterruptTimeoutError extends Schema.TaggedError<ProviderAdapterInterruptTimeoutError>()(
+  "ProviderAdapterInterruptTimeoutError",
+  {
+    driver: ProviderDriverKind,
+    providerThreadId: ProviderThreadId,
+    providerTurnId: ProviderTurnId,
+    timeoutMs: Schema.Number,
+  },
+) {
+  override get message(): string {
+    return `The ${this.driver} provider did not confirm stopping turn ${this.providerTurnId} within ${this.timeoutMs} ms.`;
+  }
+}
+
 export const ProviderAdapterV2Error = Schema.Union([
+  ProviderAdapterInterruptTimeoutError,
+  ProviderAdapterSteerDeclinedError,
+  ProviderCompactionUnsupportedError,
   ProviderTurnOwnershipConflictError,
   ProviderAdapterCapabilitiesError,
   ProviderAdapterOpenSessionError,
@@ -438,6 +479,7 @@ export interface ProviderAdapterV2OpenSessionInput {
 }
 
 export interface ProviderAdapterV2EnsureThreadInput {
+  readonly forceNewNativeThread?: boolean;
   readonly threadId: ThreadId;
   /** Temporary conversations may not enter the provider's ordinary saved history. */
   readonly ephemeral?: boolean;
@@ -450,6 +492,8 @@ export interface ProviderAdapterV2EnsureThreadInput {
 }
 
 export interface ProviderAdapterV2TurnInput {
+  /** Live host policy for the model that the native session will use. */
+  readonly assertModelAdmission?: (model: string) => Effect.Effect<void, unknown>;
   /** Report optional skills that failed the provider's final availability check. */
   readonly reportUnavailableSkills?: (names: readonly string[]) => Effect.Effect<void>;
   /** Durable ownership probe; absent means another Run must be treated as live. */
@@ -495,16 +539,20 @@ export function matchesSkillInvocation(
   cwd: string | null | undefined,
   placement?: Partial<Pick<ProviderAdapterV2TurnInput, "appThread" | "hostSourceRoots">>,
 ): boolean {
-  if (invocation.instanceId !== instanceId || invocation.name !== available.name || !cwd) return false;
+  if (invocation.instanceId !== instanceId || invocation.name !== available.name || !cwd)
+    return false;
   if (invocation.path === available.path) return true;
-  const worktree = placement?.appThread?.executionLocation?.managedWorktreePath ??
+  const worktree =
+    placement?.appThread?.executionLocation?.managedWorktreePath ??
     placement?.appThread?.worktreePath;
   if (!worktree || !placement?.hostSourceRoots?.includes(invocation.cwd)) return false;
   const checkout = path.relative(worktree, cwd);
-  if (path.isAbsolute(checkout) || checkout === ".." || checkout.startsWith(`..${path.sep}`)) return false;
+  if (path.isAbsolute(checkout) || checkout === ".." || checkout.startsWith(`..${path.sep}`))
+    return false;
   const relative = path.relative(invocation.cwd, invocation.path);
   const [directory, kind] = relative.split(path.sep);
-  if (![".agents", ".claude", ".opencode"].includes(directory ?? "") || kind !== "skills") return false;
+  if (![".agents", ".claude", ".opencode"].includes(directory ?? "") || kind !== "skills")
+    return false;
   return path.join(cwd, relative) === available.path;
 }
 
@@ -672,6 +720,12 @@ export type ProviderAdapterV2Observation =
     };
 
 export interface ProviderAdapterV2SessionRuntime {
+  readonly canResumeAfterRestart?: boolean;
+  readonly awaitBackgroundTasks?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    readonly taskIds: ReadonlyArray<string>;
+    readonly awaited: boolean;
+  }) => Effect.Effect<{ readonly matched: ReadonlyArray<string> }, ProviderAdapterV2Error>;
   readonly reconcileTurn?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly providerTurnId: ProviderTurnId;
@@ -820,6 +874,7 @@ export interface ProviderAdapterV2SessionRuntime {
 export class ProviderAdapterV2 extends Context.Service<
   ProviderAdapterV2,
   {
+    readonly checksVersionAtHandshake?: boolean;
     readonly instanceId: ProviderInstanceId;
     readonly driver: ProviderDriverKind;
     readonly getCapabilities: () => Effect.Effect<

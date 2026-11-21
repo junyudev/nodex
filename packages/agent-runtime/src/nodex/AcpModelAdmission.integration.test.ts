@@ -1,9 +1,11 @@
+import { ACP_EMPTY_OPTION_VALUE } from "@nodex/provider-acp/server/sessionConfig";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schedule from "effect/Schedule";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "./Interface.ts";
@@ -132,12 +134,57 @@ it.live.each(["none", "config"] as const)(
           ))?.status,
         ).toBe("completed");
         expect((yield* methods()).filter((method) => method === "session/prompt")).toHaveLength(1);
+        if (api !== "config") return;
+        // The Agent changes its effective model when applying a non-model option.
+        // The saved choice is still on when the usual message admission runs.
+        yield* call("command.dispatch", {
+          command: {
+            type: "message.dispatch",
+            commandId: "changed-model",
+            threadId: "thread",
+            messageId: "changed-model",
+            text: "Must not run on the new model",
+            attachments: [],
+            modelSelection: {
+              instanceId,
+              model: "model-a",
+              options: [{ id: "context", value: ACP_EMPTY_OPTION_VALUE }],
+            },
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
+        });
+        const refused = yield* call("run.outcome", {
+          threadId: "thread",
+          messageId: "changed-model",
+        }).pipe(
+          Effect.repeat({
+            until: (value) => value?.status === "failed" || value?.status === "completed",
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
+        expect(refused?.status).toBe("failed");
+        const refusedSnapshot = yield* call("thread.snapshot", { threadId: "thread" });
+        expect(
+          refusedSnapshot.projection.visibleTurnItems.some(
+            ({ item }) => item.type === "error" && item.failure.code === "model_off",
+          ),
+        ).toBe(true);
+        expect((yield* methods()).filter((method) => method === "session/prompt")).toHaveLength(1);
       }).pipe(
         Effect.provide(
           Application.layer(
             {
               home,
               cwd: home,
+              modelPolicy: setModelOn(
+                DEFAULT_MODEL_POLICY,
+                { instanceId, driver: "acpRegistry" },
+                "model-b",
+                false,
+              ),
               providers: {
                 [instanceId]: {
                   driver: "acpRegistry",
@@ -154,6 +201,11 @@ it.live.each(["none", "config"] as const)(
                   environment: [
                     { name: "NODEX_ACP_MODEL_API", value: api, sensitive: false },
                     { name: "NODEX_ACP_MODEL_REQUEST_LOG", value: log, sensitive: false },
+                    {
+                      name: "NODEX_ACP_MODEL_CHANGE_DURING_PREPARATION",
+                      value: "1",
+                      sensitive: false,
+                    },
                   ],
                 },
               },

@@ -56,7 +56,7 @@ const boundedText = (value: string | null | undefined, maximumLength: number): s
 const boundedOpaqueValue = (value: string, maximumLength: number): string | undefined =>
   value.length > 0 && value === value.trim() && value.length <= maximumLength ? value : undefined;
 
-function flattenSelectChoices(
+export function flattenSelectChoices(
   options: EffectAcpSchema.SessionConfigSelectOptions,
 ): ReadonlyArray<EffectAcpSchema.SessionConfigSelectOption> {
   return options.flatMap((candidate) => ("value" in candidate ? [candidate] : candidate.options));

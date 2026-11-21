@@ -56,7 +56,7 @@ it.effect("rechecks policy after session preparation before an OpenCode 2 prompt
       .pipe(
         Effect.provideService(
           TextGenerationAdmission,
-          Effect.suspend(() =>
+          () => Effect.suspend(() =>
             on
               ? Effect.void
               : Effect.fail(

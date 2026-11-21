@@ -1,3 +1,4 @@
+import * as ProviderInstallationManagement from "./ProviderInstallationManagement.ts";
 import { syncNativeSearchHistory } from "../orchestration-v2/NativeSearchHistory.ts";
 import { canAdvanceReadback } from "../orchestration-v2/RunReadback.ts";
 import * as SessionPause from "./SessionPause.ts";
@@ -131,6 +132,9 @@ import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import * as ExecutionRoots from "./ExecutionRoots.ts";
 import * as StoreCoordinate from "./StoreCoordinate.ts";
 import * as AcpManagement from "./AcpManagement.ts";
+import * as ProviderManagement from "./ProviderManagement.ts";
+import { NativeChildWorkQuery } from "../orchestration-v2/NativeChildWorkQuery.ts";
+import { OrchestrationV2GetNativeChildWorkResult } from "@nodex/runtime-contracts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
 import {
@@ -174,6 +178,9 @@ const NativeSource = Schema.Struct({
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
+  ...ProviderManagement.Request.members,
+  ...ProviderInstallationManagement.Request.members,
+  request("native-child-work.read", Schema.Struct({ threadId: ThreadId })),
   request("execution.roots", ExecutionRoots.Input),
   request("execution.workspace-in-use", ExecutionRoots.WorkspaceInUseInput),
   request(
@@ -945,6 +952,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     scope: processScope,
   }).pipe(Effect.provide(FetchHttpClient.layer));
   const acp = yield* AcpManagement.make(identity.runtimeGeneration);
+  const providerManagement = yield* ProviderManagement.make();
+  const providerInstallationManagement = yield* ProviderInstallationManagement.make(
+    identity.runtimeGeneration,
+  );
+  const nativeChildWork = yield* NativeChildWorkQuery;
   const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const sessionMetadataOptions = {
     shell: (threadId: string) => projections.getThreadShell(ThreadId.make(threadId)),
@@ -1025,6 +1037,20 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             Effect.provideService(FileSystem.FileSystem, fileSystem),
             Effect.provideService(Path.Path, path),
           );
+      case "native-child-work.read":
+        return yield* nativeChildWork.getNativeChildWork(input.input).pipe(
+          Effect.flatMap(Schema.encodeEffect(OrchestrationV2GetNativeChildWorkResult)),
+          Effect.flatMap((encoded) => Effect.try(() => assertPublicWirePayloadBudget(encoded))),
+        );
+      case "providers.install.read":
+      case "providers.install.start":
+      case "providers.install.operation.read":
+      case "providers.install.operation.cancel":
+      case "providers.install.remove":
+        return yield* providerInstallationManagement.execute(input);
+      case "providers.usage.scan":
+      case "providers.models.refresh":
+        return yield* providerManagement.execute(input);
       case "acp.activity":
       case "acp.registry.search":
       case "acp.install.preview":
@@ -1034,12 +1060,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "acp.connection.start":
       case "acp.operation.read":
       case "acp.operation.cancel":
-      case "acp.auth.read":
-      case "acp.auth.start":
-      case "acp.auth.respond":
-      case "acp.auth.complete":
-      case "acp.auth.cancel":
-      case "acp.auth.logout":
+      case "providers.auth.read":
+      case "providers.auth.start":
+      case "providers.auth.respond":
+      case "providers.auth.complete":
+      case "providers.auth.cancel":
+      case "providers.auth.logout":
       case "acp.urlAuth.accept":
       case "acp.sessions.list":
       case "acp.sessions.prepareImport":
@@ -1525,7 +1551,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           return composer ? (yield* instance.snapshot.getSnapshot).skills : [];
         });
         if (!composer)
-          return ["codex", "claude", "opencode"].includes(driverKind) ? yield* native : [];
+          return ["codex", "claude", "opencode", "antigravity"].includes(driverKind)
+            ? yield* native
+            : [];
         if (driverKind === "codex") return [];
         const { skills, roots } = yield* Effect.all(
           {
@@ -1597,6 +1625,15 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         // One at a time: profiles that share a config directory share one sign-in.
         for (const instanceId of named) {
           const instance = yield* instances.getInstance(instanceId);
+          if (instance?.auth) {
+            yield* acp.execute({
+              id: `${input.id}:logout:${instanceId}`,
+              method: "providers.auth.logout",
+              input: { instanceId: ProviderInstanceId.make(instanceId) },
+            });
+            yield* providers.refreshInstance(ProviderInstanceId.make(instanceId), { fresh: true });
+            continue;
+          }
           if (!instance?.signOut)
             return yield* Effect.fail(new Error("This Agent cannot be signed out in Nodex."));
           yield* instance.signOut.pipe(Effect.mapError((error) => new Error(error.detail)));

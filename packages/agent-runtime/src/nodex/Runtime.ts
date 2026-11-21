@@ -32,16 +32,14 @@ import * as ProviderHost from "../provider/ProviderHostLive.ts";
 import * as ProviderInstances from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as CodexInstallation from "../provider/CodexInstallation.ts";
+import * as AntigravityInstallation from "../provider/AntigravityInstallation.ts";
+import * as AntigravityUsage from "../provider/Drivers/AntigravityUsage.ts";
+import { BUILT_IN_DRIVERS } from "../provider/builtInDrivers.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ResetCredits from "../provider/resetCreditCoordinator.ts";
-import { CodexDriver, type CodexDriverEnv } from "../provider/Drivers/CodexDriver.ts";
-import { ClaudeDriver, type ClaudeDriverEnv } from "../provider/Drivers/ClaudeDriver.ts";
-import { AcpRegistryDriver, type AcpRegistryDriverEnv } from "@nodex/provider-acp-registry/server";
 import * as AcpRegistrySupport from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
-import { OpenCodeDriver, type OpenCodeDriverEnv } from "@nodex/provider-opencode/server";
 import * as OpenCodeRuntime from "@nodex/provider-opencode/server/OpenCodeRuntime";
 import * as OpenCodeServerLedger from "@nodex/provider-opencode/server/OpenCodeServerLedger";
-import type { AnyProviderDriver } from "@nodex/provider-core/server/driver";
 import * as CodexAdapter from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as ClaudeAdapter from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as DesktopTools from "../desktopTools/Layer.ts";
@@ -64,9 +62,6 @@ import { NodePtyAdapterLive } from "./NodePtyAdapter.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
 const layerPlatform = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, NodePtyAdapterLive);
-const drivers: ReadonlyArray<
-  AnyProviderDriver<CodexDriverEnv | ClaudeDriverEnv | AcpRegistryDriverEnv | OpenCodeDriverEnv>
-> = [CodexDriver, ClaudeDriver, AcpRegistryDriver, OpenCodeDriver];
 const decodeProviderConfiguration = Schema.decodeUnknownEffect(ProviderInstanceConfigMap);
 
 /** Configuration derives every writable path beneath the dedicated runtime home. */
@@ -149,6 +144,7 @@ const layerProviderInfrastructure = Layer.mergeAll(
   ResetCredits.layer,
   ModelManifest.layerModelCatalog.pipe(Layer.provideMerge(ModelManifest.layer)),
   CodexInstallation.CodexInstallation.layer,
+  AntigravityInstallation.AntigravityInstallation.layer,
   AcpRegistrySupport.layerFromHost.pipe(Layer.provide(ProviderHost.layer)),
   OpenCodeRuntime.layer.pipe(
     Layer.provide(
@@ -205,7 +201,7 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
         configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
         yield* decodeProviderConfiguration(configuration.providers),
       );
-      return ProviderInstances.layer({ drivers, configMap }).pipe(
+      return ProviderInstances.layer({ drivers: BUILT_IN_DRIVERS, configMap }).pipe(
         Layer.provide(ProviderHost.layer),
         Layer.provide(layerProviderInfrastructure),
       );
@@ -235,12 +231,15 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
       Layer.provideMerge(CheckpointStore.layerWithoutWorkspaceState),
       Layer.provideMerge(GitVcsDriver.layer),
       Layer.provideMerge(TextGeneration.layer),
+      Layer.provideMerge(AntigravityUsage.layer.pipe(Layer.provide(ProviderHost.layer))),
       Layer.provideMerge(ProviderRegistry.layer),
       Layer.provideMerge(layerInstances),
       Layer.provideMerge(layerProviderInfrastructure),
       Layer.provideMerge(layerBackground),
       Layer.provideMerge(layerSettings),
       Layer.provideMerge(layerPolicy),
+    )
+    .pipe(
       Layer.provideMerge(
         Layer.effect(
           ModelPolicy.RuntimeModelPolicy,

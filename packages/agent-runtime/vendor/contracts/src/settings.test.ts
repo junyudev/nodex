@@ -7,6 +7,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   ClaudeSettings,
+  AntigravitySettings,
   DEFAULT_SERVER_SETTINGS,
   requiredScopesForProjectMutation,
   resolveProjectProviderInstanceEnabled,
@@ -1178,5 +1179,14 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch({ migrateModelPreferences: input })).toEqual({
       migrateModelPreferences: input,
     });
+  });
+});
+
+describe("Antigravity settings", () => {
+  it("accepts its native catalog and rejects custom model declarations", () => {
+    const decode = Schema.decodeUnknownSync(AntigravitySettings);
+    expect(decode({}).customModels).toEqual([]);
+    expect(decode({ customModels: [] }).customModels).toEqual([]);
+    expect(() => decode({ customModels: ["arbitrary-model"] })).toThrow();
   });
 });

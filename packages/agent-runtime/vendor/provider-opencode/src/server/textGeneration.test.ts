@@ -295,7 +295,7 @@ it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
             },
           })
           .pipe(
-            Effect.provideService(TextGenerationAdmission, admission),
+            Effect.provideService(TextGenerationAdmission, () => admission),
             Effect.flip,
             Effect.forkChild,
           );

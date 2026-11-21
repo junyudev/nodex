@@ -1,3 +1,4 @@
+import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 /**
  * ProviderRegistry - Provider snapshot service.
  *
@@ -360,11 +361,28 @@ export const mergeProviderSnapshot = (
     ...(savedAccount?.status === "ready" ? nextWithoutMessage : nextProvider),
     ...savedAccount,
     models: mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models),
-    ...(nextProvider.workspaceSnapshots !== undefined
-      ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
-      : previousProvider.workspaceSnapshots !== undefined
-        ? { workspaceSnapshots: previousProvider.workspaceSnapshots }
-        : {}),
+    ...(nextProvider.driver === "antigravity" &&
+    (nextProvider.workspaceSnapshots !== undefined ||
+      previousProvider.workspaceSnapshots !== undefined)
+      ? {
+          workspaceSnapshots:
+            !nextProvider.enabled ||
+            nextProvider.auth.status === "unauthenticated" ||
+            (!nextProvider.installed && nextProvider.status === "error")
+              ? (nextProvider.workspaceSnapshots ?? [])
+              : [
+                  ...(previousProvider.workspaceSnapshots ?? []).filter(
+                    ({ cwd }) =>
+                      !nextProvider.workspaceSnapshots?.some((snapshot) => snapshot.cwd === cwd),
+                  ),
+                  ...(nextProvider.workspaceSnapshots ?? []),
+                ].slice(-MAX_WORKSPACE_SNAPSHOTS_PER_PROVIDER),
+        }
+      : nextProvider.workspaceSnapshots !== undefined
+        ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
+        : previousProvider.workspaceSnapshots !== undefined
+          ? { workspaceSnapshots: previousProvider.workspaceSnapshots }
+          : {}),
     ...(shouldRetainMissingOpenCodeMetadata(nextProvider)
       ? {
           slashCommands:
@@ -1174,6 +1192,8 @@ export const layer = Layer.effect(
         ),
       );
     const getCheckedProviders = checkedProviders();
+    const modelPolicy = yield* RuntimeModelPolicy;
+    modelPolicy.readModelCatalog(Ref.get(providersRef));
 
     return {
       getProviders: Ref.get(providersRef),

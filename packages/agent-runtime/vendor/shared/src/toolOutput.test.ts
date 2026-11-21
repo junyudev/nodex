@@ -9,6 +9,10 @@ import {
 } from "./toolOutput.ts";
 
 describe("compactDynamicToolOutput", () => {
+  it("reads MCP identities from Antigravity command results without retaining the terminal preamble", () => {
+    expect(compactDynamicToolOutput({ output: 'Created At: now\nCompleted At: later\nCommand exited with code 0\nCommand output:\n{"threadId":"child","private":"discard"}' })).toEqual({ threadId: "child" });
+  });
+
   it("extracts IDs through the MCP result envelopes used by Nodex summaries", () => {
     const metadata = { threadId: "thread-1", messageId: "message-1" };
     const json = JSON.stringify({ ...metadata, response: "Private response body" });

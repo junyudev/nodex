@@ -6,7 +6,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { makeAuthenticationProjection } from "./AcpAuthentication.ts";
+import { makeAuthenticationProjection } from "./ProviderAuthenticationProjection.ts";
 
 it.effect("projects real controller changes while keeping repeated and redacted reads stable", () =>
   Effect.gen(function* () {

@@ -4,7 +4,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
-import type { ModelSelection, ProviderInstanceConfigMap } from "@nodex/runtime-contracts";
+import { antigravityModelPolicyIdentity } from "../provider/antigravityModelSelection.ts";
+import type {
+  ModelSelection,
+  ProviderInstanceConfigMap,
+  ServerProvider,
+} from "@nodex/runtime-contracts";
 import {
   DEFAULT_MODEL_POLICY,
   ModelPolicySchema,
@@ -54,7 +59,9 @@ export const providerForPolicy = (
 const service = (
   current: Effect.Effect<Snapshot>,
   replace: (value: Snapshot) => Effect.Effect<void>,
+  useCatalog = false,
 ) => {
+  let readCatalog = Effect.succeed<ReadonlyArray<ServerProvider>>([]);
   const utilities = new Set<{
     selection: Pick<ModelSelection, "instanceId" | "model">;
     revoked: Deferred.Deferred<never, ModelPolicyError>;
@@ -62,6 +69,10 @@ const service = (
   }>();
   return {
     current,
+    // Read already-observed choices from the registry; admission never starts a probe.
+    readModelCatalog: (catalog: Effect.Effect<ReadonlyArray<ServerProvider>>) => {
+      if (useCatalog) readCatalog = catalog;
+    },
     replace: (next: Snapshot) =>
       Effect.gen(function* () {
         yield* replace(next);
@@ -122,16 +133,26 @@ const service = (
       ),
     assert: (selection: Pick<ModelSelection, "instanceId" | "model">, origin: ModelPolicyOrigin) =>
       current.pipe(
-        Effect.flatMap(({ policy, providers }) => {
-          const error = modelPolicyFailure(
-            policy,
-            providerForPolicy(providers, selection.instanceId),
-            selection.model,
-            origin,
-            NODEX_MODELS.find((model) => model.id === selection.model)?.label,
-          );
-          return error ? Effect.fail(new ModelPolicyError(error)) : Effect.void;
-        }),
+        Effect.flatMap(
+          Effect.fnUntraced(function* ({ policy, providers }) {
+            const provider = providerForPolicy(providers, selection.instanceId);
+            const model =
+              provider.driver === "antigravity"
+                ? antigravityModelPolicyIdentity(
+                    (yield* readCatalog).find((entry) => entry.instanceId === selection.instanceId),
+                    selection.model,
+                  )
+                : selection.model;
+            const error = modelPolicyFailure(
+              policy,
+              provider,
+              model,
+              origin,
+              NODEX_MODELS.find((entry) => entry.id === model)?.label,
+            );
+            if (error) return yield* new ModelPolicyError(error);
+          }),
+        ),
       ),
   };
 };
@@ -163,10 +184,13 @@ export const make = Effect.fn("RuntimeModelPolicy.make")(function* (
     policy: ModelPolicySchema.parse(policy),
     providers: withoutCredentials(providers),
   });
-  return service(Ref.get(state), (next) =>
-    Ref.set(state, {
-      policy: ModelPolicySchema.parse(next.policy),
-      providers: withoutCredentials(next.providers),
-    }),
+  return service(
+    Ref.get(state),
+    (next) =>
+      Ref.set(state, {
+        policy: ModelPolicySchema.parse(next.policy),
+        providers: withoutCredentials(next.providers),
+      }),
+    true,
   );
 });

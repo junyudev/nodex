@@ -285,7 +285,9 @@ describe("AcpRegistrySupport", () => {
   it.effect("resolves a local executable path and inherits the host environment", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
-      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "nodex-acp-local-path-" });
+      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "nodex-acp-local-path-",
+      });
       const commandPath = `${cacheDir}/dsh wrapper`;
       yield* fileSystem.writeFileString(commandPath, "#!/bin/sh\n");
       yield* fileSystem.chmod(commandPath, 0o755);
@@ -753,7 +755,9 @@ describe("AcpRegistrySupport", () => {
     });
     return Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
-      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "nodex-acp-root-entry-" });
+      const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "nodex-acp-root-entry-",
+      });
       const source = `${cacheDir}/source`;
       yield* fileSystem.makeDirectory(source);
       yield* fileSystem.writeFileString(`${source}/agent`, "#!/bin/sh\necho managed\n");
@@ -1812,5 +1816,58 @@ describe("acpRegistryManagedBinaryDirectories", () => {
       });
       expect(missing).toEqual([]);
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+  it.effect(
+    "gives Antigravity a Nodex-owned temp directory that is removed with the process",
+    () => {
+      const agent = {
+        ...makeAgent({ binary: { "linux-x86_64": { archive: archiveUrl, cmd: "./agy" } } }),
+        id: "antigravity-acp",
+      };
+      return Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "nodex-acp-registry-runtime-temp-",
+        });
+        const runtimeTempDir = `${cacheDir}/antigravity-tmp/acp-registry`;
+        yield* fileSystem.makeDirectory(`${runtimeTempDir}/run-killed/_MEI123`, {
+          recursive: true,
+        });
+        const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
+          cacheDir,
+          toolsDir: `${cacheDir}/tools`,
+          runtimeTempDir,
+          registryUrl,
+        });
+        expect(yield* fileSystem.exists(`${runtimeTempDir}/run-killed`)).toBe(false);
+
+        const temp = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const resolved = yield* resolver.resolve(
+              settings({ agentId: "antigravity-acp" }),
+              "/workspace",
+              { TMPDIR: "/tmp" },
+            );
+            const directory = resolved.spawn.env?.TMPDIR ?? "";
+            expect(directory.startsWith(`${runtimeTempDir}/run-`)).toBe(true);
+            expect(yield* fileSystem.exists(directory)).toBe(true);
+            return directory;
+          }),
+        );
+        expect(yield* fileSystem.exists(temp)).toBe(false);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerResolver((request) =>
+            Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                new Response(request.url === registryUrl ? makeRegistry(agent) : "#!/bin/sh\n"),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
   );
 });

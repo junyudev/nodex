@@ -4,6 +4,7 @@ import {
   ServerSettingsError,
 } from "@nodex/runtime-contracts";
 import { resolveServerBackgroundActivitySettings } from "@nodex/runtime-shared/backgroundActivitySettings";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -52,6 +53,11 @@ function withUsageLimits(
   return usageLimits ? { ...rest, usageLimits } : rest;
 }
 
+/** A check can retain ready state while its scheduler confirms a transient failure. */
+export const DeferringFailedCheck = Context.Reference<boolean>("@nodex/provider-core/DeferringFailedCheck", {
+  defaultValue: () => false,
+});
+
 export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(function* <
   Settings,
 >(input: {
@@ -75,6 +81,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   }) => Effect.Effect<void>;
   readonly refreshInterval?: Duration.Input;
   readonly refreshOnInterval?: boolean;
+  readonly deferFailedPeriodicChecks?: boolean;
   readonly checkProviderOnSettingsChange?: (previous: Settings, next: Settings) => boolean;
 }): Effect.fn.Return<
   ManagedServerProvider,
@@ -83,6 +90,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 > {
   const host = yield* ProviderHost.ProviderHost;
   const refreshSemaphore = yield* Semaphore.make(1);
+  const recheckPendingRef = yield* Ref.make(false);
   const changesPubSub = yield* Effect.acquireRelease(
     PubSub.unbounded<ServerProvider>(),
     PubSub.shutdown,
@@ -176,7 +184,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
   const applySnapshotBase = Effect.fn("applySnapshot")(function* (
     nextSettings: Settings,
-    options?: { readonly forceRefresh?: boolean },
+    options?: { readonly forceRefresh?: boolean; readonly deferFailure?: boolean },
   ) {
     const forceRefresh = options?.forceRefresh === true;
     const previousSettings = yield* Ref.get(settingsRef);
@@ -202,9 +210,27 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
     const checkScope = yield* Scope.fork(scope);
     return yield* Effect.gen(function* () {
-      const checked = yield* input.checkProvider.pipe(Effect.provideService(Scope.Scope, checkScope));
+      const checked = yield* input.checkProvider.pipe(
+        Effect.provideService(Scope.Scope, checkScope),
+        Effect.provideService(DeferringFailedCheck, options?.deferFailure === true),
+      );
       const [probedSnapshot, complete] =
         "complete" in checked ? [checked.snapshot, checked.complete] : [checked, undefined];
+      if (
+        options?.deferFailure &&
+        !complete &&
+        probedSnapshot.status === "error" &&
+        probedSnapshot.auth.status !== "unauthenticated"
+      ) {
+        const { snapshot } = yield* Ref.get(snapshotStateRef);
+        if (snapshot.enabled && snapshot.status === "ready") {
+          yield* Ref.set(recheckPendingRef, true);
+          yield* Queue.offer(scheduleChanges, undefined);
+          yield* Scope.close(checkScope, Exit.void);
+          return snapshot;
+        }
+      }
+      yield* Ref.set(recheckPendingRef, false);
       const { snapshot: nextSnapshot, generation: nextGeneration } = yield* Ref.modify(
         snapshotStateRef,
         (state) => {
@@ -258,7 +284,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       ),
     );
   });
-  const applySnapshot = (nextSettings: Settings, options?: { readonly forceRefresh?: boolean }) =>
+  const applySnapshot = (nextSettings: Settings, options?: { readonly forceRefresh?: boolean; readonly deferFailure?: boolean }) =>
     refreshSemaphore.withPermits(1)(applySnapshotBase(nextSettings, options));
 
   /**
@@ -345,12 +371,13 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       const attempts = recovering
         ? yield* Ref.get(recoveryAttemptsRef)
         : yield* Ref.set(recoveryAttemptsRef, 0).pipe(Effect.as(0));
+      const rechecking = yield* Ref.get(recheckPendingRef);
       const delayMs =
         intervalMs <= 0
           ? 60_000
           : recovering
             ? Math.min(UNSETTLED_CHECK_RETRY_INITIAL_MS * 2 ** attempts, intervalMs)
-            : intervalMs;
+            : rechecking ? Math.min(30_000, intervalMs) : intervalMs;
       // @effect-diagnostics-next-line raceFirstWithSleepToTimeout:off - races the interval against a settings-change signal, not a timeout
       const intervalElapsed = yield* Effect.raceFirst(
         Effect.sleep(Duration.millis(delayMs)).pipe(Effect.as(true)),
@@ -362,8 +389,9 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         yield* refreshSnapshot();
         return;
       }
-      if (input.refreshOnInterval !== false && intervalMs > 0 && (yield* hasProviderStatusDemand))
-        yield* refreshSnapshot();
+      if (input.refreshOnInterval !== false && intervalMs > 0 && (rechecking || (yield* hasProviderStatusDemand))) {
+        yield* applySnapshot(yield* input.getSettings, { forceRefresh: true, deferFailure: input.deferFailedPeriodicChecks === true && !rechecking });
+      }
     }).pipe(Effect.ignoreCause({ log: true })),
   ).pipe(Effect.forkScoped);
 

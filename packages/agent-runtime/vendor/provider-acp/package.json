@@ -5,6 +5,7 @@
   "exports": {
     "./server/AcpSessionRuntime": "./src/server/AcpSessionRuntime.ts",
     "./server/adapter": "./src/server/adapter.ts",
+    "./server/clientPolicy": "./src/server/clientPolicy.ts",
     "./server/clientTerminals": "./src/server/clientTerminals.ts",
     "./server/mcpHttp": "./src/server/mcpHttp.ts",
     "./server/mcpOverAcpBridge": "./src/server/mcpOverAcpBridge.ts",

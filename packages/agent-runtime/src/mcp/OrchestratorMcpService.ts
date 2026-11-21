@@ -1,4 +1,9 @@
 import {
+  advertisedModel,
+  antigravityModelPolicyIdentity,
+  antigravitySuffixedModel,
+} from "../provider/antigravityModelSelection.ts";
+import {
   pendingTaskQuestions,
   questionNoticeText,
 } from "../orchestration-v2/DelegatedTaskQuestions.ts";
@@ -721,10 +726,15 @@ export const make = Effect.gen(function* () {
       const origin = yield* policyOwner.origin(true, input.callerSelection.instanceId);
       const requestedInstanceId = input.target?.providerInstanceId;
       const requestedDriver = input.target?.driverKind;
-      if (requestedInstanceId !== undefined && input.target?.model !== undefined)
+      if (requestedInstanceId !== undefined && input.target?.model !== undefined) {
+        const targetProvider = input.providers.find(
+          (provider) => provider.instanceId === requestedInstanceId,
+        );
+        const model = antigravityModelPolicyIdentity(targetProvider, input.target.model);
         yield* policyOwner
-          .assert({ instanceId: requestedInstanceId, model: input.target.model }, origin)
+          .assert({ instanceId: requestedInstanceId, model }, origin)
           .pipe(Effect.mapError((error) => failure(error.code, error.message)));
+      }
 
       const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
       let instanceId = requestedInstanceId;
@@ -809,7 +819,12 @@ export const make = Effect.gen(function* () {
 
       const inheritedSelection = input.callerSelection;
       const requestedModel = input.target?.model;
+      const antigravityTarget =
+        requestedModel === undefined
+          ? undefined
+          : antigravitySuffixedModel(provider, requestedModel);
       const model =
+        antigravityTarget?.model ??
         requestedModel ??
         (instanceId === inheritedSelection.instanceId
           ? inheritedSelection.model
@@ -823,13 +838,13 @@ export const make = Effect.gen(function* () {
         );
       }
       yield* policyOwner
-        .assert({ instanceId, model }, origin)
+        .assert({ instanceId, model: antigravityModelPolicyIdentity(provider, model) }, origin)
         .pipe(Effect.mapError((error) => failure(error.code, error.message)));
       if (
         requestedModel !== undefined &&
         provider !== undefined &&
         provider.models.length > 0 &&
-        !provider.models.some((candidate) => candidate.slug === requestedModel)
+        !advertisedModel(provider, model)
       ) {
         return yield* failure(
           "model_unavailable",
@@ -837,7 +852,22 @@ export const make = Effect.gen(function* () {
         );
       }
 
-      const requestedOptions = input.target?.options;
+      const explicitOptions = input.target?.options;
+      const inheritedOptions =
+        instanceId === inheritedSelection.instanceId && model === inheritedSelection.model
+          ? inheritedSelection.options
+          : undefined;
+      const selections = new Map(
+        (explicitOptions?.length === 0 ? [] : (inheritedOptions ?? [])).map((selection) => [
+          selection.id,
+          selection,
+        ]),
+      );
+      if (antigravityTarget && explicitOptions?.length !== 0)
+        selections.set(antigravityTarget.thinking.id, antigravityTarget.thinking);
+      for (const selection of explicitOptions ?? []) selections.set(selection.id, selection);
+      const requestedOptions =
+        explicitOptions === undefined && !antigravityTarget ? undefined : [...selections.values()];
       if (requestedOptions !== undefined) {
         const descriptors = provider.models.find((candidate) => candidate.slug === model)
           ?.capabilities?.optionDescriptors;

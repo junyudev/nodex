@@ -139,8 +139,11 @@ it.live(
       expect((yield* run(read)).models.map((model) => model.slug)).toEqual(["first", "custom"]);
       yield* run(
         Effect.gen(function* () {
-          yield* call("acp.auth.start", { instanceId, ownerId: "settings", methodId: "key" });
-          const signedIn = yield* call("acp.auth.read", { instanceId, ownerId: "settings" }).pipe(
+          yield* call("providers.auth.start", { instanceId, ownerId: "settings", methodId: "key" });
+          const signedIn = yield* call("providers.auth.read", {
+            instanceId,
+            ownerId: "settings",
+          }).pipe(
             Effect.repeat({
               until: (value) => value.phase === "succeeded" || value.phase === "failed",
               schedule: Schedule.spaced("20 millis"),
@@ -188,7 +191,7 @@ it.live(
             models: [],
           });
           expect(
-            (yield* call("acp.auth.read", { instanceId, ownerId: "settings" })).methods,
+            (yield* call("providers.auth.read", { instanceId, ownerId: "settings" })).methods,
           ).toMatchObject([
             {
               id: "key",

@@ -4,6 +4,7 @@ export {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   getProviderAttachmentLimitError,
+  ANTIGRAVITY_DEFAULT_MODEL,
   DEFAULT_RUNTIME_MODE,
   RUNTIME_MODE_RANK,
   isForegroundRunStatus,
@@ -19,9 +20,9 @@ export type {
   OrchestrationV2ThreadShell,
   OrchestrationV2ThreadHistoryPage,
   ModelSelection,
+  ProviderInstanceId,
   RuntimeMode,
   ProviderApprovalDecision,
-  ProviderInstanceId,
   ThreadId,
   RunId,
   ProjectId,
@@ -56,3 +57,5 @@ export {
   type BrowserUsePipSurface,
   type DesktopToolActivity,
 } from "@nodex/provider-core/server/desktopToolActivity";
+
+export { isProviderInstanceId } from "@nodex/runtime-contracts";

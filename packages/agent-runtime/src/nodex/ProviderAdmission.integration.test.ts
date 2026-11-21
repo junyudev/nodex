@@ -148,7 +148,7 @@ it.live(
         expect((yield* call("thread.queue", { threadId: "queue-thread" })).entries).toHaveLength(1);
         const beforeMutation = yield* fs.readFileString(log);
         expect(
-          yield* call("acp.auth.start", {
+          yield* call("providers.auth.start", {
             instanceId,
             ownerId: "setup-owner",
             methodId: "login",

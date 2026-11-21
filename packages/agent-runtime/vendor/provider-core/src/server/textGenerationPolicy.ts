@@ -22,11 +22,11 @@ export const TextGenerationPolicy = Schema.Struct({
 export type TextGenerationPolicy = typeof TextGenerationPolicy.Type;
 
 /** The execution host supplies a live guard; runners invoke it immediately before native I/O. */
-export const TextGenerationAdmission = Context.Reference<Effect.Effect<void, TextGenerationError>>(
-  "provider-core/TextGenerationAdmission",
-  { defaultValue: () => Effect.void },
-);
-export const assertTextGenerationAdmission = Effect.flatMap(
-  TextGenerationAdmission,
-  (check) => check,
-);
+export const TextGenerationAdmission = Context.Reference<
+  (effectiveModel?: string) => Effect.Effect<void, TextGenerationError>
+>("provider-core/TextGenerationAdmission", { defaultValue: () => () => Effect.void });
+
+export const assertTextGenerationModelAdmission = (effectiveModel?: string) =>
+  Effect.flatMap(TextGenerationAdmission, (check) => check(effectiveModel));
+
+export const assertTextGenerationAdmission = assertTextGenerationModelAdmission();

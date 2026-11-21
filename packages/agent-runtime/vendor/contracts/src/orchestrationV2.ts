@@ -234,6 +234,7 @@ export const OrchestrationV2TurnCapabilities = Schema.Struct({
   supportsInterrupt: Schema.Boolean,
   supportsActiveSteering: Schema.Boolean,
   // Earlier snapshots did not certify delivery without interrupting running tools.
+  supportsNativeGoals: Schema.optional(Schema.Boolean),
   supportsBoundarySteering: Schema.Boolean.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(false)),
   ),
@@ -4520,3 +4521,49 @@ export const ProviderReplayNdjsonRecord = Schema.Union([
   ProviderReplayEntry,
 ]);
 export type ProviderReplayNdjsonRecord = typeof ProviderReplayNdjsonRecord.Type;
+
+export const OrchestrationV2GetNativeChildWorkInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type OrchestrationV2GetNativeChildWorkInput =
+  typeof OrchestrationV2GetNativeChildWorkInput.Type;
+
+export const OrchestrationV2NativeChildStep = Schema.Struct({
+  index: NonNegativeInt,
+  type: Schema.String,
+  status: Schema.NullOr(Schema.String),
+  text: Schema.NullOr(Schema.String),
+  toolCalls: Schema.Array(Schema.Struct({ name: Schema.String, input: Schema.String })),
+});
+export type OrchestrationV2NativeChildStep = typeof OrchestrationV2NativeChildStep.Type;
+
+/** Read-only: native children cannot take messages. */
+export const OrchestrationV2NativeChildWork = Schema.Struct({
+  conversationId: TrimmedNonEmptyString,
+  role: Schema.String,
+  prompt: Schema.String,
+  /** Null when the provider has no readable transcript for this child. */
+  steps: Schema.NullOr(Schema.Array(OrchestrationV2NativeChildStep)),
+  /** Earlier steps were left out to keep the read bounded. */
+  truncated: Schema.Boolean,
+});
+export type OrchestrationV2NativeChildWork = typeof OrchestrationV2NativeChildWork.Type;
+
+/** Empty when the provider's records do not prove which children the subagent launched. */
+export const OrchestrationV2GetNativeChildWorkResult = Schema.Struct({
+  children: Schema.Array(OrchestrationV2NativeChildWork),
+});
+export type OrchestrationV2GetNativeChildWorkResult =
+  typeof OrchestrationV2GetNativeChildWorkResult.Type;
+
+export class OrchestrationV2GetNativeChildWorkError extends Schema.TaggedError<OrchestrationV2GetNativeChildWorkError>()(
+  "OrchestrationV2GetNativeChildWorkError",
+  {
+    threadId: ThreadId,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return "Failed to read the subagent's work.";
+  }
+}

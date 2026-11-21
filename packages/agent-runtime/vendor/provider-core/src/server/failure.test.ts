@@ -2,6 +2,8 @@ import { assert, it } from "@effect/vitest";
 import {
   NodeId,
   ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderSetupError,
   ProviderThreadId,
   ProviderTurnId,
   RunId,
@@ -281,4 +283,19 @@ it("names Nodex-observed losses so automatic recovery can recognize them", () =>
 
   const uncertain = makeProviderFailure({ cause: { _tag: "ContextHandoffDeliveryUncertainError" } });
   assert.equal(uncertain.code, "context_handoff_delivery_uncertain");
+});
+
+it("keeps actionable setup refusals through provider session wrappers", () => {
+  const setup = new ProviderSetupError({ instanceId: ProviderInstanceId.make("google-work"), operation: "runtime", detail: "Update Antigravity to >=1.5.12 <2, then retry." });
+  const wrapper = new Error("Cannot open provider session", { cause: new Error("Transport failed", { cause: setup }) });
+  assert.equal(makeProviderFailure({ cause: wrapper }).message, setup.message);
+  assert.equal(makeProviderFailure({ cause: { _tag: "AcpRequestError", code: -32000, message: "private provider text" } }).message, "Sign in to this Agent in Settings → Agents, then send your message again.");
+  assert.notInclude(makeProviderFailure({ cause: { _tag: "AcpRequestError", code: -32603, message: "private provider text" } }).message, "private provider text");
+});
+
+it("redacts bare Google API keys from provider failure text", () => {
+  const token = "AIza" + "Z".repeat(34) + "_";
+  const failure = makeProviderFailure({ message: `Agent returned ${token}` });
+  assert.equal(failure.message, "Agent returned [REDACTED]");
+  assert.notInclude(JSON.stringify(failure), token);
 });

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgentWire } from "./Interface.ts";
 import type { ProviderAuthState } from "@nodex/runtime-contracts";
-import type { AgentAcpAuthentication } from "./AcpManagementContract.ts";
+import type { AgentProviderAuthentication } from "./ProviderManagementContract.ts";
 
 interface FlowMetadata {
   readonly configurationRevision: number;
@@ -38,7 +38,7 @@ export const makeAuthenticationProjection = (runtimeGeneration: string) => {
       controller: object,
       capturedConfigurationRevision: number,
       state: AgentWire<ProviderAuthState>,
-    ): AgentAcpAuthentication => {
+    ): AgentProviderAuthentication => {
       const metadata = controllerMetadata(controller);
       const previous = metadata.flows.get(state.flowId);
       const active = ["starting", "waiting", "verifying"].includes(state.phase);

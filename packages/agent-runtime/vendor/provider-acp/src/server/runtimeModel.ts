@@ -1,3 +1,4 @@
+import { HTML_RENDER_TOOL_NAME } from "@nodex/runtime-shared/htmlRender";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -285,6 +286,13 @@ export type AcpParsedSessionEvent =
   | {
       readonly _tag: "SessionInfoUpdated";
       readonly metadata: OrchestrationV2ProviderThreadNativeMetadata;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "NoticeReceived";
+      readonly severity: string;
+      readonly title: string;
+      readonly description?: string;
       readonly rawPayload: unknown;
     }
   | {
@@ -643,12 +651,22 @@ function locationsFromToolCallInput(input: {
 const TOOL_CALL_CONTENT_MAX_CHARS = 8_000;
 const TOOL_CALL_CONTENT_TRUNCATION_MARKER = "[Earlier output truncated]\n\n";
 
-function boundToolCallOutputText(text: string): string {
-  if (text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
-    return text;
+/** The tail to keep, or undefined when the text fits or an adapter already bounded it. */
+function retainedToolCallOutputTail(text: string): string | undefined {
+  if (
+    text.length <= TOOL_CALL_CONTENT_MAX_CHARS ||
+    (text.startsWith(TOOL_CALL_CONTENT_TRUNCATION_MARKER) &&
+      text.length <= TOOL_CALL_CONTENT_MAX_CHARS + TOOL_CALL_CONTENT_TRUNCATION_MARKER.length)
+  ) {
+    return undefined;
   }
-  const tail = text.slice(text.length - TOOL_CALL_CONTENT_MAX_CHARS);
-  return `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`;
+  // A tail starting inside a surrogate pair is invalid Unicode.
+  return text.slice(-TOOL_CALL_CONTENT_MAX_CHARS).replace(/^[\uDC00-\uDFFF]/u, "");
+}
+
+function boundToolCallOutputText(text: string): string {
+  const tail = retainedToolCallOutputTail(text);
+  return tail === undefined ? text : `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`;
 }
 
 const RAW_OUTPUT_TEXT_FIELDS = ["content", "stdout", "stderr", "output"] as const;
@@ -728,13 +746,12 @@ function extractTextContentFromToolCallContent(
     return { text: undefined, content: boundToolCallContentEntries(content) };
   }
   const joined = chunks.join("\n");
-  if (joined.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
+  const tail = retainedToolCallOutputTail(joined);
+  if (tail === undefined) {
     return { text: joined, content: boundToolCallContentEntries(content) };
   }
-  const bounded = boundToolCallOutputText(joined);
-  const tail = joined.slice(joined.length - TOOL_CALL_CONTENT_MAX_CHARS);
   return {
-    text: bounded,
+    text: `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`,
     content: distributeRetainedTailAcrossContent(content, tail),
   };
 }
@@ -1069,7 +1086,8 @@ export interface AcpMcpToolCallIdentity {
 }
 
 /** Matches an invocation of Nodex's `acp-mcp-call` bridge fallback CLI. */
-const ACP_MCP_FALLBACK_CALL = /(?:^|[\s"'=])acp-mcp-call[\s"']+(?:--server\s+(nodex_app|node_repl)\s+)?([A-Za-z0-9_.-]+)(?:\s+(.+?))?\s*$/u;
+const ACP_MCP_FALLBACK_CALL =
+  /(?:^|[\s"'=])acp-mcp-call[\s"']+(?:--server\s+(nodex_app|node_repl)\s+)?([A-Za-z0-9_.-]+)(?:\s+(.+?))?\s*$/u;
 
 function acpMcpFallbackInput(value: string | undefined): Record<string, unknown> | undefined {
   if (value === undefined) return undefined;
@@ -1115,8 +1133,13 @@ const NODEX_APP_TITLE_SUFFIX_CALL = new RegExp(
   "i",
 );
 
-const DESKTOP_TOOL_NAMES: ReadonlySet<string> = new Set(["js", "js_reset", "js_add_node_module_dir"]);
-const DESKTOP_TITLE_CALL = /^(?:(?:node_repl[._]|mcp__node_repl__)(?<prefixTool>\w+)$|(?<suffixTool>\w+) \(node_repl MCP Server\)(?::|$))/;
+const DESKTOP_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "js",
+  "js_reset",
+  "js_add_node_module_dir",
+]);
+const DESKTOP_TITLE_CALL =
+  /^(?:(?:node_repl[._]|mcp__node_repl__)(?<prefixTool>\w+)$|(?<suffixTool>\w+) \(node_repl MCP Server\)(?::|$))/;
 
 function desktopToolFromTitle(title: unknown): string | undefined {
   if (typeof title !== "string") return undefined;
@@ -1129,6 +1152,8 @@ function mcpToolIdentity(server: string, tool: string): AcpMcpToolCallIdentity {
   return { server, tool: server === "node_repl" ? (desktopToolFromTitle(tool) ?? tool) : tool };
 }
 
+const ANTIGRAVITY_TOOL_TITLE = /^Run(?:ning)? (?<name>[^\s?]+)\??$/;
+const APP_MCP_TOOL_NAMES = new Set([...NODEX_APP_TASK_TOOL_NAMES, HTML_RENDER_TOOL_NAME]);
 const BARE_TOOL_TITLE_CALL = /^(?<tool>[A-Za-z0-9_]+)(?::\s|$)/;
 
 /**
@@ -1147,6 +1172,7 @@ export function extractMcpToolCallIdentity(
     /** Command lines of client terminals embedded in this tool call. */
     readonly embeddedTerminalCommands?: ReadonlyArray<string>;
     readonly skipTerminalFallback?: boolean;
+    readonly antigravityToolIdentity?: boolean;
   },
 ): AcpMcpToolCallIdentity | undefined {
   const rawInput = isRecord(toolCall.data.rawInput) ? toolCall.data.rawInput : undefined;
@@ -1174,6 +1200,14 @@ export function extractMcpToolCallIdentity(
   // in the title. The verbatim wire title survives merges even when a later
   // titleless or LLM-enriched update replaces the presentation title, so
   // match those rather than the summarized state title.
+  const proxiedServer = typeof rawInput?.ServerName === "string" ? rawInput.ServerName.trim() : "";
+  const proxiedTool = typeof rawInput?.ToolName === "string" ? rawInput.ToolName.trim() : "";
+  if (options?.antigravityToolIdentity && proxiedServer && proxiedTool)
+    return {
+      server: proxiedServer,
+      tool: proxiedTool,
+      ...(isRecord(rawInput?.Arguments) ? { input: rawInput.Arguments } : {}),
+    };
   const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : undefined;
   const gooseToolCall = isRecord(meta?.goose)
     ? isRecord(meta.goose.toolCall)
@@ -1227,7 +1261,10 @@ export function extractMcpToolCallIdentity(
     toolCall.data.title,
   ].filter((value): value is string => typeof value === "string");
   for (const candidate of candidates) {
-    const trimmed = candidate.trim();
+    const title = candidate.trim();
+    const trimmed = options?.antigravityToolIdentity
+      ? (ANTIGRAVITY_TOOL_TITLE.exec(title)?.groups?.name ?? title)
+      : title;
     const qualified = /^mcp__(.+?)__(.+)$/i.exec(trimmed);
     if (qualified?.[1] && qualified[2] && !isNodexAppMcpServer(qualified[1])) {
       if (qualified[1] === "node_repl" && !canInferDesktopOrigin) continue;
@@ -1242,7 +1279,10 @@ export function extractMcpToolCallIdentity(
       NODEX_APP_TITLE_SUFFIX_CALL.exec(trimmed) ??
       BARE_TOOL_TITLE_CALL.exec(trimmed);
     const candidateTool = match?.groups?.tool;
-    if (candidateTool !== undefined && NODEX_APP_TASK_TOOL_NAMES.has(candidateTool)) {
+    if (
+      candidateTool !== undefined &&
+      (options?.antigravityToolIdentity ? APP_MCP_TOOL_NAMES : NODEX_APP_TASK_TOOL_NAMES).has(candidateTool)
+    ) {
       return { server: NODEX_APP_MCP_SERVER, tool: candidateTool };
     }
   }
@@ -1345,15 +1385,19 @@ export function parsePermissionRequest(
 export function isAcpDesktopToolPermission(
   params: EffectAcpSchema.RequestPermissionRequest,
   tracked: AcpToolCallState | undefined,
+  antigravityToolIdentity = false,
 ): boolean {
   if (params.subject != null && params.subject.type !== "tool_call") return false;
   const { kind, toolCall } = parsePermissionRequest(params);
   if (kind === "edit" || kind === "delete" || kind === "move") return false;
   if (toolCall === undefined || toolCall.command !== undefined) return false;
-  const identity = extractMcpToolCallIdentity({
-    ...toolCall,
-    data: { ...toolCall.data, meta: toolCall.data.meta ?? tracked?.data.meta },
-  }, { skipTerminalFallback: true });
+  const identity = extractMcpToolCallIdentity(
+    {
+      ...toolCall,
+      data: { ...toolCall.data, meta: toolCall.data.meta ?? tracked?.data.meta },
+    },
+    { skipTerminalFallback: true, antigravityToolIdentity },
+  );
   return identity?.server === "node_repl" && DESKTOP_TOOL_NAMES.has(identity.tool);
 }
 
@@ -1718,6 +1762,19 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
           ...(upd.title === null ? { title: null } : title ? { title } : {}),
           ...(upd.updatedAt === null ? { updatedAt: null } : updatedAt ? { updatedAt } : {}),
         },
+        rawPayload: params,
+      });
+      break;
+    }
+    case "notice": {
+      const title = upd.title.trim().slice(0, 1_024);
+      const description = upd.description?.trim().slice(0, 4_096);
+      if (title.length === 0) break;
+      events.push({
+        _tag: "NoticeReceived",
+        severity: boundedContentMetadata(upd.severity, 64) || "info",
+        title,
+        ...(description ? { description } : {}),
         rawPayload: params,
       });
       break;

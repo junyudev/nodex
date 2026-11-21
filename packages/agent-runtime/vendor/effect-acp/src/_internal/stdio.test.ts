@@ -42,4 +42,21 @@ describe("ACP child process termination", () => {
       assert.notInclude(error.message, rootCause.message);
     }),
   );
+  it.effect("retains a native termination signal for provider diagnostics", () =>
+    Effect.gen(function* () {
+      const cause = PlatformError.systemError({
+        _tag: "Unknown",
+        module: "ChildProcess",
+        method: "exitCode",
+        cause: new Error("Process interrupted due to receipt of signal: 'SIGABRT'"),
+      });
+      const error = yield* makeTerminationError({
+        pid: ChildProcessSpawner.ProcessId(43),
+        exitCode: Effect.fail(cause),
+      });
+      assert.instanceOf(error, AcpError.AcpProcessExitedError);
+      assert.equal(error.signal, "SIGABRT");
+      assert.strictEqual(error.cause, cause);
+    }),
+  );
 });

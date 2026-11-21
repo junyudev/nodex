@@ -1,3 +1,4 @@
+import * as NativeChildWorkQuery from "./NativeChildWorkQuery.ts";
 import * as Layer from "effect/Layer";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -314,6 +315,7 @@ const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
 );
 
 export const layer = Layer.mergeAll(
+  NativeChildWorkQuery.layer.pipe(Layer.provide(layerThreadManagementProvided)),
   layerRuntimeApprovalsProvided,
   layerOrchestratorProvided,
   layerMcpAppRequestsProvided,

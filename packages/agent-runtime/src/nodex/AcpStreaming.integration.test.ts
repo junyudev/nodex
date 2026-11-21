@@ -13,14 +13,7 @@ const call = <M extends AgentRuntimeMethod>(method: M, input: AgentRuntimeOperat
     Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
   );
 
-const startAcpThread = Effect.fnUntraced(function* (
-  home: string,
-  instanceId: string,
-  title: string,
-  text: string,
-  model = "fixture",
-) {
-  yield* call("project.upsert", { id: "project", title, workspaceRoot: home });
+const connectAcpInstance = Effect.fnUntraced(function* (home: string, instanceId: string) {
   yield* call("acp.connection.start", { instanceId, cwd: home, operationId: "connect" });
   const connected = yield* call("acp.operation.read", { operationId: "connect" }).pipe(
     Effect.repeat({
@@ -30,6 +23,16 @@ const startAcpThread = Effect.fnUntraced(function* (
     Effect.timeout("10 seconds"),
   );
   expect(connected.phase).toBe("succeeded");
+});
+
+const startThread = Effect.fnUntraced(function* (
+  home: string,
+  instanceId: string,
+  title: string,
+  text: string,
+  model = "fixture",
+) {
+  yield* call("project.upsert", { id: "project", title, workspaceRoot: home });
   yield* call("command.dispatch", {
     command: {
       type: "thread.create",
@@ -73,7 +76,8 @@ it.live.each(["v1", "v2"])(
       yield* fs.writeFileString(log, "");
       const instanceId = "streaming";
       yield* Effect.gen(function* () {
-        yield* startAcpThread(home, instanceId, "Streaming", "Start the response, then wait");
+        yield* connectAcpInstance(home, instanceId);
+        yield* startThread(home, instanceId, "Streaming", "Start the response, then wait");
         yield* fs.readFileString(log).pipe(
           Effect.repeat({
             until: (value) => value.includes("prompt-held:"),
@@ -193,92 +197,189 @@ it.live.each(["v1", "v2"])(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-it.live("projects Antigravity's shell and namespaced MCP calls from the wire", () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-antigravity-" });
-    const instanceId = "antigravity";
-    yield* Effect.gen(function* () {
-      yield* startAcpThread(
-        home,
-        instanceId,
-        "Antigravity tools",
-        "Run the shell and MCP tools",
-        "gemini-test-low",
-      );
-      const outcome = yield* call("run.outcome", { threadId: "thread", messageId: "message" }).pipe(
-        Effect.repeat({
-          until: (value) => value?.status === "completed" || value?.status === "failed",
-          schedule: Schedule.spaced("20 millis"),
-        }),
-        Effect.timeout("10 seconds"),
-      );
-      expect(outcome?.status).toBe("completed");
-      const snapshot = yield* call("thread.snapshot", { threadId: "thread" });
-      const readItem = (nativeId: string) => {
-        const row = snapshot.projection.visibleTurnItems.find(
-          ({ item }) => item.nativeItemRef?.nativeId === nativeId,
+const fakeAntigravity = Effect.fnUntraced(function* (
+  home: string,
+  environment: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const executable = `${home}/agy`;
+  const peer = fileURLToPath(new URL("../../scripts/acp-mock-agent.ts", import.meta.url));
+  const quote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`;
+  yield* fs.writeFileString(
+    executable,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "--version" ]; then',
+      '  printf "agy %s\\n" "$NODEX_ACP_AGENT_VERSION"',
+      "  exit 0",
+      "fi",
+      `exec ${quote(process.execPath)} ${quote(peer)} "$@"`,
+      "",
+    ].join("\n"),
+  );
+  yield* fs.chmod(executable, 0o755);
+  return {
+    driver: "antigravity" as const,
+    enabled: true,
+    config: { binaryPath: executable, authMethod: "gemini-api-key", apiKey: "fixture-key" },
+    environment: Object.entries({
+      HOME: home,
+      NODEX_ACP_ANTIGRAVITY: "1",
+      NODEX_ACP_AGENT_VERSION: "1.5.13",
+      ...environment,
+    }).map(([name, value]) => ({ name, value, sensitive: false })),
+  };
+});
+
+it.live.skipIf(process.platform === "win32")(
+  "projects Antigravity's shell and namespaced MCP calls through its built-in driver",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-antigravity-" });
+      const instanceId = "antigravity";
+      const provider = yield* fakeAntigravity(home, { NODEX_ACP_EMIT_TOOL_CALLS: "1" });
+      yield* Effect.gen(function* () {
+        yield* call("providers.models.refresh", { instanceId });
+        yield* startThread(
+          home,
+          instanceId,
+          "Antigravity tools",
+          "Run the shell and MCP tools",
+          "gemini-test-low",
         );
-        expect(row, nativeId).toBeDefined();
-        return call("thread.item.full", { threadId: "thread", itemId: row!.item.id });
-      };
-      expect(yield* readItem("antigravity-shell")).toMatchObject({
-        type: "command_execution",
-        status: "completed",
-        input: "ls -a",
-        output: ".\t..\r\n",
-        exitCode: 0,
-      });
-      expect(yield* readItem("antigravity-shell-without-preamble")).toMatchObject({
-        type: "command_execution",
-        status: "failed",
-        input: "cat missing.txt",
-        output: "  missing.txt: No such file\r\n",
-        exitCode: 1,
-      });
-      const projects = yield* readItem("antigravity-list-projects");
-      expect(projects).toMatchObject({
-        type: "dynamic_tool",
-        status: "completed",
-        title: null,
-        toolName: "nodex_app.list_projects",
-      });
-      expect(projects).toHaveProperty("input", {});
-      const desktop = yield* readItem("antigravity-desktop");
-      expect(desktop).toMatchObject({
-        type: "dynamic_tool",
-        status: "completed",
-        toolName: "node_repl.js",
-      });
-      expect(desktop).toHaveProperty("input", { code: "console.log(42)" });
-    }).pipe(
-      Effect.provide(
-        Application.layer(
-          {
-            home,
-            cwd: home,
-            providers: {
-              [instanceId]: {
-                driver: "acpRegistry",
-                config: {
-                  source: "local",
-                  discovery: "explicit",
-                  agentIdentity: "antigravity-acp",
-                  commandPath: process.execPath,
-                  commandArgs: [
-                    fileURLToPath(new URL("../../scripts/acp-mock-agent.ts", import.meta.url)),
-                  ],
-                },
-                environment: [
-                  { name: "NODEX_ACP_ANTIGRAVITY", value: "1", sensitive: false },
-                  { name: "NODEX_ACP_EMIT_TOOL_CALLS", value: "1", sensitive: false },
-                ],
-              },
+        const outcome = yield* call("run.outcome", {
+          threadId: "thread",
+          messageId: "message",
+        }).pipe(
+          Effect.repeat({
+            until: (value) => value?.status === "completed" || value?.status === "failed",
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
+        expect(outcome?.status).toBe("completed");
+        const snapshot = yield* call("thread.snapshot", { threadId: "thread" });
+        const readItem = (nativeId: string) => {
+          const row = snapshot.projection.visibleTurnItems.find(
+            ({ item }) => item.nativeItemRef?.nativeId === nativeId,
+          );
+          expect(row, nativeId).toBeDefined();
+          return call("thread.item.full", { threadId: "thread", itemId: row!.item.id });
+        };
+        expect(yield* readItem("antigravity-shell")).toMatchObject({
+          type: "command_execution",
+          status: "completed",
+          input: "ls -a",
+          output: ".\t..\r\n",
+          exitCode: 0,
+        });
+        expect(yield* readItem("antigravity-shell-without-preamble")).toMatchObject({
+          type: "command_execution",
+          status: "failed",
+          input: "cat missing.txt",
+          output: "  missing.txt: No such file\r\n",
+          exitCode: 1,
+        });
+        const projects = yield* readItem("antigravity-list-projects");
+        expect(projects).toMatchObject({
+          type: "dynamic_tool",
+          status: "completed",
+          title: null,
+          toolName: "nodex_app.list_projects",
+        });
+        expect(projects).toHaveProperty("input", {});
+        const desktop = yield* readItem("antigravity-desktop");
+        expect(desktop).toMatchObject({
+          type: "dynamic_tool",
+          status: "completed",
+          toolName: "node_repl.js",
+        });
+        expect(desktop).toHaveProperty("input", { code: "console.log(42)" });
+      }).pipe(
+        Effect.provide(
+          Application.layer(
+            {
+              home,
+              cwd: home,
+              providers: { [instanceId]: provider },
             },
-          },
-          () => Effect.void,
+            () => Effect.void,
+          ),
         ),
-      ),
-    );
-  }).pipe(Effect.provide(NodeServices.layer)),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live.skipIf(process.platform === "win32")(
+  "connects an Antigravity key profile and signs it out while a chat is running",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-antigravity-account-" });
+      const instanceId = "antigravity";
+      const log = `${home}/requests.log`;
+      const provider = yield* fakeAntigravity(home, {
+        NODEX_ACP_AUTH_METHOD_ID: "gemini-api-key",
+        NODEX_ACP_HANG_PROMPT_FOREVER: "1",
+        NODEX_ACP_REQUEST_LOG_PATH: log,
+      });
+      yield* fs.writeFileString(log, "");
+      yield* Effect.gen(function* () {
+        const target = { instanceId, ownerId: "settings" };
+        yield* call("providers.auth.start", target);
+        const auth = yield* call("providers.auth.read", target).pipe(
+          Effect.repeat({
+            until: ({ phase }) => phase === "succeeded" || phase === "failed",
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
+        expect(auth).toMatchObject({ phase: "succeeded" });
+        const readCatalog = () =>
+          call("providers.read", { instanceIds: [instanceId], refresh: true });
+        expect((yield* readCatalog())[0]?.auth.status).toBe("authenticated");
+        yield* startThread(
+          home,
+          instanceId,
+          "Antigravity account",
+          "Wait for sign-out",
+          "gemini-test-low",
+        );
+        yield* fs.readFileString(log).pipe(
+          Effect.repeat({
+            until: (value) => value.includes('"method":"session/prompt"'),
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
+        const before = yield* call("thread.snapshot", { threadId: "thread" });
+        expect(before.projection.runs[0]?.status).toBe("running");
+
+        yield* call("providers.auth.logout", { instanceId });
+        const signedOut = (yield* readCatalog())[0];
+        expect(signedOut).toMatchObject({ auth: { status: "unauthenticated" }, models: [] });
+        const stopped = yield* call("thread.snapshot", { threadId: "thread" }).pipe(
+          Effect.repeat({
+            until: (value) => value.projection.runs.every(({ status }) => status !== "running"),
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
+        expect(stopped.projection.messages.some(({ text }) => text === "Wait for sign-out")).toBe(
+          true,
+        );
+      }).pipe(
+        Effect.provide(
+          Application.layer(
+            {
+              home,
+              cwd: home,
+              providers: { [instanceId]: provider },
+            },
+            () => Effect.void,
+          ),
+        ),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
 );

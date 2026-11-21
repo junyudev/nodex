@@ -214,7 +214,7 @@ it.live(
           Effect.timeout("10 seconds"),
         );
         expect(settled.phase).toBe("succeeded");
-        const authDetails = yield* call("acp.auth.read", { instanceId, ownerId: "window" });
+        const authDetails = yield* call("providers.auth.read", { instanceId, ownerId: "window" });
         expect(authDetails.methods?.find((method) => method.id === "env")).toMatchObject({
           type: "credentials",
           envVarNames: ["MODEL_TOKEN"],
@@ -308,8 +308,8 @@ it.live(
           changed.providers.find((provider) => provider.providerId === "optional")?.current,
         ).toEqual({ apiType: "openai", baseUrl: "https://models.example.test/v1" });
         expect(JSON.stringify(changed)).not.toContain("TEST_SECRET");
-        yield* call("acp.auth.start", { instanceId, ownerId: "window", methodId: "login" });
-        const signedIn = yield* call("acp.auth.read", { instanceId, ownerId: "window" }).pipe(
+        yield* call("providers.auth.start", { instanceId, ownerId: "window", methodId: "login" });
+        const signedIn = yield* call("providers.auth.read", { instanceId, ownerId: "window" }).pipe(
           Effect.repeat({
             until: (state) => state.phase === "succeeded" || state.phase === "failed",
             schedule: Schedule.spaced("20 millis"),
@@ -451,7 +451,7 @@ it.live.each([true, false])(
           runtime
             .handle({ id: String(++serial), method, input })
             .pipe(Effect.map((output) => output as AgentRuntimeOperations[M]["output"]));
-        const first = yield* call("acp.auth.start", {
+        const first = yield* call("providers.auth.start", {
           instanceId: "first",
           ownerId: "window-one",
           methodId: "login",
@@ -460,20 +460,33 @@ it.live.each([true, false])(
         expect((yield* call("acp.activity", {})).activeAuthentication).toBe(1);
         expect(
           Exit.isFailure(
-            yield* call("acp.auth.start", {
+            yield* call("providers.auth.start", {
               instanceId: "second",
               ownerId: "window-two",
               methodId: "login",
             }).pipe(Effect.exit),
           ),
         ).toBe(true);
-        const mixed = yield* call("acp.auth.start", {
+        const mixed = yield* call("providers.auth.start", {
           instanceId: "mixed",
           ownerId: "window-mixed",
           methodId: "login",
         }).pipe(Effect.flip);
         expect(acpFailure(mixed).reason).toBe("busy");
-        const isolated = yield* call("acp.auth.start", {
+        const legacyLogout = yield* call("providers.logout", { instanceIds: ["mixed"] }).pipe(
+          Effect.flip,
+        );
+        expect(acpFailure(legacyLogout).reason).toBe("busy");
+        expect(
+          (yield* call("providers.auth.read", { instanceId: "first", ownerId: "window-one" }))
+            .flowId,
+        ).toBe(first.flowId);
+        const nativeMethods = (yield* fs.readFileString(log))
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => (JSON.parse(line) as { readonly method: string }).method);
+        expect(nativeMethods).not.toContain("auth/logout");
+        const isolated = yield* call("providers.auth.start", {
           instanceId: "isolated",
           ownerId: "window-three",
           methodId: "login",
@@ -490,39 +503,40 @@ it.live.each([true, false])(
           Effect.timeout("5 seconds"),
         );
         expect(
-          (yield* call("acp.auth.read", { instanceId: "first", ownerId: "window-one" })).phase,
+          (yield* call("providers.auth.read", { instanceId: "first", ownerId: "window-one" }))
+            .phase,
         ).not.toBe("failed");
-        const hidden = yield* call("acp.auth.read", {
+        const hidden = yield* call("providers.auth.read", {
           instanceId: "first",
           ownerId: "window-two",
         });
         expect(hidden.flowId).toBeNull();
         expect(
           Exit.isFailure(
-            yield* call("acp.auth.cancel", {
+            yield* call("providers.auth.cancel", {
               instanceId: "first",
               ownerId: "window-two",
               flowId: first.flowId!,
             }).pipe(Effect.exit),
           ),
         ).toBe(true);
-        yield* call("acp.auth.cancel", {
+        yield* call("providers.auth.cancel", {
           instanceId: "first",
           ownerId: "window-one",
           flowId: first.flowId!,
         });
-        const resumed = yield* call("acp.auth.start", {
+        const resumed = yield* call("providers.auth.start", {
           instanceId: "mixed",
           ownerId: "window-mixed",
           methodId: "login",
         });
         expect(resumed.flowId).not.toBeNull();
-        yield* call("acp.auth.cancel", {
+        yield* call("providers.auth.cancel", {
           instanceId: "mixed",
           ownerId: "window-mixed",
           flowId: resumed.flowId!,
         });
-        yield* call("acp.auth.cancel", {
+        yield* call("providers.auth.cancel", {
           instanceId: "isolated",
           ownerId: "window-three",
           flowId: isolated.flowId!,

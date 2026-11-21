@@ -1,3 +1,4 @@
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import {
   ProviderInstanceId,
   ServerSettingsError,
@@ -206,6 +207,7 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
 ): Effect.fn.Return<
   Effect.Success<ReturnType<typeof makeWithPorts>>,
   never,
+  | ProviderInstanceRegistry
   | Registry.ProviderInstanceRegistryMutator
   | Sessions.ProviderSessionManagerV2
   | SqlClient.SqlClient
@@ -213,6 +215,7 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
   | Scope.Scope
 > {
   const registry = yield* Registry.ProviderInstanceRegistryMutator;
+  const instances = yield* ProviderInstanceRegistry;
   const sessions = yield* Sessions.ProviderSessionManagerV2;
   const sql = yield* SqlClient.SqlClient;
   const policy = yield* ProviderPolicy;
@@ -223,7 +226,12 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
         SELECT DISTINCT provider_instance_id FROM orchestration_v2_projection_runs
         WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
       `;
+      const changingCredentials = yield* Effect.filter(
+        yield* instances.listInstances,
+        (instance) => instance.auth?.isChangingCredentials ?? Effect.succeed(false),
+      );
       return new Set([
+        ...changingCredentials.map((instance) => instance.instanceId),
         ...native,
         ...rows.map((row) => ProviderInstanceId.make(row.provider_instance_id)),
       ]);

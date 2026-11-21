@@ -95,6 +95,7 @@ export class AcpProcessExitedError extends Schema.TaggedError<AcpProcessExitedEr
   {
     code: Schema.optional(Schema.Number),
     pid: Schema.optionalKey(Schema.Int),
+    signal: Schema.optionalKey(Schema.String),
     stderr: Schema.optionalKey(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
@@ -167,6 +168,7 @@ export class AcpTransportError extends Schema.TaggedError<AcpTransportError>()(
     method: Schema.optional(Schema.String),
     detail: Schema.optional(Schema.String),
     pid: Schema.optionalKey(Schema.Int),
+    signal: Schema.optionalKey(Schema.String),
     cause: Schema.Defect(),
   },
 ) {

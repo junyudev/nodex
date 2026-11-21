@@ -34,7 +34,9 @@ import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as HttpClient from "effect/http/HttpClient";
@@ -526,7 +528,7 @@ export class AcpRegistryCatalog extends Context.Service<
       settings: AcpRegistrySettings,
       cwd: string,
       environment?: NodeJS.ProcessEnv,
-    ) => Effect.Effect<ResolvedAcpRegistryAgent, AcpRegistryError>;
+    ) => Effect.Effect<ResolvedAcpRegistryAgent, AcpRegistryError, Scope.Scope>;
     readonly uninstallManagedBinary: (
       input: AcpRegistryManagedBinaryUninstallInput,
     ) => Effect.Effect<AcpRegistryManagedBinaryUninstallResult, AcpRegistryError>;
@@ -550,6 +552,7 @@ export const layerFromHost = Layer.merge(
       return layer({
         cacheDir: paths.providerStatusCacheDir,
         toolsDir: path.join(paths.baseDir, "tools"),
+        runtimeTempDir: path.join(paths.stateDir, "antigravity-tmp", "acp-registry"),
       });
     }),
   ),
@@ -560,7 +563,10 @@ export interface AcpRegistryCatalogOptions {
   readonly cacheDir: string;
   readonly toolsDir: string;
   readonly registryUrl?: string;
+  readonly runtimeTempDir?: string;
 }
+
+const UNPACKING_AGENT_IDS: ReadonlySet<string> = new Set(["antigravity-acp"]);
 
 const INSTALL_LOCK_RETRY_COUNT = 300;
 const INSTALL_LOCK_RETRY_DELAY = "100 millis";
@@ -666,6 +672,73 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
   const runtimeNodeDirectory = path.dirname(yield* HostProcess.ExecutablePath);
   const resolveExecutable = yield* SpawnExecutableResolution;
   const platformTarget = resolveAcpRegistryPlatformTarget(platform, architecture);
+  const runtimeTempDir = input.runtimeTempDir;
+  if (runtimeTempDir !== undefined) {
+    // Move leftovers of a previous server aside so the slow delete cannot race new runs.
+    const parent = path.dirname(runtimeTempDir);
+    const prefix = `${path.basename(runtimeTempDir)}.old-`;
+    const retire = Effect.gen(function* () {
+      if (yield* fileSystem.exists(runtimeTempDir)) {
+        yield* fileSystem.makeTempDirectory({ directory: parent, prefix }).pipe(
+          Effect.flatMap((retired) =>
+            fileSystem.rename(runtimeTempDir, path.join(retired, "runtime")),
+          ),
+          Effect.catch(() => fileSystem.remove(runtimeTempDir, { recursive: true, force: true })),
+        );
+      }
+      return yield* fileSystem.readDirectory(parent);
+    }).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+    const retired = (yield* retire).filter((entry) => entry.startsWith(prefix));
+    yield* Effect.forkDetach(
+      Effect.forEach(
+        retired,
+        (entry) =>
+          fileSystem
+            .remove(path.join(parent, entry), { recursive: true, force: true })
+            .pipe(
+              Effect.catch(() =>
+                Effect.logWarning("Could not remove leftover ACP agent temp files."),
+              ),
+            ),
+        { discard: true },
+      ),
+    );
+  }
+
+  // One directory per process, removed after it exits; the next server start sweeps what Windows kept.
+  const acquireRuntimeTempEnvironment = Effect.fn("AcpRegistryCatalog.acquireRuntimeTemp")(
+    function* (root: string, environment: NodeJS.ProcessEnv) {
+      const directory = yield* Effect.acquireRelease(
+        fileSystem.makeDirectory(root, { recursive: true }).pipe(
+          Effect.andThen(fileSystem.makeTempDirectory({ directory: root, prefix: "run-" })),
+          Effect.mapError(
+            (cause) =>
+              new AcpRegistryError({
+                reason: "install_failed",
+                detail: "Could not create a temp directory for the ACP agent.",
+                cause,
+              }),
+          ),
+        ),
+        (directory) => {
+          const remove = fileSystem.remove(directory, { recursive: true, force: true });
+          // Windows keeps a killed process's files locked for a few seconds after it exits.
+          const retry = remove.pipe(
+            Effect.retry({ schedule: Schedule.spaced("2 seconds"), times: 30 }),
+            Effect.catch(() => Effect.logWarning("Could not remove an ACP agent temp directory.")),
+          );
+          return remove.pipe(Effect.catch(() => Effect.asVoid(Effect.forkDetach(retry))));
+        },
+      );
+      if (platform !== "win32") return { ...environment, TMPDIR: directory };
+      // Windows env keys are case-insensitive; drop aliases so ours win.
+      const rest = Object.fromEntries(
+        Object.entries(environment).filter(([key]) => !["temp", "tmp"].includes(key.toLowerCase())),
+      );
+      return { ...rest, TEMP: directory, TMP: directory };
+    },
+  );
+
   const registryUrl = input.registryUrl ?? ACP_REGISTRY_URL;
   const registryDirectory = path.join(input.cacheDir, "acp-registry");
   const registryCachePath = path.join(registryDirectory, "registry.json");
@@ -2165,7 +2238,12 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           command,
           args,
           cwd,
-          env: applyAgentEnvironment(settings, spawnEnvironment),
+          env: applyAgentEnvironment(
+            settings,
+            runtimeTempDir !== undefined && UNPACKING_AGENT_IDS.has(agent.id)
+              ? yield* acquireRuntimeTempEnvironment(runtimeTempDir, spawnEnvironment)
+              : spawnEnvironment,
+          ),
         },
       } satisfies ResolvedAcpRegistryAgent;
     });

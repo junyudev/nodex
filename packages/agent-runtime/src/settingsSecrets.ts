@@ -1,4 +1,5 @@
 import {
+  AntigravitySettings,
   ClaudeSettings,
   CodexSettings,
   type ServerSettings,
@@ -18,6 +19,7 @@ export const SECRET_REDACTED = "\u2022\u2022\u2022\u2022\u2022\u2022";
 
 const providerSecretFields = new Map([
   ["codex", secretSettingsFields(CodexSettings)],
+  ["antigravity", secretSettingsFields(AntigravitySettings)],
   ["claudeAgent", secretSettingsFields(ClaudeSettings)],
   ...[openCodeClient, acpRegistryClient].map(
     (definition) =>

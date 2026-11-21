@@ -14,7 +14,10 @@ const ACP_PLAN_MODE_INSTRUCTIONS = `## Nodex interaction mode: Plan
 Investigate the requested work and resolve discoverable facts before asking questions. Use application tools as needed to gather context and maintain planning content. When the requirements are clear, return a concrete implementation plan. Keep implementation work for an implementation request. Treat this mode as active until Nodex supplies a different interaction-mode instruction.`;
 
 /** Planning intent changes the prompt without narrowing native execution access. */
-export function providerPromptForInteraction(prompt: string, mode: ProviderInteractionMode): string {
+export function providerPromptForInteraction(
+  prompt: string,
+  mode: ProviderInteractionMode,
+): string {
   if (mode !== "plan" || prompt.trimStart().startsWith("/")) return prompt;
   return `<interaction_mode>\n${ACP_PLAN_MODE_INSTRUCTIONS}\n</interaction_mode>\n\n${prompt}`;
 }
@@ -25,7 +28,7 @@ export interface AcpInstructionState {
 }
 
 /**
- * ACP has no system/developer prompt field, so send Nodex context in the
+ * Agents without a negotiated system-prompt append receive Nodex context in the
  * first user prompt and whenever the available tools or interaction mode change.
  */
 export function acpPromptWithInstructions(input: {
@@ -49,7 +52,17 @@ export function acpPromptWithInstructions(input: {
   ) {
     return input.prompt;
   }
-  const instructions = [
+  const instructions = acpSystemInstructions(input);
+  return `<nodex_instructions>\n${instructions}\n</nodex_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
+}
+
+/** The same host guidance for agents with a negotiated system-prompt extension. */
+export function acpSystemInstructions(input: {
+  readonly state: AcpInstructionState;
+  readonly hostInstructions?: string;
+  readonly hostOrchestrationInstructions?: string;
+}): string {
+  return [
     input.state.interactionMode === "plan"
       ? ACP_PLAN_MODE_INSTRUCTIONS
       : ACP_DEFAULT_MODE_INSTRUCTIONS,
@@ -57,6 +70,5 @@ export function acpPromptWithInstructions(input: {
       ? [input.hostOrchestrationInstructions]
       : []),
     ...(input.hostInstructions === undefined ? [] : [input.hostInstructions]),
-  ];
-  return `<nodex_instructions>\n${instructions.join("\n\n")}\n</nodex_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
+  ].join("\n\n");
 }

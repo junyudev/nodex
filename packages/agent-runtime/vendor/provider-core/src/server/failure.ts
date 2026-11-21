@@ -112,6 +112,16 @@ function knownCause(cause: unknown): KnownCause {
       switch ((cause as Record<string, unknown>)._tag) {
         case "ModelPolicyError":
           return { message: stringField(cause, "message"), code: stringField(cause, "code"), retryable: false };
+        case "ProviderSetupError":
+        case "AcpModelSelectionError":
+          return { message: stringField(cause, "message") };
+        case "AcpRequestError":
+          if ((cause as Record<string, unknown>).code === -32000) {
+            return {
+              message: "Sign in to this Agent in Settings → Agents, then send your message again.",
+            };
+          }
+          break;
         case "ContextHandoffBudgetError":
           return { message: new ContextHandoffBudgetError().message };
         case "ClaudeBackgroundWorkBlocksQueryReplacementError":
@@ -216,9 +226,15 @@ function replaceUnsafeControlCharacters(value: string): string {
   return sanitized.join("");
 }
 
+/** Redact bare Google API keys as well as exact configured credentials. */
+export function redactProviderApiKey(text: string, configuredKey?: string): string {
+  const withoutConfiguredKey = configuredKey ? text.replaceAll(configuredKey, "[REDACTED]") : text;
+  return withoutConfiguredKey.replace(/AIza[A-Za-z0-9_-]{35}/gu, "[REDACTED]");
+}
+
 /** Removes common credential forms before provider text crosses a transport boundary. */
 function redactProviderFailureText(value: string): string {
-  return replaceUnsafeControlCharacters(value)
+  return replaceUnsafeControlCharacters(redactProviderApiKey(value))
     .replace(/\bhttps?:\/\/[^\s<>"']+/giu, redactUrl)
     .replace(/\b(Bearer|Basic)\s+[^\s,;]+/giu, "$1 [REDACTED]")
     .replace(

@@ -776,7 +776,7 @@ export const AntigravitySettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
         title: "API key",
-        description: "Gemini or Vertex AI express key. Stored separately on the host.",
+        description: "Required for Gemini API key and Agent Platform. Supplied by the Host.",
         providerSettingsForm: {
           control: "password",
           placeholder: "Optional",
@@ -789,7 +789,7 @@ export const AntigravitySettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "GCP project",
         description:
-          "Required for Gemini Enterprise. Agent Platform uses it when no API key is set.",
+          "Required for Gemini Enterprise.",
         providerSettingsForm: { placeholder: "my-project-id", clearWhenEmpty: "omit" },
       }),
     ),
@@ -797,7 +797,7 @@ export const AntigravitySettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
         title: "GCP location",
-        description: "Region for Gemini Enterprise or Agent Platform.",
+        description: "Required region for Gemini Enterprise.",
         providerSettingsForm: { placeholder: "us-central1", clearWhenEmpty: "omit" },
       }),
     ),
@@ -809,7 +809,7 @@ export const AntigravitySettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "Automatic", clearWhenEmpty: "persist" },
       }),
     ),
-    customModels: Schema.Array(CustomModelSetting).pipe(
+    customModels: Schema.Array(CustomModelSetting).check(Schema.isMaxLength(0)).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),

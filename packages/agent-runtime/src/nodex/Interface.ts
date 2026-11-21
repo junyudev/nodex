@@ -1,5 +1,7 @@
+import type { AgentProviderInstallationManagementOperations } from "./ProviderInstallationManagementContract.ts";
 import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import type { ModelPolicy } from "../../../../src/shared/model-policy.ts";
+import type { AgentProviderManagementOperations } from "./ProviderManagementContract.ts";
 import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
 import type { AgentWindowsSandboxOperations } from "./WindowsSandboxContract.ts";
 import type {
@@ -252,7 +254,17 @@ export interface AgentRootActivity {
 }
 
 export interface AgentRuntimeOperations
-  extends AgentAcpManagementOperations, AgentWindowsSandboxOperations {
+  extends
+    AgentAcpManagementOperations,
+    AgentWindowsSandboxOperations,
+    AgentProviderManagementOperations,
+    AgentProviderInstallationManagementOperations {
+  readonly "native-child-work.read": {
+    readonly input: { readonly threadId: string };
+    readonly output: AgentWire<
+      import("@nodex/runtime-contracts").OrchestrationV2GetNativeChildWorkResult
+    >;
+  };
   readonly "thread.import-native": {
     readonly input: {
       readonly commandId: string;

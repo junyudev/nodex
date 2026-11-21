@@ -15,6 +15,10 @@
     {
       "revision": "550c5fa34b6b4f287496f3d725a300347274fbcf",
       "scope": "Event log pruning and incremental database space reclamation"
+    },
+    {
+      "revision": "2c33cbdf0",
+      "scope": "First-class Antigravity ACP driver, isolated authentication, immutable managed installation, status and model discovery, native child work, session repair and outcome recovery, usage, skills, text generation and supporting ACP contracts"
     }
   ]
 }

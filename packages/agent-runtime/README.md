@@ -8,7 +8,7 @@ beneath its absolute home. Content and desktop capabilities remain host-owned.
 The process starts with `--home <absolute-directory> --cwd <execution-directory>`. Its first
 stdin line is the bootstrap frame (`type: "bootstrap"`, see `src/nodex/Bootstrap.ts`); the
 process refuses to start without it. Its `providers` map carries the provider instances; each
-entry selects the `codex`, `claudeAgent`, `opencode` or `acpRegistry` driver and its canonical settings.
+entry selects the `codex`, `claudeAgent`, `opencode`, `antigravity` or `acpRegistry` driver and its canonical settings.
 Named instances retain independent executables, homes and environments.
 ACP instances can set `config.inheritEnvironment: false`; their supplied environment is then the
 complete native environment, including any explicitly selected authentication or proxy values.
@@ -47,7 +47,7 @@ including the committed item that first records a Readback (coalesced within 50 
 type-specific SQL queries and live channels before retaining events. Every subscription returns
 its explicit ownership token for scoped cancellation.
 
-The process registers the four provider drivers and the task tools described below. OpenCode instances
+The process registers the five provider drivers and the task tools described below. OpenCode instances
 select their native 1.x or 2.x adapter from their executable. ACP's stdio bridge commands use
 a separate entry path without acquiring the engine or provider runtimes.
 The engine is the single production composition `layerProduction` in
@@ -58,6 +58,52 @@ explicit policy overrides, and parked workers start after startup recovery compl
 launch, worktree setup, content operations, scheduled tasks and usage-limit auto-resume remain
 host-owned. The public Runtime service composes ACP management and native session import around
 the engine; the host links imported Threads to product Sessions.
+
+## Provider setup
+
+Antigravity instances use `driver: "antigravity"` and canonical `AntigravitySettings`:
+`authMethod` (`oauth-personal`, `oauth-business`, `gemini-api-key`, `agent-platform`),
+`apiKey`, `gcpProject`, `gcpLocation`, `binaryPath`, and an empty `customModels` array. No default
+Antigravity instance is created. Supply enablement on the
+instance envelope. Each instance owns an isolated profile beneath the Runtime home; the
+managed executable is shared through immutable releases and process leases.
+
+`providers.read` reports status, account, capabilities, models and subscription usage limits;
+`refresh: true` rechecks named instances. `providers.models.refresh` discovers native models,
+then refreshes status. `providers.skills.read` returns native and Host-delivered skills.
+`providers.usage.scan` reads billed requests for a configured scan-capable provider in the
+half-open `[sinceMs, untilMs)` window, returning source coverage and records for Host Insights.
+
+`providers.auth.read/start/respond/complete/cancel` use the existing provider auth contracts
+plus `ownerId`, a stable opaque identifier for the Host's setup interaction. Responses use the
+`AgentAcpAuthentication` envelope: `runtimeGeneration`, `configurationRevision`, monotonically
+increasing `revision`, and `cancellable`. Start begins the flow; poll `read` until it returns the
+URL or interaction the Host should present. Open browser URLs only in the Host; forward
+callbacks with the matching `flowId` to `complete`. Cancellation and callbacks are owner-scoped.
+`providers.logout` signs out through the provider controller and stops sessions sharing its credentials.
+
+`providers.install.read` passively inspects the driver (`driver: "antigravity"`), reporting
+managed, PATH and configured executable choices, compatibility, cached updates, platform support,
+and leases/removal blockers. With `refresh: true`, it also reads external executable versions.
+Only an install or update discovers a release.
+`providers.install.start` installs or updates; `providers.install.remove` removes the shared managed
+installation. Both accept a Host-chosen `operationId` and driver, including before accounts exist.
+Their operation envelope contains `runtimeGeneration`, increasing `revision`, `cancellable`,
+`phase`, bounded progress and a safe result/error. Poll `providers.install.operation.read` and
+cancel with `providers.install.operation.cancel`, passing that operation ID.
+
+Poll auth reads while setup is visible; setup operations add no notification stream. Deferred
+configuration refuses new setup work; reads, callbacks and cancellation continue against the
+retained controller. Active sign-in keeps its instance alive until it settles. Installations and
+auth flows continue independently of request lifetime and close with their Runtime scope.
+
+Antigravity receives Host instructions through its negotiated system-prompt append; older agents
+receive the prompt wrapper. Instructions are delivered through one path per Turn. Native subagent
+batches appear in the normal task projection; `native-child-work.read` loads their proven native
+child transcripts on demand. These native children are read-only. Model admission uses the same
+Host policy as other drivers; provider-internal child selection has no separate pre-launch hook.
+
+Agent Platform uses the configured API key; host application-default credentials are not imported.
 
 ## Agent tools
 

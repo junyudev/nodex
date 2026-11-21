@@ -19,6 +19,13 @@ import { beginAcpMockPrompt } from "./acpMockCancellationState.ts";
 
 const requestLogPath = process.env.NODEX_ACP_REQUEST_LOG_PATH;
 const exitLogPath = process.env.NODEX_ACP_EXIT_LOG_PATH;
+const agentVersion = process.env.NODEX_ACP_AGENT_VERSION ?? "0.0.0";
+const newSessionErrorData =
+  process.env.NODEX_ACP_NEW_SESSION_ERROR_DATA === undefined
+    ? undefined
+    : Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))(
+        process.env.NODEX_ACP_NEW_SESSION_ERROR_DATA,
+      );
 const antigravityProfile = process.env.NODEX_ACP_ANTIGRAVITY === "1";
 const emitToolCalls = process.env.NODEX_ACP_EMIT_TOOL_CALLS === "1";
 const emitInterleavedAssistantToolCalls =
@@ -130,7 +137,7 @@ const permissionRequestCount = Math.max(
 );
 const sessionId = "mock-session-1";
 
-let currentModeId = antigravityProfile ? "default" : "ask";
+let currentModeId = process.env.NODEX_ACP_INITIAL_MODE ?? (antigravityProfile ? "default" : "ask");
 let currentModelId = antigravityProfile ? "gemini-test-low" : "default";
 let parameterizedModelPicker = false;
 let currentReasoning = "medium";
@@ -386,6 +393,7 @@ const antigravityModels = [
 const availableModes: ReadonlyArray<AcpCompat.SessionMode> = antigravityProfile
   ? [
       { id: "default", name: "Default" },
+      { id: "auto", name: "Auto" },
       { id: "auto_edit", name: "Auto edit" },
       { id: "yolo", name: "YOLO" },
     ]
@@ -457,10 +465,14 @@ const program = Effect.gen(function* () {
       sessionId: targetSessionId,
       update: {
         sessionUpdate: "available_commands_update",
-        availableCommands: [
-          { name: "plan", description: "Plan a task", input: { hint: "task" } },
-          { name: "logout", description: "Sign out" },
-        ],
+        availableCommands: !process.env.NODEX_ACP_AVAILABLE_COMMANDS?.trim()
+          ? [
+              { name: "plan", description: "Plan a task", input: { hint: "task" } },
+              { name: "logout", description: "Sign out" },
+            ]
+          : process.env.NODEX_ACP_AVAILABLE_COMMANDS.split(",")
+              .filter(Boolean)
+              .map((name) => ({ name, description: "Native command" })),
       },
     });
 
@@ -494,9 +506,12 @@ const program = Effect.gen(function* () {
       parameterizedModelPicker = request.capabilities?._meta?.parameterizedModelPicker === true;
       return {
         protocolVersion: 2,
-        info: { name: "nodex-acp-mock-agent", version: "0.0.0" },
+        info: { name: "nodex-acp-mock-agent", version: agentVersion },
         _meta: { modelState: modelState() },
         capabilities: {
+          ...(process.env.NODEX_ACP_SYSTEM_PROMPT_APPEND === "1"
+            ? { _meta: { antigravity: { systemPrompt: { append: true } } } }
+            : {}),
           session: {
             ...(supportsSessionLifecycle ? { fork: {}, additionalDirectories: {} } : {}),
             ...(supportsV2Management ? { delete: {} } : {}),
@@ -567,6 +582,8 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleCreateSession(() =>
     Effect.gen(function* () {
+      if (newSessionErrorData !== undefined)
+        return yield* AcpError.AcpRequestError.internalError("Internal error", newSessionErrorData);
       yield* requireAuthentication();
       if (antigravityProfile) {
         yield* publishAntigravityCommands(sessionId);
@@ -606,6 +623,10 @@ const program = Effect.gen(function* () {
   yield* agent.handleResumeSession((request) =>
     Effect.gen(function* () {
       yield* requireAuthentication();
+      if (antigravityProfile && process.env.NODEX_ACP_RESET_CONFIGURATION_ON_RESUME === "1") {
+        currentModelId = "gemini-test-high";
+        currentModeId = "default";
+      }
       yield* agent.client.sessionUpdate({
         sessionId: request.sessionId,
         update: {
@@ -891,7 +912,14 @@ const program = Effect.gen(function* () {
         process.env.NODEX_ACP_CRASH_PROMPT === "1" &&
         request.prompt.some((part) => part.type === "text" && part.text === "crash now")
       ) {
-        return yield* Effect.sync(() => process.exit(23));
+        return yield* Effect.sync(() => {
+          const diagnostic = process.env.NODEX_ACP_CRASH_DIAGNOSTIC;
+          if (diagnostic) {
+            process.stderr.write(diagnostic, () => process.exit(23));
+            return;
+          }
+          process.exit(23);
+        }).pipe(Effect.andThen(Effect.never));
       }
 
       if (clientFsProbePath !== undefined && clientFsProbeLogPath !== undefined) {
@@ -1133,6 +1161,15 @@ const program = Effect.gen(function* () {
                 },
               },
             ],
+          },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "output-patch",
+            title: "Edit with raw patch",
+            kind: "edit",
+            status: "completed",
+            rawOutput:
+              "diff --git a/raw.ts b/raw.ts\n--- a/raw.ts\n+++ b/raw.ts\n@@ -1 +1 @@\n-before\n+after\n",
           },
           {
             sessionUpdate: "tool_call_update",

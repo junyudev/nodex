@@ -120,17 +120,21 @@ export const make = Effect.gen(function* () {
           ),
         );
       const generation = yield* resolveInstance(registry, operation, selection.instanceId);
-      const admission = policy
-        .assert(selection, input.automatic ? "automatic" : "person")
-        .pipe(
-          Effect.mapError(
-            (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
-          ),
-        );
+      const admission = (effectiveModel?: string) =>
+        policy
+          .assert(
+            effectiveModel === undefined ? selection : { ...selection, model: effectiveModel },
+            input.automatic ? "automatic" : "person",
+          )
+          .pipe(
+            Effect.mapError(
+              (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
+            ),
+          );
       return yield* policy
         .withUtility(
           selection,
-          admission.pipe(
+          admission().pipe(
             Effect.andThen(generate(generation, { ...input, modelSelection: selection })),
             Effect.provideService(TextGenerationAdmission, admission),
           ),

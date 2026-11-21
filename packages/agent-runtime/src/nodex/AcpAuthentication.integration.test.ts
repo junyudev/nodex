@@ -42,10 +42,10 @@ it.live(
             .handle({ id: method, method, input })
             .pipe(Effect.map((output) => output as AgentRuntimeOperations[M]["output"]));
         const target = { instanceId: "first", ownerId: "window" };
-        const idle = yield* call("acp.auth.read", target);
+        const idle = yield* call("providers.auth.read", target);
         expect(idle).toMatchObject({ phase: "idle", cancellable: false });
         expect(idle.runtimeGeneration.length).toBeGreaterThan(0);
-        const started = yield* call("acp.auth.start", { ...target, methodId: "login" });
+        const started = yield* call("providers.auth.start", { ...target, methodId: "login" });
         expect(started).toMatchObject({
           configurationRevision: idle.configurationRevision,
           runtimeGeneration: idle.runtimeGeneration,
@@ -58,37 +58,40 @@ it.live(
           }),
           Effect.timeout("5 seconds"),
         );
-        const live = yield* call("acp.auth.read", target);
+        const live = yield* call("providers.auth.read", target);
         expect(live.revision).toBeGreaterThanOrEqual(started.revision);
-        const passive = yield* call("acp.auth.read", { ...target, ownerId: "other-window" });
+        const passive = yield* call("providers.auth.read", { ...target, ownerId: "other-window" });
         expect(passive).toMatchObject({
           flowId: null,
           cancellable: false,
           configurationRevision: started.configurationRevision,
         });
-        expect(yield* call("acp.auth.read", target)).toEqual(live);
-        expect(yield* call("acp.auth.start", { ...target, methodId: "login" })).toEqual(live);
+        expect(yield* call("providers.auth.read", target)).toEqual(live);
+        expect(yield* call("providers.auth.start", { ...target, methodId: "login" })).toEqual(live);
         expect((yield* fs.readFileString(log)).split('"auth/login"')).toHaveLength(2);
         yield* call("providers.configure", {
           providers: { first: provider, unrelated: { ...provider, enabled: false } },
         });
-        expect(yield* call("acp.auth.read", target)).toEqual(live);
+        expect(yield* call("providers.auth.read", target)).toEqual(live);
         expect(
-          (yield* call("acp.auth.read", { ...target, ownerId: "other-window" }))
+          (yield* call("providers.auth.read", { ...target, ownerId: "other-window" }))
             .configurationRevision,
         ).toBe(started.configurationRevision);
-        const cancelled = yield* call("acp.auth.cancel", { ...target, flowId: started.flowId! });
+        const cancelled = yield* call("providers.auth.cancel", {
+          ...target,
+          flowId: started.flowId!,
+        });
         expect(cancelled).toMatchObject({
           phase: "cancelled",
           cancellable: false,
           configurationRevision: started.configurationRevision,
         });
         expect(cancelled.revision).toBeGreaterThan(live.revision);
-        const next = yield* call("acp.auth.start", { ...target, methodId: "login" });
+        const next = yield* call("providers.auth.start", { ...target, methodId: "login" });
         expect(next.flowId).not.toBe(started.flowId);
         expect(next.configurationRevision).toBeGreaterThan(started.configurationRevision);
         expect(next.runtimeGeneration).toBe(started.runtimeGeneration);
-        yield* call("acp.auth.cancel", { ...target, flowId: next.flowId! });
+        yield* call("providers.auth.cancel", { ...target, flowId: next.flowId! });
       }).pipe(
         Effect.provide(
           Application.layer({ home, cwd: home, providers: { first: provider } }, () => Effect.void),

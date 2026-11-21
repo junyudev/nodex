@@ -133,7 +133,7 @@ for (const driver of ["codex", "claude", "claude-sdk"] as const) {
                 ? { images: [{ mediaType: "image/png" as const, data: "AQID" }] }
                 : {}),
             })
-            .pipe(Effect.provideService(TextGenerationAdmission, admission));
+            .pipe(Effect.provideService(TextGenerationAdmission, () => admission));
           const task = yield* request.pipe(Effect.result, Effect.forkScoped);
           try {
             yield* Deferred.await(entered);
