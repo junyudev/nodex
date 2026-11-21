@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -265,6 +266,20 @@ function finalizeRunProcess<R>(
   );
 }
 
+/**
+ * The process closed its input before reading all of it, by exiting or by choice. That is the
+ * process's decision, not a failed run: its exit code and output are the result. A quick command
+ * handed input it never reads hits this on every run where it exits before the write lands.
+ */
+const closedItsInput = (error: unknown): boolean => {
+  for (let cause = error, depth = 0; depth < 8 && Predicate.isObject(cause); depth += 1) {
+    if ("code" in cause && (cause.code === "EPIPE" || cause.code === "ERR_STREAM_DESTROYED"))
+      return true;
+    cause = "reason" in cause ? cause.reason : "cause" in cause ? cause.cause : undefined;
+  }
+  return false;
+};
+
 /** The executable name without its directory, recorded as `process.command` on process spans. */
 export const commandName = (command: string) => command.replace(/^.*[\\/]/, "");
 
@@ -318,6 +333,7 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
     stdin === undefined
       ? Effect.void
       : Stream.run(Stream.encodeText(Stream.make(stdin)), child.stdin).pipe(
+          Effect.catchIf(closedItsInput, () => Effect.void),
           Effect.mapError(
             (cause) =>
               new ProcessStdinError({

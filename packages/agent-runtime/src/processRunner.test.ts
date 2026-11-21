@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -317,6 +318,22 @@ describe("runProcess", () => {
       expect(result.stdout).toBe("stdin payload");
       expect(result.code).toBe(0);
     }),
+  );
+
+  // A real process: the kernel decides when a write to a closed pipe fails. The payload is
+  // larger than any pipe buffer, so the write is still pending when the child exits.
+  it.effect.skipIf(process.platform === "win32")(
+    "returns the result of a process that exits without reading its input",
+    () =>
+      Effect.gen(function* () {
+        const runner = yield* ProcessRunner.make();
+        const result = yield* runner.run({
+          command: "/bin/sh",
+          args: ["-c", "printf done; printf warned >&2; exit 3"],
+          stdin: "x".repeat(4 * 1024 * 1024),
+        });
+        expect(result).toMatchObject({ stdout: "done", stderr: "warned", code: 3 });
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("returns output for non-zero exit codes", () =>
