@@ -10,6 +10,7 @@ import type {
   RuntimeMode,
 } from "@nodex/agent-runtime/contracts";
 
+import type { ItemPatch } from "@nodex/agent-runtime/item-patch";
 export type { RuntimeMode } from "@nodex/agent-runtime/contracts";
 
 type CreateThread = Extract<AgentCommand, { readonly type: "thread.create" }>;
@@ -335,6 +336,8 @@ export type AgentRuntimeObserveInput = AgentRuntimeSessionTarget & {
   readonly subagentTree?: boolean;
   /** Metadata observers filter before engine replay/body decoding. */
   readonly eventTypes?: readonly (typeof AGENT_RUNTIME_CONTROL_EVENT_TYPES)[number][];
+  /** A transcript reader receives live items as patches against the copies it holds. */
+  readonly delivery?: "transcript";
 };
 export type AgentRuntimeSessionEvent =
   | {
@@ -343,6 +346,14 @@ export type AgentRuntimeSessionEvent =
       readonly sessionId: string;
       readonly threadId: string;
       readonly event: AgentEvent;
+    }
+  | {
+      readonly type: "item-patch";
+      readonly subscriptionId?: string;
+      readonly sessionId: string;
+      readonly threadId: string;
+      readonly sequence: number;
+      readonly patch: ItemPatch;
     }
   | {
       readonly type: "reset-required";

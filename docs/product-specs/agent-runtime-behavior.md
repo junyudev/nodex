@@ -536,6 +536,14 @@ cannot fit fails explicitly rather than exceeding the transport budget. History 
 256 KiB of one command's output: its start and its end, with a marker where the middle was cut.
 A window open long enough to fall behind the retained event tail reloads its conversation.
 
+A transcript reader observes with transcript delivery, so streamed text crosses each process
+boundary once. While an item is live, each new version reaches it as a patch against the version
+the same subscription last delivered: the fields that changed, the fields that were removed, and
+text appended at an exact UTF-16 offset. Text that is rewritten rather than extended arrives
+whole. A patch that does not fit the reader's copy makes it reload from a snapshot. Assistant
+message records repeat their items' text and are not delivered to transcript readers. Other
+observers receive whole events.
+
 Agent Session and Task reads share one independent metadata-only timeline window and canonical
 text or JSON slices, rather than the renderer's bounded initial window. Each content slice
 carries its exact source identity, offset, total length and content version; item changes

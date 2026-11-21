@@ -355,6 +355,7 @@ export const live = Layer.effectDiscard(
               afterSequence: input.afterSequence,
               eventTypes: input.eventTypes,
               subagentTree: input.subagentTree,
+              ...(input.delivery === undefined ? {} : { delivery: input.delivery }),
             });
             yield* Effect.addFinalizer(() =>
               connection
@@ -377,6 +378,17 @@ export const live = Layer.effectDiscard(
                       sessionId: target.sessionId,
                       threadId: target.threadId,
                       event: notification.event,
+                    });
+                  if (
+                    notification.type === "event.item-patch" &&
+                    notification.subscriptionId === admitted.subscriptionId
+                  )
+                    yield* send({
+                      type: "item-patch",
+                      sessionId: target.sessionId,
+                      threadId: target.threadId,
+                      sequence: notification.sequence,
+                      patch: notification.patch,
                     });
                   if (
                     notification.type === "event.error" &&

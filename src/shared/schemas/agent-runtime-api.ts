@@ -408,6 +408,7 @@ export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
     .min(1)
     .max(AGENT_RUNTIME_CONTROL_EVENT_TYPES.length)
     .optional(),
+  delivery: z.literal("transcript").optional(),
 });
 export const AgentRuntimeUnobserveSchema = z.object({ subscriptionId: id }).strict();
 export const AgentRuntimeRestartSchema = z.object({ generation: id }).strict();

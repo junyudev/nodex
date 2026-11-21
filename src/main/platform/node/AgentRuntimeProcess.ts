@@ -263,6 +263,12 @@ const notificationSchema = z.discriminatedUnion("type", [
     subscriptionId: z.string(),
     event: z.object({ sequence: z.number().int().nonnegative(), event: z.unknown() }).passthrough(),
   }),
+  z.object({
+    type: z.literal("event.item-patch"),
+    subscriptionId: z.string(),
+    sequence: z.number().int().nonnegative(),
+    patch: z.object({ itemId: z.string() }).passthrough(),
+  }),
   z.object({ type: z.literal("event.error"), subscriptionId: z.string(), message: z.string() }),
   z.object({
     type: z.literal("activity"),

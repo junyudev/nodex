@@ -93,7 +93,9 @@ test("delegates across Codex and Claude through the Session UI and restores chil
           threadId: value.threadId,
           ...(value.type === "event"
             ? { sequence: value.event.sequence, eventType: value.event.event.type }
-            : { reason: value.reason }),
+            : value.type === "item-patch"
+              ? { sequence: value.sequence, eventType: "turn-item.updated" }
+              : { reason: value.reason }),
         });
       });
     });

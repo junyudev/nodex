@@ -32,6 +32,13 @@ import type {
   AgentSnapshot,
   AgentTurnItem,
 } from "@nodex/agent-runtime/contracts";
+import {
+  applyWireItemPatch,
+  LiveWireItems,
+  READER_LIVE_ITEM_LIMIT,
+  type ItemPatch,
+  type WireItem,
+} from "@nodex/agent-runtime/item-patch";
 import type {
   AgentRuntimeConversation,
   AgentRuntimeSessionTarget,
@@ -299,6 +306,8 @@ export class AgentRuntimeConversationOwner {
   readonly #target: ResolvedAgentRuntimeTarget;
   readonly #listeners = new Set<() => void>();
   readonly #items = new Map<string, ResidentItem>();
+  /** This subscription's live items, the bases its transcript patches apply to. */
+  readonly #liveItems = new LiveWireItems(READER_LIVE_ITEM_LIMIT);
   readonly #messageItems = new Map<string, string>();
   readonly #liveItemsByRun = new Map<string, Set<string>>();
   readonly #nodeRuns = new Map<string, { readonly runId: string | null; readonly live: boolean }>();
@@ -937,11 +946,14 @@ export class AgentRuntimeConversationOwner {
         if (transcript && this.#transcriptActive) this.#reset(conversation.snapshot);
         this.#publishView();
         if (transcript) void this.#refreshQueue();
+        this.#liveItems.clear();
         const release = await this.#transport.subscribe(
           {
             ...this.#target,
             afterSequence: this.#sequence,
-            ...(transcript ? {} : { eventTypes: AGENT_RUNTIME_CONTROL_EVENT_TYPES }),
+            ...(transcript
+              ? { delivery: "transcript" as const }
+              : { eventTypes: AGENT_RUNTIME_CONTROL_EVENT_TYPES }),
           },
           (notification) => {
             if (
@@ -955,13 +967,12 @@ export class AgentRuntimeConversationOwner {
               return;
             }
             if (notification.type === "reset-required") {
-              this.#releaseEvents?.();
-              this.#releaseEvents = null;
-              this.#opening = null;
-              this.#restart();
+              this.#recoverDelivery();
               return;
             }
-            this.#accept(notification.event);
+            if (notification.type === "item-patch")
+              this.#acceptPatch(notification.sequence, notification.patch);
+            else this.#accept(notification.event);
             this.#settleObservers();
           },
         );
@@ -2046,84 +2057,106 @@ export class AgentRuntimeConversationOwner {
     if (changedTasks.size > 0) this.#updateChildren(changedTasks);
     this.#publishView();
   }
+  /** Rebuild from a fresh snapshot when the event stream can no longer be followed. */
+  #recoverDelivery(): void {
+    this.#releaseEvents?.();
+    this.#releaseEvents = null;
+    this.#opening = null;
+    this.#restart();
+  }
+
+  #acceptPatch(sequence: number, patch: ItemPatch): void {
+    if (sequence <= this.#sequence) return;
+    const previous = this.#liveItems.get(patch.itemId);
+    const item = previous === undefined ? null : applyWireItemPatch(previous, patch);
+    // A patch against a copy this reader does not hold means the two ends diverged.
+    if (item === null) return this.#recoverDelivery();
+    this.#sequence = sequence;
+    this.#acceptItem(item as unknown as AgentTurnItem);
+  }
+
   #accept(stored: AgentEvent): void {
     if (stored.sequence <= this.#sequence) return;
     this.#sequence = stored.sequence;
     const event = stored.event;
-    if (event.type === "turn-item.updated") {
-      const item = event.payload;
-      if (this.#transcriptActive && this.#transcriptHydrated) {
-        const resident = this.#items.get(item.id);
-        const retained =
-          resident?.detailVersion === itemVersion(item)
-            ? this.readOwner.readItem(resident.entityKey, item.id)
-            : null;
-        const value = resident
-          ? (retained ??
-            projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
-              sessionId: this.#target.sessionId,
-              rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
-              parentThreadId: this.#thread()?.lineage.parentThreadId,
-            }))
+    if (event.type === "turn-item.updated") return this.#acceptItem(event.payload);
+    this.#acceptEvent(event);
+  }
+
+  #acceptItem(item: AgentTurnItem): void {
+    this.#liveItems.remember(item as unknown as WireItem);
+    if (this.#transcriptActive && this.#transcriptHydrated) {
+      const resident = this.#items.get(item.id);
+      const retained =
+        resident?.detailVersion === itemVersion(item)
+          ? this.readOwner.readItem(resident.entityKey, item.id)
           : null;
-        if (resident) {
-          const settled = this.#isItemLive(item.id) && !itemIsLive(item);
-          this.#rememberItem(resident, item);
-          if (value)
-            this.#applyChanges([
-              {
-                type: "item",
-                key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
-                value,
-              },
-            ]);
-          if (settled) this.#scheduleHistoryWindow();
-        } else if (!this.#precedesResidentHistory(item)) {
-          const changes = this.#admit(
-            [
-              {
-                position: 0,
-                sourceThreadId: item.threadId,
-                sourceItemId: item.id,
-                visibility: "local",
-                item,
-              },
-            ],
-            false,
-          );
-          if (changes.length > 0) {
-            changes.push({
-              type: "structure",
-              timeline: this.#timeline(),
-              turnEntityKeys: this.#turnKeys,
-            });
-            this.#applyChanges(changes);
-            this.#scheduleHistoryWindow();
-          }
+      const value = resident
+        ? (retained ??
+          projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
+            sessionId: this.#target.sessionId,
+            rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
+            parentThreadId: this.#thread()?.lineage.parentThreadId,
+          }))
+        : null;
+      if (resident) {
+        const settled = this.#isItemLive(item.id) && !itemIsLive(item);
+        this.#rememberItem(resident, item);
+        if (value)
+          this.#applyChanges([
+            {
+              type: "item",
+              key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
+              value,
+            },
+          ]);
+        if (settled) this.#scheduleHistoryWindow();
+      } else if (!this.#precedesResidentHistory(item)) {
+        const changes = this.#admit(
+          [
+            {
+              position: 0,
+              sourceThreadId: item.threadId,
+              sourceItemId: item.id,
+              visibility: "local",
+              item,
+            },
+          ],
+          false,
+        );
+        if (changes.length > 0) {
+          changes.push({
+            type: "structure",
+            timeline: this.#timeline(),
+            turnEntityKeys: this.#turnKeys,
+          });
+          this.#applyChanges(changes);
+          this.#scheduleHistoryWindow();
         }
       }
-      const arrived =
-        isAgentRuntimeAsyncQuestion(item) && !this.#asyncQuestions.has(item.requestId);
-      if (
-        this.#captureRequest(item, true) ||
-        (item.type === "user_message" && this.#run(item.runId)?.status === "queued")
-      )
-        this.#publishView();
-      if (isAgentRuntimeAsyncQuestion(item)) {
-        this.#reconcileAsyncQuestions();
-        if (arrived && this.#asyncQuestions.has(item.requestId))
-          this.asyncQuestions.receive(this.threadId, item.id);
-      }
-      if (
-        item.type === "user_message" &&
-        item.runId &&
-        this.#queuePage?.entries.some((row) => row.runId === item.runId)
-      ) {
-        this.#queueEntries = this.#queueEntries.filter((entry) => entry.followUpId !== item.runId);
-        void this.#refreshQueue(true);
-      }
-      return;
     }
+    const arrived = isAgentRuntimeAsyncQuestion(item) && !this.#asyncQuestions.has(item.requestId);
+    if (
+      this.#captureRequest(item, true) ||
+      (item.type === "user_message" && this.#run(item.runId)?.status === "queued")
+    )
+      this.#publishView();
+    if (isAgentRuntimeAsyncQuestion(item)) {
+      this.#reconcileAsyncQuestions();
+      if (arrived && this.#asyncQuestions.has(item.requestId))
+        this.asyncQuestions.receive(this.threadId, item.id);
+    }
+    if (
+      item.type === "user_message" &&
+      item.runId &&
+      this.#queuePage?.entries.some((row) => row.runId === item.runId)
+    ) {
+      this.#queueEntries = this.#queueEntries.filter((entry) => entry.followUpId !== item.runId);
+      void this.#refreshQueue(true);
+    }
+  }
+
+  #acceptEvent(event: Exclude<AgentEvent["event"], { readonly type: "turn-item.updated" }>): void {
     this.#updateRewindContext(event);
     const conversation = this.#state.conversation;
     if (!conversation) return;

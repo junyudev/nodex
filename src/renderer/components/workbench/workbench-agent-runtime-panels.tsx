@@ -400,6 +400,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
             setAttachment((current) => current + 1);
             return;
           }
+          if (notification.type !== "event") return;
           const task = notification.event.overviewTask;
           if (task === undefined) return;
           reports.current += 1;

@@ -1,4 +1,5 @@
 import type { AgentProviderInstallationManagementOperations } from "./ProviderInstallationManagementContract.ts";
+import type { ItemPatch } from "./ItemPatch.ts";
 import type { GitDraft } from "../textGeneration/GitDraft.ts";
 import type { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
@@ -892,6 +893,11 @@ export interface AgentRuntimeOperations
       readonly eventTypes?: ReadonlyArray<OrchestrationV2DomainEvent["type"]>;
       /** Observe only task updates, including updates delegated below this Thread. */
       readonly subagentTree?: boolean;
+      /**
+       * A transcript reader holds every item it was sent: live items arrive as patches against
+       * its copy, and assistant message records, which repeat item text, are not sent.
+       */
+      readonly delivery?: "transcript";
     };
     readonly output: {
       readonly subscribed: true;
@@ -1148,6 +1154,13 @@ export type AgentRuntimeNotification =
       readonly incarnationId: string;
     }
   | { readonly type: "event"; readonly subscriptionId: string; readonly event: AgentEvent }
+  /** A transcript subscription's next version of a live item it already holds. */
+  | {
+      readonly type: "event.item-patch";
+      readonly subscriptionId: string;
+      readonly sequence: number;
+      readonly patch: ItemPatch;
+    }
   | {
       readonly type: "execution.lifecycle";
       readonly subscriptionId: string;

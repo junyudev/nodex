@@ -323,7 +323,7 @@ export interface AgentRuntimeRendererTransport {
   readonly connection: () => Promise<AgentRuntimeConnectionState>;
   readonly subscribe: (
     input: AgentRuntimeSessionTarget &
-      Pick<AgentRuntimeObserveInput, "afterSequence" | "eventTypes" | "subagentTree">,
+      Pick<AgentRuntimeObserveInput, "afterSequence" | "eventTypes" | "subagentTree" | "delivery">,
     listener: (event: AgentRuntimeSessionEvent) => void,
   ) => Promise<() => void>;
 }

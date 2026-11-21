@@ -1,3 +1,4 @@
+import type { ItemPatch } from "@nodex/agent-runtime/item-patch";
 import { buildTurnRenderModel } from "./projection/build-turn-render-model";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type {
@@ -257,6 +258,9 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
         };
       listener?.({ type: "event", ...target, event });
     },
+    patch(sequence: number, value: ItemPatch) {
+      listener?.({ type: "item-patch", ...target, sequence, patch: value });
+    },
     refresh() {
       listener?.({ type: "reset-required", ...target, reason: "host-refresh" });
     },
@@ -284,6 +288,45 @@ async function open(initial: AgentRuntimeConversation, pages: readonly AgentHist
   await owner.resume();
   return { owner, wire, release };
 }
+
+test("follows transcript patches against the live item it holds", async () => {
+  const { owner, wire, release } = await open(conversation([]));
+  try {
+    expect(vi.mocked(wire.port.subscribe).mock.calls[0]![0]).toMatchObject({
+      delivery: "transcript",
+    });
+    wire.emit(event(assistant("Hel")));
+    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    wire.patch(3, { itemId: "assistant", append: { field: "text", offset: 3, text: "lo" } });
+    expect(owner.readOwner.readItem(entityKey, "assistant")).toMatchObject({ text: "Hello" });
+    wire.patch(4, {
+      itemId: "assistant",
+      set: { status: "completed", streaming: false, completedAt: at },
+      append: { field: "text", offset: 5, text: ", world" },
+    });
+    expect(owner.readOwner.readItem(entityKey, "assistant")).toMatchObject({
+      text: "Hello, world",
+    });
+    await expect(owner.whenObserved(4)).resolves.toBeUndefined();
+    expect(wire.port.read).toHaveBeenCalledOnce();
+  } finally {
+    release();
+    owner.dispose();
+  }
+});
+
+test("rebuilds from a snapshot when a patch does not fit the copy it holds", async () => {
+  const { owner, wire, release } = await open(conversation([]));
+  try {
+    wire.emit(event(assistant("Hel")));
+    wire.patch(3, { itemId: "assistant", append: { field: "text", offset: 9, text: "lo" } });
+    await vi.waitFor(() => expect(wire.port.read).toHaveBeenCalledTimes(2));
+    expect(wire.port.subscribe).toHaveBeenCalledTimes(2);
+  } finally {
+    release();
+    owner.dispose();
+  }
+});
 
 test("retries when observation fails after a snapshot and the Runtime is already ready", async () => {
   vi.useFakeTimers();
