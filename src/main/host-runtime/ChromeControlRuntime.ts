@@ -13,7 +13,10 @@ import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { BrowserUsePeerAuthorizationMode } from "../../shared/browser-use-host-capability";
-import { BROWSER_PLUGIN_NODE_MODULE_DIR } from "../../shared/browser-runtime-metadata";
+import {
+  BROWSER_PLUGIN_NODE_MODULE_DIR,
+  type BrowserRuntimeUnavailableReason,
+} from "../../shared/browser-runtime-metadata";
 import type {
   ChromeControlRuntimeSnapshot,
   ChromeControlSettingsAction,
@@ -110,6 +113,7 @@ export interface ChromeControlRuntimePorts {
   ) => ChromeControlExtensionRegistryPort;
   readonly requested: boolean;
   readonly runtimeUnavailableReason: string | null;
+  readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
   readonly windows?: {
     readonly reconcile: (
       action?: ChromeControlSettingsAction,
@@ -152,7 +156,12 @@ function makeSnapshot(input: {
   readonly registryFailure: string | null;
   readonly requested: boolean;
   readonly runtimeUnavailableReason: string | null;
+  readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
 }): ChromeControlRuntimeSnapshot {
+  const { browserRuntimeUnavailableReason } = input;
+  const unavailableDetails = browserRuntimeUnavailableReason
+    ? { browserRuntimeUnavailableReason }
+    : {};
   if (input.registrationKind === "disabled") {
     return {
       bundleSupported: input.bundleSupported,
@@ -160,6 +169,7 @@ function makeSnapshot(input: {
       nativeHostInstalled: false,
       providerReady: false,
       reason: "To register with your browsers, launch with vp run dev --register-browser-host.",
+      ...unavailableDetails,
       requested: input.requested,
       revision: input.registry.revision,
       status: "registration-disabled",
@@ -173,7 +183,8 @@ function makeSnapshot(input: {
       extensionConnected: false,
       nativeHostInstalled: false,
       providerReady: false,
-      reason: input.runtimeUnavailableReason ?? "Chrome runtime is not bundled",
+      reason: boundedReason(input.runtimeUnavailableReason ?? "Chrome runtime is unavailable"),
+      ...unavailableDetails,
       requested: input.requested,
       revision: input.registry.revision,
       status: "runtime-unavailable",
@@ -307,6 +318,7 @@ export const makeChromeControlRuntime = (
         registryFailure,
         requested: ports.requested,
         runtimeUnavailableReason: ports.runtimeUnavailableReason,
+        browserRuntimeUnavailableReason: ports.browserRuntimeUnavailableReason,
       });
 
     const rawChanges = registry
@@ -537,6 +549,7 @@ function makeWindowsChromeControlRuntime(
 export interface ChromeControlRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly windowsBrowserReady?: Effect.Effect<void>;
+  readonly componentBrowserReady?: Effect.Effect<void>;
   readonly registration: ChromeHostRegistration;
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
@@ -581,8 +594,8 @@ const chromeControlLayer = (
     ChromeControlRuntime,
     Effect.gen(function* () {
       const logger = getLogger({ component: "chrome-control-runtime" });
-      const bundle =
-        options.browserRuntime.status === "available" ? options.browserRuntime.bundle : null;
+      const runtime = options.browserRuntime;
+      const bundle = runtime.status === "available" ? runtime.bundle : null;
       const chromeCapability = bundle?.manifest.capabilities.browserUse.backends.chrome ?? null;
       const platformSupported = hostCapabilities(options.platform, options.architecture, {
         browserReady: options.windowsBrowserReady !== undefined && bundle !== null,
@@ -695,8 +708,8 @@ const chromeControlLayer = (
       };
 
       const runtimeUnavailableReason =
-        options.browserRuntime.status === "unavailable"
-          ? options.browserRuntime.message
+        runtime.status === "unavailable"
+          ? runtime.message
           : !platformSupported
             ? "Existing browser control is unavailable on this platform"
             : chromeCapability?.status === "unavailable"
@@ -878,6 +891,8 @@ const chromeControlLayer = (
           });
         },
         requested,
+        browserRuntimeUnavailableReason:
+          runtime.status === "unavailable" ? runtime.reason : undefined,
         runtimeUnavailableReason:
           options.platform === "win32"
             ? "Browser control isn’t available on this installation."
@@ -889,14 +904,14 @@ const chromeControlLayer = (
 export const live = (
   options: ChromeControlRuntimeOptions,
 ): Layer.Layer<ChromeControlRuntime, never, WindowsDesktopTools | ScopedCallbackRuntime> => {
-  const windowsBrowserReady = options.windowsBrowserReady;
-  if (!windowsBrowserReady) return chromeControlLayer(options);
+  const browserReady = options.windowsBrowserReady ?? options.componentBrowserReady;
+  if (!browserReady) return chromeControlLayer(options);
   return Layer.effect(
     ChromeControlRuntime,
     Effect.gen(function* () {
-      // Windows verification and registration may finish after Main starts.
+      // Native host registration begins only after the runtime has been verified.
       let current: ChromeControlRuntime["Service"] | undefined;
-      const initializing = yield* windowsBrowserReady.pipe(
+      const initializing = yield* browserReady.pipe(
         Effect.andThen(Layer.build(chromeControlLayer(options))),
         Effect.map((context) => Context.get(context, ChromeControlRuntime)),
         Effect.tap((service) =>
@@ -907,35 +922,67 @@ export const live = (
         Effect.forkScoped({ startImmediately: true }),
       );
       const ready = Fiber.join(initializing);
+      const snapshot = () => {
+        if (current) return current.snapshot();
+        const runtime = options.browserRuntime;
+        return makeSnapshot({
+          registrationKind: options.registration.kind,
+          bundleSupported: false,
+          installFailure: null,
+          nativeHostInstalled: false,
+          registry: EMPTY_REGISTRY_SNAPSHOT,
+          registryFailure: null,
+          requested: false,
+          runtimeUnavailableReason: runtime.status === "unavailable" ? runtime.message : null,
+          browserRuntimeUnavailableReason:
+            runtime.status === "unavailable" ? runtime.reason : undefined,
+        });
+      };
       return ChromeControlRuntime.of({
         available: () => current?.available() ?? false,
-        changes: Stream.unwrap(ready.pipe(Effect.map((service) => service.changes))),
-        focusPresentation: (input) =>
-          ready.pipe(Effect.flatMap((service) => service.focusPresentation(input))),
-        isConnectedInstance: (family, id) => current?.isConnectedInstance(family, id) ?? false,
-        refresh: ready.pipe(Effect.flatMap((service) => service.refresh)),
-        resolveBrowserIconPath: (family) => current?.resolveBrowserIconPath(family) ?? null,
-        snapshot: () =>
-          current?.snapshot() ??
-          makeSnapshot({
-            registrationKind: options.registration.kind,
-            bundleSupported: false,
-            installFailure: null,
-            nativeHostInstalled: false,
-            registry: EMPTY_REGISTRY_SNAPSHOT,
-            registryFailure: null,
-            requested: false,
-            runtimeUnavailableReason:
-              options.browserRuntime.status === "unavailable"
-                ? options.browserRuntime.message
-                : null,
-          }),
-        updateWindowsRegistration: (action) =>
+        changes: Stream.unwrap(
           ready.pipe(
-            Effect.flatMap(
-              (service) => service.updateWindowsRegistration?.(action) ?? service.refresh,
+            Effect.map((service) =>
+              options.componentBrowserReady
+                ? Stream.concat(
+                    Stream.succeed({
+                      connectedInstances: [],
+                      disconnectedInstances: [],
+                      snapshot: service.snapshot(),
+                    }),
+                    service.changes,
+                  )
+                : service.changes,
             ),
           ),
+        ),
+        focusPresentation: (input) =>
+          Effect.suspend(() =>
+            options.componentBrowserReady && options.browserRuntime.status === "unavailable"
+              ? Effect.fail(
+                  new ChromeControlRuntimeError({
+                    operation: "focus-presentation",
+                    cause: new Error(options.browserRuntime.message),
+                  }),
+                )
+              : ready.pipe(Effect.flatMap((service) => service.focusPresentation(input))),
+          ),
+        isConnectedInstance: (family, id) => current?.isConnectedInstance(family, id) ?? false,
+        refresh: Effect.suspend(() =>
+          options.componentBrowserReady && options.browserRuntime.status === "unavailable"
+            ? Effect.sync(snapshot)
+            : ready.pipe(Effect.flatMap((service) => service.refresh)),
+        ),
+        resolveBrowserIconPath: (family) => current?.resolveBrowserIconPath(family) ?? null,
+        snapshot,
+        updateWindowsRegistration: options.windowsBrowserReady
+          ? (action) =>
+              ready.pipe(
+                Effect.flatMap(
+                  (service) => service.updateWindowsRegistration?.(action) ?? service.refresh,
+                ),
+              )
+          : undefined,
       });
     }),
   );

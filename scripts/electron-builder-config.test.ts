@@ -45,13 +45,17 @@ describe("electron-builder runtime resources", () => {
       to: ".",
       filter: ["**/*", "!browser-runtime{,/**/*}"],
     });
-    // Desktop Tools ship per platform: each installer carries only its own target's closure.
     const desktopTools = {
       from: ".generated/codex-runtime/agent-runtime/browser-runtime",
       to: "browser-runtime",
       filter: ["**/*"],
     };
-    expect(config.mac?.extraResources).toContainEqual(desktopTools);
+    expect(config.mac?.extraResources).not.toContainEqual(desktopTools);
+    expect(config.mac?.extraResources).toContainEqual({
+      from: ".generated/node-runtime/darwin-arm64",
+      to: "node-runtime",
+      filter: ["node", "node-runtime.json", "LICENSE"],
+    });
     expect(config.win?.extraResources).toContainEqual(desktopTools);
     expect(config.linux?.extraResources ?? []).not.toContainEqual(desktopTools);
     expect(config.extraResources).toContainEqual({

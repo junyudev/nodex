@@ -231,7 +231,7 @@ export function resolvePromotion(cwd: string, repo: string, requestedTag?: strin
   };
 }
 
-/** Compare the native deliverables. Feed files and publication metadata are regenerated. */
+/** Compare the certified build deliverables. Feed files and publication metadata are regenerated. */
 export function assertPromotedBuildBytes(
   nightly: ReleaseBundleManifest,
   stable: ReleaseBundleManifest,
@@ -246,7 +246,13 @@ export function assertPromotedBuildBytes(
   ) {
     throw new Error("Stable and Nightly do not identify the same build.");
   }
-  const roles = new Set(["dmg", "sparkle-full", "windows-installer", "android-apk"]);
+  const roles = new Set([
+    "dmg",
+    "sparkle-full",
+    "components-manifest",
+    "windows-installer",
+    "android-apk",
+  ]);
   const binaries = nightly.assets.filter(({ role }) => roles.has(role));
   const promoted = stable.assets.filter(
     ({ role, name }) => roles.has(role) && !name.startsWith("Nodex-latest-"),

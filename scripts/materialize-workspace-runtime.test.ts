@@ -115,10 +115,15 @@ function createWorkspaceFixture(root: string, missingPythonPath?: string) {
   writeFileSync(
     lockPath,
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       distributionId: "fixture-python",
       pythonVersion: "3.13.15",
       pythonRelease: "fixture",
+      release: {
+        repository: "example/nodex",
+        tag: "workspace-runtime-vfixture-python",
+        assets: { "darwin-arm64": null },
+      },
       targets: {
         arm64: {
           python: python.asset,

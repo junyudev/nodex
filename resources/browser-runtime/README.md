@@ -1,6 +1,6 @@
 # Browser runtime release
 
-Nodex builds consume the Browser runtime exclusively through
+Nodex selects Desktop Tools through
 `browser-runtime.lock.json`. Each target pins an immutable archive by byte size
 and SHA-256, plus the manifest digest, source desktop build, Browser plugin
 version and component versions. When Windows uses a separately published
@@ -16,10 +16,16 @@ conformance-tested app-server/Browser artifact identity committed in
 `src/shared/browser-app-server-compatibility.mjs`; any untested combination
 fails closed.
 
-Manifest producers, runtime decoders, and macOS packaging hooks share the schema
-authority in `src/shared/browser-runtime-schema.mjs`. Packaging restoration and
-signature resealing require the current schema; they reject older and unknown
-schemas before modifying the runtime closure.
+The macOS app downloads the exact published arm64 archive as a Component
+into `<Profile>/components/desktop-tools/<archiveSha256>/browser-runtime`.
+The download verifies the locked archive and manifest before the installation
+becomes available. Windows installers include their target's verified closure.
+Development builds use the staged closure beside the checkout.
+
+Manifest producers, runtime decoders, and Windows packaging restoration share
+the schema authority in `src/shared/browser-runtime-schema.mjs`. The sealed
+Component carries the legal files listed in its artifact inventory, including
+package licenses and bundled third-party notices.
 
 The sealed closure includes unprivileged Browser and Computer Use clients plus
 their trusted Node REPL RPC services. Nodex enables only the named services for
@@ -97,10 +103,12 @@ Updating the runtime is an explicit maintainer workflow:
    that GitHub Latest remains the stable Nodex app release. Never use a bare
    `gh release create` for a Browser runtime release.
 
-7. Replace this lock atomically with the reviewed candidate only after the
-   published assets have been downloaded and reverified.
-8. Run the Browser runtime conformance test for the release artifact before
-   publishing a Nodex release.
+7. Replace this lock atomically with the reviewed candidate after downloading
+   and reverifying the published assets. Keep every pinned macOS archive
+   available for the support lifetime of the app releases that use it.
+8. Run the distribution conformance gate with the published archive
+   materialized into an isolated Component store and paired with the
+   packaged macOS app-server before publishing the app release.
 
 The vendor command requires an explicit source path. Normal builds select
 locked release assets.

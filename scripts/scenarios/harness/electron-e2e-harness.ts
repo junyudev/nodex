@@ -201,6 +201,8 @@ export async function launchNodexElectronApplication(
     windows: input.windows,
     executablePath,
     args: [
+      // Chromium's cookie encryption must also stay out of the host login keychain.
+      ...(input.isolatedHostHome && process.platform === "darwin" ? ["--use-mock-keychain"] : []),
       ...(input.isolatedHostHome
         ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]
         : []),
@@ -324,7 +326,7 @@ export interface ElectronHarnessInput {
   readonly executablePath?: string;
   readonly enabledFeatures?: readonly string[];
   readonly prepareAgentRuntime?: boolean;
-  /** Isolate Electron's home/Documents paths before Main captures its host configuration. */
+  /** Isolate Electron's home, Documents path and macOS Keychain before Main starts. */
   readonly isolateHostDirectories?: boolean;
   readonly windows?: E2eWindowPresentation;
   /** Opens on an empty Profile, as a person first starting Nodex does; others get one Project. */

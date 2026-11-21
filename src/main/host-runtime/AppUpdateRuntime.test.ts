@@ -6,6 +6,8 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../shared/types";
+import type { AppComponentUpdate } from "../app-components/AppComponentPrefetch";
+import { parseSparkleNativeEvent } from "../sparkle-native-binding";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import { layer as callbackRuntimeLayer } from "../app/ScopedCallbackRuntime";
 import type { AppUpdaterCheckKind, AppUpdaterEvent, AppUpdaterPlatform } from "../app-updater";
@@ -80,6 +82,7 @@ const buildHarness = (input: {
   Effect.gen(function* () {
     const updater = "updater" in input ? (input.updater ?? null) : new FakeUpdaterPlatform();
     const broadcasts: AppUpdateStatus[] = [];
+    const prefetches: AppComponentUpdate[] = [];
     let persistedSettings: AppUpdateSettings = {
       automaticChecksEnabled: true,
       channel: "stable",
@@ -125,6 +128,10 @@ const buildHarness = (input: {
     const context = yield* Layer.buildWithScope(
       layer({
         createUpdaterPlatform: () => updater,
+        prefetchUpdate: (update) =>
+          Effect.sync(() => {
+            prefetches.push(update);
+          }),
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -150,7 +157,7 @@ const buildHarness = (input: {
       (input.platform === "win32" || (input.inApplicationsFolder ?? true)) &&
       updater !== null;
     yield* waitUntil("app updater initialization", () => !supported || updater?.acquireCount === 1);
-    return { broadcasts, runtime, scope, updater };
+    return { broadcasts, prefetches, runtime, scope, updater };
   });
 
 it.effect("keeps unsupported runtimes offline", () =>
@@ -307,6 +314,39 @@ it.effect("distinguishes Nightly builds that have the same display version", () 
     });
     yield* Scope.close(harness.scope, Exit.void);
   }),
+);
+
+it.effect.each(["stable", "nightly"] as const)(
+  "schedules the %s manifest only when Sparkle supplies a verified enclosure",
+  (channel) =>
+    Effect.gen(function* () {
+      const harness = yield* buildHarness({});
+      yield* harness.runtime.updateSettings({ channel });
+      yield* harness.runtime.check;
+      const ready = { buildVersion: "1.25.24", type: "update-ready", version: "0.2.2" } as const;
+      const tag = channel === "stable" ? "v0.2.2" : "v0.2.2-nightly.20261111.2524";
+      const base = `https://github.com/junyudev/nodex/releases/download/${tag}/`;
+      harness.updater?.emit(parseSparkleNativeEvent(ready));
+      yield* waitUntil("download ready", () =>
+        harness.broadcasts.some(({ status }) => status === "downloaded"),
+      );
+      assert.deepEqual(harness.prefetches, []);
+      const asset =
+        channel === "stable" ? "Nodex-0.2.2-arm64.tar.xz" : "Nodex-1.25.23-to-0.2.2-arm64.delta";
+      harness.updater?.emit(
+        parseSparkleNativeEvent({ ...ready, verifiedEnclosureUrl: base + asset }),
+      );
+      yield* waitUntil("component prefetch scheduled", () => harness.prefetches.length === 1);
+      assert.deepEqual(harness.prefetches, [
+        {
+          buildVersion: ready.buildVersion,
+          version: ready.version,
+          manifestUrl: base + "Nodex-0.2.2-components-arm64.json",
+        },
+      ]);
+      assert.isTrue(yield* harness.runtime.install);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
 );
 
 it.effect("keeps a ready update stable against late progress", () =>

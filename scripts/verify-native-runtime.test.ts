@@ -23,7 +23,7 @@ import {
 import { NATIVE_RUNTIME_BINARY_PATHS, parseNativeRuntimeManifest } from "./native-runtime-manifest";
 import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
 import {
-  isPreservedBrowserRuntimeVendorCode,
+  isPreservedNodeRuntimeVendorCode,
   isPreservedCodexRuntimeVendorCode,
 } from "./sign-macos-runtime.mjs";
 import {
@@ -115,11 +115,14 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     );
     for (const artifactPath of codeObjects) {
       expect(isPreservedCodexRuntimeVendorCode(appPath, artifactPath)).toBe(false);
-      expect(isPreservedBrowserRuntimeVendorCode(appPath, artifactPath)).toBe(false);
+      expect(isPreservedNodeRuntimeVendorCode(appPath, artifactPath)).toBe(false);
     }
     const ripgrep = path.join(appPath, "Contents/Resources/codex-path/rg");
     expect(isPreservedCodexRuntimeVendorCode(appPath, ripgrep)).toBe(true);
     expect(codeObjects).not.toContain(ripgrep);
+    const node = path.join(appPath, "Contents/Resources/node-runtime/node");
+    expect(isPreservedNodeRuntimeVendorCode(appPath, node)).toBe(true);
+    expect(codeObjects).not.toContain(node);
   });
 
   test("parses boolean capabilities from codesign entitlement output", () => {

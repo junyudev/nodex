@@ -18,6 +18,7 @@ function createFixture(schemaVersion: number = BROWSER_RUNTIME_SCHEMA_VERSION): 
   packagedBrowserRoot: string;
   placeholderPath: string;
   sourceBrowserRoot: string;
+  windowsArch: "arm64";
 } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-after-pack-"));
   temporaryRoots.push(root);
@@ -41,11 +42,14 @@ function createFixture(schemaVersion: number = BROWSER_RUNTIME_SCHEMA_VERSION): 
       },
     ],
     schemaVersion,
+    targetPlatform: "win32",
+    targetArch: "arm64",
   };
   const manifestBytes = `${JSON.stringify(manifest)}\n`;
   fs.writeFileSync(path.join(sourceBrowserRoot, "browser-runtime-manifest.json"), manifestBytes);
   fs.writeFileSync(path.join(packagedBrowserRoot, "browser-runtime-manifest.json"), manifestBytes);
   return {
+    windowsArch: "arm64",
     packagedBrowserRoot,
     placeholderPath: path.join(packagedParent, ".gitkeep"),
     sourceBrowserRoot,
@@ -100,6 +104,7 @@ describe("restorePackagedBrowserRuntimeClosure", () => {
     fs.symlinkSync(
       path.join(fixture.sourceBrowserRoot, "runtime", "lib", "example"),
       packagedParent,
+      "junction",
     );
 
     expect(() => restorePackagedBrowserRuntimeClosure(fixture)).toThrow("is not a real directory");

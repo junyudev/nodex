@@ -11,6 +11,12 @@ import {
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import {
+  APP_COMPONENT_MANIFEST_MAX_BYTES,
+  appComponentManifestName,
+  appComponentManifestSchema,
+} from "../../src/shared/app-component-manifest";
+import { macComponentManifest } from "./components";
 
 import {
   buildIdentityOf,
@@ -46,11 +52,11 @@ import {
   type MobilePlatform,
 } from "./mobile";
 export type { MacArchitecture } from "./targets";
-export const RELEASE_BUNDLE_SCHEMA_VERSION = 6;
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 7;
 /** Bundles that carry every desktop target; schema 5 adds Nodex Mobile. */
-export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5, 6];
+export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5, 6, 7];
 /** Every bundle a published release may carry, back to the last macOS-only format. */
-export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5, 6];
+export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5, 6, 7];
 /** Where a bundle keeps its certified iOS build: TestFlight receives it, GitHub never does. */
 export const TESTFLIGHT_DIRECTORY = "testflight";
 
@@ -61,6 +67,7 @@ export interface ReleaseArtifactIdentity {
   readonly role:
     | "android-apk"
     | "windows-installer"
+    | "components-manifest"
     | "dmg"
     | "sparkle-appcast"
     | "sparkle-delta"
@@ -134,6 +141,7 @@ const SHA_PATTERN = /^[a-f0-9]{64}$/u;
 const ARTIFACT_ROLES = new Set<ReleaseArtifactIdentity["role"]>([
   "android-apk",
   "windows-installer",
+  "components-manifest",
   "dmg",
   "sparkle-appcast",
   "sparkle-delta",
@@ -289,7 +297,7 @@ type ReleaseHistoryBundle = Omit<
   ReleaseBundleManifest,
   "schemaVersion" | "architectures" | "mobile"
 > & {
-  readonly schemaVersion: 3 | 4 | 5 | 6;
+  readonly schemaVersion: 3 | 4 | 5 | 6 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
   readonly architectures: Readonly<Partial<ReleaseBundleManifest["architectures"]>>;
   readonly mobile?: ReleaseBundleManifest["mobile"];
 };
@@ -345,7 +353,8 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
   const current = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
-  const hasMobile = current || candidate.schemaVersion === 5;
+  const hasCertifiedMobile = current || candidate.schemaVersion === 6;
+  const hasMobile = hasCertifiedMobile || candidate.schemaVersion === 5;
   const architectures = macOnlyHistory ? (["arm64"] as const) : RELEASE_ARCHITECTURES;
   if (
     !(allowHistory ? RELEASE_HISTORY_SCHEMA_VERSIONS : [RELEASE_BUNDLE_SCHEMA_VERSION]).includes(
@@ -366,7 +375,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   }
   const version = normalizeReleaseVersion(candidate.version);
   const hasEmbeddedIdentity = candidate.releaseIdentity !== undefined;
-  const releaseIdentity = current
+  const releaseIdentity = hasCertifiedMobile
     ? parseReleaseIdentity(candidate.releaseIdentity)
     : (candidate.releaseIdentity ??
       legacyStableIdentity({
@@ -410,7 +419,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   assertSha(candidate.runtimeLocks.sparkleSha256, "Release Bundle Sparkle runtime lock");
   if (!macOnlyHistory)
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Release Bundle Node runtime lock");
-  const mobile = current
+  const mobile = hasCertifiedMobile
     ? parseMobileBuilds(candidate.mobile, buildIdentityOf(releaseIdentity))
     : undefined;
   const assets = candidate.assets.map(parseArtifact);
@@ -421,7 +430,9 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
     ...(releaseIdentity.channel === "stable"
       ? ([
           ["Nodex-latest-arm64.dmg", "dmg", "arm64"],
-          ...(current ? ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const) : []),
+          ...(hasCertifiedMobile
+            ? ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const)
+            : []),
         ] as const)
       : ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const)),
     [
@@ -436,6 +447,9 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       "sparkle-full",
       "arm64",
     ],
+    ...(current
+      ? ([[appComponentManifestName(version), "components-manifest", "arm64"]] as const)
+      : []),
     [`Nodex-${version}-appcast-arm64.xml`, "sparkle-appcast", "arm64"],
     [`Nodex-${version}-update-arm64.json`, "sparkle-update-manifest", "arm64"],
     ...(macOnlyHistory
@@ -489,7 +503,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   ) {
     throw new Error("Release Bundle is missing a required stable application asset.");
   }
-  if (current && releaseIdentity.channel === "stable") {
+  if (hasCertifiedMobile && releaseIdentity.channel === "stable") {
     const versioned = assets.find(({ name }) => name === `Nodex-${version}-arm64.dmg`);
     const alias = assets.find(({ name }) => name === "Nodex-latest-arm64.dmg");
     if (alias?.sha256 !== versioned?.sha256 || alias?.bytes !== versioned?.bytes) {
@@ -610,6 +624,15 @@ export function recordArchitectureBuild(options: {
     return artifactIdentity(target, role, options.architecture);
   });
 
+  const componentManifestPath = join(output, appComponentManifestName(version));
+  writeFileSync(
+    componentManifestPath,
+    `${JSON.stringify(macComponentManifest(buildIdentity), null, 2)}\n`,
+  );
+  artifacts.push(
+    artifactIdentity(componentManifestPath, "components-manifest", options.architecture),
+  );
+
   const preparedPath = join(cwd, ".generated/prepared-electron-build.json");
   const prepared = readJson(preparedPath) as {
     readonly generationId?: unknown;
@@ -681,6 +704,7 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
       ? [
           [`Nodex-${manifest.version}-${manifest.architecture}.dmg`, "dmg"],
           [sparkleFullArchiveName(manifest.version, manifest.architecture), "sparkle-full"],
+          [appComponentManifestName(manifest.version), "components-manifest"],
         ]
       : [[`Nodex-${manifest.version}-${manifest.architecture}.exe`, "windows-installer"]];
   if (manifest.architecture !== "arm64") {
@@ -737,6 +761,17 @@ export const readArchitectureDirectory = (directory: string): ArchitectureBuildM
     ) {
       throw new Error(`Architecture artifact ${artifact.name} does not match its manifest.`);
     }
+  }
+  if (manifest.architecture === "arm64") {
+    const file = join(root, appComponentManifestName(manifest.version));
+    if (lstatSync(file).size > APP_COMPONENT_MANIFEST_MAX_BYTES)
+      throw new Error("Components manifest is too large.");
+    const components = appComponentManifestSchema.parse(readJson(file));
+    if (
+      components.version !== manifest.version ||
+      components.buildVersion !== manifest.buildIdentity.buildVersion
+    )
+      throw new Error("Components manifest does not match its architecture build.");
   }
   return manifest;
 };
@@ -824,6 +859,7 @@ export function assembleReleaseBundle(options: {
     }
     copy(architectureRoot, `Nodex-${version}-${architecture}.dmg`, "dmg", architecture, undefined);
     copy(architectureRoot, fullName, "sparkle-full", architecture);
+    copy(architectureRoot, appComponentManifestName(version), "components-manifest", architecture);
     if (releaseIdentity.channel === "stable") {
       copy(
         architectureRoot,

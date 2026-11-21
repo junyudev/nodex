@@ -1,5 +1,8 @@
 import { hostCapabilities } from "./host-capabilities";
-import type { BrowserRuntimeBackend } from "./browser-runtime-metadata";
+import type {
+  BrowserRuntimeBackend,
+  BrowserRuntimeUnavailableReason,
+} from "./browser-runtime-metadata";
 
 export const BROWSER_USE_PEER_AUTHORIZATION_ENV = "CODEX_BROWSER_USE_PEER_AUTHORIZATION";
 
@@ -18,6 +21,7 @@ export type BrowserUseHostCapability =
   | {
       readonly availableBackends: readonly [];
       readonly message: string;
+      readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
       readonly peerAuthorizationMode: "disabled";
       readonly reason: BrowserUseHostCapabilityUnavailableReason;
       readonly status: "unavailable";
@@ -27,14 +31,18 @@ export function resolveBrowserUseHostCapability(input: {
   readonly windowsTransportReady?: boolean;
   readonly execution?: "local" | "remote" | "wsl";
   readonly browserRuntimeStatus: "available" | "unavailable";
+  readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
+  readonly browserRuntimeMessage?: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly isPackaged: boolean;
   readonly platform: NodeJS.Platform;
 }): BrowserUseHostCapability {
   if (input.browserRuntimeStatus === "unavailable") {
+    const { browserRuntimeUnavailableReason } = input;
     return {
       availableBackends: [],
-      message: "The verified Browser runtime is unavailable",
+      message: input.browserRuntimeMessage ?? "The verified Browser runtime is unavailable",
+      ...(browserRuntimeUnavailableReason && { browserRuntimeUnavailableReason }),
       peerAuthorizationMode: "disabled",
       reason: "runtime-unavailable",
       status: "unavailable",

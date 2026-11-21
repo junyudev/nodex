@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Choose which large parts of Nodex stay on your Mac. **Settings > General > Components** lists the parts that install after the app, with a switch to remove each one and get its space back: Desktop Tools (the Browser, your Chrome tabs and Computer Use for Agents), Claude Code (for Claude with an API key or Nodex credits) and Document Tools (Word, PowerPoint, Excel and PDF files for Agents).
+
 ### Changed
+
+- Nodex for Mac is half the size: the installer drops from about 600 MB to 300 MB and the app from 2.1 GB to 1.1 GB. Desktop Tools now download in the background after Nodex starts and work as soon as they arrive, with no restart. Claude Code and Document Tools download the first time you use them. Updates are about half the size too, and bring a new version of a part only when that part changed, fetching it before you restart.
 
 ### Fixed
 

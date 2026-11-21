@@ -1,3 +1,5 @@
+import { appComponentManifestName } from "../../src/shared/app-component-manifest";
+import { macComponentManifest } from "./components";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -133,9 +135,15 @@ export function makeReleaseFixture(root: string, channel: "stable" | "nightly" =
     [
       [`Nodex-${identity.version}-arm64.dmg`, "dmg"],
       [`Nodex-${identity.version}-arm64.tar.xz`, "sparkle-full"],
+      [appComponentManifestName(identity.version), "components-manifest"],
     ] as const
   ).map(([name, role]) => {
-    writeFileSync(join(arm64Directory, name), `macos:${name}`);
+    writeFileSync(
+      join(arm64Directory, name),
+      role === "components-manifest"
+        ? JSON.stringify(macComponentManifest(identity))
+        : `macos:${name}`,
+    );
     return { ...fileIdentity(arm64Directory, name), architecture: "arm64", role };
   });
   writeFileSync(

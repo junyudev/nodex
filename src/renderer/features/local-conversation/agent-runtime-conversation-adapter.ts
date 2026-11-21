@@ -3,6 +3,13 @@ import { formatComposerSkillDisplayName } from "../../../shared/composer-skill-d
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { agentRuntimeImageInputUnavailableMessage } from "../../../shared/agent-runtime-image-input";
 import { useModelPolicy } from "../model-policy/model-policy";
+import { APP_COMPONENTS_SETTINGS_ANCHOR } from "../app-components/app-components-settings-section";
+import { claudeCodeSetup, waitsForClaudeCode } from "../app-components/claude-code-setup";
+import {
+  runAppComponentChange,
+  subscribeClaudeCodeReadiness,
+  useAppComponents,
+} from "../app-components/use-app-components";
 import {
   buildSettingsAnchorPath,
   buildSettingsPath,
@@ -1102,6 +1109,11 @@ export function useAgentRuntimeConversationAdapter(input: {
   const queryClient = useQueryClient();
   const nodexAccount = useNodexAccount(true);
   const modelPolicyState = useModelPolicy();
+  const components = useAppComponents();
+  const hosted = isHostedChat();
+  const claudeCode = hosted
+    ? undefined
+    : components.state?.components.find(({ id }) => id === "claude-code");
   const [catalogState, setCatalogState] = useState<{
     providers: readonly AgentRuntimeProvider[];
     loading: boolean;
@@ -1125,6 +1137,12 @@ export function useAgentRuntimeConversationAdapter(input: {
     instances: input.instances,
     onReady: refreshCatalog,
   });
+  useEffect(() => {
+    if (hosted) return;
+    return subscribeClaudeCodeReadiness(() => {
+      setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
+    });
+  }, [hosted]);
   // A first message sent while the catalog is still loading waits for it to choose a model.
   const catalogLoad = useRef<Promise<readonly AgentRuntimeProvider[]> | null>(null);
   useEffect(
@@ -1320,7 +1338,9 @@ export function useAgentRuntimeConversationAdapter(input: {
   ): readonly AgentModelPickerEntry[] =>
     providers.flatMap((provider) => {
       const binding = bindingFor(provider.instanceId);
-      if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
+      if (!binding || (!isAgentRuntimeProviderAvailable(provider) && !waitsForClaudeCode(provider)))
+        return [];
+      const setup = claudeCodeSetup(provider, claudeCode, intl);
       return provider.models.map((model) => ({
         binding,
         spendsCredit: spendsNodexCredit(provider),
@@ -1331,6 +1351,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
         model: projectAgentRuntimeModel(provider, model),
         selection: { binding, model: model.slug },
+        ...(setup ? { unavailableReason: setup.title } : {}),
       }));
     });
   const draftSelectionFor = (providers: readonly AgentRuntimeProvider[]): AgentModelSelection => {
@@ -1482,14 +1503,16 @@ export function useAgentRuntimeConversationAdapter(input: {
       !nodexAccount.snapshot?.modelStatus?.models.some(
         (model) => model.id === entry.model.id && model.available,
       );
-    const unavailableReason = nodexUnavailable
-      ? intl.formatMessage({
-          id: "conversation.agentRuntimeConversationAdapter.temporarilyUnavailable",
-          defaultMessage: "Temporarily unavailable",
-        })
-      : candidate
-        ? displayRefusalFor(candidate, intl)
-        : null;
+    const unavailableReason =
+      entry.unavailableReason ??
+      (nodexUnavailable
+        ? intl.formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.temporarilyUnavailable",
+            defaultMessage: "Temporarily unavailable",
+          })
+        : candidate
+          ? displayRefusalFor(candidate, intl)
+          : null);
     return unavailableReason ? { ...entry, unavailableReason } : entry;
   });
   const policyForEntry = (entry: AgentModelPickerEntry) =>
@@ -1558,7 +1581,6 @@ export function useAgentRuntimeConversationAdapter(input: {
     true;
   // A hosted chat's history belongs to its Space host, which forks it for any Member who reads it
   // and rewinds it only to a message its reader sent, until Core has said which those are.
-  const hosted = isHostedChat();
   const skillInstance = agentRuntimeProviderId(selection.binding);
   const skillCwd = observed?.executionLocation?.cwd ?? input.workspaceRoot ?? null;
   const localSkills = !hosted && selection.binding.kind !== "codex" && skillInstance !== null;
@@ -1698,6 +1720,8 @@ export function useAgentRuntimeConversationAdapter(input: {
           : [];
         provider = providers.find((entry) => entry.instanceId === instanceId);
       }
+      const setup = claudeCodeSetup(provider, claudeCode, getIntl());
+      if (setup) throw new Error(setup.title);
       const model = provider?.models.find((entry) => entry.slug === candidate.model);
       // A hosted chat's sandbox belongs to its Space host, not this computer.
       if (
@@ -2187,6 +2211,23 @@ export function useAgentRuntimeConversationAdapter(input: {
   // A turned-on Codex or Claude that cannot run yet explains its missing models in the picker;
   // OpenCode and ACP Agents bring their own setup rows.
   // A hosted chat's Agents are its host's: this Device can neither sign in to nor set them up.
+  const openComponentSettings = () => {
+    void workbenchOwner.openRoute({
+      kind: "settings",
+      path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
+    });
+  };
+  const retryClaudeCode = () => components.retry("claude-code");
+  const managedClaudeSetup = hosted
+    ? null
+    : claudeCodeSetup(catalogState.providers.find(waitsForClaudeCode), claudeCode, intl);
+  const selectedClaudeSetup = claudeCodeSetup(provider, claudeCode, intl);
+  const selectedClaudeAction =
+    !hosted && selectedClaudeSetup?.action === "retry"
+      ? retryClaudeCode
+      : !hosted && selectedClaudeSetup?.action === "settings"
+        ? openComponentSettings
+        : null;
   const builtInSetups = (hosted ? [] : catalogState.providers).flatMap(
     (entry): AgentModelSetupPresentation[] => {
       const binding = isManagedRuntimeInstanceId(entry.instanceId)
@@ -2519,6 +2560,30 @@ export function useAgentRuntimeConversationAdapter(input: {
       chooseRuntime: () => {},
       manage: () => openSettingsFor(selection.binding),
       setups: [
+        ...(managedClaudeSetup
+          ? [
+              {
+                key: "claude-code",
+                kind: "claude" as const,
+                label: managedClaudeSetup.title,
+                hint: managedClaudeSetup.actionLabel,
+                tone:
+                  managedClaudeSetup.action === "retry"
+                    ? ("danger" as const)
+                    : ("default" as const),
+                action: managedClaudeSetup.action
+                  ? {
+                      kind: "open" as const,
+                      open:
+                        managedClaudeSetup.action === "settings"
+                          ? openComponentSettings
+                          : () =>
+                              void runAppComponentChange("claude-code", undefined, retryClaudeCode),
+                    }
+                  : undefined,
+              },
+            ]
+          : []),
         ...builtInSetups,
         ...(openCodeSetup.setup ? [openCodeSetup.setup] : []),
         ...acpSetup.setups,
@@ -2571,6 +2636,20 @@ export function useAgentRuntimeConversationAdapter(input: {
       else refreshCatalog();
     },
     notice: composerNotice,
+    sendGate: selectedClaudeSetup
+      ? {
+          unsentReason: selectedClaudeSetup.title,
+          notice: {
+            key: "claude-code",
+            title: selectedClaudeSetup.title,
+            tone: selectedClaudeSetup.action === "retry" ? "danger" : "warning",
+            actions:
+              selectedClaudeAction && selectedClaudeSetup.actionLabel
+                ? [{ label: selectedClaudeSetup.actionLabel, run: selectedClaudeAction }]
+                : [],
+          },
+        }
+      : null,
     backgroundTasks,
   };
   return {

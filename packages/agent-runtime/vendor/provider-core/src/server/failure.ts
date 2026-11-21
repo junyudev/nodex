@@ -109,7 +109,14 @@ function knownCause(cause: unknown): KnownCause {
         continue;
       }
       if (typeof cause !== "object") break;
-      switch ((cause as Record<string, unknown>)._tag) {
+      const tag = (cause as Record<string, unknown>)._tag;
+      if (
+        tag === "ClaudeCodeUnavailableError" ||
+        (tag === "ExecutionHostError" && stringField(cause, "code") === NODEX_FAILURE_CODES.claudeCodeUnavailable)
+      ) {
+        return { message: stringField(cause, "message"), code: NODEX_FAILURE_CODES.claudeCodeUnavailable, retryable: false };
+      }
+      switch (tag) {
         case "ModelPolicyError":
           return { message: stringField(cause, "message"), code: stringField(cause, "code"), retryable: false };
         case "ContextHandoffBudgetError":

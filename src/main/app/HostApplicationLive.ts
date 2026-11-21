@@ -106,13 +106,16 @@ import {
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { MainConfig } from "./MainConfig";
 import { CodexPlatform } from "../../host/ProviderPlatform";
+import type { VerifiedBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
 
 const workspaceRouting = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
     const config = yield* MainConfig;
     return workspaceRoutingLive({
-      browserRuntime: codex.runtime.browserRuntime,
+      get browserRuntime() {
+        return codex.runtime.browserRuntime;
+      },
       environment: config.environment,
     });
   }),
@@ -185,6 +188,11 @@ const chromeControl = Layer.unwrap(
         return codex.runtime.browserRuntime;
       },
       windowsBrowserReady: codex.windowsDesktopTools?.ready,
+      componentBrowserReady:
+        codex.runtime.browserRuntimeActivation?.source === "component" &&
+        codex.runtime.browserRuntime.status !== "available"
+          ? codex.runtime.browserRuntimeActivation.available.pipe(Effect.asVoid)
+          : undefined,
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
       windowsInstallationDirectory:
         config.isPackaged && platform === "win32" ? path.dirname(config.resourcesPath) : undefined,
@@ -254,14 +262,18 @@ const remoteHostedPipNative = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const browserRuntime = codex.runtime.browserRuntime;
+    const activation = codex.runtime.browserRuntimeActivation;
+    const addonLocation = (bundle?: VerifiedBrowserRuntimeBundle) => ({
+      expectedExports: bundle?.manifest.capabilities.nativePip?.exports.expectedExports ?? [],
+      verifiedAddonPath: bundle?.paths.skyNativeAddon ?? null,
+    });
     return remoteHostedPipNativePlatformLive({
-      expectedExports:
-        browserRuntime.status === "available"
-          ? (browserRuntime.bundle.manifest.capabilities.nativePip?.exports.expectedExports ?? [])
-          : [],
+      ...addonLocation(browserRuntime.status === "available" ? browserRuntime.bundle : undefined),
+      activateAddon:
+        browserRuntime.status === "unavailable" && activation?.source === "component"
+          ? activation.available.pipe(Effect.map(addonLocation))
+          : undefined,
       platform: config.platform as NodeJS.Platform,
-      verifiedAddonPath:
-        browserRuntime.status === "available" ? browserRuntime.bundle.paths.skyNativeAddon : null,
     });
   }),
 );

@@ -323,6 +323,7 @@ export function NodexSettingsSection({
   summary,
   action,
   disclosure,
+  footnote,
   children,
   cardClassName,
 }: {
@@ -339,6 +340,8 @@ export function NodexSettingsSection({
   action?: ReactNode;
   /** Makes the section a collapsible card whose header holds its title. */
   disclosure?: NodexSettingsDisclosureState;
+  /** Plain sections only: one quiet line under the card that holds for every row in it. */
+  footnote?: ReactNode;
   children: ReactNode;
   cardClassName?: string;
 }) {
@@ -386,6 +389,9 @@ export function NodexSettingsSection({
           ) : null}
           {children}
         </div>
+        {footnote ? (
+          <p className="px-4 text-xs leading-4 text-token-text-secondary">{footnote}</p>
+        ) : null}
       </div>
     </section>
   );

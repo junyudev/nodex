@@ -141,7 +141,10 @@ import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { keepViewedImage } from "../viewedImageCopy.ts";
-import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
+import {
+  checkClaudeCodeExecutable,
+  resolveClaudeSdkExecutablePath,
+} from "../../provider/Drivers/ClaudeExecutable.ts";
 import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
 import { selectedDesktopSkill } from "@nodex/provider-core/server/desktopToolInstructions";
 import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
@@ -1351,16 +1354,19 @@ export function makeClaudeQueryOptions(input: {
           ...(typeof querySettings === "object" && querySettings !== null ? querySettings : {}),
           autoCompactWindow: Number(input.settings.autoCompactWindow),
         } as ClaudeSdkSettings);
-  const executable = input.settings?.isolated ? undefined : input.settings?.binaryPath;
-  const hooks: ClaudeQueryOptions["hooks"] = executable
-    ? input.hooks
-    : {
-        ...input.hooks,
-        PreToolUse: [
-          ...(input.hooks?.PreToolUse ?? []),
-          { matcher: "Grep", hooks: [guardBundledClaudeGrep], onFailure: "block" },
-        ],
-      };
+  const executable = input.settings?.isolated
+    ? input.settings.claudeCode?.executable
+    : input.settings?.binaryPath;
+  const hooks: ClaudeQueryOptions["hooks"] =
+    !input.settings?.isolated && executable
+      ? input.hooks
+      : {
+          ...input.hooks,
+          PreToolUse: [
+            ...(input.hooks?.PreToolUse ?? []),
+            { matcher: "Grep", hooks: [guardBundledClaudeGrep], onFailure: "block" },
+          ],
+        };
   const options: ClaudeAgentSdkQueryOptions = {
     model: compiledSelection.apiModelId,
     tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
@@ -10041,6 +10047,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             turnInput.nativeThreadHasTurns ?? turnInput.providerTurnOrdinal > 1;
           const shouldResume =
             resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+          yield* checkClaudeCodeExecutable(adapterOptions.settings, identity !== undefined).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+          );
           const preparedThread = yield* prepareThread(turnInput);
           const environment = ExecutionHost.withWorkspaceEnvironment(
             adapterOptions.environment,

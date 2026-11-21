@@ -56,3 +56,5 @@ export {
   type BrowserUsePipSurface,
   type DesktopToolActivity,
 } from "@nodex/provider-core/server/desktopToolActivity";
+
+export { isolatedClaudeProbe, type ClaudeCodeReadiness } from "./ClaudeCodeReadiness.ts";

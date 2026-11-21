@@ -17165,22 +17165,38 @@ describe("ClaudeAdapterV2 query message stream", () => {
   );
 });
 
-it("uses the bundled SDK executable and excludes filesystem settings for isolated accounts", () => {
-  const options = ClaudeAdapterV2.makeClaudeQueryOptions({
-    modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-    nativeThreadId: "isolated",
-    resume: false,
-    cwd: null,
-    settings: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath: "/user/claude", isolated: true },
-    environment: {
-      ANTHROPIC_AUTH_TOKEN: "fixture-key",
-      CLAUDE_CONFIG_DIR: "/profile/account/claude",
-    },
-  });
-  assert.isUndefined(options.pathToClaudeCodeExecutable);
-  assert.deepEqual(options.settingSources, []);
-  assert.strictEqual(options.env?.CLAUDE_CONFIG_DIR, "/profile/account/claude");
-});
+it.each([undefined, "/profile/components/claude-code/pin/package/claude"])(
+  "selects the isolated SDK executable (%s) and excludes filesystem settings",
+  (executable) => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "isolated",
+      resume: false,
+      cwd: null,
+      settings: {
+        ...DEFAULT_CLAUDE_SETTINGS,
+        binaryPath: "/user/claude",
+        isolated: true,
+        ...(executable
+          ? {
+              claudeCode: {
+                executable,
+                removalMarker: "/profile/components/claude-code/.remove",
+                status: "ready",
+              },
+            }
+          : {}),
+      },
+      environment: {
+        ANTHROPIC_AUTH_TOKEN: "fixture-key",
+        CLAUDE_CONFIG_DIR: "/profile/account/claude",
+      },
+    });
+    assert.strictEqual(options.pathToClaudeCodeExecutable, executable);
+    assert.deepEqual(options.settingSources, []);
+    assert.strictEqual(options.env?.CLAUDE_CONFIG_DIR, "/profile/account/claude");
+  },
+);
 
 it("describes the native permission suggestions in the remembered approval option", () => {
   const presentation = ClaudeAdapterV2.claudeApprovalPresentation({

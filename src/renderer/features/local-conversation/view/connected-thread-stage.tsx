@@ -969,7 +969,7 @@ export function ConnectedThreadStageFooter({
   const reconnectingLong = useElapsed(reconnecting, CHAT_RECONNECTING_NOTICE_DELAY_MS);
   const failureShownInTranscript = body.emptyState.type === "threadAttachmentFailed";
   const sendGate = useMemo<ComposerSendGate | null>(() => {
-    if (activeThreadId === null || input.isNewThreadTab) return null;
+    if (activeThreadId === null || input.isNewThreadTab) return input.provider?.sendGate ?? null;
     return (
       worktreeSendGate ??
       chatConnectionSendGate({
@@ -978,13 +978,16 @@ export function ConnectedThreadStageFooter({
         reconnectingLong,
         failureShownInTranscript,
         retry: () => runtime.resume(activeThreadId),
-      })
+      }) ??
+      input.provider?.sendGate ??
+      null
     );
   }, [
     activeThreadId,
     attachmentState,
     failureShownInTranscript,
     input.isNewThreadTab,
+    input.provider?.sendGate,
     reconnectingLong,
     resumeState,
     runtime,

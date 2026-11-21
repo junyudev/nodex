@@ -2,6 +2,11 @@
 
 Nodex presents Browser Use, control of supported browser profiles, and Computer Use through one native desktop-control system. The task transcript remains the durable record; live screenshots, remote layers, native placement, and cursor state are bounded ephemeral projections owned by the Main process.
 
+On macOS, these Agent capabilities use the Desktop Tools Component installed in the
+Profile. New Agent execution can use Desktop Tools as soon as Nodex finishes
+verifying the installation. If the Component is removed while in use, Nodex
+releases its files the next time it starts.
+
 ## Availability
 
 The built-in Browser is available to local Agents on macOS and on Windows x64 and arm64 when the verified runtime and its transport are ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, not registered, registered elsewhere, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
@@ -14,7 +19,7 @@ registers for the duration of that launch and gives back its registration on
 clean exit if it still owns it. On macOS, disposable Electron scenarios use a
 registration home inside their own Profile. Windows scenarios leave HKCU untouched.
 
-Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution. Remote and WSL execution do not receive local desktop tools. Native picture-in-picture is available on macOS.
+Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the Desktop Tools runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. Desktop tools are available to local Agent execution. Remote and WSL execution do not receive local desktop tools. Native picture-in-picture is available on macOS.
 
 On Windows, Computer Use uses the verified helper for the installed architecture. A local Agent
 can request app access through the chat's normal approval flow. Windows Computer Use settings show

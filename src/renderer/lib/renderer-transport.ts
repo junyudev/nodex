@@ -62,6 +62,9 @@ export interface RendererTransport {
   subscribeProviderKeyChanges: (
     callback: (settings: import("../../shared/provider-keys").ProviderKeySettings) => void,
   ) => () => void;
+  subscribeAppComponentsChanges: (
+    callback: (state: import("../../shared/app-components").AppComponentsState) => void,
+  ) => () => void;
   subscribeOpenCodeSetupChanges: (
     callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,
   ) => () => void;

@@ -13,6 +13,7 @@ const desktopPrefixes = [
   "diagnostics:",
   "spaces:",
   "app-update:",
+  "app-components:",
   "windows-startup:",
   "nodex-account:",
   "keyboard:",

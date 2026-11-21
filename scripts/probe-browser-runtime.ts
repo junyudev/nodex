@@ -108,6 +108,7 @@ export type BrowserRuntimeProbeReport =
 
 export interface BrowserRuntimeProbeOptions {
   readonly resourcesPath?: string;
+  readonly componentHome?: string;
   readonly signal?: AbortSignal;
   /** Explicit tooling-only artifact pair under conformance; never used for product admission. */
   readonly conformanceCandidatePair?: TestedBrowserAppServerPair;
@@ -120,6 +121,7 @@ async function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeP
   const resourcesPath = options.resourcesPath?.trim();
   const runtime = await resolveCodexRuntime({
     signal: options.signal,
+    nodexHome: options.componentHome,
     isPackaged: Boolean(resourcesPath),
     ...(resourcesPath
       ? { resourcesPath: path.resolve(resourcesPath) }
@@ -808,14 +810,22 @@ if (isDirectExecution()) {
   if (resourcesPathIndex >= 0 && (!resourcesPath || resourcesPath.startsWith("--"))) {
     throw new Error("--resources-path requires a path to packaged Resources");
   }
+  const componentHomeIndex = arguments_.indexOf("--component-home");
+  const componentHome = componentHomeIndex < 0 ? undefined : arguments_[componentHomeIndex + 1];
+  if (
+    componentHomeIndex >= 0 &&
+    (!resourcesPath || !componentHome || componentHome.startsWith("--"))
+  )
+    throw new Error("--component-home requires a dedicated Component Profile and --resources-path");
+  const options = { resourcesPath, componentHome };
   runCodexProbeMain(
     Effect.gen(function* () {
       const report = yield* conformance
         ? probeBrowserRuntimeConformance(projectRoot, {
-            ...(resourcesPath ? { resourcesPath } : {}),
+            ...options,
             ...(browserOnly ? { computerUse: "skip" as const } : {}),
           })
-        : probeBrowserRuntimeStatic(projectRoot, resourcesPath ? { resourcesPath } : {});
+        : probeBrowserRuntimeStatic(projectRoot, options);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }),
   );

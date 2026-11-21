@@ -90,14 +90,12 @@ protocols:
 # --- macOS ---
 mac:
   extraResources:
-    - from: .generated/codex-runtime/agent-runtime/browser-runtime
-      to: browser-runtime
+    - from: .generated/node-runtime/darwin-arm64
+      to: node-runtime
       filter:
-        - "**/*"
-    - from: .generated/workspace-runtime/${arch}
-      to: workspace-runtime
-      filter:
-        - "**/*"
+        - node
+        - node-runtime.json
+        - LICENSE
     - from: resources/nodex-notification.aiff
       to: nodex-notification.aiff
     - from: .generated/codex-runtime/bin
@@ -148,9 +146,6 @@ mac:
     - Contents/Resources/bin/nodex-dictation-helper
     - Contents/Resources/bin/nodex-browser-profile-helper
     - Contents/Resources/bin/nodex-core
-    - Contents/Resources/browser-runtime/bin/codex
-    - Contents/Resources/browser-runtime/bin/node
-    - Contents/Resources/browser-runtime/bin/node_repl
     - Contents/Helpers/Nodex Service.app/Contents/MacOS/nodex-service
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.inherit.plist

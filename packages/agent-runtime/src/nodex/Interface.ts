@@ -1,3 +1,4 @@
+import type { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import type { ModelPolicy } from "../../../../src/shared/model-policy.ts";
 import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
@@ -1077,7 +1078,10 @@ export type AgentHostResult =
       readonly type: "host.result";
       readonly id: string;
       readonly success: false;
-      readonly error: { readonly message: string };
+      readonly error: {
+        readonly message: string;
+        readonly code?: typeof NODEX_FAILURE_CODES.claudeCodeUnavailable;
+      };
     };
 
 export type AgentRuntimeNotification =

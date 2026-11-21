@@ -1,6 +1,10 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useEffect, useState } from "react";
+import {
+  AppComponentRequirement,
+  useAppComponentRequirementDescription,
+} from "@/features/app-components/app-component-requirement";
 import { DeleteIcon } from "@/components/shared/icons";
 import { LockKeyhole, MonitorCog, Volume2 } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -69,6 +73,8 @@ type PendingComputerUseSetting =
 export interface ComputerUseSettingsViewProps {
   readonly pending: PendingComputerUseSetting;
   readonly snapshot: ComputerUseSettingsSnapshot;
+  /** Computer Use arrives with Desktop Tools; the owner reads again once they are installed. */
+  readonly onDesktopToolsInstalled?: () => void;
   readonly onSetWindowsEnabled?: (value: boolean) => void;
   readonly onRemoveAppApproval: (bundleIdentifier: string) => void;
   readonly onRemoveMessageApproval: (chatGuid: string) => void;
@@ -77,8 +83,16 @@ export interface ComputerUseSettingsViewProps {
   readonly onSetSoundMode: (value: ComputerUseSoundMode) => void;
 }
 
-function AvailabilityStatus({ snapshot }: { snapshot: ComputerUseSettingsSnapshot }) {
+function AvailabilityStatus({
+  snapshot,
+  onDesktopToolsInstalled,
+}: {
+  snapshot: ComputerUseSettingsSnapshot;
+  onDesktopToolsInstalled?: () => void;
+}) {
   const intl = useIntl();
+  if (snapshot.browserRuntimeUnavailableReason === "not-installed")
+    return <AppComponentRequirement id="desktop-tools" onInstalled={onDesktopToolsInstalled} />;
   return (
     <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
       <span
@@ -146,6 +160,7 @@ function AppApprovals({
 export function ComputerUseSettingsView({
   pending,
   snapshot,
+  onDesktopToolsInstalled,
   onSetWindowsEnabled,
   onRemoveAppApproval,
   onRemoveMessageApproval,
@@ -154,6 +169,7 @@ export function ComputerUseSettingsView({
   onSetSoundMode,
 }: ComputerUseSettingsViewProps) {
   const intl = useIntl();
+  const desktopToolsDescription = useAppComponentRequirementDescription("desktop-tools");
   if (snapshot.windows) {
     const { enabled } = snapshot.windows;
     return (
@@ -191,6 +207,7 @@ export function ComputerUseSettingsView({
   const selectedSoundMode =
     SOUND_MODE_OPTIONS.find((option) => option.value === snapshot.soundMode) ??
     SOUND_MODE_OPTIONS[0];
+  const needsDesktopTools = snapshot.browserRuntimeUnavailableReason === "not-installed";
 
   return (
     <NodexSettingsPageSurface
@@ -209,6 +226,7 @@ export function ComputerUseSettingsView({
         <NodexSettingsRow
           label={intl.formatMessage(settingsMessages.computerUseAnyApp)}
           description={
+            (needsDesktopTools ? desktopToolsDescription : null) ??
             snapshot.message ??
             intl.formatMessage({
               id: "settings.computerUse.letNodexControlAppsOnYour",
@@ -216,7 +234,10 @@ export function ComputerUseSettingsView({
             })
           }
         >
-          <AvailabilityStatus snapshot={snapshot} />
+          <AvailabilityStatus
+            snapshot={snapshot}
+            onDesktopToolsInstalled={onDesktopToolsInstalled}
+          />
         </NodexSettingsRow>
         {snapshot.lockedUseAllowed && snapshot.lockedUseEnabled !== null ? (
           <NodexSettingsRow
@@ -425,6 +446,9 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
       <ComputerUseSettingsView
         pending={pending}
         snapshot={snapshot}
+        onDesktopToolsInstalled={() =>
+          void readComputerUseSettings().then(setSnapshot, () => undefined)
+        }
         onSetWindowsEnabled={(value) =>
           mutate(
             "enabled",

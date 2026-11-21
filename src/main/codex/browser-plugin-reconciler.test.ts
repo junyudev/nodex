@@ -5,7 +5,10 @@ import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
 } from "./browser-runtime-test-fixture";
-import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
+import {
+  resolveBrowserRuntimeBundle,
+  type BrowserRuntimeAvailability,
+} from "./browser-runtime-bundle";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import {
   browserPluginRequestPortFromPromise,
@@ -25,6 +28,9 @@ function makeTestBrowserPluginReconciler(
 ) {
   return makeBrowserPluginReconciler({
     ...options,
+    get browserRuntime() {
+      return options.browserRuntime;
+    },
     client: browserPluginRequestPortFromPromise(options.client),
   });
 }
@@ -191,12 +197,25 @@ describe("BrowserPluginReconciler", () => {
         });
 
         try {
+          let runtime: BrowserRuntimeAvailability = {
+            status: "unavailable",
+            reason: "not-installed",
+            message: "Desktop Tools are not installed.",
+          };
           const reconciler = yield* makeTestBrowserPluginReconciler({
             availableBackends: () => availableBackends,
-            browserRuntime: fixture.browserRuntime,
+            get browserRuntime() {
+              return runtime;
+            },
             client: { request },
             runtimeStateHome: fixture.runtimeStateHome,
           });
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            status: "unavailable",
+            reason: "runtime-unavailable",
+          });
+          runtime = fixture.browserRuntime;
+          expect(yield* reconciler.result).toBeNull();
           expect(yield* reconciler.ensureInstalled).toMatchObject({
             status: "ready",
             enabled: true,

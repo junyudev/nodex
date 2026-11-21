@@ -23,13 +23,14 @@ export interface AgentModelPickerEntry {
 
 /** A runtime whose models become available after setup, offered beside the model list. */
 export interface AgentModelSetupPresentation {
+  readonly key?: string;
   readonly kind: AgentBackendBinding["kind"];
   readonly label: string;
   /** The next step or live state, such as `Install` or `42%`. */
-  readonly hint: string;
+  readonly hint?: string;
   readonly tone: "default" | "danger";
   /** `open` runs after the menu closes; `settings` routes through `manage`. */
-  readonly action:
+  readonly action?:
     | {
         readonly kind: "open";
         readonly open: (port: { readonly showModels: () => void }) => void;

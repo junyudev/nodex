@@ -21,6 +21,8 @@ import {
 } from "./bundle";
 import { readPublishedReleaseIndex, releaseAssetPaths } from "./github-release";
 import { buildIdentityOf, sha256File } from "./model";
+import { appComponentManifestName } from "../../src/shared/app-component-manifest";
+import { macComponentManifest } from "./components";
 import { projectReleaseAppcasts } from "./pages";
 import {
   NODEX_MACOS_TEAM_IDENTIFIER,
@@ -51,10 +53,16 @@ const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA)
   const artifactSpecs = [
     [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
     [`Nodex-${VERSION}-${architecture}.tar.xz`, "sparkle-full"],
+    [appComponentManifestName(VERSION), "components-manifest"],
   ] as const;
   const artifacts = artifactSpecs.map(([name, role]) => {
     const filePath = join(root, name);
-    writeFileSync(filePath, `${architecture}:${name}`);
+    writeFileSync(
+      filePath,
+      role === "components-manifest"
+        ? JSON.stringify(macComponentManifest(fixtureIdentity()))
+        : `${architecture}:${name}`,
+    );
     return {
       architecture,
       bytes: readFileSync(filePath).byteLength,
@@ -197,11 +205,12 @@ test("assembles the complete macOS and Windows signed release closure", () => {
     identity: fixtureIdentity(),
   });
 
-  expect(bundle.schemaVersion).toBe(6);
+  expect(bundle.schemaVersion).toBe(7);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
       `Nodex-${VERSION}-arm64.tar.xz`,
+      appComponentManifestName(VERSION),
       `Nodex-${VERSION}-update-arm64.json`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
       `Nodex-${VERSION}-arm64.dmg`,
@@ -217,6 +226,18 @@ test("assembles the complete macOS and Windows signed release closure", () => {
       ]),
     ].sort(),
   );
+  const componentName = appComponentManifestName(VERSION);
+  const componentDigest = sha256File(join(arm64, componentName));
+  expect(sha256File(join(output, componentName))).toBe(componentDigest);
+  expect(readFileSync(join(output, "SHA256SUMS"), "utf8")).toContain(
+    `${componentDigest}  ${componentName}\n`,
+  );
+  expect(() =>
+    parseReleaseBundleManifest({
+      ...bundle,
+      assets: bundle.assets.filter(({ name }) => name !== componentName),
+    }),
+  ).toThrow("missing a required");
   // The certified iOS build travels with the bundle for TestFlight, never as a public asset.
   expect(readFileSync(join(output, "testflight", `Nodex-${VERSION}-ios.ipa`), "utf8")).toBe(
     `ios:${VERSION}`,
@@ -300,7 +321,10 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
   };
   const history = {
     ...bundle,
-    assets: bundle.assets.map((asset) => (asset.role === "sparkle-full" ? zipAsset : asset)),
+    schemaVersion: 6,
+    assets: bundle.assets
+      .filter(({ role }) => role !== "components-manifest")
+      .map((asset) => (asset.role === "sparkle-full" ? zipAsset : asset)),
   };
   const bundlePath = join(output, "release-bundle.json");
   writeFileSync(bundlePath, JSON.stringify(history));
@@ -318,7 +342,7 @@ test("reads a published ZIP index and rejects ZIP for new releases", () => {
     bytes: zipAsset.bytes,
     sha256: zipAsset.sha256,
   });
-  expect(() => releaseAssetPaths(bundlePath)).toThrow("missing a required");
+  expect(() => releaseAssetPaths(bundlePath)).toThrow("manifest is invalid");
   for (const parse of [parseReleaseBundleManifest, parseReleaseHistoryBundle]) {
     expect(() => parse({ ...bundle, assets: [...bundle.assets, zipAsset] })).toThrow(
       "unsupported asset",
@@ -598,7 +622,9 @@ test("still reads published desktop-only bundles as history", () => {
     schemaVersion: 4,
     assets: current.assets.filter(
       ({ role, name }: { role: string; name: string }) =>
-        role !== "android-apk" && name !== `Nodex-${VERSION}-arm64.dmg`,
+        role !== "android-apk" &&
+        role !== "components-manifest" &&
+        name !== `Nodex-${VERSION}-arm64.dmg`,
     ),
   };
   expect(parseReleaseHistoryBundle(desktopOnly).mobile).toBeUndefined();

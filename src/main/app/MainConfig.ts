@@ -28,6 +28,7 @@ export const MainConfigValue = Schema.Struct({
   isolatedRunId: Schema.NullOr(Schema.String),
   isDefaultApp: Schema.Boolean,
   isPackaged: Schema.Boolean,
+  headless: Schema.optionalKey(Schema.Literal(true)),
   /** The compiled Nodex Markdown module this process's bundle ships. */
   markdownModulePath: Schema.String,
   nodexHome: Schema.String,

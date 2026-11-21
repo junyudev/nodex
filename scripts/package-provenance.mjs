@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
-  existsSync,
   lstatSync,
   openSync,
   readFileSync,
@@ -13,11 +12,14 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertDetachedRuntimeResources } from "./desktop-runtime-payload.mjs";
+import {
+  assertDetachedRuntimeResources,
+  assertMacDesktopToolsDetached,
+} from "./desktop-runtime-payload.mjs";
+import { assertMacDocumentToolsDetached } from "./installed-payload.mjs";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import {
   isTestedBrowserAppServerPair,
-  projectBrowserPeerRuntimeIdentity,
   projectBundledAppServerRuntimeIdentity,
 } from "../src/shared/browser-app-server-compatibility.mjs";
 import {
@@ -29,7 +31,7 @@ import {
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 8;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 10;
 const PREPARED_SCHEMA_VERSION = 4;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalAgentRuntimeLockPath = path.join(
@@ -54,7 +56,15 @@ const deviceCheckBridgeRelativePath = `${resourcesRelativePath}/native/nodex-dev
 const notificationBridgeRelativePath = `${resourcesRelativePath}/native/nodex-notifications.node`;
 const nativeManifestRelativePath = `${resourcesRelativePath}/bin/rust-core-runtime.json`;
 const agentManifestRelativePath = `${resourcesRelativePath}/agent-runtime.json`;
-const browserManifestRelativePath = `${resourcesRelativePath}/browser-runtime/browser-runtime-manifest.json`;
+const desktopToolsLockPath = path.join(
+  projectRoot,
+  "resources/browser-runtime/browser-runtime.lock.json",
+);
+const claudeCodeLockPath = path.join(projectRoot, "resources/agent-runtime/claude-code.lock.json");
+const documentToolsLockPath = path.join(
+  projectRoot,
+  "resources/workspace-runtime/workspace-runtime.lock.json",
+);
 const agentSkillsRelativePath = `${resourcesRelativePath}/agent-skills`;
 const sparkleManifestRelativePath = `${resourcesRelativePath}/native/sparkle-runtime.json`;
 const sparkleArtifactRelativePaths = {
@@ -309,27 +319,77 @@ const fileIdentity = (appPath, relativePath) => {
   };
 };
 
-const optionalFileIdentity = (appPath, relativePath) =>
-  existsSync(path.join(appPath, ...relativePath.split("/")))
-    ? fileIdentity(appPath, relativePath)
-    : null;
-
-const isBrowserRuntimeCompatible = (
-  browserManifest,
-  browserManifestSha256,
-  agentManifest,
-  testedPairs,
-) => {
-  if (browserManifest === null) return false;
-  try {
-    return isTestedBrowserAppServerPair(
-      projectBundledAppServerRuntimeIdentity(agentManifest),
-      projectBrowserPeerRuntimeIdentity(browserManifest, browserManifestSha256),
-      testedPairs,
+const inspectDesktopToolsPin = (appServer, testedPairs) => {
+  const lock = readJson(desktopToolsLockPath, "Desktop Tools release lock");
+  const asset = lock.assets["darwin-arm64"];
+  const pin = {
+    url: requireString(asset.url, "Desktop Tools URL"),
+    archiveSha256: requireSha256(asset.archiveSha256, "Desktop Tools archive SHA-256"),
+    archiveSize: requirePositiveSize(asset.archiveSize, "Desktop Tools archive size"),
+    manifestSha256: requireSha256(asset.manifestSha256, "Desktop Tools manifest SHA-256"),
+  };
+  if (
+    new URL(pin.url).protocol !== "https:" ||
+    (asset.archiveManifestSha256 && asset.archiveManifestSha256 !== pin.manifestSha256)
+  )
+    throw new Error(
+      "Desktop Tools lock must pin a published archive with the exact runtime manifest",
     );
-  } catch {
-    return false;
-  }
+  if (
+    !isTestedBrowserAppServerPair(
+      projectBundledAppServerRuntimeIdentity(appServer),
+      {
+        browserPluginVersion: lock.browserPluginVersion,
+        manifestSha256: pin.manifestSha256,
+        peerCliVersion: asset.runtimeVersions.codexCli,
+        targetArch: "arm64",
+        targetPlatform: "darwin",
+      },
+      testedPairs,
+    )
+  )
+    throw new Error("Pinned Desktop Tools and the packaged app-server are not a tested pair");
+  return pin;
+};
+
+const inspectClaudeCodePin = () => {
+  const lock = readJson(claudeCodeLockPath, "Claude Code release lock");
+  const asset = lock.assets["darwin-arm64"];
+  const version = requireString(lock.version, "Claude Code SDK version");
+  const url = `https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-${version}.tgz`;
+  if (asset.url !== url || asset.executable.path !== "package/claude")
+    throw new Error("Claude Code lock must pin the matching npm release and executable");
+  return {
+    version,
+    url,
+    archiveSha256: requireSha256(asset.archiveSha256, "Claude Code archive SHA-256"),
+    archiveSize: requirePositiveSize(asset.archiveSize, "Claude Code archive size"),
+    unpackedSize: requirePositiveSize(asset.unpackedSize, "Claude Code unpacked size"),
+    executable: {
+      path: asset.executable.path,
+      size: requirePositiveSize(asset.executable.size, "Claude Code executable size"),
+      sha256: requireSha256(asset.executable.sha256, "Claude Code executable SHA-256"),
+    },
+  };
+};
+
+const inspectDocumentToolsPin = () => {
+  const lock = readJson(documentToolsLockPath, "Document Tools release lock");
+  const asset = lock.release?.assets?.["darwin-arm64"];
+  if (lock.schemaVersion !== 2 || !asset?.url)
+    throw new Error("Document Tools lock must pin a published archive");
+  const assetName = `nodex-workspace-runtime-${lock.distributionId}-darwin-arm64.tar.gz`;
+  const url = `https://github.com/${lock.release.repository}/releases/download/${lock.release.tag}/${assetName}`;
+  if (asset.assetName !== assetName || asset.url !== url)
+    throw new Error("Document Tools archive URL and name differ from the release lock");
+  return {
+    assetName,
+    url,
+    archiveSha256: requireSha256(asset.archiveSha256, "Document Tools archive SHA-256"),
+    archiveSize: requirePositiveSize(asset.archiveSize, "Document Tools archive size"),
+    manifestSha256: requireSha256(asset.manifestSha256, "Document Tools manifest SHA-256"),
+    unpackedBytes: requirePositiveSize(asset.unpackedBytes, "Document Tools unpacked size"),
+  };
 };
 
 const contentsFileIdentity = (appPath, relativePath) => {
@@ -416,7 +476,10 @@ const parseSparkleRuntimeManifest = (value) => {
 
 export const writePackagedBuildProvenance = (appPath, options = {}) => {
   const resolvedAppPath = path.resolve(appPath);
-  assertDetachedRuntimeResources(path.join(resolvedAppPath, resourcesRelativePath));
+  const resourcesPath = path.join(resolvedAppPath, resourcesRelativePath);
+  assertMacDesktopToolsDetached(resourcesPath);
+  assertMacDocumentToolsDetached(resourcesPath);
+  assertDetachedRuntimeResources(resourcesPath);
   const preparedPath = path.join(resolvedAppPath, ...preparedRelativePath.split("/"));
   const prepared = parsePreparedManifest(
     readJson(preparedPath, "Packaged prepared Electron manifest"),
@@ -429,13 +492,6 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
     path.join(resolvedAppPath, ...agentManifestRelativePath.split("/")),
     "Packaged Agent runtime manifest",
   );
-  const browserManifestPath = path.join(resolvedAppPath, ...browserManifestRelativePath.split("/"));
-  const browserManifest = existsSync(browserManifestPath)
-    ? readJson(browserManifestPath, "Packaged Browser runtime manifest")
-    : null;
-  if (browserManifest === null) {
-    throw new Error("Packaged Browser runtime manifest is required");
-  }
   const sparkleManifestPath = path.join(resolvedAppPath, ...sparkleManifestRelativePath.split("/"));
   const sparkleManifest = parseSparkleRuntimeManifest(
     readJson(sparkleManifestPath, "Packaged Sparkle runtime manifest"),
@@ -482,16 +538,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
     nativeManifest.productVersion !== prepared.product.version ||
     agentManifest.targetPlatform !== "darwin" ||
     agentManifest.targetArch !== targetArch ||
-    sparkleManifest.architecture !== targetArch ||
-    (browserManifest !== null &&
-      (browserManifest.targetPlatform !== "darwin" ||
-        browserManifest.targetArch !== targetArch ||
-        !isBrowserRuntimeCompatible(
-          browserManifest,
-          sha256File(browserManifestPath),
-          agentManifest,
-          options.testedPairs,
-        )))
+    sparkleManifest.architecture !== targetArch
   ) {
     throw new Error("Packaged runtime targets do not agree");
   }
@@ -515,6 +562,9 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
       treeSha256: agentSkills.treeSha256,
     },
     agentRuntime: agentRuntime.identity,
+    desktopTools: inspectDesktopToolsPin(agentManifest, options.testedPairs),
+    claudeCode: inspectClaudeCodePin(),
+    documentTools: inspectDocumentToolsPin(),
     payload: {
       appAsar: fileIdentity(resolvedAppPath, appAsarRelativePath),
       clipboardBridge: fileIdentity(resolvedAppPath, clipboardBridgeRelativePath),
@@ -522,7 +572,6 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
       notificationBridge: fileIdentity(resolvedAppPath, notificationBridgeRelativePath),
       nativeRuntimeManifest: fileIdentity(resolvedAppPath, nativeManifestRelativePath),
       agentRuntimeManifest: fileIdentity(resolvedAppPath, agentManifestRelativePath),
-      browserRuntimeManifest: optionalFileIdentity(resolvedAppPath, browserManifestRelativePath),
       sparkle: {
         artifacts: sparkleArtifacts,
         updates: sparkleManifest.updates,
@@ -553,7 +602,10 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
 
 export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   const resolvedAppPath = path.resolve(appPath);
-  assertDetachedRuntimeResources(path.join(resolvedAppPath, resourcesRelativePath));
+  const resourcesPath = path.join(resolvedAppPath, resourcesRelativePath);
+  assertMacDesktopToolsDetached(resourcesPath);
+  assertMacDocumentToolsDetached(resourcesPath);
+  assertDetachedRuntimeResources(resourcesPath);
   const provenancePath = path.join(resolvedAppPath, ...provenanceRelativePath.split("/"));
   const value = readJson(provenancePath, "Packaged build provenance");
   assertExactKeys(
@@ -565,6 +617,9 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
       "preparedElectron",
       "agentSkills",
       "agentRuntime",
+      "desktopTools",
+      "claudeCode",
+      "documentTools",
       "payload",
       "provenanceId",
     ],
@@ -613,7 +668,6 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
       "notificationBridge",
       "nativeRuntimeManifest",
       "agentRuntimeManifest",
-      "browserRuntimeManifest",
       "sparkle",
     ],
     "Packaged payload",
@@ -644,17 +698,6 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     "agent-runtime.json",
     "Packaged Agent runtime manifest",
   );
-  const browserRuntimeManifest =
-    value.payload.browserRuntimeManifest === null
-      ? null
-      : parseFileIdentity(
-          value.payload.browserRuntimeManifest,
-          "browser-runtime/browser-runtime-manifest.json",
-          "Packaged Browser runtime manifest",
-        );
-  if (browserRuntimeManifest === null) {
-    throw new Error("Packaged Browser runtime manifest is required by provenance");
-  }
   assertExactKeys(
     value.payload.sparkle,
     ["artifacts", "updates", "feedUrls", "publicKey", "runtimeManifest", "sparkleVersion"],
@@ -745,16 +788,6 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     agentManifestRelativePath,
     "Packaged Agent runtime manifest",
   );
-  if (browserRuntimeManifest) {
-    verifyFileIdentity(
-      resolvedAppPath,
-      browserRuntimeManifest,
-      browserManifestRelativePath,
-      "Packaged Browser runtime manifest",
-    );
-  } else if (existsSync(path.join(resolvedAppPath, ...browserManifestRelativePath.split("/")))) {
-    throw new Error("Packaged Browser runtime manifest is not bound by provenance");
-  }
   verifyFileIdentity(
     resolvedAppPath,
     sparkleRuntimeManifest,
@@ -787,12 +820,13 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     throw new Error("Packaged Agent runtime identity does not match provenance");
   }
   const agentManifest = lockedAgentRuntime.metadata;
-  const browserManifest = browserRuntimeManifest
-    ? readJson(
-        path.join(resolvedAppPath, ...browserManifestRelativePath.split("/")),
-        "Packaged Browser runtime manifest",
-      )
-    : null;
+  const desktopTools = inspectDesktopToolsPin(agentManifest, options.testedPairs);
+  if (stableJson(value.desktopTools) !== stableJson(desktopTools))
+    throw new Error("Packaged Desktop Tools provenance differs from the release lock");
+  if (stableJson(value.claudeCode) !== stableJson(inspectClaudeCodePin()))
+    throw new Error("Packaged Claude Code provenance differs from the release lock");
+  if (stableJson(value.documentTools) !== stableJson(inspectDocumentToolsPin()))
+    throw new Error("Packaged Document Tools provenance differs from the release lock");
   const sparkleManifest = parseSparkleRuntimeManifest(
     readJson(
       path.join(resolvedAppPath, ...sparkleManifestRelativePath.split("/")),
@@ -818,16 +852,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     sparkleManifest.updates !== value.payload.sparkle.updates ||
     JSON.stringify(sparkleManifest.feedUrls) !== JSON.stringify(value.payload.sparkle.feedUrls) ||
     sparkleManifest.publicKey !== value.payload.sparkle.publicKey ||
-    sparkleManifest.sparkleVersion !== value.payload.sparkle.sparkleVersion ||
-    (browserManifest !== null &&
-      (browserManifest.targetPlatform !== value.target.platform ||
-        browserManifest.targetArch !== value.target.arch ||
-        !isBrowserRuntimeCompatible(
-          browserManifest,
-          sha256File(path.join(resolvedAppPath, ...browserManifestRelativePath.split("/"))),
-          agentManifest,
-          options.testedPairs,
-        )))
+    sparkleManifest.sparkleVersion !== value.payload.sparkle.sparkleVersion
   ) {
     throw new Error("Packaged runtime target does not match provenance");
   }

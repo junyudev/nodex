@@ -1,6 +1,6 @@
 import type { TestedBrowserAppServerPair } from "../src/shared/browser-app-server-compatibility.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 8;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 10;
 
 export interface PackagedAgentRuntimeIdentity {
   readonly archiveSha256: string;
@@ -19,6 +19,24 @@ export interface PackagedAgentRuntimeIdentity {
 export interface PackagedBuildProvenance {
   readonly schemaVersion: typeof PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
   readonly agentRuntime: PackagedAgentRuntimeIdentity;
+  readonly desktopTools: {
+    readonly url: string;
+    readonly archiveSha256: string;
+    readonly archiveSize: number;
+    readonly manifestSha256: string;
+  };
+  readonly claudeCode: {
+    readonly version: string;
+    readonly url: string;
+    readonly archiveSha256: string;
+    readonly archiveSize: number;
+    readonly unpackedSize: number;
+    readonly executable: { readonly path: string; readonly size: number; readonly sha256: string };
+  };
+  readonly documentTools: PackagedBuildProvenance["desktopTools"] & {
+    readonly assetName: string;
+    readonly unpackedBytes: number;
+  };
   readonly product: {
     readonly name: string;
     readonly version: string;

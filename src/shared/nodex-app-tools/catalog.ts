@@ -34,7 +34,7 @@ export const appToolGroups = {
     {
       name: "load_workspace_dependencies",
       description:
-        "Read the verified bundled Node and Python executable paths, recommended Python arguments, and document library versions for creating and inspecting Word, PowerPoint, spreadsheet, PDF and image files. Returns unavailable when the managed bundle is absent or invalid; never substitutes system runtimes. Use the returned Python executable with -I -B to keep imports isolated and avoid bytecode writes.",
+        "Get the verified Node and Python paths and document library versions for Word, PowerPoint, spreadsheets, PDFs and images. Installs Document Tools on first use where offered. Retry shortly if the result is unavailable with reason installing. Use the returned Python with -I -B to isolate imports and avoid bytecode writes.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },

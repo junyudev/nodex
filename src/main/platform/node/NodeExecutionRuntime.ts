@@ -4,7 +4,6 @@ import {
   nodeRuntimeRelease,
   parseStandaloneNodeManifest,
 } from "../../../shared/node-runtime-metadata";
-import type { BrowserRuntimeAvailability } from "../../codex/browser-runtime-bundle";
 import { readRuntimeArtifactSha256 } from "./RuntimeArtifactVerification";
 
 export type NodeExecutionRuntime =
@@ -12,7 +11,7 @@ export type NodeExecutionRuntime =
       readonly status: "available";
       readonly executable: string;
       readonly version: string;
-      readonly source: "browser-bundle" | "standalone";
+      readonly source: "standalone";
     }
   | { readonly status: "unavailable"; readonly message: string };
 
@@ -21,22 +20,17 @@ export async function resolveNodeExecutionRuntime(input: {
   readonly platform: string;
   readonly architecture: string;
   readonly directory: string;
-  readonly browserRuntime: BrowserRuntimeAvailability;
   readonly release?: typeof nodeRuntimeRelease;
   readonly signal?: AbortSignal;
 }): Promise<NodeExecutionRuntime> {
   input.signal?.throwIfAborted();
-  if (input.platform === "darwin" && input.browserRuntime.status === "available")
-    return {
-      status: "available",
-      source: "browser-bundle",
-      executable: input.browserRuntime.bundle.paths.node,
-      version: input.browserRuntime.bundle.manifest.runtimeVersions.node,
-    };
-  if (input.platform !== "win32")
+  const { platform, architecture } = input;
+  if (platform !== "darwin" && platform !== "win32")
     return { status: "unavailable", message: "The verified Node execution runtime is unavailable" };
   try {
-    if (input.architecture !== "x64" && input.architecture !== "arm64")
+    if (architecture !== "x64" && architecture !== "arm64")
+      throw new Error("Unsupported standalone Node architecture");
+    if (platform === "darwin" && architecture !== "arm64")
       throw new Error("Unsupported standalone Node architecture");
     const directory = await fs.lstat(input.directory);
     const manifestPath = path.join(input.directory, "node-runtime.json");
@@ -51,7 +45,7 @@ export async function resolveNodeExecutionRuntime(input: {
       throw new Error("Standalone Node manifest must be a bounded regular file");
     const manifest = parseStandaloneNodeManifest(
       JSON.parse(await fs.readFile(manifestPath, { encoding: "utf8", signal: input.signal })),
-      input.architecture,
+      platform === "darwin" ? { platform, arch: "arm64" } : { platform, arch: architecture },
       input.release,
     );
     const executable = path.join(input.directory, manifest.executable);
@@ -59,6 +53,7 @@ export async function resolveNodeExecutionRuntime(input: {
     if (
       !binary.isFile() ||
       binary.isSymbolicLink() ||
+      (platform === "darwin" && (binary.mode & 0o111) === 0) ||
       binary.size !== manifest.size ||
       (await readRuntimeArtifactSha256(executable, input.signal)) !== manifest.sha256
     )

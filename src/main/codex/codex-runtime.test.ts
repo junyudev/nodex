@@ -9,9 +9,21 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import { it } from "@effect/vitest";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
-import { AGENT_RUNTIME_LAYOUT_VERSION } from "../../shared/codex-runtime-metadata";
-import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
+import {
+  BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+  BROWSER_RUNTIME_MANIFEST_FILENAME,
+} from "../../shared/browser-runtime-metadata";
+import {
+  AGENT_RUNTIME_LAYOUT_VERSION,
+  parseBundledAgentRuntimeMetadata,
+} from "../../shared/codex-runtime-metadata";
+import { projectBundledAppServerRuntimeIdentity } from "../../shared/browser-app-server-compatibility";
+import * as componentCatalog from "../app-components/AppComponentCatalog";
+import { appComponentRoot, setAppComponentTombstone } from "../app-components/AppComponentStore";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "./browser-runtime-test-fixture";
 import { resolveCodexRuntime, resolveCodexRuntimeEffect } from "./codex-runtime";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -192,7 +204,7 @@ describe("codex-runtime", () => {
       expect(runtime.appServerRuntimeVersion).toBe("0.152.0");
       expect(runtime.rootPath).toBe(fixture.resourcesPath);
       expect(runtime.browserRuntime).toMatchObject({
-        reason: "manifest-missing",
+        reason: "not-installed",
         status: "unavailable",
       });
       expect(runtime.missingBinaryMessage).toBe(
@@ -202,6 +214,121 @@ describe("codex-runtime", () => {
       fixture.cleanup();
     }
   });
+
+  it.effect("admits the verified Desktop Tools component once after startup", () =>
+    Effect.gen(function* () {
+      const fixture = makeBundledRuntimeFixture();
+      const componentPin = vi.spyOn(componentCatalog, "appComponentDefinition");
+      try {
+        const nodexHome = path.join(fixture.resourcesPath, "profile");
+        const definition = componentPin(
+          { platform: "darwin", arch: "arm64", isPackaged: true },
+          "desktop-tools",
+        );
+        const metadata = parseBundledAgentRuntimeMetadata(
+          JSON.parse(
+            fs.readFileSync(path.join(fixture.resourcesPath, "agent-runtime.json"), "utf8"),
+          ),
+        );
+        if (!definition || !metadata) throw new Error("Invalid runtime fixture");
+
+        const stagingRoot = path.join(fixture.resourcesPath, "staging");
+        const bundleRoot = path.join(stagingRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+        const manifest = writeBrowserRuntimeFixture(bundleRoot, {
+          codexCompatibilityVersion: metadata.appServerRuntimeVersion,
+        });
+        const conformanceCandidatePair = {
+          ...makeTestedBrowserAppServerPair({ bundleRoot, manifest }),
+          appServer: projectBundledAppServerRuntimeIdentity(metadata),
+        };
+        componentPin.mockReturnValue({
+          ...definition,
+          payload: {
+            kind: "desktop-tools",
+            manifestSha256: conformanceCandidatePair.browser.manifestSha256,
+          },
+        });
+        const verifyPlatformArtifact = vi.fn(async () => null);
+        const options = {
+          isPackaged: true,
+          platform: "darwin",
+          architecture: "arm64",
+          resourcesPath: fixture.resourcesPath,
+          nodexHome,
+          conformanceCandidatePair,
+          browserRuntimePlatformArtifactVerifier: verifyPlatformArtifact,
+        };
+        const runtime = yield* resolveCodexRuntimeEffect(options);
+        const activation = runtime.browserRuntimeActivation;
+        if (activation?.source !== "component") throw new Error("Missing component activation");
+        expect(runtime.browserRuntime).toMatchObject({
+          status: "unavailable",
+          reason: "not-installed",
+        });
+        expect(yield* activation.activate).toBe(runtime.browserRuntime);
+        expect(verifyPlatformArtifact).not.toHaveBeenCalled();
+        const waiting = yield* Effect.forkChild(activation.available);
+
+        const published = appComponentRoot(nodexHome, definition);
+        fs.mkdirSync(path.dirname(published), { recursive: true });
+        fs.renameSync(stagingRoot, published);
+        const publishedBundle = path.join(published, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+        const manifestPath = path.join(publishedBundle, BROWSER_RUNTIME_MANIFEST_FILENAME);
+        const lockedManifest = fs.readFileSync(manifestPath);
+        fs.appendFileSync(manifestPath, "\n");
+        expect(yield* activation.activate).toMatchObject({
+          status: "unavailable",
+          reason: "invalid-manifest",
+        });
+        fs.writeFileSync(manifestPath, lockedManifest);
+
+        const node = path.join(publishedBundle, manifest.entrypoints.node);
+        const lockedNode = fs.readFileSync(node);
+        fs.writeFileSync(node, Buffer.alloc(lockedNode.length));
+        expect(yield* activation.activate).toMatchObject({
+          status: "unavailable",
+          reason: "artifact-integrity",
+        });
+        expect(runtime.browserRuntime.status).toBe("unavailable");
+        fs.writeFileSync(node, lockedNode);
+        verifyPlatformArtifact.mockClear();
+
+        const [first, concurrent] = yield* Effect.all([activation.activate, activation.activate], {
+          concurrency: "unbounded",
+        });
+        expect(first).toMatchObject({ status: "available", bundle: { rootPath: publishedBundle } });
+        expect(concurrent).toBe(first);
+        expect(runtime.browserRuntime).toBe(first);
+        if (first.status !== "available") throw new Error(first.message);
+        expect(yield* Fiber.join(waiting)).toBe(first.bundle);
+        expect(yield* activation.available).toBe(first.bundle);
+        const checks = verifyPlatformArtifact.mock.calls.length;
+        expect(checks).toBeGreaterThan(0);
+        expect(yield* activation.activate).toBe(first);
+        expect(verifyPlatformArtifact).toHaveBeenCalledTimes(checks);
+
+        const restarted = yield* resolveCodexRuntimeEffect(options);
+        expect(restarted.browserRuntime).toMatchObject({
+          status: "available",
+          bundle: { rootPath: publishedBundle },
+        });
+        expect(verifyPlatformArtifact).toHaveBeenCalledTimes(checks * 2);
+
+        yield* Effect.promise(() => setAppComponentTombstone(nodexHome, "desktop-tools", true));
+        expect(yield* activation.activate).toBe(first);
+        expect(fs.existsSync(publishedBundle)).toBe(true);
+        const removed = yield* resolveCodexRuntimeEffect(options);
+        expect(removed.browserRuntime).toMatchObject({
+          status: "unavailable",
+          reason: "not-installed",
+        });
+        expect(fs.existsSync(publishedBundle)).toBe(false);
+      } finally {
+        componentPin.mockRestore();
+        fixture.cleanup();
+      }
+    }),
+  );
 
   test.each(["codex-code-mode-host", "codex-exec-server"])(
     "rejects a missing bundled %s",

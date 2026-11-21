@@ -1,0 +1,16 @@
+{
+  "version": "0.3.322",
+  "assets": {
+    "darwin-arm64": {
+      "url": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.322.tgz",
+      "archiveSize": 147737860,
+      "archiveSha256": "7b0c90817ff94002578389efd5280337cde9ecfc43115fc0f76d64ac4e6db128",
+      "unpackedSize": 323703048,
+      "executable": {
+        "path": "package/claude",
+        "size": 323702464,
+        "sha256": "a9d237949db816a0b7afd88a9a8e1df36b3a597a30f5a41d1c0539eb180a3450"
+      }
+    }
+  }
+}

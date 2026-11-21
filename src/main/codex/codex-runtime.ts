@@ -8,6 +8,8 @@ import {
 import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
+import * as Semaphore from "effect/Semaphore";
 import {
   AGENT_RUNTIME_METADATA_FILENAME,
   parseBundledAgentRuntimeMetadata,
@@ -21,12 +23,18 @@ import {
   resolveBrowserRuntimeBundle,
   type BrowserRuntimeAvailability,
   type BrowserRuntimePlatformArtifactVerifier,
+  type VerifiedBrowserRuntimeBundle,
 } from "./browser-runtime-bundle";
 import { createBrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-platform-verifier";
 import {
   resolveNodeExecutionRuntime,
   type NodeExecutionRuntime,
 } from "../platform/node/NodeExecutionRuntime";
+import { appComponentDefinition } from "../app-components/AppComponentCatalog";
+import {
+  installedAppComponentRoot,
+  prepareAppComponentStore,
+} from "../app-components/AppComponentStore";
 
 export type CodexRuntimeSource = "bundled" | "staged";
 
@@ -34,7 +42,12 @@ export type ResolvedCodexRuntime = {
   additionalSearchPaths: string[];
   binaryPath: string;
   readonly browserRuntime: BrowserRuntimeAvailability;
-  readonly prepareBrowserRuntime?: Effect.Effect<void, Cause.UnknownError>;
+  /** The one activation lane and readiness signal for runtimes that can appear after startup. */
+  readonly browserRuntimeActivation?: {
+    readonly source: "component" | "runtime-root";
+    readonly activate: Effect.Effect<BrowserRuntimeAvailability, Cause.UnknownError>;
+    readonly available: Effect.Effect<VerifiedBrowserRuntimeBundle>;
+  };
   nodeRuntime: NodeExecutionRuntime;
   appServerRuntimeVersion: string | null;
   metadataPath: string | null;
@@ -116,6 +129,9 @@ type ResolveCodexRuntimeOptions = {
   windowsBrowserRuntimeVerifier?: WindowsBrowserRuntimeVerifierPort;
   signal?: AbortSignal;
   isPackaged: boolean;
+  environment?: Readonly<Record<string, string | undefined>>;
+  nodexHome?: string;
+  appBuildVersion?: string;
   projectRootPath?: string;
   resourcesPath?: string;
 };
@@ -131,6 +147,9 @@ async function resolveRuntimeFromRoot(input: {
   missingBinaryMessage: string;
   runtimeRoot: string;
   nodeRuntimeRoot: string;
+  environment?: ResolveCodexRuntimeOptions["environment"];
+  nodexHome?: string;
+  appBuildVersion?: string;
   source: CodexRuntimeSource;
 }): Promise<ResolvedCodexRuntime> {
   const metadataPath = path.join(input.runtimeRoot, AGENT_RUNTIME_METADATA_FILENAME);
@@ -148,9 +167,14 @@ async function resolveRuntimeFromRoot(input: {
     throw new Error("Agent runtime target does not match this host.");
   await validateRuntimeArtifacts(input.runtimeRoot, metadata, input.signal);
   await validateRuntimeSearchPaths(input.runtimeRoot, metadata);
-  const loadBrowserRuntime = (signal?: AbortSignal) =>
+  const loadBrowserRuntime = (
+    runtimeRoot: string,
+    signal?: AbortSignal,
+    expectedManifestSha256?: string,
+  ) =>
     resolveBrowserRuntimeBundle({
       signal,
+      expectedManifestSha256,
       windowsVerifier: input.windowsBrowserRuntimeVerifier,
       appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
       platformArtifactVerifier:
@@ -158,37 +182,85 @@ async function resolveRuntimeFromRoot(input: {
         createBrowserRuntimePlatformArtifactVerifier({
           platform: metadata.targetPlatform as NodeJS.Platform,
         }),
-      runtimeRoot: input.runtimeRoot,
+      runtimeRoot,
       targetArch: metadata.targetArch as NodeJS.Architecture,
       targetPlatform: metadata.targetPlatform as NodeJS.Platform,
       testedPairs: input.conformanceCandidatePair ? [input.conformanceCandidatePair] : undefined,
     });
-  const deferred =
+  const target = {
+    platform: metadata.targetPlatform,
+    arch: metadata.targetArch,
+    isPackaged: input.source === "bundled",
+    environment: input.environment,
+  };
+  const component = appComponentDefinition(target, "desktop-tools");
+  const componentManifestSha256 =
+    component?.payload.kind === "desktop-tools" ? component.payload.manifestSha256 : undefined;
+  const store = input.nodexHome ? { home: input.nodexHome, target } : null;
+  const notInstalled = {
+    status: "unavailable",
+    reason: "not-installed",
+    message: "Install Desktop Tools to use Browser and Computer Use.",
+  } as const;
+  const loadComponent = async (signal?: AbortSignal): Promise<BrowserRuntimeAvailability> => {
+    if (!store) return notInstalled;
+    const root = await installedAppComponentRoot({ ...store, id: "desktop-tools", signal });
+    return root ? loadBrowserRuntime(root, signal, componentManifestSha256) : notInstalled;
+  };
+  if (component && store)
+    await prepareAppComponentStore({
+      ...store,
+      appBuildVersion: input.appBuildVersion,
+      signal: input.signal,
+    });
+  const deferredWindows =
     metadata.targetPlatform === "win32" ? input.deferWindowsBrowserRuntime : undefined;
-  let browserRuntime: BrowserRuntimeAvailability = deferred
+  let browserRuntime: BrowserRuntimeAvailability = deferredWindows
     ? {
         status: "unavailable",
         reason: "platform-verification-failed",
         message: "Windows Desktop Tool verification is pending",
       }
-    : await loadBrowserRuntime(input.signal);
-  const prepareBrowserRuntime = deferred
-    ? async (signal: AbortSignal) => {
-        try {
-          const result = await loadBrowserRuntime(signal);
-          if (result.status === "available") await deferred.verifyTransport(signal);
-          signal.throwIfAborted();
-          browserRuntime = result;
-        } catch (error) {
-          signal.throwIfAborted();
-          browserRuntime = {
-            status: "unavailable",
-            reason: "platform-verification-failed",
-            message: `Windows Desktop Tools could not initialize: ${String(error)}`,
-          };
+    : component
+      ? await loadComponent(input.signal)
+      : await loadBrowserRuntime(input.runtimeRoot, input.signal);
+  const loadDeferredWindows = async (signal: AbortSignal): Promise<BrowserRuntimeAvailability> => {
+    try {
+      const result = await loadBrowserRuntime(input.runtimeRoot, signal);
+      if (result.status === "available") await deferredWindows?.verifyTransport(signal);
+      return result;
+    } catch (error) {
+      signal.throwIfAborted();
+      return {
+        status: "unavailable",
+        reason: "platform-verification-failed",
+        message: `Windows Desktop Tools could not initialize: ${String(error)}`,
+      };
+    }
+  };
+  const available = Deferred.makeUnsafe<VerifiedBrowserRuntimeBundle>();
+  if (browserRuntime.status === "available")
+    Deferred.doneUnsafe(available, Effect.succeed(browserRuntime.bundle));
+  const activationGate = Semaphore.makeUnsafe(1);
+  const browserRuntimeActivation: ResolvedCodexRuntime["browserRuntimeActivation"] =
+    component || deferredWindows
+      ? {
+          source: component ? "component" : "runtime-root",
+          activate: activationGate.withPermits(1)(
+            Effect.gen(function* () {
+              if (browserRuntime.status === "available") return browserRuntime;
+              const result = yield* runRuntimeResolution(
+                component ? loadComponent : loadDeferredWindows,
+              );
+              if (result.status === "available" || deferredWindows) browserRuntime = result;
+              if (result.status === "available")
+                Deferred.doneUnsafe(available, Effect.succeed(result.bundle));
+              return result;
+            }),
+          ),
+          available: Deferred.await(available),
         }
-      }
-    : undefined;
+      : undefined;
   input.signal?.throwIfAborted();
   const primaryBinaryPath = path.join(input.runtimeRoot, ...metadata.entrypoint.split("/"));
   const nodeRuntime = await resolveNodeExecutionRuntime({
@@ -196,9 +268,8 @@ async function resolveRuntimeFromRoot(input: {
     architecture: metadata.targetArch,
     directory:
       input.source === "staged"
-        ? path.join(input.nodeRuntimeRoot, `win32-${metadata.targetArch}`)
+        ? path.join(input.nodeRuntimeRoot, `${metadata.targetPlatform}-${metadata.targetArch}`)
         : input.nodeRuntimeRoot,
-    browserRuntime,
     signal: input.signal,
   });
 
@@ -208,9 +279,7 @@ async function resolveRuntimeFromRoot(input: {
     get browserRuntime() {
       return browserRuntime;
     },
-    prepareBrowserRuntime: prepareBrowserRuntime
-      ? runRuntimeResolution(prepareBrowserRuntime)
-      : undefined,
+    browserRuntimeActivation,
     nodeRuntime,
     additionalSearchPaths: metadata.searchPaths.map((searchPath) =>
       path.join(input.runtimeRoot, ...searchPath.split("/")),
@@ -259,6 +328,9 @@ export async function resolveCodexRuntime(
       deferWindowsBrowserRuntime: options.deferWindowsBrowserRuntime,
       signal: options.signal,
       source: "staged",
+      environment: options.environment,
+      nodexHome: options.nodexHome,
+      appBuildVersion: options.appBuildVersion,
       runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "agent-runtime"),
       nodeRuntimeRoot: path.join(projectRootPath, ".generated", "node-runtime"),
       missingBinaryMessage:
@@ -280,6 +352,8 @@ export async function resolveCodexRuntime(
     deferWindowsBrowserRuntime: options.deferWindowsBrowserRuntime,
     signal: options.signal,
     source: "bundled",
+    nodexHome: options.nodexHome,
+    appBuildVersion: options.appBuildVersion,
     runtimeRoot: resourcesPath,
     nodeRuntimeRoot: path.join(resourcesPath, "node-runtime"),
     missingBinaryMessage: "Bundled agent runtime is missing or corrupted. Reinstall Nodex.",

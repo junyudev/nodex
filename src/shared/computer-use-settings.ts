@@ -1,3 +1,5 @@
+import type { BrowserRuntimeUnavailableReason } from "./browser-runtime-metadata";
+
 export const COMPUTER_USE_SOUND_MODES = [
   "foregroundClicks",
   "foregroundAndBackgroundClicks",
@@ -20,6 +22,7 @@ export type ComputerUseSettingsSnapshot = {
   readonly approvedApps: readonly ComputerUseApprovedApp[];
   readonly available: boolean;
   readonly message: string | null;
+  readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
 } & (
   | { readonly windows: { readonly enabled: boolean } }
   | {

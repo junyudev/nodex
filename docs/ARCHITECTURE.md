@@ -209,9 +209,10 @@ Runtime owns native retirement, the durable execution fence and episode reconcil
 continues to record facts. See [Coordinator Pause](product-specs/coordinator-behavior.md#pause).
 
 Stock-Node programs and their dependencies live as detached Resources, outside
-Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the packaged Claude SDK and its native executable.
-Main's native discovery and history adapters load that same verified dependency closure;
-configured Agent executables remain authoritative. Packaging invariants live in
+Electron ASAR and its unpacked companion. The standalone Agent Runtime and Main share the packaged Claude Agent SDK.
+On Apple silicon, Main admits Nodex-managed Claude Code through the Profile's
+[Components store](product-specs/components-behavior.md). Configured Agent executables
+remain authoritative for regular instances. Packaging invariants live in
 [the desktop runtime documentation](release-windows.md#runtime-closure).
 
 The Session set follows the execution store's conversations. The Store and the execution
@@ -400,8 +401,12 @@ their captured requesting Member and shared producers use Service Actors.
 The Desktop supplies typed ports for native Agent tools, submission presentation,
 application tools, image fitting, projection broadcasts and notification
 presentation. Browser, Computer Use, windows, tray, dialogs, renderer IPC and
-OS notifications remain Desktop resources. A missing notification presentation
-sink leaves the Core intent unclaimed. Portable content and Session tools share
+OS notifications remain Desktop resources. The Desktop verifies a standalone Node
+execution runtime on every supported platform and resolves the Desktop Tools
+Component from the Profile store on macOS.
+
+A missing notification presentation sink leaves the Core intent unclaimed.
+Portable content and Session tools share
 one application implementation. Native conversation observation, attachments,
 questions and controls are explicit desktop ports; the headless host advertises
 only supported tools and uses its sole Runtime writer for Session operations. The static host dependency check resolves
@@ -1389,7 +1394,7 @@ The Profile Scope owns one `DictationRuntime` for shared microphone authority, s
 
 Untrusted app model context has one writable owner in the originating Composer scope. Route composition exposes revocable recipient capabilities without copying attachment state. Ordinary submission and realtime Voice share that owner's claims; Voice retains its original committed scope across Thread presentation changes. The shared compiler projects validated app content into tool history, and Main admits Voice injection through the existing renderer-, host-, generation- and canonical-lifecycle-bound claim. A successful native acknowledgement consumes only the captured attachment values; later updates retain their own identity. Detailed behavior belongs to [Realtime Voice Behavior](product-specs/realtime-voice-behavior.md) and the [Thread transcript specification](product-specs/codex-thread-transcript-behavior.md).
 
-The Host Scope owns authenticated workspace routing independently of media. The routing Module can use the verified bundled runtime when the primary runtime lacks supported discovery, while retaining the primary account, host generation, and network/residency authority. Companion credentials and process resources remain confined to a short-lived Scope; renderers never receive its RPC or filesystem capability.
+The Host Scope owns authenticated workspace routing independently of media. The routing Module can use the verified Desktop Tools runtime when the primary runtime lacks supported discovery, while retaining the primary account, host generation, and network/residency authority. Companion credentials and process resources remain confined to a short-lived Scope; renderers never receive its RPC or filesystem capability.
 
 Platform adapters combine operating-system shortcut registration with modifier-release observation and clipboard-safe foreground paste. macOS also uses a narrowly scoped signed helper for bare modifiers and microphone routing; Windows supplies its own native boundary. Binding replacement is atomic and generation-stamped. The Profile Scope owns the helper/window resources and a single supervised recovery loop. Main gives the focused Nodex window a bounded, request-correlated handoff; that renderer's sole in-app router admits only a visible focus-owning Composer target before falling back to a separate non-activating BrowserWindow with a dictation-only preload. That auxiliary renderer cannot access Core, filesystem, Workbench, or general application IPC.
 

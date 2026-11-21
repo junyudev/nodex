@@ -115,9 +115,14 @@ A person can connect a model provider with their own API key: DeepSeek, Kimi, GL
 any other endpoint that serves the Anthropic Messages API, such as a team gateway. Providers with a
 China and an international service offer both; the form starts on the one matching the app's
 language. Each connection is a Profile-local Agent instance that Nodex declares itself: it runs on
-the Claude Code that ships with Nodex, pointed at the provider's endpoint, so nothing needs installing
-and the person's own Claude Code configuration, account and history are untouched. Its models are
-listed under the connection's name, with the provider's mark, and default on like any provider's.
+Nodex-managed Claude Code, pointed at the provider's endpoint and using its own configuration,
+account and history. Its models are listed under the connection's name, with the provider's mark,
+and default on like any provider's.
+
+On Apple silicon, enabling an API key connection or access to Claude models with Nodex credits
+requests the Claude Code Component in the background. These connections become ready when Claude
+Code finishes installing. If the Component is off, the connection points to **Settings → General →
+Components**. Regular Claude connections use the person's own executable.
 
 Connecting sends one model-list request with the key: to the endpoint's Anthropic-compatible list,
 then the provider's own list when that one does not answer. A refused key, an unreachable endpoint

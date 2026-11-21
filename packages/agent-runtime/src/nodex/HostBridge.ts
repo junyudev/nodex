@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -33,7 +34,10 @@ const Result = Schema.Union([
     type: Schema.Literal("host.result"),
     id: Schema.String,
     success: Schema.Literal(false),
-    error: Schema.Struct({ message: Schema.String }),
+    error: Schema.Struct({
+      message: Schema.String,
+      code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
+    }),
   }),
 ]);
 const pluginServer = Schema.Struct({
@@ -441,7 +445,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       waiter,
       new ExecutionHost.ExecutionHostError({
         operation: "host.callback",
-        message: result.error.message,
+        ...result.error,
       }),
     );
   });
