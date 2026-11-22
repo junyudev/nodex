@@ -154,6 +154,11 @@ OpenCode 的免费模型。
 - **iPhone 和 Android**：[TestFlight 公测](https://testflight.apple.com/join/Yz8Kpcty) 或 [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk)。
   Nodex Mobile 需要电脑上的 Nodex 保持运行。
 
+## 社区
+
+有问题、遇到 bug 或有想法，欢迎来 [Discord](https://discord.com/invite/9yRa5SUeDz) 或 QQ 群
+**1126214921**。在 Nodex 里，点左下角的菜单，打开“反馈与社区”即可找到它们。
+
 ## 文档
 
 [产品规格](docs/product-specs/nodex-product-spec.md) · [命令行](docs/CLI.md) ·

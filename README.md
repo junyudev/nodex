@@ -159,6 +159,12 @@ with OpenCode's free models.
 - **iPhone and Android**: [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty) or [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk). Nodex
   Mobile needs Nodex running on your computer.
 
+## Community
+
+Bring questions, bug reports and ideas to [Discord](https://discord.com/invite/9yRa5SUeDz) or the
+QQ group **1126214921**. Inside Nodex, both are under **Feedback & community** in the menu at the
+bottom-left corner.
+
 ## Documentation
 
 [Product specification](docs/product-specs/nodex-product-spec.md) ·
