@@ -128,6 +128,71 @@ describe("NodexOptionPicker", () => {
     expect(view.queryByRole("combobox", { name: "Search statuses" })).toBeNull();
   });
 
+  test("rows after the options scroll with them, join the arrow keys and can answer a search", async () => {
+    const connect = vi.fn();
+    const view = render(
+      <NodexOptionPicker
+        value="plan"
+        search="filter"
+        searchAriaLabel="Search statuses"
+        options={[
+          { value: "plan", label: "Plan" },
+          { value: "doing", label: "Doing" },
+        ]}
+        onValueChange={() => {}}
+        listEnd={({ matches }) =>
+          matches("Connect a tracker") ? (
+            <button type="button" onClick={connect}>
+              Connect a tracker
+            </button>
+          ) : null
+        }
+        triggerButton={trigger("Change status")}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Change status" }));
+      await settleAsyncRender();
+    });
+    const search = view.getByRole("combobox", { name: "Search statuses" });
+    const row = view.getByRole("button", { name: "Connect a tracker" });
+    // The row shares the options' scroller, and is not itself an option.
+    const listbox = view.getByRole("listbox");
+    expect(listbox.contains(row)).toBe(false);
+    expect(listbox.parentElement?.contains(row)).toBe(true);
+
+    await act(async () => {
+      fireEvent.keyDown(search, { key: "ArrowUp" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(row);
+    await act(async () => {
+      fireEvent.keyDown(row, { key: "ArrowUp" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(view.getByRole("option", { name: "Doing" }));
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement!, { key: "End" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(row);
+
+    // No option matches, and the row does: it stands in for the empty-search message.
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "tracker" } });
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("option")).toBeNull();
+    expect(view.queryByText("No matching options")).toBeNull();
+    expect(view.getByRole("button", { name: "Connect a tracker" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "nowhere" } });
+      await Promise.resolve();
+    });
+    expect(view.getByText("No matching options")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Connect a tracker" })).toBeNull();
+  });
+
   test("an owner that closes the picker also clears its query", async () => {
     function OwnedPicker() {
       const [open, setOpen] = useState(true);

@@ -140,8 +140,9 @@ test("moves from a fruitless model search to the installer and back to fresh fre
   await act(async () => userEvent.click(trigger));
   const initialSearch = await screen.findByRole("combobox", { name: "Search models" });
   await act(async () => userEvent.type(initialSearch, "free"));
-  await screen.findByText("No matching models");
+  // No model answers the search; the row that ends the list does, in place of an empty message.
   const installModels = await screen.findByRole("button", { name: "Free OpenCode models Install" });
+  expect(screen.queryByText("No matching models")).toBeNull();
   await act(async () => userEvent.click(installModels));
 
   // The menu closes before the dialog takes focus; opening shows the command without running it.

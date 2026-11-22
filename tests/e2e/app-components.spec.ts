@@ -414,7 +414,9 @@ test("Claude Code gates API-key models until installed and links to Components w
           const picker = page.locator("[data-starting-style], [data-ending-style]").filter({
             has: page.getByRole("combobox", { name: "Search models" }),
           });
-          const pickerContent = page.getByRole("listbox").locator("..");
+          const pickerContent = page
+            .locator('[data-slot="popover-content"]')
+            .filter({ has: search });
           await expect(picker).toHaveCount(0);
           await capture(page, pickerContent, directory, "06-claude-installing-picker");
           // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Claude Code downloads from npm and verifies the executable.

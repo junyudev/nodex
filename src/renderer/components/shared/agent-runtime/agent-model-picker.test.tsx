@@ -314,9 +314,22 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
     fireEvent.change(search, { target: { value: "free" } });
     await Promise.resolve();
   });
-  // Searching for free models finds setup before any installed model matches.
+  // A search no model matches is answered by the setup it names, after the list instead of
+  // beside it.
+  await view.findByRole("button", { name: "Free OpenCode models Install" });
+  expect(view.queryByRole("option")).toBeNull();
+  expect(view.queryByText("No matching models")).toBeNull();
+  await act(async () => {
+    fireEvent.change(search, { target: { value: "nothing here" } });
+    await Promise.resolve();
+  });
   await view.findByText("No matching models");
-  await click(view.getByRole("button", { name: "Free OpenCode models Install" }));
+  expect(view.queryByRole("button", { name: "Free OpenCode models Install" })).toBeNull();
+  await act(async () => {
+    fireEvent.change(search, { target: { value: "free" } });
+    await Promise.resolve();
+  });
+  await click(await view.findByRole("button", { name: "Free OpenCode models Install" }));
   await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
 

@@ -761,6 +761,12 @@ function NodexOptionTrailing({
   );
 }
 
+export interface NodexOptionPickerSearch {
+  readonly query: string;
+  /** Whether text answers the search, by the same rule that filters options. */
+  readonly matches: (text: string) => boolean;
+}
+
 export interface NodexOptionPickerProps {
   readonly triggerButton: ReactElement;
   readonly value: string;
@@ -777,6 +783,11 @@ export interface NodexOptionPickerProps {
   readonly title?: ReactNode;
   /** Scoped option controls and management actions share the picker's floating surface. */
   readonly footer?: ReactNode;
+  /**
+   * Rows that follow the options and scroll with them, such as the ways to get more options.
+   * A search calls it with what was typed; returning nothing leaves the search unanswered.
+   */
+  readonly listEnd?: (search: NodexOptionPickerSearch) => ReactNode;
   readonly emptyMessage?: ReactNode;
   readonly noResultsMessage?: ReactNode;
   readonly disabled?: boolean;
@@ -801,6 +812,7 @@ function NodexStaticOptionPicker({
   onValueChange,
   title,
   footer,
+  listEnd,
   emptyMessage,
   triggerButton,
   disabled,
@@ -860,6 +872,7 @@ function NodexStaticOptionPicker({
           </Fragment>
         ))
       )}
+      {listEnd?.({ query: "", matches: () => true })}
       {footer}
     </NodexDropdownMenu>
   );
@@ -880,17 +893,26 @@ const optionPickerSearchValue = (option: NodexOptionPickerOption): string =>
       .join(" "),
   );
 
+const optionPickerSearchMatcher = (query: string): ((text: string) => boolean) => {
+  const terms = normalizeOptionPickerSearchText(query).split(/\s+/u).filter(Boolean);
+  return (text) => {
+    const searchValue = normalizeOptionPickerSearchText(text);
+    return terms.every((term) => searchValue.includes(term));
+  };
+};
+
 const filterOptionPickerOptions = (
   options: readonly NodexOptionPickerOption[],
   query: string,
 ): readonly NodexOptionPickerOption[] => {
-  const terms = normalizeOptionPickerSearchText(query).split(/\s+/u).filter(Boolean);
-  if (terms.length === 0) return options;
-  return options.filter((option) => {
-    const searchValue = optionPickerSearchValue(option);
-    return terms.every((term) => searchValue.includes(term));
-  });
+  if (normalizeOptionPickerSearchText(query) === "") return options;
+  const matches = optionPickerSearchMatcher(query);
+  return options.filter((option) => matches(optionPickerSearchValue(option)));
 };
+
+/** Options and the rows after them are one column to the arrow keys. */
+const OPTION_PICKER_ROWS =
+  '[role="option"]:not(:disabled), [data-option-picker-list-end] button:not(:disabled)';
 
 function NodexFilterOptionButton({
   id,
@@ -965,6 +987,7 @@ function NodexFilterOptionPicker({
   searchTrailingContent,
   title,
   footer,
+  listEnd,
   emptyMessage,
   noResultsMessage,
   disabled = false,
@@ -988,7 +1011,7 @@ function NodexFilterOptionPicker({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const listboxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const open = controlledOpen ?? uncontrolledOpen;
   // Every close resets the search, including one requested by a controlling owner.
@@ -1002,6 +1025,11 @@ function NodexFilterOptionPicker({
     ? filterOptionPickerOptions(options, effectiveQuery)
     : options;
   const enabledOptions = filteredOptions.filter((option) => !option.disabled);
+  const end = listEnd?.({
+    query: effectiveQuery,
+    matches: optionPickerSearchMatcher(effectiveQuery),
+  });
+  const hasEnd = end !== null && end !== undefined && end !== false;
 
   const changeOpen = (next: boolean) => {
     if (controlledOpen === undefined) setUncontrolledOpen(next);
@@ -1016,13 +1044,8 @@ function NodexFilterOptionPicker({
     changeOpen(false);
   };
 
-  const focusOptionAt = (index: number) => {
-    const optionElements = listboxRef.current?.querySelectorAll<HTMLButtonElement>(
-      '[role="option"]:not(:disabled)',
-    );
-    if (!optionElements || optionElements.length === 0) return;
-    optionElements[Math.max(0, Math.min(index, optionElements.length - 1))]?.focus();
-  };
+  const rowElements = () =>
+    Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>(OPTION_PICKER_ROWS) ?? []);
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
@@ -1032,12 +1055,12 @@ function NodexFilterOptionPicker({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      focusOptionAt(0);
+      rowElements()[0]?.focus();
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      focusOptionAt(enabledOptions.length - 1);
+      rowElements().at(-1)?.focus();
       return;
     }
     if (event.key !== "Enter" || enabledOptions.length !== 1) return;
@@ -1045,12 +1068,10 @@ function NodexFilterOptionPicker({
     chooseOption(enabledOptions[0]!);
   };
 
-  const handleOptionKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const optionElements = Array.from(
-      listboxRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') ??
-        [],
-    );
-    const currentIndex = optionElements.indexOf(event.currentTarget);
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const optionElements = rowElements();
+    const currentIndex = optionElements.findIndex((row) => row.contains(event.target as Node));
+    if (currentIndex < 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       optionElements[(currentIndex + 1) % optionElements.length]?.focus();
@@ -1109,14 +1130,7 @@ function NodexFilterOptionPicker({
             trailingContent={searchTrailingContent}
           />
           <div
-            ref={listboxRef}
-            id={listboxId}
-            role="listbox"
-            aria-label={
-              typeof title === "string"
-                ? title
-                : intl.formatMessage({ id: "ui.dropdown.options", defaultMessage: "Options" })
-            }
+            ref={listRef}
             className={cn(
               "flex flex-col overflow-y-auto",
               contentMaxHeight === "halfViewport"
@@ -1126,26 +1140,50 @@ function NodexFilterOptionPicker({
                   : "max-h-[250px]",
             )}
           >
-            {options.length === 0 ? (
-              <NodexDropdownMessage compact>{emptyMessage}</NodexDropdownMessage>
-            ) : filteredOptions.length === 0 ? (
-              <NodexDropdownMessage compact>{noResultsMessage}</NodexDropdownMessage>
-            ) : (
-              filteredOptions.map((option, index) => (
-                <Fragment key={option.value}>
-                  {option.group && filteredOptions[index - 1]?.group !== option.group ? (
-                    <NodexDropdownTitle>{option.group}</NodexDropdownTitle>
-                  ) : null}
-                  <NodexFilterOptionButton
-                    id={`${listboxId}-option-${index}`}
-                    option={option}
-                    selected={option.value === value}
-                    onKeyDown={handleOptionKeyDown}
-                    onSelect={() => chooseOption(option)}
-                  />
-                </Fragment>
-              ))
-            )}
+            <div
+              id={listboxId}
+              role="listbox"
+              aria-label={
+                typeof title === "string"
+                  ? title
+                  : intl.formatMessage({ id: "ui.dropdown.options", defaultMessage: "Options" })
+              }
+              className="flex flex-col"
+            >
+              {options.length === 0 ? (
+                <NodexDropdownMessage compact>{emptyMessage}</NodexDropdownMessage>
+              ) : filteredOptions.length > 0 ? (
+                filteredOptions.map((option, index) => (
+                  <Fragment key={option.value}>
+                    {option.group && filteredOptions[index - 1]?.group !== option.group ? (
+                      <NodexDropdownTitle>{option.group}</NodexDropdownTitle>
+                    ) : null}
+                    <NodexFilterOptionButton
+                      id={`${listboxId}-option-${index}`}
+                      option={option}
+                      selected={option.value === value}
+                      onKeyDown={handleRowKeyDown}
+                      onSelect={() => chooseOption(option)}
+                    />
+                  </Fragment>
+                ))
+              ) : hasEnd ? null : (
+                // A row after the options can answer a search that no option does.
+                <NodexDropdownMessage compact>{noResultsMessage}</NodexDropdownMessage>
+              )}
+            </div>
+            {hasEnd ? (
+              <div
+                data-option-picker-list-end=""
+                className="flex flex-col"
+                onKeyDown={handleRowKeyDown}
+              >
+                {options.length === 0 || filteredOptions.length > 0 ? (
+                  <NodexDropdownSeparator />
+                ) : null}
+                {end}
+              </div>
+            ) : null}
           </div>
           {footer}
         </NodexPopoverContent>

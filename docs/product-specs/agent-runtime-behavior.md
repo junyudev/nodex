@@ -768,8 +768,9 @@ Each problem offers at most one next step for that surface, such as `Sign in`, `
 
 Only the Agent a chat runs on, or one the person chose, raises a standing readiness notice.
 A new chat without a choice asks the person to connect an Agent when nothing can run. The picker
-keeps setup available for turned-on Agents and describes the install state of any models they
-already offered. A Component in progress can hold a selected send while leaving the choice in
+keeps setup available for turned-on Agents as rows that end its model list and scroll with it, so
+they take no room from the models; a search that names an Agent finds its setup even when no model
+matches. The picker also describes the install state of any models those Agents already offered. A Component in progress can hold a selected send while leaving the choice in
 place. An unchecked sign-in alone leaves sending available.
 
 A started chat always shows its composer; only a request that needs an answer takes its

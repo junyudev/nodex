@@ -44,8 +44,9 @@ links to its prices and Top up.
 An off provider is one quiet line, and turning it back on restores each model's own switch.
 With Nodex off the card reads `Off. Nothing on this computer can spend your credits.`
 
-A model picker lists only models that are on. The composer's picker adds a row counting what
-is off, which opens Settings → Models, and its gear opens the same page. Searching also finds
+A model picker lists only models that are on. The composer's picker ends its list with a row
+counting what is off, which opens Settings → Models, and its gear opens the same page. The row
+scrolls with the models rather than holding a place below them. Searching also finds
 off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
 Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
 A whole provider that is off returns only from Settings. Other pickers, such as Inbox,

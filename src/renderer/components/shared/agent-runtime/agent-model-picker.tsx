@@ -436,61 +436,76 @@ export function AgentModelPickerView({
         }
         void run(() => models.choose(choice));
       }}
+      // What is off or not set up follows the models and scrolls with them, so it never takes
+      // room from the list. A search that names an Agent still finds its setup.
+      listEnd={({ query, matches }) => {
+        const searching = query.trim() !== "";
+        const shown = searching ? setups.filter((setup) => matches(setup.label)) : setups;
+        // A search already lists the off models it matches, so the count answers nothing more.
+        const off = !searching && offCount > 0 && catalog.manageModels !== undefined;
+        if (!off && shown.length === 0) return null;
+        return (
+          <>
+            {off ? (
+              <NodexDropdownActionRow
+                disabled={pending}
+                onClick={() => {
+                  afterClose.current = () => catalog.manageModels?.();
+                  changeOpen(false);
+                }}
+              >
+                <span className="text-token-description-foreground">
+                  {intl.formatMessage(
+                    {
+                      id: "components.agentModelPicker.offCount",
+                      defaultMessage: "{count, plural, one {# model off} other {# models off}}",
+                    },
+                    { count: offCount },
+                  )}
+                </span>
+              </NodexDropdownActionRow>
+            ) : null}
+            {shown.map((setup) => (
+              <NodexDropdownActionRow
+                key={setup.key ?? setup.instanceId ?? `${setup.kind}:${setup.label}`}
+                className="items-center gap-1.5"
+                disabled={pending || !setup.action}
+                onClick={() => {
+                  const { action } = setup;
+                  if (!action) return;
+                  afterClose.current =
+                    action.kind === "settings"
+                      ? (catalog.manage ?? null)
+                      : () =>
+                          action.open({
+                            // Setup returns to the model list; the choice is unchanged.
+                            showModels: () => changeOpen(true),
+                          });
+                  changeOpen(false);
+                }}
+              >
+                <AgentProviderIcon
+                  kind={setup.kind}
+                  className="size-3.5 text-token-text-secondary"
+                />
+                <span className="min-w-0 truncate">{setup.label}</span>{" "}
+                {setup.hint ? (
+                  <span
+                    className={cn(
+                      "ms-auto shrink-0 ps-2 text-xs tabular-nums",
+                      setup.tone === "danger" ? "text-danger" : "text-token-description-foreground",
+                    )}
+                  >
+                    {setup.hint}
+                  </span>
+                ) : null}
+              </NodexDropdownActionRow>
+            ))}
+          </>
+        );
+      }}
       footer={
         <>
-          {offCount > 0 || setups.length > 0 ? <NodexDropdownSeparator /> : null}
-          {offCount > 0 && catalog.manageModels ? (
-            <NodexDropdownActionRow
-              disabled={pending}
-              onClick={() => {
-                afterClose.current = () => catalog.manageModels?.();
-                changeOpen(false);
-              }}
-            >
-              <span className="text-token-description-foreground">
-                {intl.formatMessage(
-                  {
-                    id: "components.agentModelPicker.offCount",
-                    defaultMessage: "{count, plural, one {# model off} other {# models off}}",
-                  },
-                  { count: offCount },
-                )}
-              </span>
-            </NodexDropdownActionRow>
-          ) : null}
-          {setups.map((setup) => (
-            <NodexDropdownActionRow
-              key={setup.key ?? setup.instanceId ?? `${setup.kind}:${setup.label}`}
-              className="items-center gap-1.5"
-              disabled={pending || !setup.action}
-              onClick={() => {
-                const { action } = setup;
-                if (!action) return;
-                afterClose.current =
-                  action.kind === "settings"
-                    ? (catalog.manage ?? null)
-                    : () =>
-                        action.open({
-                          // Setup returns to the model list; the choice is unchanged.
-                          showModels: () => changeOpen(true),
-                        });
-                changeOpen(false);
-              }}
-            >
-              <AgentProviderIcon kind={setup.kind} className="size-3.5 text-token-text-secondary" />
-              <span className="min-w-0 truncate">{setup.label}</span>{" "}
-              {setup.hint ? (
-                <span
-                  className={cn(
-                    "ms-auto shrink-0 ps-2 text-xs tabular-nums",
-                    setup.tone === "danger" ? "text-danger" : "text-token-description-foreground",
-                  )}
-                >
-                  {setup.hint}
-                </span>
-              ) : null}
-            </NodexDropdownActionRow>
-          ))}
           {props.additionalValue === undefined ? (
             <>
               {hasOptions ? <NodexDropdownSeparator /> : null}
