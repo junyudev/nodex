@@ -19,6 +19,7 @@ import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ElectronNet, type readDesktopBootstrapMetadata } from "./ElectronNet";
 import { makeDictationLiveValues } from "../../dictation/DictationLiveValues";
+import { statsigNameHash } from "../../dictation/DictationPolicyState";
 import type { DictationGateValues } from "../../dictation/DictationPolicyState";
 import type { RealtimeVoiceGateValues } from "../../dictation/RealtimeVoicePolicyState";
 import { isDeepStrictEqual } from "node:util";
@@ -29,6 +30,60 @@ const REQUEST_TIMEOUT_MS = 5_000;
 const RETRY_BASE_MS = 30_000;
 const RETRY_MAX_MS = 300_000;
 const BaselinePayload = Schema.Struct({ has_updates: Schema.Literal(true) });
+/** The only gates and dynamic configs Nodex reads; a policy payload carries thousands. */
+const POLICY_GATES = ["4100906017", "770071981", "2380644311", "1697652030", "206132468"];
+const POLICY_CONFIGS = ["3845962714", "1193530394", "3566525122"];
+const policyKeys = new Set(
+  [...POLICY_GATES, ...POLICY_CONFIGS].flatMap((name) => [name, statsigNameHash(name)]),
+);
+const pickPolicyEntries = (entries: unknown) =>
+  entries !== null && typeof entries === "object"
+    ? Object.fromEntries(Object.entries(entries).filter(([key]) => policyKeys.has(key)))
+    : entries;
+/**
+ * Keeps what live evaluation reads of a baseline or live overlay: the cursor, the refresh interval
+ * and Nodex's own gates and configs. Dropping the rest keeps megabytes of other products' policy
+ * out of Main for as long as it runs.
+ */
+const policyValues = (payload: unknown): unknown => {
+  if (payload === null || typeof payload !== "object") return payload;
+  const value = payload as Record<string, unknown>;
+  const names = value.live_entity_names as Record<string, unknown> | undefined;
+  return {
+    ...Object.fromEntries(
+      [
+        "time",
+        "derived_fields",
+        "full_checksum",
+        "has_updates",
+        "response_format",
+        "response_mode",
+        "sdk_configs",
+      ].flatMap((key) => (Object.hasOwn(value, key) ? [[key, value[key]]] : [])),
+    ),
+    ...(names && typeof names === "object"
+      ? {
+          live_entity_names: Object.fromEntries(
+            Object.entries(names).map(([kind, list]) => [
+              kind,
+              Array.isArray(list) ? list.filter((name) => policyKeys.has(String(name))) : list,
+            ]),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "feature_gates")
+      ? { feature_gates: pickPolicyEntries(value.feature_gates) }
+      : {}),
+    ...(Object.hasOwn(value, "dynamic_configs")
+      ? { dynamic_configs: pickPolicyEntries(value.dynamic_configs) }
+      : {}),
+  };
+};
+interface PolicyBaseline {
+  readonly gates: Readonly<Record<string, boolean>>;
+  readonly configs: Readonly<Record<string, unknown>>;
+}
+const emptyBaseline: PolicyBaseline = { gates: {}, configs: {} };
 const Primitive = Schema.Union([
   Schema.String,
   Schema.Finite,
@@ -166,18 +221,49 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     systemName: input.metadata.system_name,
     systemVersion: input.metadata.system_version ?? undefined,
   });
-  const client = new StatsigClient(SDK_KEY, input.user, options);
-  yield* Effect.addFinalizer(() => Effect.promise(() => client.shutdown()));
-  client.initializeSync({ disableBackgroundCacheRefresh: true });
+  let baseline = emptyBaseline;
   let initialized = false;
   let overlay = makeDictationLiveValues(undefined);
-  const evaluate = (live = overlay): DictationGateValues => {
-    const gate = (name: string) =>
-      live.gate(name, client.getFeatureGate(name, { disableExposureLog: true })?.value ?? false);
-    const dictionary = live.config(
-      "3845962714",
-      client.getDynamicConfig("3845962714", { disableExposureLog: true })?.value,
-    );
+  /**
+   * The SDK evaluates a baseline once and is then shut down, so neither its payload nor its parsed
+   * copy of every other gate stays in memory; live overlays update the few values Nodex reads.
+   */
+  const readBaseline = (body: string, canonical: boolean) => {
+    const client = new StatsigClient(SDK_KEY, input.user, options);
+    try {
+      client.initializeSync({ disableBackgroundCacheRefresh: true });
+      if (canonical) client.dataAdapter.setData(body);
+      else client.dataAdapter.setDataLegacy(body, input.user);
+      client.updateUserSync(input.user, { disableBackgroundCacheRefresh: true });
+      const context = client.getContext();
+      const cached = client.dataAdapter.getDataSync(context.user);
+      return {
+        baseline: {
+          gates: Object.fromEntries(
+            POLICY_GATES.map((name) => [
+              name,
+              client.getFeatureGate(name, { disableExposureLog: true })?.value ?? false,
+            ]),
+          ),
+          configs: Object.fromEntries(
+            POLICY_CONFIGS.map((name) => [
+              name,
+              client.getDynamicConfig(name, { disableExposureLog: true })?.value,
+            ]),
+          ),
+        } satisfies PolicyBaseline,
+        overlay: makeDictationLiveValues(
+          policyValues(context.values),
+          cached?.fullUserHash != null && cached.fullUserHash === _getFullUserHash(context.user),
+        ),
+      };
+    } finally {
+      void client.shutdown();
+    }
+  };
+  const evaluate = (live = overlay, values = baseline): DictationGateValues => {
+    const gate = (name: string) => live.gate(name, values.gates[name] ?? false);
+    const dictionary = live.config("3845962714", values.configs["3845962714"]);
     const parsed = Schema.decodeUnknownOption(
       Schema.Struct({ dictation_custom_dictionary_enabled: Schema.optionalKey(Schema.Boolean) }),
     )(dictionary);
@@ -190,30 +276,15 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
   };
   const evaluateRealtime = (): RealtimeVoiceGateValues => {
     const config = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))(
-      overlay.config(
-        "1193530394",
-        client.getDynamicConfig("1193530394", { disableExposureLog: true }).value,
-      ),
+      overlay.config("1193530394", baseline.configs["1193530394"]),
     );
     const sessionConfig = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))(
-      overlay.config(
-        "3566525122",
-        client.getDynamicConfig("3566525122", { disableExposureLog: true }).value,
-      ),
+      overlay.config("3566525122", baseline.configs["3566525122"]),
     );
     return {
-      entryPoint: overlay.gate(
-        "2380644311",
-        client.getFeatureGate("2380644311", { disableExposureLog: true }).value,
-      ),
-      blocked: overlay.gate(
-        "1697652030",
-        client.getFeatureGate("1697652030", { disableExposureLog: true }).value,
-      ),
-      clientOwnedCall: overlay.gate(
-        "206132468",
-        client.getFeatureGate("206132468", { disableExposureLog: true }).value,
-      ),
+      entryPoint: overlay.gate("2380644311", baseline.gates["2380644311"] ?? false),
+      blocked: overlay.gate("1697652030", baseline.gates["1697652030"] ?? false),
+      clientOwnedCall: overlay.gate("206132468", baseline.gates["206132468"] ?? false),
       config: config._tag === "Some" ? config.value : {},
       sessionConfig: sessionConfig._tag === "Some" ? sessionConfig.value : {},
     };
@@ -227,17 +298,10 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     );
     return yield* Effect.try({
       try: () => {
-        if (canonical) client.dataAdapter.setData(body);
-        else client.dataAdapter.setDataLegacy(body, input.user);
-        client.updateUserSync(input.user, { disableBackgroundCacheRefresh: true });
-        const context = client.getContext();
-        const cached = client.dataAdapter.getDataSync(context.user);
-        const next = makeDictationLiveValues(
-          context.values,
-          cached?.fullUserHash != null && cached.fullUserHash === _getFullUserHash(context.user),
-        );
-        const gates = evaluate(next);
-        overlay = next;
+        const next = readBaseline(body, canonical);
+        const gates = evaluate(next.overlay, next.baseline);
+        baseline = next.baseline;
+        overlay = next.overlay;
         initialized = true;
         return gates;
       },
@@ -321,9 +385,8 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     }),
   );
   const refresh = Effect.fn("DictationPolicyClient.refresh")(function* () {
-    const context = client.getContext();
     const response = yield* request({
-      user: context.user,
+      user: input.user,
       hash: "djb2",
       ...(initialized
         ? { responseMode: "live_overlay", ...overlay.requestCursor() }
@@ -346,7 +409,7 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
       Effect.mapError(() => new DictationPolicyClientError({ reason: "invalid-response" })),
     );
     const changed = yield* Effect.try({
-      try: () => overlay.apply(payload),
+      try: () => overlay.apply(policyValues(payload)),
       catch: () => new DictationPolicyClientError({ reason: "invalid-response" }),
     });
     if (!changed) return yield* new DictationPolicyClientError({ reason: "invalid-response" });
