@@ -26,6 +26,8 @@ export interface OnDemandPackageViolation {
 export interface WorkbenchClosure {
   readonly root: string;
   readonly javaScript: ByteTotal;
+  /** Absolute paths of every JavaScript file the ordinary Workbench loads. */
+  readonly javaScriptFiles: readonly string[];
   readonly css: ByteTotal;
   /** Every chunk that carries each on-demand package, wherever it is in the build. */
   readonly onDemandPackageFiles: ReadonlyMap<string, readonly string[]>;
@@ -168,6 +170,7 @@ export function measureWorkbenchClosure(options: WorkbenchClosureOptions): Workb
       files: closure.files.length,
       bytes: closure.files.reduce((total, file) => total + readModule(file).bytes, 0),
     },
+    javaScriptFiles: closure.files,
     css: {
       files: stylesheets.length,
       bytes: stylesheets.reduce((total, file) => total + statSync(file).size, 0),

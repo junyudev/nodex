@@ -99,6 +99,12 @@ function isKnownYProsemirrorAwarenessTypeImportWarning(warning: Rollup.RollupLog
   );
 }
 
+/**
+ * One non-ASCII character makes V8 hold a whole script's source as two-byte text, doubling the
+ * memory of every large bundle a process keeps loaded. Escaping keeps the sources one-byte.
+ */
+const ASCII_OUTPUT = { charset: "ascii" } as const;
+
 export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
   const productionBuild = command === "build" && mode !== "development";
   const buildOptimization = {
@@ -143,6 +149,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
             defaultHandler(warning);
           },
           output: {
+            ...ASCII_OUTPUT,
             keepNames: productionBuild,
             entryFileNames: "[name].js",
             chunkFileNames: "[name]-[hash].js",
@@ -168,7 +175,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
               "src/preload/mcp-app-sandbox-guest.ts",
             ),
           },
-          output: { keepNames: productionBuild },
+          output: { ...ASCII_OUTPUT, keepNames: productionBuild },
         },
       },
     },
@@ -195,6 +202,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
             index: resolve(repositoryRoot, "src/renderer/index.html"),
           },
           output: {
+            ...ASCII_OUTPUT,
             keepNames: productionBuild,
             chunkFileNames(chunk) {
               return resolveRendererChunkFileName(chunk.moduleIds);

@@ -42,7 +42,7 @@ export function nodexCreditFailure(
   const exhausted =
     failure.code === "INSUFFICIENT_BALANCE" ||
     /"code"\s*:\s*"INSUFFICIENT_BALANCE"/u.test(failure.message) ||
-    /\b403[\s:–-]+insufficient (?:account )?balance\b/iu.test(failure.message);
+    /\b403[\s:\u2013-]+insufficient (?:account )?balance\b/iu.test(failure.message);
   // Everything else that is ours or upstream's (supply, outage, transport) reads as unavailable;
   // request-specific failures such as an oversized prompt keep their own message.
   if (!exhausted && !platformUnavailable.test(`${failure.code ?? ""} ${failure.message}`))

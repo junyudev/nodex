@@ -35,11 +35,14 @@ export interface AsciiSlugLimits {
 export function asciiSlug(text: string, limits: AsciiSlugLimits = {}): string {
   const words =
     text
-      .replace(/['’]/gu, "")
+      .replace(/['\u2019]/gu, "")
       .normalize("NFKD")
       .toLowerCase()
       .replace(/\p{M}+/gu, "")
-      .replace(/[ßæœøđðłþı]/gu, (letter) => UNDECOMPOSED_LATIN[letter]!)
+      .replace(
+        /[\u00df\u00e6\u0153\u00f8\u0111\u00f0\u0142\u00fe\u0131]/gu,
+        (letter) => UNDECOMPOSED_LATIN[letter]!,
+      )
       .match(/[a-z0-9]+/gu) ?? [];
   return words.slice(0, limits.maxWords).join("-").slice(0, limits.maxLength).replace(/-+$/u, "");
 }

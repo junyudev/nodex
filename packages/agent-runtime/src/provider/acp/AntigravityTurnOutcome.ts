@@ -25,10 +25,11 @@ const QUOTA_EXHAUSTED = /\breason:QUOTA_EXHAUSTED\b/;
 const INVALID_THINKING_SIGNATURE =
   /\bmessages\.\d+\.content\.\d+(?:\.thinking\.signature: Field required|: Invalid `signature` in `thinking` block)/;
 const RESET_TIMESTAMP = /\bquotaResetTimeStamp:([^\s\]]+)/;
-const RESET_DELAY = /\bquotaResetDelay:((?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|h|m|s))+)(?=[\s\]])/;
+const RESET_DELAY =
+  /\bquotaResetDelay:((?:\d+(?:\.\d+)?(?:ns|us|\u00b5s|\u03bcs|ms|h|m|s))+)(?=[\s\]])/;
 // google.rpc.RetryInfo, which plain rate limits carry instead of a quota reset.
-const RETRY_DELAY = /\bretryDelay:((?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|h|m|s))+)(?=[\s\]])/;
-const GO_DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|µs|μs|ms|h|m|s)/g;
+const RETRY_DELAY = /\bretryDelay:((?:\d+(?:\.\d+)?(?:ns|us|\u00b5s|\u03bcs|ms|h|m|s))+)(?=[\s\]])/;
+const GO_DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|\u00b5s|\u03bcs|ms|h|m|s)/g;
 const GO_DURATION_UNIT_MS: Record<string, number> = {
   ns: 1e-6,
   us: 1e-3,

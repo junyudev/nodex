@@ -381,7 +381,7 @@ export function cleanupBackgroundSubagentStatusSummary(
     .replace(/\s+/gu, " ")
     .trim();
   text = unwrapMarkdownDelimiters(text);
-  text = text.replace(/^(?:i['’]m|i am)\s+/iu, "");
+  text = text.replace(/^(?:i['\u2019]m|i am)\s+/iu, "");
   text = text.replace(/[.!?;,:]+$/u, "").trim();
   if (text.replace(/[*_`]/gu, "").trim().length === 0) return null;
   if (/^\p{Lu}\p{Ll}/u.test(text)) {

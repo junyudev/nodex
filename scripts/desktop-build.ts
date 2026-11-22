@@ -134,6 +134,7 @@ async function main(): Promise<void> {
     tsx("prepared-electron-build", "build");
     task("renderer-bootstrap:verify-build");
     task("startup-closure:verify-build");
+    task("ascii-bundles:verify-build");
     return;
   }
   if (operation === "package" || operation === "package-prepared") {

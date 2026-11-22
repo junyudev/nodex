@@ -282,5 +282,5 @@ function remarkKeepWindowsPathDestinations(this: Processor) {
 }
 
 export function shouldPreserveAssistantLineBreaks(text: string): boolean {
-  return /^★ Insight(?:\s|─)/mu.test(text);
+  return /^\u2605 Insight(?:\s|\u2500)/mu.test(text);
 }

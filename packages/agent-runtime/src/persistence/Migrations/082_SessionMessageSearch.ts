@@ -15,19 +15,19 @@ export default Effect.gen(function* () {
   yield* sql`CREATE TRIGGER orchestration_v2_session_search_insert AFTER INSERT ON orchestration_v2_projection_messages
     WHEN ${eligible("new")} BEGIN
       INSERT INTO orchestration_v2_session_message_search(rowid,text,thread_scope)
-      VALUES(new.rowid,replace(replace(json_extract(new.payload_json,'$.text'),'’',char(39)),'‘',char(39)),'x'||hex(new.thread_id)||'x');
+      VALUES(new.rowid,replace(replace(json_extract(new.payload_json,'$.text'),char(8217),char(39)),char(8216),char(39)),'x'||hex(new.thread_id)||'x');
     END`;
   yield* sql`CREATE TRIGGER orchestration_v2_session_search_update AFTER UPDATE OF payload_json,streaming,role,thread_id
     ON orchestration_v2_projection_messages WHEN old.streaming=0 OR new.streaming=0 BEGIN
       DELETE FROM orchestration_v2_session_message_search WHERE rowid=old.rowid;
       INSERT INTO orchestration_v2_session_message_search(rowid,text,thread_scope)
-      SELECT new.rowid,replace(replace(json_extract(new.payload_json,'$.text'),'’',char(39)),'‘',char(39)),'x'||hex(new.thread_id)||'x' WHERE ${eligible("new")};
+      SELECT new.rowid,replace(replace(json_extract(new.payload_json,'$.text'),char(8217),char(39)),char(8216),char(39)),'x'||hex(new.thread_id)||'x' WHERE ${eligible("new")};
     END`;
   yield* sql`CREATE TRIGGER orchestration_v2_session_search_delete AFTER DELETE ON orchestration_v2_projection_messages BEGIN
     DELETE FROM orchestration_v2_session_message_search WHERE rowid=old.rowid;
     END`;
   yield* sql`INSERT INTO orchestration_v2_session_message_search(rowid,text,thread_scope)
-    SELECT messages.rowid,replace(replace(json_extract(messages.payload_json,'$.text'),'’',char(39)),'‘',char(39)),'x'||hex(messages.thread_id)||'x'
+    SELECT messages.rowid,replace(replace(json_extract(messages.payload_json,'$.text'),char(8217),char(39)),char(8216),char(39)),'x'||hex(messages.thread_id)||'x'
     FROM orchestration_v2_projection_messages messages WHERE ${eligible("messages")}`;
   yield* sql`CREATE INDEX orchestration_v2_message_item_identity_idx ON orchestration_v2_projection_turn_items(
     thread_id,CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.messageId') END,ordinal,turn_item_id)
