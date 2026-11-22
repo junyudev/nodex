@@ -219,11 +219,18 @@ export function makeRepl(options: ReplOptions) {
     return starting;
   };
 
+  /** Stops the running kernel and its process tree; the next `get` starts a fresh kernel. */
+  const release = async () => {
+    current = undefined;
+    running = undefined;
+    await Promise.all([...transports].map((transport) => transport.close()));
+  };
+
   const close = async () => {
     closed = true;
     // Let outstanding SDK abort handlers write their cancellation before closing stdin.
     await Promise.resolve();
     await Promise.all([...transports].map((transport) => transport.close()));
   };
-  return { get, running: () => running, close };
+  return { get, running: () => running, release, close };
 }

@@ -72,6 +72,7 @@ const identity = (threadId: ThreadId): HostTurnIdentity => ({
 const fixture = (
   run: (context: Awaited<ReturnType<typeof setup>>) => Promise<void>,
   realRoot?: string,
+  options?: Parameters<typeof makeDesktopTools>[2],
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -81,7 +82,7 @@ const fixture = (
       );
       // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- The scoped test runtime is already live; MCP SDK callbacks need a Promise adapter to its services.
       const execute = Effect.runPromiseWith(yield* Effect.context());
-      const context = yield* Effect.promise(() => setup(home, execute, realRoot));
+      const context = yield* Effect.promise(() => setup(home, execute, realRoot, options));
       yield* Effect.addFinalizer(() => Effect.promise(context.tools.close));
       const http = HttpRouter.serve(Http.layer, { disableLogger: true }).pipe(
         Layer.provide(Layer.succeed(DesktopTools, context.tools)),
@@ -113,6 +114,7 @@ async function setup(
   home: string,
   execute: <A>(effect: Effect.Effect<A>) => Promise<A>,
   realRoot?: string,
+  options?: Parameters<typeof makeDesktopTools>[2],
 ) {
   let running = true;
   let mode: RuntimeMode = "full-access";
@@ -162,20 +164,24 @@ async function setup(
         grant = true;
       }),
   };
-  const tools = makeDesktopTools(home, {
-    environment: { HOME: home, CODEX_HOME: codexHome, PATH: process.env.PATH },
-    admit: async ({ threadId }) =>
-      running ? { identity: identity(threadId), runtimeMode: mode } : undefined,
-    observe: async (report) => {
-      const { phase } = report;
-      if (phase === "activity") reports.push(report);
-      if (phase === "started" && !realRoot) await appendFile(trace, '{"event":"main-started"}\n');
-      observed.push(phase);
+  const tools = makeDesktopTools(
+    home,
+    {
+      environment: { HOME: home, CODEX_HOME: codexHome, PATH: process.env.PATH },
+      admit: async ({ threadId }) =>
+        running ? { identity: identity(threadId), runtimeMode: mode } : undefined,
+      observe: async (report) => {
+        const { phase } = report;
+        if (phase === "activity") reports.push(report);
+        if (phase === "started" && !realRoot) await appendFile(trace, '{"event":"main-started"}\n');
+        observed.push(phase);
+      },
+      ask: (request) => execute(double.ask(request)),
+      isAllowedForChat: (threadId) =>
+        execute(double.isAllowedForChat({ threadId, grant: "desktop-tools-javascript" })),
     },
-    ask: (request) => execute(double.ask(request)),
-    isAllowedForChat: (threadId) =>
-      execute(double.isAllowedForChat({ threadId, grant: "desktop-tools-javascript" })),
-  });
+    options,
+  );
   return {
     tools,
     home,
@@ -498,6 +504,24 @@ describe("Desktop Tools", () => {
         );
         await call.close();
       }),
+  );
+
+  it.live("releases an idle chat's kernel and starts a fresh one on its next call", () =>
+    fixture(
+      async (context) => {
+        const { client, js } = await connect(await provision(context));
+        const first = await js("ok");
+        const pid = Number(first.structuredContent?.pid);
+        // A running turn keeps its kernel between calls, however long it waits.
+        expect((await js("ok")).structuredContent?.pid).toBe(pid);
+        context.tools.retire(threadA, () => true, "completed");
+        await vi.waitFor(() => expect(isAlive(pid)).toBe(false));
+        expect((await js("ok")).structuredContent?.pid).not.toBe(pid);
+        await client.close();
+      },
+      undefined,
+      { replIdleReleaseMs: 0 },
+    ),
   );
 
   it.live("restarts a crashed child on the next call and replaces the child when cwd changes", () =>

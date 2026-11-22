@@ -111,7 +111,19 @@ function hidden(tool: Tool): boolean {
   return tool.name === "turn_ended" || (Array.isArray(visibility) && visibility.length === 0);
 }
 
-export function makeDesktopTools(home: string, ports: Ports) {
+/**
+ * A chat keeps its JavaScript kernel, and the bindings its Agent built, while it is in use. A
+ * kernel no turn has used for this long is released with its process tree; the chat's next
+ * call starts a fresh one.
+ */
+const REPL_IDLE_RELEASE_MS = 30 * 60_000;
+
+export function makeDesktopTools(
+  home: string,
+  ports: Ports,
+  options: { readonly replIdleReleaseMs?: number } = {},
+) {
+  const replIdleReleaseMs = options.replIdleReleaseMs ?? REPL_IDLE_RELEASE_MS;
   const captures = makeCaptures();
   const threads = new Map<ThreadId, Thread>();
   let closed = false;
@@ -135,6 +147,21 @@ export function makeDesktopTools(home: string, ports: Ports) {
     const retirements = new Set<Promise<void>>();
     let activeProvider: ProviderInstanceId;
     let closing = false;
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const inUse = () => turns.size > 0 || invocations.size > 0 || abandoned.size > 0;
+    const keepKernel = () => {
+      clearTimeout(idle);
+      idle = undefined;
+    };
+    const releaseWhenIdle = () => {
+      keepKernel();
+      if (closing || inUse()) return;
+      idle = setTimeout(() => {
+        idle = undefined;
+        if (!closing && !inUse()) void repl.release();
+      }, replIdleReleaseMs);
+      idle.unref?.();
+    };
     const repl = makeRepl({
       home,
       sessionId: desktopSessionId(threadId),
@@ -184,12 +211,16 @@ export function makeDesktopTools(home: string, ports: Ports) {
       hooks.add(cleanup);
       const retiring = Promise.all([turn.started, cleanup])
         .then(() => observe(turn, { phase: "ended", completed: hook === "Stop" }))
-        .finally(() => retirements.delete(retiring));
+        .finally(() => {
+          retirements.delete(retiring);
+          releaseWhenIdle();
+        });
       retirements.add(retiring);
       return retiring;
     };
     const close = async () => {
       closing = true;
+      keepKernel();
       for (const turn of turns.values()) void end(turn, "Interrupt");
       // The Main connection can already be closing during Runtime shutdown.
       await Promise.all(hooks);
@@ -206,6 +237,8 @@ export function makeDesktopTools(home: string, ports: Ports) {
       close,
       whenRetired: () => Promise.all(retirements),
       closing: () => closing,
+      keepKernel,
+      releaseWhenIdle,
       provider: () => activeProvider,
       setProvider: (provider: ProviderInstanceId) => {
         activeProvider = provider;
@@ -380,6 +413,7 @@ export function makeDesktopTools(home: string, ports: Ports) {
       controller: new AbortController(),
     };
     thread.turns.set(identity.attemptId, turn);
+    thread.keepKernel();
     const signal = AbortSignal.any([requestSignal, turn.controller.signal]);
     const invocation: Invocation = { turn, runtimeMode, signal };
     const callId = randomUUID();
@@ -452,7 +486,10 @@ export function makeDesktopTools(home: string, ports: Ports) {
             () => {},
           );
           thread.abandoned.add(settled);
-          void settled.then(() => thread.abandoned.delete(settled));
+          void settled.then(() => {
+            thread.abandoned.delete(settled);
+            thread.releaseWhenIdle();
+          });
         }
         throw error;
       });
@@ -480,6 +517,7 @@ export function makeDesktopTools(home: string, ports: Ports) {
       return result;
     } finally {
       thread.invocations.delete(callId);
+      thread.releaseWhenIdle();
     }
   };
 
