@@ -315,6 +315,34 @@ impl OwnedDocumentModule {
             .map_err(core_error)
     }
 
+    /// The head a Yjs sync would describe, admitted as that sync is, without encoding its diff.
+    /// Acknowledging a committed update needs only this, so its cost does not grow with the
+    /// Document.
+    pub fn yjs_head(
+        &self,
+        context: &BoundModuleContext,
+        document_id: String,
+    ) -> Result<OwnedDocumentDescriptor, CoreError> {
+        let read = OwnedDocumentRead::SyncYjs {
+            document_id,
+            state_vector: Vec::new(),
+            history_after_head_seq: None,
+        };
+        nodex_core_contracts::remote_admission::authorize(context, "document_read", &read)?;
+        self.validate_context(context)?;
+        let OwnedDocumentRead::SyncYjs { document_id, .. } = read else {
+            unreachable!("the admitted read is the Yjs sync built above");
+        };
+        self.readers
+            .read_default(|connection| {
+                let authority = read_document_authority(connection, &document_id)?
+                    .ok_or_else(|| not_found("Owned Document was not found"))?;
+                validate_yjs_owner(connection, context, &authority, DocumentOperationKind::Read)?;
+                authority_descriptor(context, &authority, &read_store_epoch(connection)?)
+            })
+            .map_err(core_error)
+    }
+
     pub fn read(
         &self,
         context: &BoundModuleContext,

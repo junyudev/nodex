@@ -2728,15 +2728,12 @@ fn binary_document_apply(
                     duplicate,
                     outcome.committed,
                 )?;
-                let snapshot = state.document_realtime.sync_yjs(
+                let head = state.document_realtime.yjs_head(
                     &context,
                     &metadata.client_session_id,
                     document_id,
-                    Vec::new(),
-                    None,
                 )?;
-                let sync = document_wire::parse_yjs_sync(snapshot)?;
-                document_wire::encode_apply_ack(&response, &update_id, &sync)
+                document_wire::encode_apply_ack(&response, &update_id, &head)
             }
             ApplyFrame::Awareness(metadata, update) => {
                 if bytes.len() > document_wire::MAX_AWARENESS_FRAME_BYTES {

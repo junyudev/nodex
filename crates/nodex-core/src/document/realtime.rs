@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nodex_core_contracts::document::{
-    OwnedDocumentEvent, OwnedDocumentIntent, OwnedDocumentRead, OwnedDocumentReadValue,
+    OwnedDocumentDescriptor, OwnedDocumentEvent, OwnedDocumentIntent, OwnedDocumentRead,
+    OwnedDocumentReadValue,
 };
 use nodex_core_contracts::{
     BoundModuleContext, CommittedCoreModuleEvent, CoreError, CoreErrorCode, CoreErrorRecovery,
@@ -244,6 +245,21 @@ impl OwnedDocumentRealtimeAdapter {
                 },
             },
         )
+    }
+
+    /// The head an applied Yjs update is acknowledged against, read without a sync diff.
+    pub fn yjs_head(
+        &self,
+        context: &BoundModuleContext,
+        client_session_id: &str,
+        document_id: String,
+    ) -> Result<OwnedDocumentDescriptor, CoreError> {
+        let subscription =
+            self.require_subscription(&context.connection_id, client_session_id, &document_id)?;
+        if subscription.engine != DocumentSubscriptionEngine::Yjs {
+            return Err(invalid("Yjs sync requires a Yjs subscription"));
+        }
+        self.module.yjs_head(context, document_id)
     }
 
     pub fn sync_canvas(

@@ -337,8 +337,11 @@ pub(crate) fn encode_canvas_sync(
 pub(crate) fn encode_apply_ack(
     response: &ApplyResponse<OwnedDocumentCommitValue, OwnedDocumentReceipt>,
     update_id: &str,
-    sync: &YjsSyncValue,
+    head: &OwnedDocumentDescriptor,
 ) -> Result<Vec<u8>, CoreError> {
+    let OwnedDocumentSyncDescriptor::Yjs { state_vector } = &head.sync else {
+        return Err(invalid("Core Document descriptor is not Yjs"));
+    };
     let (receipt, store_epoch, proof) = match response {
         ApplyResponse::Committed {
             receipt,
@@ -370,11 +373,11 @@ pub(crate) fn encode_apply_ack(
             generation: receipt.generation,
             update_id,
             committed_seq: receipt.head_seq,
-            head_seq: sync.head_seq,
+            head_seq: head.head_seq,
             duplicate: receipt.mutation.duplicate,
             proof,
         },
-        &sync.state_vector,
+        state_vector,
     )
 }
 
