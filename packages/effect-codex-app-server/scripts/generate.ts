@@ -21,6 +21,7 @@ import {
   renderCodexProtocolExtensionViews,
   type CodexMethodEntry,
 } from "../../../scripts/codex-schema-generator.ts";
+import { dedupeSchemaEntries } from "./dedupe-schema-entries.ts";
 
 const JsonSchemaDocument = Schema.StructWithRest(
   Schema.Struct({
@@ -641,7 +642,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     "type CodexJsonExtension = unknown;",
     "const CodexJsonExtension = Schema.make<Schema.Codec<CodexJsonExtension>>(Schema.Json.ast);",
     "",
-    [...generatedEntries.values()].join("\n\n"),
+    [...dedupeSchemaEntries(generatedEntries).values()].join("\n\n"),
     "",
   ].join("\n");
 
