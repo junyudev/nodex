@@ -86,6 +86,12 @@ export type ProviderSessionReleaseReason = typeof ProviderSessionReleaseReason.T
  * terminalizes provider-bound work and retires non-replayable effects; a later
  * user command or durable replay-safe operation opens a session lazily.
  */
+/** A provider session records what failed; the release log keeps the full cause and its stack. */
+const failureSummary = (cause: Cause.Cause<unknown>): string => {
+  const failure = Cause.squash(cause);
+  return failure instanceof Error ? failure.message : String(failure);
+};
+
 export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSessionOpenError>()(
   "ProviderSessionOpenError",
   {
@@ -2740,7 +2746,7 @@ export const layerWithOptions = (
                 providerSessionId: entry.runtime.providerSessionId,
                 reason: "runtime_error",
                 cause,
-                detail: Cause.pretty(cause),
+                detail: failureSummary(cause),
               }).pipe(logReleaseFailure(entry.runtime.providerSessionId));
             }),
           ),

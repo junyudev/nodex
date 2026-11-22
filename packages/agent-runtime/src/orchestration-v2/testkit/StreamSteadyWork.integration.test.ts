@@ -54,12 +54,12 @@ import { materializeReplayTranscriptRuntimeInstructions } from "./ReplayRuntimeI
  * Both are recorded; a regression in either fails here, and removed work lowers the numbers.
  */
 const TRANSCRIPT_BASELINE = {
-  reasoning: { frames: 336, bytes: 289_047 },
-  assistant: { frames: 93, bytes: 96_793 },
+  reasoning: { frames: 336, bytes: 288_846 },
+  assistant: { frames: 93, bytes: 95_417 },
 } as const;
 const WHOLE_EVENT_BASELINE = {
-  reasoning: { frames: 336, bytes: 21_837_538 },
-  assistant: { frames: 94, bytes: 1_605_942 },
+  reasoning: { frames: 336, bytes: 21_837_337 },
+  assistant: { frames: 94, bytes: 1_604_566 },
 } as const;
 /** The Runtime records a node only when it changes, not each time a provider republishes it. */
 const MAX_NODE_UPDATES_PER_PHASE = 4;
@@ -222,7 +222,7 @@ const streamSteadyEvents = Effect.gen(function* () {
     CodexOrchestratorReplayHarness,
     { responseStreamingMode: stream.streamingMode },
   ).pipe(provideDeterministicTestRuntime);
-  return { result, threadId };
+  return { result, threadId, workspace };
 });
 
 const isAssistantEvent = ({ event }: OrchestrationV2StoredEvent) =>
@@ -238,6 +238,7 @@ const measureObserver = (
   stored: readonly OrchestrationV2StoredEvent[],
   delivery: Delivery,
   ledger: RuntimeWorkLedger,
+  workspace: string,
 ) =>
   Effect.gen(function* () {
     let phase: Phase = "reasoning";
@@ -247,11 +248,17 @@ const measureObserver = (
         ledger.record(`${delivery}:${phase}`, described.metric, bytes);
     });
     const observe = makeObservedEventDelivery(SUBSCRIPTION_IDS[delivery], delivery);
+    const workspaceJson = JSON.stringify(workspace).slice(1, -1);
     for (const event of stored) {
       if (isAssistantEvent(event)) phase = "assistant";
       const notification = yield* observe(event);
+      // The workspace's temporary path differs between machines; a fixed one keeps bytes exact.
       if (notification !== null)
-        decoder.push(new TextEncoder().encode(encodeJsonLine(notification)));
+        decoder.push(
+          new TextEncoder().encode(
+            encodeJsonLine(notification).replaceAll(workspaceJson, "/stream-steady-workspace"),
+          ),
+        );
     }
     decoder.finish();
   });
@@ -267,11 +274,11 @@ describe("stream-steady Runtime → Main work", () => {
     "sends a transcript each streamed byte once, and records whole-event observers",
     () =>
       Effect.gen(function* () {
-        const { result, threadId } = yield* streamSteadyEvents;
+        const { result, threadId, workspace } = yield* streamSteadyEvents;
         const stored = result.storedEvents.filter((event) => event.event.threadId === threadId);
         const ledger = createRuntimeWorkLedger();
-        yield* measureObserver(stored, "transcript", ledger);
-        yield* measureObserver(stored, "events", ledger);
+        yield* measureObserver(stored, "transcript", ledger, workspace);
+        yield* measureObserver(stored, "events", ledger, workspace);
 
         const finalBytes: Readonly<Record<Phase, number>> = {
           reasoning: manifest.streamReasoningBytes,
@@ -325,6 +332,16 @@ describe("stream-steady Runtime → Main work", () => {
           (final("assistant_message") as { text?: string })?.text,
           assistantItem.text,
         );
+
+        // The replayed provider exits after its last frame, so its session is released as failed.
+        // The session names that failure; the stack and source paths stay in the Runtime's log.
+        const failures = stored.flatMap(({ event }) =>
+          event.type === "provider-session.updated" && event.payload.lastError
+            ? [event.payload.lastError]
+            : [],
+        );
+        assert.isNotEmpty(failures);
+        for (const failure of failures) assert.notMatch(failure, /\n\s+at /u);
 
         for (const phase of ["reasoning", "assistant"] as const) {
           const { item } = transcript[phase];
