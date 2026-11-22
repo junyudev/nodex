@@ -7,6 +7,10 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import type { AgentRuntimeConnectionState } from "../../src/shared/agent-runtime-api";
 import type { IpcApi } from "../../src/shared/ipc-api";
+import {
+  readCodexAppServerReleaseLock,
+  resolveCodexAppServerReleaseLockPath,
+} from "../../scripts/agent-runtime-release-lock";
 import { openNewChatDraft } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
@@ -71,7 +75,11 @@ const withFinishedChat = async (
   }) => Promise<void>,
 ) => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-runtime-starvation-"));
-  const version = "0.145.0-alpha.15";
+  // The pinned Codex satisfies every model's minimum version, so the fixture never drifts behind
+  // the model catalog and leaves Codex without a model.
+  const version = readCodexAppServerReleaseLock(
+    resolveCodexAppServerReleaseLockPath(repositoryRoot),
+  ).appServerRuntimeVersion;
   const source = fs.readFileSync(
     path.join(repositoryRoot, "tests/e2e/fixtures/codex-queue-app-server.mjs"),
     "utf8",
@@ -90,6 +98,7 @@ const withFinishedChat = async (
       NODEX_FAKE_CODEX_LOG_PATH: path.join(fixture, "native.jsonl"),
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "200",
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
+      NODEX_FAKE_CODEX_APP_SERVER_VERSION: version,
       ...options.environment?.(fixture),
     },
   });
@@ -97,10 +106,16 @@ const withFinishedChat = async (
   try {
     const page = await harness.launch({ phase: "first-window" });
     await harness.waitForApplicationReady();
-    const catalog = await invoke(page, "agent-runtime:providers:read", { refresh: true });
-    expect(
-      catalog.find((provider) => provider.instanceId === "codex")?.models.length,
-    ).toBeGreaterThan(0);
+    // A refresh answers with a provisional catalog; Codex's models arrive once it lists them.
+    await invoke(page, "agent-runtime:providers:read", { refresh: true });
+    await expect
+      .poll(
+        async () =>
+          (await invoke(page, "agent-runtime:providers:read", {})).find(
+            (provider) => provider.instanceId === "codex",
+          )?.models.length ?? 0,
+      )
+      .toBeGreaterThan(0);
     const composer = (await openNewChatDraft(page)).locator('[data-codex-composer="true"]').first();
     await expect(composer).toBeVisible();
     const project = (await invoke(page, "projects:list")).items[0];
