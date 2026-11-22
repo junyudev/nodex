@@ -2041,6 +2041,8 @@ export interface CodexConnectionState {
     readonly code: "login-required";
   };
   retries: number;
+  /** Connected, but what this chat waits for is moving slowly, as on a busy computer. */
+  busy?: true;
   lastConnectedAt?: number;
   /** Physical connection identity, present on native endpoint projections. */
   native?: {

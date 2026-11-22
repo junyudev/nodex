@@ -31,6 +31,16 @@ describe("chatConnectionSendGate", () => {
     }
   });
 
+  test("says a slow reconnect on a busy computer is progress, not trouble", () => {
+    const reconnecting = { resumeState: "resuming" as const, executionBusy: true };
+    expect(gate(reconnecting)).toMatchObject({ notice: null });
+    expect(gate({ ...reconnecting, reconnectingLong: true })?.notice).toMatchObject({
+      tone: "progress",
+      title: "Reconnecting to this chat…",
+      detail: "Your computer is busy. This chat opens when Nodex catches up.",
+    });
+  });
+
   test("explains a failed connection and retries it", async () => {
     const retry = vi.fn(async () => {});
     const failed = gate({

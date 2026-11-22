@@ -51,7 +51,7 @@ const setup = (
     Effect.provideService(AgentRuntimeSupervisor, {
       get: () =>
         Effect.succeed({
-          responsive: Stream.make(true),
+          liveness: Stream.make("ready" as const),
           subscribeExecutionNotifications: runtimeNotifications,
           terminated: Effect.never,
         }),

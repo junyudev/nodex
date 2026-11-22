@@ -118,7 +118,7 @@ it.effect("reads stored text on both the writer and the reader connection", () =
           rows.map((row) => row.text),
           [text, null],
         );
-    }).pipe(Effect.provide(SqliteClient.layer({ filename, readerWorker: true })));
+    }).pipe(Effect.provide(SqliteClient.layer({ filename, workerConnections: true })));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

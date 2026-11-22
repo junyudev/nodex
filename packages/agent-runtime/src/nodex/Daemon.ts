@@ -13,6 +13,10 @@ import { AgentRuntime } from "./Service.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
 import { encodeJsonLine, jsonLines } from "./JsonLines.ts";
+import { isAgentRuntimeWatchedRead } from "./WatchedReads.ts";
+import { startRuntimeWatchdog } from "../platform/node/RuntimeWatchdog.ts";
+import * as ServerConfig from "../config.ts";
+import * as NodePathLayer from "@effect/platform-node/NodePath";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
 /** The failure's own tag, so the host can tell engine errors apart without parsing text. */
@@ -58,6 +62,21 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     process.stderr.write("An absolute --home is required for Agent Runtime.\n");
     process.exitCode = 1;
   } else {
+    const healthFd = Number(argument("--health-fd"));
+    const healthInterval = Number(argument("--health-interval-ms"));
+    // Starts before anything that can block, so even a slow start is measured.
+    const watchdog = startRuntimeWatchdog({
+      healthFd: Number.isInteger(healthFd) && healthFd > 2 ? healthFd : null,
+      intervalMs: Number.isInteger(healthInterval) && healthInterval > 0 ? healthInterval : 1_000,
+      stallLogPath: NodePath.join(
+        Effect.runSync(
+          ServerConfig.deriveServerPaths(home, undefined, { baseDirIsExplicit: true }).pipe(
+            Effect.provide(NodePathLayer.layer),
+          ),
+        ).logsDir,
+        "event-loop-stalls.log",
+      ),
+    });
     const lines = jsonLines(process.stdin);
     let bootstrap: Awaited<ReturnType<typeof readAgentRuntimeBootstrap>>;
     try {
@@ -92,7 +111,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     const dispose = () => {
       closing = true;
       process.stdin.destroy();
-      disposal ??= runtime.dispose();
+      disposal ??= runtime.dispose().finally(watchdog.stop);
       return disposal;
     };
     process.once("SIGTERM", () => {
@@ -103,6 +122,13 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     });
     const active = new Set<Promise<void>>();
     const waiting: unknown[] = [];
+    // A watched read goes first: someone is looking at a blank surface for it.
+    const nextWaiting = () => {
+      const watched = waiting.findIndex((value) =>
+        isAgentRuntimeWatchedRead((value as { readonly method?: unknown } | null)?.method),
+      );
+      return waiting.splice(watched < 0 ? 0 : watched, 1)[0];
+    };
     // AbortSignals belong at this Node ingress; the Runtime owns scoped interruption below it.
     const utilityRequests = new Map<string, AbortController>();
     try {
@@ -177,11 +203,12 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           })
           .finally(() => {
             active.delete(task);
-            const next =
-              closing || active.size >= MAX_ACTIVE_REQUESTS ? undefined : waiting.shift();
+            const next = closing || active.size >= MAX_ACTIVE_REQUESTS ? undefined : nextWaiting();
             if (next !== undefined) launch(next);
+            else watchdog.queue(active.size, waiting.length);
           });
         active.add(task);
+        watchdog.queue(active.size, waiting.length);
       };
       for await (const line of { [Symbol.asyncIterator]: () => lines }) {
         let request: { readonly id?: string; readonly type?: string; readonly method?: string };
@@ -189,11 +216,6 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           request = JSON.parse(line);
         } catch (error) {
           await write({ id: "", success: false, error: { message: String(error) } });
-          continue;
-        }
-        if (request?.type === "ping") {
-          // Never let stdout backpressure hold up stdin control frames.
-          void write({ type: "pong" }).catch(() => {});
           continue;
         }
         // Replies bypass the bounded command queue; commands may be waiting for these replies.
@@ -248,6 +270,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
         }
         if (waiting.length < MAX_WAITING_REQUESTS) {
           waiting.push(request);
+          watchdog.queue(active.size, waiting.length);
           continue;
         }
         await write({

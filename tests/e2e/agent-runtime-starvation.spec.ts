@@ -11,6 +11,7 @@ import { openNewChatDraft } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
 const NOTICE = "Agent execution isn't responding";
+const BUSY = "Your computer is busy. This chat opens when Nodex catches up.";
 const PROMPT = "Keep this conversation readable while the computer is busy";
 
 const invoke = <Channel extends keyof IpcApi>(
@@ -33,6 +34,7 @@ const connection = (page: Page): Promise<AgentRuntimeConnectionState> =>
 const messageOf = (page: Page) =>
   page.locator('[data-user-message-bubble="true"]', { hasText: PROMPT });
 const noticeOf = (page: Page) => page.getByRole("status").filter({ hasText: NOTICE });
+const busyOf = (page: Page) => page.getByText(BUSY);
 
 /** The exact execution child of this harness's own Electron process, never a name match. */
 const executionPid = (electronPid: number): number => {
@@ -120,10 +122,11 @@ const withFinishedChat = async (
 };
 
 // Stops only the execution process this test started, in a fresh writable Profile. A stopped
-// process is what whole-machine starvation looks like from Main: alive, silent, and late.
+// process is what whole-machine starvation looks like from Main: alive, silent, and late. For the
+// first minute that is only busy, which the waiting chat explains; after that it is unresponsive.
 test("a starved execution process delays a chat without failing it, and Restart replaces it", async ({}, testInfo) => {
   test.skip(process.platform === "win32", "Job control signals are POSIX-only.");
-  test.setTimeout(240_000);
+  test.setTimeout(330_000);
   let stopped: number | null = null;
   try {
     await withFinishedChat(
@@ -140,19 +143,27 @@ test("a starved execution process delays a chat without failing it, and Restart 
         // Reopening the chat is the read that used to give up at thirty seconds.
         process.kill(pid, "SIGSTOP");
         stopped = pid;
-        const stoppedAt = Date.now();
         await page.reload();
         const read = invoke(page, "agent-runtime:session:read", { sessionId }).then(
           (value) => ({ settled: "resolved" as const, value }),
           (cause: unknown) => ({ settled: "rejected" as const, cause }),
         );
-        await expect(notice).toBeVisible({ timeout: 45_000 });
+        // Busy explains itself where something waits, and never across the window.
+        // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Busy follows two five-second liveness checks after the reconnect notice.
+        await expect(busyOf(page)).toBeVisible({ timeout: 30_000 });
+        expect(await connection(page)).toEqual({
+          status: "ready",
+          generation: first.generation,
+          busy: true,
+        });
+        await expect(notice).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath("busy.png") });
+        await expect(notice).toBeVisible({ timeout: 90_000 });
         expect(await connection(page)).toEqual({
           status: "unresponsive",
           generation: first.generation,
         });
         await page.screenshot({ path: testInfo.outputPath("unresponsive.png") });
-        await page.waitForTimeout(Math.max(0, stoppedAt + 40_000 - Date.now()));
         await expect(failure).toHaveCount(0);
 
         process.kill(pid, "SIGCONT");
@@ -173,7 +184,7 @@ test("a starved execution process delays a chat without failing it, and Restart 
           () => "resolved",
           () => "rejected",
         );
-        await expect(notice).toBeVisible({ timeout: 45_000 });
+        await expect(notice).toBeVisible({ timeout: 90_000 });
         await notice.getByRole("button", { name: "Restart" }).click();
         await expect
           .poll(
@@ -198,7 +209,7 @@ test("a starved execution process delays a chat without failing it, and Restart 
   }
 });
 
-// The process keeps answering checks, so only the read's own age can reveal it.
+// The process keeps reporting progress, so only the read's own age can reveal it.
 test("a read stuck while the process still answers shows the notice instead of a silent wait", async ({}, testInfo) => {
   test.skip(process.platform === "win32", "The held-read launcher is a POSIX shell script.");
   test.setTimeout(300_000);
@@ -227,10 +238,12 @@ test("a read stuck while the process still answers shows the notice instead of a
       fs.writeFileSync(flagOf(fixture), "");
       await page.reload();
 
-      // Under two minutes a slow read is ordinary; the process is plainly alive.
+      // Under two minutes a slow read is only busy; the process is plainly alive.
+      // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Busy follows two five-second liveness checks after the reconnect notice.
+      await expect(busyOf(page)).toBeVisible({ timeout: 30_000 });
       await page.waitForTimeout(90_000);
       await expect(notice).toHaveCount(0);
-      expect(await connection(page)).toEqual(first);
+      expect(await connection(page)).toEqual({ ...first, busy: true });
 
       await expect(notice).toBeVisible({ timeout: 60_000 });
       await page.screenshot({ path: testInfo.outputPath("stuck-read.png") });

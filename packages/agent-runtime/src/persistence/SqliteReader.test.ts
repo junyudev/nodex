@@ -34,7 +34,7 @@ const withReaderClient = <A, E>(
       yield* sql`CREATE TABLE entries(name TEXT NOT NULL)`;
       yield* sql`INSERT INTO entries VALUES ('first')`;
       return yield* use(sql);
-    }).pipe(Effect.provide(SqliteClient.layer({ filename, readerWorker: true })));
+    }).pipe(Effect.provide(SqliteClient.layer({ filename, workerConnections: true })));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 const countEntries = (sql: SqlClient.SqlClient) =>
@@ -151,7 +151,7 @@ const withFileClient = <A, E>(
     const filename = path.join(directory, "state.sqlite");
     return yield* Effect.gen(function* () {
       return yield* setup(yield* SqlClient.SqlClient, filename);
-    }).pipe(Effect.provide(SqliteClient.layer({ filename, readerWorker: true })));
+    }).pipe(Effect.provide(SqliteClient.layer({ filename, workerConnections: true })));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 it.effect("uses the writer when the reader cannot open the database", () =>
@@ -178,7 +178,7 @@ it.effect("in-memory databases keep one connection even when reader isolation is
     yield* sql`INSERT INTO entries VALUES ('local')`;
     assert.equal(yield* countEntries(sql).pipe(SqliteClient.readOnly), 1);
     assert.equal(startedWorkers.length, before);
-  }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", readerWorker: true }))),
+  }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", workerConnections: true }))),
 );
 it.effect(
   "interrupting a queued reader releases its lease without breaking the open snapshot",
@@ -268,6 +268,69 @@ it.effect("retires an interrupted in-flight SQL generation before the next reade
         posted.mockRestore();
         terminated.mockRestore();
       }
+    }),
+  ),
+);
+
+const LONG_SQL = `
+  WITH RECURSIVE sequence(value) AS (VALUES(1) UNION ALL
+    SELECT value+1 FROM sequence WHERE value<4000000)
+  SELECT SUM(value) AS total FROM sequence`;
+
+it.effect("keeps the calling thread free while the writer executes", () =>
+  withReaderClient((sql) =>
+    Effect.gen(function* () {
+      let turns = 0;
+      const ticking = setInterval(() => (turns += 1), 1);
+      try {
+        yield* sql.withTransaction(sql.unsafe(LONG_SQL));
+      } finally {
+        clearInterval(ticking);
+      }
+      // A synchronous connection would hold this thread until the statement returned.
+      assert.isAbove(turns, 5);
+    }),
+  ),
+);
+
+it.effect("answers a foreground read while a background read is still executing", () =>
+  withReaderClient((sql) =>
+    Effect.gen(function* () {
+      const background = yield* sql
+        .unsafe(LONG_SQL)
+        .pipe(SqliteClient.readOnly, Effect.forkChild({ startImmediately: true }));
+      assert.equal(
+        yield* countEntries(sql).pipe(SqliteClient.readOnly, SqliteClient.foregroundReads),
+        1,
+      );
+      assert.isUndefined(background.pollUnsafe());
+      yield* Fiber.join(background);
+    }),
+  ),
+);
+
+it.effect("finishes an interrupted write before the next statement runs", () =>
+  withReaderClient((sql) =>
+    Effect.gen(function* () {
+      // No read has run yet, so the newest worker is the writer.
+      const writer = startedWorkers.at(-1)!;
+      let announce: () => void = () => {};
+      const dispatched = new Promise<void>((resolve) => {
+        announce = resolve;
+      });
+      const originalPost = writer.postMessage.bind(writer);
+      const posted = vi.spyOn(writer, "postMessage").mockImplementation((message, ...rest) => {
+        originalPost(message, ...rest);
+        if (typeof message.sql === "string" && message.sql.startsWith("INSERT")) announce();
+      });
+      const write = yield* sql
+        .unsafe(`INSERT INTO entries SELECT 'derived' FROM (${LONG_SQL})`)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Effect.promise(() => dispatched);
+      posted.mockRestore();
+      yield* Fiber.interrupt(write);
+      // SQLite cannot abandon a write midway; the caller waits for it, as with a synchronous call.
+      assert.equal(yield* countEntries(sql), 2);
     }),
   ),
 );

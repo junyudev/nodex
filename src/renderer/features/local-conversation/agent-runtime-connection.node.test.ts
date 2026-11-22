@@ -10,6 +10,10 @@ describe("Runtime chat connection", () => {
     expect(projectAgentRuntimeConnection({ status: "ready", generation: "g" }).status).toBe(
       "connected",
     );
+    // A busy process is still connected; only the chats waiting on it say why.
+    expect(
+      projectAgentRuntimeConnection({ status: "ready", generation: "g", busy: true }),
+    ).toMatchObject({ status: "connected", busy: true });
     expect(projectAgentRuntimeConnection({ status: "starting" }).status).toBe("starting");
     expect(projectAgentRuntimeConnection({ status: "restarting", attempt: 2 })).toMatchObject({
       status: "disconnected",

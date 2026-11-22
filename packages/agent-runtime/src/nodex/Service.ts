@@ -69,6 +69,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Fiber from "effect/Fiber";
+import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
+import { isAgentRuntimeWatchedRead } from "./WatchedReads.ts";
 import * as Scope from "effect/Scope";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -2259,7 +2261,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   return {
     identity,
     handle: Effect.fn("AgentRuntime.request")(function* (value: unknown) {
-      const task = yield* handle(value).pipe(Effect.forkIn(processScope));
+      const method =
+        value !== null && typeof value === "object" && "method" in value ? value.method : null;
+      const work = isAgentRuntimeWatchedRead(method)
+        ? NodeSqliteClient.foregroundReads(handle(value))
+        : handle(value);
+      const task = yield* work.pipe(Effect.forkIn(processScope));
       const result = Fiber.join(task);
       // Utilities follow both request and process lifetimes; durable commands survive client loss.
       if (

@@ -428,8 +428,12 @@ export type AgentRuntimeConnectionState =
   /** Not running and nothing requires it; the next operation starts it. */
   | { readonly status: "idle" }
   | { readonly status: "starting" }
-  | { readonly status: "ready"; readonly generation: string }
-  /** The process is connected but has not answered while requests remain pending. */
+  /**
+   * Busy: what someone waits for is moving, only slowly, as on a computer running many builds.
+   * Nothing needs the person; surfaces that are waiting say why.
+   */
+  | { readonly status: "ready"; readonly generation: string; readonly busy?: true }
+  /** Requests are waiting and the process has made no progress on them for over a minute. */
   | { readonly status: "unresponsive"; readonly generation: string }
   | { readonly status: "restarting"; readonly attempt: number }
   | { readonly status: "failed"; readonly message: string };

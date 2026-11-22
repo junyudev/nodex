@@ -556,8 +556,13 @@ process with one stuck read still serves everything else. Reads that open a chat
 their types are still known, because the failures that remain, such as Core's own deadline, are
 real but brief. Starting is the one transport
 phase with a budget, because nothing depends on a process that has not started. Liveness is a
-separate, visible state: silence is counted in scheduler ticks, so a stall of Main or a sleeping
-computer counts once, and it never ends a process on its own. See
+separate state with two levels. A busy computer slows the process without stopping it, so busy
+is explained only where something waits; unresponsive is reserved for a process that has made no
+progress for a minute, measured by its own watchdog thread while its control loop is blocked.
+The process keeps that loop free of storage I/O, so commits, checkpoints and cold reads cost
+throughput rather than responsiveness. Silence is counted in scheduler ticks, so a stall of Main
+or a sleeping computer counts once, and neither lag nor silence ever ends a process on its own.
+See
 [Execution process supervision](product-specs/agent-runtime-behavior.md#execution-process-supervision).
 
 ### Inbox confirmation handoff
@@ -865,7 +870,7 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 | Resource lifecycle or Profile retired  | Evict stale presentations and reject old handles before publishing post-state; later operations bind the current Profile, Store and resource lifecycle                                                                                                                                       |
 | Core transport generation lost         | Single-flight reconnect to the same Profile/Library/Store epoch                                                                                                                                                                                                                              |
 | Repeated Core losses                   | Open bounded circuit and show one app-wide Retry/Restart state                                                                                                                                                                                                                               |
-| Agent Runtime slow or silent           | Keep requests pending and show one app-wide unresponsive state that clears once the process answers and no read someone waits on is stuck; replace the process only on an explicit Restart, then let replies recover and reattach                                                            |
+| Agent Runtime slow or silent           | Keep requests pending; explain a busy process only where something waits, and show one app-wide unresponsive state only after a minute without progress, clearing once it progresses and no read someone waits on is stuck; replace the process only on an explicit Restart, then reattach   |
 | Local Codex package missing or invalid | Keep the Workbench and other Agents usable. Local Codex operations return its availability state until package verification succeeds.                                                                                                                                                        |
 | Codex app-server session lost          | Reject that session's pending requests, retire its child, then reconnect with one bounded supervisor; never carry pending RPC state into the replacement generation                                                                                                                          |
 | Thread resume/start buffer saturated   | Fail the exact Codex generation and canonically read the Thread after replacement; never apply a later occurrence ahead of a dropped predecessor                                                                                                                                             |

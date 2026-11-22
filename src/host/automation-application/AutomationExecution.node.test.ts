@@ -414,7 +414,7 @@ const setup = (
         Layer.succeed(AgentRuntimeSupervisor, {
           get: () =>
             Effect.succeed({
-              responsive: Stream.make(true),
+              liveness: Stream.make("ready" as const),
               subscribeExecutionNotifications: Effect.succeed(Stream.never),
               terminated: Effect.never,
             }),

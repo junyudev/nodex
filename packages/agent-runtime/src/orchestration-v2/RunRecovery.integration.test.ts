@@ -266,6 +266,12 @@ const withRecovery = <A, E>(
         yield* waitEvent(
           (event) => event.type === "provider-turn.updated" && event.payload.status === "running",
         );
+        // The Runtime restarts while the Run waits to recover. Recording that first keeps the
+        // restart deterministic instead of racing the closing store with a lost observation.
+        if (options.restart) {
+          yield* failTurn((event) => Queue.offer(events, event), started[0]!);
+          yield* waitRecovery(started[0]!);
+        }
       });
       if (options.restart) yield* initialize.pipe(Effect.provide(layer));
       return yield* Effect.gen(function* () {
@@ -273,7 +279,7 @@ const withRecovery = <A, E>(
         if (options.restart) {
           yield* reconcileRestart;
           yield* recover(started[0]!);
-          assert.equal(started.length, 2, "restart must recover the lost native turn");
+          assert.equal(started.length, 2, "restart must keep and run the pending recovery");
         }
         return yield* test({
           started,

@@ -9,8 +9,9 @@ import { useAgentRuntimeConnectionState } from "@/lib/agent-runtime-session-acti
 import { readableIpcError } from "@/lib/ipc-error-message";
 
 /**
- * Waiting on a busy execution process stays honest without ending anything: requests keep waiting
- * and settle when it answers, so only the person using Nodex can choose to replace it.
+ * Shown only when execution has stopped making progress, never merely because the computer is
+ * busy: a busy process is explained where something waits for it. Requests keep waiting and settle
+ * when it answers, so only the person using Nodex can choose to replace it.
  */
 export function AgentRuntimeStatusNotice() {
   const intl = useIntl();
@@ -61,8 +62,8 @@ export function AgentRuntimeStatusNotice() {
         </AppStatusNoticeAction>
       }
       detail={intl.formatMessage({
-        id: "components.agentRuntimeStatusNotice.busyDetail",
-        defaultMessage: "Your computer may be busy. Nodex will catch up.",
+        id: "components.agentRuntimeStatusNotice.stuckDetail",
+        defaultMessage: "It hasn’t made progress for over a minute.",
       })}
       icon={<AlertTriangle className="icon-2xs shrink-0 text-[var(--color-text-warning)]" />}
       label={intl.formatMessage({

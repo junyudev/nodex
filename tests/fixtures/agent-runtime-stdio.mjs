@@ -1,3 +1,4 @@
+import { writeSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const identity = {
@@ -20,7 +21,24 @@ process.on("SIGUSR1", () => {
 });
 const utilityTimers = new Map();
 let cancelledUtilities = 0;
-let pings = 0;
+// Health reports come from this fixture's own loop: stopping the process silences them, and a
+// "lag:<ms>" request reports a control loop gap the way the production watchdog would.
+const argument = (name) => {
+  const index = process.argv.indexOf(name);
+  return index < 0 ? undefined : process.argv[index + 1];
+};
+const healthFd = Number(argument("--health-fd"));
+let reportedLagMs = 0;
+const reportHealth = () => {
+  try {
+    writeSync(healthFd, `${JSON.stringify({ type: "health", lagMs: reportedLagMs, active: 0, waiting: 0 })}\n`);
+  } catch {}
+};
+if (Number.isInteger(healthFd) && healthFd > 2) {
+  // Like the production watchdog, the first report precedes readiness.
+  reportHealth();
+  setInterval(reportHealth, Number(argument("--health-interval-ms") ?? 1000)).unref();
+}
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 const first = await lines.next();
 const bootstrap = first.done ? null : JSON.parse(first.value);
@@ -39,11 +57,6 @@ send({ type: "ready", identity });
 
 for await (const line of { [Symbol.asyncIterator]: () => lines }) {
   const request = JSON.parse(line);
-  if (request.type === "ping") {
-    pings++;
-    send({ type: "pong" });
-    continue;
-  }
   if (request.type === "request.cancel") {
     if (utilityTimers.has(request.id)) {
       clearTimeout(utilityTimers.get(request.id));
@@ -79,8 +92,9 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "project.read") {
-    if (request.input.projectId === "ping-count") {
-      success(request.id, { id: "ping-count", title: String(pings), workspaceRoot: "/tmp" });
+    if (request.input.projectId.startsWith("lag:")) {
+      reportedLagMs = Number(request.input.projectId.slice("lag:".length));
+      success(request.id, { id: "lag", title: String(reportedLagMs), workspaceRoot: "/tmp" });
       continue;
     }
     if (request.input.projectId === "cancelled-utilities") {

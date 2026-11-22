@@ -78,7 +78,7 @@ const fixture = Effect.gen(function* () {
     terminated: Deferred.await(ended),
     notifications: Stream.fromPubSub(events),
     subscribeNotifications: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
-    responsive: Stream.make(true),
+    liveness: Stream.make("ready" as const),
     subscribeExecutionNotifications: PubSub.subscribe(events).pipe(
       Effect.map(Stream.fromSubscription),
     ),

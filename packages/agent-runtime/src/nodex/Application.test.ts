@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Deferred from "effect/Deferred";
-import { DatabaseSync } from "node:sqlite";
 import type {
   AgentRuntimeNotification,
   AgentSnapshot,
@@ -21,11 +20,7 @@ import { AgentRuntime } from "./Service.ts";
 import type { AgentShellSnapshot } from "./Interface.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 
-/** The runtime keeps writing its database in the background; a test's own connection waits
- * for that lock instead of failing with "database is locked". */
-const RUNTIME_DATABASE_BUSY_TIMEOUT_MS = 5_000;
-const openRuntimeDatabase = (path: string) =>
-  new DatabaseSync(path, { timeout: RUNTIME_DATABASE_BUSY_TIMEOUT_MS });
+import { openRuntimeDatabase } from "../testUtils/runtimeDatabase.ts";
 
 it.live("reopens the same execution identity and persisted project after shutdown", () =>
   Effect.gen(function* () {
@@ -131,7 +126,7 @@ it.live("tells an observer to reload when pruning removed events after its curso
             },
           },
         });
-        const database = new DatabaseSync(path.join(home, "agent-runtime.sqlite"));
+        const database = openRuntimeDatabase(path.join(home, "agent-runtime.sqlite"));
         database
           .prepare(
             `INSERT INTO orchestration_v2_projection_metadata

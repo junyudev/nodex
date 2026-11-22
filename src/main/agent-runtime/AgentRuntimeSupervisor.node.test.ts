@@ -18,6 +18,7 @@ import {
   AgentRuntimeProcessError,
 } from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
+import type { AgentRuntimeLiveness } from "../platform/node/agent-runtime-liveness";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
 import { make } from "./AgentRuntimeSupervisor";
 
@@ -29,13 +30,13 @@ const fixture = Effect.gen(function* () {
   const generations: Array<{
     readonly terminated: Deferred.Deferred<AgentRuntimeProcessError>;
     readonly released: Deferred.Deferred<void>;
-    readonly responsive: SubscriptionRef.SubscriptionRef<boolean>;
+    readonly liveness: SubscriptionRef.SubscriptionRef<AgentRuntimeLiveness>;
   }> = [];
   const acquire = Effect.gen(function* () {
     const terminated = yield* Deferred.make<AgentRuntimeProcessError>();
     const released = yield* Deferred.make<void>();
-    const responsive = yield* SubscriptionRef.make(true);
-    generations.push({ terminated, released, responsive });
+    const liveness = yield* SubscriptionRef.make<AgentRuntimeLiveness>("ready");
+    generations.push({ terminated, released, liveness });
     yield* Effect.addFinalizer(() => Deferred.succeed(released, undefined));
     const connection: AgentRuntimeProcessConnection = {
       identity: {
@@ -49,7 +50,7 @@ const fixture = Effect.gen(function* () {
       terminated: Deferred.await(terminated),
       notifications: Stream.empty,
       subscribeNotifications: Effect.succeed(Stream.empty),
-      responsive: SubscriptionRef.changes(responsive),
+      liveness: SubscriptionRef.changes(liveness),
       subscribeExecutionNotifications: Effect.succeed(Stream.empty),
       request: (method) =>
         Effect.sync(() => requests.push(method)).pipe(
@@ -518,7 +519,7 @@ it.effect("activation and callers share the acquired generation's identity objec
 );
 
 it.effect(
-  "publishes responsiveness only for the current generation and explicit restarts preserve crash allowance",
+  "publishes liveness only for the current generation and explicit restarts preserve crash allowance",
   () =>
     Effect.gen(function* () {
       const f = yield* fixture;
@@ -531,20 +532,30 @@ it.effect(
       assert.equal(f.generations.length, 0);
       yield* supervisor.get();
       const first = f.generations[0]!;
-      yield* SubscriptionRef.set(first.responsive, false);
+      yield* SubscriptionRef.set(first.liveness, "busy");
+      yield* Effect.yieldNow;
+      // A busy process is still ready; only the surfaces waiting on it say why.
+      assert.deepEqual(yield* supervisor.connectionState, {
+        status: "ready",
+        generation: "1",
+        busy: true,
+      });
+      yield* supervisor.restart("1");
+      assert.equal(f.generations.length, 1);
+      yield* SubscriptionRef.set(first.liveness, "unresponsive");
       yield* Effect.yieldNow;
       assert.deepEqual(yield* supervisor.connectionState, {
         status: "unresponsive",
         generation: "1",
       });
-      yield* SubscriptionRef.set(first.responsive, true);
+      yield* SubscriptionRef.set(first.liveness, "ready");
       yield* Effect.yieldNow;
       assert.deepEqual(yield* supervisor.connectionState, { status: "ready", generation: "1" });
       // A process that answered again keeps serving its Agents.
       yield* supervisor.restart("1");
       assert.equal(f.generations.length, 1);
       for (let i = 1; i <= 3; i++) {
-        yield* SubscriptionRef.set(f.generations.at(-1)!.responsive, false);
+        yield* SubscriptionRef.set(f.generations.at(-1)!.liveness, "unresponsive");
         yield* Effect.yieldNow;
         // A stale click, such as from a second window, cannot replace the current process.
         yield* supervisor.restart("stale");
@@ -554,7 +565,7 @@ it.effect(
       }
       assert.equal(f.generations.length, 4);
       assert.isTrue(yield* Deferred.isDone(first.released));
-      yield* SubscriptionRef.set(first.responsive, false);
+      yield* SubscriptionRef.set(first.liveness, "unresponsive");
       yield* Deferred.succeed(
         first.terminated,
         new AgentRuntimeProcessError({ reason: "closed", message: "Late old exit" }),

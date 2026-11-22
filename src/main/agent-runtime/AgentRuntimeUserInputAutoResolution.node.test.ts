@@ -61,7 +61,7 @@ const fixture = Effect.fn("RuntimeQuestionDeadlineTest.fixture")(function* (
     terminated: Effect.never,
     notifications: Stream.never,
     subscribeNotifications: Effect.succeed(Stream.never),
-    responsive: Stream.make(true),
+    liveness: Stream.make("ready" as const),
     subscribeExecutionNotifications: Effect.succeed(Stream.never),
     request: ((method: string, input: unknown) =>
       Effect.sync(() => {

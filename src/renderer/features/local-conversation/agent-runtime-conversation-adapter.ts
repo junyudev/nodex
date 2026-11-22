@@ -186,6 +186,7 @@ const emptyState: AgentRuntimeConversationOwnerSnapshot = {
 const emptySubscribe = () => () => {};
 const emptyRead = () => emptyState;
 const connected = { status: "connected", retries: 0 } as const;
+const connectedBusy = { status: "connected", retries: 0, busy: true } as const;
 const starting = { status: "starting", retries: 0 } as const;
 const connectionViews = new WeakMap<AgentRuntimeConnectionState, CodexConnectionState>();
 
@@ -215,6 +216,7 @@ export function failedWorkspacePreparation(
 export function projectAgentRuntimeConnection(
   state: AgentRuntimeConnectionState,
 ): CodexConnectionState {
+  if (state.status === "ready" && state.busy) return connectedBusy;
   if (state.status === "idle" || state.status === "ready" || state.status === "unresponsive")
     return connected;
   if (state.status === "starting") return starting;

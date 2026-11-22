@@ -6,7 +6,11 @@ import {
   reapAgentRuntimeServers,
 } from "@nodex/agent-runtime/process-lifecycle";
 import * as Exit from "effect/Exit";
-import { decodeAgentAcpFailure, type AgentAcpFailure } from "@nodex/agent-runtime/contracts";
+import {
+  AGENT_RUNTIME_WATCHED_READS,
+  decodeAgentAcpFailure,
+  type AgentAcpFailure,
+} from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import {
   type AgentRuntimeBootstrap,
@@ -20,12 +24,18 @@ import {
 } from "@nodex/agent-runtime/contracts";
 import * as Clock from "effect/Clock";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { isAgentRuntimeResponsive, nextAgentRuntimeSilentTicks } from "./agent-runtime-liveness";
+import {
+  classifyAgentRuntimeLiveness,
+  nextAgentRuntimeSilentTicks,
+  type AgentRuntimeLiveness,
+} from "./agent-runtime-liveness";
 import * as Deferred from "effect/Deferred";
+import * as Cause from "effect/Cause";
 import type { Done } from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -58,33 +68,15 @@ export const AGENT_RUNTIME_NODE_FLAGS = ["--max-semi-space-size=8"] as const;
 const MAXIMUM_PENDING_REQUESTS = 64;
 const MAXIMUM_WAITING_REQUESTS = 1024;
 const LIVENESS_TICK_MS = 5_000;
+/** Several health reports per tick, so one late report never reads as silence. */
+const HEALTH_REPORTS_PER_TICK = 5;
+/** The process's watchdog writes health reports here, apart from stdout and its backpressure. */
+const HEALTH_FD = 3;
 const SLOW_REQUEST_MS = 10_000;
 // Scope release must finish even when the engine cannot answer shutdown.
 const SHUTDOWN_TIMEOUT = Duration.millis(AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS);
 
 const MAXIMUM_PENDING_HOST_REQUESTS = 128;
-/**
- * Reads someone is looking at a blank surface for, answered from the execution store alone. Work
- * that is slow by nature, such as generating text or importing history, is deliberately absent.
- */
-const WATCHED_READS: ReadonlySet<AgentRuntimeMethod> = new Set<AgentRuntimeMethod>([
-  "thread.read",
-  "thread.snapshot",
-  "thread.control",
-  "thread.history",
-  "thread.timeline",
-  "thread.queue",
-  "thread.queued-preview",
-  "thread.run-message",
-  "thread.questions.list",
-  "thread.prompt-index",
-  "thread.item",
-  "thread.item.full",
-  "thread.item.content",
-  "thread.attachment",
-  "tasks.overview",
-  "events.observe",
-]);
 const identitySchema = z.object({
   runtimeId: z.string().min(1),
   runtimeGeneration: z.string().min(1),
@@ -93,7 +85,12 @@ const identitySchema = z.object({
   mcpEndpoint: z.string().url(),
   lastSequence: z.number().int().nonnegative(),
 });
-const pongSchema = z.object({ type: z.literal("pong") });
+const healthSchema = z.object({
+  type: z.literal("health"),
+  lagMs: z.number().nonnegative(),
+  active: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+});
 const replySchema = z.discriminatedUnion("success", [
   z.object({ id: z.string(), success: z.literal(true), output: z.unknown() }),
   z.object({
@@ -351,8 +348,8 @@ export interface AgentRuntimeProcessDelivery {
 export interface AgentRuntimeProcessConnection {
   readonly identity: AgentRuntimeIdentity;
   readonly terminated: Effect.Effect<AgentRuntimeProcessError>;
-  /** Current responsiveness followed by changes; silence never retires the process. */
-  readonly responsive: Stream.Stream<boolean>;
+  /** Current liveness followed by changes; neither lag nor silence ever retires the process. */
+  readonly liveness: Stream.Stream<AgentRuntimeLiveness>;
   readonly request: <M extends AgentRuntimeMethod>(
     method: M,
     input: AgentRuntimeOperations[M]["input"],
@@ -378,6 +375,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   options: AgentRuntimeProcessOptions,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const tickMs = options.livenessTickMs ?? LIVENESS_TICK_MS;
   const input = yield* Queue.make<Uint8Array, Done>({ capacity: 8 });
   // Event consumers cannot hold up control replies or the awaited Host preparation.
   // Sliding delivery is bounded; its independent counter makes every gap observable.
@@ -395,26 +393,21 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     readonly reply: Deferred.Deferred<unknown, AgentRuntimeProcessError>;
     readonly admitted: Deferred.Deferred<void, AgentRuntimeProcessError>;
     readonly bypass: boolean;
+    readonly watched: boolean;
     /**
      * The tick a watched read began, including its time waiting for admission. Cleared when its
      * caller stops waiting: its slot stays until the reply, but nobody is looking at it anymore.
      */
     readStartedTick: number | null;
   };
-  const responsiveness = yield* SubscriptionRef.make(true);
-  let receivedFrame = false;
+  const liveness = yield* SubscriptionRef.make<AgentRuntimeLiveness>("ready");
   let receivedReady = false;
   let silentTicks = 0;
   let tick = 0;
-  let pingOutstanding = false;
-  const reportResponsive = (value: boolean) =>
-    Effect.gen(function* () {
-      if ((yield* SubscriptionRef.get(responsiveness)) === value) return;
-      yield* SubscriptionRef.set(responsiveness, value);
-      yield* Effect.logWarning(
-        value ? "Agent Runtime became responsive" : "Agent Runtime became unresponsive",
-      );
-    });
+  // Silence is judged only once the process has reported, and per tick from the latest report.
+  let healthReported = false;
+  let healthThisTick = false;
+  let health: Omit<z.infer<typeof healthSchema>, "type"> = { lagMs: 0, active: 0, waiting: 0 };
   interface ProcessState {
     readonly closed: AgentRuntimeProcessError | null;
     readonly pending: ReadonlyMap<string, Pending>;
@@ -431,11 +424,33 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     for (const entry of [...current.pending.values(), ...current.waiting.values()])
       if (entry.readStartedTick !== null)
         oldestReadAgeTicks = Math.max(oldestReadAgeTicks, tick - entry.readStartedTick);
-    yield* reportResponsive(isAgentRuntimeResponsive(silentTicks, oldestReadAgeTicks));
+    const next = classifyAgentRuntimeLiveness({
+      pending: current.pending.size + current.waiting.size > 0,
+      silentTicks,
+      lagMs: health.lagMs,
+      oldestReadAgeTicks,
+    });
+    // Ticks, reports and replies re-evaluate concurrently; only a real change publishes.
+    const previous = yield* SubscriptionRef.modifySome(liveness, (current) =>
+      current === next ? [current, Option.none()] : [current, Option.some(next)],
+    );
+    if (previous === next) return;
+    yield* Effect.logWarning(`Agent Runtime became ${next}`).pipe(
+      Effect.annotateLogs({
+        previous,
+        lagMs: health.lagMs,
+        silentTicks,
+        oldestReadAgeTicks,
+        engineActive: health.active,
+        engineWaiting: health.waiting,
+        hostPending: current.pending.size,
+        hostWaiting: current.waiting.size,
+      }),
+    );
   });
-  /** A frame can only restore responsiveness, so the common responsive path stays free. */
-  const recheckLiveness = SubscriptionRef.get(responsiveness).pipe(
-    Effect.flatMap((responsive) => (responsive ? Effect.void : reportLiveness)),
+  /** Degrading waits for a tick; a report or reply can restore readiness at once. */
+  const recheckLiveness = SubscriptionRef.get(liveness).pipe(
+    Effect.flatMap((current) => (current === "ready" ? Effect.void : reportLiveness)),
   );
   const scope = yield* Effect.scope;
   const ledger = yield* AgentRuntimeWorkLedger;
@@ -511,6 +526,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       options.configuration.home,
       "--cwd",
       options.configuration.cwd,
+      "--health-fd",
+      String(HEALTH_FD),
+      "--health-interval-ms",
+      String(Math.max(1, Math.floor(tickMs / HEALTH_REPORTS_PER_TICK))),
     ],
     options.agentRunner,
   );
@@ -531,6 +550,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         stdin: "pipe",
         stdout: "pipe",
         stderr: "inherit",
+        additionalFds: { [`fd${HEALTH_FD}`]: { type: "output" } },
       }),
     )
     .pipe(
@@ -556,7 +576,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         const waiting = new Map(current.waiting);
         pending.delete(id);
         waiting.delete(id);
-        const next = entry && !entry.bypass ? waiting.entries().next().value : undefined;
+        // A watched read goes first: someone is looking at a blank surface for it.
+        const next =
+          entry && !entry.bypass
+            ? ([...waiting].find(([, candidate]) => candidate.watched) ??
+              waiting.entries().next().value)
+            : undefined;
         if (next) {
           waiting.delete(next[0]);
           pending.set(...next);
@@ -567,13 +592,6 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     });
 
   const accept = Effect.fn("AgentRuntimeProcess.accept")(function* (value: unknown) {
-    receivedFrame = true;
-    silentTicks = 0;
-    yield* recheckLiveness;
-    if (pongSchema.safeParse(value).success) {
-      pingOutstanding = false;
-      return;
-    }
     const reply = replySchema.safeParse(value);
     if (reply.success) {
       const waiter = yield* Ref.get(state).pipe(
@@ -868,7 +886,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       admitted,
       // Releasing an observer frees engine work, so it must not wait behind that work.
       bypass: method === "shutdown" || method === "events.unobserve",
-      readStartedTick: WATCHED_READS.has(method) ? tick : null,
+      watched: AGENT_RUNTIME_WATCHED_READS.has(method),
+      readStartedTick: AGENT_RUNTIME_WATCHED_READS.has(method) ? tick : null,
     };
     let sent = false;
     return yield* Effect.uninterruptibleMask((restore) =>
@@ -965,21 +984,42 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     );
   });
 
+  const healthFrames = createAgentRuntimeFrameDecoder(64 * 1024);
+  yield* process.getOutputFd(HEALTH_FD).pipe(
+    Stream.mapEffect((chunk) => Effect.try(() => healthFrames.push(chunk))),
+    Stream.flatMap(Stream.fromIterable),
+    Stream.runForEach((value) =>
+      Effect.gen(function* () {
+        const report = healthSchema.safeParse(value);
+        if (!report.success) return;
+        const { type: _type, ...next } = report.data;
+        health = next;
+        healthReported = true;
+        healthThisTick = true;
+        silentTicks = 0;
+        yield* recheckLiveness;
+      }),
+    ),
+    // Health is advisory: a broken report channel leaves the process to its other signals.
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Agent Runtime health reports ended", Cause.pretty(cause)),
+    ),
+    Effect.forkIn(scope),
+  );
+
   yield* Effect.gen(function* () {
     while (true) {
-      yield* Effect.sleep(options.livenessTickMs ?? LIVENESS_TICK_MS);
+      yield* Effect.sleep(tickMs);
       const current = yield* Ref.get(state);
       if (current.closed) return;
       tick += 1;
       silentTicks = nextAgentRuntimeSilentTicks(
         silentTicks,
-        current.pending.size > 0,
-        receivedFrame,
+        current.pending.size + current.waiting.size > 0,
+        healthThisTick || !healthReported,
       );
-      receivedFrame = false;
+      healthThisTick = false;
       yield* reportLiveness;
-      if (current.pending.size === 0 || pingOutstanding) continue;
-      pingOutstanding = Queue.offerUnsafe(input, encode({ type: "ping" }));
     }
   }).pipe(Effect.forkIn(scope));
 
@@ -1001,7 +1041,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   return {
     identity,
     terminated: Deferred.await(terminated),
-    responsive: SubscriptionRef.changes(responsiveness),
+    liveness: SubscriptionRef.changes(liveness),
     request,
     notifications: Stream.fromPubSub(notifications),
     subscribeNotifications: PubSub.subscribe(notifications).pipe(

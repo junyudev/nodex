@@ -93,6 +93,6 @@ it.effect("queued readers bind to a replacement after an executing read is inter
         posted.mockRestore();
         terminated.mockRestore();
       }
-    }).pipe(Effect.provide(SqliteClient.layer({ filename, readerWorker: true })));
+    }).pipe(Effect.provide(SqliteClient.layer({ filename, workerConnections: true })));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

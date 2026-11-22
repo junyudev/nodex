@@ -111,6 +111,10 @@ const layerSetup = Layer.effectDiscard(
     }>`SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table'`;
     if (tables[0]?.count === 0) yield* sql`PRAGMA auto_vacuum = INCREMENTAL;`;
     yield* sql`PRAGMA journal_mode = WAL;`;
+    // Like Core's store: commits survive a crash of Nodex, and only a crash of the computer can
+    // lose the latest ones. Syncing once per checkpoint instead of once per commit keeps streaming
+    // Agents from queueing behind the disk when builds and tests are also writing.
+    yield* sql`PRAGMA synchronous = NORMAL;`;
     // PASSIVE checkpoints never shrink the -wal file, so it otherwise keeps its
     // largest size until the last connection closes.
     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
@@ -137,7 +141,7 @@ export const layerFromPath = Effect.fn("makeSqlitePersistenceLive")(function* (d
     ),
     NodeSqliteClient.layer({
       filename: dbPath,
-      readerWorker: true,
+      workerConnections: true,
       spanAttributes: {
         "db.name": path.basename(dbPath),
         "service.name": "nodex-agent-runtime",

@@ -145,7 +145,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   const usageOf = (connection: AgentRuntimeProcessConnection): AgentRuntimeProcessConnection => ({
     identity: connection.identity,
     terminated: connection.terminated,
-    responsive: connection.responsive,
+    liveness: connection.liveness,
     notifications: connection.notifications,
     request: (method, input) => tracked(connection.request(method, input)),
     // A live renderer or Session observer is use; per-generation execution observers are not.
@@ -335,17 +335,22 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           current: { connection, scope: generationScope },
         }));
         yield* publish({ status: "ready", generation: connection.identity.runtimeGeneration });
-        yield* raw.responsive.pipe(
+        yield* raw.liveness.pipe(
           Stream.changes,
-          Stream.runForEach((responsive) =>
+          Stream.runForEach((liveness) =>
             gate.withPermit(
               Effect.gen(function* () {
                 if ((yield* Ref.get(state)).current?.connection !== connection) return;
-                const next: AgentRuntimeConnectionState = {
-                  status: responsive ? "ready" : "unresponsive",
-                  generation: connection.identity.runtimeGeneration,
-                };
-                if ((yield* SubscriptionRef.get(connectionState)).status !== next.status)
+                const generation = connection.identity.runtimeGeneration;
+                const next: AgentRuntimeConnectionState =
+                  liveness === "unresponsive"
+                    ? { status: "unresponsive", generation }
+                    : liveness === "busy"
+                      ? { status: "ready", generation, busy: true }
+                      : { status: "ready", generation };
+                const shown = (value: AgentRuntimeConnectionState) =>
+                  value.status === "ready" && value.busy ? "busy" : value.status;
+                if (shown(yield* SubscriptionRef.get(connectionState)) !== shown(next))
                   yield* publish(next);
               }),
             ),

@@ -979,6 +979,7 @@ export function ConnectedThreadStageFooter({
         attachmentState,
         reconnectingLong,
         failureShownInTranscript,
+        executionBusy: connection.busy === true,
         retry: () => runtime.resume(activeThreadId),
       }) ??
       input.provider?.sendGate ??
@@ -987,6 +988,7 @@ export function ConnectedThreadStageFooter({
   }, [
     activeThreadId,
     attachmentState,
+    connection.busy,
     failureShownInTranscript,
     input.isNewThreadTab,
     input.provider?.sendGate,

@@ -21,6 +21,8 @@ export function chatConnectionSendGate(
     readonly reconnectingLong: boolean;
     /** The transcript is empty and already says the chat could not be restored. */
     readonly failureShownInTranscript: boolean;
+    /** Agent execution is behind on a busy computer; the reconnect is slow, not failing. */
+    readonly executionBusy?: boolean;
     readonly retry: () => Promise<void>;
   },
   intl: IntlShape = getIntl(),
@@ -87,16 +89,29 @@ export function chatConnectionSendGate(
         id: "conversation.composerSendGate.stillReconnecting",
         defaultMessage: "Still reconnecting to this chat",
       }),
-      notice: input.reconnectingLong
-        ? {
-            key: "chat:reconnecting",
-            tone: "warning",
-            title: intl.formatMessage({
-              id: "conversation.composerSendGate.reconnecting",
-              defaultMessage: "Reconnecting to this chat…",
-            }),
-          }
-        : null,
+      notice: !input.reconnectingLong
+        ? null
+        : input.executionBusy
+          ? {
+              key: "chat:reconnecting-busy",
+              tone: "progress",
+              title: intl.formatMessage({
+                id: "conversation.composerSendGate.reconnecting",
+                defaultMessage: "Reconnecting to this chat…",
+              }),
+              detail: intl.formatMessage({
+                id: "conversation.composerSendGate.executionBusy",
+                defaultMessage: "Your computer is busy. This chat opens when Nodex catches up.",
+              }),
+            }
+          : {
+              key: "chat:reconnecting",
+              tone: "warning",
+              title: intl.formatMessage({
+                id: "conversation.composerSendGate.reconnecting",
+                defaultMessage: "Reconnecting to this chat…",
+              }),
+            },
     };
   }
   return null;

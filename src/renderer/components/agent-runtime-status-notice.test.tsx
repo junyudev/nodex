@@ -34,6 +34,8 @@ describe("AgentRuntimeStatusNotice", () => {
     { status: "idle" },
     { status: "starting" },
     { status: "ready", generation: "one" },
+    // A busy computer is explained where something waits, never across every window.
+    { status: "ready", generation: "one", busy: true },
     { status: "restarting", attempt: 1 },
     { status: "failed", message: "Could not start" },
   ])("stays silent while the process is $status", (connection) => {

@@ -45,7 +45,7 @@ const setup = Effect.gen(function* () {
     identity: { runtimeId: "engine" },
     notifications: Stream.fromPubSub(bus),
     subscribeNotifications: PubSub.subscribe(bus).pipe(Effect.map(Stream.fromSubscription)),
-    responsive: Stream.make(true),
+    liveness: Stream.make("ready" as const),
     subscribeExecutionNotifications: PubSub.subscribe(bus).pipe(
       Effect.map(Stream.fromSubscription),
     ),

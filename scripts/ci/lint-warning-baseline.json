@@ -307,7 +307,7 @@
   },
   "src/main/platform/node/AgentRuntimeProcess.node.test.ts": {
     "nodex(no-explicit-test-timeout)": 1,
-    "nodex(no-real-time-wait-in-tests)": 7
+    "nodex(no-real-time-wait-in-tests)": 6
   },
   "src/main/platform/node/ClaudeSdkBoundary.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2,
@@ -537,7 +537,7 @@
   },
   "tests/e2e/agent-runtime-starvation.spec.ts": {
     "nodex(no-explicit-test-timeout)": 14,
-    "nodex(no-real-time-wait-in-tests)": 2
+    "nodex(no-real-time-wait-in-tests)": 1
   },
   "tests/e2e/archive-chat-toast.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1

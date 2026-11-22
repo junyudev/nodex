@@ -1,9 +1,14 @@
 import * as TestClock from "effect/testing/TestClock";
 import {
+  AGENT_RUNTIME_BUSY_LAG_MS,
+  AGENT_RUNTIME_BUSY_SILENT_TICKS,
+  AGENT_RUNTIME_SLOW_READ_TICKS,
   AGENT_RUNTIME_STALLED_READ_TICKS,
-  AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS,
-  isAgentRuntimeResponsive,
+  AGENT_RUNTIME_STUCK_LAG_MS,
+  AGENT_RUNTIME_STUCK_SILENT_TICKS,
+  classifyAgentRuntimeLiveness,
   nextAgentRuntimeSilentTicks,
+  type AgentRuntimeLiveness,
 } from "./agent-runtime-liveness";
 import { ChildProcessSpawner } from "effect/process";
 import { reapAgentRuntimeServers } from "@nodex/agent-runtime/process-lifecycle";
@@ -256,18 +261,18 @@ setInterval(() => {}, 1000);
         yield* Deferred.await(started).pipe(Effect.timeout("30 seconds"));
         if (provider === "codex") {
           process.kill(runtimePid, "SIGSTOP");
-          yield* connection.responsive.pipe(
-            Stream.filter((value) => !value),
+          yield* connection.liveness.pipe(
+            Stream.filter((value) => value === "unresponsive"),
             Stream.runHead,
-            Effect.timeout("3 seconds"),
+            Effect.timeout("5 seconds"),
           );
           process.kill(runtimePid, "SIGCONT");
-          yield* connection.responsive.pipe(
-            Stream.filter(Boolean),
+          yield* connection.liveness.pipe(
+            Stream.filter((value) => value === "ready"),
             Stream.runHead,
-            Effect.timeout("3 seconds"),
+            Effect.timeout("5 seconds"),
           );
-          // The model child is still held, so only the production Daemon's pong can recover.
+          // The model child is still held, so only the production watchdog's reports can recover.
           assert.isUndefined(generating.pollUnsafe());
         }
         const pid = Number(yield* fs.readFileString(marker));
@@ -738,25 +743,48 @@ it.live("preserves structured search continuation failures across the Runtime st
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect("counts silence in scheduler ticks and resets at both activity boundaries", () =>
-  Effect.sync(() => {
-    const silent = AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS;
-    assert.equal(nextAgentRuntimeSilentTicks(0, true, false), 1);
-    assert.equal(nextAgentRuntimeSilentTicks(silent - 1, true, false), silent);
-    assert.equal(nextAgentRuntimeSilentTicks(silent, true, false), silent);
-    assert.equal(nextAgentRuntimeSilentTicks(silent, false, false), 0);
-    assert.equal(nextAgentRuntimeSilentTicks(silent, true, true), 0);
-  }),
+it.effect(
+  "counts silence in scheduler ticks only while a request waits on a reporting process",
+  () =>
+    Effect.sync(() => {
+      const stuck = AGENT_RUNTIME_STUCK_SILENT_TICKS;
+      assert.equal(nextAgentRuntimeSilentTicks(0, true, false), 1);
+      assert.equal(nextAgentRuntimeSilentTicks(stuck - 1, true, false), stuck);
+      assert.equal(nextAgentRuntimeSilentTicks(stuck, true, false), stuck);
+      assert.equal(nextAgentRuntimeSilentTicks(stuck, false, false), 0);
+      assert.equal(nextAgentRuntimeSilentTicks(stuck, true, true), 0);
+    }),
 );
 
-it.effect("either long silence or one stalled read makes the process unresponsive", () =>
+it.effect("tells a slow process from a stuck one, and judges only what someone waits for", () =>
   Effect.sync(() => {
-    const silent = AGENT_RUNTIME_UNRESPONSIVE_SILENT_TICKS;
-    const stalled = AGENT_RUNTIME_STALLED_READ_TICKS;
-    assert.isTrue(isAgentRuntimeResponsive(0, 0));
-    assert.isTrue(isAgentRuntimeResponsive(silent - 1, stalled - 1));
-    assert.isFalse(isAgentRuntimeResponsive(silent, 0));
-    assert.isFalse(isAgentRuntimeResponsive(0, stalled));
+    const at = (input: Partial<Parameters<typeof classifyAgentRuntimeLiveness>[0]>) =>
+      classifyAgentRuntimeLiveness({
+        pending: true,
+        silentTicks: 0,
+        lagMs: 0,
+        oldestReadAgeTicks: 0,
+        ...input,
+      });
+    assert.equal(at({}), "ready");
+    assert.equal(at({ lagMs: AGENT_RUNTIME_BUSY_LAG_MS - 1 }), "ready");
+    assert.equal(at({ lagMs: AGENT_RUNTIME_BUSY_LAG_MS }), "busy");
+    assert.equal(at({ lagMs: AGENT_RUNTIME_STUCK_LAG_MS - 1 }), "busy");
+    assert.equal(at({ lagMs: AGENT_RUNTIME_STUCK_LAG_MS }), "unresponsive");
+    assert.equal(at({ silentTicks: AGENT_RUNTIME_BUSY_SILENT_TICKS }), "busy");
+    assert.equal(at({ silentTicks: AGENT_RUNTIME_STUCK_SILENT_TICKS - 1 }), "busy");
+    assert.equal(at({ silentTicks: AGENT_RUNTIME_STUCK_SILENT_TICKS }), "unresponsive");
+    assert.equal(at({ oldestReadAgeTicks: AGENT_RUNTIME_SLOW_READ_TICKS }), "busy");
+    assert.equal(at({ oldestReadAgeTicks: AGENT_RUNTIME_STALLED_READ_TICKS }), "unresponsive");
+    // Nobody is waiting, so neither lag nor silence concerns anyone.
+    assert.equal(
+      at({
+        pending: false,
+        lagMs: AGENT_RUNTIME_STUCK_LAG_MS,
+        silentTicks: AGENT_RUNTIME_STUCK_SILENT_TICKS,
+      }),
+      "ready",
+    );
   }),
 );
 
@@ -826,28 +854,32 @@ it.live.skipIf(process.platform === "win32")(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("does not wake an idle process with pings", () =>
+const observeLiveness = (connection: Effect.Success<ReturnType<typeof acquire>>) =>
   Effect.gen(function* () {
-    const connection = yield* acquire(undefined, 20);
-    yield* Effect.sleep(200);
-    assert.equal(
-      (yield* connection.request("project.read", { projectId: "ping-count" }))?.title,
-      "0",
+    const states: AgentRuntimeLiveness[] = [];
+    yield* connection.liveness.pipe(
+      Stream.runForEach((value) => Effect.sync(() => states.push(value))),
+      Effect.forkScoped({ startImmediately: true }),
     );
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-);
+    return states;
+  });
+const reach = (
+  connection: Effect.Success<ReturnType<typeof acquire>>,
+  state: AgentRuntimeLiveness,
+) =>
+  connection.liveness.pipe(
+    Stream.filter((value) => value === state),
+    Stream.runHead,
+    Effect.timeout("3 seconds"),
+  );
 
 it.live.skipIf(process.platform === "win32")(
-  "SIGSTOP reports unresponsive and SIGCONT restores responsiveness before held work answers",
+  "a stopped process turns busy, then unresponsive, and SIGCONT restores it before held work answers",
   () =>
     Effect.gen(function* () {
       const connection = yield* acquire(undefined, 30);
       const pid = Number(connection.identity.runtimeGeneration);
-      const states: boolean[] = [];
-      yield* connection.responsive.pipe(
-        Stream.runForEach((value) => Effect.sync(() => states.push(value))),
-        Effect.forkScoped({ startImmediately: true }),
-      );
+      const states = yield* observeLiveness(connection);
       const deliveries = yield* connection.subscribeNotifications;
       const reply = yield* connection
         .request("project.read", { projectId: "held" })
@@ -862,68 +894,62 @@ it.live.skipIf(process.platform === "win32")(
         }),
       );
       process.kill(pid, "SIGSTOP");
-      yield* connection.responsive.pipe(
-        Stream.filter((value) => !value),
-        Stream.runHead,
-        Effect.timeout("3 seconds"),
-      );
+      yield* reach(connection, "unresponsive");
       process.kill(pid, "SIGCONT");
-      yield* connection.responsive.pipe(
-        Stream.filter(Boolean),
-        Stream.runHead,
-        Effect.timeout("3 seconds"),
-      );
-      assert.deepEqual(states, [true, false, true]);
+      yield* reach(connection, "ready");
+      assert.deepEqual(states, ["ready", "busy", "unresponsive", "ready"]);
       assert.isUndefined(reply.pollUnsafe());
       process.kill(pid, "SIGUSR1");
       yield* Fiber.join(reply);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-/**
- * For tests that hold work while the process keeps answering checks: six silent ticks must stay
- * longer than a busy runner takes to answer one, or a late pong reads as the process going quiet.
- */
+it.live(
+  "a control loop gap the process reports is busy, and a minute-long one is unresponsive",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire(undefined, 30);
+      const states = yield* observeLiveness(connection);
+      const deliveries = yield* connection.subscribeNotifications;
+      yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
+      yield* Stream.runHead(deliveries);
+      yield* connection.request("project.read", { projectId: `lag:${AGENT_RUNTIME_BUSY_LAG_MS}` });
+      yield* reach(connection, "busy");
+      yield* connection.request("project.read", { projectId: `lag:${AGENT_RUNTIME_STUCK_LAG_MS}` });
+      yield* reach(connection, "unresponsive");
+      yield* connection.request("project.read", { projectId: "lag:0" });
+      yield* reach(connection, "ready");
+      assert.deepEqual(states, ["ready", "busy", "unresponsive", "ready"]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+/** For tests that hold work while the process keeps reporting health. */
 const ANSWERING_TICK_MS = 20;
 
-const observeResponsive = (connection: Effect.Success<ReturnType<typeof acquire>>) =>
-  Effect.gen(function* () {
-    const states: boolean[] = [];
-    yield* connection.responsive.pipe(
-      Stream.runForEach((value) => Effect.sync(() => states.push(value))),
-      Effect.forkScoped({ startImmediately: true }),
-    );
-    return states;
-  });
-
 it.live.skipIf(process.platform === "win32")(
-  "a watched read stuck while the process answers is unresponsive until its own reply",
+  "a watched read stuck while the process answers is busy, then unresponsive until its own reply",
   () =>
     Effect.gen(function* () {
       const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
-      const states = yield* observeResponsive(connection);
+      const states = yield* observeLiveness(connection);
       const deliveries = yield* connection.subscribeNotifications;
       const read = yield* connection
         .request("thread.snapshot", { threadId: "thread" })
         .pipe(Effect.forkScoped);
       yield* Stream.runHead(deliveries);
-      yield* connection.responsive.pipe(
-        Stream.filter((value) => !value),
-        Stream.runHead,
-        Effect.timeout("3 seconds"),
-      );
-      // The process keeps answering checks and other requests, and that does not clear the stall.
+      yield* reach(connection, "unresponsive");
+      // The process keeps reporting and answering other requests, and that does not clear the stall.
       assert.equal(
         (yield* connection.request("runtime.identity", {})).runtimeId,
         "fixture-runtime",
       );
       yield* Effect.sleep(50);
-      assert.deepEqual(states, [true, false]);
+      assert.deepEqual(states, ["ready", "busy", "unresponsive"]);
       assert.isUndefined(read.pollUnsafe());
       process.kill(Number(connection.identity.runtimeGeneration), "SIGUSR1");
       yield* Fiber.join(read);
       yield* Effect.sleep(0);
-      assert.deepEqual(states, [true, false, true]);
+      assert.deepEqual(states, ["ready", "busy", "unresponsive", "ready"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -932,40 +958,36 @@ it.live.skipIf(process.platform === "win32")(
   () =>
     Effect.gen(function* () {
       const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
-      const states = yield* observeResponsive(connection);
+      const states = yield* observeLiveness(connection);
       const deliveries = yield* connection.subscribeNotifications;
       const read = yield* connection
         .request("thread.snapshot", { threadId: "thread" })
         .pipe(Effect.forkScoped);
       yield* Stream.runHead(deliveries);
-      yield* connection.responsive.pipe(
-        Stream.filter((value) => !value),
-        Stream.runHead,
-        Effect.timeout("3 seconds"),
-      );
+      yield* reach(connection, "unresponsive");
       yield* Fiber.interrupt(read);
-      assert.deepEqual(states, [true, false, true]);
+      assert.deepEqual(states, ["ready", "busy", "unresponsive", "ready"]);
       yield* Effect.sleep(ANSWERING_TICK_MS * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
-      assert.deepEqual(states, [true, false, true]);
+      assert.deepEqual(states, ["ready", "busy", "unresponsive", "ready"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("work outside the watched reads may take as long as it needs", () =>
   Effect.gen(function* () {
     const connection = yield* acquire(undefined, ANSWERING_TICK_MS);
-    const states = yield* observeResponsive(connection);
+    const states = yield* observeLiveness(connection);
     const deliveries = yield* connection.subscribeNotifications;
     yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
     yield* Stream.runHead(deliveries);
     yield* Effect.sleep(ANSWERING_TICK_MS * (AGENT_RUNTIME_STALLED_READ_TICKS + 10));
-    assert.deepEqual(states, [true]);
+    assert.deepEqual(states, ["ready"]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("a Main stall does not age a watched read", () =>
   Effect.gen(function* () {
     const connection = yield* acquire(undefined, 30);
-    const states = yield* observeResponsive(connection);
+    const states = yield* observeLiveness(connection);
     const deliveries = yield* connection.subscribeNotifications;
     yield* connection.request("thread.snapshot", { threadId: "thread" }).pipe(Effect.forkScoped);
     yield* Stream.runHead(deliveries);
@@ -977,18 +999,15 @@ it.live("a Main stall does not age a watched read", () =>
       }
     });
     yield* Effect.sleep(90);
-    assert.deepEqual(states, [true]);
+    // The stall is one tick, so the read is at most slow, never stuck.
+    assert.notInclude(states, "unresponsive");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("a Main event loop stall counts as one silent tick", () =>
   Effect.gen(function* () {
     const connection = yield* acquire(undefined, 30);
-    const states: boolean[] = [];
-    yield* connection.responsive.pipe(
-      Stream.runForEach((value) => Effect.sync(() => states.push(value))),
-      Effect.forkScoped({ startImmediately: true }),
-    );
+    const states = yield* observeLiveness(connection);
     const deliveries = yield* connection.subscribeNotifications;
     yield* connection.request("project.read", { projectId: "held" }).pipe(Effect.forkScoped);
     yield* Stream.runHead(deliveries);
@@ -999,7 +1018,7 @@ it.live("a Main event loop stall counts as one silent tick", () =>
       }
     });
     yield* Effect.sleep(200);
-    assert.deepEqual(states, [true]);
+    assert.deepEqual(states, ["ready"]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 for (const mode of ["shutdown", "unexpected exit", "shutdown overlapping crash cleanup"] as const) {

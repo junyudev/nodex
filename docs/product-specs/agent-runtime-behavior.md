@@ -1434,8 +1434,8 @@ delegated child never clears its root Session's unread state.
 
 Main supervises one execution process per Profile and publishes its connection state to every
 window: idle (not running; the next Agent action starts it), starting, ready with its process
-generation, unresponsive with that same generation, restarting with the recovery attempt, or
-failed with a readable reason. An
+generation (marked busy while what someone waits for is moving slowly), unresponsive with that
+same generation, restarting with the recovery attempt, or failed with a readable reason. An
 unexpected exit or failed start makes the next start a recovery. At most three recoveries
 start within any five-minute window, whether automatic or requested by an Agent action, so a
 crash loop cannot restart once per user action. When the budget is spent the state stays
@@ -1447,7 +1447,10 @@ the process itself, however long that takes, so a busy computer delays a chat or
 panel instead of failing it, and a command is never reported as failed while it may still
 commit. Work with its own deadline, such as generating structured text, enforces it inside the
 process and answers with the outcome. At most 64 requests are in flight and later ones wait
-their turn; only a backlog past 1,024 waiting requests is refused. A start, including the work
+their turn; only a backlog past 1,024 waiting requests is refused. A read someone is waiting to
+see, such as opening a chat, goes ahead of other waiting requests both in Main and inside the
+process, and reads the execution store on a lane of its own, so it never queues behind
+maintenance, search or other background reads. A start, including the work
 that follows readiness, fails after ten minutes and follows the failed-start path above.
 
 Opening a chat or the Subagents panel stays in its loading state through a temporary failure, such
@@ -1455,19 +1458,32 @@ as Nodex Core being too busy to answer or the process being replaced. Nodex trie
 waiting 0.75, 1.5, 3 and 6 seconds between attempts, before showing the failure with its Retry.
 A definite answer, such as a chat that no longer belongs to its Session, shows at once.
 
-While a request waits, Main also checks that the process is still answering, every five seconds.
-Its state becomes unresponsive after about 30 seconds with nothing heard from it, or when a read
-that someone is waiting to see, such as opening a chat, has gone unanswered for about two minutes
-even though the process keeps answering checks. Work that is slow by nature, such as generating
-text or importing history, does not count. Hearing from the process again restores ready unless
-such a read is still stuck; that read's answer, or nobody waiting for it anymore, clears it. Nodex counts checks rather than elapsed time, so a pause in Nodex itself or a
-sleeping computer counts only once, and an idle process is never checked. While unresponsive,
-other requests are still sent, passive reads such as Session rows pause, and surfaces read again and retry what failed once the
-process answers. Silence alone never ends the process, because the Agents it serves may still be
-working. Every window shows "Agent execution isn't responding" with a Restart action for as long
-as this lasts. Restart is the person's explicit decision: it replaces the process, ends its
-pending requests, lets its replies recover as they do when any shared process stops, and spends
-none of the recovery budget.
+The process keeps its own control loop free: execution storage commits, checkpoints and reads on
+worker threads, and a watchdog thread reports to Main once a second, apart from the process's
+replies, how long that loop has gone without running. Main judges the process only while a
+request waits, in checks every five seconds:
+
+- Busy: the loop has gone two seconds or more without running, no report has arrived for about
+  ten seconds, or a read someone is waiting to see has taken about ten seconds. Busy is still
+  ready. No window says anything about it; a chat that is still connecting says that the computer
+  is busy and that it opens when Nodex catches up.
+- Unresponsive: the loop has made no progress for a minute, no report has arrived for about a
+  minute, or such a read has gone unanswered for about two minutes while the process keeps
+  making progress. Work that is slow by nature, such as generating text or importing history,
+  does not count.
+
+A report showing progress or the stuck read's answer, or nobody waiting for it anymore, restores
+ready at once. Nodex counts checks rather than elapsed time, so a pause in Nodex itself or a
+sleeping computer counts only once, and an idle process is never judged. Gaps of two seconds or
+more in the process's loop are recorded with the process's CPU time, page faults and context
+switches and the computer's load in a small rotating `event-loop-stalls.log` beside the
+process's other logs, which tells CPU starvation, paging and long synchronous work apart. While
+unresponsive, other requests are still sent, passive reads such as Session rows pause, and
+surfaces read again and retry what failed once the process answers. Neither lag nor silence ever
+ends the process, because the Agents it serves may still be working. Every window shows "Agent
+execution isn't responding" with a Restart action for as long as this lasts. Restart is the
+person's explicit decision: it replaces the process, ends its pending requests, lets its replies
+recover as they do when any shared process stops, and spends none of the recovery budget.
 
 The process runs only while needed. It stops after three quiet minutes once it reports no
 active Run, pending question, live delegated or background task, delegated result waiting to

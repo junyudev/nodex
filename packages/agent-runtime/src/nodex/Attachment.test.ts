@@ -11,7 +11,7 @@ import {
   projectTurnItemForDetail,
   projectTurnItemForWire,
 } from "../orchestration-v2/WireProjection.ts";
-import { DatabaseSync } from "node:sqlite";
+import { openRuntimeDatabase } from "../testUtils/runtimeDatabase.ts";
 import type { PersistChatAttachmentsResult } from "@nodex/runtime-contracts";
 import type { AgentWire } from "./Interface.ts";
 import * as IdAllocator from "../../vendor/provider-core/src/server/IdAllocator.ts";
@@ -76,7 +76,7 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
         const image = (persisted as AgentWire<PersistChatAttachmentsResult>).attachments[0]!;
         // Storage boundary: controlled fork-cutoff and post-fork records exercise the real indexed read.
         yield* Effect.sync(() => {
-          const db = new DatabaseSync(runtime.identity.databasePath);
+          const db = openRuntimeDatabase(runtime.identity.databasePath);
           try {
             const now = "2026-10-14T00:00:00.000Z";
             for (const ordinal of [1, 2])
