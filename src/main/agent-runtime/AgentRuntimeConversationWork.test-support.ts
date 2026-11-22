@@ -64,7 +64,8 @@ export interface ConversationWorkHarness {
   /** Starts the corpus's controlled stream Turn; its chunks then arrive through `streamChunk`. */
   readonly startStream: Effect.Effect<void, unknown>;
   readonly streamChunk: (delta: string) => Effect.Effect<void>;
-  readonly completeStream: Effect.Effect<void>;
+  /** Completes the stream Turn and waits until the Runtime has finished it. */
+  readonly completeStream: Effect.Effect<void, unknown>;
 }
 
 /** Every Codex Turn completes at once except the corpus's stream, which the test drives. */
@@ -318,9 +319,7 @@ export const conversationWorkHarness = Effect.fn("test.conversationWorkHarness")
       mode: "auto",
       createdBy: "user",
     });
-  for (const [index, turn] of corpus.turns.entries()) {
-    yield* Effect.promise(() => writeFile(replyPath, turn.reply));
-    const { runId } = yield* send(index, turn.prompt);
+  const awaitRun = Effect.fnUntraced(function* (runId: string) {
     let execution = yield* runtime.request("thread.execution", { threadId, runId });
     while (execution.status !== "completed")
       execution = yield* runtime.request("thread.execution.wait", {
@@ -329,7 +328,12 @@ export const conversationWorkHarness = Effect.fn("test.conversationWorkHarness")
         afterRevision: execution.revision,
         timeoutMs: 30_000,
       });
+  });
+  for (const [index, turn] of corpus.turns.entries()) {
+    yield* Effect.promise(() => writeFile(replyPath, turn.reply));
+    yield* awaitRun((yield* send(index, turn.prompt)).runId);
   }
+  let streamRunId: string | undefined;
   const command = (value: object) =>
     Effect.promise(() => appendFile(commands, `${JSON.stringify(value)}\n`));
   return {
@@ -341,11 +345,15 @@ export const conversationWorkHarness = Effect.fn("test.conversationWorkHarness")
     startStream: Effect.gen(function* () {
       if (!corpus.stream?.prompt.includes(STREAM_PROMPT_MARKER))
         return yield* Effect.die("This corpus has no controlled stream");
-      yield* send(corpus.turns.length, corpus.stream.prompt);
+      streamRunId = (yield* send(corpus.turns.length, corpus.stream.prompt)).runId;
       yield* command({ type: "start" });
     }),
     streamChunk: (delta: string) => command({ type: "delta", delta }),
-    completeStream: command({ type: "complete" }),
+    // Teardown then never stops the Runtime under a Turn that is still running.
+    completeStream: Effect.gen(function* () {
+      yield* command({ type: "complete" });
+      if (streamRunId !== undefined) yield* awaitRun(streamRunId);
+    }),
   } satisfies ConversationWorkHarness;
 });
 
@@ -386,11 +394,24 @@ function mountTranscript(owner: AgentRuntimeConversationOwner): () => void {
   };
 }
 
-/** Waits for a condition on state that the conversation's own deliveries change. */
-export const eventually = (condition: () => boolean) =>
+/**
+ * Waits for a condition on state that the conversation's own deliveries change. A timeout names
+ * what was awaited and what was observed instead, so a missed delivery says where it was missed.
+ */
+export const eventually = (
+  awaited: string,
+  condition: () => boolean,
+  observed: () => unknown = () => undefined,
+) =>
   Effect.sync(condition).pipe(
     Effect.repeat({ until: (met) => met, schedule: Schedule.spaced("10 millis") }),
-    Effect.timeout("30 seconds"),
+    Effect.timeoutOrElse({
+      duration: "30 seconds",
+      orElse: () =>
+        Effect.fail(
+          new Error(`Timed out waiting for ${awaited}; observed ${JSON.stringify(observed())}`),
+        ),
+    }),
   );
 
 export const counts = (reading: RuntimeWorkReading) =>
@@ -418,18 +439,24 @@ export const openConversation = Effect.fn("test.openConversation")(function* (
   const releaseTranscript = mountTranscript(owner);
   const releaseOwner = owner.retain();
   yield* eventually(
+    `window ${window} to show the conversation's ${replies} replies`,
     () => owner.contentSource() !== null && transcriptReplies(owner).length >= replies,
+    () => ({ loaded: owner.contentSource() !== null, replies: transcriptReplies(owner).length }),
   );
   runtimeConversationNavigation.committed(target, false);
   runtimeConversationNavigation.visible(target);
   const mainWorkId = windowRuntimeWorkId(window, workId);
-  yield* eventually(() => {
-    const reading = harness.mainWork.read(mainWorkId);
-    return (
-      reading["runtime.reply:events.observe"] !== undefined &&
-      reading["runtime.reply:thread.queue"] !== undefined
-    );
-  });
+  yield* eventually(
+    `window ${window}'s observation and queue replies`,
+    () => {
+      const reading = harness.mainWork.read(mainWorkId);
+      return (
+        reading["runtime.reply:events.observe"] !== undefined &&
+        reading["runtime.reply:thread.queue"] !== undefined
+      );
+    },
+    () => Object.keys(harness.mainWork.read(mainWorkId)),
+  );
   return {
     owner,
     workId,

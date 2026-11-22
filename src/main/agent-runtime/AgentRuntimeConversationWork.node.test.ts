@@ -137,17 +137,17 @@ it.live(
 
         yield* harness.startStream;
         let streamed = "Stream baseline\n\n";
-        yield* eventually(() =>
-          windows.every(({ owner }) => transcriptReplies(owner).includes(streamed)),
-        );
+        const showsStream = () =>
+          windows.every(({ owner }) => transcriptReplies(owner).includes(streamed));
+        const replyTails = () =>
+          windows.map(({ owner }) => transcriptReplies(owner).at(-1)?.slice(-80) ?? null);
+        yield* eventually("both windows to show the stream's baseline", showsStream, replyTails);
         const atStart = windows.map(({ mainWorkId }) => harness.mainWork.read(mainWorkId));
         const rendererAtStart = windows.map(({ workId }) => harness.rendererWork.read(workId));
         for (const chunk of corpusStreamChunks(stream, stream.items[0]!)) {
           streamed += chunk;
           yield* harness.streamChunk(chunk);
-          yield* eventually(() =>
-            windows.every(({ owner }) => transcriptReplies(owner).includes(streamed)),
-          );
+          yield* eventually("both windows to show every streamed chunk", showsStream, replyTails);
         }
         const main = windows.map(({ mainWorkId }) => harness.mainWork.read(mainWorkId));
         const renderer = windows.map(({ workId }) => harness.rendererWork.read(workId));
