@@ -684,6 +684,69 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     }),
   );
 
+  it.effect("records a node update only when it changes the stored node", () =>
+    Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:foundation-unchanged-node");
+      const nodeId = NodeId.make("node:foundation-unchanged-node");
+      const node = (status: "running" | "completed") => ({
+        id: nodeId,
+        threadId,
+        runId: null,
+        parentNodeId: null,
+        rootNodeId: nodeId,
+        kind: "reasoning" as const,
+        status,
+        countsForRun: false,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        runtimeRequestId: null,
+        checkpointScopeId: null,
+        // An equal instant read back from storage is not the same object.
+        startedAt: DateTime.makeUnsafe(DateTime.toEpochMillis(now)),
+        completedAt: status === "completed" ? now : null,
+      });
+      let index = 0;
+      const nodeUpdated = (status: "running" | "completed") =>
+        ({
+          id: EventId.make(`event:foundation-unchanged-node:${(index += 1)}`),
+          type: "node.updated",
+          threadId,
+          nodeId,
+          occurredAt: now,
+          payload: node(status),
+        }) satisfies OrchestrationV2DomainEvent;
+      const nodeEvents = (stored: ReadonlyArray<{ readonly event: OrchestrationV2DomainEvent }>) =>
+        stored.flatMap(({ event }) =>
+          event.type === "node.updated" ? [event.payload.status] : [],
+        );
+
+      // A node the Thread has not stored yet is recorded once, even when repeated in its batch.
+      const created = yield* eventSink.write({
+        events: [
+          threadCreatedEvent({
+            id: "event:foundation-unchanged-node:thread",
+            thread: makeThread(threadId, now),
+            now,
+          }),
+          nodeUpdated("running"),
+          nodeUpdated("running"),
+        ],
+      });
+      assert.deepEqual(nodeEvents(created), ["running"]);
+      // A provider republishing the stored node records nothing, and a real change still lands.
+      assert.deepEqual(yield* eventSink.write({ events: [nodeUpdated("running")] }), []);
+      const settled = yield* eventSink.write({
+        events: [nodeUpdated("running"), nodeUpdated("completed"), nodeUpdated("completed")],
+      });
+      assert.deepEqual(nodeEvents(settled), ["completed"]);
+      assert.equal((yield* projectionStore.getNode(threadId, nodeId))?.status, "completed");
+    }),
+  );
+
   it.effect("replays shared provider-session payloads across every bound thread", () =>
     Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;

@@ -1332,6 +1332,11 @@ export interface ProjectionStoreV2Shape {
     OrchestrationV2ThreadProjection["runtimeRequests"][number] | undefined,
     ProjectionStoreV2Error
   >;
+  /** The Thread's stored node, without requiring the Thread itself to be projected yet. */
+  readonly getNode: (
+    threadId: ThreadId,
+    nodeId: NodeId,
+  ) => Effect.Effect<OrchestrationV2ExecutionNode | undefined, ProjectionStoreV2Error>;
   readonly getProviderControlContext: (
     threadId: ThreadId,
     target: ProjectionProviderControlTarget,
@@ -7814,6 +7819,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
+    const getNode: ProjectionStoreV2Shape["getNode"] = (threadId, nodeId) =>
+      sql<PayloadRow>`
+        SELECT payload_json FROM orchestration_v2_projection_nodes
+        WHERE node_id = ${nodeId} AND thread_id = ${threadId}
+      `.pipe(
+        Effect.flatMap((rows) =>
+          rows[0] === undefined
+            ? Effect.succeed(undefined)
+            : decodeNodePayload(rows[0].payload_json),
+        ),
+        Effect.mapError(controlReadError(threadId)),
+      );
+
     const getProviderRetirementContext: ProjectionStoreV2Shape["getProviderRetirementContext"] = (
       threadId,
       providerSessionId,
@@ -10163,6 +10181,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           Effect.mapError(controlReadError(threadId)),
         ),
       getRuntimeRequest,
+      getNode,
       getPlan,
       getProviderControlContext,
       getPendingMessageDeliveryIds,
@@ -10243,6 +10262,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getMessageDispatchProjection: readOnReader(service.getMessageDispatchProjection),
       getSubagentCount: readOnReader(service.getSubagentCount),
       getRuntimeRequest: readOnReader(service.getRuntimeRequest),
+      getNode: readOnReader(service.getNode),
       getPlan: readOnReader(service.getPlan),
       getProviderControlContext: readOnReader(service.getProviderControlContext),
       getPendingMessageDeliveryIds: readOnReader(service.getPendingMessageDeliveryIds),
@@ -10811,6 +10831,12 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             return yield* new ProjectionStoreThreadNotFoundError({ threadId });
           return projection.runtimeRequests.find((request) => request.id === requestId);
         }),
+      getNode: (threadId, nodeId) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            state.projections.get(threadId)?.nodes.find((node) => node.id === nodeId),
+          ),
+        ),
       getProviderRetirementContext: (threadId, providerSessionId, providerThreadId) =>
         service.getThreadProjection(threadId).pipe(
           Effect.map((projection) => {

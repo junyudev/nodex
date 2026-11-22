@@ -542,7 +542,9 @@ the same subscription last delivered: the fields that changed, the fields that w
 text appended at an exact UTF-16 offset. Text that is rewritten rather than extended arrives
 whole. A patch that does not fit the reader's copy makes it reload from a snapshot. Assistant
 message records repeat their items' text and are not delivered to transcript readers. Other
-observers receive whole events.
+observers receive whole events. A provider republishes an item's execution node with each
+streamed flush; the Runtime records a node only when it changes, so an unchanged node is
+never stored, projected or delivered.
 
 Agent Session and Task reads share one independent metadata-only timeline window and canonical
 text or JSON slices, rather than the renderer's bounded initial window. Each content slice

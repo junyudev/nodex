@@ -54,14 +54,15 @@ import { materializeReplayTranscriptRuntimeInstructions } from "./ReplayRuntimeI
  * Both are recorded; a regression in either fails here, and removed work lowers the numbers.
  */
 const TRANSCRIPT_BASELINE = {
-  // The reasoning node is still republished whole on every coalescer flush: 2,050 frames.
-  reasoning: { frames: 2_382, bytes: 5_655_042 },
-  assistant: { frames: 93, bytes: 96_872 },
+  reasoning: { frames: 336, bytes: 289_047 },
+  assistant: { frames: 93, bytes: 96_793 },
 } as const;
 const WHOLE_EVENT_BASELINE = {
-  reasoning: { frames: 2_382, bytes: 27_203_533 },
-  assistant: { frames: 94, bytes: 1_606_022 },
+  reasoning: { frames: 336, bytes: 21_837_538 },
+  assistant: { frames: 94, bytes: 1_605_942 },
 } as const;
+/** The Runtime records a node only when it changes, not each time a provider republishes it. */
+const MAX_NODE_UPDATES_PER_PHASE = 4;
 /**
  * What one patch frame may add beyond the text it appends: its envelope, item id, offset and
  * changed status fields. Measured at about 355 B on this corpus.
@@ -334,6 +335,10 @@ describe("stream-steady Runtime → Main work", () => {
           assert.isAtMost(
             item.bytes,
             item.whole.bytes + PATCH_OVERHEAD_BYTES * item.patches.count + finalBytes[phase],
+          );
+          assert.isAtMost(
+            transcript[phase].reading["runtime.event:node.updated"]?.count ?? 0,
+            MAX_NODE_UPDATES_PER_PHASE,
           );
           // Regression gates: no more frames or bytes than today's deliveries send.
           assert.isAtMost(transcript[phase].frames, TRANSCRIPT_BASELINE[phase].frames);

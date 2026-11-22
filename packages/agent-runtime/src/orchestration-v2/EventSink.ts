@@ -3,6 +3,7 @@ import {
   EventId,
   ProviderRequestKind,
   type OrchestrationV2AppThread,
+  OrchestrationV2ExecutionNode,
   type OrchestrationV2Run,
   OrchestrationV2ProviderThreadJson,
   OrchestrationV2DomainEvent,
@@ -89,6 +90,8 @@ type ThreadSnapshotEvent = Extract<
 
 const isThreadSnapshotEvent = (event: OrchestrationV2DomainEvent): event is ThreadSnapshotEvent =>
   event.type.startsWith("thread.") && "runtimeMode" in event.payload;
+
+const sameNode = Schema.toEquivalence(OrchestrationV2ExecutionNode);
 
 export interface EventSinkV2Shape {
   readonly writeProviderBackgroundTasks: (
@@ -483,8 +486,29 @@ const layerBase: Layer.Layer<
       return { ...event, payload };
     });
 
-    const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
+    // Providers republish a node with every streamed flush. A version equal to the stored node
+    // records nothing, so it is neither appended, projected nor delivered to observers.
+    const dropUnchangedNodes = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
       Effect.gen(function* () {
+        const latest = new Map<NodeId, OrchestrationV2ExecutionNode | undefined>();
+        const changed: Array<OrchestrationV2DomainEvent> = [];
+        for (const event of events) {
+          if (event.type === "node.updated") {
+            const node = event.payload;
+            const current = latest.has(node.id)
+              ? latest.get(node.id)
+              : yield* projectionStore.getNode(node.threadId, node.id);
+            latest.set(node.id, node);
+            if (current !== undefined && sameNode(current, node)) continue;
+          }
+          changed.push(event);
+        }
+        return changed;
+      });
+
+    const normalizeEvents = (offered: ReadonlyArray<OrchestrationV2DomainEvent>) =>
+      Effect.gen(function* () {
+        const events = yield* dropUnchangedNodes(offered);
         for (const event of events) {
           if (
             event.type === "thread.metadata-updated" &&
