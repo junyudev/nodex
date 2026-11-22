@@ -579,9 +579,9 @@ vp run dev --home "$HOME/repo/nodex/runs.local/chat-status" --seed sidebar/chat-
 ```
 
 `sidebar/pagination` lists Paged Project first among twelve Projects, with 23
-threadless chats from Chat 01 down. Expand it to step its chats through Show more
-and Show less five rows at a time; the Projects list pages the other Projects the
-same way:
+threadless chats from Chat 01 down. Expand it to reveal its chats five rows at a
+time with Show more and fold them back to the first page with Show less; the
+Projects list pages the other Projects the same way:
 
 ```bash
 vp run dev --home "$HOME/repo/nodex/runs.local/sidebar-pagination" --seed sidebar/pagination

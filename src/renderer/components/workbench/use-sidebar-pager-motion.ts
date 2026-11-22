@@ -13,6 +13,8 @@ interface HeldList {
   animation: AnimationPlaybackControls | null;
   /** The clip is folding over rows that stay until it has passed them. */
   folding: boolean;
+  /** Keeps the pager on screen while the clip folds; see `pinOnScreen`. */
+  pinObserver: ResizeObserver | null;
   releaseTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -23,7 +25,8 @@ const heightOf = (element: HTMLElement) => element.getBoundingClientRect().heigh
  * its current height. Rows that Show more reveals mount at once and the clip unfolds over them
  * from the top; rows that Show less hides stay while the clip folds up past them, then leave.
  * The pager after the clip and whatever follows the list ride its edge, and rows a source
- * delivers while the clip is held join the same motion.
+ * delivers while the clip is held join the same motion. A fold that starts with the rows' top
+ * scrolled out of view scrolls the sidebar back with it, so the pager stays where it was pressed.
  *
  * `settled` is false while the list is still reading rows its depth asks for.
  */
@@ -49,24 +52,64 @@ export function useSidebarPagerMotion(settled: boolean) {
     [],
   );
 
+  /** Measures where `pager` sits before Show less; see `pinOnScreen`. */
+  const pinPager = useCallback(
+    (pager: HTMLElement | null) =>
+      clipRef.current && pager ? pinOnScreen(clipRef.current, pager) : null,
+    [],
+  );
+
   return {
     clipRef,
     contentRef,
     hold,
     contentHeight,
+    pinPager,
     fold: motion.fold,
     interruptFold: motion.interruptFold,
   };
+}
+
+/**
+ * Show less can fold many rows at once. When the rows' top has scrolled out of view above the
+ * sidebar, the fold would carry the pager out after it, so this returns a correction that
+ * scrolls the sidebar back by however far `pager` has moved, as far as it can scroll. While
+ * the rows' top is in view it returns null and the pager rides the folding edge.
+ */
+function pinOnScreen(clip: HTMLElement, pager: HTMLElement): (() => void) | null {
+  const scroller = scrollContainerOf(clip);
+  if (!scroller) return null;
+  const viewportTop =
+    scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top;
+  if (clip.getBoundingClientRect().top >= viewportTop) return null;
+  const pressedAt = pager.getBoundingClientRect().top;
+  return () => {
+    const drift = pager.getBoundingClientRect().top - pressedAt;
+    if (Math.abs(drift) >= 0.5) scroller.scrollTop += drift;
+  };
+}
+
+function scrollContainerOf(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    if (/^(?:auto|scroll|overlay)$/u.test(getComputedStyle(node).overflowY)) return node;
+  }
+  return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
 }
 
 function createSidebarPagerMotion() {
   let held: HeldList | null = null;
   let settled = true;
 
+  const unpin = (list: HeldList) => {
+    list.pinObserver?.disconnect();
+    list.pinObserver = null;
+  };
+
   const release = () => {
     if (!held) return;
     const list = held;
     held = null;
+    unpin(list);
     list.observer.disconnect();
     list.animation?.stop();
     if (list.releaseTimer !== null) clearTimeout(list.releaseTimer);
@@ -129,6 +172,7 @@ function createSidebarPagerMotion() {
         observer: new ResizeObserver(follow),
         animation: null,
         folding: false,
+        pinObserver: null,
         releaseTimer: null,
       };
       held.observer.observe(content);
@@ -144,16 +188,24 @@ function createSidebarPagerMotion() {
     return true;
   };
 
-  /** Folds the held clip to `height`, then lets the rows it covered leave through `onFolded`. */
-  const fold = (height: number, onFolded: () => void) => {
+  /**
+   * Folds the held clip to `height`, then lets the rows it covered leave through `onFolded`.
+   * `keepPager` runs after each frame's layout, before it paints.
+   */
+  const fold = (height: number, onFolded: () => void, keepPager: (() => void) | null) => {
     const list = held;
     if (!list) {
       onFolded();
       return;
     }
     list.folding = true;
+    if (keepPager) {
+      list.pinObserver = new ResizeObserver(keepPager);
+      list.pinObserver.observe(list.clip);
+    }
     ease(list, height, () => {
       list.folding = false;
+      unpin(list);
       onFolded();
       // The covered rows leave in the next commit; the clip already has their height.
       requestAnimationFrame(releaseWhenIdle);
@@ -166,6 +218,7 @@ function createSidebarPagerMotion() {
     held.animation?.stop();
     held.animation = null;
     held.folding = false;
+    unpin(held);
   };
 
   const setSettled = (next: boolean) => {

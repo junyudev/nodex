@@ -90,17 +90,15 @@ test("Space Content keeps its order and depth while content opens, and new conte
       await openSpace(page);
       await expect.poll(() => readContentTitles(page)).toEqual(revealed);
 
-      // Each Show less hides the last five rows revealed. The open Page beyond the revealed
-      // rows stays listed as one extra row in Library order.
-      for (const count of [15, 10, 5]) {
-        await page
-          .getByRole("navigation", { name: "Space", exact: true })
-          .getByRole("button", { name: "Show less", exact: true })
-          .click();
-        await expect
-          .poll(() => readContentTitles(page))
-          .toEqual([...revealed.slice(0, count), "Retrospectives"]);
-      }
+      // Show less returns to the first page. The open Page beyond it stays listed as one
+      // extra row in Library order.
+      await page
+        .getByRole("navigation", { name: "Space", exact: true })
+        .getByRole("button", { name: "Show less", exact: true })
+        .click();
+      await expect
+        .poll(() => readContentTitles(page))
+        .toEqual([...revealed.slice(0, 5), "Retrospectives"]);
 
       // New content enters at the top, where the first page keeps it visible.
       await page

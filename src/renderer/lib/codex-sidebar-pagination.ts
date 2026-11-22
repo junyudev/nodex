@@ -1,4 +1,4 @@
-/** Rows each Show more reveals and each Show less hides again. */
+/** Rows each Show more reveals. Show less returns a list to its first page. */
 export const CODEX_SIDEBAR_PAGE_INCREMENT = 5;
 export const CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS = 5;
 export const CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS = 50;
@@ -18,8 +18,8 @@ export interface CodexSidebarPaginationResult<T> {
   /** Rows the remembered depth reveals; a list read in windows fills one row past it. */
   visibleCount: number;
   hasOverflow: boolean;
-  /** The depth Show less returns to, or null when the list shows only its first page. */
-  lessExtraPages: number | null;
+  /** Show less would hide a row by returning the list to its first page. */
+  canShowLess: boolean;
   showPager: boolean;
 }
 
@@ -56,22 +56,21 @@ export function paginateCodexSidebarItems<T>(input: {
     const hidden = Math.max(0, filteredItems.length - end) - (forcedIndex >= end ? 1 : 0);
     return hidden === 1 && !input.moreAtSource ? 0 : hidden;
   };
-  // A remembered depth may exceed the rows that remain; Show less steps back from the
-  // shallowest depth that shows the same rows, so every press hides something.
-  let shownDepth = 0;
-  while (shownDepth < input.extraPages && hiddenAt(shownDepth) > 0) shownDepth += 1;
-  const end = hiddenAt(shownDepth) === 0 ? filteredItems.length : pageEnd(shownDepth);
+  const hidden = hiddenAt(input.extraPages);
+  const end = hidden === 0 ? filteredItems.length : pageEnd(input.extraPages);
   const visibleItems = filteredItems.filter((_, index) => index < end || index === forcedIndex);
   const hasOverflow = visibleItems.length < filteredItems.length;
   const pagerEnabled = input.pagerEnabled !== false;
-  const lessExtraPages = pagerEnabled && shownDepth > 0 ? shownDepth - 1 : null;
+  // Show less returns to the first page, so it is offered only while that page would hide
+  // an unforced row the list shows now.
+  const canShowLess = pagerEnabled && hiddenAt(0) > hidden;
 
   return {
     filteredItems,
     visibleItems,
     visibleCount: pageEnd(input.extraPages),
     hasOverflow,
-    lessExtraPages,
-    showPager: pagerEnabled && (hasOverflow || lessExtraPages !== null),
+    canShowLess,
+    showPager: pagerEnabled && (hasOverflow || canShowLess),
   };
 }

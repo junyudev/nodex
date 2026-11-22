@@ -113,7 +113,7 @@ function SteppedList({ total, initialExtraPages }: { total: number; initialExtra
 }
 
 describe("SidebarPaginatedItems stepping", () => {
-  test("Show more and Show less move five rows at a time and keep focus on the pager", async () => {
+  test("Show more reveals five rows at a time, Show less returns to the first page, and focus stays on the pager", async () => {
     render(<SteppedList total={16} initialExtraPages={0} />);
     const showMore = () => screen.getByRole("button", { name: "Show more" });
     const showLess = () => screen.getByRole("button", { name: "Show less" });
@@ -133,12 +133,6 @@ describe("SidebarPaginatedItems stepping", () => {
     expect(visibleRows()).toHaveLength(16);
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
     expect(document.activeElement).toBe(showLess());
-
-    await act(async () => {
-      showLess().click();
-      await Promise.resolve();
-    });
-    expect(visibleRows()).toHaveLength(10);
 
     await act(async () => {
       showLess().click();

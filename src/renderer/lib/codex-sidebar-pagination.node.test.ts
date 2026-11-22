@@ -34,19 +34,17 @@ describe("paginateCodexSidebarItems", () => {
     expect(paginate(23, 4).hasOverflow).toBe(false);
   });
 
-  test("Show less hides the last five rows revealed and stops at the first page", () => {
-    expect(paginate(23, 4).lessExtraPages).toBe(3);
-    expect(paginate(23, 1).lessExtraPages).toBe(0);
-    expect(paginate(23, 0).lessExtraPages).toBeNull();
+  test("Show less is offered at any depth past the first page", () => {
+    expect([4, 1, 0].map((depth) => paginate(23, depth).canShowLess)).toEqual([true, true, false]);
   });
 
-  test("Show less steps back from the rows a remembered depth still shows", () => {
-    // Depth 4 would show 25 rows, but 12 remain: they fill depth 2, so Show less returns to 1.
+  test("a remembered depth past the remaining rows still offers Show less", () => {
+    // Depth 4 would show 25 rows; the 12 that remain all show, and the first page hides 7.
     const result = paginate(12, 4);
 
     expect(result.visibleItems.length).toBe(12);
-    expect(result.lessExtraPages).toBe(1);
-    expect(paginate(12, result.lessExtraPages ?? 0).visibleItems.length).toBe(10);
+    expect(result.canShowLess).toBe(true);
+    expect(paginate(6, 4).canShowLess).toBe(false);
   });
 
   test("shows a lone last row instead of paging it behind Show more", () => {
@@ -57,7 +55,7 @@ describe("paginateCodexSidebarItems", () => {
     const revealed = paginate(11, 1);
     expect(revealed.visibleItems.length).toBe(11);
     expect(revealed.hasOverflow).toBe(false);
-    expect(revealed.lessExtraPages).toBe(0);
+    expect(revealed.canShowLess).toBe(true);
   });
 
   test("keeps a lone hidden row paged while the source may hold more", () => {
@@ -128,13 +126,13 @@ describe("paginateCodexSidebarItems", () => {
     }
   });
 
-  test("offers Show less only when stepping back would hide an unforced item", () => {
+  test("offers Show less only when the first page would hide an unforced item", () => {
     const hidesItem = paginate(7, 1, { forcedVisibleKey: "item-1" });
     expect(hidesItem.visibleItems.length).toBe(7);
-    expect(hidesItem.lessExtraPages).toBe(0);
+    expect(hidesItem.canShowLess).toBe(true);
 
     const hidesOnlyForced = paginate(7, 1, { forcedVisibleKey: "item-7" });
     expect(hidesOnlyForced.visibleItems.length).toBe(7);
-    expect(hidesOnlyForced.lessExtraPages).toBeNull();
+    expect(hidesOnlyForced.canShowLess).toBe(false);
   });
 });

@@ -64,6 +64,7 @@ export function SidebarPaginatedItems<T>({
   children,
 }: SidebarPaginatedItemsProps<T>) {
   const focusRestoreTargetRef = useRef<HTMLButtonElement | null>(null);
+  const pagerRef = useRef<HTMLDivElement | null>(null);
   const hasMoreAtSource = source?.hasMore ?? false;
   // While Show less folds the list, the rows it hides stay on screen at this depth.
   const [heldExtraPages, setHeldExtraPages] = useState<number | null>(null);
@@ -115,9 +116,8 @@ export function SidebarPaginatedItems<T>({
     if (fillRequest !== null) loadMore();
   }, [fillRequest]);
 
-  const { clipRef, contentRef, contentHeight, fold, hold, interruptFold } = useSidebarPagerMotion(
-    !fillsFromSource && !source?.loading,
-  );
+  const { clipRef, contentRef, contentHeight, fold, hold, interruptFold, pinPager } =
+    useSidebarPagerMotion(!fillsFromSource && !source?.loading);
   const rowsMotion = useMemo(() => ({ clipRef, contentRef }), [clipRef, contentRef]);
 
   // The pressed button can unmount when its direction runs out; keep focus on the pager
@@ -137,44 +137,48 @@ export function SidebarPaginatedItems<T>({
     restorePagerFocus();
   }, [extraPages, hold, interruptFold, onExtraPagesChange, restorePagerFocus]);
 
-  const { lessExtraPages } = pagination;
+  const { canShowLess } = pagination;
   const showLess = useCallback(() => {
-    if (lessExtraPages === null) return;
+    if (!canShowLess) return;
     interruptFold();
     const onScreen = heldExtraPages ?? extraPages;
+    const keepPager = pinPager(pagerRef.current);
+    const showFirstPage = () =>
+      flushSync(() => {
+        setHeldExtraPages(null);
+        onExtraPagesChange?.(0);
+      });
     if (!hold()) {
-      setHeldExtraPages(null);
-      onExtraPagesChange?.(lessExtraPages);
+      showFirstPage();
+      keepPager?.();
       restorePagerFocus();
       return;
     }
-    // Lay out the rows that remain to learn the list's folded height, then bring back the
-    // rows on screen before the frame paints and fold the list up past them.
-    flushSync(() => {
-      setHeldExtraPages(null);
-      onExtraPagesChange?.(lessExtraPages);
-    });
+    // Lay out the first page to learn the list's folded height, then bring back the rows on
+    // screen before the frame paints and fold the list up past them.
+    showFirstPage();
     const foldedHeight = contentHeight();
     flushSync(() => setHeldExtraPages(onScreen));
     if (foldedHeight === null) setHeldExtraPages(null);
-    else fold(foldedHeight, () => setHeldExtraPages(null));
+    else fold(foldedHeight, () => setHeldExtraPages(null), keepPager);
     restorePagerFocus();
   }, [
+    canShowLess,
     contentHeight,
     extraPages,
     fold,
     heldExtraPages,
     hold,
     interruptFold,
-    lessExtraPages,
     onExtraPagesChange,
+    pinPager,
     restorePagerFocus,
   ]);
 
   const hasOverflow = pagination.hasOverflow || hasMoreAtSource;
   const pager =
     pagination.showPager || hasMoreAtSource ? (
-      <div className={pagerClassName} role="listitem">
+      <div ref={pagerRef} className={pagerClassName} role="listitem">
         {hasOverflow ? (
           <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={showMore}>
             <FormattedMessage
@@ -183,7 +187,7 @@ export function SidebarPaginatedItems<T>({
             />
           </CodexSidebarPagerButton>
         ) : null}
-        {lessExtraPages !== null ? (
+        {canShowLess ? (
           <CodexSidebarPagerButton
             ref={hasOverflow ? undefined : focusRestoreTargetRef}
             onClick={showLess}

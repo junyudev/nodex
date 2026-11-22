@@ -279,11 +279,9 @@ describe("SidebarPagesSection", () => {
     expect(contentRowTitles()).toHaveLength(14);
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
     await press("Show less");
-    expect(contentRowTitles()).toHaveLength(10);
-    await press("Show less");
     expect(contentRowTitles()).toHaveLength(5);
     expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
-    expect(onExtraPagesChange.mock.calls).toEqual([[1], [2], [1], [0]]);
+    expect(onExtraPagesChange.mock.calls).toEqual([[1], [2], [0]]);
   });
 
   test("opens a Page's shared resource menu from the whole row context target", async () => {
