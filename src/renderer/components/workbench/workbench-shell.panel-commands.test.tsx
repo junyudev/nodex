@@ -43,14 +43,16 @@ describe("workbench session shell / panel-commands", () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [makeAttachedSession()] },
     });
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
+    const newTabButton = await screen.findByRole("button", { name: "New tab" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "New tab" }));
+      fireEvent.click(newTabButton);
       await Promise.resolve();
     });
-    await settleAsyncRender();
+    // The New tab page loads on demand.
+    await settleLazyRender();
 
     const newTab = await screen.findByRole("tab", { name: "New tab" });
     expect(newTab.getAttribute("aria-selected")).toBe("true");
@@ -84,6 +86,8 @@ describe("workbench session shell / panel-commands", () => {
     await waitFor(() => {
       expect(screen.queryByRole("tab", { name: "New tab" })).toBe(null);
     });
+    // The surface replacing the New tab loads on demand; let it finish inside the test.
+    await settleLazyRender();
     const filesTab = screen.getByRole("tab", { name: "Files" });
     expect(filesTab.getAttribute("aria-selected")).toBe("true");
     expect(tabOrder().indexOf("Files")).toBe(newTabIndex);
@@ -124,14 +128,16 @@ describe("workbench session shell / panel-commands", () => {
       rightCollapsed: true,
     });
     const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
+    const newTabButton = await screen.findByRole("button", { name: "New tab" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "New tab" }));
+      fireEvent.click(newTabButton);
       await Promise.resolve();
     });
-    await settleAsyncRender();
+    // The New tab page loads on demand.
+    await settleLazyRender();
 
     expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
     expect(
