@@ -28,8 +28,12 @@ build/runtime configuration belong in [Configuration](../CONFIGURATION.md#nodex-
 The control at the foot of the rail, named “Spaces and settings”, opens the
 account menu beside the rail. Its first group switches and joins Spaces, as
 [Team Spaces](team-space-behavior.md) describes. Below it, a remembered identity
-opens Account settings, then Settings, which remains available in every account
-state, including an unconfigured or offline build. The account actions follow
+opens Account settings, then Settings and **Feedback & community**, which remain
+available in every account state, including an unconfigured or offline build.
+Feedback & community opens beside the menu with the Nodex Discord server, which
+opens in the system browser so Discord can take over, and the Nodex QQ group,
+whose number stays readable in its row and is copied when chosen, with a
+confirmation that says to search for it in QQ. The account actions follow
 the current connection: sign in, cancel the pending browser login, sign in
 again, or sign out. These actions only affect the Nodex connection.
 

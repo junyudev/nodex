@@ -27,6 +27,7 @@ import { hoverWithMouse, openNodexMenu } from "@/test/dom";
 import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 import { AccountSettingsPage } from "./account-settings-page";
 import { describeCreditGauge, nextCreditGauge } from "./nodex-credit-meter";
+import { toast } from "@/components/ui/toast";
 
 const spaces = vi.hoisted(() => {
   const personal = {
@@ -64,7 +65,13 @@ vi.mock("@/features/spaces/spaces-runtime", async (importOriginal) => ({
 vi.mock("@/features/spaces/join-space-dialog", () => ({
   useOpenJoinSpace: () => spaces.openJoin,
 }));
+const clipboard = vi.hoisted(() => ({ writeText: vi.fn<(text: string) => Promise<boolean>>() }));
+vi.mock("@/lib/clipboard", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/clipboard")>()),
+  writeTextToClipboard: clipboard.writeText,
+}));
 beforeEach(() => {
+  clipboard.writeText.mockReset().mockResolvedValue(true);
   spaces.switch.mockReset().mockResolvedValue(undefined);
   spaces.openJoin.mockReset();
   spaces.state = { spaces: [spaces.personal], current: spaces.personal };
@@ -178,8 +185,11 @@ describe("Nodex account menu", () => {
     await screen.findByText("Not available in this build.");
     await openNodexMenu(controls.trigger());
     // With only the personal Space there is nothing to switch to, only a Space to join.
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
-    expect(screen.getByRole("menuitem", { name: "Join a Space" })).toBeDefined();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Join a Space",
+      "Settings⇧⌘,",
+      "Feedback & community",
+    ]);
     const settings = screen.getByRole("menuitem", { name: "Settings" });
     expect(within(settings).getByText("⇧⌘,")).toBeDefined();
     await selectMenuItem("Settings");
@@ -243,6 +253,42 @@ describe("Nodex account menu", () => {
     expect(controls.container.querySelector("img")).toBeNull();
     expect(controls.invoke).toHaveBeenLastCalledWith("nodex-account:sign-out");
     expect(controls.nativeAction).not.toHaveBeenCalled();
+  });
+
+  test("reaches the community whatever the account state: Discord opens outside, QQ copies its number", async () => {
+    const success = vi.spyOn(toast, "success");
+    const controls = renderAccountControls({ ...signedOut, configured: false });
+    await screen.findByText("Not available in this build.");
+    const openCommunity = async () => {
+      await openNodexMenu(controls.trigger());
+      const community = screen.getByRole("menuitem", { name: "Feedback & community" });
+      await act(async () => {
+        community.focus();
+        fireEvent.keyDown(community, { key: "ArrowRight" });
+        await Promise.resolve();
+      });
+    };
+
+    await openCommunity();
+    await selectMenuItem("Discord");
+    expect(controls.invoke).toHaveBeenCalledWith(
+      "shell:open-external-url",
+      "https://discord.com/invite/9yRa5SUeDz",
+    );
+
+    await openCommunity();
+    const qq = await screen.findByRole("menuitem", { name: "Copy QQ group number 1126214921" });
+    // The number stays readable in the row for anyone who would rather type it.
+    expect(within(qq).getByText("1126214921")).toBeDefined();
+    await selectMenuItem("Copy QQ group number 1126214921");
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Copied QQ group number", {
+        description: "Search for it in QQ to join.",
+        id: "community-qq-group-copied",
+      }),
+    );
+    expect(clipboard.writeText).toHaveBeenCalledExactlyOnceWith("1126214921");
+    success.mockRestore();
   });
 
   test("lists every Space once there is a choice, switches, and joins after the menu closes", async () => {

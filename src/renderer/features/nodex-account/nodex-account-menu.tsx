@@ -1,5 +1,5 @@
 import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState } from "react";
 import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy";
 import {
   spaceAvailabilityMessage,
@@ -10,7 +10,6 @@ import { SignInIcon, SignOutIcon } from "@/components/shared/icons/account-icons
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDropdownContent,
-  NodexDropdownItem,
   NodexDropdownMessage,
   NodexDropdownPortal,
   NodexDropdownRoot,
@@ -23,6 +22,8 @@ import { SpaceAvatar } from "@/features/spaces/space-avatar";
 import { SPACE_AVAILABILITY_DOT, SpaceMenuItems } from "@/features/spaces/space-switching";
 import { useSpaces } from "@/features/spaces/spaces-runtime";
 import { cn } from "@/lib/utils";
+import { AccountMenuItem } from "./account-menu-item";
+import { CommunityMenu } from "./community-menu";
 import {
   NodexAccountAvatar,
   resolveNodexAccountView,
@@ -35,33 +36,6 @@ const TRIGGER_LABEL = defineMessage({
   defaultMessage: "Spaces and settings",
 });
 
-/** Leading visuals share the Space avatars' 20px column, so every label lines up. */
-function AccountMenuItem({
-  icon,
-  leftSlot,
-  disabled = false,
-  ...props
-}: ComponentProps<typeof NodexDropdownItem> & { icon?: ReactNode }) {
-  return (
-    <NodexDropdownItem
-      {...props}
-      disabled={disabled}
-      leftSlot={
-        <span
-          className={cn(
-            "inline-flex size-5 items-center justify-center",
-            // Decorative icons rest at 75% and brighten with the menu row.
-            icon && "opacity-75",
-            icon && !disabled && "group-hover:opacity-100 group-focus:opacity-100",
-          )}
-        >
-          {icon ?? leftSlot}
-        </span>
-      }
-    />
-  );
-}
-
 export interface NodexAccountMenuProps {
   readonly onOpenSettings: () => void;
   readonly onOpenAccountSettings: () => void;
@@ -73,7 +47,8 @@ export interface NodexAccountMenuProps {
 /**
  * The rail's foot control: which Space this window shows and who you are. Its face is the team
  * Space's avatar, or your Nodex Account in your personal Space; its menu switches and joins
- * Spaces, then keeps the optional Nodex Account and the always-available Settings.
+ * Spaces, then keeps the optional Nodex Account, the always-available Settings, and the way to
+ * reach the Nodex community.
  */
 export function NodexAccountMenu({
   onOpenSettings,
@@ -250,6 +225,7 @@ function NodexAccountMenuContent({
       >
         <FormattedMessage id="account.nodexAccountMenu.settings" defaultMessage="Settings" />
       </AccountMenuItem>
+      <CommunityMenu />
       <AccountMenuActions account={account} view={view} />
     </NodexDropdownContent>
   );

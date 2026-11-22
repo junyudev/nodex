@@ -172,11 +172,15 @@ test("shares the account menu and Settings identity while native login and local
       count: await page.getByRole("menuitem").count(),
       join: await page.getByRole("menuitem", { name: "Join a Space", exact: true }).isVisible(),
       settings: await page.getByRole("menuitem", { name: "Settings", exact: true }).isVisible(),
+      community: await page
+        .getByRole("menuitem", { name: "Feedback & community", exact: true })
+        .isVisible(),
       signIn: await page.getByRole("menuitem", { name: "Sign in", exact: true }).isVisible(),
     });
+    const signedOutMenu = { count: 4, join: true, settings: true, community: true, signIn: true };
     claim(
-      "Signed-out menu offers joining a Space, Settings and first-party sign-in",
-      { count: 3, join: true, settings: true, signIn: true },
+      "Signed-out menu offers joining a Space, Settings, the community and first-party sign-in",
+      signedOutMenu,
       await signedOutActions(),
     );
     const geometry = await page.getByRole("menu").boundingBox();
@@ -276,11 +280,7 @@ test("shares the account menu and Settings identity while native login and local
     await expect(menuTrigger(page).locator("img")).toHaveCount(0);
     claim("Sign out removes the avatar image", 0, await menuTrigger(page).locator("img").count());
     await openMenu(page);
-    claim(
-      "Sign out clears the menu identity",
-      { count: 3, join: true, settings: true, signIn: true },
-      await signedOutActions(),
-    );
+    claim("Sign out clears the menu identity", signedOutMenu, await signedOutActions());
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "General", exact: true, level: 1 }),
