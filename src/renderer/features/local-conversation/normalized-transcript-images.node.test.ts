@@ -25,7 +25,7 @@ function fixture() {
 }
 
 describe("resident normalized image collection", () => {
-  test("text deltas neither read other raw items nor wake the image aggregate", () => {
+  test("text deltas neither read other raw items nor wake the image aggregate", async () => {
     const { owner } = fixture();
     const notify = vi.fn();
     const release = owner.subscribeGeneratedImages(notify);
@@ -77,6 +77,7 @@ describe("resident normalized image collection", () => {
       reads.mockRestore();
       release();
     }
+    await Promise.resolve();
     expect(owner.readGeneratedImages()).toEqual([]);
     expect(owner.readItem("turn:one", "first")).toBeNull();
   });

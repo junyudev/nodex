@@ -597,6 +597,8 @@ export class AgentRuntimeConversationOwner {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   };
+  /** Whether a view has this conversation's transcript connected. */
+  readonly showsTranscript = (): boolean => this.#transcriptActive && !this.#disposed;
   readonly retain = (): (() => void) => {
     if (this.#disposed) return () => {};
     this.#leases += 1;
@@ -2802,10 +2804,60 @@ const AGENT_RUNTIME_QUESTION_SCOPE = "agent-runtime:pending-questions";
 
 // Active viewers share one delivery subscription. Unretained owners keep no
 // engine bodies, and disappear when their last caller releases the lease.
-const owners = new Map<
-  string,
-  { readonly owner: AgentRuntimeConversationOwner; references: number }
->();
+interface ConversationOwnerEntry {
+  readonly owner: AgentRuntimeConversationOwner;
+  references: number;
+  /** Holds the transcript and the owner's lease while a view shows, and briefly after. */
+  keeper: (() => void) | null;
+}
+const owners = new Map<string, ConversationOwnerEntry>();
+
+/**
+ * Conversations a window recently showed stay current, so returning to one shows it at once
+ * with no reads. At most this many stay, each for this long after its last view leaves.
+ */
+export const WARM_CONVERSATION_LIMIT = 3;
+export const WARM_CONVERSATION_MS = 60_000;
+const warm = new Map<string, ReturnType<typeof setTimeout>>();
+
+function releaseEntry(key: string, entry: ConversationOwnerEntry): void {
+  if (entry.references > 0 || owners.get(key) !== entry) return;
+  const keeper = entry.keeper;
+  entry.keeper = null;
+  owners.delete(key);
+  keeper?.();
+}
+
+function stopWarm(key: string): void {
+  clearTimeout(warm.get(key));
+  warm.delete(key);
+}
+
+function cool(key: string): void {
+  if (!warm.has(key)) return;
+  stopWarm(key);
+  const entry = owners.get(key);
+  if (entry) releaseEntry(key, entry);
+}
+
+function keepWarm(key: string, entry: ConversationOwnerEntry): void {
+  stopWarm(key);
+  if (!entry.keeper) return releaseEntry(key, entry);
+  warm.set(
+    key,
+    setTimeout(() => cool(key), WARM_CONVERSATION_MS),
+  );
+  for (const oldest of [...warm.keys()]) {
+    if (warm.size <= WARM_CONVERSATION_LIMIT) break;
+    cool(oldest);
+  }
+}
+
+/** Lets every warm conversation go now, as an idle window eventually does. */
+export function coolWarmConversations(): void {
+  for (const key of [...warm.keys()]) cool(key);
+}
+
 /** Whether this window already shows the conversation's current projection somewhere. */
 export function isAgentRuntimeConversationResident(target: ResolvedAgentRuntimeTarget): boolean {
   return (
@@ -2820,30 +2872,43 @@ export function agentRuntimeConversationWork(target: ResolvedAgentRuntimeTarget)
 
 export function acquireAgentRuntimeConversationOwner(target: ResolvedAgentRuntimeTarget): {
   readonly owner: AgentRuntimeConversationOwner;
-  readonly retain: () => () => void;
+  /** A view's lease keeps the conversation warm for a while after the view leaves. */
+  readonly retain: (options?: { readonly view?: boolean }) => () => void;
 } {
   const key = JSON.stringify([target.sessionId, target.threadId]);
   const entry = owners.get(key) ?? {
     owner: new AgentRuntimeConversationOwner(target),
     references: 0,
+    keeper: null,
   };
   owners.set(key, entry);
   return {
     owner: entry.owner,
-    retain: () => {
+    retain: (options) => {
       if (!owners.has(key)) owners.set(key, entry);
+      stopWarm(key);
       entry.references += 1;
       const release = entry.owner.retain();
       let released = false;
       return () => {
         if (released) return;
         released = true;
-        release();
         entry.references -= 1;
-        if (entry.references > 0 || owners.get(key) !== entry) return;
-        owners.delete(key);
+        // The view's own rows are still subscribed while its lease is released, so holding the
+        // transcript here keeps it connected rather than reading it again.
+        const last = entry.references === 0 && owners.get(key) === entry;
+        if (last && options?.view && !entry.keeper && entry.owner.showsTranscript()) {
+          const lease = entry.owner.retain();
+          const transcript = entry.owner.readOwner.subscribeStructure(() => {});
+          entry.keeper = () => {
+            transcript();
+            lease();
+          };
+        }
+        release();
         // A render-held lease can be retained again after an effect cleanup.
         // Releasing its last subscription clears data without killing that lease.
+        if (last) keepWarm(key, entry);
       };
     },
   };

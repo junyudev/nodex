@@ -228,11 +228,11 @@ export class CodexTranscriptReadOwner {
     if (this.disposed) return () => {};
     listeners.add(listener);
     this.subscriptionCount += 1;
-    if (this.subscriptionCount === 1 && this.options.connect) {
+    // A reader arriving while the last one is still leaving takes over its connection.
+    if (this.subscriptionCount === 1 && this.options.connect && !this.disconnect) {
       const generation = ++this.subscriptionGeneration;
       this.disconnect = this.options.connect(async (event) => {
-        if (generation === this.subscriptionGeneration && this.subscriptionCount > 0)
-          this.applyEvent(event);
+        if (generation === this.subscriptionGeneration) this.applyEvent(event);
       });
       this.disconnect.setHistoryViewport?.(this.viewports.getBoundaries());
     }
@@ -243,12 +243,17 @@ export class CodexTranscriptReadOwner {
       listeners.delete(listener);
       this.subscriptionCount -= 1;
       if (this.subscriptionCount > 0) return;
-      this.subscriptionGeneration += 1;
-      this.disconnect?.();
-      this.disconnect = null;
-      this.viewports.clear();
-      this.clear();
-      this.options.onIdle?.();
+      // Readers that leave and arrive in one render commit, in whatever order React runs their
+      // effects, hand the connection over instead of closing it and reading the transcript again.
+      queueMicrotask(() => {
+        if (this.subscriptionCount > 0 || this.disposed) return;
+        this.subscriptionGeneration += 1;
+        this.disconnect?.();
+        this.disconnect = null;
+        this.viewports.clear();
+        this.clear();
+        this.options.onIdle?.();
+      });
     };
   }
 

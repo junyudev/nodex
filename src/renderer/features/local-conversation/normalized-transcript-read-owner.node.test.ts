@@ -730,7 +730,7 @@ describe("normalized transcript read owner", () => {
     });
     expect(owner.key).toEqual(key);
   });
-  test("realtime text stays in its keyed family without rebuilding transcript structure", () => {
+  test("realtime text stays in its keyed family without rebuilding transcript structure", async () => {
     const owner = new CodexTranscriptReadOwner(key);
     owner.applyEvent({
       type: "reset",
@@ -765,9 +765,10 @@ describe("normalized transcript read owner", () => {
     expect(owner.readStructure()).toBe(structure);
     expect([structureCalls, voiceCalls]).toEqual([0, 1]);
     releases.forEach((release) => release());
+    await Promise.resolve();
     expect(owner.readRealtimeItem("voice")).toBeNull();
   });
-  test("aggregates independent view protection, null veto and viewer release", () => {
+  test("aggregates independent view protection, null veto and viewer release", async () => {
     const reported: Array<
       readonly (
         | import("../../../shared/codex-history-policy").CodexHistoryViewportBoundary
@@ -793,6 +794,7 @@ describe("normalized transcript read owner", () => {
     owner.setHistoryViewport(one, boundary);
     expect(reported).toEqual([[], [boundary], [boundary, null], [boundary]]);
     release();
+    await Promise.resolve();
     const again = owner.subscribeStructure(() => {});
     expect(reported.at(-1)).toEqual([]);
     again();
@@ -990,6 +992,30 @@ describe("normalized transcript read owner", () => {
     expect(owner.readItem("turn:two", "first")).toBe(retainedItem);
   });
 
+  test("a reader arriving as the last one leaves takes over its connection", async () => {
+    const deliveries: Array<(event: CodexTranscriptEvent) => Promise<void>> = [];
+    let disconnects = 0;
+    const owner = new CodexTranscriptReadOwner({
+      ...key,
+      connect: (listener) => {
+        deliveries.push(listener);
+        return () => disconnects++;
+      },
+    });
+    const leaving = owner.subscribeStructure(() => {});
+    await deliveries[0]!({ type: "reset", value: fixture() });
+    const structure = owner.readStructure();
+    leaving();
+    const arriving = owner.subscribeTurn("turn:one", () => {});
+    await Promise.resolve();
+    expect([deliveries.length, disconnects]).toEqual([1, 0]);
+    expect(owner.readStructure()).toBe(structure);
+    arriving();
+    await Promise.resolve();
+    expect([deliveries.length, disconnects]).toEqual([1, 1]);
+    expect(owner.readStructure()).toBeNull();
+  });
+
   test("last subscriber clears retained state and fences a late connection callback", async () => {
     const deliveries: Array<(event: CodexTranscriptEvent) => Promise<void>> = [];
     let connects = 0;
@@ -1009,6 +1035,7 @@ describe("normalized transcript read owner", () => {
     first();
     expect(owner.readStructure()).not.toBeNull();
     second();
+    await Promise.resolve();
     expect(owner.readStructure()).toBeNull();
     expect(owner.readTurn("turn:one")).toBeNull();
     const third = owner.subscribeStructure(() => {});
@@ -1019,6 +1046,7 @@ describe("normalized transcript read owner", () => {
     expect(owner.readStructure()).not.toBeNull();
     third();
     third();
+    await Promise.resolve();
     expect(disconnects).toBe(2);
     owner.dispose();
   });

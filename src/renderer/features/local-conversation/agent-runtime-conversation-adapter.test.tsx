@@ -23,6 +23,7 @@ import {
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 import {
   acquireAgentRuntimeConversationOwner,
+  coolWarmConversations,
   AgentRuntimeConversationOwner,
 } from "./agent-runtime-conversation-owner";
 import { MaitaiProvider, createMaitaiStore } from "../../lib/maitai";
@@ -165,6 +166,7 @@ beforeEach(() => {
   vi.spyOn(agentRuntimeRuntime, "readRunMessage").mockResolvedValue(null);
 });
 afterEach(() => {
+  coolWarmConversations();
   vi.restoreAllMocks();
   sessionFirstSubmissionOwner.dispose();
   clearPersistedAtomStoreForTests();
@@ -2245,28 +2247,26 @@ describe("Agent Runtime conversation adapter", () => {
         <RuntimeWorkbench>{children}</RuntimeWorkbench>
       </StrictMode>
     );
-    const { result, unmount } = renderHook(
-      () => {
-        const adapter = useAgentRuntimeConversationAdapter({
-          sessionId: child.sessionId,
-          sessionUnread: false,
-          executionRef: { runtimeId: "engine", threadId: "root-thread" },
-          threadId: child.threadId,
-          projectId: "project",
-          modelProjectId: "project",
-          instances,
-          onRefresh: async () => {},
-          onOpenThread,
-          ensureDraft: async () => {
-            throw new Error("A child uses its root Session");
-          },
-        });
-        const transcript = adapter.runtime.transcriptReadOwner!(child.threadId);
-        useEffect(() => transcript?.subscribeStructure(() => {}), [transcript]);
-        return { adapter, transcript };
-      },
-      { wrapper },
-    );
+    const useChildConversation = () => {
+      const adapter = useAgentRuntimeConversationAdapter({
+        sessionId: child.sessionId,
+        sessionUnread: false,
+        executionRef: { runtimeId: "engine", threadId: "root-thread" },
+        threadId: child.threadId,
+        projectId: "project",
+        modelProjectId: "project",
+        instances,
+        onRefresh: async () => {},
+        onOpenThread,
+        ensureDraft: async () => {
+          throw new Error("A child uses its root Session");
+        },
+      });
+      const transcript = adapter.runtime.transcriptReadOwner!(child.threadId);
+      useEffect(() => transcript?.subscribeStructure(() => {}), [transcript]);
+      return { adapter, transcript };
+    };
+    const { result, unmount } = renderHook(useChildConversation, { wrapper });
     await waitFor(() => {
       expect(result.current.adapter.state.connection).toBe("ready");
       expect(result.current.transcript?.readStructure()).not.toBeNull();
@@ -2349,6 +2349,22 @@ describe("Agent Runtime conversation adapter", () => {
     const transcript = result.current.transcript;
     await act(async () => {
       unmount();
+      await Promise.resolve();
+    });
+    // A conversation the window just left stays current, so returning shows it with no reads.
+    expect(observers.size).toBe(1);
+    expect(transcript?.readStructure()).not.toBeNull();
+    const back = renderHook(useChildConversation, { wrapper });
+    expect(back.result.current.transcript).toBe(transcript);
+    expect(back.result.current.adapter.state.connection).toBe("ready");
+    expect(read).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      back.unmount();
+      await Promise.resolve();
+    });
+    expect(observers.size).toBe(1);
+    await act(async () => {
+      coolWarmConversations();
       await Promise.resolve();
     });
     expect(observers.size).toBe(0);

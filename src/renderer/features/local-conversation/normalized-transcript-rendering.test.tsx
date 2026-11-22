@@ -88,7 +88,7 @@ function render(ui: React.ReactElement) {
 }
 
 describe("normalized production transcript rendering", () => {
-  test("presentation facades read current addressed content and release it with the owner", () => {
+  test("presentation facades read current addressed content and release it with the owner", async () => {
     const owner = ownerWithTurns([
       [{ type: "plan", id: "first", text: "Initial" }],
       [{ type: "plan", id: "other", text: "Other" }],
@@ -114,6 +114,7 @@ describe("normalized production transcript rendering", () => {
     expect(facades[0]?.items[0]?.markdownText).toBe("Initial next");
     expect(readTurn.mock.calls.every(([entity]) => entity === "turn:turn-0")).toBe(true);
     release();
+    await Promise.resolve();
     expect(owner.readStructure()).toBeNull();
     expect(facades[0]?.items).toEqual([]);
     readTurn.mockRestore();
@@ -308,6 +309,7 @@ describe("normalized production transcript rendering", () => {
       expect(existingLeafCalls).toBe(0);
       release();
       view.unmount();
+      await Promise.resolve();
       expect(owner.readStructure()).toBeNull();
     },
   );

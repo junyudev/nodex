@@ -113,7 +113,8 @@ it.live(
             rows: corpus.turns.length * 3,
           });
         }
-        // Switching back reads everything again: no projection survives the release.
+        // An owner this harness disposed keeps nothing, so opening it again reads it again. A
+        // window's own conversations stay warm after they leave; see the conversation registry.
         expect(counts(backMain)).toEqual(counts(coldMain));
         expect(roundTrips).toBe(FIRST_CONTENT_ROUND_TRIPS);
       }),

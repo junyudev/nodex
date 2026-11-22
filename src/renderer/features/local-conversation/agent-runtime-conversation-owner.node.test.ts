@@ -1341,6 +1341,7 @@ describe("Agent Runtime keyed transcript reads", () => {
     const replacement = owner.contentSource();
     expect(replacement?.isCurrent()).toBe(true);
     release();
+    await Promise.resolve();
     expect(replacement?.isCurrent()).toBe(false);
     expect(owner.contentSource()).toBeNull();
     owner.dispose();
@@ -1900,6 +1901,7 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readStructure()?.turnEntityKeys.length).toBe(1);
     releaseControl();
     releaseTranscript();
+    await Promise.resolve();
     expect(owner.readOwner.readStructure()).toBeNull();
   });
 
@@ -1972,6 +1974,7 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(wire.port.read).toHaveBeenCalledOnce();
     expect(wire.port.subscribe).toHaveBeenCalledOnce();
     release();
+    await Promise.resolve();
     expect(wire.release).toHaveBeenCalledOnce();
     expect(owner.readOwner.readStructure()).toBeNull();
     expect(owner.readOwner.readTurn(structure.turnEntityKeys[0]!)).toBeNull();
@@ -2232,6 +2235,8 @@ describe("Agent Runtime keyed transcript reads", () => {
     const retired = owner.loadHistoryBoundary(retiredBoundary);
     await vi.waitFor(() => expect(wire.port.history).toHaveBeenCalledTimes(1));
     release();
+    // The first reader has left by the time the next one arrives.
+    await Promise.resolve();
     const releaseCurrent = owner.readOwner.subscribeStructure(() => {});
     await owner.resume();
     await expect(owner.loadHistoryBoundary(retiredBoundary)).resolves.toBe("stale");

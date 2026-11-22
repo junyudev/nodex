@@ -136,7 +136,7 @@ describe("native created/subagent presentation identity", () => {
     expect(rows[0]?.timelineSlice.itemIds).toEqual(["start", "other", "done"]);
     expect(rows[0]?.timelineDedicatedSubagentThreadIds).toBeUndefined();
   });
-  test("a keyed group is stable across unrelated text and updates/releases only its real native addresses", () => {
+  test("a keyed group is stable across unrelated text and updates/releases only its real native addresses", async () => {
     const started = activity("start"),
       done = activity("done", "completed");
     const text: ThreadItem = {
@@ -187,6 +187,7 @@ describe("native created/subagent presentation identity", () => {
     expect(query.read().at(-1)?.displayStatus).toBe("interrupted");
     release();
     retain();
+    await Promise.resolve();
     expect(query.read()).toEqual([]);
   });
   test("10,000 ordinary items plus a dedicated child stay linear and never materialize a whole Turn", () => {

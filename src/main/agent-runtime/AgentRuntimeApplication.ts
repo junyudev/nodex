@@ -1069,6 +1069,26 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
   });
 
+  /**
+   * Opening a conversation proves its binding and lineage with its snapshot. The window's next
+   * reads for it, its observation and its queue, follow within moments and reuse that proof
+   * instead of reading the binding, Project and Thread again. Agent callers always prove access.
+   */
+  const OPENED_TARGET_MS = 5_000;
+  const openedTargets = new Map<
+    string,
+    { readonly at: number; readonly binding: Binding; readonly threadId: string }
+  >();
+  const openedTargetKey = (target: AgentRuntimeSessionTarget) =>
+    JSON.stringify([target.sessionId, target.threadId ?? null]);
+  const recentlyOpened = Effect.fn("AgentRuntimeApplication.recentlyOpened")(function* (
+    target: AgentRuntimeSessionTarget,
+  ) {
+    if (yield* CoreApplicationAgent) return undefined;
+    const opened = openedTargets.get(openedTargetKey(target));
+    return opened && Date.now() - opened.at < OPENED_TARGET_MS ? opened : undefined;
+  });
+
   const load = Effect.fn("AgentRuntimeApplication.load")(function* (
     connection: AgentRuntimeApplicationConnection,
     target: AgentRuntimeSessionTarget,
@@ -1087,6 +1107,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       (requireActive && thread.archivedAt !== null)
     )
       return yield* failure("thread", "Thread does not belong to this Session");
+    if (!(yield* CoreApplicationAgent)) {
+      const at = Date.now();
+      for (const [key, opened] of openedTargets)
+        if (at - opened.at >= OPENED_TARGET_MS) openedTargets.delete(key);
+      openedTargets.set(openedTargetKey(target), { at, binding, threadId });
+    }
     return { binding, threadId, snapshot };
   });
   const targetInfo = Effect.fn("AgentRuntimeApplication.targetInfo")(function* (
@@ -1124,6 +1150,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         );
     }
     return { binding, threadId, thread };
+  });
+  /** The target of a read that follows an open, proven by that open while it is recent. */
+  const followingTarget = Effect.fn("AgentRuntimeApplication.followingTarget")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    target: AgentRuntimeSessionTarget,
+  ) {
+    const opened = yield* recentlyOpened(target);
+    if (opened) return { binding: opened.binding, threadId: opened.threadId };
+    const { binding, threadId } = yield* targetInfo(connection, target);
+    return { binding, threadId };
   });
   const dispatch = (
     connection: AgentRuntimeApplicationConnection,
@@ -4334,7 +4370,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "resolve-target",
         Effect.gen(function* () {
           const connection = yield* options.connect;
-          const loaded = yield* targetInfo(connection, target);
+          const loaded = yield* followingTarget(connection, target);
           return {
             sessionId: loaded.binding.session_id,
             projectId: loaded.binding.project_id ?? null,
@@ -4898,7 +4934,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "queue-read",
         Effect.gen(function* () {
           const connection = yield* options.connect;
-          const loaded = yield* targetInfo(connection, input);
+          const loaded = yield* followingTarget(connection, input);
           return yield* connection.request("thread.queue", {
             threadId: loaded.threadId,
             ...(input.cursor === undefined ? {} : { cursor: input.cursor }),

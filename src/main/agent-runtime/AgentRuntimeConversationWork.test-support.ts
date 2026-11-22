@@ -448,23 +448,27 @@ export const navigationRecords = () =>
     .getEntriesByName(RUNTIME_NAVIGATION_MARK)
     .map((entry) => (entry as PerformanceMeasure).detail as RuntimeNavigationRecord);
 
-/** Today's reads behind one ordinary open of a settled Runtime conversation, by boundary. */
+/**
+ * The reads behind one ordinary open of a settled Runtime conversation, by boundary. The
+ * snapshot read proves the Session's binding and the Thread's lineage once; the observation and
+ * queue read that follow reuse that proof.
+ */
 export const OPEN_RENDERER_REQUESTS = {
   "renderer.request:observe": 1,
   "renderer.request:queue-read": 1,
   "renderer.request:read": 1,
 };
 export const OPEN_MAIN_WORK = {
-  "core.read:agent_runtime_session_binding": 3,
-  "core.read:project": 3,
+  "core.read:agent_runtime_session_binding": 1,
+  "core.read:project": 1,
   "renderer.delivery:event": 0,
   "runtime.reply:events.observe": 1,
   "runtime.reply:thread.queue": 1,
-  "runtime.reply:thread.read": 3,
+  "runtime.reply:thread.read": 1,
   "runtime.reply:thread.snapshot": 1,
   "runtime.request:events.observe": 1,
   "runtime.request:thread.queue": 1,
-  "runtime.request:thread.read": 3,
+  "runtime.request:thread.read": 1,
   "runtime.request:thread.snapshot": 1,
 };
 /** The serial reads before the first content can paint: the snapshot read and what it waits on. */

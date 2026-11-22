@@ -1271,7 +1271,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         : undefined,
     [memberActions],
   );
-  useEffect(() => acquired?.retain(), [acquired]);
+  useEffect(() => acquired?.retain({ view: true }), [acquired]);
   const runtimeConnection = useAgentRuntimeConnectionState();
   const [catalogConnection, setCatalogConnection] = useState(runtimeConnection.status);
   if (catalogConnection !== runtimeConnection.status) {

@@ -208,6 +208,7 @@ describe("native realtime history in the production virtualizer", () => {
     expect(projectWholeTurn).not.toHaveBeenCalled();
     expect(owner.readStructure()?.turns).toHaveLength(0);
     view.unmount();
+    await Promise.resolve();
     expect(owner.readStructure()).toBeNull();
     expect(owner.readRealtimeItem("voice-a")).toBeNull();
   });

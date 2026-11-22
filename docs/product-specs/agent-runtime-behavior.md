@@ -546,6 +546,13 @@ observers receive whole events. A provider republishes an item's execution node 
 streamed flush; the Runtime records a node only when it changes, so an unchanged node is
 never stored, projected or delivered.
 
+Opening a conversation proves its Session binding and its Thread's lineage once, with the
+snapshot read; the window's observation and queue read that follow within five seconds reuse
+that proof. An Agent caller always proves its access. A window keeps the three conversations it
+most recently showed current for a minute after it leaves them, so returning to one shows it at
+once, with no reads; after that, or when a fourth is left, the oldest releases its transcript
+and observation.
+
 Agent Session and Task reads share one independent metadata-only timeline window and canonical
 text or JSON slices, rather than the renderer's bounded initial window. Each content slice
 carries its exact source identity, offset, total length and content version; item changes
