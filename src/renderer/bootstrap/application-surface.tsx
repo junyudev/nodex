@@ -2,8 +2,10 @@ import {
   Component,
   Suspense,
   createContext,
+  lazy,
   useContext,
   useLayoutEffect,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import { FormattedMessage } from "../lib/i18n";
@@ -184,4 +186,24 @@ export function ApplicationSurface({
       </Suspense>
     </ApplicationErrorBoundary>
   );
+}
+
+/**
+ * A surface the ordinary Workbench loads only when it shows one, so its module stays out of the
+ * Workbench's startup closure. While it loads, its fallback holds the place, and the startup
+ * gate waits for it like any other pending surface.
+ */
+export function lazySurface<Props extends object>(
+  load: () => Promise<ComponentType<Props>>,
+  fallback?: (props: Props) => ReactNode,
+): ComponentType<Props> {
+  const View = lazy(async () => ({ default: await load() }));
+  function LazySurface(props: Props) {
+    return (
+      <ApplicationSurface fallback={fallback?.(props)}>
+        <View {...props} />
+      </ApplicationSurface>
+    );
+  }
+  return LazySurface;
 }

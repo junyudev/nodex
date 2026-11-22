@@ -1,6 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect, vi } from "vite-plus/test";
-import { hoverWithMouse, settleAsyncRender, textContent } from "../../test/dom";
+import { hoverWithMouse, settleAsyncRender, settleLazyRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { isUuidV7 } from "../../../shared/uuid-v7";
@@ -53,7 +53,7 @@ describe("workbench session shell / library-shell-navigation", () => {
       ],
     });
     const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -65,7 +65,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("opens a Database Page preview without starting a Thread", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -215,7 +215,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("opens full-width single-group database pages as renderer-local previews in a new right group", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -295,7 +295,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("creates a right group before opening a preview from a full-width DB tab", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -327,7 +327,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("pins page-stage previews after panel interaction", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -396,7 +396,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("double-clicking a page-stage preview tab label pins it without remounting", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -470,7 +470,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("page-stage preview close control does not pin before closing", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -498,7 +498,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("page-stage preview delete control does not pin before deleting", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })
@@ -529,7 +529,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
   test("replaces the current page-stage preview when another DB card opens", async () => {
     const screen = renderWorkbench();
-    await settleAsyncRender();
+    await settleLazyRender();
     await settleAsyncRender();
 
     const props = (globalThis as { __lastDatabaseViewSurfaceProps?: Record<string, unknown> })

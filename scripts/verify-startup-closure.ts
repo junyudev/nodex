@@ -3,7 +3,7 @@ import { measureMainPreWindowClosure, measureWorkbenchClosure } from "./lib/star
 
 // Budgets sit about 2% above the measured closure. Raising one is a deliberate decision
 // recorded with the change that needs the bytes, never a reaction to a failed build.
-const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(13.78 * 1024 * 1024);
+const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(10.99 * 1024 * 1024);
 const MAX_WORKBENCH_CSS_BYTES = 712 * 1024;
 /** What Main evaluates before its startup window; the application graph loads behind the window. */
 const MAX_MAIN_PRE_WINDOW_BYTES = Math.round(1.38 * 1024 * 1024);

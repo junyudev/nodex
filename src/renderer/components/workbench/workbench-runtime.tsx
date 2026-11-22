@@ -1,7 +1,6 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
-import { PluginAppBreadcrumb, PluginAppView } from "@/features/plugins/view/plugin-app-view";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isRemoteSpace } from "@/lib/renderer-space";
@@ -23,7 +22,6 @@ import { prepareWorkbenchSceneSurfaceClose } from "@/lib/workbench-scene-command
 import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
 import { useApplicationPending, useApplicationReady } from "@/bootstrap/application-surface";
-import { FirstRunOverlay } from "@/features/first-run/first-run-overlay";
 import { useFirstRunPresentation } from "@/features/first-run/first-run-state";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
@@ -97,7 +95,6 @@ import {
   browserSidebarRendererStateStore,
 } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
-import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import { orderWorkbenchScenePreview } from "@/lib/workbench-scene-preview";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import {
@@ -280,7 +277,6 @@ import {
   type OpenSkillInput,
 } from "@/features/skills/open-skill";
 import { skillTryPrompt } from "@/features/plugins/model/skill-model";
-import { WorkbenchSkillPageSurface } from "./workbench-skill-page-surface";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import {
   openWorkbenchWindow,
@@ -297,10 +293,7 @@ import { useWorkbenchSidebarChrome } from "./use-workbench-sidebar-chrome";
 import { WorkbenchSessionScene } from "./workbench-session-scene";
 import { ProjectSessionThreadComposerDock } from "./workbench-session-thread-route";
 import { WorkbenchSceneFrame } from "./workbench-scene-frame";
-import { DbViewSessionTab } from "./workbench-db-view-panel";
-import { WorkbenchLibraryResourceSurface } from "./workbench-library-resource-surface";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
-import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
 import { LibrarySceneBreadcrumb, useLibrarySceneNavigation } from "./library-scene-breadcrumb";
 import { WorkbenchWindowTitle } from "./workbench-window-title";
@@ -402,7 +395,17 @@ import { createPageFor } from "@/lib/workspace-page-create";
 import { useLibraryCreateCommands } from "../library/library-new-menu";
 import type { PageChatCommands } from "@/lib/use-page-linked-chats";
 import type { PanelDestination } from "./panel-destination-picker-model";
-import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
+import {
+  DbViewSessionTab,
+  FirstRunOverlay,
+  PluginAppBreadcrumb,
+  PluginAppView,
+  WorkbenchBrowserSidebarPanel,
+  WorkbenchDatabaseViewSurface,
+  WorkbenchLibraryResourceSurface,
+  WorkbenchPageFileSurface,
+  WorkbenchSkillPageSurface,
+} from "./workbench-lazy-surfaces";
 import {
   useWorkbenchNewTabPortValue,
   WorkbenchNewTabPortProvider,

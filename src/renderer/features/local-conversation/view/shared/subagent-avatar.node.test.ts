@@ -40,10 +40,11 @@ const EXPECTED_IDENTITY_ORDER = [
   "31-spiral",
 ] as const;
 
-// Resolve files independently of the production bank, including Vite-inlined SVG URLs.
+// Resolve files independently of the production bank, as the file URLs it imports.
 const assetUrlsByPath = import.meta.glob<string>("/src/renderer/assets/subagent-avatars/*.svg", {
   eager: true,
   import: "default",
+  query: "?url&no-inline",
 });
 
 describe("subagent avatar identity", () => {

@@ -107,11 +107,14 @@ Windows storage and loader evidence are specified in the
   renderer bootstrap JavaScript, including parser-time classic scripts.
 - Activating an ordinary Workbench loads the application renderer, every chunk it reaches through
   static imports, and the stylesheets preloaded with it. The production build measures that
-  closure from its emitted chunks and enforces 13.78 MiB of JavaScript and 712 KiB of CSS, about
+  closure from its emitted chunks and enforces 10.99 MiB of JavaScript and 712 KiB of CSS, about
   2% above the measured size. A change that needs more raises the budget deliberately.
 - Excalidraw, the Terminal emulator, Cytoscape, ELK, Mermaid, PDF.js and the syntax highlighter
   load only with the surfaces that use them; message and document code is colored in a worker.
-  The diagnostics SDK loads only when diagnostics are on; renderer tracing records once it has. The production build attributes every emitted chunk to its packages
+  The diagnostics SDK loads only when diagnostics are on; renderer tracing records once it has.
+- A Workbench surface loads its code with the first tab, panel or overlay that shows it: Pages,
+  Databases, Library resources, Skills, page files, the Browser, plugin apps and first-run setup.
+  Subagent avatars are files the window fetches when it shows one. The production build attributes every emitted chunk to its packages
   through the hidden source maps and fails when code from any of them is statically reachable
   from the ordinary Workbench, whichever chunk carries it, or when one of them no longer appears
   in the build.

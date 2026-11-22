@@ -1,13 +1,20 @@
 import { useIntl } from "@/lib/i18n";
-import { PluginAppView, ThreadPluginAppView } from "@/features/plugins/view/plugin-app-view";
+import {
+  DbViewSessionTab,
+  PluginAppView,
+  ThreadPluginAppView,
+  WorkbenchBrowserSidebarPanel,
+  WorkbenchDatabaseViewSurface,
+  WorkbenchLibraryResourceSurface,
+  WorkbenchPageFileSurface,
+  WorkbenchSkillPageSurface,
+} from "./workbench-lazy-surfaces";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
 import { updateWorkbenchPageFileConfig } from "@/lib/workbench-page-file-surface-state";
-import { WorkbenchSkillPageSurface } from "./workbench-skill-page-surface";
-import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import {
   WorkspaceFilesPanel,
   type WorkspaceFilesReview,
@@ -29,7 +36,6 @@ import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
 import type { WorkbenchSurfaceUpdatePatch } from "@/lib/workbench-scene-presentation";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
-import { DbViewSessionTab } from "./workbench-db-view-panel";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import {
   PageStageSessionTab,
@@ -38,7 +44,6 @@ import {
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { SessionWorkingFolder } from "./session-working-folder";
-import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 import { resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { resolveNfmSendToThreadPreferredTarget } from "@/components/board/editor/nfm-send-to-thread-menu-model";
@@ -48,8 +53,6 @@ import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
 import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
-import { WorkbenchLibraryResourceSurface } from "./workbench-library-resource-surface";
-import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { readWorkbenchReviewOpen, consumeWorkbenchReviewOpen } from "@/lib/workbench-review-open";
 
 export function WorkbenchTabProjectionPanel({
