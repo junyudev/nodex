@@ -79,7 +79,9 @@ describe.skipIf(process.platform === "win32")("process table on this computer", 
     const rows = await readProcessTable(process.platform);
     const own = rows.find((row) => row.pid === process.pid);
     expect(own?.parentPid).toBe(process.ppid);
-    expect(own?.cpuSeconds).toBeGreaterThan(0);
+    // macOS `ps` reports CPU time to the hundredth of a second; Linux reports whole seconds,
+    // so a test process that has used less than a second reads zero there.
+    expect(own?.cpuSeconds).toBeGreaterThanOrEqual(process.platform === "darwin" ? 0.01 : 0);
     expect(own?.rssKb).toBeGreaterThan(0);
   });
 });
