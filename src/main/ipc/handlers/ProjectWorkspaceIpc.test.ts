@@ -321,7 +321,8 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       ).pipe(Effect.isFailure),
     );
 
-    assert.strictEqual(handlers.size, 60);
+    assert.strictEqual(handlers.size, 61);
+    assert.isTrue(handlers.has("workspace:tasks:lanes"));
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:start"));
     assert.isTrue(handlers.has("project-sessions:set-reminder"));
