@@ -424,6 +424,10 @@ capabilities to the same WebContents and opens one renderer gate at a time, prim
 that encounters Core or renderer startup failure stays visible in its branded failure state and can
 restart the app; only a renderer document that cannot load at all falls back to native error UI.
 Window Session bootstrap, bounds, and layout persistence remain in that pre-Core shell lifetime.
+Main reads the Window Session catalog from disk once and then holds it in memory; every change
+applies there at once and reaches disk in the background, one write per 200 ms pause, so moving or
+resizing a window never waits on the disk. Releasing the window runtime, as every quit does, waits
+for the latest catalog to be durable; a crash can lose at most the last pause's layout and bounds.
 After full application acquisition, its consumer Scope closes windows and waits for their bounded
 renderer flush before releasing application IPC or Core-dependent capabilities. Accepted queue,
 document and layout writes therefore keep their persistence services through graceful close.

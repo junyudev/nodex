@@ -31,11 +31,27 @@ import {
 } from "../shared/workbench-scene";
 import { WindowSessionState, windowSessionStateTestHelpers } from "./window-session-state";
 
-function withTempUserData(run: (userDataPath: string) => void): void {
+type LaunchWindowSessionState = (
+  ...args: ConstructorParameters<typeof WindowSessionState>
+) => Promise<WindowSessionState>;
+
+/** Each launch starts the application again, so every store launched before it quits first. */
+async function withTempUserData(
+  run: (userDataPath: string, launch: LaunchWindowSessionState) => void | Promise<void>,
+): Promise<void> {
   const userDataPath = mkdtempSync(join(tmpdir(), "nodex-window-sessions-"));
+  const launched: WindowSessionState[] = [];
+  const quit = () => Promise.all(launched.map((state) => state.flush()));
+  const launch: LaunchWindowSessionState = async (...args) => {
+    await quit();
+    const state = new WindowSessionState(...args);
+    launched.push(state);
+    return state;
+  };
   try {
-    run(userDataPath);
+    await run(userDataPath, launch);
   } finally {
+    await quit();
     rmSync(userDataPath, { recursive: true, force: true });
   }
 }
@@ -85,9 +101,9 @@ function saveLayout(
 }
 
 describe("WindowSessionState", () => {
-  test("restores separate Space layouts in one catalog and refuses a previous Space's save", () => {
-    withTempUserData((directory) => {
-      const state = new WindowSessionState(directory);
+  test("restores separate Space layouts in one catalog and refuses a previous Space's save", async () => {
+    await withTempUserData(async (directory, launch) => {
+      const state = await launch(directory);
       const session = state.createFreshSession();
       state.attachWindow(1, session.id);
       state.saveLayout(1, {
@@ -114,7 +130,7 @@ describe("WindowSessionState", () => {
           spaceId: "personal",
         }),
       ).toThrow("cannot cross Spaces");
-      const restarted = new WindowSessionState(directory);
+      const restarted = await launch(directory);
       restarted.attachWindow(2, session.id);
       expect(getActiveProjectId(restarted.bootstrap(2, "personal").layout)).toBe("team-project");
       expect(restarted.readCatalog()?.sessions).toHaveLength(1);
@@ -125,9 +141,9 @@ describe("WindowSessionState", () => {
       expect(restarted.readCatalog()?.sessions).toHaveLength(2);
     });
   });
-  test("canonicalizes dormant Automations routes without losing their Space or return route", () => {
-    withTempUserData((directory) => {
-      const state = new WindowSessionState(directory);
+  test("canonicalizes dormant Automations routes without losing their Space or return route", async () => {
+    await withTempUserData(async (directory, launch) => {
+      const state = await launch(directory);
       const session = state.createFreshSession();
       state.attachWindow(1, session.id);
       const personalLayout = {
@@ -147,6 +163,8 @@ describe("WindowSessionState", () => {
       state.bootstrap(1, "team");
       state.bootstrap(1, null);
       const catalog = state.readCatalog()!;
+      // The application quits before its catalog is rewritten outside it.
+      await state.flush();
       const teamLayout = {
         ...makeLayout("db", "team-project"),
         location: {
@@ -168,7 +186,7 @@ describe("WindowSessionState", () => {
           })),
         }),
       );
-      const restarted = new WindowSessionState(directory);
+      const restarted = await launch(directory);
       restarted.attachWindow(2, session.id);
       expect(restarted.bootstrap(2, null).layout.location).toEqual(personalLayout.location);
       expect(restarted.bootstrap(2, "team").layout.location).toEqual({
@@ -180,9 +198,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("creates a fresh open versioned Window Session", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("creates a fresh open versioned Window Session", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const session = state.createFreshSession();
       const catalog = state.readCatalog();
 
@@ -196,10 +214,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("restores all open sessions without reopening deliberately closed history", () => {
-    withTempUserData((userDataPath) => {
+  test("restores all open sessions without reopening deliberately closed history", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -207,9 +225,11 @@ describe("WindowSessionState", () => {
       clock.advance();
       state.detachWindow(2, { disposition: "user-close" });
 
-      const restored = new WindowSessionState(userDataPath, {
-        now: clock.now,
-      }).selectStartupSessions("all");
+      const restored = (
+        await launch(userDataPath, {
+          now: clock.now,
+        })
+      ).selectStartupSessions("all");
 
       expect(restored.map((session) => session.id)).toEqual([first.id]);
       expect(
@@ -218,10 +238,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("restores the last-active open session first", () => {
-    withTempUserData((userDataPath) => {
+  test("restores the last-active open session first", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -229,18 +249,20 @@ describe("WindowSessionState", () => {
       clock.advance();
       state.markFocused(1);
 
-      const restored = new WindowSessionState(userDataPath, {
-        now: clock.now,
-      }).selectStartupSessions("all");
+      const restored = (
+        await launch(userDataPath, {
+          now: clock.now,
+        })
+      ).selectStartupSessions("all");
 
       expect(restored.map((session) => session.id)).toEqual([first.id, second.id]);
     });
   });
 
-  test("last-window demotes other open sessions into recoverable history", () => {
-    withTempUserData((userDataPath) => {
+  test("last-window demotes other open sessions into recoverable history", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       clock.advance();
       const second = state.createFreshSession();
@@ -249,7 +271,7 @@ describe("WindowSessionState", () => {
       clock.advance();
       state.markFocused(1);
 
-      const restarted = new WindowSessionState(userDataPath, { now: clock.now });
+      const restarted = await launch(userDataPath, { now: clock.now });
       clock.advance();
       const restored = restarted.selectStartupSessions("last-window");
       const catalog = restarted.readCatalog();
@@ -265,10 +287,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("none starts fresh while preserving prior windows as closed history", () => {
-    withTempUserData((userDataPath) => {
+  test("none starts fresh while preserving prior windows as closed history", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       clock.advance();
       const second = state.createFreshSession();
@@ -290,10 +312,10 @@ describe("WindowSessionState", () => {
 
   test.each(["all", "last-window"] as const)(
     "%s recovers the latest closed session when no open session remains",
-    (policy) => {
-      withTempUserData((userDataPath) => {
+    async (policy) => {
+      await withTempUserData(async (userDataPath, launch) => {
         const clock = createClock();
-        const state = new WindowSessionState(userDataPath, { now: clock.now });
+        const state = await launch(userDataPath, { now: clock.now });
         const first = state.createFreshSession();
         state.attachWindow(1, first.id);
         clock.advance();
@@ -303,9 +325,11 @@ describe("WindowSessionState", () => {
         clock.advance();
         state.detachWindow(2, { disposition: "user-close" });
 
-        const restored = new WindowSessionState(userDataPath, {
-          now: clock.now,
-        }).selectStartupSessions(policy);
+        const restored = (
+          await launch(userDataPath, {
+            now: clock.now,
+          })
+        ).selectStartupSessions(policy);
 
         expect(restored.map((session) => session.id)).toEqual([second.id]);
         expect(restored[0]?.lifecycle).toEqual({ state: "open" });
@@ -313,10 +337,10 @@ describe("WindowSessionState", () => {
     },
   );
 
-  test("closes and reopens the exact Window Session and nested view identities", () => {
-    withTempUserData((userDataPath) => {
+  test("closes and reopens the exact Window Session and nested view identities", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const session = state.createFreshSession();
       state.attachWindow(1, session.id);
       const owner = {
@@ -383,10 +407,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("reopens multiple windows in reverse close order", () => {
-    withTempUserData((userDataPath) => {
+  test("reopens multiple windows in reverse close order", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -402,10 +426,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("acquires a closed session before cloning the requesting window", () => {
-    withTempUserData((userDataPath) => {
+  test("acquires a closed session before cloning the requesting window", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -423,9 +447,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("acquires a clone when no closed session remains and fresh state without a source", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("acquires a clone when no closed session remains and fresh state without a source", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const source = state.createFreshSession();
       state.attachWindow(1, source.id);
       saveLayout(state, 1, source.id, 1, makeLayout("files", "project-1"));
@@ -441,10 +465,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("rolls a failed reopen back to its exact closed record", () => {
-    withTempUserData((userDataPath) => {
+  test("rolls a failed reopen back to its exact closed record", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, { now: clock.now });
+      const state = await launch(userDataPath, { now: clock.now });
       const session = state.createFreshSession();
       state.attachWindow(1, session.id);
       clock.advance();
@@ -460,9 +484,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("app quit and unexpected teardown keep sessions open for recovery", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("app quit and unexpected teardown keep sessions open for recovery", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -480,9 +504,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("rejects attaching one session twice or replacing a window assignment", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("rejects attaching one session twice or replacing a window assignment", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const first = state.createFreshSession();
       const second = state.createFreshSession();
       state.attachWindow(1, first.id);
@@ -493,9 +517,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("clones the requesting window, remints view identities, then diverges", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("clones the requesting window, remints view identities, then diverges", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const source = state.createFreshSession();
       state.attachWindow(1, source.id);
       const owner = {
@@ -572,7 +596,7 @@ describe("WindowSessionState", () => {
         },
       });
 
-      const reloaded = new WindowSessionState(userDataPath).readCatalog();
+      const reloaded = (await launch(userDataPath)).readCatalog();
       const reloadedSource = reloaded?.sessions.find((entry) => entry.id === source.id);
       const reloadedClone = reloaded?.sessions.find((entry) => entry.id === clone.id);
       expect(
@@ -588,79 +612,82 @@ describe("WindowSessionState", () => {
     { kind: "project", projectId: "project-1" },
     { kind: "session", sessionId: "session-1", projectContextId: "project-1" },
     { kind: "session", sessionId: "session-1", projectContextId: null },
-  ])("opens a new Browser window in its $kind Scene with independent identities", (location) => {
-    if (location.kind !== "project" && location.kind !== "session") {
-      throw new Error("Expected a Project or Session Scene");
-    }
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
-      const source = state.createFreshSession();
-      state.attachWindow(1, source.id);
-      const owner =
-        location.kind === "project"
-          ? location
-          : { kind: "session" as const, sessionId: location.sessionId };
-      const sceneKey = makeWorkbenchSceneKey(owner);
-      const sourceScene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
-        panelId: "right",
-        surface: {
-          id: "source-browser",
-          kind: "browser",
-          titleSnapshot: "Existing browser",
-          config: {
-            browserTabId: "source-browser-tab",
-            browserStorageId: "source-browser-storage",
-            url: "https://example.com/existing",
-          },
-          stateKey: 0,
-          state: null,
-        },
-      });
-      const saved = saveLayout(state, 1, source.id, 1, {
-        ...source.layout,
-        location,
-        scenesByOwnerKey: { [sceneKey]: sourceScene },
-      });
-      const browserUrl = "https://example.com/new-window";
-
-      const clone = state.cloneSessionForWindow(1, { browserUrl });
-
-      expect(clone.id).not.toBe(source.id);
-      expect(clone.layout.location).toEqual(location);
-      const scene = clone.layout.scenesByOwnerKey[sceneKey]!;
-      expect(scene.owner).toEqual(owner);
-      expect(scene.lastFocusedPanelId).toBe("right");
-      expect(scene.panels.right.collapsed).toBe(false);
-      const activeId = getWorkbenchPanelActiveLeaf(scene.panels.right.layout).activeTabId!;
-      const activeSurface = scene.panelSurfacesById[activeId];
-      expect(activeSurface?.kind).toBe("browser");
-      if (activeSurface?.kind !== "browser") throw new Error("Expected an active Browser");
-      expect(activeSurface.config.url).toBe(browserUrl);
-      const browsers = Object.values(scene.panelSurfacesById).filter(
-        (surface) => surface.kind === "browser",
-      );
-      expect(browsers).toHaveLength(2);
-      expect(new Set(browsers.map((surface) => surface.config.browserTabId)).size).toBe(2);
-      expect(new Set(browsers.map((surface) => surface.config.browserStorageId)).size).toBe(2);
-      for (const browser of browsers) {
-        expect(browser.id).not.toBe("source-browser");
-        expect(browser.config.browserTabId).not.toBe("source-browser-tab");
-        expect(browser.config.browserStorageId).toBeTruthy();
-        expect(browser.config.browserStorageId).not.toBe("source-browser-storage");
+  ])(
+    "opens a new Browser window in its $kind Scene with independent identities",
+    async (location) => {
+      if (location.kind !== "project" && location.kind !== "session") {
+        throw new Error("Expected a Project or Session Scene");
       }
-      expect(state.getSessionForWindow(1)?.layout).toEqual(saved.layout);
-      const persisted = new WindowSessionState(userDataPath).readCatalog();
-      expect(persisted?.sessions.find((session) => session.id === clone.id)?.layout).toEqual(
-        clone.layout,
-      );
-    });
-  });
+      await withTempUserData(async (userDataPath, launch) => {
+        const state = await launch(userDataPath);
+        const source = state.createFreshSession();
+        state.attachWindow(1, source.id);
+        const owner =
+          location.kind === "project"
+            ? location
+            : { kind: "session" as const, sessionId: location.sessionId };
+        const sceneKey = makeWorkbenchSceneKey(owner);
+        const sourceScene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+          panelId: "right",
+          surface: {
+            id: "source-browser",
+            kind: "browser",
+            titleSnapshot: "Existing browser",
+            config: {
+              browserTabId: "source-browser-tab",
+              browserStorageId: "source-browser-storage",
+              url: "https://example.com/existing",
+            },
+            stateKey: 0,
+            state: null,
+          },
+        });
+        const saved = saveLayout(state, 1, source.id, 1, {
+          ...source.layout,
+          location,
+          scenesByOwnerKey: { [sceneKey]: sourceScene },
+        });
+        const browserUrl = "https://example.com/new-window";
+
+        const clone = state.cloneSessionForWindow(1, { browserUrl });
+
+        expect(clone.id).not.toBe(source.id);
+        expect(clone.layout.location).toEqual(location);
+        const scene = clone.layout.scenesByOwnerKey[sceneKey]!;
+        expect(scene.owner).toEqual(owner);
+        expect(scene.lastFocusedPanelId).toBe("right");
+        expect(scene.panels.right.collapsed).toBe(false);
+        const activeId = getWorkbenchPanelActiveLeaf(scene.panels.right.layout).activeTabId!;
+        const activeSurface = scene.panelSurfacesById[activeId];
+        expect(activeSurface?.kind).toBe("browser");
+        if (activeSurface?.kind !== "browser") throw new Error("Expected an active Browser");
+        expect(activeSurface.config.url).toBe(browserUrl);
+        const browsers = Object.values(scene.panelSurfacesById).filter(
+          (surface) => surface.kind === "browser",
+        );
+        expect(browsers).toHaveLength(2);
+        expect(new Set(browsers.map((surface) => surface.config.browserTabId)).size).toBe(2);
+        expect(new Set(browsers.map((surface) => surface.config.browserStorageId)).size).toBe(2);
+        for (const browser of browsers) {
+          expect(browser.id).not.toBe("source-browser");
+          expect(browser.config.browserTabId).not.toBe("source-browser-tab");
+          expect(browser.config.browserStorageId).toBeTruthy();
+          expect(browser.config.browserStorageId).not.toBe("source-browser-storage");
+        }
+        expect(state.getSessionForWindow(1)?.layout).toEqual(saved.layout);
+        const persisted = (await launch(userDataPath)).readCatalog();
+        expect(persisted?.sessions.find((session) => session.id === clone.id)?.layout).toEqual(
+          clone.layout,
+        );
+      });
+    },
+  );
 
   test.each([{ kind: "library" } as const, { kind: "project", projectId: "project-1" } as const])(
     "opens a Page in its $kind Scene in a new Window Session",
-    (routingContext) => {
-      withTempUserData((userDataPath) => {
-        const state = new WindowSessionState(userDataPath);
+    async (routingContext) => {
+      await withTempUserData(async (userDataPath, launch) => {
+        const state = await launch(userDataPath);
         const fresh = state.createFreshSession();
         state.attachWindow(1, fresh.id);
         const source = state.bootstrap(1, "team-space");
@@ -745,7 +772,7 @@ describe("WindowSessionState", () => {
           Object.values(scene.panelSurfacesById).filter((surface) => surface.kind === "page_stage"),
         ).toHaveLength(1);
         expect(state.getSessionForWindow(1)).toEqual(saved);
-        const persisted = new WindowSessionState(userDataPath).readCatalog();
+        const persisted = (await launch(userDataPath)).readCatalog();
         expect(persisted?.sessions.find((session) => session.id === clone.id)?.layout).toEqual(
           clone.layout,
         );
@@ -753,9 +780,9 @@ describe("WindowSessionState", () => {
     },
   );
 
-  test("materializes and selects the Scene behind Settings for a Browser window", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("materializes and selects the Scene behind Settings for a Browser window", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const source = state.createFreshSession();
       state.attachWindow(1, source.id);
       const location = { kind: "project" as const, projectId: "project-1" };
@@ -780,9 +807,9 @@ describe("WindowSessionState", () => {
 
   test.each<WorkbenchSceneLocation>([{ kind: "library" }, { kind: "inbox" }, { kind: "empty" }])(
     "rejects a Browser window from an unsupported $kind Scene without creating a session",
-    (location) => {
-      withTempUserData((userDataPath) => {
-        const state = new WindowSessionState(userDataPath);
+    async (location) => {
+      await withTempUserData(async (userDataPath, launch) => {
+        const state = await launch(userDataPath);
         const source = state.createFreshSession();
         state.attachWindow(1, source.id);
         saveLayout(state, 1, source.id, 1, { ...source.layout, location });
@@ -798,9 +825,9 @@ describe("WindowSessionState", () => {
     },
   );
 
-  test("rejects stale and cross-window layout saves", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("rejects stale and cross-window layout saves", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const session = state.createFreshSession();
       state.attachWindow(1, session.id);
 
@@ -816,8 +843,8 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("migrates v2 records as open and preserves the source file", () => {
-    withTempUserData((userDataPath) => {
+  test("migrates v2 records as open and preserves the source file", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const legacyPath = join(userDataPath, windowSessionStateTestHelpers.legacyV2FileName);
       writeFileSync(
         legacyPath,
@@ -848,7 +875,9 @@ describe("WindowSessionState", () => {
         }),
       );
 
-      const migrated = new WindowSessionState(userDataPath).readCatalog();
+      const migrating = await launch(userDataPath);
+      const migrated = migrating.readCatalog();
+      await migrating.flush();
 
       expect(migrated?.version).toBe(3);
       expect(migrated?.sessions[0]).toMatchObject({
@@ -869,8 +898,8 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("migrates v1 layouts once and preserves them as recovery input", () => {
-    withTempUserData((userDataPath) => {
+  test("migrates v1 layouts once and preserves them as recovery input", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const legacyLayout: Record<string, unknown> = {
         ...createDefaultWorkbenchLayoutSnapshotV3(),
         dbProjectId: "legacy",
@@ -896,7 +925,9 @@ describe("WindowSessionState", () => {
         }),
       );
 
-      const migrated = new WindowSessionState(userDataPath).readCatalog();
+      const migrating = await launch(userDataPath);
+      const migrated = migrating.readCatalog();
+      await migrating.flush();
 
       expect(migrated?.version).toBe(3);
       expect(migrated?.sessions[0]).toMatchObject({
@@ -917,8 +948,8 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("migrates Browser storage identity once per Window Session", () => {
-    withTempUserData((userDataPath) => {
+  test("migrates Browser storage identity once per Window Session", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       let view = materializeInitialWorkbenchSessionView({
         id: "project-session-1",
         projectId: "project-1",
@@ -966,7 +997,7 @@ describe("WindowSessionState", () => {
         }),
       );
 
-      const migrated = new WindowSessionState(userDataPath).readCatalog();
+      const migrated = (await launch(userDataPath)).readCatalog();
       const storageIds = migrated?.sessions.map((session) => {
         const surface =
           session.layout.scenesByOwnerKey["session:project-session-1"]?.panelSurfacesById[
@@ -981,13 +1012,14 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("preserves a malformed v3 catalog and recovers with a fresh one", () => {
-    withTempUserData((userDataPath) => {
+  test("preserves a malformed v3 catalog and recovers with a fresh one", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const statePath = join(userDataPath, windowSessionStateTestHelpers.stateFileName);
       writeFileSync(statePath, "{not-json");
-      const state = new WindowSessionState(userDataPath);
+      const state = await launch(userDataPath);
 
       const catalog = state.readOrCreateCatalog();
+      await state.flush();
       const files = readdirSync(userDataPath);
 
       expect(catalog.version).toBe(3);
@@ -997,10 +1029,10 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("retains only the newest closed sessions without evicting open ones", () => {
-    withTempUserData((userDataPath) => {
+  test("retains only the newest closed sessions without evicting open ones", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
       const clock = createClock();
-      const state = new WindowSessionState(userDataPath, {
+      const state = await launch(userDataPath, {
         now: clock.now,
         maxClosedSessions: 2,
       });
@@ -1027,9 +1059,9 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("evicts oldest closed history to keep an open catalog within its byte bound", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath, {
+  test("evicts oldest closed history to keep an open catalog within its byte bound", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath, {
         maxFileBytes: 1_000,
       });
       const closed = state.createFreshSession();
@@ -1039,6 +1071,7 @@ describe("WindowSessionState", () => {
       const open = state.createFreshSession();
       const catalog = state.readCatalog();
       const statePath = join(userDataPath, windowSessionStateTestHelpers.stateFileName);
+      await state.flush();
 
       expect(catalog?.sessions.map((session) => session.id)).toEqual([open.id]);
       expect(catalog?.sessions[0]?.lifecycle).toEqual({ state: "open" });
@@ -1046,9 +1079,28 @@ describe("WindowSessionState", () => {
     });
   });
 
-  test("bootstraps the assigned session and normalizes bounds during saves", () => {
-    withTempUserData((userDataPath) => {
-      const state = new WindowSessionState(userDataPath);
+  test("keeps a moving window's bounds off the disk until the application quits", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath, { persistDelayMs: 60_000 });
+      const session = state.createFreshSession();
+      state.attachWindow(1, session.id);
+      await state.flush();
+      const statePath = join(userDataPath, windowSessionStateTestHelpers.stateFileName);
+      const persisted = readFileSync(statePath, "utf8");
+
+      for (let x = 0; x < 60; x += 1)
+        state.updateBounds(1, { x, y: 0, width: 1_200, height: 800, mode: "normal" });
+
+      expect(state.getSessionForWindow(1)?.bounds?.x).toBe(59);
+      expect(readFileSync(statePath, "utf8")).toBe(persisted);
+      const relaunched = await launch(userDataPath);
+      expect(relaunched.readCatalog()?.sessions[0]?.bounds?.x).toBe(59);
+    });
+  });
+
+  test("bootstraps the assigned session and normalizes bounds during saves", async () => {
+    await withTempUserData(async (userDataPath, launch) => {
+      const state = await launch(userDataPath);
       const session = state.createFreshSession();
       state.attachWindow(7, session.id);
       expect(state.bootstrap(7).id).toBe(session.id);

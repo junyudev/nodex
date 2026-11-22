@@ -268,6 +268,7 @@ it.effect("owns the bounded renderer flush handshake before a user close", () =>
         windowSessionId: windowSession.id,
       },
     });
+    yield* Effect.promise(() => sessions.flush());
     assert.deepInclude(new WindowSessionState(userDataPath).readCatalog()?.sessions[0], {
       bounds: { x: 0, y: 0, width: 1_400, height: 900, mode: "normal" },
       layout,

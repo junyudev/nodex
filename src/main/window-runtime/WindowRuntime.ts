@@ -687,7 +687,11 @@ export const fromState = (
           };
         }),
         ({ dispose }) =>
-          Effect.sync(dispose).pipe(Effect.andThen(PubSub.shutdown(lifecycleEvents))),
+          Effect.sync(dispose).pipe(
+            // Quitting waits for the final layout; a failed write was already reported.
+            Effect.andThen(Effect.promise(() => sessions.flush().catch(() => {}))),
+            Effect.andThen(PubSub.shutdown(lifecycleEvents)),
+          ),
       ).pipe(Effect.map(({ runtime }) => runtime));
     }),
   );

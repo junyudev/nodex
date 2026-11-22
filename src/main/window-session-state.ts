@@ -1,4 +1,3 @@
-import { syncDirectorySync } from "./platform/node/filesystem-durability";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +37,7 @@ import { findWorkbenchPanelLeafForTab } from "../shared/workbench-panel-layout";
 import { resolveBrowserTabTitle } from "../shared/browser-url";
 import { createSecureRuntimeId } from "../shared/secure-runtime-id";
 import { getLogger } from "./logging/logger";
+import { LatestDurableTextWriter, serializeDurableJson } from "./durable-json-file";
 
 const WINDOW_SESSIONS_V3_FILE_NAME = "window-sessions-v3.json";
 const WINDOW_SESSIONS_V2_FILE_NAME = "window-sessions-v2.json";
@@ -45,6 +45,8 @@ const WINDOW_SESSIONS_V1_FILE_NAME = "window-sessions-v1.json";
 const WINDOW_SESSION_VERSION = 3;
 const MAX_WINDOW_SESSION_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_CLOSED_WINDOW_SESSIONS = 20;
+/** A window dragged or resized across the screen writes its catalog once per pause, not per frame. */
+const WINDOW_SESSION_PERSIST_DELAY_MS = 200;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const logger = getLogger({ module: "window-session-state" });
@@ -68,6 +70,7 @@ interface WindowSessionStateOptions {
   now?: () => Date;
   maxClosedSessions?: number;
   maxFileBytes?: number;
+  persistDelayMs?: number;
 }
 
 interface PreparedCatalog {
@@ -287,10 +290,6 @@ function compareTimestampsDescending(left: string, right: string): number {
   return right.localeCompare(left);
 }
 
-function serializeCatalog(catalog: WindowSessionCatalog): string {
-  return `${JSON.stringify(catalog, null, 2)}\n`;
-}
-
 export function isWindowSessionBoundsVisible(
   bounds: WindowSessionBounds | undefined,
   displays: Array<{ bounds: { x: number; y: number; width: number; height: number } }>,
@@ -324,6 +323,10 @@ export class WindowSessionState {
   private readonly now: () => Date;
   private readonly maxClosedSessions: number;
   private readonly maxFileBytes: number;
+  private readonly writer: LatestDurableTextWriter;
+  /** The catalog this process owns; `undefined` until it is first read from disk. */
+  private catalog: WindowSessionCatalog | null | undefined = undefined;
+  private directoryVerified = false;
 
   constructor(userDataPath: string, options: WindowSessionStateOptions = {}) {
     const maxClosedSessions = options.maxClosedSessions ?? MAX_CLOSED_WINDOW_SESSIONS;
@@ -341,6 +344,20 @@ export class WindowSessionState {
     this.now = options.now ?? (() => new Date());
     this.maxClosedSessions = maxClosedSessions;
     this.maxFileBytes = maxFileBytes;
+    this.writer = new LatestDurableTextWriter({
+      filePath: this.statePath,
+      maxBytes: maxFileBytes,
+      delayMs: options.persistDelayMs ?? WINDOW_SESSION_PERSIST_DELAY_MS,
+      onError: (error) =>
+        logger.error("Could not persist Window Sessions", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    });
+  }
+
+  /** Resolves once the catalog on disk is the one this process holds; quitting awaits it. */
+  flush(): Promise<void> {
+    return this.writer.flush();
   }
 
   createFreshSession(): WindowSessionRecord {
@@ -750,11 +767,14 @@ export class WindowSessionState {
     return catalog.sessions.find((session) => session.id === sessionId) ?? null;
   }
 
+  /** Disk is read once per process; afterwards this process's catalog is the authority. */
   readCatalog(): WindowSessionCatalog | null {
+    if (this.catalog !== undefined) return this.catalog;
     const current = this.readCurrentCatalog();
-    if (current) return current;
-    if (fs.existsSync(this.statePath)) return null;
-    return this.migrateLegacyCatalog();
+    if (current) return (this.catalog = current);
+    if (fs.existsSync(this.statePath)) return (this.catalog = null);
+    const migrated = this.migrateLegacyCatalog();
+    return (this.catalog = migrated);
   }
 
   readOrCreateCatalog(): WindowSessionCatalog {
@@ -942,7 +962,7 @@ export class WindowSessionState {
       (session) => session.lifecycle.state === "open" || retainedClosedIds.has(session.id),
     );
     let compacted = this.catalogWithSessions(normalized, sessions);
-    let serialized = serializeCatalog(compacted);
+    let serialized = serializeDurableJson(compacted);
     const oldestRetained = rankedClosed
       .filter((session) => retainedClosedIds.has(session.id))
       .reverse();
@@ -952,7 +972,7 @@ export class WindowSessionState {
       if (!oldest) break;
       sessions = sessions.filter((session) => session.id !== oldest.id);
       compacted = this.catalogWithSessions(normalized, sessions);
-      serialized = serializeCatalog(compacted);
+      serialized = serializeDurableJson(compacted);
     }
 
     if (Buffer.byteLength(serialized, "utf8") > this.maxFileBytes) {
@@ -1042,7 +1062,17 @@ export class WindowSessionState {
     }
   }
 
+  /** Commits the catalog to this process now and to disk in the background. */
   private writeCatalog(catalog: WindowSessionCatalog): WindowSessionCatalog {
+    this.verifyDirectory();
+    const prepared = this.prepareCatalog(catalog);
+    this.catalog = prepared.catalog;
+    this.writer.offer(prepared.serialized);
+    return prepared.catalog;
+  }
+
+  private verifyDirectory(): void {
+    if (this.directoryVerified) return;
     const directory = path.dirname(this.statePath);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const directoryStats = fs.lstatSync(directory);
@@ -1052,32 +1082,7 @@ export class WindowSessionState {
     if (isSymlink(this.statePath)) {
       throw new Error("Window Session catalog target is a symlink");
     }
-
-    const prepared = this.prepareCatalog(catalog);
-    const temporaryPath = path.join(
-      directory,
-      `.${path.basename(this.statePath)}.${process.pid}.${randomUUID()}.tmp`,
-    );
-    const descriptor = fs.openSync(temporaryPath, "wx", 0o600);
-    try {
-      try {
-        fs.writeFileSync(descriptor, prepared.serialized, { encoding: "utf8" });
-        fs.fsyncSync(descriptor);
-      } finally {
-        fs.closeSync(descriptor);
-      }
-      fs.renameSync(temporaryPath, this.statePath);
-      fs.chmodSync(this.statePath, 0o600);
-      syncDirectorySync(directory);
-    } catch (error) {
-      try {
-        fs.unlinkSync(temporaryPath);
-      } catch {
-        // The rename may already have committed the replacement.
-      }
-      throw error;
-    }
-    return prepared.catalog;
+    this.directoryVerified = true;
   }
 }
 
