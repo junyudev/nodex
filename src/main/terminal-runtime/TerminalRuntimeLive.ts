@@ -6,7 +6,7 @@ import { isCodexNonGitRepositoryMessage, runCodexGitCommand } from "../codex/cod
 import { loadCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
 import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import * as TerminalEnvironment from "../platform/node/TerminalEnvironment";
-import * as TerminalProcessMetrics from "../platform/node/TerminalProcessMetrics";
+import type { ProcessTelemetry } from "../platform/node/ProcessTelemetry";
 import * as TerminalPty from "../platform/node/TerminalPty";
 import * as TerminalRuntimeMap from "./TerminalRuntimeMap";
 import * as TerminalSessions from "./TerminalSessions";
@@ -54,7 +54,5 @@ const environment = TerminalEnvironment.live({
 export const live: Layer.Layer<
   TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap,
   never,
-  MainConfig | ApplicationSettings | HostShellEnvironment
-> = layer.pipe(
-  Layer.provide(Layer.mergeAll(environment, TerminalProcessMetrics.live, TerminalPty.live)),
-);
+  MainConfig | ApplicationSettings | HostShellEnvironment | ProcessTelemetry
+> = layer.pipe(Layer.provide(Layer.mergeAll(environment, TerminalPty.live)));

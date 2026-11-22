@@ -13,7 +13,7 @@ import {
   buildTerminalEnvironment,
   TerminalEnvironment,
 } from "../platform/node/TerminalEnvironment";
-import * as TerminalProcessMetrics from "../platform/node/TerminalProcessMetrics";
+import * as ProcessTelemetry from "../platform/node/ProcessTelemetry";
 import * as TerminalPty from "../platform/node/TerminalPty";
 import { TerminalSessions } from "./TerminalSessions";
 import * as TerminalRuntimeLive from "./TerminalRuntimeLive";
@@ -65,7 +65,7 @@ it.live.skipIf(process.platform === "win32")(
           Layer.provide(
             Layer.mergeAll(
               environment,
-              TerminalProcessMetrics.live,
+              ProcessTelemetry.live,
               TerminalPty.live.pipe(Layer.provide(testLayer({ platform: process.platform }))),
             ),
           ),

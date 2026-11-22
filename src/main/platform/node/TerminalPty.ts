@@ -17,7 +17,10 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as pty from "node-pty";
 import { TERMINAL_OUTPUT_CHUNK_CAPACITY } from "../../runtime-limits";
-import { collectDescendantPids, parseUnixProcessTreeOutput } from "../../terminal-process-metrics";
+import {
+  collectDescendantPids,
+  parseUnixProcessTreeOutput,
+} from "../../process-telemetry/process-table";
 
 export class TerminalPtyError extends Schema.TaggedError<TerminalPtyError>()("TerminalPtyError", {
   operation: Schema.String,

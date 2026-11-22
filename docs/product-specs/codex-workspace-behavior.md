@@ -253,7 +253,9 @@ action.
 Process Manager is the shared Workbench surface for registered background
 processes across known Chats. It joins registry identity with live app-server
 processes and Terminal-action sessions, polls only while open, and preserves
-registered-but-missing rows instead of inventing live metrics. `Open output`
+registered-but-missing rows instead of inventing live metrics. CPU is the share used since the
+previous refresh, and every Chat in one refresh reads the same process table, which one shared
+worker reads off Main and releases after half a minute unused. `Open output`
 focuses the owning Chat when needed and opens the same live process-output
 surface used by Thread Summary. Start/Restart require a retained command and
 working directory; Stop acts on the exact live process or Terminal session.

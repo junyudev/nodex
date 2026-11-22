@@ -29,7 +29,7 @@ import type {
 } from "../../shared/types";
 import { formatTerminalAction } from "../platform/node/TerminalAction";
 import { TerminalEnvironment } from "../platform/node/TerminalEnvironment";
-import { TerminalProcessMetricsReader } from "../platform/node/TerminalProcessMetrics";
+import { ProcessTelemetry, readTerminalProcessMetrics } from "../platform/node/ProcessTelemetry";
 import {
   TerminalRuntimeMap,
   type TerminalRuntime,
@@ -186,12 +186,12 @@ const overlayLease = (
 export const live: Layer.Layer<
   TerminalSessions,
   never,
-  TerminalEnvironment | TerminalProcessMetricsReader | TerminalRuntimeMap
+  TerminalEnvironment | ProcessTelemetry | TerminalRuntimeMap
 > = Layer.effect(
   TerminalSessions,
   Effect.gen(function* () {
     const environment = yield* TerminalEnvironment;
-    const metrics = yield* TerminalProcessMetricsReader;
+    const telemetry = yield* ProcessTelemetry;
     const runtimes = yield* TerminalRuntimeMap;
     const records = yield* Ref.make<ReadonlyMap<string, TerminalSessionRecord>>(new Map());
     const events = yield* PubSub.bounded<TerminalSessionEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
@@ -766,7 +766,9 @@ export const live: Layer.Layer<
             ),
           );
           if (byPid.size === 0) return;
-          const result = yield* Effect.result(metrics.read([...byPid.keys()]));
+          const result = yield* Effect.result(
+            readTerminalProcessMetrics(telemetry, [...byPid.keys()]),
+          );
           if (result._tag === "Failure") {
             for (const record of byPid.values()) {
               yield* record.runtime!.updateSnapshot((snapshot) => ({

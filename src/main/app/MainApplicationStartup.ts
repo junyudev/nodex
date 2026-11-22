@@ -6,6 +6,7 @@ import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationIni
 import { live as shellEnvironmentLive } from "../host-runtime/HostShellEnvironment";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
 import { getLogger } from "../logging/logger";
+import * as ProcessTelemetry from "../platform/node/ProcessTelemetry";
 import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
 import { isWindowsStartupActivation } from "../windows-desktop-policy";
 import { ApplicationWindowShellRuntime } from "../window-runtime/ApplicationWindowShellRuntime";
@@ -135,5 +136,6 @@ export const productionLive = applicationGraph.pipe(
   Layer.catch(startupFailureLive),
   Layer.provideMerge(ApplicationStateLive.live),
   Layer.provideMerge(TerminalRuntimeLive.live),
+  Layer.provideMerge(ProcessTelemetry.live),
   Layer.provideMerge(shellEnvironment),
 );

@@ -12,7 +12,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { TerminalEnvironment } from "../platform/node/TerminalEnvironment";
-import { TerminalProcessMetricsReader } from "../platform/node/TerminalProcessMetrics";
+import { ProcessTelemetry } from "../platform/node/ProcessTelemetry";
 import {
   TerminalPty,
   type TerminalPtyExit,
@@ -94,17 +94,18 @@ const environmentLayer = Layer.succeed(
 );
 
 const metricsLayer = Layer.succeed(
-  TerminalProcessMetricsReader,
-  TerminalProcessMetricsReader.of({
-    read: (pids) =>
-      Effect.succeed(
-        new Map(
-          pids.map((pid) => [
-            pid,
-            { cpuPercent: 12.5, rssKb: 4_096n, childProcessCount: 2, sampledAtMs: 123 },
-          ]),
-        ),
-      ),
+  ProcessTelemetry,
+  ProcessTelemetry.of({
+    sample: (request) =>
+      Effect.succeed({
+        sampledAtMs: 123,
+        groups: request.groups.map((group) => ({
+          key: group.key,
+          processes: 2,
+          cpuPercent: 12.5,
+          rssKb: 4_096,
+        })),
+      }),
   }),
 );
 
