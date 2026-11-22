@@ -25,7 +25,7 @@ function mountStartupShell(input: { readonly dark: boolean; readonly opaque: boo
   document.head.append(style);
   document.documentElement.classList.toggle("dark", input.dark);
   document.documentElement.classList.toggle("electron-opaque", input.opaque);
-  document.body.innerHTML = `<div id="root">${createStartupShellMarkup()}</div>`;
+  document.body.innerHTML = `${createStartupShellMarkup()}<div id="root"></div>`;
 
   const brand = document.querySelector<HTMLElement>(".nodex-startup-brand");
   const logo = document.querySelector<SVGElement>(".nodex-startup-logo-base");
@@ -112,6 +112,51 @@ describe("parser-time startup shell presentation", () => {
       ).toBe("#df5142");
     },
   );
+
+  test("lays the application out unseen beneath the shell, and shows it once revealed", async () => {
+    mountStartupShell({ dark: false, opaque: true });
+    const root = document.getElementById("root")!;
+    const shell = document.querySelector<HTMLElement>(".nodex-startup-shell")!;
+    root.innerHTML = '<button type="button">Workbench</button>';
+    const button = root.querySelector("button")!;
+
+    expect(getComputedStyle(root).opacity).toBe("0");
+    const bounds = button.getBoundingClientRect();
+    expect(bounds.width).toBeGreaterThan(0);
+    // Pointer input reaches the shell, never the application it holds.
+    const hit = () =>
+      document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    expect(shell.contains(hit())).toBe(true);
+    // Keyboard focus still reaches the application, so typing ahead is kept.
+    button.focus();
+    expect(document.activeElement).toBe(button);
+
+    shell.dataset.startupRevealing = "";
+    expect(getComputedStyle(shell).pointerEvents).toBe("none");
+    const handoff = document
+      .getAnimations()
+      .filter((animation) => animation instanceof CSSTransition);
+    expect(handoff).toHaveLength(2);
+    await Promise.all(handoff.map((animation) => animation.finished));
+    expect(getComputedStyle(root).opacity).toBe("1");
+    expect(getComputedStyle(shell).opacity).toBe("0");
+
+    expect(hit()).toBe(button);
+
+    shell.remove();
+    expect(getComputedStyle(root).opacity).toBe("1");
+    expect(hit()).toBe(button);
+  });
+
+  test("never hides the application of a compact window", () => {
+    mountStartupShell({ dark: false, opaque: true });
+    document.documentElement.classList.add("hide-startup-shell");
+    try {
+      expect(getComputedStyle(document.getElementById("root")!).opacity).toBe("1");
+    } finally {
+      document.documentElement.classList.remove("hide-startup-shell");
+    }
+  });
 
   test("shows a static mark without startup motion under reduced motion", async () => {
     const session = cdp() as unknown as ChromiumMediaEmulationSession;

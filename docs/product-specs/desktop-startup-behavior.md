@@ -46,9 +46,15 @@ progress is available, the integer percentage never moves backward. The copy cle
 Store is ready. Status copy appears below the mark without moving it off center.
 
 The full Workbench loads only after global initialization and that window's activation gate are
-both ready. React replaces the startup document in place. BrowserWindow and WebContents identities,
-bounds, traffic lights, focus, native material, and the macOS foreground application identity do not
-change at this transition; the app remains present in the Dock and application menu.
+both ready. It lays out beneath the mark without showing or taking pointer input, and is marked busy
+for assistive technology; keyboard focus already reaches it, so typing ahead is kept. When its
+initial route reports readiness (below), the mark and the Workbench change places in one frame with
+a short crossfade, or at once with Reduce motion, so the window never shows a blank Workbench, a
+lone sidebar or an empty pane on the way. A Workbench that has not reported readiness three seconds
+after it began mounting is shown anyway. A failed mount keeps the mark, which then presents the
+failure. BrowserWindow and WebContents identities, bounds, traffic lights, focus, native material,
+and the macOS foreground application identity do not change at this transition; the app remains
+present in the Dock and application menu.
 
 When multiple Window Sessions restore, all receive their canonical lightweight shell, but only the
 primary is shown and activated first. Each following renderer activates after the previous renderer

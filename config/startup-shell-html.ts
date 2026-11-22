@@ -7,7 +7,7 @@ import {
 } from "../src/renderer/bootstrap/nodex-logo-source";
 
 export const STARTUP_SHELL_STYLE_ANCHOR = "<!-- nodex-startup-shell:styles -->";
-export const STARTUP_SHELL_ROOT_ANCHOR = "<!-- nodex-startup-shell:root -->";
+export const STARTUP_SHELL_OVERLAY_ANCHOR = "<!-- nodex-startup-shell:overlay -->";
 
 export function createStartupShellMarkup(): string {
   return `<main class="nodex-startup-shell" data-startup-phase="opening">
@@ -54,6 +54,9 @@ ${themeCss}
 html, body, #root { width: 100%; height: 100%; margin: 0; background: transparent; }
 body { overflow: hidden; }
 :root.electron-opaque body { background: var(--startup-surface); }
+/* The shell holds the window until the first view is ready. The application, later in the
+   document and so painted above it, lays out unseen and without pointer input; on reveal it fades in
+   over the fading mark, so the mark recedes faster than the application arrives. */
 .nodex-startup-shell {
   position: fixed;
   inset: 0;
@@ -144,6 +147,12 @@ body { overflow: hidden; }
 .nodex-startup-shell[data-startup-phase="failed"] .nodex-startup-logo-highlight { display: none; }
 :root.nodex-startup-document-hidden .nodex-startup-logo-highlight > span { animation-play-state: paused; }
 :root.hide-startup-shell .nodex-startup-shell { display: none; }
+:root:not(.hide-startup-shell) .nodex-startup-shell:not([data-startup-revealing]) + #root {
+  opacity: 0;
+  pointer-events: none;
+}
+.nodex-startup-shell, .nodex-startup-shell + #root { transition: opacity 150ms ease-out; }
+.nodex-startup-shell[data-startup-revealing] { opacity: 0; pointer-events: none; }
 @keyframes nodex-startup-fade-in {
   to { opacity: 1; }
 }
@@ -153,6 +162,7 @@ body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .nodex-startup-brand { animation: none; opacity: 1; }
   .nodex-startup-logo-highlight { display: none; }
+  .nodex-startup-shell, .nodex-startup-shell + #root { transition: none; }
 }`;
 }
 
@@ -165,12 +175,12 @@ export function createStartupShellHtmlPlugin(): Plugin {
         if (!html.includes(STARTUP_SHELL_STYLE_ANCHOR)) {
           throw new Error("Renderer index is missing the startup shell style anchor");
         }
-        if (!html.includes(STARTUP_SHELL_ROOT_ANCHOR)) {
-          throw new Error("Renderer index is missing the startup shell root anchor");
+        if (!html.includes(STARTUP_SHELL_OVERLAY_ANCHOR)) {
+          throw new Error("Renderer index is missing the startup shell overlay anchor");
         }
         return html
           .replace(STARTUP_SHELL_STYLE_ANCHOR, `<style>${createStartupShellCriticalCss()}</style>`)
-          .replace(STARTUP_SHELL_ROOT_ANCHOR, createStartupShellMarkup());
+          .replace(STARTUP_SHELL_OVERLAY_ANCHOR, createStartupShellMarkup());
       },
     },
   };

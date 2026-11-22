@@ -118,7 +118,7 @@ describe("startup controller", () => {
     mocks.initializeRendererSentry.mockReset().mockResolvedValue(undefined);
     mocks.mountApplicationRenderer.mockReset().mockResolvedValue(undefined);
     mocks.registerAppCloseFlushHandler.mockReset().mockReturnValue(() => undefined);
-    document.body.innerHTML = `<div id="root">${createStartupShellMarkup()}</div>`;
+    document.body.innerHTML = `${createStartupShellMarkup()}<div id="root"></div>`;
   });
 
   afterEach(() => {
@@ -375,6 +375,59 @@ describe("startup controller", () => {
     }
   });
 
+  test("keeps the shell over the application until its first view is ready", async () => {
+    const bridge = installBridge();
+    let finishMount = (): void => undefined;
+    mocks.mountApplicationRenderer.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishMount = resolve;
+      }),
+    );
+    const controller = await startLocalizedStartupController();
+    const shell = () => document.querySelector<HTMLElement>(".nodex-startup-shell");
+    const root = document.getElementById("root");
+    try {
+      await act(async () => {
+        bridge.resolveInitialization();
+        await vi.waitFor(() => expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce());
+      });
+      expect(root?.getAttribute("aria-busy")).toBe("true");
+      expect(shell()?.dataset.startupRevealing).toBeUndefined();
+
+      await act(async () => finishMount());
+      expect(shell()?.dataset.startupRevealing).toBe("");
+      expect(root?.hasAttribute("aria-busy")).toBe(false);
+      await act(async () => vi.advanceTimersByTimeAsync(150));
+      expect(shell()).toBeNull();
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  test("opens a view whose first content never settles after the reveal deadline", async () => {
+    const bridge = installBridge();
+    mocks.mountApplicationRenderer.mockReturnValue(new Promise<void>(() => undefined));
+    const controller = await startLocalizedStartupController();
+    try {
+      await act(async () => {
+        bridge.resolveInitialization();
+        await vi.waitFor(() => expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce());
+      });
+      // Waiting for the mount above advances the fake clock by a few polling intervals.
+      await act(async () => vi.advanceTimersByTimeAsync(2_800));
+      expect(
+        document.querySelector<HTMLElement>(".nodex-startup-shell")?.dataset,
+      ).not.toHaveProperty("startupRevealing");
+      await act(async () => vi.advanceTimersByTimeAsync(200));
+      expect(
+        document.querySelector<HTMLElement>(".nodex-startup-shell")?.dataset.startupRevealing,
+      ).toBe("");
+      expect(bridge.reportInitializationReady).not.toHaveBeenCalled();
+    } finally {
+      controller.dispose();
+    }
+  });
+
   test("releases the handoff registration when mounting fails", async () => {
     const bridge = installBridge();
     const releaseHandoff = vi.fn();
@@ -388,6 +441,10 @@ describe("startup controller", () => {
     expect(bridge.reportInitializationReady.mock.calls[0]?.[0]).toMatchObject({
       outcome: "failed",
     });
+    // The shell stays to present the failure.
+    const shell = document.querySelector<HTMLElement>(".nodex-startup-shell");
+    expect(shell?.dataset.startupPhase).toBe("failed");
+    expect(shell?.dataset.startupRevealing).toBeUndefined();
     expect(releaseHandoff).toHaveBeenCalledOnce();
     controller.dispose();
     controller.dispose();

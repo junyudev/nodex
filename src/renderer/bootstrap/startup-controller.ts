@@ -4,6 +4,11 @@ import { subscribeAppLocale } from "../lib/app-locale";
 import { startupOperations } from "./startup-operations";
 import { fallbackStartupFormat, startupShellText, type StartupFormat } from "./startup-messages";
 
+/** Matches the shell's crossfade in the parser-time stylesheet. */
+const REVEAL_MS = 150;
+/** A view whose first content never settles still opens rather than leaving the logo up. */
+const REVEAL_DEADLINE_MS = 3_000;
+
 const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
   opening: 0,
   migrating: 1,
@@ -53,6 +58,9 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
   const awaitInitialization = api.awaitInitialization;
 
   const elements = readStartupElements();
+  const applicationRoot = document.getElementById("root");
+  // The application lays out beneath the shell before its first view is ready to show.
+  applicationRoot?.setAttribute("aria-busy", "true");
   const startedAt = performance.now();
   const timingsMs: Partial<Record<RendererInitializationPhase, number>> = {};
   const measure = async <T>(
@@ -144,6 +152,22 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
     startupCloseFlushActive = false;
     unsubscribeCloseFlush();
   };
+  let revealed = false;
+  /** Shows the application in the frame after its first view committed, then retires the shell. */
+  const reveal = (): void => {
+    if (revealed) return;
+    revealed = true;
+    applicationRoot?.removeAttribute("aria-busy");
+    const instant =
+      document.visibilityState === "hidden" ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (instant) {
+      elements.shell.remove();
+      return;
+    }
+    elements.shell.dataset.startupRevealing = "";
+    setTimeout(() => elements.shell.remove(), REVEAL_MS);
+  };
   const onRestart = (): void => {
     void api.restartApplication?.();
   };
@@ -198,13 +222,19 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
       retireStartupCloseFlush();
+      const mounting = measure("mount", () =>
+        application.mountApplicationRenderer({
+          runtimeCapabilities,
+          windowSessionBootstrap: windowSession,
+        }),
+      );
+      // A failed mount keeps the shell, which then presents the failure.
+      void Promise.race([
+        mounting,
+        new Promise<void>((resolve) => setTimeout(resolve, REVEAL_DEADLINE_MS)),
+      ]).then(reveal, () => undefined);
       try {
-        await measure("mount", () =>
-          application.mountApplicationRenderer({
-            runtimeCapabilities,
-            windowSessionBootstrap: windowSession,
-          }),
-        );
+        await mounting;
       } finally {
         releaseCloseFlushHandoff();
       }
