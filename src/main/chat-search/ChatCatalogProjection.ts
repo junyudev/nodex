@@ -15,6 +15,19 @@ export const CHAT_CATALOG_MAX_ENTRIES = 10_000;
 /** A Member's search through a Space host reads their chats on every request, so fewer. */
 export const MEMBER_CHAT_CATALOG_MAX_ENTRIES = 1_000;
 const CHAT_PREVIEW_MAX_CHARS = 240;
+
+/** The first code points of a preview, without splitting the whole message into an array. */
+const leading = (text: string, count: number): string => {
+  if (text.length <= count) return text;
+  let end = 0;
+  let taken = 0;
+  for (const character of text) {
+    if (taken === count) break;
+    end += character.length;
+    taken += 1;
+  }
+  return text.slice(0, end);
+};
 export interface ChatCatalogItem extends ChatCatalogEntry {
   readonly preview: string;
   readonly opens: { readonly openedAt: number; readonly score: number } | null;
@@ -51,7 +64,7 @@ export const projectChat = (
     backend: summary.backend,
     threadId: summary.binding?.threadId ?? null,
     title: summary.title,
-    preview: Array.from(summary.preview).slice(0, CHAT_PREVIEW_MAX_CHARS).join(""),
+    preview: leading(summary.preview, CHAT_PREVIEW_MAX_CHARS),
     projectId: summary.projectId,
     projectName: summary.projectName,
     cwd: summary.worktreePath ?? item.task.thread?.cwd ?? null,

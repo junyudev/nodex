@@ -6,6 +6,8 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { fixture, row, metadata, fact, type Fact } from "./ChatSearch.test-support";
+import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
+import type { AgentRuntimeSessionActivityChange } from "../../shared/agent-runtime-api";
 import {
   MEMBER_CHAT_CATALOG_MAX_ENTRIES,
   projectChat,
@@ -355,6 +357,50 @@ it.effect(
         assert.equal(reads.length, 3);
       }),
     ),
+);
+
+it.effect("keeps the catalog current by reading only the chats each change names", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const changed = yield* PubSub.unbounded<ProjectSessionsChangeEvent>();
+      const activity = yield* PubSub.unbounded<AgentRuntimeSessionActivityChange>();
+      let rows = [row("first", "First plan"), row("second", "Second draft")];
+      const { service, reads } = fixture({
+        rows: () => rows,
+        invalidations: Stream.fromPubSub(changed),
+        activityChanges: Stream.fromPubSub(activity),
+      });
+      const search = yield* service;
+      const titles = (query: string) =>
+        search
+          .search({ query, limit: 5 })
+          .pipe(Effect.map((result) => result.matches.map(({ chat }) => chat.title)));
+      assert.deepEqual(yield* titles("Second"), ["Second draft"]);
+      const whole = reads.length;
+
+      rows = [row("first", "First plan"), row("second", "Second revision")];
+      yield* PubSub.publish(changed, {
+        summaryScopes: [],
+        detailInvalidation: { kind: "sessions", sessionIds: ["second"] },
+        changeType: "update",
+      });
+      yield* titles("revision").pipe(Effect.repeat({ until: (found) => found.length > 0 }));
+
+      // An Agent's activity names its chat too, and a chat gone from the list leaves the catalog.
+      rows = [row("second", "Second revision")];
+      yield* PubSub.publish(activity, { type: "remove", sequence: 1, sessionId: "first" });
+      yield* titles("First").pipe(Effect.repeat({ until: (found) => found.length === 0 }));
+
+      // After the first read, no change makes the catalog read every chat again.
+      const later = reads.slice(whole);
+      assert.isAbove(later.length, 0);
+      for (const read of later)
+        assert.includeMembers(
+          ["first", "second"],
+          [...((read.kind === "session_window" && read.session_ids) || ["every chat"])],
+        );
+    }),
+  ),
 );
 
 const runtimePage = (facts: readonly Fact[]) => ({

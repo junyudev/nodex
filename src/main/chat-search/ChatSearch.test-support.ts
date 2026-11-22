@@ -134,6 +134,7 @@ interface Options {
   readonly metadata?: (id: string) => ChatRuntimeMetadata;
   readonly read?: CoreModules["Service"]["workspace"]["read"];
   readonly invalidations?: Stream.Stream<unknown>;
+  readonly activityChanges?: AgentRuntimeSessionActivity["Service"]["activityChanges"];
   readonly search?: AgentRuntimeApplication["Service"]["sessionSearch"];
   readonly resolve?: AgentRuntimeApplication["Service"]["sessionSearchResolve"];
 }
@@ -171,7 +172,8 @@ export const fixture = (options: Options = {}) => {
             const eligible = (options.rows?.() ?? []).filter(
               (item) =>
                 item.task.session.archived === request.archived &&
-                !item.task.thread?.parent_thread_id,
+                !item.task.thread?.parent_thread_id &&
+                (!request.session_ids || request.session_ids.includes(item.task.session.id)),
             );
             if (!request.archived || eligible.length > 0) {
               agents.push(yield* CoreApplicationAgent);
@@ -218,7 +220,10 @@ export const fixture = (options: Options = {}) => {
       events: Stream.never,
       publish: () => undefined,
     }),
-    Effect.provideService(AgentRuntimeSessionActivity, inactive),
+    Effect.provideService(AgentRuntimeSessionActivity, {
+      ...inactive,
+      activityChanges: options.activityChanges ?? inactive.activityChanges,
+    }),
   );
   return { service, reads, agents, invocations };
 };

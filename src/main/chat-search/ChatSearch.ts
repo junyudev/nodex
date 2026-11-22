@@ -2,13 +2,14 @@ import * as Queue from "effect/Queue";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
+import type * as Cause from "effect/Cause";
 import * as Stream from "effect/Stream";
 import { z } from "zod";
 import {
@@ -122,24 +123,44 @@ export const make = Effect.gen(function* () {
   const engine = yield* ChatSearchEngine;
   const revision = yield* Ref.make(0);
   const refreshQueue = yield* Queue.sliding<void>(1);
-  // Subscribe directly so changes cannot race the first catalog query.
+  /** Chats changed since the catalog last caught up; "all" when a change named none. */
+  const dirty = yield* Ref.make<ReadonlySet<string> | "all">(new Set());
+  const markDirty = (sessionIds: readonly string[] | "all") =>
+    Ref.update(dirty, (current) =>
+      current === "all" || sessionIds === "all" ? "all" : new Set([...current, ...sessionIds]),
+    ).pipe(
+      Effect.andThen(Ref.update(revision, (value) => value + 1)),
+      Effect.andThen(Queue.offer(refreshQueue, undefined)),
+      Effect.asVoid,
+    );
+  // Subscribe directly so changes cannot race the first catalog query. Each change names the chats
+  // it touched, so keeping the catalog current reads only those, never every chat again.
   for (const changes of [
-    notifications.projectSessionInvalidations.pipe(Stream.map(() => undefined)),
+    notifications.projectSessionInvalidations.pipe(
+      Stream.map((event): readonly string[] | "all" =>
+        event?.detailInvalidation?.kind === "sessions"
+          ? event.detailInvalidation.sessionIds
+          : "all",
+      ),
+    ),
     events.events.pipe(
       Stream.filter(
         (event) => event.kind === "hostMessage" && event.value.type === "sidebarSyncUpdated",
       ),
-      Stream.map(() => undefined),
+      Stream.map(() => "all" as const),
     ),
-    activity.activityChanges.pipe(Stream.map(() => undefined)),
+    activity.activityChanges.pipe(
+      Stream.map((change): readonly string[] | "all" =>
+        change.type === "upsert"
+          ? [change.activity.sessionId]
+          : change.type === "remove"
+            ? [change.sessionId]
+            : "all",
+      ),
+    ),
   ])
     yield* changes.pipe(
-      Stream.runForEach(() =>
-        Ref.update(revision, (value) => value + 1).pipe(
-          Effect.andThen(Queue.offer(refreshQueue, undefined)),
-          Effect.asVoid,
-        ),
-      ),
+      Stream.runForEach(markDirty),
       Effect.forkScoped({ startImmediately: true }),
     );
 
@@ -255,57 +276,101 @@ export const make = Effect.gen(function* () {
     Effect.provideService(CoreApplicationAgent, null),
   );
 
-  const catalogFlight = yield* Ref.make<Deferred.Deferred<ChatCatalog, ChatSearchError> | null>(
-    null,
+  /** Reads exactly these chats in both archive states; a chat in neither is gone from the list. */
+  const readChats = Effect.fn("ChatSearch.readChats")(
+    function* (sessionIds: readonly string[]) {
+      const changed = new Map<string, ChatCatalogItem>();
+      for (const archived of [false, true])
+        for (const ids of batches(sessionIds, 100)) {
+          const response = yield* core.workspace.read({
+            kind: "session_window",
+            archived,
+            order: "conversation",
+            session_ids: ids,
+            window: { first: ids.length, after: null },
+          });
+          if (response.value.kind !== "session_window")
+            return yield* Effect.fail(new Error("Core returned a non-Session window"));
+          const items = response.value.sessions.items;
+          const metadata = yield* metadataFor(items);
+          if (!metadata.complete) return yield* Effect.fail(new Error("Runtime metadata missing"));
+          for (const chat of project(items, metadata.byId, archived))
+            changed.set(chat.sessionId, chat);
+        }
+      return changed;
+    },
+    Effect.provideService(CoreApplicationAgent, null),
   );
-  const warm = yield* Ref.make<{
+
+  interface WarmCatalog {
     readonly catalog: ChatCatalog;
-    readonly revision: number;
-    readonly builtAt: number;
-  } | null>(null);
+    readonly byId: ReadonlyMap<string, ChatCatalogItem>;
+    /** When every chat was last read; a search after this ages refreshes them all once more. */
+    readonly fullAt: number;
+  }
+  const warm = yield* Ref.make<WarmCatalog | null>(null);
   const catalogGeneration = yield* Ref.make(0);
+  const catalogLock = yield* Semaphore.make(1);
+  const install = (entries: Iterable<ChatCatalogItem>, complete: boolean, fullAt: number) =>
+    Effect.gen(function* () {
+      const sorted = [...entries].sort((a, b) => b.recencyAt - a.recencyAt);
+      // The ranking engine diffs what it receives, so only changed chats are indexed again.
+      yield* engine.publish(sorted);
+      const catalog: ChatCatalog = { entries: sorted, complete, prepared: true };
+      yield* Ref.set(warm, {
+        catalog,
+        byId: new Map(sorted.map((chat) => [chat.sessionId, chat])),
+        fullAt,
+      });
+      yield* Ref.update(catalogGeneration, (generation) => generation + 1);
+      return catalog;
+    });
+  /** One writer at a time: a whole read or the chats that changed since the catalog caught up. */
+  const catchUp = catalogLock
+    .withPermits(1)(
+      Effect.gen(function* () {
+        const pending = yield* Ref.getAndSet(dirty, new Set());
+        const previous = yield* Ref.get(warm);
+        const restore = Effect.catchCause((cause: Cause.Cause<unknown>) =>
+          Ref.update(dirty, (current) =>
+            current === "all" || pending === "all" ? "all" : new Set([...current, ...pending]),
+          ).pipe(Effect.andThen(Effect.failCause(cause))),
+        );
+        if (previous === null || pending === "all") {
+          const [active, archive] = yield* Effect.all([readCatalog(false), readCatalog(true)], {
+            concurrency: 2,
+          }).pipe(restore);
+          const value = combineCatalogs([active, archive]);
+          const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+          return yield* install(value.entries, value.complete, now);
+        }
+        if (pending.size === 0) return previous.catalog;
+        const ids = [...pending];
+        const changed = yield* readChats(ids).pipe(restore);
+        const byId = new Map(previous.byId);
+        for (const id of ids) if (!changed.has(id)) byId.delete(id);
+        for (const [id, chat] of changed) byId.set(id, chat);
+        // A catalog that outgrows its bound is read whole again so it keeps the most recent chats.
+        if (byId.size > CHAT_CATALOG_MAX_ENTRIES) {
+          yield* Ref.set(dirty, "all");
+          yield* Queue.offer(refreshQueue, undefined);
+          return previous.catalog;
+        }
+        return yield* install(byId.values(), previous.catalog.complete, previous.fullAt);
+      }),
+    )
+    .pipe(Effect.mapError((cause) => failure("catalog", cause)));
+
+  /** The desktop's own warm catalog: current chats now, with any changes applied behind it. */
   const sharedCatalog = Effect.gen(function* () {
     const previous = yield* Ref.get(warm);
-    const currentRevision = yield* Ref.get(revision);
+    if (previous === null) return yield* catchUp;
     const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-    if (previous && previous.revision === currentRevision && now - previous.builtAt < 15_000)
-      return previous.catalog;
-    return yield* Effect.uninterruptibleMask((restore) =>
-      Effect.gen(function* () {
-        const fresh = Deferred.makeUnsafe<ChatCatalog, ChatSearchError>();
-        const flight = yield* Ref.modify(catalogFlight, (current) => [
-          current ?? fresh,
-          current ?? fresh,
-        ]);
-        if (flight === fresh)
-          yield* Effect.all([readCatalog(false), readCatalog(true)], { concurrency: 2 }).pipe(
-            Effect.map(combineCatalogs),
-            Effect.tap((value) => engine.publish(value.entries)),
-            Effect.map((value): ChatCatalog => ({ ...value, prepared: true })),
-            Effect.tap((value) =>
-              Effect.gen(function* () {
-                const builtAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-                yield* Ref.set(warm, { catalog: value, revision: currentRevision, builtAt });
-                yield* Ref.update(catalogGeneration, (generation) => generation + 1);
-              }),
-            ),
-            Effect.onExit((exit) =>
-              Ref.set(catalogFlight, null).pipe(
-                Effect.andThen(Deferred.done(flight, exit)),
-                Effect.andThen(Ref.get(revision)),
-                Effect.flatMap((latest) =>
-                  latest !== currentRevision
-                    ? Queue.offer(refreshQueue, undefined).pipe(Effect.asVoid)
-                    : Effect.void,
-                ),
-              ),
-            ),
-            Effect.exit,
-            Effect.forkIn(ownerScope, { startImmediately: true }),
-          );
-        return previous ? previous.catalog : yield* restore(Deferred.await(flight));
-      }),
-    );
+    if (now - previous.fullAt >= 15_000) yield* Ref.set(dirty, "all");
+    const pending = yield* Ref.get(dirty);
+    if (pending === "all" || pending.size > 0)
+      yield* catchUp.pipe(Effect.ignore, Effect.forkIn(ownerScope, { startImmediately: true }));
+    return previous.catalog;
   });
 
   yield* sharedCatalog.pipe(
@@ -313,9 +378,10 @@ export const make = Effect.gen(function* () {
     Effect.ignore,
     Effect.forkScoped({ startImmediately: true }),
   );
+  // Changes arrive in bursts while Agents work; one catch-up covers each burst.
   yield* Stream.fromQueue(refreshQueue).pipe(
-    Stream.debounce("50 millis"),
-    Stream.runForEach(() => sharedCatalog.pipe(Effect.ignore)),
+    Stream.debounce("250 millis"),
+    Stream.runForEach(() => catchUp.pipe(Effect.ignore)),
     Effect.forkScoped({ startImmediately: true }),
   );
 
