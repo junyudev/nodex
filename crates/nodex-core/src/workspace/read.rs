@@ -2,7 +2,8 @@ use nodex_core_contracts::workspace::{
     ChatFolder, ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap,
     ProjectWorkspaceBootstrapStatus, ProjectWorkspaceExecutionContext, ProjectWorkspaceProject,
     ProjectWorkspaceRead, ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef,
-    ProjectWorkspaceSessionSummary, ProjectWorkspaceTurnAuthorityResolution,
+    ProjectWorkspaceSessionSummary, ProjectWorkspaceThread,
+    ProjectWorkspaceTurnAuthorityResolution,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -623,6 +624,16 @@ pub(super) fn read(
                 session: session_summary(row),
             })
         }
+        ProjectWorkspaceRead::SessionDetail { session_id } => {
+            validate_id("session_id", &session_id)?;
+            let row = read_session(connection, library_id, &session_id, &member)?
+                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            let thread = read_linked_thread(connection, library_id, &row)?;
+            Ok(ProjectWorkspaceReadValue::SessionDetail {
+                session: session_summary(row),
+                thread,
+            })
+        }
         ProjectWorkspaceRead::SessionStart { session_id } => {
             validate_id("session_id", &session_id)?;
             read_session(connection, library_id, &session_id, &member)?
@@ -730,13 +741,7 @@ pub(super) fn read(
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id, &member)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
-            let thread = row
-                .thread_id
-                .as_deref()
-                .map(|thread_id| read_thread(connection, library_id, thread_id))
-                .transpose()?
-                .flatten()
-                .map(Box::new);
+            let thread = read_linked_thread(connection, library_id, &row)?;
             Ok(ProjectWorkspaceReadValue::AgentSession {
                 session: session_summary(row),
                 thread,
@@ -1017,6 +1022,20 @@ pub(super) fn read_session_summary(
     member: &str,
 ) -> Result<Option<ProjectWorkspaceSessionSummary>, StoreError> {
     Ok(read_session(connection, library_id, session_id, member)?.map(session_summary))
+}
+
+fn read_linked_thread(
+    connection: &Connection,
+    library_id: &str,
+    session: &SessionRow,
+) -> Result<Option<Box<ProjectWorkspaceThread>>, StoreError> {
+    Ok(session
+        .thread_id
+        .as_deref()
+        .map(|thread_id| read_thread(connection, library_id, thread_id))
+        .transpose()?
+        .flatten()
+        .map(Box::new))
 }
 
 fn read_session(
@@ -1507,6 +1526,35 @@ mod tests {
         };
         assert_eq!(session.display_title, "Thread preview");
 
+        let ProjectWorkspaceReadValue::SessionDetail {
+            session: detail,
+            thread: Some(linked),
+        } = read(
+            &module,
+            ProjectWorkspaceRead::SessionDetail {
+                session_id: "session-project".to_owned(),
+            },
+        )
+        else {
+            panic!("session detail with its Thread");
+        };
+        assert_eq!(detail, session);
+        assert_eq!(linked.thread_id, "thread-1");
+        assert_eq!(linked.session_id.as_deref(), Some("session-project"));
+        let ProjectWorkspaceReadValue::SessionDetail {
+            session: projectless,
+            thread: None,
+        } = read(
+            &module,
+            ProjectWorkspaceRead::SessionDetail {
+                session_id: "session-projectless".to_owned(),
+            },
+        )
+        else {
+            panic!("session detail without a Thread");
+        };
+        assert_eq!(projectless.id, "session-projectless");
+
         let ProjectWorkspaceReadValue::Thread { thread } = read(
             &module,
             ProjectWorkspaceRead::Thread {
@@ -1554,6 +1602,18 @@ mod tests {
             )
             .expect_err("foreign Library Session must remain hidden");
         assert_eq!(foreign_session.code, CoreErrorCode::NotFound);
+        let foreign_detail = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::SessionDetail {
+                        session_id: "session-foreign".to_owned(),
+                    },
+                },
+            )
+            .expect_err("foreign Library Session detail must remain hidden");
+        assert_eq!(foreign_detail.code, CoreErrorCode::NotFound);
 
         let foreign_thread = module
             .read(

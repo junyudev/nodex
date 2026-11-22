@@ -720,34 +720,30 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
-    const readSessionThread = Effect.fn("ProjectWorkspace.readSessionThread")(function* (
-      summary: Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "session" }>["session"],
+    // One Core read returns the Session with its linked Thread, so opening a chat costs one round trip.
+    const requireSession = Effect.fn("ProjectWorkspace.requireSession")(function* (
+      sessionId: string,
     ) {
+      const snapshot = yield* read("session.read", {
+        kind: "session_detail",
+        session_id: sessionId,
+      });
+      const { session: summary, thread } = yield* evaluate("session.read", () =>
+        expectVariant(snapshot, "session_detail"),
+      );
       const threadId = summary.thread_id ?? null;
-      if (!threadId) return null;
-      const thread = yield* readCoreThread(threadId);
-      if (!thread) {
+      if (threadId && !thread) {
         return yield* projectWorkspaceError(
           "session.thread.read",
           new Error(`Linked Core Thread not found: ${threadId}`),
         );
       }
-      return projectWorkspaceSessionThreadFromCore(thread, summary.id, summary.project_id ?? null);
-    });
-
-    const requireSession = Effect.fn("ProjectWorkspace.requireSession")(function* (
-      sessionId: string,
-    ) {
-      const snapshot = yield* read("session.read", {
-        kind: "session",
-        session_id: sessionId,
-      });
-      const summary = yield* evaluate(
-        "session.read",
-        () => expectVariant(snapshot, "session").session,
+      return projectWorkspaceSessionFromCore(
+        summary,
+        thread
+          ? projectWorkspaceSessionThreadFromCore(thread, summary.id, summary.project_id ?? null)
+          : null,
       );
-      const thread = yield* readSessionThread(summary);
-      return projectWorkspaceSessionFromCore(summary, thread);
     });
 
     const readSession = Effect.fn("ProjectWorkspace.readSession")(function* (sessionId: string) {

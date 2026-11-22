@@ -10462,6 +10462,10 @@ export interface components {
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "session_detail";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "session_start";
                 readonly session_id: string;
             } | {
@@ -14951,6 +14955,11 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "session_detail";
+                    readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                    readonly thread?: components["schemas"]["ProjectWorkspaceThread"] | null;
                 } | {
                     /** @enum {string} */
                     readonly kind: "session_start";

@@ -106,6 +106,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }
         | ProjectWorkspaceRead::Session { .. }
+        | ProjectWorkspaceRead::SessionDetail { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBinding { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread { .. }

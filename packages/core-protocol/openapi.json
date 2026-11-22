@@ -43833,6 +43833,25 @@
               },
               {
                 "type": "object",
+                "description": "One Session and its linked Thread, read in one transaction.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_detail"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "How a chat started from an Inbox decision is getting on: starting, or why it could not.",
                 "required": [
                   "session_id",
@@ -63721,6 +63740,35 @@
                           },
                           "session": {
                             "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "description": "The Thread is absent for a Session without one.",
+                        "required": [
+                          "session",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_detail"
+                            ]
+                          },
+                          "session": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          },
+                          "thread": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceThread"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       },

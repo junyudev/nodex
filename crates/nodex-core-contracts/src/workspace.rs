@@ -266,6 +266,10 @@ pub enum ProjectWorkspaceRead {
     Session {
         session_id: String,
     },
+    /// One Session and its linked Thread, read in one transaction.
+    SessionDetail {
+        session_id: String,
+    },
     /// How a chat started from an Inbox decision is getting on: starting, or why it could not.
     SessionStart {
         session_id: String,
@@ -593,6 +597,11 @@ pub enum ProjectWorkspaceReadValue {
     },
     Session {
         session: ProjectWorkspaceSessionSummary,
+    },
+    /// The Thread is absent for a Session without one.
+    SessionDetail {
+        session: ProjectWorkspaceSessionSummary,
+        thread: Option<Box<ProjectWorkspaceThread>>,
     },
     /// Absent once the chat has started, or when no Inbox decision started it.
     SessionStart {

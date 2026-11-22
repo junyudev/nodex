@@ -236,18 +236,23 @@ it.effect(
         });
         const reads: CoreModuleClients["workspace"]["read"] = (input) => {
           if (applied && outcome === "relinked") {
+            const relinked = thread({ thread_id: "thread:other" });
             return Effect.succeed({
               value:
-                input.kind === "session"
-                  ? { kind: "session", session: session({ thread_id: "thread:other" }) }
-                  : { kind: "thread", thread: thread({ thread_id: "thread:other" }) },
+                input.kind === "session_detail"
+                  ? {
+                      kind: "session_detail",
+                      session: session({ thread_id: "thread:other" }),
+                      thread: relinked,
+                    }
+                  : { kind: "thread", thread: relinked },
             } as ProjectWorkspaceReadSnapshot);
           }
           if (input.kind === "thread") return Effect.fail(notFound(input.thread_id));
-          if (input.kind !== "session") return Effect.die("Unexpected read");
+          if (input.kind !== "session_detail") return Effect.die("Unexpected read");
           if (applied) return Effect.fail(transportFailure);
           return Effect.succeed({
-            value: { kind: "session", session: session({ thread_id: null }) },
+            value: { kind: "session_detail", session: session({ thread_id: null }), thread: null },
           } as ProjectWorkspaceReadSnapshot);
         };
         const apply: CoreModuleClients["workspace"]["apply"] = () =>
@@ -534,17 +539,14 @@ it.effect("serializes pending workspace transitions and accepted commits through
   }),
 );
 
-it.effect("hydrates a Session and its linked Thread into one product aggregate", () =>
+it.effect("hydrates a Session and its linked Thread from one Core read", () =>
   Effect.gen(function* () {
+    const readKinds: string[] = [];
     const reads: CoreModuleClients["workspace"]["read"] = (input) => {
-      if (input.kind === "session") {
+      readKinds.push(input.kind);
+      if (input.kind === "session_detail") {
         return Effect.succeed({
-          value: { kind: "session", session: session() },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      }
-      if (input.kind === "thread") {
-        return Effect.succeed({
-          value: { kind: "thread", thread: thread() },
+          value: { kind: "session_detail", session: session(), thread: thread() },
         } as unknown as ProjectWorkspaceReadSnapshot);
       }
       return Effect.die(new Error("Unexpected Core read"));
@@ -552,6 +554,11 @@ it.effect("hydrates a Session and its linked Thread into one product aggregate",
     const { scope, workspace } = yield* open(core(reads));
 
     const selected = yield* workspace.getProjectSession("session:one");
+    // The Session and its Thread arrive together; no separate Thread read follows.
+    assert.deepEqual(
+      readKinds.filter((kind) => kind.startsWith("session") || kind === "thread"),
+      ["session_detail"],
+    );
 
     assert.strictEqual(selected?.displayTitle, "Mapped session");
     assert.deepEqual(selected?.thread, {
@@ -828,11 +835,12 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
         return committed();
       });
     const reads: CoreModuleClients["workspace"]["read"] = (input) => {
-      if (input.kind !== "session") return Effect.die(new Error("Unexpected Core read"));
+      if (input.kind !== "session_detail") return Effect.die(new Error("Unexpected Core read"));
       return Effect.succeed({
         value: {
-          kind: "session",
+          kind: "session_detail",
           session: session({ id: input.session_id, project_id: "project:one", thread_id: null }),
+          thread: null,
         },
       } as ProjectWorkspaceReadSnapshot);
     };
