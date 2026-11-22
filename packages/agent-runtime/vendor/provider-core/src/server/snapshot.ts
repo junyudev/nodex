@@ -15,7 +15,8 @@ export interface ManagedServerProvider {
   readonly getSnapshot: Effect.Effect<ServerProvider>;
   /**
    * Completes once the status check started with this provider has finished, whatever its
-   * outcome. Until then the snapshot is a placeholder that has checked nothing.
+   * outcome. Until then the snapshot is a placeholder that has checked nothing. A check that
+   * publishes readiness before any model choice is known finishes when its model reads answer.
    */
   readonly initialCheck: Effect.Effect<void>;
   readonly refresh: Effect.Effect<ServerProvider>;

@@ -479,40 +479,74 @@ describe("makeManagedServerProvider", () => {
     ).pipe(Effect.provide(layerAlwaysRunTest)),
   );
 
-  it.effect("publishes a staged check while its process scope is still open", () =>
+  /** A check that publishes `readiness` first and its model reads once `releaseCatalog` opens. */
+  const stagedProvider = Effect.fnUntraced(function* (readiness: ServerProvider) {
+    const releaseCheck = yield* Deferred.make<void>();
+    const releaseCatalog = yield* Deferred.make<void>();
+    const closed = yield* Deferred.make<void>();
+    const provider = yield* makeManagedServerProvider<TestSettings>({
+      resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
+      getSettings: Effect.succeed({ enabled: true }),
+      streamSettings: Stream.empty,
+      haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+      initialSnapshot: () => Effect.succeed(initialSnapshot),
+      checkProvider: Effect.gen(function* () {
+        yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined).pipe(Effect.asVoid));
+        yield* Deferred.await(releaseCheck);
+        return {
+          snapshot: readiness,
+          complete: Deferred.await(releaseCatalog).pipe(Effect.as(enrichedSnapshot)),
+        };
+      }),
+      refreshInterval: "1 hour",
+    });
+    const updates = yield* provider.streamChanges.pipe(
+      Stream.take(2),
+      Stream.runCollect,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    const firstUpdate = yield* provider.streamChanges.pipe(
+      Stream.take(1),
+      Stream.runCollect,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    const firstCheck = yield* provider.initialCheck.pipe(
+      Effect.forkChild({ startImmediately: true }),
+    );
+    assert.strictEqual((yield* provider.getSnapshot).checkPending, true);
+    yield* Deferred.succeed(releaseCheck, undefined);
+    assert.deepStrictEqual(yield* Fiber.join(firstUpdate), [readiness]);
+    // Let the first check run as far as it can before its model reads answer.
+    yield* Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, { discard: true });
+    return { provider, releaseCatalog, closed, updates, firstCheck };
+  });
+
+  it.effect("finishes a staged first check without model choices once its model reads answer", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const releaseCheck = yield* Deferred.make<void>();
-        const releaseCatalog = yield* Deferred.make<void>();
-        const closed = yield* Deferred.make<void>();
-        const provider = yield* makeManagedServerProvider<TestSettings>({
-          resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
-          getSettings: Effect.succeed({ enabled: true }),
-          streamSettings: Stream.empty,
-          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
-          initialSnapshot: () => Effect.succeed(initialSnapshot),
-          checkProvider: Effect.gen(function* () {
-            yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined).pipe(Effect.asVoid));
-            yield* Deferred.await(releaseCheck);
-            return {
-              snapshot: refreshedSnapshot,
-              complete: Deferred.await(releaseCatalog).pipe(Effect.as(enrichedSnapshot)),
-            };
-          }),
-          refreshInterval: "1 hour",
-        });
-        const updates = yield* provider.streamChanges.pipe(
-          Stream.take(2),
-          Stream.runCollect,
-          Effect.forkChild({ startImmediately: true }),
-        );
-        assert.strictEqual((yield* provider.getSnapshot).checkPending, true);
-        yield* Deferred.succeed(releaseCheck, undefined);
-        yield* provider.initialCheck;
+        const { provider, releaseCatalog, closed, updates, firstCheck } =
+          yield* stagedProvider(refreshedSnapshot);
         assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
         assert.isFalse(yield* Deferred.isDone(closed));
+        assert.isUndefined(firstCheck.pollUnsafe());
         yield* Deferred.succeed(releaseCatalog, undefined);
+        yield* Fiber.join(firstCheck);
+        assert.deepStrictEqual(yield* provider.getSnapshot, enrichedSnapshot);
         assert.deepStrictEqual(yield* Fiber.join(updates), [refreshedSnapshot, enrichedSnapshot]);
+        yield* Deferred.await(closed);
+      }),
+    ).pipe(Effect.provide(layerAlwaysRunTest)),
+  );
+
+  it.effect("finishes a staged first check whose readiness already offers model choices", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cached = { ...refreshedSnapshot, models: enrichedSnapshotSecond.models };
+        const { releaseCatalog, closed, updates, firstCheck } = yield* stagedProvider(cached);
+        yield* Fiber.join(firstCheck);
+        assert.isFalse(yield* Deferred.isDone(closed));
+        yield* Deferred.succeed(releaseCatalog, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(updates), [cached, enrichedSnapshot]);
         yield* Deferred.await(closed);
       }),
     ).pipe(Effect.provide(layerAlwaysRunTest)),

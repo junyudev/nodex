@@ -173,9 +173,11 @@ choices across a restart without reporting a transient error as current.
 Codex can publish account readiness before its model, skills and usage reads finish. The initial
 catalog uses known model choices where available. `modelsProvisional: true` identifies the
 fallback inventory until Codex returns a usable model catalog. With no model choices yet, the
-account result is published as a warning while models load. An unavailable model list keeps
-known choices, a failed skills read leaves skills empty, and a usage failure preserves the
-account result. Catalog and usage updates leave the Agent's checked identity intact.
+account result is published as a warning while models load. Observers see that row at once; a
+standard catalog read waits for the model reads instead, so a first message sent during startup
+starts on the Agent's default model. An unavailable model list keeps known choices, a failed
+skills read leaves skills empty, and a usage failure preserves the account result. Catalog and
+usage updates leave the Agent's checked identity intact.
 
 ## API keys
 
