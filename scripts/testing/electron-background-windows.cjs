@@ -8,6 +8,10 @@ const conceal = (window) => {
   window.setOpacity(0);
   window.setIgnoreMouseEvents(true);
   window.setFocusable(false);
+  // A concealed window can sit behind any other window, and Chromium throttles a covered page.
+  // Tests drive these pages as if they were in front, so they keep animating and painting.
+  window.webContents.setBackgroundThrottling(false);
+  window.webContents.setBackgroundThrottling = () => {};
 };
 app.on("browser-window-created", (_event, window) => conceal(window));
 

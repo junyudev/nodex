@@ -1,3 +1,4 @@
+import type { BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -159,6 +160,27 @@ export const make = (
       yield* invalidate(webContentsId, "unavailable");
     });
 
+    /**
+     * A hidden window is background-throttled, and a request can need a frame or a timer to
+     * answer, as when it opens a tab. Every request in flight keeps its window at full speed.
+     */
+    const priorityHolds = new Map<number, number>();
+    const prioritized = (webContentsId: number, window: BrowserWindow) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const holds = (priorityHolds.get(webContentsId) ?? 0) + 1;
+          priorityHolds.set(webContentsId, holds);
+          if (holds === 1) window.webContents.setBackgroundThrottling(false);
+        }),
+        () =>
+          Effect.sync(() => {
+            const holds = (priorityHolds.get(webContentsId) ?? 1) - 1;
+            if (holds > 0) return void priorityHolds.set(webContentsId, holds);
+            priorityHolds.delete(webContentsId);
+            if (!window.isDestroyed()) window.webContents.setBackgroundThrottling(true);
+          }),
+      );
+
     const request: WorkbenchAgentBridge["Service"]["request"] = <
       Request extends WorkbenchAgentRequestBody,
     >(
@@ -192,6 +214,7 @@ export const make = (
           body,
         };
         const entry: PendingRequest = { reference, webContentsId, body, result };
+        yield* prioritized(webContentsId, window);
         const value = yield* Effect.acquireUseRelease(
           Effect.sync(() => pending.set(requestId, entry)),
           () =>
@@ -220,7 +243,7 @@ export const make = (
             }),
         );
         return value as Extract<WorkbenchAgentResult, { kind: Request["kind"] }>;
-      });
+      }).pipe(Effect.scoped);
 
     const reply = Effect.fn("WorkbenchAgentBridge.reply")(function* (
       webContentsId: number,

@@ -35,6 +35,7 @@ const setup = Effect.gen(function* () {
     ]),
   );
   const sent: Array<{ id: number; channel: string; value: WorkbenchAgentRequest }> = [];
+  const throttling: Array<readonly [id: number, throttled: boolean]> = [];
   const runtime = WindowRuntime.of({
     events: Stream.fromPubSub(events),
     resolveSessionId: (id: number) => state.get(id)?.windowSessionId ?? null,
@@ -46,7 +47,13 @@ const setup = Effect.gen(function* () {
       entry.ownerId = ownerId;
       return entry.generation;
     },
-    get: (id: number) => ({ isDestroyed: () => !state.has(id), webContents: { id } }),
+    get: (id: number) => ({
+      isDestroyed: () => !state.has(id),
+      webContents: {
+        id,
+        setBackgroundThrottling: (throttled: boolean) => throttling.push([id, throttled]),
+      },
+    }),
   } as unknown as WindowRuntime["Service"]);
   const context = yield* Layer.buildWithScope(
     Layer.effect(
@@ -106,6 +113,7 @@ const setup = Effect.gen(function* () {
     second,
     replace,
     state,
+    throttling,
   };
 });
 
@@ -225,6 +233,12 @@ it.effect("bounds pending requests and frees capacity on timeout and caller canc
     yield* Effect.yieldNow;
     assert.isTrue(yield* subject.bridge.reply(11, response(subject.sent.at(-1)!.value)));
     yield* Fiber.join(finalRequest);
+    // A hidden window answers at full speed while a request waits, whichever way it settles.
+    const settled = [
+      [11, false],
+      [11, true],
+    ] as const;
+    assert.deepEqual(subject.throttling, [...settled, ...settled, ...settled]);
     yield* Scope.close(subject.scope, Exit.void);
     assert.deepEqual(subject.bridge.registered(), []);
     assert.equal(

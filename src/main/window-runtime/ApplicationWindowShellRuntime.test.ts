@@ -35,7 +35,11 @@ class FakeBrowserWindow extends EventEmitter {
     setWindowOpenHandler: () => undefined,
     isDestroyed: () => this.destroyed,
     getZoomFactor: () => this.zoomFactor,
+    setBackgroundThrottling: (allowed: boolean) => {
+      this.backgroundThrottling = allowed;
+    },
   }) as unknown as WebContents;
+  backgroundThrottling = false;
   showCount = 0;
   zoomFactor = 1;
   windowButtonPosition: { x: number; y: number } | null = null;
@@ -152,8 +156,11 @@ describe("ApplicationWindowShellRuntime", () => {
         const opened = shell.openInitial("all", "hidden")[0] as unknown as FakeBrowserWindow;
         opened.emit("ready-to-show");
         opened.webContents.emit("did-finish-load");
+        expect(opened.backgroundThrottling).toBe(false);
         for (const lease of shell.claimPendingActivation())
           shell.completeActivation(lease.window.webContents.id);
+        // An activated window may stop redrawing while hidden; startup never waits on that.
+        expect(opened.backgroundThrottling).toBe(true);
         shell.reportRenderer(opened.webContents.id);
         yield* TestClock.adjust("10 seconds");
         expect(opened.showCount).toBe(0);

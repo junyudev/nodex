@@ -355,6 +355,7 @@ export const live = (
                 nodeIntegration: false,
                 sandbox: true,
                 webviewTag: true,
+                // Unthrottled until activation so a window can finish starting while hidden.
                 backgroundThrottling: false,
               },
             });
@@ -510,6 +511,10 @@ export const live = (
                 });
               }
               record.phase = "active";
+              // From here a hidden or covered window stops animating and slows its timers, so
+              // a window nobody is looking at spends no CPU redrawing Agent replies; it catches
+              // up when shown. Main lifts this while it waits for the window to answer.
+              record.window.webContents.setBackgroundThrottling(true);
               if (initialRestoreComplete && activationGateOwner === null) {
                 settleActivationGate(record.gate, Effect.void);
                 reveal(record, "activation");

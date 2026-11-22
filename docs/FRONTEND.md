@@ -89,6 +89,16 @@ next Space's command port.
   `packages/codex-app-server-protocol`; derive view models rather than writing a
   parallel raw protocol model.
 
+A window that is hidden, minimized or covered is background-throttled once it has
+activated: animation frames stop and timers fire at most once a second, and at
+most once a minute after five minutes. Renderer work therefore catches up when
+the window is shown. Anything that must happen on time while nobody looks at
+the window, such as delivery, persistence or scheduling, belongs in Main or the
+Agent Runtime, not in a renderer timer. A renderer timer that reports state to
+Main must tolerate minute-long gaps. Main keeps a window unthrottled while it
+waits for that window to answer a request, so request handlers may wait for a
+frame.
+
 The environment is the current inventory. Read the relevant directory,
 `package.json`, and nearby tests instead of adding dependency versions or file
 lists here.
