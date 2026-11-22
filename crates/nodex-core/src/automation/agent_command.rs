@@ -231,7 +231,7 @@ mod tests {
         context.agent_attribution = Some(BoundAgentAttribution {
             run_id: None,
             session_id: session,
-            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+            driver: "codex".into(),
         });
     }
     fn create(id: &str, mode: AutomationMode, owner: Option<&str>) -> AutomationIntent {

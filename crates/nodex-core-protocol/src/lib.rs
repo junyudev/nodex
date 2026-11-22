@@ -577,7 +577,8 @@ pub struct AgentAttributionRequest {
     pub session_id: String,
     #[serde(default)]
     pub run_id: Option<String>,
-    pub backend: nodex_core_contracts::agent::AgentBackendKind,
+    pub driver: String,
+    pub label: String,
 }
 
 /// A Runtime-verified Run and the accepted input that opened it.
@@ -589,7 +590,8 @@ pub struct RecordAgentRunRequest {
     /// Core derives the requesting Member from the acceptance evidence.
     #[serde(default)]
     pub message_id: Option<String>,
-    pub backend: nodex_core_contracts::agent::AgentBackendKind,
+    pub driver: String,
+    pub label: String,
 }
 
 /// An opaque credential that Core alone can verify. A caller presents it in the

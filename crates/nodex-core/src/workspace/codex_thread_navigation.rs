@@ -15,7 +15,7 @@ fn conflict(message: &str) -> StoreError {
 }
 
 fn root(thread: &ProjectWorkspaceThread, expected_host: &str) -> Result<(), StoreError> {
-    if thread.backend_binding != AgentBackendBinding::Codex
+    if thread.backend_binding != AgentBackendBinding::default()
         || thread.execution_host_id != expected_host
     {
         return Err(conflict("Conversation execution binding changed"));
@@ -52,7 +52,7 @@ pub(super) fn observe_metadata(
             "Conversation metadata requires an existing binding",
         ));
     };
-    if current.backend_binding != AgentBackendBinding::Codex
+    if current.backend_binding != AgentBackendBinding::default()
         || current.execution_host_id != expected_host
         || &current.project_id != project_id
         || &current.session_id != session_id
@@ -66,7 +66,7 @@ pub(super) fn observe_metadata(
     if let Some(parent_id) = expected_parent {
         let parent = super::thread::read_thread(connection, library_id, parent_id)?
             .ok_or_else(|| conflict("Conversation parent disappeared before metadata admission"))?;
-        if parent.backend_binding != AgentBackendBinding::Codex
+        if parent.backend_binding != AgentBackendBinding::default()
             || parent.execution_host_id != expected_host
         {
             return Err(conflict("Conversation parent execution binding changed"));
@@ -195,7 +195,7 @@ pub(super) fn ensure_session(
             thread_id,
             &ProjectWorkspaceThreadPatch {
                 project_id: Some(project_id.map(str::to_owned)),
-                backend_binding: Some(AgentBackendBinding::Codex),
+                backend_binding: Some(AgentBackendBinding::default()),
                 execution_host_id: Some(expected_host.to_owned()),
                 cwd: Some(observation.cwd.clone()),
                 thread_name: Some(observation.thread_name.clone()),
@@ -330,8 +330,9 @@ mod tests {
                 ..Default::default()
             },
             ProjectWorkspaceThreadPatch {
-                backend_binding: Some(AgentBackendBinding::OpenCode {
-                    instance_config_id: "other".into(),
+                backend_binding: Some(AgentBackendBinding {
+                    driver: "opencode".to_owned(),
+                    instance_id: "other".into(),
                 }),
                 execution_host_id: Some("ssh:owner".into()),
                 ..Default::default()

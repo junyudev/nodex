@@ -13,7 +13,7 @@ use nodex_core_contracts::workspace::{
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::domain::agent_backend::{binding_from_storage, binding_storage};
+use crate::domain::agent_backend::{binding_from_storage, validate_binding};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
@@ -51,9 +51,8 @@ const THREAD_COLUMNS: &str = "
   thread.model_id,
   thread.reasoning_effort,
   thread.service_tier,
-  thread.agent_backend_kind,
-  thread.agent_backend_definition_id,
-  thread.agent_backend_instance_config_id,
+  thread.agent_backend_driver,
+  thread.agent_backend_instance_id,
   thread.execution_host_id,
   thread.cwd,
   thread.managed_worktree_path,
@@ -134,28 +133,27 @@ pub(super) fn read_thread_backend_session(
     let thread = require_thread(connection, library_id, thread_id)?;
     let stored = connection
         .query_row(
-            "SELECT backend_kind, agent_definition_id, instance_config_id, \
+            "SELECT backend_driver, backend_instance_id, \
                     backend_session_id, updated_at, native_state_json, native_home, runtime_options_json \
              FROM thread_backend_sessions WHERE thread_id = ?1",
             [thread_id],
             |row| {
-                let kind = row.get::<_, String>(0)?;
-                let binding = binding_from_storage(&kind, row.get(1)?, row.get(2)?)
+                let binding = binding_from_storage(row.get(0)?, row.get(1)?)
                     .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 Ok(ProjectWorkspaceThreadBackendSession {
                     thread_id: thread_id.to_owned(),
                     backend_binding: binding,
-                    backend_session_id: row.get(3)?,
-                    native_home: row.get(6)?,
-                    updated_at: row.get(4)?,
+                    backend_session_id: row.get(2)?,
+                    native_home: row.get(5)?,
+                    updated_at: row.get(3)?,
                     native_state: row
-                        .get::<_, Option<String>>(5)?
+                        .get::<_, Option<String>>(4)?
                         .map(|json| {
                             serde_json::from_str(&json).map_err(|_| rusqlite::Error::InvalidQuery)
                         })
                         .transpose()?,
                     runtime_options: row
-                        .get::<_, Option<String>>(7)?
+                        .get::<_, Option<String>>(6)?
                         .map(|json| {
                             serde_json::from_str(&json).map_err(|_| rusqlite::Error::InvalidQuery)
                         })
@@ -183,8 +181,7 @@ pub(super) fn read_thread_backend_session(
     if let Some(session) = &stored
         && let Some(state) = &session.native_state
     {
-        let storage = binding_storage(&session.backend_binding).map_err(corrupt)?;
-        validate_native_agent_state(state, storage.kind)
+        validate_native_agent_state(state, &session.backend_binding.driver)
             .map_err(|_| corrupt("Stored native conversation state is invalid"))?;
     }
     Ok(stored)
@@ -214,8 +211,9 @@ pub(super) fn bind_thread_backend_session(
             "Thread backend binding changed before its session could be persisted",
         ));
     }
-    let storage = binding_storage(backend_binding).map_err(invalid)?;
-    if storage.kind == "codex" {
+    validate_binding(backend_binding).map_err(invalid)?;
+    let driver = backend_binding.driver.as_str();
+    if *backend_binding == AgentBackendBinding::default() {
         return Err(invalid(
             "Native Codex Threads do not persist a backend protocol session",
         ));
@@ -234,7 +232,7 @@ pub(super) fn bind_thread_backend_session(
         }
     }
     let previous = read_thread_backend_session(connection, library_id, thread_id)?;
-    if matches!(storage.kind, "claude" | "opencode")
+    if (native_home.is_some() || matches!(driver, "claudeAgent" | "opencode"))
         && expected_backend_session_id.is_none()
         && previous
             .as_ref()
@@ -246,13 +244,8 @@ pub(super) fn bind_thread_backend_session(
     }
     if let Some(native_home) = native_home {
         validate_runtime_home(native_home)?;
-        if storage.kind == "claude" {
+        if driver == "claudeAgent" {
             validate_native_home(native_home)?;
-        }
-        if !matches!(storage.kind, "claude" | "opencode") {
-            return Err(invalid(
-                "Native history scope requires a native Agent backend",
-            ));
         }
         if previous
             .as_ref()
@@ -268,33 +261,26 @@ pub(super) fn bind_thread_backend_session(
             .and_then(|session| session.native_home.as_deref())
     });
     if let Some(home) = native_home
-        && native_binding(
-            connection,
-            library_id,
-            storage.kind,
-            home,
-            backend_session_id,
-        )?
-        .is_some_and(|binding| binding.thread_id != thread_id)
+        && native_binding(connection, library_id, driver, home, backend_session_id)?
+            .is_some_and(|binding| binding.thread_id != thread_id)
     {
         return Err(conflict(
             "This native conversation is already attached to another Thread",
         ));
     }
     let native_state_json = native_state
-        .map(|state| validate_native_agent_state(state, storage.kind))
+        .map(|state| validate_native_agent_state(state, driver))
         .transpose()?;
     let runtime_options_json = runtime_options.map(validate_runtime_options).transpose()?;
     let now = unix_time_millis()?;
     connection.execute(
         "INSERT INTO thread_backend_sessions(\
-           thread_id, backend_kind, agent_definition_id, instance_config_id, \
+           thread_id, backend_driver, backend_instance_id, \
            backend_session_id, updated_at, native_state_json, native_home, runtime_options_json\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
          ON CONFLICT(thread_id) DO UPDATE SET \
-           backend_kind = excluded.backend_kind, \
-           agent_definition_id = excluded.agent_definition_id, \
-           instance_config_id = excluded.instance_config_id, \
+           backend_driver = excluded.backend_driver, \
+           backend_instance_id = excluded.backend_instance_id, \
            backend_session_id = excluded.backend_session_id, \
            updated_at = excluded.updated_at, \
            native_state_json = COALESCE(excluded.native_state_json, thread_backend_sessions.native_state_json), \
@@ -302,9 +288,8 @@ pub(super) fn bind_thread_backend_session(
            runtime_options_json = COALESCE(excluded.runtime_options_json, thread_backend_sessions.runtime_options_json)",
         params![
             thread_id,
-            storage.kind,
-            storage.agent_definition_id,
-            storage.instance_config_id,
+            driver,
+            backend_binding.instance_id,
             backend_session_id,
             now,
             native_state_json,
@@ -395,7 +380,7 @@ fn native_binding(
 ) -> Result<Option<nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding>, StoreError>
 {
     let thread_id = connection.query_row(
-        "SELECT thread_id FROM thread_backend_sessions WHERE backend_kind=?1 AND native_home=?2 AND backend_session_id=?3",
+        "SELECT thread_id FROM thread_backend_sessions WHERE backend_driver=?1 AND native_home=?2 AND backend_session_id=?3",
         params![backend_kind, native_home, native_session_id], |row| row.get::<_, String>(0),
     ).optional()?;
     thread_id
@@ -434,7 +419,7 @@ pub(super) fn read_native_session_bindings(
                 if let Some(binding) = native_binding(
                     connection,
                     library_id,
-                    "claude",
+                    "claudeAgent",
                     native_home,
                     native_session_id,
                 )? {
@@ -443,7 +428,7 @@ pub(super) fn read_native_session_bindings(
             }
             nodex_core_contracts::workspace::ProjectWorkspaceNativeBackendKind::Codex => {
                 if let Some(thread) = read_thread(connection, library_id, native_session_id)?
-                    && thread.backend_binding == AgentBackendBinding::Codex
+                    && thread.backend_binding == AgentBackendBinding::default()
                     && thread.execution_host_id == "local"
                     && thread.parent_thread_id.is_none()
                 {
@@ -494,20 +479,20 @@ pub(super) fn attach_native_session(
     }
     let title = super::session_lifecycle::normalize_session_title(title)?;
     let mut legacy_home_claim = false;
-    let existing = match backend_binding {
-        AgentBackendBinding::Claude { instance_config_id } => {
+    let existing = match backend_binding.driver.as_str() {
+        "claudeAgent" => {
             let bound = native_binding(
                 connection,
                 library_id,
-                "claude",
+                "claudeAgent",
                 native_home,
                 native_session_id,
             )?;
             if bound.is_some() {
                 bound
             } else {
-                let legacy=connection.prepare("SELECT thread_id FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home IS NULL AND instance_config_id=?1 AND backend_session_id=?2 LIMIT 2")?.query_map(params![instance_config_id,native_session_id],|row|row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-                if legacy.is_empty() && connection.query_row("SELECT EXISTS(SELECT 1 FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home IS NULL AND backend_session_id=?1)",[native_session_id],|row|row.get::<_,bool>(0))? {
+                let legacy=connection.prepare("SELECT thread_id FROM thread_backend_sessions WHERE backend_driver='claudeAgent' AND native_home IS NULL AND backend_instance_id=?1 AND backend_session_id=?2 LIMIT 2")?.query_map(params![backend_binding.instance_id,native_session_id],|row|row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                if legacy.is_empty() && connection.query_row("SELECT EXISTS(SELECT 1 FROM thread_backend_sessions WHERE backend_driver='claudeAgent' AND native_home IS NULL AND backend_session_id=?1)",[native_session_id],|row|row.get::<_,bool>(0))? {
                     return Err(conflict("Reconnect the older chat with its original Claude profile before connecting this conversation"));
                 }
                 if legacy.len() > 1 {
@@ -533,7 +518,7 @@ pub(super) fn attach_native_session(
                     .transpose()?
             }
         }
-        AgentBackendBinding::Codex => {
+        "codex" if *backend_binding == AgentBackendBinding::default() => {
             if thread_id != native_session_id {
                 return Err(invalid(
                     "Codex attachment must preserve the native Thread identity",
@@ -548,9 +533,7 @@ pub(super) fn attach_native_session(
                 }
             })
         }
-        AgentBackendBinding::Acp { .. }
-        | AgentBackendBinding::OpenCode { .. }
-        | AgentBackendBinding::Antigravity { .. } => {
+        _ => {
             return Err(invalid("Only native Agent conversations can be attached"));
         }
     };
@@ -566,8 +549,8 @@ pub(super) fn attach_native_session(
         }
         if thread.project_id.as_deref() != project_id
             || &thread.backend_binding != backend_binding
-                && !(matches!(backend_binding, AgentBackendBinding::Claude { .. })
-                    && matches!(thread.backend_binding, AgentBackendBinding::Claude { .. }))
+                && !(backend_binding.driver == "claudeAgent"
+                    && thread.backend_binding.driver == "claudeAgent")
         {
             return Err(conflict(
                 "This native conversation is attached to another Project or backend",
@@ -651,7 +634,7 @@ pub(super) fn attach_native_session(
         "INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES (?1,?2,?3)",
         params![session_id, effective_thread_id, now],
     )?;
-    if matches!(backend_binding, AgentBackendBinding::Claude { .. }) {
+    if backend_binding.driver == "claudeAgent" {
         let previous = read_thread_backend_session(connection, library_id, effective_thread_id)?;
         let native_state=previous.as_ref().and_then(|binding|binding.native_state.clone()).unwrap_or(
             serde_json::from_value(serde_json::json!({"preferences":{"model":"default","effort":"default","interaction_mode":"default"},"ever_saved":true,"turns":[]}))
@@ -696,7 +679,7 @@ fn validate_native_agent_state(
     state: &ProjectWorkspaceNativeAgentState,
     backend_kind: &str,
 ) -> Result<String, StoreError> {
-    if !matches!(backend_kind, "claude" | "opencode") {
+    if !matches!(backend_kind, "claudeAgent" | "opencode") {
         return Err(invalid(
             "Native conversation state requires a native Agent backend",
         ));
@@ -704,7 +687,7 @@ fn validate_native_agent_state(
     if backend_kind == "opencode" && state.preferences.is_some() {
         return Err(invalid("OpenCode options do not use Claude preferences"));
     }
-    if backend_kind == "claude" {
+    if backend_kind == "claudeAgent" {
         let preferences = state
             .preferences
             .as_ref()
@@ -1277,7 +1260,7 @@ pub(super) fn upsert_thread_records(
         .clone()
         .or_else(|| existing.as_ref().map(|row| row.backend_binding.clone()))
         .unwrap_or_default();
-    let backend_storage = binding_storage(&backend_binding).map_err(invalid)?;
+    validate_binding(&backend_binding).map_err(invalid)?;
     let backend_changed = existing
         .as_ref()
         .is_some_and(|row| row.backend_binding != backend_binding);
@@ -1362,14 +1345,14 @@ pub(super) fn upsert_thread_records(
         "INSERT INTO codex_threads (\
            thread_id, project_id, parent_thread_id, thread_name, thread_source, service_name, \
            agent_nickname, agent_role, agent_path, thread_preview, model_id, \
-           reasoning_effort, service_tier, agent_backend_kind, agent_backend_definition_id, \
-           agent_backend_instance_config_id, execution_host_id, cwd, \
+           reasoning_effort, service_tier, agent_backend_driver, \
+           agent_backend_instance_id, execution_host_id, cwd, \
            managed_worktree_path, projectless_output_directory, \
            projectless_workspace_browser_root, status_type, status_active_flags_json, archived, \
            created_at, updated_at, recency_at, linked_at, forked_from_id\
          ) VALUES (\
-           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-           ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29\
+           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, \
+           ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28\
          ) ON CONFLICT(thread_id) DO UPDATE SET \
            project_id = excluded.project_id, parent_thread_id = excluded.parent_thread_id, \
            thread_name = excluded.thread_name, thread_source = excluded.thread_source, \
@@ -1378,9 +1361,8 @@ pub(super) fn upsert_thread_records(
            thread_preview = excluded.thread_preview, \
            model_id = excluded.model_id, reasoning_effort = excluded.reasoning_effort, \
            service_tier = excluded.service_tier, \
-           agent_backend_kind = excluded.agent_backend_kind, \
-           agent_backend_definition_id = excluded.agent_backend_definition_id, \
-           agent_backend_instance_config_id = excluded.agent_backend_instance_config_id, \
+           agent_backend_driver = excluded.agent_backend_driver, \
+           agent_backend_instance_id = excluded.agent_backend_instance_id, \
            execution_host_id = excluded.execution_host_id, cwd = excluded.cwd, \
            managed_worktree_path = excluded.managed_worktree_path, \
            projectless_output_directory = excluded.projectless_output_directory, \
@@ -1404,9 +1386,8 @@ pub(super) fn upsert_thread_records(
             model_id,
             reasoning_effort,
             service_tier,
-            backend_storage.kind,
-            backend_storage.agent_definition_id,
-            backend_storage.instance_config_id,
+            backend_binding.driver,
+            backend_binding.instance_id,
             execution_host_id,
             cwd,
             managed_worktree_path,
@@ -2155,26 +2136,22 @@ fn thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRow> {
         model_id: row.get(11)?,
         reasoning_effort: row.get(12)?,
         service_tier: row.get(13)?,
-        backend_binding: binding_from_storage(
-            row.get::<_, String>(14)?.as_str(),
-            row.get(15)?,
-            row.get(16)?,
-        )
-        .map_err(|_| rusqlite::Error::InvalidQuery)?,
-        execution_host_id: row.get(17)?,
-        cwd: row.get(18)?,
-        managed_worktree_path: row.get(19)?,
-        projectless_output_directory: row.get(20)?,
-        projectless_workspace_browser_root: row.get(21)?,
-        status_type: row.get(22)?,
-        status_active_flags_json: row.get(23)?,
-        archived: row.get(24)?,
-        pinned_order: row.get(25)?,
-        has_unread_turn: row.get(26)?,
-        created_at: row.get(27)?,
-        updated_at: row.get(28)?,
-        recency_at: row.get(29)?,
-        linked_at: row.get(30)?,
+        backend_binding: binding_from_storage(row.get::<_, String>(14)?, row.get(15)?)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        execution_host_id: row.get(16)?,
+        cwd: row.get(17)?,
+        managed_worktree_path: row.get(18)?,
+        projectless_output_directory: row.get(19)?,
+        projectless_workspace_browser_root: row.get(20)?,
+        status_type: row.get(21)?,
+        status_active_flags_json: row.get(22)?,
+        archived: row.get(23)?,
+        pinned_order: row.get(24)?,
+        has_unread_turn: row.get(25)?,
+        created_at: row.get(26)?,
+        updated_at: row.get(27)?,
+        recency_at: row.get(28)?,
+        linked_at: row.get(29)?,
     })
 }
 
@@ -3086,8 +3063,9 @@ mod tests {
             session_id: session_id.to_owned(),
             thread_id: thread_id.to_owned(),
             project_id: Some("project:default".to_owned()),
-            backend_binding: AgentBackendBinding::Claude {
-                instance_config_id: instance.to_owned(),
+            backend_binding: AgentBackendBinding {
+                driver: "claudeAgent".to_owned(),
+                instance_id: instance.to_owned(),
             },
             native_session_id: "native-uuid".to_owned(),
             native_home: nodex_platform::fixture_path!("/native/home").to_owned(),
@@ -3296,7 +3274,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"foreign-thread".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.backend_binding==AgentBackendBinding::Codex && thread.session_id.is_none())
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"foreign-thread".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.backend_binding==AgentBackendBinding::default() && thread.session_id.is_none())
         );
         kernel
             .writer()
@@ -3331,8 +3309,9 @@ mod tests {
                 ),
             )
             .expect("attach");
-        let binding = AgentBackendBinding::Claude {
-            instance_config_id: "claude-a".to_owned(),
+        let binding = AgentBackendBinding {
+            driver: "claudeAgent".to_owned(),
+            instance_id: "claude-a".to_owned(),
         };
         let rebind =
             |home: Option<String>, uuid: &str| ProjectWorkspaceIntent::BindThreadBackendSession {
@@ -3389,7 +3368,7 @@ mod tests {
             session_id: session_id.to_owned(),
             thread_id: "codex-uuid".to_owned(),
             project_id: None,
-            backend_binding: AgentBackendBinding::Codex,
+            backend_binding: AgentBackendBinding::default(),
             native_session_id: "codex-uuid".to_owned(),
             native_home: nodex_platform::fixture_path!("/native/codex").to_owned(),
             title: "CLI conversation".to_owned(),
@@ -3414,7 +3393,7 @@ mod tests {
             vec!["codex-session-1"]
         );
         assert!(
-            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"codex-uuid".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("codex-session-1") && thread.backend_binding==AgentBackendBinding::Codex)
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"codex-uuid".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("codex-session-1") && thread.backend_binding==AgentBackendBinding::default())
         );
         kernel
             .writer()
@@ -3434,30 +3413,33 @@ mod tests {
 
     #[test]
     fn persists_backend_binding_and_acp_session_identity_across_restart() {
-        assert_backend_identity_survives_restart(AgentBackendBinding::Acp {
-            agent_definition_id: "claude-agent-acp".to_owned(),
-            instance_config_id: Some("claude-work".to_owned()),
+        assert_backend_identity_survives_restart(AgentBackendBinding {
+            driver: "acpRegistry".to_owned(),
+            instance_id: "claude-work".to_owned(),
         });
     }
 
     #[test]
     fn persists_backend_binding_and_claude_session_identity_across_restart() {
-        assert_backend_identity_survives_restart(AgentBackendBinding::Claude {
-            instance_config_id: "claude-work".to_owned(),
+        assert_backend_identity_survives_restart(AgentBackendBinding {
+            driver: "claudeAgent".to_owned(),
+            instance_id: "claude-work".to_owned(),
         });
     }
 
     #[test]
     fn persists_opencode_owner_and_runtime_options_across_restart() {
-        assert_backend_identity_survives_restart(AgentBackendBinding::OpenCode {
-            instance_config_id: "open-work".to_owned(),
+        assert_backend_identity_survives_restart(AgentBackendBinding {
+            driver: "opencode".to_owned(),
+            instance_id: "open-work".to_owned(),
         });
     }
 
     #[test]
     fn persists_antigravity_owner_and_runtime_options_across_restart() {
-        assert_backend_identity_survives_restart(AgentBackendBinding::Antigravity {
-            instance_config_id: "google-work".to_owned(),
+        assert_backend_identity_survives_restart(AgentBackendBinding {
+            driver: "antigravity".to_owned(),
+            instance_id: "google-work".to_owned(),
         });
     }
 
@@ -3498,7 +3480,7 @@ mod tests {
         .unwrap();
         assert!(state.preferences.is_none());
         assert!(super::validate_native_agent_state(&state, "opencode").is_ok());
-        assert!(super::validate_native_agent_state(&state, "claude").is_err());
+        assert!(super::validate_native_agent_state(&state, "claudeAgent").is_err());
         assert!(
             serde_json::to_value(&state)
                 .unwrap()
@@ -3538,7 +3520,7 @@ mod tests {
         value: serde_json::Value,
     ) -> Result<String, crate::infrastructure::sqlite::StoreError> {
         let state = serde_json::from_value(value).expect("typed native state");
-        super::validate_native_agent_state(&state, "claude")
+        super::validate_native_agent_state(&state, "claudeAgent")
     }
 
     #[test]
@@ -3559,7 +3541,7 @@ mod tests {
         assert_eq!(state.turns[0].usage, None);
         assert!(state.turns[0].compactions.is_empty());
         assert!(state.turns[0].artifacts.is_empty());
-        assert!(super::validate_native_agent_state(&state, "claude").is_ok());
+        assert!(super::validate_native_agent_state(&state, "claudeAgent").is_ok());
     }
 
     #[test]
@@ -3700,27 +3682,22 @@ mod tests {
         ) else {
             panic!("Thread read");
         };
-        assert_eq!(thread.backend_binding, AgentBackendBinding::Codex);
+        assert_eq!(thread.backend_binding, AgentBackendBinding::default());
 
-        let native_state = matches!(
-            &binding,
-            AgentBackendBinding::Claude { .. } | AgentBackendBinding::OpenCode { .. }
-        )
-        .then(|| {
-            let mut value = native_metadata_fixture();
-            if matches!(&binding, AgentBackendBinding::OpenCode { .. }) {
-                value.as_object_mut().unwrap().remove("preferences");
-            }
-            serde_json::from_value::<
-                nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
-            >(value)
-            .expect("native fixture")
-        });
+        let native_state =
+            matches!(binding.driver.as_str(), "claudeAgent" | "opencode").then(|| {
+                let mut value = native_metadata_fixture();
+                if binding.driver == "opencode" {
+                    value.as_object_mut().unwrap().remove("preferences");
+                }
+                serde_json::from_value::<
+                    nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
+                >(value)
+                .expect("native fixture")
+            });
         let runtime_options = matches!(
-            &binding,
-            AgentBackendBinding::Acp { .. }
-                | AgentBackendBinding::OpenCode { .. }
-                | AgentBackendBinding::Antigravity { .. }
+            binding.driver.as_str(),
+            "acpRegistry" | "opencode" | "antigravity"
         )
         .then(|| {
             serde_json::from_value::<ProjectWorkspaceAgentRuntimeOptions>(serde_json::json!({
@@ -3730,8 +3707,8 @@ mod tests {
             }))
             .expect("runtime options")
         });
-        let native_home = matches!(&binding, AgentBackendBinding::OpenCode { .. })
-            .then(|| "https://opencode.example.test".to_owned());
+        let native_home =
+            (binding.driver == "opencode").then(|| "https://opencode.example.test".to_owned());
         module
             .apply(
                 &context(),
@@ -3866,7 +3843,7 @@ mod tests {
                     ProjectWorkspaceIntent::UpdateThread {
                         thread_id: "thread-backend".to_owned(),
                         patch: Box::new(ProjectWorkspaceThreadPatch {
-                            backend_binding: Some(AgentBackendBinding::Codex),
+                            backend_binding: Some(AgentBackendBinding::default()),
                             ..ProjectWorkspaceThreadPatch::default()
                         }),
                     },

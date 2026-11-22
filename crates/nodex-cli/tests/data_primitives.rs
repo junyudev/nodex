@@ -44,7 +44,7 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         "mode": "dry_run",
         "project_id": null,
         "execution_environment": "local",
-        "backend_binding": {"kind": "codex"},
+        "backend_binding": {"driver": "codex", "instanceId": "codex"},
         "model": "gpt-6"
     });
     fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
@@ -59,6 +59,10 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
     let created = success(&home, &create);
     let id = created["item"]["automation_id"].as_str().unwrap();
     assert_eq!(created["item"]["mode"], "dry_run");
+    assert_eq!(
+        created["item"]["backend_binding"],
+        definition["backend_binding"]
+    );
     assert_eq!(
         created["item"]["typed_condition"]["timezone"],
         "Asia/Singapore"

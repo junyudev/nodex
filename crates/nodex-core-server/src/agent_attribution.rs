@@ -10,7 +10,6 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, KeyInit, Mac};
 use nodex_core_contracts::BoundAgentAttribution;
-use nodex_core_contracts::agent::AgentBackendKind;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -25,7 +24,7 @@ pub(crate) struct AgentAttributionKey([u8; 32]);
 #[serde(deny_unknown_fields)]
 struct Claim {
     session_id: String,
-    backend: AgentBackendKind,
+    driver: String,
     run_id: Option<String>,
     issued_at: u64,
 }
@@ -41,29 +40,24 @@ impl AgentAttributionKey {
         Hmac::<Sha256>::new_from_slice(&self.0).expect("HMAC accepts a 32-byte key")
     }
 
-    pub(crate) fn issue(
-        &self,
-        session_id: &str,
-        backend: AgentBackendKind,
-        run_id: Option<String>,
-    ) -> String {
-        self.issue_claim(session_id, backend, run_id, now_seconds())
+    pub(crate) fn issue(&self, session_id: &str, driver: &str, run_id: Option<String>) -> String {
+        self.issue_claim(session_id, driver, run_id, now_seconds())
     }
     #[cfg(test)]
-    fn issue_at(&self, session_id: &str, backend: AgentBackendKind, issued_at: u64) -> String {
-        self.issue_claim(session_id, backend, None, issued_at)
+    fn issue_at(&self, session_id: &str, driver: &str, issued_at: u64) -> String {
+        self.issue_claim(session_id, driver, None, issued_at)
     }
 
     fn issue_claim(
         &self,
         session_id: &str,
-        backend: AgentBackendKind,
+        driver: &str,
         run_id: Option<String>,
         issued_at: u64,
     ) -> String {
         let claim = Claim {
             session_id: session_id.to_owned(),
-            backend,
+            driver: driver.to_owned(),
             run_id,
             issued_at,
         };
@@ -104,7 +98,7 @@ impl AgentAttributionKey {
         (age <= MAX_AGE.as_secs()).then_some(BoundAgentAttribution {
             session_id: claim.session_id,
             run_id: claim.run_id,
-            backend: claim.backend,
+            driver: claim.driver,
         })
     }
 }
@@ -119,25 +113,25 @@ fn now_seconds() -> u64 {
 mod tests {
     use super::*;
 
-    fn attribution(session_id: &str, backend: AgentBackendKind) -> BoundAgentAttribution {
+    fn attribution(session_id: &str, driver: &str) -> BoundAgentAttribution {
         BoundAgentAttribution {
             run_id: None,
             session_id: session_id.to_owned(),
-            backend,
+            driver: driver.to_owned(),
         }
     }
 
     #[test]
     fn verifies_only_unaltered_credentials_from_the_same_core_within_their_age() {
         let key = AgentAttributionKey::generate().unwrap();
-        let issued = key.issue_at("session-a", AgentBackendKind::Claude, 1_000);
+        let issued = key.issue_at("session-a", "claudeAgent", 1_000);
         assert_eq!(
             key.verify_at(&issued, 1_000),
-            Some(attribution("session-a", AgentBackendKind::Claude))
+            Some(attribution("session-a", "claudeAgent"))
         );
         assert_eq!(
             key.verify_at(&issued, 1_000 + MAX_AGE.as_secs()),
-            Some(attribution("session-a", AgentBackendKind::Claude))
+            Some(attribution("session-a", "claudeAgent"))
         );
         assert_eq!(key.verify_at(&issued, 1_001 + MAX_AGE.as_secs()), None);
         assert_eq!(key.verify_at(&issued, 999), None);
@@ -151,7 +145,7 @@ mod tests {
         let forged_payload = URL_SAFE_NO_PAD.encode(
             serde_json::to_vec(&Claim {
                 session_id: "session-b".to_owned(),
-                backend: AgentBackendKind::Claude,
+                driver: "claudeAgent".into(),
                 run_id: None,
                 issued_at: 1_000,
             })

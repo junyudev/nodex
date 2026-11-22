@@ -3,41 +3,21 @@ use utoipa::ToSchema;
 
 use crate::workspace::ProjectWorkspaceTurnAuthority;
 
-/// Durable identity of the runtime family that owns an Agent conversation.
-/// Backend-specific settings live behind their own stable identifiers instead
-/// of accumulating nullable fields on Threads and Automations.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AgentBackendBinding {
-    #[default]
-    Codex,
-    Claude {
-        instance_config_id: String,
-    },
-    #[serde(rename = "opencode")]
-    OpenCode {
-        instance_config_id: String,
-    },
-    Antigravity {
-        instance_config_id: String,
-    },
-    Acp {
-        agent_definition_id: String,
-        instance_config_id: Option<String>,
-    },
+/// The Agent Runtime instance that owns an Agent conversation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentBackendBinding {
+    pub driver: String,
+    pub instance_id: String,
 }
 
-/// The runtime family that executed an attributed action. Attribution keeps
-/// only the family: a Session may change provider configuration between Runs.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentBackendKind {
-    Codex,
-    Claude,
-    #[serde(rename = "opencode")]
-    OpenCode,
-    Antigravity,
-    Acp,
+impl Default for AgentBackendBinding {
+    fn default() -> Self {
+        Self {
+            driver: "codex".to_owned(),
+            instance_id: "codex".to_owned(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

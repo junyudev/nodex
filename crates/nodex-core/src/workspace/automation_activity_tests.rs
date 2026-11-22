@@ -371,7 +371,7 @@ fn an_agent_starts_its_owners_waiting_decision_but_never_another_members() {
         agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
             run_id: None,
             session_id: session.into(),
-            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+            driver: "codex".into(),
         });
         AutomationModule::new("profile-1", "library-1", &w.kernel).apply(
             &agent,

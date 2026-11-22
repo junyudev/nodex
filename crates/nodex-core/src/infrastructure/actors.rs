@@ -482,15 +482,7 @@ pub(crate) fn label(c: &Connection, actor: &Actor, viewer: &str) -> Result<Strin
             if let Some(name) = recorded {
                 return Ok(format!("{name} on behalf of {}", member(on_behalf_of)?));
             }
-            let backend:Option<String>=c.query_row("SELECT thread.agent_backend_kind FROM project_sessions session LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.id=?1",[session_id],|r|r.get(0)).optional()?.flatten();
-            let name = match backend.as_deref() {
-                Some("codex") => "Codex",
-                Some("claude") => "Claude",
-                Some("opencode") => "OpenCode",
-                Some("antigravity") => "Antigravity",
-                _ => "Agent",
-            };
-            Ok(format!("{name} on behalf of {}", member(on_behalf_of)?))
+            Ok(format!("Agent on behalf of {}", member(on_behalf_of)?))
         }
         // Nodex names its own services as the chat names their messages: starting work a person
         // let start on its own and routing the Inbox are Nodex acting, not a separate actor.
@@ -518,9 +510,7 @@ pub(crate) fn seed_agent_session(c: &Connection, thread: &str) -> Result<(), Sto
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nodex_core_contracts::{
-        LibraryId, ProfileId, agent::AgentBackendKind, library::MemberRole,
-    };
+    use nodex_core_contracts::{LibraryId, ProfileId, library::MemberRole};
 
     fn fixture() -> Connection {
         let c = Connection::open_in_memory().unwrap();
@@ -564,7 +554,7 @@ mod tests {
         let verified = BoundAgentAttribution {
             session_id: "chat".into(),
             run_id: Some("run".into()),
-            backend: AgentBackendKind::Codex,
+            driver: "codex".into(),
         };
         assert_eq!(
             derive(&c, "space", &AdapterKind::NativeCli, None, Some(&verified)).unwrap(),
@@ -611,7 +601,7 @@ mod tests {
         let c = fixture();
         let local = local_member(&c, "space").unwrap();
         c.execute(
-            "INSERT INTO agent_actor_labels VALUES('chat','run','Codex')",
+            "INSERT INTO agent_actor_labels(session_id,run_key,label) VALUES('chat','run','Codex')",
             [],
         )
         .unwrap();

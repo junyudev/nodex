@@ -420,9 +420,9 @@ fn attaching_an_acp_thread_and_moving_projects_preserves_the_session_pin_positio
     pin(module, "session:acp");
     pin(module, "session:draft");
     let (revision, original) = order(module, Lane::PinnedSessions, None, 100);
-    let binding = AgentBackendBinding::Acp {
-        agent_definition_id: "agent:test".to_owned(),
-        instance_config_id: None,
+    let binding = AgentBackendBinding {
+        driver: "acpRegistry".to_owned(),
+        instance_id: "acp_test".to_owned(),
     };
     apply(
         module,

@@ -1,6 +1,5 @@
 use super::*;
 use nodex_core_contracts::ModuleReadRequest;
-use nodex_core_contracts::agent::AgentBackendKind;
 use nodex_core_contracts::library::{
     LibraryFileChange, LibraryFileReadSource, LibraryPageFileAttachment,
     LibraryPageFileAttachmentActor as Actor, LibraryPageFileCollisionPolicy,
@@ -188,7 +187,7 @@ fn verified_agent_attribution_names_the_attaching_session_on_any_adapter() {
     context.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
         run_id: None,
         session_id: "session:cold-start".to_owned(),
-        backend: AgentBackendKind::OpenCode,
+        driver: "opencode".into(),
     });
     let committed = module
         .apply(

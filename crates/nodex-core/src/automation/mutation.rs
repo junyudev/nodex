@@ -18,7 +18,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::document::sha256;
-use crate::domain::agent_backend::binding_storage;
+use crate::domain::agent_backend::validate_binding;
 use crate::infrastructure::durable_mutation::{
     self, CommitResult, DurableMutationScope, OperationIdentity, ReceiptMetadata, SealedOutcome,
 };
@@ -815,17 +815,17 @@ fn create_definition(
     .map_err(schedule_invalid)?;
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Automation cwd JSON cannot be encoded"))?;
-    let backend = binding_storage(&definition.backend_binding)
+    validate_binding(&definition.backend_binding)
         .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     connection.execute(
         "INSERT INTO automations(\
            automation_id, kind, status, target_session_id, name, prompt, rrule, model, \
-           reasoning_effort, service_tier, cwds_json, agent_backend_kind, \
-           agent_backend_definition_id, agent_backend_instance_config_id, \
+           reasoning_effort, service_tier, cwds_json, agent_backend_driver, \
+           agent_backend_instance_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
            created_at, updated_at, automation_revision, notification_policy, project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id\
          ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+           ?13, ?14, ?15, NULL, ?16, ?16, 1, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
             automation_id,
             kind_string(definition.kind),
@@ -837,9 +837,8 @@ fn create_definition(
             definition.reasoning_effort,
             definition.service_tier,
             cwds_json,
-            backend.kind,
-            backend.agent_definition_id,
-            backend.instance_config_id,
+            definition.backend_binding.driver,
+            definition.backend_binding.instance_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
             next_run,
@@ -967,17 +966,17 @@ fn update_definition(
     };
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Automation cwd JSON cannot be encoded"))?;
-    let backend = binding_storage(&definition.backend_binding)
+    validate_binding(&definition.backend_binding)
         .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     let changed = connection.execute(
         "UPDATE automations SET \
            kind = ?1, status = ?2, target_session_id = ?3, name = ?4, prompt = ?5, rrule = ?6, \
            model = ?7, reasoning_effort = ?8, service_tier = ?9, cwds_json = ?10, \
-           agent_backend_kind = ?11, agent_backend_definition_id = ?12, \
-           agent_backend_instance_config_id = ?13, execution_environment = ?14, \
-           local_environment_config_path = ?15, next_run_at = ?16, updated_at = ?17, \
-           automation_revision = automation_revision + 1, notification_policy = ?20, project_id = ?21, mode = ?22, runbook_page_id = ?23, owner_member_id=?24, condition_text=?25, timezone=?26, schedule_revision=schedule_revision+?27, scope_project_id=?28 \
-         WHERE automation_id = ?18 AND automation_revision = ?19",
+           agent_backend_driver = ?11, \
+           agent_backend_instance_id = ?12, execution_environment = ?13, \
+           local_environment_config_path = ?14, next_run_at = ?15, updated_at = ?16, \
+           automation_revision = automation_revision + 1, notification_policy = ?19, project_id = ?20, mode = ?21, runbook_page_id = ?22, owner_member_id=?23, condition_text=?24, timezone=?25, schedule_revision=schedule_revision+?26, scope_project_id=?27 \
+         WHERE automation_id = ?17 AND automation_revision = ?18",
         params![
             kind_string(definition.kind),
             status_string(status),
@@ -989,9 +988,8 @@ fn update_definition(
             definition.reasoning_effort,
             definition.service_tier,
             cwds_json,
-            backend.kind,
-            backend.agent_definition_id,
-            backend.instance_config_id,
+            definition.backend_binding.driver,
+            definition.backend_binding.instance_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
             next_run,
@@ -1852,7 +1850,7 @@ fn normalize_definition(
         MAX_REASONING_EFFORT_BYTES,
         "service_tier",
     )?;
-    binding_storage(&input.backend_binding).map_err(invalid)?;
+    validate_binding(&input.backend_binding).map_err(invalid)?;
     let project_id =
         normalize_optional_string(input.project_id.as_deref(), MAX_ID_LENGTH, "project_id")?;
     let target_session_id = normalize_optional_string(
@@ -2558,7 +2556,7 @@ mod tests {
             model: Some("claude-opus-4-1".to_owned()),
             reasoning_effort: Some("Thinking".to_owned()),
             service_tier: Some("priority".to_owned()),
-            backend_binding: AgentBackendBinding::Codex,
+            backend_binding: AgentBackendBinding::default(),
             cwds: Some(vec![
                 nodex_platform::fixture_path!("/workspace/report").to_owned(),
             ]),

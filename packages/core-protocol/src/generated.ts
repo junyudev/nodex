@@ -981,7 +981,8 @@ export interface components {
         readonly AddressResetReason: "stream_gap" | "recipient_nack" | "ack_timeout" | "queue_overflow" | "integrity_failure" | "store_epoch_replacement";
         /** @description The desktop Host asks Core to vouch for one Agent execution of a product Session. */
         readonly AgentAttributionRequest: {
-            readonly backend: components["schemas"]["AgentBackendKind"];
+            readonly driver: string;
+            readonly label: string;
             readonly run_id?: string | null;
             readonly session_id: string;
         };
@@ -992,38 +993,11 @@ export interface components {
         readonly AgentAttributionResponse: {
             readonly credential: string;
         };
-        /**
-         * @description Durable identity of the runtime family that owns an Agent conversation.
-         *     Backend-specific settings live behind their own stable identifiers instead
-         *     of accumulating nullable fields on Threads and Automations.
-         */
+        /** @description The Agent Runtime instance that owns an Agent conversation. */
         readonly AgentBackendBinding: {
-            /** @enum {string} */
-            readonly kind: "codex";
-        } | {
-            readonly instance_config_id: string;
-            /** @enum {string} */
-            readonly kind: "claude";
-        } | {
-            readonly instance_config_id: string;
-            /** @enum {string} */
-            readonly kind: "opencode";
-        } | {
-            readonly instance_config_id: string;
-            /** @enum {string} */
-            readonly kind: "antigravity";
-        } | {
-            readonly agent_definition_id: string;
-            readonly instance_config_id?: string | null;
-            /** @enum {string} */
-            readonly kind: "acp";
+            readonly driver: string;
+            readonly instanceId: string;
         };
-        /**
-         * @description The runtime family that executed an attributed action. Attribution keeps
-         *     only the family: a Session may change provider configuration between Runs.
-         * @enum {string}
-         */
-        readonly AgentBackendKind: "codex" | "claude" | "opencode" | "antigravity" | "acp";
         readonly AgentDocumentBlockGuard: {
             readonly block_id: string;
             readonly kind: components["schemas"]["AgentDocumentBlockGuardKind"];
@@ -13429,7 +13403,8 @@ export interface components {
         };
         /** @description A Runtime-verified Run and the accepted input that opened it. */
         readonly RecordAgentRunRequest: {
-            readonly backend: components["schemas"]["AgentBackendKind"];
+            readonly driver: string;
+            readonly label: string;
             /** @description Core derives the requesting Member from the acceptance evidence. */
             readonly message_id?: string | null;
             readonly run_id: string;

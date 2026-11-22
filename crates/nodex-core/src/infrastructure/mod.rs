@@ -2,6 +2,7 @@
 
 pub(crate) mod actors;
 mod actors_migration;
+pub(crate) mod agent_identity_migration;
 pub mod agent_operations;
 pub(crate) mod authorized_delivery;
 pub mod collection_window;

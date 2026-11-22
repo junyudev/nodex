@@ -4998,7 +4998,7 @@ fn an_agent_property_edit_routes_intake_for_its_requesting_member() {
         agent_attribution: Some(nodex_core_contracts::BoundAgentAttribution {
             session_id: "session:agent-route".into(),
             run_id: None,
-            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+            driver: "codex".into(),
         }),
         ..host()
     };
@@ -5049,7 +5049,7 @@ mod scheduled {
             model: None,
             reasoning_effort: None,
             service_tier: None,
-            backend_binding: nodex_core_contracts::agent::AgentBackendBinding::Codex,
+            backend_binding: nodex_core_contracts::agent::AgentBackendBinding::default(),
             cwds: None,
             execution_environment: None,
             local_environment_config_path: None,

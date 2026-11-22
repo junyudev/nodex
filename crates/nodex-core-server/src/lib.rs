@@ -3818,19 +3818,32 @@ async fn issue_agent_attribution(
             "Agent attribution requires the Electron Host Adapter",
         ));
     }
+    if request.driver.len() > 64
+        || request.driver.is_empty()
+        || request.driver.trim() != request.driver
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Agent driver identity is invalid",
+        ));
+    }
     let attribution = nodex_core_contracts::BoundAgentAttribution {
         session_id: request.session_id,
         run_id: request.run_id,
-        backend: request.backend,
+        driver: request.driver,
     };
     state
         .membership
         .actor(&AdapterKind::NativeCli, None, Some(&attribution))
         .map_err(agent_run_error)?;
+    state
+        .membership
+        .record_agent_label(&attribution, &request.label)
+        .map_err(agent_run_error)?;
     Ok(Json(nodex_core_protocol::AgentAttributionResponse {
         credential: state.agent_attribution.issue(
             &attribution.session_id,
-            attribution.backend,
+            &attribution.driver,
             attribution.run_id,
         ),
     }))
@@ -3878,7 +3891,8 @@ async fn record_agent_run(
                             &request.session_id,
                             Some(&request.run_id),
                             request.message_id.as_deref(),
-                            request.backend,
+                            &request.driver,
+                            &request.label,
                         ))
                     },
                 )

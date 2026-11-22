@@ -3826,11 +3826,15 @@
         "description": "The desktop Host asks Core to vouch for one Agent execution of a product Session.",
         "required": [
           "session_id",
-          "backend"
+          "driver",
+          "label"
         ],
         "properties": {
-          "backend": {
-            "$ref": "#/components/schemas/AgentBackendKind"
+          "driver": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
           },
           "run_id": {
             "type": [
@@ -3858,112 +3862,20 @@
         "additionalProperties": false
       },
       "AgentBackendBinding": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "codex"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "instance_config_id",
-              "kind"
-            ],
-            "properties": {
-              "instance_config_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "claude"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "instance_config_id",
-              "kind"
-            ],
-            "properties": {
-              "instance_config_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "opencode"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "instance_config_id",
-              "kind"
-            ],
-            "properties": {
-              "instance_config_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "antigravity"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "agent_definition_id",
-              "kind"
-            ],
-            "properties": {
-              "agent_definition_id": {
-                "type": "string"
-              },
-              "instance_config_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "acp"
-                ]
-              }
-            }
-          }
+        "type": "object",
+        "description": "The Agent Runtime instance that owns an Agent conversation.",
+        "required": [
+          "driver",
+          "instanceId"
         ],
-        "description": "Durable identity of the runtime family that owns an Agent conversation.\nBackend-specific settings live behind their own stable identifiers instead\nof accumulating nullable fields on Threads and Automations."
-      },
-      "AgentBackendKind": {
-        "type": "string",
-        "description": "The runtime family that executed an attributed action. Attribution keeps\nonly the family: a Session may change provider configuration between Runs.",
-        "enum": [
-          "codex",
-          "claude",
-          "opencode",
-          "antigravity",
-          "acp"
-        ]
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          }
+        }
       },
       "AgentDocumentBlockGuard": {
         "type": "object",
@@ -56577,11 +56489,15 @@
         "required": [
           "session_id",
           "run_id",
-          "backend"
+          "driver",
+          "label"
         ],
         "properties": {
-          "backend": {
-            "$ref": "#/components/schemas/AgentBackendKind"
+          "driver": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
           },
           "message_id": {
             "type": [

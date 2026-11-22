@@ -62,16 +62,14 @@ CREATE TABLE codex_threads (
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       linked_at TEXT NOT NULL
-    , forked_from_id TEXT, service_name TEXT, agent_path TEXT, model_id TEXT, reasoning_effort TEXT, service_tier TEXT, execution_host_id TEXT NOT NULL DEFAULT 'local' CHECK (execution_host_id = trim(execution_host_id) AND length(execution_host_id) BETWEEN 1 AND 512), recency_at INTEGER NOT NULL DEFAULT 0 CHECK (recency_at >= 0), agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp', 'claude', 'opencode', 'antigravity')), agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)), agent_backend_instance_config_id TEXT CHECK ((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind IN ('claude', 'opencode', 'antigravity') AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NOT NULL AND agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512))))) WITHOUT ROWID;
+    , forked_from_id TEXT, service_name TEXT, agent_path TEXT, model_id TEXT, reasoning_effort TEXT, service_tier TEXT, execution_host_id TEXT NOT NULL DEFAULT 'local' CHECK (execution_host_id = trim(execution_host_id) AND length(execution_host_id) BETWEEN 1 AND 512), recency_at INTEGER NOT NULL DEFAULT 0 CHECK (recency_at >= 0), agent_backend_driver TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_driver = trim(agent_backend_driver) AND length(agent_backend_driver) BETWEEN 1 AND 64), agent_backend_instance_id TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_instance_id = trim(agent_backend_instance_id) AND length(agent_backend_instance_id) BETWEEN 1 AND 64)) WITHOUT ROWID;
 CREATE TABLE "thread_backend_sessions" (
   thread_id TEXT PRIMARY KEY REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
-  backend_kind TEXT NOT NULL CHECK (backend_kind IN ('acp', 'claude', 'opencode', 'antigravity')),
-  agent_definition_id TEXT CHECK ((backend_kind IN ('claude', 'opencode', 'antigravity') AND agent_definition_id IS NULL) OR (backend_kind = 'acp' AND agent_definition_id IS NOT NULL AND agent_definition_id = trim(agent_definition_id) AND length(agent_definition_id) BETWEEN 1 AND 512)),
-  instance_config_id TEXT CHECK ((backend_kind = 'acp' AND instance_config_id IS NULL) OR (instance_config_id IS NOT NULL AND instance_config_id = trim(instance_config_id) AND length(instance_config_id) BETWEEN 1 AND 512)),
+  backend_driver TEXT NOT NULL CHECK (backend_driver = trim(backend_driver) AND length(backend_driver) BETWEEN 1 AND 64), backend_instance_id TEXT NOT NULL CHECK (backend_instance_id = trim(backend_instance_id) AND length(backend_instance_id) BETWEEN 1 AND 64),
   backend_session_id TEXT NOT NULL CHECK (backend_session_id = trim(backend_session_id) AND length(backend_session_id) BETWEEN 1 AND 512),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   native_state_json TEXT CHECK (native_state_json IS NULL OR (json_valid(native_state_json) AND length(native_state_json) <= 262144)),
-  native_home TEXT CHECK (native_home IS NULL OR (backend_kind IN ('claude', 'opencode', 'antigravity') AND length(native_home) BETWEEN 1 AND 16384 AND native_home = trim(native_home))),
+  native_home TEXT CHECK (native_home IS NULL OR (length(native_home) BETWEEN 1 AND 16384 AND native_home = trim(native_home))),
   runtime_options_json TEXT CHECK (runtime_options_json IS NULL OR (json_valid(runtime_options_json) AND length(runtime_options_json) <= 262144))
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE codex_thread_dynamic_tool_catalogs (
@@ -4572,7 +4570,7 @@ BEGIN
     WHERE data_source_id = NEW.data_source_id AND removed_at IS NULL) AS has_members);
 END;
 CREATE UNIQUE INDEX thread_backend_sessions_native_identity
-  ON thread_backend_sessions(backend_kind, native_home, backend_session_id)
+  ON thread_backend_sessions(backend_driver, native_home, backend_session_id)
   WHERE native_home IS NOT NULL;
 CREATE TABLE nodex_agent_runtime_execution_cleanups (
   cleanup_id TEXT PRIMARY KEY,
@@ -4641,8 +4639,8 @@ AFTER UPDATE OF name, lifecycle, library_id ON projects
 WHEN OLD.name IS NOT NEW.name OR OLD.lifecycle IS NOT NEW.lifecycle OR OLD.library_id IS NOT NEW.library_id
 BEGIN UPDATE session_search_revision SET revision = revision + 1 WHERE id = 1; END;
 CREATE TRIGGER session_search_codex_threads_update
-AFTER UPDATE OF thread_name, parent_thread_id, archived, created_at, recency_at, agent_backend_kind, agent_backend_definition_id, agent_backend_instance_config_id, execution_host_id ON codex_threads
-WHEN (OLD.thread_name IS NOT NEW.thread_name OR OLD.parent_thread_id IS NOT NEW.parent_thread_id OR OLD.archived IS NOT NEW.archived OR OLD.created_at IS NOT NEW.created_at OR OLD.recency_at IS NOT NEW.recency_at OR OLD.agent_backend_kind IS NOT NEW.agent_backend_kind OR OLD.agent_backend_definition_id IS NOT NEW.agent_backend_definition_id OR OLD.agent_backend_instance_config_id IS NOT NEW.agent_backend_instance_config_id OR OLD.execution_host_id IS NOT NEW.execution_host_id) AND EXISTS (SELECT 1 FROM project_session_threads WHERE thread_id = NEW.thread_id)
+AFTER UPDATE OF thread_name, parent_thread_id, archived, created_at, recency_at, agent_backend_driver, agent_backend_instance_id, execution_host_id ON codex_threads
+WHEN (OLD.thread_name IS NOT NEW.thread_name OR OLD.parent_thread_id IS NOT NEW.parent_thread_id OR OLD.archived IS NOT NEW.archived OR OLD.created_at IS NOT NEW.created_at OR OLD.recency_at IS NOT NEW.recency_at OR OLD.agent_backend_driver IS NOT NEW.agent_backend_driver OR OLD.agent_backend_instance_id IS NOT NEW.agent_backend_instance_id OR OLD.execution_host_id IS NOT NEW.execution_host_id) AND EXISTS (SELECT 1 FROM project_session_threads WHERE thread_id = NEW.thread_id)
 BEGIN UPDATE session_search_revision SET revision = revision + 1 WHERE id = 1; END;
 CREATE TABLE app_tool_operations (
   caller_identity TEXT NOT NULL,
@@ -5379,7 +5377,7 @@ CREATE TABLE automations (
            created_at INTEGER NOT NULL,
            updated_at INTEGER NOT NULL,
            automation_revision INTEGER NOT NULL DEFAULT 1 CHECK (automation_revision >= 1),
-           notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'), project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)), agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp', 'claude', 'opencode', 'antigravity')), agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)), agent_backend_instance_config_id TEXT CHECK ((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind IN ('claude', 'opencode', 'antigravity') AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NOT NULL AND agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512)))),
+           notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'), project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)), agent_backend_driver TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_driver = trim(agent_backend_driver) AND length(agent_backend_driver) BETWEEN 1 AND 64), agent_backend_instance_id TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_instance_id = trim(agent_backend_instance_id) AND length(agent_backend_instance_id) BETWEEN 1 AND 64),
   mode TEXT NOT NULL DEFAULT 'run' CHECK (mode IN ('dry_run','ask_first','run')), runbook_page_id TEXT,
            CHECK (kind IN ('cron', 'heartbeat')),
            CHECK (status IN ('ACTIVE', 'PAUSED', 'DELETED')),
@@ -5849,7 +5847,7 @@ END;
 CREATE TABLE agent_actor_labels (
  session_id TEXT NOT NULL,
  run_key TEXT NOT NULL,
- label TEXT NOT NULL,
+ label TEXT NOT NULL, driver TEXT CHECK (driver IS NULL OR (driver = trim(driver) AND length(driver) BETWEEN 1 AND 64)),
  PRIMARY KEY(session_id,run_key)
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE session_requesting_members (
@@ -6091,4 +6089,4 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=215;
+PRAGMA user_version=216;

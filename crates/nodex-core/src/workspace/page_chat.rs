@@ -127,7 +127,7 @@ pub(super) fn session_agent_selection(
         return Ok(Some(selection.agent_selection()));
     }
     Ok(connection.query_row(
-        "SELECT 'codex',thread.model_id,thread.reasoning_effort FROM project_session_threads binding JOIN codex_threads thread ON thread.thread_id=binding.thread_id WHERE binding.session_id=?1 AND thread.agent_backend_kind='codex' AND thread.model_id IS NOT NULL",
+        "SELECT 'codex',thread.model_id,thread.reasoning_effort FROM project_session_threads binding JOIN codex_threads thread ON thread.thread_id=binding.thread_id WHERE binding.session_id=?1 AND thread.agent_backend_driver='codex' AND thread.model_id IS NOT NULL",
         [session], |row| Ok(nodex_core_contracts::library::AgentWorkSelection { instance_id:row.get(0)?,model:row.get(1)?,effort:row.get(2)? }),
     ).optional()?)
 }

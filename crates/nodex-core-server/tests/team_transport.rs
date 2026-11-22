@@ -3324,7 +3324,7 @@ impl HostedChats {
         let (status, attributed) = self.core.local_request(
             "/core/v1/agent-runs/record",
             self.host_binding(),
-            json!({"session_id":session,"run_id":run,"message_id":message,"backend":"codex"}),
+            json!({"session_id":session,"run_id":run,"message_id":message,"driver":"codex","label":"Codex"}),
         );
         assert_eq!(status, 200, "{attributed}");
     }

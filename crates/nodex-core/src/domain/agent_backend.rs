@@ -1,192 +1,29 @@
 use nodex_core_contracts::agent::AgentBackendBinding;
 
-pub(crate) const MAX_AGENT_BACKEND_ID_BYTES: usize = 512;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct AgentBackendStorage<'a> {
-    pub kind: &'static str,
-    pub agent_definition_id: Option<&'a str>,
-    pub instance_config_id: Option<&'a str>,
+pub(crate) fn valid_slug(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    value.len() <= 64
+        && bytes
+            .next()
+            .is_some_and(|first| first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn validate_id(value: &str) -> bool {
-    !value.is_empty() && value.trim() == value && value.len() <= MAX_AGENT_BACKEND_ID_BYTES
-}
-
-pub(crate) fn binding_storage(
-    binding: &AgentBackendBinding,
-) -> Result<AgentBackendStorage<'_>, &'static str> {
-    match binding {
-        AgentBackendBinding::Codex => Ok(AgentBackendStorage {
-            kind: "codex",
-            agent_definition_id: None,
-            instance_config_id: None,
-        }),
-        AgentBackendBinding::Claude { instance_config_id } => {
-            if !validate_id(instance_config_id) {
-                return Err("Claude backend binding identity is invalid");
-            }
-            Ok(AgentBackendStorage {
-                kind: "claude",
-                agent_definition_id: None,
-                instance_config_id: Some(instance_config_id),
-            })
-        }
-        AgentBackendBinding::OpenCode { instance_config_id } => {
-            if !validate_id(instance_config_id) {
-                return Err("OpenCode backend binding identity is invalid");
-            }
-            Ok(AgentBackendStorage {
-                kind: "opencode",
-                agent_definition_id: None,
-                instance_config_id: Some(instance_config_id),
-            })
-        }
-        AgentBackendBinding::Antigravity { instance_config_id } => {
-            if !validate_id(instance_config_id) {
-                return Err("Antigravity backend binding identity is invalid");
-            }
-            Ok(AgentBackendStorage {
-                kind: "antigravity",
-                agent_definition_id: None,
-                instance_config_id: Some(instance_config_id),
-            })
-        }
-        AgentBackendBinding::Acp {
-            agent_definition_id,
-            instance_config_id,
-        } => {
-            if !validate_id(agent_definition_id)
-                || instance_config_id
-                    .as_deref()
-                    .is_some_and(|value| !validate_id(value))
-            {
-                return Err("ACP backend binding identity is invalid");
-            }
-            Ok(AgentBackendStorage {
-                kind: "acp",
-                agent_definition_id: Some(agent_definition_id),
-                instance_config_id: instance_config_id.as_deref(),
-            })
-        }
+pub(crate) fn validate_binding(binding: &AgentBackendBinding) -> Result<(), &'static str> {
+    if !valid_slug(&binding.driver) || !valid_slug(&binding.instance_id) {
+        return Err("Agent Runtime instance identity is invalid");
     }
+    Ok(())
 }
 
 pub(crate) fn binding_from_storage(
-    kind: &str,
-    agent_definition_id: Option<String>,
-    instance_config_id: Option<String>,
+    driver: String,
+    instance_id: String,
 ) -> Result<AgentBackendBinding, &'static str> {
-    let binding = match kind {
-        "codex" if agent_definition_id.is_none() && instance_config_id.is_none() => {
-            AgentBackendBinding::Codex
-        }
-        "claude" if agent_definition_id.is_none() => AgentBackendBinding::Claude {
-            instance_config_id: instance_config_id
-                .ok_or("Claude backend binding requires an instance")?,
-        },
-        "opencode" if agent_definition_id.is_none() => AgentBackendBinding::OpenCode {
-            instance_config_id: instance_config_id
-                .ok_or("OpenCode backend binding requires an instance")?,
-        },
-        "antigravity" if agent_definition_id.is_none() => AgentBackendBinding::Antigravity {
-            instance_config_id: instance_config_id
-                .ok_or("Antigravity backend binding requires an instance")?,
-        },
-        "acp" => AgentBackendBinding::Acp {
-            agent_definition_id: agent_definition_id
-                .ok_or("ACP backend binding is missing its Agent definition")?,
-            instance_config_id,
-        },
-        _ => return Err("Agent backend binding columns are inconsistent"),
+    let binding = AgentBackendBinding {
+        driver,
+        instance_id,
     };
-    binding_storage(&binding)?;
+    validate_binding(&binding)?;
     Ok(binding)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn round_trips_explicit_backend_bindings() {
-        let acp = AgentBackendBinding::Acp {
-            agent_definition_id: "claude-agent-acp".to_owned(),
-            instance_config_id: Some("work-profile".to_owned()),
-        };
-        let stored = binding_storage(&acp).expect("valid binding");
-        assert_eq!(stored.kind, "acp");
-        assert_eq!(stored.agent_definition_id, Some("claude-agent-acp"));
-        assert_eq!(stored.instance_config_id, Some("work-profile"));
-        assert_eq!(
-            binding_from_storage(
-                stored.kind,
-                stored.agent_definition_id.map(str::to_owned),
-                stored.instance_config_id.map(str::to_owned),
-            )
-            .expect("stored binding"),
-            acp
-        );
-        assert_eq!(
-            binding_from_storage("codex", None, None).expect("Codex binding"),
-            AgentBackendBinding::Codex
-        );
-        let opencode = AgentBackendBinding::OpenCode {
-            instance_config_id: "open-work".to_owned(),
-        };
-        let stored = binding_storage(&opencode).expect("OpenCode binding");
-        assert_eq!(stored.kind, "opencode");
-        assert_eq!(
-            binding_from_storage(stored.kind, None, Some("open-work".to_owned())).unwrap(),
-            opencode,
-        );
-        assert_eq!(
-            serde_json::to_value(opencode).unwrap(),
-            serde_json::json!({"kind":"opencode","instance_config_id":"open-work"}),
-        );
-        let antigravity = AgentBackendBinding::Antigravity {
-            instance_config_id: "open-work".to_owned(),
-        };
-        let stored = binding_storage(&antigravity).expect("Antigravity binding");
-        assert_eq!(stored.kind, "antigravity");
-        assert_eq!(
-            binding_from_storage(stored.kind, None, Some("open-work".to_owned())).unwrap(),
-            antigravity,
-        );
-        assert_eq!(
-            serde_json::to_value(antigravity).unwrap(),
-            serde_json::json!({"kind":"antigravity","instance_config_id":"open-work"}),
-        );
-    }
-
-    #[test]
-    fn rejects_partial_or_ambiguous_bindings() {
-        assert!(binding_from_storage("acp", None, None).is_err());
-        assert!(binding_from_storage("opencode", None, None).is_err());
-        assert!(binding_from_storage("antigravity", None, None).is_err());
-        assert!(
-            binding_from_storage(
-                "antigravity",
-                Some("extra".to_owned()),
-                Some("work".to_owned())
-            )
-            .is_err()
-        );
-        assert!(
-            binding_from_storage(
-                "opencode",
-                Some("extra".to_owned()),
-                Some("work".to_owned())
-            )
-            .is_err()
-        );
-        assert!(binding_from_storage("codex", Some("extra".to_owned()), None).is_err());
-        assert!(
-            binding_storage(&AgentBackendBinding::Acp {
-                agent_definition_id: "  ".to_owned(),
-                instance_config_id: None,
-            })
-            .is_err()
-        );
-    }
 }

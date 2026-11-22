@@ -313,8 +313,8 @@ fn read_definition_window(
     let mut statement = connection.prepare(
         "SELECT automation_id, automation_revision, kind, status, target_session_id, name, \
                 prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
-                agent_backend_kind, agent_backend_definition_id, \
-                agent_backend_instance_config_id, execution_environment, \
+                agent_backend_driver, \
+                agent_backend_instance_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
                 project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id \
          FROM automations \
@@ -376,17 +376,41 @@ pub(super) fn read_definition(
     connection: &Connection,
     automation_id: &str,
 ) -> Result<Option<Automation>, StoreError> {
+    read_definition_with_binding(connection, automation_id, false)
+}
+
+pub(super) fn read_legacy_definition(
+    connection: &Connection,
+    automation_id: &str,
+) -> Result<Option<Automation>, StoreError> {
+    read_definition_with_binding(connection, automation_id, true)
+}
+
+fn read_definition_with_binding(
+    connection: &Connection,
+    automation_id: &str,
+    legacy: bool,
+) -> Result<Option<Automation>, StoreError> {
+    let identity_columns = if legacy {
+        "agent_backend_kind, agent_backend_instance_config_id"
+    } else {
+        "agent_backend_driver, agent_backend_instance_id"
+    };
+    let legacy_definition = if legacy {
+        ", agent_backend_definition_id"
+    } else {
+        ""
+    };
     let definition = connection
         .query_row(
-            "SELECT automation_id, automation_revision, kind, status, target_session_id, name, \
+            &format!("SELECT automation_id, automation_revision, kind, status, target_session_id, name, \
                     prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
-                    agent_backend_kind, agent_backend_definition_id, \
-                    agent_backend_instance_config_id, execution_environment, \
+                    {identity_columns}, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id \
-             FROM automations WHERE automation_id = ?1",
+                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id {legacy_definition} \
+             FROM automations WHERE automation_id = ?1"),
             [automation_id],
-            definition_from_row,
+            |row| decode_definition(row, legacy),
         )
         .optional()
         .map_err(|_| corrupt("Automation definition column types are invalid"))?;
@@ -396,31 +420,47 @@ pub(super) fn read_definition(
 }
 
 fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> {
+    decode_definition(row, false)
+}
+
+fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<Automation> {
     let kind = parse_kind(row.get::<_, String>(2)?).map_err(rusqlite_conversion)?;
     let status = parse_status(row.get::<_, String>(3)?).map_err(rusqlite_conversion)?;
-    let environment = parse_environment(row.get::<_, String>(15)?).map_err(rusqlite_conversion)?;
+    let environment = parse_environment(row.get::<_, String>(14)?).map_err(rusqlite_conversion)?;
     let cwds_json = row.get::<_, String>(11)?;
     let cwds = serde_json::from_str::<Vec<String>>(&cwds_json)
         .map_err(|_| rusqlite_conversion("Automation cwd JSON is invalid".to_owned()))?;
+    let driver: String = row.get(12)?;
+    let backend_binding = if legacy {
+        crate::infrastructure::agent_identity_migration::legacy_binding(
+            &driver,
+            row.get::<_, Option<String>>(29)?.as_deref(),
+            row.get::<_, Option<String>>(13)?.as_deref(),
+        )
+        .map_err(|error| rusqlite_conversion(error.to_string()))?
+    } else {
+        binding_from_storage(driver, row.get(13)?)
+            .map_err(|message| rusqlite_conversion(message.to_owned()))?
+    };
     Ok(Automation {
-        scope: row.get::<_, Option<String>>(29)?.map_or(
+        scope: row.get::<_, Option<String>>(28)?.map_or(
             nodex_core_contracts::automation::AutomationScope::Space,
             |project_id| nodex_core_contracts::automation::AutomationScope::Project { project_id },
         ),
-        owner_member_id: row.get(25)?,
-        condition_text: row.get(26)?,
+        owner_member_id: row.get(24)?,
+        condition_text: row.get(25)?,
         typed_condition: Some(AutomationCondition::Clock {
             rrule: row.get(7)?,
-            timezone: row.get(27)?,
-            jitter_salt: row.get(28)?,
+            timezone: row.get(26)?,
+            jitter_salt: row.get(27)?,
         }),
         automation_id: row.get(0)?,
         automation_revision: row.get(1)?,
         kind,
         status,
-        project_id: row.get(22)?,
+        project_id: row.get(21)?,
         target_session_id: row.get(4)?,
-        notification_policy: match row.get::<_, Option<String>>(21)?.as_deref() {
+        notification_policy: match row.get::<_, Option<String>>(20)?.as_deref() {
             None => None,
             Some("failed_runs_only") => Some(AutomationNotificationPolicy::FailedRunsOnly),
             Some(_) => {
@@ -429,7 +469,7 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> 
                 ));
             }
         },
-        mode: match row.get::<_, String>(23)?.as_str() {
+        mode: match row.get::<_, String>(22)?.as_str() {
             "ask_first" => AutomationMode::AskFirst,
             "dry_run" => AutomationMode::DryRun,
             "run" => AutomationMode::Run,
@@ -437,7 +477,7 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> 
                 return Err(rusqlite_conversion("Invalid scheduled mode choice".into()));
             }
         },
-        runbook_page_id: row.get(24)?,
+        runbook_page_id: row.get(23)?,
         runbook_title: None,
         held_decision: None,
         name: row.get(5)?,
@@ -446,19 +486,14 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> 
         model: row.get(8)?,
         reasoning_effort: row.get(9)?,
         service_tier: row.get(10)?,
-        backend_binding: binding_from_storage(
-            row.get::<_, String>(12)?.as_str(),
-            row.get(13)?,
-            row.get(14)?,
-        )
-        .map_err(|message| rusqlite_conversion(message.to_owned()))?,
+        backend_binding,
         cwds,
         execution_environment: environment,
-        local_environment_config_path: row.get(16)?,
-        next_run_at_ms: row.get(17)?,
-        last_run_at_ms: row.get(18)?,
-        created_at_ms: row.get(19)?,
-        updated_at_ms: row.get(20)?,
+        local_environment_config_path: row.get(15)?,
+        next_run_at_ms: row.get(16)?,
+        last_run_at_ms: row.get(17)?,
+        created_at_ms: row.get(18)?,
+        updated_at_ms: row.get(19)?,
     })
 }
 

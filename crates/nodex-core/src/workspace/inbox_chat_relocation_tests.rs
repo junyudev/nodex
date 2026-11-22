@@ -569,9 +569,7 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
 
 #[test]
 fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_separate() {
-    use nodex_core_contracts::{
-        Actor, BoundAgentAttribution, BoundModuleContext, agent::AgentBackendKind,
-    };
+    use nodex_core_contracts::{Actor, BoundAgentAttribution, BoundModuleContext};
     use nodex_core_contracts::{
         agent::AgentTurnProvenance,
         workspace::{
@@ -627,7 +625,7 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
             agent_attribution: (!host_turn).then(|| BoundAgentAttribution {
                 session_id: "dispatching-coordinator".into(),
                 run_id: None,
-                backend: AgentBackendKind::Codex,
+                driver: "codex".into(),
             }),
             ..context()
         };

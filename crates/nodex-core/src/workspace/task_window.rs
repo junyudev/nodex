@@ -25,8 +25,8 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
              substr(thread.thread_preview, 1, 1024), thread.model_id, \
              thread.reasoning_effort, thread.service_tier, \
-             thread.agent_backend_kind, thread.agent_backend_definition_id, \
-             thread.agent_backend_instance_config_id, \
+             thread.agent_backend_driver, \
+             thread.agent_backend_instance_id, \
              thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
              thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
              thread.status_type, \
@@ -296,7 +296,7 @@ pub(super) fn task_summary_from_row(
     let thread = thread_id
         .map(
             |thread_id| -> rusqlite::Result<ProjectWorkspaceTaskThreadSummary> {
-                let status_type = match row.get::<_, String>(offset + 33)?.as_str() {
+                let status_type = match row.get::<_, String>(offset + 32)?.as_str() {
                     "notLoaded" => Ok(CodexThreadStatusType::NotLoaded),
                     "idle" => Ok(CodexThreadStatusType::Idle),
                     "systemError" => Ok(CodexThreadStatusType::SystemError),
@@ -304,7 +304,7 @@ pub(super) fn task_summary_from_row(
                     _ => Err(rusqlite::Error::InvalidQuery),
                 }?;
                 let active_flags = serde_json::from_str::<Vec<CodexThreadActiveFlag>>(
-                    &row.get::<_, String>(offset + 34)?,
+                    &row.get::<_, String>(offset + 33)?,
                 )
                 .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 Ok(ProjectWorkspaceTaskThreadSummary {
@@ -324,25 +324,24 @@ pub(super) fn task_summary_from_row(
                     reasoning_effort: row.get(offset + 23)?,
                     service_tier: row.get(offset + 24)?,
                     backend_binding: binding_from_storage(
-                        row.get::<_, String>(offset + 25)?.as_str(),
+                        row.get(offset + 25)?,
                         row.get(offset + 26)?,
-                        row.get(offset + 27)?,
                     )
                     .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                    execution_host_id: row.get(offset + 28)?,
-                    cwd: row.get(offset + 29)?,
-                    managed_worktree_path: row.get(offset + 30)?,
-                    projectless_output_directory: row.get(offset + 31)?,
-                    projectless_workspace_browser_root: row.get(offset + 32)?,
+                    execution_host_id: row.get(offset + 27)?,
+                    cwd: row.get(offset + 28)?,
+                    managed_worktree_path: row.get(offset + 29)?,
+                    projectless_output_directory: row.get(offset + 30)?,
+                    projectless_workspace_browser_root: row.get(offset + 31)?,
                     status: ProjectWorkspaceThreadStatus {
                         status_type,
                         active_flags,
                     },
-                    archived: row.get::<_, i64>(offset + 35)? == 1,
-                    created_at: row.get(offset + 36)?,
-                    updated_at: row.get(offset + 37)?,
-                    recency_at: row.get(offset + 38)?,
-                    linked_at: row.get(offset + 39)?,
+                    archived: row.get::<_, i64>(offset + 34)? == 1,
+                    created_at: row.get(offset + 35)?,
+                    updated_at: row.get(offset + 36)?,
+                    recency_at: row.get(offset + 37)?,
+                    linked_at: row.get(offset + 38)?,
                 })
             },
         )
@@ -363,19 +362,19 @@ pub(super) fn task_summary_from_row(
             display_title,
             activity_at: row.get(offset + 3)?,
             pinned: row.get::<_, i64>(offset + 4)? == 1,
-            managed: row.get(offset + 43)?,
+            managed: row.get(offset + 42)?,
             pinned_order: row.get(offset + 5)?,
             archived: row.get::<_, i64>(offset + 6)? == 1,
             archived_at: row.get(offset + 7)?,
             unread: row.get::<_, i64>(offset + 8)? == 1,
-            remind_at: row.get(offset + 42)?,
-            can_manage: row.get(offset + 44)?,
-            can_stop: row.get(offset + 45)?,
-            folder: super::chat_folder::decode_summary(row, offset + 46)?,
+            remind_at: row.get(offset + 41)?,
+            can_manage: row.get(offset + 43)?,
+            can_stop: row.get(offset + 44)?,
+            folder: super::chat_folder::decode_summary(row, offset + 45)?,
             thread_id: row.get(offset + 11)?,
             execution_ref: row
-                .get::<_, Option<String>>(offset + 40)?
-                .zip(row.get::<_, Option<String>>(offset + 41)?)
+                .get::<_, Option<String>>(offset + 39)?
+                .zip(row.get::<_, Option<String>>(offset + 40)?)
                 .map(
                     |(runtime_id, thread_id)| ProjectWorkspaceSessionExecutionRef {
                         runtime_id,

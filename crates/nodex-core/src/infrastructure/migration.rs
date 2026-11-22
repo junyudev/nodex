@@ -491,6 +491,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 215,
         apply: migrate_v214_to_v215,
     },
+    MigrationStep {
+        from_revision: 215,
+        to_revision: 216,
+        apply: migrate_v215_to_v216,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2784,6 +2789,22 @@ fn migrate_v214_to_v215(
     Ok(())
 }
 
+fn migrate_v215_to_v216(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    super::agent_identity_migration::migrate(connection)?;
+    super::local_commit::reset_delivery_window(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"agent_instance_identity":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4333,13 +4354,30 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_agent_identity_to_v215(connection: &Connection) -> Result<(), StoreError> {
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    let result =
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v216-to-v215.sql"));
+    connection.pragma_update(None, "legacy_alter_table", legacy)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(result?)
+}
+
+#[cfg(test)]
 pub(crate) fn rewind_page_search_to_v212(connection: &Connection) -> Result<(), StoreError> {
     let thread_schema: String = connection.query_row(
         "SELECT sql FROM sqlite_schema WHERE name='codex_threads'",
         [],
         |row| row.get(0),
     )?;
-    if thread_schema.contains("'antigravity'") {
+    if thread_schema.contains("agent_backend_driver") {
+        rewind_agent_identity_to_v215(connection)?;
+    }
+    if thread_schema.contains("'antigravity'") || thread_schema.contains("agent_backend_driver") {
         connection.execute_batch(include_str!("../../tests/fixtures/rewind-v215-to-v214.sql"))?;
     }
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v213-to-v212.sql"))?;
@@ -9255,6 +9293,89 @@ mod tests {
     }
 
     #[test]
+    fn agent_identity_migration_preserves_instance_routing_and_opens_driver_space() {
+        let directory = tempdir().expect("Profile");
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        prepare_profile_store(&mut connection, directory.path()).expect("fresh Store");
+        rewind_agent_identity_to_v215(&connection).expect("predecessor schema");
+        validate_schema_identity(&connection, 215).expect("exact predecessor");
+        connection.pragma_update(None, "user_version", 215).unwrap();
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/agent-identity-vectors.json"
+        ))
+        .unwrap();
+        let vectors = vectors.as_array().unwrap();
+        for (index, vector) in vectors.iter().enumerate() {
+            let thread = format!("thread-{index}");
+            let kind = vector["kind"].as_str().unwrap();
+            let definition = vector["definitionId"].as_str();
+            let config = vector["configId"].as_str();
+            connection.execute(
+                "INSERT INTO codex_threads(thread_id, created_at, updated_at, linked_at,
+                   agent_backend_kind, agent_backend_definition_id, agent_backend_instance_config_id)
+                 VALUES (?1, 1, 1, 'today', ?2, ?3, ?4)",
+                params![thread, kind, definition, config],
+            ).unwrap();
+            if kind != "codex" {
+                connection.execute(
+                    "INSERT INTO thread_backend_sessions(thread_id, backend_kind, agent_definition_id,
+                       instance_config_id, backend_session_id, updated_at) VALUES (?1, ?2, ?3, ?4, 'native', 1)",
+                    params![thread, kind, definition, config],
+                ).unwrap();
+            }
+        }
+        connection.execute_batch(
+            "INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'today', 'today');
+             INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'today', 'today');
+             INSERT INTO automations(automation_id, owner_member_id, condition_text, timezone,
+               jitter_salt, kind, status, name, created_at, updated_at)
+             SELECT 'default', id, 'Clock', 'UTC', 'salt', 'cron', 'ACTIVE', 'Report', 1, 1
+             FROM members WHERE library_id='library' AND role='owner';",
+        ).unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v215_to_v216(
+                transaction,
+                &MigrationContext {
+                    source_revision: 215,
+                    target_revision: 216,
+                    backup_name: "migration-test.db".to_owned(),
+                    source_schema_fingerprint: published_format(215)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(216)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 216)
+        })
+        .expect("Agent identity migration");
+        for (index, vector) in vectors.iter().enumerate() {
+            let thread = format!("thread-{index}");
+            let binding: (String, String) = connection.query_row(
+                "SELECT agent_backend_driver, agent_backend_instance_id FROM codex_threads WHERE thread_id=?1",
+                [&thread], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).unwrap();
+            assert_eq!(binding.0, vector["driver"]);
+            assert_eq!(binding.1, vector["instanceId"]);
+            if binding.0 != "codex" {
+                let stored: (String, String) = connection.query_row(
+                    "SELECT backend_driver, backend_instance_id FROM thread_backend_sessions WHERE thread_id=?1",
+                    [&thread], |row| Ok((row.get(0)?, row.get(1)?)),
+                ).unwrap();
+                assert_eq!(stored, binding);
+            }
+        }
+        let default: (String, String) = connection.query_row(
+            "SELECT agent_backend_driver, agent_backend_instance_id FROM automations WHERE automation_id='default'",
+            [], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!(default, ("codex".to_owned(), "codex".to_owned()));
+        connection.execute_batch(
+            "UPDATE automations SET agent_backend_driver='futureAgent', agent_backend_instance_id='future_work';
+             UPDATE codex_threads SET agent_backend_driver='futureAgent', agent_backend_instance_id='future_work';
+             UPDATE thread_backend_sessions SET backend_driver='futureAgent', backend_instance_id='future_work';",
+        ).expect("future drivers use the same Store contract");
+    }
+
+    #[test]
     fn opencode_migration_preserves_sessions_and_reopens_once() {
         let directory = tempdir().expect("Profile");
         let path = directory.path().join("nodex.db");
@@ -9281,9 +9402,9 @@ mod tests {
             .unwrap().collect::<rusqlite::Result<_>>().unwrap();
         assert_eq!(preserved, prior);
         assert_eq!(connection.query_row("SELECT count(*) FROM thread_backend_sessions WHERE runtime_options_json IS NOT NULL", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
-        assert!(connection.execute("UPDATE codex_threads SET agent_backend_kind='opencode',agent_backend_definition_id=NULL,agent_backend_instance_config_id=NULL WHERE thread_id='fixture-acp'", []).is_err());
-        connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_instance_config_id,recency_at) VALUES ('open',1,1,'2026-10-03T00:00:00.000Z','opencode','open-work',1),('open-duplicate',1,1,'2026-10-03T00:00:00.000Z','opencode','another-work',1); INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home,runtime_options_json) VALUES ('open','opencode','open-work','open-session',2,'https://open.example.test','{\"model\":\"moonshot/kimi-k3\",\"mode_id\":\"build\",\"config_options\":[{\"id\":\"thinking\",\"value\":true}]}');").expect("new OpenCode session");
-        assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home) VALUES ('open-duplicate','opencode','another-work','open-session',2,'https://open.example.test')", []).is_err());
+        assert!(connection.execute("UPDATE codex_threads SET agent_backend_driver='opencode',agent_backend_instance_id=NULL WHERE thread_id='fixture-acp'", []).is_err());
+        connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_driver,agent_backend_instance_id,recency_at) VALUES ('open',1,1,'2026-10-03T00:00:00.000Z','opencode','open-work',1),('open-duplicate',1,1,'2026-10-03T00:00:00.000Z','opencode','another-work',1); INSERT INTO thread_backend_sessions(thread_id,backend_driver,backend_instance_id,backend_session_id,updated_at,native_home,runtime_options_json) VALUES ('open','opencode','open-work','open-session',2,'https://open.example.test','{\"model\":\"moonshot/kimi-k3\",\"mode_id\":\"build\",\"config_options\":[{\"id\":\"thinking\",\"value\":true}]}');").expect("new OpenCode session");
+        assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_driver,backend_instance_id,backend_session_id,updated_at,native_home) VALUES ('open-duplicate','opencode','another-work','open-session',2,'https://open.example.test')", []).is_err());
         assert!(connection.execute("UPDATE thread_backend_sessions SET runtime_options_json='invalid' WHERE thread_id='open'", []).is_err());
         drop(connection);
         let mut reopened = open_writer(&path).expect("reopen");

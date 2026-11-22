@@ -83,7 +83,7 @@ pub struct RemotePrincipal {
 pub struct BoundAgentAttribution {
     pub session_id: String,
     pub run_id: Option<String>,
-    pub backend: crate::agent::AgentBackendKind,
+    pub driver: String,
 }
 
 /// An editor lifetime and the authenticated Host process run it belongs to.

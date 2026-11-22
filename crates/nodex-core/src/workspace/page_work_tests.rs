@@ -203,7 +203,7 @@ fn managed_work_creates_followup_pages_for_its_owner() {
     actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
         run_id: None,
         session_id: "session:owned".into(),
-        backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+        driver: "codex".into(),
     });
     w.module
         .apply(
@@ -655,7 +655,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
         actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
             run_id: None,
             session_id: "chat".into(),
-            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+            driver: "codex".into(),
         });
         w.module
             .apply(

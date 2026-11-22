@@ -9265,7 +9265,7 @@ mod tests {
         agent.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
             run_id: None,
             session_id: "session:agent".into(),
-            backend: nodex_core_contracts::agent::AgentBackendKind::Codex,
+            driver: "codex".into(),
         });
         let read = |sql: &'static str| {
             kernel

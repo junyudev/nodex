@@ -191,9 +191,7 @@ fn space_name_is_owner_controlled_and_enrollment_reads_its_current_value() {
 
 #[test]
 fn agent_credentials_freeze_the_run_requester_before_observation() {
-    use nodex_core_contracts::{
-        Actor, AdapterKind, BoundAgentAttribution, agent::AgentBackendKind,
-    };
+    use nodex_core_contracts::{Actor, AdapterKind, BoundAgentAttribution};
     let space = Space::new();
     let bob = space
         .membership
@@ -215,12 +213,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .record_agent_run(
-            "chat",
-            Some("run"),
-            Some("message"),
-            AgentBackendKind::Codex,
-        )
+        .record_agent_run("chat", Some("run"), Some("message"), "codex", "Codex")
         .unwrap();
     let alice_id = alice.member_id;
     space.store.writer().call(move |c| {
@@ -229,12 +222,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     }).unwrap();
     space
         .membership
-        .record_agent_run(
-            "chat",
-            Some("run"),
-            Some("message"),
-            AgentBackendKind::Codex,
-        )
+        .record_agent_run("chat", Some("run"), Some("message"), "codex", "Codex")
         .unwrap();
     assert_eq!(
         space
@@ -245,7 +233,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
                 Some(&BoundAgentAttribution {
                     session_id: "chat".into(),
                     run_id: Some("run".into()),
-                    backend: AgentBackendKind::Codex,
+                    driver: "codex".into(),
                 })
             )
             .unwrap(),
@@ -259,7 +247,7 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
     // message still belongs to Bob, including after a provisional observation.
     space
         .membership
-        .record_agent_run("chat", Some("queued-run"), None, AgentBackendKind::Codex)
+        .record_agent_run("chat", Some("queued-run"), None, "codex", "Codex")
         .unwrap();
     space
         .membership
@@ -267,30 +255,29 @@ fn agent_credentials_freeze_the_run_requester_before_observation() {
             "chat",
             Some("queued-run"),
             Some("message"),
-            AgentBackendKind::Codex,
+            "codex",
+            "Codex",
         )
         .unwrap();
     assert!(
         matches!(space.membership.actor(&AdapterKind::Agent, None, Some(&BoundAgentAttribution {
-        session_id: "chat".into(), run_id: Some("queued-run".into()), backend: AgentBackendKind::Codex,
+        session_id: "chat".into(), run_id: Some("queued-run".into()), driver: "codex".into(),
     })).unwrap(), Actor::Agent {on_behalf_of,..} if on_behalf_of==bob.member_id)
     );
     assert!(
-        matches!(space.membership.record_agent_run("chat", Some("unknown-run"), Some("unknown-message"), AgentBackendKind::Codex), Err(e) if e.code==StoreErrorCode::MissingDependencies)
+        matches!(space.membership.record_agent_run("chat", Some("unknown-run"), Some("unknown-message"), "codex", "Codex"), Err(e) if e.code==StoreErrorCode::MissingDependencies)
     );
     assert!(
         space
             .membership
-            .record_agent_run("missing", Some("run"), None, AgentBackendKind::Codex)
+            .record_agent_run("missing", Some("run"), None, "codex", "Codex")
             .is_err()
     );
 }
 
 #[test]
 fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat() {
-    use nodex_core_contracts::{
-        Actor, AdapterKind, BoundAgentAttribution, agent::AgentBackendKind,
-    };
+    use nodex_core_contracts::{Actor, AdapterKind, BoundAgentAttribution};
     let space = Space::new();
     let alice = space
         .membership
@@ -326,7 +313,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
             Some(&BoundAgentAttribution {
                 session_id: "chat".into(),
                 run_id: Some(run.into()),
-                backend: AgentBackendKind::Acp,
+                driver: "acpRegistry".into(),
             }),
         )
         .unwrap()
@@ -341,7 +328,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
     ] {
         space
             .membership
-            .record_agent_run("chat", Some(run), Some(message), AgentBackendKind::Acp)
+            .record_agent_run("chat", Some(run), Some(message), "acpRegistry", "Agent")
             .unwrap();
         assert_eq!(on_behalf_of(run), alice.member_id);
     }
@@ -362,7 +349,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
             "chat",
             Some("engine:later"),
             Some("automation:message:bound"),
-            AgentBackendKind::Acp,
+            "acpRegistry", "Agent",
         ),
         Err(error) if error.code == StoreErrorCode::Unauthorized
     ));

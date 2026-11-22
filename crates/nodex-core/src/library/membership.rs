@@ -169,6 +169,18 @@ fn bind_run_requester(
     Ok(())
 }
 
+fn validate_agent_name(driver: &str, label: &str) -> Result<(String, String), StoreError> {
+    let label = label.trim();
+    if !crate::domain::agent_backend::valid_slug(driver)
+        || label.is_empty()
+        || label.len() > 256
+        || label.chars().any(char::is_control)
+    {
+        return Err(invalid("Agent attribution is invalid"));
+    }
+    Ok((driver.to_owned(), label.to_owned()))
+}
+
 impl LibraryMembership {
     /// The execution owner verifies the Run; Core freezes its requesting Member
     /// during Turn preparation, even if the first observation has not arrived.
@@ -177,7 +189,8 @@ impl LibraryMembership {
         session: &str,
         run: Option<&str>,
         message: Option<&str>,
-        backend: nodex_core_contracts::agent::AgentBackendKind,
+        driver: &str,
+        label: &str,
     ) -> Result<(), StoreError> {
         let session = session.to_owned();
         let run = run.map(str::to_owned);
@@ -186,20 +199,32 @@ impl LibraryMembership {
             return Err(invalid("Message attribution requires its Run"));
         }
         let space = self.space.clone();
-        let label = match backend {
-            nodex_core_contracts::agent::AgentBackendKind::Codex => "Codex",
-            nodex_core_contracts::agent::AgentBackendKind::Claude => "Claude",
-            nodex_core_contracts::agent::AgentBackendKind::OpenCode => "OpenCode",
-            nodex_core_contracts::agent::AgentBackendKind::Antigravity => "Antigravity",
-            nodex_core_contracts::agent::AgentBackendKind::Acp => "Agent",
-        };
+        let (driver, label) = validate_agent_name(driver, label)?;
         self.writer.clone().call(move |c| with_immediate_transaction(c, |c| {
             bind_run_requester(c, &session, run.as_deref(), message.as_deref())?;
             crate::infrastructure::actors::for_session(c, &space, &session, run.clone())?;
-            c.execute("INSERT INTO agent_actor_labels(session_id,run_key,label) VALUES(?1,?2,?3) ON CONFLICT(session_id,run_key) DO UPDATE SET label=excluded.label", params![session,run.as_deref().unwrap_or_default(),label])?;
+            c.execute("INSERT INTO agent_actor_labels(session_id,run_key,label,driver) VALUES(?1,?2,?3,?4) ON CONFLICT(session_id,run_key) DO UPDATE SET label=excluded.label,driver=excluded.driver", params![session,run.as_deref().unwrap_or_default(),label,driver])?;
             Ok(())
         }))
     }
+    /// Persist the Host's Agent label when a native Session is given CLI authority.
+    pub fn record_agent_label(
+        &self,
+        attribution: &nodex_core_contracts::BoundAgentAttribution,
+        label: &str,
+    ) -> Result<(), StoreError> {
+        let (driver, label) = validate_agent_name(&attribution.driver, label)?;
+        let session = attribution.session_id.clone();
+        let run_key = attribution.run_id.clone().unwrap_or_default();
+        self.writer.clone().call(move |connection| {
+            connection.execute(
+                "INSERT OR IGNORE INTO agent_actor_labels(session_id,run_key,label,driver) VALUES (?1,?2,?3,?4)",
+                params![session, run_key, label, driver],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn actor(
         &self,
         adapter: &nodex_core_contracts::AdapterKind,

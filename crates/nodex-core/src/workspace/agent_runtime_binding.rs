@@ -274,7 +274,7 @@ pub(super) fn adopt_native_session(
         ));
     }
     let title: Option<String> = connection.query_row(
-        "SELECT COALESCE(thread.thread_name,session.no_thread_fallback_title) FROM codex_threads thread JOIN project_sessions session ON session.id=?1 WHERE thread.thread_id=?2 AND thread.execution_host_id=?3 AND thread.parent_thread_id IS NULL AND thread.archived=0 AND thread.status_type<>'active' AND thread.agent_backend_kind='codex'",
+        "SELECT COALESCE(thread.thread_name,session.no_thread_fallback_title) FROM codex_threads thread JOIN project_sessions session ON session.id=?1 WHERE thread.thread_id=?2 AND thread.execution_host_id=?3 AND thread.parent_thread_id IS NULL AND thread.archived=0 AND thread.status_type<>'active' AND thread.agent_backend_driver='codex'",
         params![session_id,expected_native_thread_id,expected_native_host_id], |row| row.get(0),
     ).optional()?;
     let title = title.ok_or_else(|| {

@@ -680,7 +680,8 @@ fn agent_attribution_credentials_name_the_session() {
     );
 
     let request = |session: &str| {
-        serde_json::json!({ "session_id": session, "backend": "opencode" }).to_string()
+        serde_json::json!({ "session_id": session, "driver": "opencode", "label": "OpenCode" })
+            .to_string()
     };
     // Only the desktop Host can vouch for an Agent, and only for a Session that exists.
     let native_headers = vec![];

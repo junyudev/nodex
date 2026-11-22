@@ -153,7 +153,7 @@ pub(crate) fn execution_automation(
 pub(crate) fn backfill_snapshots(connection: &Connection) -> Result<(), StoreError> {
     let history=connection.prepare("SELECT run.run_id,run.automation_id,run.dispatch_id,run.status,run.created_at FROM automation_execution_runs run WHERE run.dispatch_id IS NULL OR NOT EXISTS(SELECT 1 FROM automation_decisions decision WHERE decision.dispatch_id=run.dispatch_id) ORDER BY run.run_id")?.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,String>(3)?,r.get::<_,i64>(4)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     for (run, id, dispatch, status, created) in history {
-        let Some(automation) = super::read::read_definition(connection, &id)? else {
+        let Some(automation) = super::read::read_legacy_definition(connection, &id)? else {
             continue;
         };
         let dispatch = dispatch.unwrap_or_else(|| {
@@ -186,7 +186,7 @@ pub(crate) fn backfill_snapshots(connection: &Connection) -> Result<(), StoreErr
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (dispatch, id) in ids {
-        let Some(mut automation) = super::read::read_definition(connection, &id)? else {
+        let Some(mut automation) = super::read::read_legacy_definition(connection, &id)? else {
             continue;
         };
         let (revision,prompt,agent):(i64,Option<String>,Option<String>)=connection.query_row("SELECT automation_revision,admission_prompt,admission_agent_json FROM automation_decisions WHERE dispatch_id=?1",[&dispatch],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;
@@ -244,38 +244,8 @@ fn invalid(message: &str) -> StoreError {
 pub(crate) fn agent_selection(
     automation: &Automation,
 ) -> Result<nodex_core_contracts::library::AgentWorkSelection, StoreError> {
-    use base64::Engine;
-    use nodex_core_contracts::agent::AgentBackendBinding;
-    use sha2::{Digest, Sha256};
-    let instance_id = match &automation.backend_binding {
-        AgentBackendBinding::Codex => "codex".to_owned(),
-        binding => {
-            let (kind, id) = match binding {
-                AgentBackendBinding::Claude { instance_config_id } => {
-                    ("claude", instance_config_id)
-                }
-                AgentBackendBinding::OpenCode { instance_config_id } => {
-                    ("opencode", instance_config_id)
-                }
-                AgentBackendBinding::Antigravity { instance_config_id } => {
-                    ("antigravity", instance_config_id)
-                }
-                AgentBackendBinding::Acp {
-                    instance_config_id: Some(id),
-                    ..
-                } => ("acp", id),
-                _ => return Err(invalid("Automation Agent instance is unavailable")),
-            };
-            let identity = serde_json::to_vec(&(kind, id))
-                .map_err(|_| invalid("Automation Agent identity is invalid"))?;
-            format!(
-                "{kind}_{}",
-                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(identity))
-            )
-        }
-    };
     Ok(nodex_core_contracts::library::AgentWorkSelection {
-        instance_id,
+        instance_id: automation.backend_binding.instance_id.clone(),
         model: automation
             .model
             .clone()

@@ -1466,7 +1466,7 @@ pub(super) fn read_dispatch_outbox(
                proposal.dispatch_session_id, session.project_id, \
                COALESCE(proposal.dispatch_thread_id,binding.runtime_thread_id,link.thread_id), proposal.attempt, \
                proposal.confirmed_at, thread.status_type, thread.status_active_flags_json, \
-               thread.agent_backend_kind \
+               thread.agent_backend_driver \
              FROM inbox_proposals proposal \
              LEFT JOIN project_sessions session ON session.id = proposal.dispatch_session_id \
              LEFT JOIN project_session_execution_bindings binding ON binding.session_id=proposal.dispatch_session_id \
