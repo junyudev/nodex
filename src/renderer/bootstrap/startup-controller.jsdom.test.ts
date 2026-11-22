@@ -1,16 +1,46 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { createStartupShellMarkup } from "../../../config/startup-shell-html";
-import type { AppInitializationStep, RendererInitializationReport } from "../../shared/app-startup";
+import type {
+  AppInitializationStep,
+  RendererInitializationReport,
+  WindowBootstrap,
+} from "../../shared/app-startup";
+import type { DiagnosticsSettings } from "../../shared/types";
+import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
+import { rendererSpace } from "../lib/renderer-space";
 import { startStartupController } from "./startup-controller";
 
 const mocks = vi.hoisted(() => ({
   initializeElectronRendererLocalCommitIngress: vi.fn(),
   initializeRendererMarkdown: vi.fn<() => Promise<void>>(),
-  initializeRendererSentry: vi.fn<() => Promise<void>>(),
-  mountApplicationRenderer: vi.fn<() => Promise<void>>(),
+  initializeRendererSentry:
+    vi.fn<(input: { readonly settings: DiagnosticsSettings | null }) => Promise<void>>(),
+  mountApplicationRenderer: vi.fn<(input: unknown) => Promise<void>>(),
   registerAppCloseFlushHandler: vi.fn<(handler: () => void) => () => void>(),
 }));
+
+const windowBootstrap: WindowBootstrap = {
+  space: {
+    spaceId: "space:startup",
+    kind: "team",
+    memberId: "member:startup",
+    deviceId: "device:startup",
+    name: "Startup Space",
+    availability: "ready",
+  },
+  windowSession: {
+    id: "window-session:startup",
+    lifecycle: { state: "open" },
+    layoutRevision: 3,
+    layout: createDefaultWorkbenchLayoutSnapshot(),
+    createdAt: "2026-11-22T08:00:00.000Z",
+    updatedAt: "2026-11-22T08:00:00.000Z",
+    focusedAt: "2026-11-22T08:00:00.000Z",
+  },
+  runtimeCapabilities: { enabledDevelopmentFeatures: ["runtime-metrics"] },
+  diagnostics: null,
+};
 
 vi.mock("../application-renderer", () => ({
   mountApplicationRenderer: mocks.mountApplicationRenderer,
@@ -43,6 +73,7 @@ vi.mock("../lib/sentry-renderer", () => ({
 }));
 
 interface BridgeHarness {
+  readonly awaitInitialization: ReturnType<typeof vi.fn<() => Promise<WindowBootstrap>>>;
   readonly invoke: ReturnType<typeof vi.fn>;
   readonly reportInitializationReady: ReturnType<
     typeof vi.fn<(report: RendererInitializationReport) => void>
@@ -71,17 +102,18 @@ function installBridge(): BridgeHarness {
   let initializationListener: ((step: AppInitializationStep) => void) | null = null;
   let resolveInitialization = (): void => undefined;
   let rejectInitialization = (_cause: unknown): void => undefined;
-  const initialization = new Promise<void>((resolve, reject) => {
-    resolveInitialization = resolve;
+  const initialization = new Promise<WindowBootstrap>((resolve, reject) => {
+    resolveInitialization = () => resolve(windowBootstrap);
     rejectInitialization = reject;
   });
+  const awaitInitialization = vi.fn(() => initialization);
   const invoke = vi.fn(() => Promise.resolve());
   const reportInitializationReady = vi.fn<(report: RendererInitializationReport) => void>();
   const restartApplication = vi.fn(() => Promise.resolve());
   Object.defineProperty(window, "api", {
     configurable: true,
     value: {
-      awaitInitialization: () => initialization,
+      awaitInitialization,
       invoke,
       on: vi.fn((channel: string, listener: (...args: unknown[]) => void) => {
         if (channel === "app:flush-before-close") closeFlushListeners.add(listener);
@@ -98,6 +130,7 @@ function installBridge(): BridgeHarness {
     },
   });
   return {
+    awaitInitialization,
     invoke,
     reportInitializationReady,
     rejectInitialization,
@@ -243,7 +276,6 @@ describe("startup controller", () => {
           outcome: "ready",
           timingsMs: {
             native: expect.any(Number),
-            bootstrap: expect.any(Number),
             modules: expect.any(Number),
             diagnostics: expect.any(Number),
             mount: expect.any(Number),
@@ -252,6 +284,25 @@ describe("startup controller", () => {
       });
     });
     expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce();
+  });
+
+  test("starts the window from its single bootstrap reply", async () => {
+    const bridge = installBridge();
+    await startLocalizedStartupController();
+
+    await act(async () => {
+      bridge.resolveInitialization();
+      await vi.waitFor(() => expect(bridge.reportInitializationReady).toHaveBeenCalledOnce());
+    });
+    // Binding the Space, the Window Session, capabilities and diagnostics need no further reads.
+    expect(bridge.awaitInitialization).toHaveBeenCalledOnce();
+    expect(bridge.invoke).not.toHaveBeenCalled();
+    expect(rendererSpace()).toEqual(windowBootstrap.space);
+    expect(mocks.initializeRendererSentry).toHaveBeenCalledExactlyOnceWith({ settings: null });
+    expect(mocks.mountApplicationRenderer).toHaveBeenCalledExactlyOnceWith({
+      runtimeCapabilities: windowBootstrap.runtimeCapabilities,
+      windowSessionBootstrap: { session: windowBootstrap.windowSession },
+    });
   });
 
   test("offers startup recovery when Markdown initialization fails before the application mounts", async () => {
@@ -267,7 +318,6 @@ describe("startup controller", () => {
           outcome: "failed",
           timingsMs: {
             native: expect.any(Number),
-            bootstrap: expect.any(Number),
             modules: expect.any(Number),
           },
         });
@@ -291,7 +341,6 @@ describe("startup controller", () => {
           outcome: "failed",
           timingsMs: {
             native: expect.any(Number),
-            bootstrap: expect.any(Number),
             modules: expect.any(Number),
             diagnostics: expect.any(Number),
           },

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { parsePageDeepLink, buildPageDeepLink } from "../../src/shared/nodex-deeplink";
-import { invokeIpc } from "./support/editor-scenario";
+import { readWindowBinding } from "./support/window-binding";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -181,7 +181,7 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       await waitForMentionOrFailure(page, mention);
       const href = await mention.getAttribute("href");
       const target = parsePageDeepLink(href ?? "");
-      const spaceId = (await invokeIpc(page, "spaces:context")).spaceId;
+      const spaceId = (await readWindowBinding(page)).space.spaceId;
       expect(target?.spaceId).toBe(spaceId);
       const createdPageId = target?.pageId;
       if (!createdPageId) throw new Error("Created Page mention has no canonical Page URL");

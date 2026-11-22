@@ -47,14 +47,17 @@ const makeIpc = Effect.fn("makeIpc")(function* () {
   );
   const context = yield* Layer.buildWithScope(live.pipe(Layer.provide(callbacks)), scope);
   yield* Context.get(context, ElectronSpaceIpc)
-    .configure(({ request, personal }) => {
-      const envelope = request as { spaceId: string; args: readonly unknown[] };
-      if (!envelope || envelope.spaceId !== "personal" || !Array.isArray(envelope.args))
-        return Effect.fail(new Error("Unknown Space"));
-      return CoreRequestClass.pipe(
-        Effect.tap((requestClass) => Effect.sync(() => expect(requestClass).toBe("interactive"))),
-        Effect.andThen(personal(envelope.args)),
-      );
+    .configure({
+      context: () => Effect.fail(new Error("Unused Space context")),
+      dispatch: ({ request, personal }) => {
+        const envelope = request as { spaceId: string; args: readonly unknown[] };
+        if (!envelope || envelope.spaceId !== "personal" || !Array.isArray(envelope.args))
+          return Effect.fail(new Error("Unknown Space"));
+        return CoreRequestClass.pipe(
+          Effect.tap((requestClass) => Effect.sync(() => expect(requestClass).toBe("interactive"))),
+          Effect.andThen(personal(envelope.args)),
+        );
+      },
     })
     .pipe(Effect.provideService(Scope.Scope, scope));
   return { ipc: Context.get(context, ElectronIpc), scope };

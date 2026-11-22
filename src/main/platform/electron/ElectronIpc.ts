@@ -16,6 +16,7 @@ import type {
   PlainResultCommandChannel,
 } from "../../../shared/ipc-endpoint-policy";
 import type { IpcApi } from "../../../shared/ipc-api";
+import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 import { isSpaceIpcChannel } from "../../../shared/space-ipc-policy";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { toElectronIpcRendererError } from "./electron-ipc-error";
@@ -172,11 +173,20 @@ export type SpaceIpcDispatch = (input: {
   readonly personal: (args: readonly unknown[]) => Effect.Effect<unknown, unknown>;
 }) => Effect.Effect<unknown, unknown>;
 
+/** How Main resolves and serves the Space each renderer document belongs to. */
+export interface SpaceIpcRouting {
+  /** The Space connection the sending renderer document is bound to. */
+  readonly context: (event: IpcMainInvokeEvent) => Effect.Effect<SpaceConnectionSummary, unknown>;
+  readonly dispatch: SpaceIpcDispatch;
+}
+
 /** Installed after personal Core acquisition; bootstrap IPC never depends on Core. */
 export class ElectronSpaceIpc extends Context.Service<
   ElectronSpaceIpc,
   {
-    readonly configure: (dispatch: SpaceIpcDispatch) => Effect.Effect<void, never, Scope.Scope>;
+    readonly configure: (routing: SpaceIpcRouting) => Effect.Effect<void, never, Scope.Scope>;
+    /** The sending renderer's Space, once routing is configured. */
+    readonly context: (event: IpcMainInvokeEvent) => Effect.Effect<SpaceConnectionSummary, unknown>;
     /**
      * Whether a window can reach the channel at all. Electron delivers a renderer's call only to
      * a channel this process registered, so a Space serves only channels with a process route.
@@ -193,7 +203,8 @@ const asyncLive: Layer.Layer<
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
     const destruction = yield* WebContentsDestructionSubscriptions;
-    let spaceDispatch: SpaceIpcDispatch | null = null;
+    let spaceRouting: SpaceIpcRouting | null = null;
+    const routingNotReady = () => Effect.fail(new Error("Space routing is not ready"));
     const routed = new Set<keyof IpcApi>();
     const handle = <
       Channel extends keyof IpcApi,
@@ -230,14 +241,14 @@ const asyncLive: Layer.Layer<
               };
               const task = isSpaceIpcChannel(channel)
                 ? Effect.suspend(() =>
-                    spaceDispatch
-                      ? spaceDispatch({
+                    spaceRouting
+                      ? spaceRouting.dispatch({
                           channel,
                           event,
                           request: args.length === 1 ? args[0] : undefined,
                           personal,
                         })
-                      : Effect.fail(new Error("Space routing is not ready")),
+                      : routingNotReady(),
                   )
                 : personal(args);
               return callbacks.runPromise(
@@ -291,16 +302,18 @@ const asyncLive: Layer.Layer<
       Context.add(
         ElectronSpaceIpc,
         ElectronSpaceIpc.of({
-          configure: (dispatch) =>
+          configure: (routing) =>
             Effect.acquireRelease(
               Effect.sync(() => {
-                spaceDispatch = dispatch;
+                spaceRouting = routing;
               }),
               () =>
                 Effect.sync(() => {
-                  if (spaceDispatch === dispatch) spaceDispatch = null;
+                  if (spaceRouting === routing) spaceRouting = null;
                 }),
             ),
+          context: (event) =>
+            Effect.suspend(() => (spaceRouting ? spaceRouting.context(event) : routingNotReady())),
           routes: (channel) => routed.has(channel),
         }),
       ),

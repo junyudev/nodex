@@ -11,7 +11,7 @@ import {
 } from "../ipc/handlers/ApplicationBootstrapIpc";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { ElectronApp } from "../platform/electron/ElectronApp";
-import { ElectronIpc } from "../platform/electron/ElectronIpc";
+import { ElectronIpc, ElectronSpaceIpc } from "../platform/electron/ElectronIpc";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import {
   ApplicationWindowShellRuntime,
@@ -88,6 +88,7 @@ export const live: Layer.Layer<
   | ElectronApp
   | ElectronDesktop
   | ElectronIpc
+  | ElectronSpaceIpc
   | ElectronSessionHost
   | MainConfig
   | MainObservability

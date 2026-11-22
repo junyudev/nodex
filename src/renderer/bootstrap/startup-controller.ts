@@ -1,5 +1,4 @@
 import type { AppInitializationStep, RendererInitializationPhase } from "../../shared/app-startup";
-import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilities";
 import { subscribeAppLocale } from "../lib/app-locale";
 import { startupOperations } from "./startup-operations";
 import { fallbackStartupFormat, startupShellText, type StartupFormat } from "./startup-messages";
@@ -185,22 +184,12 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
   };
 
   void measure("native", awaitInitialization)
-    .then(async () => {
+    .then(async (bootstrap) => {
       await localeReady;
       if (disposed) return;
-      if (api.getSpaceContext) {
-        const { bindRendererSpace } = await import("../lib/renderer-space");
-        bindRendererSpace(await api.getSpaceContext());
-      }
+      const { bindRendererSpace } = await import("../lib/renderer-space");
+      bindRendererSpace(bootstrap.space);
       renderStep({ phase: "done" });
-      const [windowSession, runtimeCapabilities] = await measure("bootstrap", () =>
-        Promise.all([
-          startupOperations.readWindowSession(api),
-          startupOperations
-            .readRuntimeCapabilities(api)
-            .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
-        ]),
-      );
       const [application, closeFlush, transport, sentry] = await measure("modules", () =>
         Promise.all([
           Promise.all([
@@ -218,14 +207,16 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
       );
       if (disposed) return;
       transport.initializeElectronRendererLocalCommitIngress(api);
-      await measure("diagnostics", () => sentry.initializeRendererSentry());
+      await measure("diagnostics", () =>
+        sentry.initializeRendererSentry({ settings: bootstrap.diagnostics }),
+      );
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
       retireStartupCloseFlush();
       const mounting = measure("mount", () =>
         application.mountApplicationRenderer({
-          runtimeCapabilities,
-          windowSessionBootstrap: windowSession,
+          runtimeCapabilities: bootstrap.runtimeCapabilities,
+          windowSessionBootstrap: { session: bootstrap.windowSession },
         }),
       );
       // A failed mount keeps the shell, which then presents the failure.

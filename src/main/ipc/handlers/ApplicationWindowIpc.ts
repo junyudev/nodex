@@ -4,8 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { nativeTheme, type IpcMainInvokeEvent } from "electron";
-import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
-import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
 import type { WorkbenchPageStageSurfaceConfig } from "../../../shared/workbench-scene";
 import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
 import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
@@ -23,7 +21,6 @@ export class ApplicationWindowIpcError extends Schema.TaggedError<ApplicationWin
 ) {}
 
 export interface ApplicationWindowIpcOptions {
-  readonly runtimeCapabilities?: AppRuntimeCapabilities;
   readonly validatePageTarget: (
     event: IpcMainInvokeEvent,
     page: WorkbenchPageStageSurfaceConfig,
@@ -44,19 +41,6 @@ export const live = (
       const ipc = yield* ElectronIpc;
       const windows = yield* WindowRuntime;
       const menu = yield* ApplicationMenuRuntime;
-      const runtimeCapabilities =
-        options.runtimeCapabilities ??
-        (() => {
-          try {
-            return {
-              enabledDevelopmentFeatures: [
-                ...parseDevelopmentFeatureEnvironment(config.environment),
-              ],
-            } satisfies AppRuntimeCapabilities;
-          } catch {
-            return { enabledDevelopmentFeatures: [] } satisfies AppRuntimeCapabilities;
-          }
-        })();
       const authorize = (event: IpcMainInvokeEvent, capability: string) =>
         Effect.try({
           try: () => {
@@ -141,9 +125,6 @@ export const live = (
           ),
           Effect.flatMap((publication) => menu.publishHistory(event.sender.id, publication)),
         ),
-      );
-      yield* ipc.handleQuery("app:runtime-capabilities:get", (event) =>
-        authorize(event, "Runtime capabilities").pipe(Effect.as(runtimeCapabilities)),
       );
       yield* ipc.handlePlainCommand("window:new", (event, input: unknown = {}) =>
         authorize(event, "New window").pipe(

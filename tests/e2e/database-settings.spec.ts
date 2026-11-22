@@ -12,6 +12,7 @@ import {
   DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION,
   requireDatabaseSettingsConfigurationFacts,
 } from "../../scripts/scenarios/scenarios/database-settings-configuration";
+import { readWindowBinding } from "./support/window-binding";
 /**
  * Edges that should coincide may differ by compositing snap: a strip that becomes a drag layer
  * moves to whole pixels, and popper placement rounds. Within one device pixel is the same edge.
@@ -1204,16 +1205,10 @@ test("View identity stays exact through tab selection, layout conversion, and re
         page.getByRole("button", { name: "Database settings", exact: true }),
       ).toBeFocused();
       await expect
-        .poll(
-          async () =>
-            await page.evaluate(async (viewId) => {
-              const api = (
-                window as unknown as {
-                  api: { invoke: (channel: string, ...args: unknown[]) => Promise<unknown> };
-                }
-              ).api;
-              return JSON.stringify(await api.invoke("window-sessions:bootstrap")).includes(viewId);
-            }, configured.listViewId),
+        .poll(async () =>
+          JSON.stringify((await readWindowBinding(page)).windowSession).includes(
+            configured.listViewId,
+          ),
         )
         .toBe(true);
 

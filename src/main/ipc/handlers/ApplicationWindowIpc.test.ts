@@ -55,10 +55,7 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
           Layer.mergeAll(
             Layer.succeed(ApplicationWindowRuntime, applicationWindows),
             Layer.succeed(ElectronIpc, ipc),
-            mainConfigLayer({
-              rendererUrl: "http://localhost:5173",
-              environment: { NODEX_DEV_ENABLED_FEATURES: "database-page-reorder-menu" },
-            }),
+            mainConfigLayer({ rendererUrl: "http://localhost:5173" }),
             Layer.succeed(WindowRuntime, windows),
             Layer.succeed(
               ApplicationMenuRuntime,
@@ -76,7 +73,6 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       scope,
     );
     assert.deepEqual([...handlers.keys()].sort(), [
-      "app:runtime-capabilities:get",
       "application-menu:invoke",
       "application-menu:snapshot",
       "electron-window:focus:get",
@@ -94,9 +90,6 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       mainFrame: frame,
     };
     const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-    assert.deepEqual(yield* handlers.get("app:runtime-capabilities:get")!(event), {
-      enabledDevelopmentFeatures: ["database-page-reorder-menu"],
-    });
     assert.deepEqual(yield* handlers.get("application-menu:snapshot")!(event), { menus: [] });
     assert.isTrue(yield* handlers.get("application-menu:invoke")!(event, "menu-item-1"));
     assert.deepEqual(snapshot.mock.calls, [[17]]);

@@ -48,12 +48,11 @@ declare global {
   interface Window {
     EXCALIDRAW_ASSET_PATH?: string | string[];
     api?: {
-      getSpaceContext?: () => Promise<import("../shared/space-connection").SpaceConnectionSummary>;
       getWindowZoomFactor?: () => number;
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
       onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;
-      awaitInitialization?: () => Promise<void>;
+      awaitInitialization?: () => Promise<import("../shared/app-startup").WindowBootstrap>;
       getStartupFailureEvidence?: () => Promise<
         import("../shared/app-startup").AppStartupFailureEvidence | null
       >;

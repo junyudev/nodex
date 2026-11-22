@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import type { WindowSessionBootstrap } from "../../src/shared/window-session";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
@@ -15,6 +14,7 @@ import {
   sendAgentPrompt,
   waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
+import { readWindowBinding } from "./support/window-binding";
 
 const row = (page: Page, prompt: string) =>
   page.locator("[data-queued-follow-up-row]").filter({ hasText: prompt });
@@ -114,10 +114,7 @@ test("two windows share an Agent chat's queue, Stop and Main commands, then cont
     });
     observe(second);
     const windows = await Promise.all(
-      [first, second].map(
-        async (page) =>
-          ((await invokeIpc(page, "window-sessions:bootstrap")) as WindowSessionBootstrap).session,
-      ),
+      [first, second].map(async (page) => (await readWindowBinding(page)).windowSession),
     );
     expect(windows[0]!.id).not.toBe(windows[1]!.id);
     for (const window of windows)
@@ -250,7 +247,7 @@ test("two windows share an Agent chat's queue, Stop and Main commands, then cont
           main: await page
             .locator("[data-testid='session-thread-page']")
             .evaluateAll((nodes) => nodes.map((node) => node.outerHTML)),
-          session: await invokeIpc(page, "window-sessions:bootstrap"),
+          session: (await readWindowBinding(page)).windowSession,
           visible: await page.locator("[data-queued-follow-up-row]").allTextContents(),
         })),
     );

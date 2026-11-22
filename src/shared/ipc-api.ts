@@ -179,7 +179,6 @@ import type {
   LibraryModuleReadRequest,
   LibraryModuleReadResult,
 } from "./library-module";
-import type { AppRuntimeCapabilities } from "./runtime-capabilities";
 import type {
   FileBytes,
   PickFilesInput,
@@ -760,17 +759,13 @@ export interface IpcApi
     args: [input: RemoteHostedPipTaskVisibilityInput];
     result: RemoteHostedPipTaskStateSnapshot;
   };
-  "app:runtime-capabilities:get": {
-    args: [];
-    result: AppRuntimeCapabilities;
-  };
   "windows-startup:status": { args: []; result: import("./windows-startup").WindowsStartupStatus };
   "windows-startup:open-settings": { args: []; result: void };
   "app:startup-failure-evidence": {
     args: [];
     result: import("./app-startup").AppStartupFailureEvidence | null;
   };
-  "app:await-initialization": { args: []; result: void };
+  "app:await-initialization": { args: []; result: import("./app-startup").WindowBootstrap };
   "app:get-core-authority-status": {
     args: [];
     result: import("./core-authority-status").CoreAuthorityStatus;
@@ -2003,7 +1998,6 @@ export interface IpcApi
     result: ComposerPickedFile[];
   };
   "window:new": { args: [request?: WindowSessionNewWindowRequest]; result: boolean };
-  "window-sessions:bootstrap": { args: []; result: WindowSessionBootstrap };
   "window-sessions:save-layout": {
     args: [input: WindowSessionSaveLayoutInput];
     result: WindowSessionBootstrap;

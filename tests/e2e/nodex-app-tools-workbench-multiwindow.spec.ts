@@ -4,7 +4,6 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import type { WorkbenchSceneReference } from "../../src/shared/nodex-app-tools/workbench";
-import type { WindowSessionBootstrap } from "../../src/shared/window-session";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -26,6 +25,7 @@ import {
   waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
+import { readWindowBinding } from "./support/window-binding";
 
 const BOOT_PROMPT = "WORKBENCH_MULTIWINDOW_BOOT";
 const SETUP_PROMPT = "WORKBENCH_MULTIWINDOW_SETUP";
@@ -343,12 +343,8 @@ test("native Workbench observations keep two windows independent and preserve th
         await expect(
           second.getByRole("button", { name: "Hide sidebar", exact: true }),
         ).toBeVisible();
-        firstWindowId = (
-          (await invokeIpc(first, "window-sessions:bootstrap")) as WindowSessionBootstrap
-        ).session.id;
-        secondWindowId = (
-          (await invokeIpc(second, "window-sessions:bootstrap")) as WindowSessionBootstrap
-        ).session.id;
+        firstWindowId = (await readWindowBinding(first)).windowSession.id;
+        secondWindowId = (await readWindowBinding(second)).windowSession.id;
         expect(firstWindowId).not.toBe(secondWindowId);
 
         // This public ingress intentionally has no presentation ticket, as with a non-UI follow-up.
@@ -413,9 +409,8 @@ test("native Workbench observations keep two windows independent and preserve th
               .innerText()
               .then((text) => text.slice(0, 6000))
               .catch(() => "unavailable"),
-            windowSession: await invokeIpc(page, "window-sessions:bootstrap")
-              .then((result) => {
-                const { session } = result as WindowSessionBootstrap;
+            windowSession: await readWindowBinding(page)
+              .then(({ windowSession: session }) => {
                 return {
                   id: session.id,
                   location: session.layout.location,

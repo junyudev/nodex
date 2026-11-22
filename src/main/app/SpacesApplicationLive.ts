@@ -30,6 +30,7 @@ import { ElectronIpc, ElectronSpaceIpc } from "../platform/electron/ElectronIpc"
 import { requireTrustedAppRendererSender } from "../platform/electron/TrustedRendererSender";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
+import type { SpaceConnectionSummary } from "../../shared/space-connection";
 import { personalStateKeyMatches } from "../../shared/space-personal-state";
 import { DEVICE_CAPABILITY_CHANNELS, rendererSpaceParameter } from "../../shared/space-ipc-policy";
 import { CoreRuntimeError, coreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -110,13 +111,18 @@ export const live = Layer.effectDiscard(
         },
         catch: () => new Error("Space connections require an active application window"),
       });
-    const contextFor = (event: Electron.IpcMainInvokeEvent) =>
-      authorize(event).pipe(
-        Effect.andThen(SubscriptionRef.get(spaces.summaries)),
+    const findSenderSpace = (event: Electron.IpcMainInvokeEvent) =>
+      SubscriptionRef.get(spaces.summaries).pipe(
         Effect.map((entries) => {
           const spaceId =
             rendererSpaceParameter(event.senderFrame?.url ?? "") ?? spaces.personalSpaceId;
-          const space = entries.find((entry) => entry.spaceId === spaceId);
+          return { spaceId, space: entries.find((entry) => entry.spaceId === spaceId) };
+        }),
+      );
+    const contextFor = (event: Electron.IpcMainInvokeEvent) =>
+      authorize(event).pipe(
+        Effect.andThen(findSenderSpace(event)),
+        Effect.map(({ space }) => {
           if (!space) throw new Error("This Space is no longer connected");
           return space;
         }),
@@ -156,55 +162,52 @@ export const live = Layer.effectDiscard(
       }),
     );
 
-    yield* routing.configure(({ channel, event, request, personal }) =>
-      Effect.gen(function* () {
-        const senderSpace = yield* contextFor(event);
-        const bound = yield* spaces.validateRequest(request, senderSpace.spaceId);
-        if (channel.startsWith("persisted-atom:")) {
-          if (channel === "persisted-atom:update") {
-            const mutation = bound.args[0];
-            if (
-              !mutation ||
-              typeof mutation !== "object" ||
-              !("key" in mutation) ||
-              typeof mutation.key !== "string" ||
-              !personalStateKeyMatches(mutation.key, bound.spaceId, senderSpace.memberId)
-            )
-              return yield* Effect.fail(
-                new Error("Personal state belongs to another Space or Member"),
-              );
-          }
-          return yield* personal(bound.args);
-        }
-        if (DEVICE_CAPABILITY_CHANNELS.includes(channel)) return yield* personal(bound.args);
-        if (bound.spaceId === spaces.personalSpaceId) return yield* personal(bound.args);
-        const context = yield* Effect.scoped(desktops.contextEffect(bound.spaceId));
-        return yield* Context.get(context, RemoteSpaceDesktop.RemoteSpaceDesktop).invoke(
-          channel,
-          event,
-          bound.args,
-        );
-      }),
-    );
-    yield* ipc.handleQuery("spaces:context", (event) =>
-      authorize(event).pipe(
-        Effect.andThen(SubscriptionRef.get(spaces.summaries)),
-        Effect.map((entries) => {
-          const spaceId =
-            rendererSpaceParameter(event.senderFrame?.url ?? "") ?? spaces.personalSpaceId;
-          return (
-            entries.find((entry) => entry.spaceId === spaceId) ?? {
-              spaceId,
-              kind: "team" as const,
-              memberId: null,
-              deviceId: null,
-              name: "Space",
-              availability: "unavailable" as const,
+    yield* routing.configure({
+      // A window restored into a Space this device no longer reaches still opens, and says so.
+      context: (event) =>
+        findSenderSpace(event).pipe(
+          Effect.map(
+            ({ spaceId, space }): SpaceConnectionSummary =>
+              space ?? {
+                spaceId,
+                kind: "team",
+                memberId: null,
+                deviceId: null,
+                name: "Space",
+                availability: "unavailable",
+              },
+          ),
+        ),
+      dispatch: ({ channel, event, request, personal }) =>
+        Effect.gen(function* () {
+          const senderSpace = yield* contextFor(event);
+          const bound = yield* spaces.validateRequest(request, senderSpace.spaceId);
+          if (channel.startsWith("persisted-atom:")) {
+            if (channel === "persisted-atom:update") {
+              const mutation = bound.args[0];
+              if (
+                !mutation ||
+                typeof mutation !== "object" ||
+                !("key" in mutation) ||
+                typeof mutation.key !== "string" ||
+                !personalStateKeyMatches(mutation.key, bound.spaceId, senderSpace.memberId)
+              )
+                return yield* Effect.fail(
+                  new Error("Personal state belongs to another Space or Member"),
+                );
             }
+            return yield* personal(bound.args);
+          }
+          if (DEVICE_CAPABILITY_CHANNELS.includes(channel)) return yield* personal(bound.args);
+          if (bound.spaceId === spaces.personalSpaceId) return yield* personal(bound.args);
+          const context = yield* Effect.scoped(desktops.contextEffect(bound.spaceId));
+          return yield* Context.get(context, RemoteSpaceDesktop.RemoteSpaceDesktop).invoke(
+            channel,
+            event,
+            bound.args,
           );
         }),
-      ),
-    );
+    });
     yield* ipc.handleQuery("spaces:list", (event) =>
       authorize(event).pipe(
         Effect.andThen(spaces.refreshName(spaces.personalSpaceId)),

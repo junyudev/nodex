@@ -16,6 +16,7 @@ import {
   type PageLifecyclePreflightSnapshotV2,
 } from "../../src/shared/page-lifecycle-v2-runtime";
 import { invokeIpc, requireIpcValue } from "./support/editor-scenario";
+import { readWindowBinding } from "./support/window-binding";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
@@ -223,7 +224,7 @@ test("two Member desktops recover from disconnect and committed response loss, t
                 .click();
               await bob.page.getByRole("menuitem").filter({ hasText: personal.name }).click();
               await expect
-                .poll(async () => (await invokeIpc(bob.page, "spaces:context")).kind)
+                .poll(async () => (await readWindowBinding(bob.page)).space.kind)
                 .toBe("personal");
               await expect(
                 bob.page.getByRole("button", { name: "Open Document Recovery", exact: true }),

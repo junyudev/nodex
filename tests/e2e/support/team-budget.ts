@@ -9,6 +9,7 @@ import { LocalHttpTransport } from "../../../src/main/core-client/local-http";
 import { readCoreRuntimeConnection } from "../../../src/main/core-client/runtime-descriptor";
 import type { CoreClient } from "../../../src/main/core-client/core-client";
 import { invokeIpc } from "./editor-scenario";
+import { readWindowBinding } from "./window-binding";
 import { openBoardPageFromCard } from "./open-board-page";
 
 /** Three real minutes of paced navigation and edits, with both renderers alive behind one IP.
@@ -36,7 +37,7 @@ export async function proveTwoDesktopBudget(input: {
   const samples: components["schemas"]["RemoteTransportStats"][] = [];
   const startedAt = Date.now();
   const participants = {
-    alice: (await invokeIpc(input.alice, "spaces:context")).memberId,
+    alice: (await readWindowBinding(input.alice)).space.memberId,
     bob: null as string | null,
   };
   await withElectronScenario(
@@ -52,7 +53,7 @@ export async function proveTwoDesktopBudget(input: {
       await dialog.getByLabel("Your name").fill("Bob");
       await dialog.getByRole("button", { name: "Join", exact: true }).click();
       await expect.poll(() => bob.url(), { timeout: 30_000 }).toContain("spaceId=");
-      participants.bob = (await invokeIpc(bob, "spaces:context")).memberId;
+      participants.bob = (await readWindowBinding(bob)).space.memberId;
       // An operation denial traverses the real desktop IPC/authority/HTTPS seam.
       await expect(
         invokeIpc(bob, "agent-runtime:session:respond", {
@@ -60,7 +61,7 @@ export async function proveTwoDesktopBudget(input: {
           answers: { scope: "Project" },
         }),
       ).rejects.toThrow();
-      expect((await invokeIpc(bob, "spaces:context")).availability).toBe("ready");
+      expect((await readWindowBinding(bob)).space.availability).toBe("ready");
       await invokeIpc(bob, "inbox:window", {
         scope: { kind: "all" },
         after: null,
@@ -113,8 +114,8 @@ export async function proveTwoDesktopBudget(input: {
         // The loaded hosted transcript and its draft stay available through every background refresh.
         await expect(composer).toBeEditable();
         await expect(composer).toHaveText("Retain this unsent draft during refresh");
-        expect((await invokeIpc(input.alice, "spaces:context")).availability).toBe("ready");
-        expect((await invokeIpc(bob, "spaces:context")).availability).toBe("ready");
+        expect((await readWindowBinding(input.alice)).space.availability).toBe("ready");
+        expect((await readWindowBinding(bob)).space.availability).toBe("ready");
         samples.push(await stats());
         await expect
           .poll(() => Date.now() - workloadStart, { timeout: 20_000, intervals: [1_000] })

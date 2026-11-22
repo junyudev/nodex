@@ -46,15 +46,19 @@ progress is available, the integer percentage never moves backward. The copy cle
 Store is ready. Status copy appears below the mark without moving it off center.
 
 The full Workbench loads only after global initialization and that window's activation gate are
-both ready. It lays out beneath the mark without showing or taking pointer input, and is marked busy
-for assistive technology; keyboard focus already reaches it, so typing ahead is kept. When its
-initial route reports readiness (below), the mark and the Workbench change places in one frame with
-a short crossfade, or at once with Reduce motion, so the window never shows a blank Workbench, a
-lone sidebar or an empty pane on the way. A Workbench that has not reported readiness three seconds
-after it began mounting is shown anyway. A failed mount keeps the mark, which then presents the
-failure. BrowserWindow and WebContents identities, bounds, traffic lights, focus, native material,
-and the macOS foreground application identity do not change at this transition; the app remains
-present in the Dock and application menu.
+both ready. The reply that opens the gate carries everything the renderer needs to start: the
+window's Space, its Window Session, runtime capabilities and diagnostics settings. The renderer
+binds its Space and mounts from that one reply, and every Space request in the document reuses it,
+so a window reaches its Workbench after a single round trip. A failed reply is retried by the next
+request instead of being retained. The Workbench lays out beneath the mark without showing or
+taking pointer input, and is marked busy for assistive technology; keyboard focus already reaches
+it, so typing ahead is kept. When its initial route reports readiness (below), the mark and the
+Workbench change places in one frame with a short crossfade, or at once with Reduce motion, so the
+window never shows a blank Workbench, a lone sidebar or an empty pane on the way. A Workbench that
+has not reported readiness three seconds after it began mounting is shown anyway. A failed mount
+keeps the mark, which then presents the failure. BrowserWindow and WebContents identities, bounds,
+traffic lights, focus, native material, and the macOS foreground application identity do not
+change at this transition; the app remains present in the Dock and application menu.
 
 When multiple Window Sessions restore, all receive their canonical lightweight shell, but only the
 primary is shown and activated first. Each following renderer activates after the previous renderer
@@ -77,7 +81,7 @@ recovery boundary and do not reject startup. A committed recoverable data error 
 loading wait.
 
 Renderer readiness diagnostics record separate durations for the native activation gate,
-bootstrap queries, application module loading, diagnostics initialization, and React mount.
+application module loading, diagnostics initialization, and React mount.
 Failed startup includes only phases that were attempted, including the failed phase. Browser
 profiling is best effort and cannot prevent startup or replace the original failure.
 

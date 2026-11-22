@@ -1,5 +1,4 @@
 import type { DiagnosticsSettings } from "./types";
-import { invokeRendererQuery as invoke } from "./renderer-command";
 import { createSentryPrivacyOptions } from "../../shared/diagnostics/sentry-options";
 import { isDiagnosticsSettings } from "../../shared/diagnostics/diagnostics-settings";
 import { installRendererTracing, type RendererTracing } from "./renderer-tracing";
@@ -16,8 +15,9 @@ interface RendererProcessLike {
 }
 
 export interface InitializeRendererSentryInput {
-  adapter?: RendererSentryAdapter;
-  getSettings?: () => Promise<DiagnosticsSettings | null>;
+  readonly adapter?: RendererSentryAdapter;
+  /** The window's diagnostics settings from its bootstrap reply. */
+  readonly settings: DiagnosticsSettings | null;
 }
 
 let initialized = false;
@@ -53,15 +53,6 @@ function shouldForceTestInitialization(): boolean {
   return getRendererProcess()?.env?.NODEX_SENTRY_FORCE_TEST === "1";
 }
 
-async function loadDiagnosticsSettings(): Promise<DiagnosticsSettings | null> {
-  try {
-    const result = await invoke("settings:diagnostics:get");
-    return isDiagnosticsSettings(result) ? result : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadDefaultAdapter(): Promise<RendererSentryAdapter> {
   const [sentry, react] = await Promise.all([
     import("@sentry/electron/renderer"),
@@ -77,12 +68,12 @@ async function loadDefaultAdapter(): Promise<RendererSentryAdapter> {
 }
 
 export async function initializeRendererSentry(
-  input: InitializeRendererSentryInput = {},
+  input: InitializeRendererSentryInput,
 ): Promise<boolean> {
   if (initialized) return true;
   if (isTestRuntime() && !shouldForceTestInitialization()) return false;
 
-  const settings = await (input.getSettings ?? loadDiagnosticsSettings)();
+  const settings = isDiagnosticsSettings(input.settings) ? input.settings : null;
   if (!settings?.active || !settings.dsn.trim()) return false;
 
   const adapter = input.adapter ?? (await loadDefaultAdapter());

@@ -38,17 +38,20 @@ describe("renderer Sentry diagnostics", () => {
     resetRendererSentryForTests();
   });
 
-  test("does not read diagnostic settings in tests without explicit initialization", async () => {
-    let settingsRead = false;
+  test("does not initialize diagnostics in tests without explicit initialization", async () => {
+    let initCount = 0;
     const initialized = await initializeRendererSentry({
-      getSettings: async () => {
-        settingsRead = true;
-        return buildSettings(true);
+      settings: buildSettings(true),
+      adapter: {
+        init: () => {
+          initCount += 1;
+        },
+        replayIntegration: () => ({}),
       },
     });
 
     expect(initialized).toBe(false);
-    expect(settingsRead).toBe(false);
+    expect(initCount).toBe(0);
   });
 
   test("traces with the SDK only once diagnostics initialize it", async () => {
@@ -66,7 +69,7 @@ describe("renderer Sentry diagnostics", () => {
     expect(withActiveSpan(idle, () => "ran")).toBe("ran");
 
     await initializeRendererSentry({
-      getSettings: async () => buildSettings(true),
+      settings: buildSettings(true),
       adapter: { init: () => {}, replayIntegration: () => ({}), tracing },
     });
 
@@ -77,7 +80,7 @@ describe("renderer Sentry diagnostics", () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     let initCount = 0;
     const initialized = await initializeRendererSentry({
-      getSettings: async () => buildSettings(false),
+      settings: buildSettings(false),
       adapter: {
         init: () => {
           initCount += 1;
@@ -93,7 +96,7 @@ describe("renderer Sentry diagnostics", () => {
   test("does not initialize diagnostics or replay without a DSN", async () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     const initialized = await initializeRendererSentry({
-      getSettings: async () => buildSettings(true, { dsn: "  ", replayEnabled: true }),
+      settings: buildSettings(true, { dsn: "  ", replayEnabled: true }),
     });
     expect(initialized).toBe(false);
   });
@@ -108,7 +111,7 @@ describe("renderer Sentry diagnostics", () => {
       mutableGlobal.process = undefined;
 
       const initialized = await initializeRendererSentry({
-        getSettings: async () => buildSettings(false),
+        settings: buildSettings(false),
         adapter: {
           init: () => {},
           replayIntegration: () => ({}),
@@ -135,7 +138,7 @@ describe("renderer Sentry diagnostics", () => {
       };
 
       const initialized = await initializeRendererSentry({
-        getSettings: async () => buildSettings(true),
+        settings: buildSettings(true),
         adapter: {
           init: () => {
             initCount += 1;
@@ -155,7 +158,7 @@ describe("renderer Sentry diagnostics", () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     const initOptions: Record<string, unknown>[] = [];
     const initialized = await initializeRendererSentry({
-      getSettings: async () => buildSettings(true),
+      settings: buildSettings(true),
       adapter: {
         init: (options) => {
           initOptions.push(options);
@@ -176,12 +179,11 @@ describe("renderer Sentry diagnostics", () => {
     const initOptions: Record<string, unknown>[] = [];
     const replayOptions: Record<string, unknown>[] = [];
     const initialized = await initializeRendererSentry({
-      getSettings: async () =>
-        buildSettings(true, {
-          replayEnabled: true,
-          replaysSessionSampleRate: 0.1,
-          replaysOnErrorSampleRate: 1,
-        }),
+      settings: buildSettings(true, {
+        replayEnabled: true,
+        replaysSessionSampleRate: 0.1,
+        replaysOnErrorSampleRate: 1,
+      }),
       adapter: {
         init: (options) => {
           initOptions.push(options);

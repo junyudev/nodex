@@ -1,6 +1,4 @@
-import type { AppRuntimeCapabilities } from "../../shared/runtime-capabilities";
 import type { LanguageSettings } from "../../shared/i18n/locales";
-import type { WindowSessionBootstrap } from "../lib/types";
 import {
   invokeRendererControlThrough,
   invokeRendererQueryThrough,
@@ -17,12 +15,4 @@ export const startupOperations = {
     webContentsId: number,
   ): Promise<void> =>
     await invokeRendererControlThrough(bridge, "app:flush-before-close:done", webContentsId),
-
-  readWindowSession: async (bridge: RendererQueryControlPort): Promise<WindowSessionBootstrap> =>
-    await invokeRendererQueryThrough(bridge, "window-sessions:bootstrap"),
-
-  readRuntimeCapabilities: async (
-    bridge: RendererQueryControlPort,
-  ): Promise<AppRuntimeCapabilities> =>
-    await invokeRendererQueryThrough(bridge, "app:runtime-capabilities:get"),
 };

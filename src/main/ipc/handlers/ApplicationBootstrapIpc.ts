@@ -8,18 +8,26 @@ import {
   APP_INITIALIZATION_STEP_CHANNEL,
   APP_RESTART_CHANNEL,
   RENDERER_INITIALIZATION_PHASES,
+  type WindowBootstrap,
 } from "../../../shared/app-startup";
+import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
+import {
+  FAIL_CLOSED_RUNTIME_CAPABILITIES,
+  type AppRuntimeCapabilities,
+} from "../../../shared/runtime-capabilities";
 import {
   WindowSessionBoundsSchema,
   WindowSessionSaveLayoutInputSchema,
 } from "../../../shared/schemas/window-session";
+import { rendererSpaceParameter } from "../../../shared/space-ipc-policy";
 import { MainObservability } from "../../app/MainObservability";
 import { MainConfig } from "../../app/MainConfig";
 import { MainShutdown } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
 import { safeSendToWebContents } from "../../ipc-safe-send";
 import { getMainLanguageSettings } from "../../i18n/main-intl";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, ElectronSpaceIpc } from "../../platform/electron/ElectronIpc";
+import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ApplicationWindowShellRuntime } from "../../window-runtime/ApplicationWindowShellRuntime";
 import { captureWindowSessionBounds, WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -60,8 +68,10 @@ export const live: Layer.Layer<
   ApplicationBootstrapIpc,
   never,
   | ApplicationInitializationRuntime
+  | ApplicationSettings
   | ApplicationWindowShellRuntime
   | ElectronIpc
+  | ElectronSpaceIpc
   | MainConfig
   | MainObservability
   | MainShutdown
@@ -73,9 +83,14 @@ export const live: Layer.Layer<
     const observability = yield* MainObservability;
     const initialization = yield* ApplicationInitializationRuntime;
     const ipc = yield* ElectronIpc;
+    const spaces = yield* ElectronSpaceIpc;
+    const settings = yield* ApplicationSettings;
     const shutdown = yield* MainShutdown;
     const shell = yield* ApplicationWindowShellRuntime;
     const windows = yield* WindowRuntime;
+    const runtimeCapabilities = yield* Effect.try((): AppRuntimeCapabilities => ({
+      enabledDevelopmentFeatures: [...parseDevelopmentFeatureEnvironment(config.environment)],
+    })).pipe(Effect.orElseSucceed(() => FAIL_CLOSED_RUNTIME_CAPABILITIES));
     const authorize = (event: IpcMainEvent | IpcMainInvokeEvent, capabilityName: string) =>
       Effect.try({
         try: () => {
@@ -104,6 +119,26 @@ export const live: Layer.Layer<
         Effect.andThen(observability.startupFailureEvidence),
       ),
     );
+    // One reply carries everything the renderer needs to start, so a window binds and mounts
+    // after a single round trip rather than a chain of dependent reads.
+    const windowBootstrap = (event: IpcMainInvokeEvent) =>
+      Effect.all(
+        {
+          space: spaces.context(event),
+          windowSession: parse("bootstrap-window-session", () =>
+            windows.bootstrap(
+              event.sender.id,
+              rendererSpaceParameter(event.senderFrame?.url ?? ""),
+            ),
+          ),
+          runtimeCapabilities: Effect.succeed(runtimeCapabilities),
+          diagnostics: settings.snapshot().pipe(
+            Effect.map((snapshot) => snapshot.diagnostics),
+            Effect.orElseSucceed(() => null),
+          ),
+        },
+        { concurrency: "unbounded" },
+      ) satisfies Effect.Effect<WindowBootstrap, unknown>;
     yield* ipc.handleQuery("app:await-initialization", (event) =>
       authorize(event, "Application initialization").pipe(
         Effect.andThen(
@@ -118,6 +153,7 @@ export const live: Layer.Layer<
             discard: true,
           }),
         ),
+        Effect.andThen(() => windowBootstrap(event)),
       ),
     );
     yield* ipc.on("app:renderer-initialization-finished", (event, input: unknown) =>
@@ -150,18 +186,6 @@ export const live: Layer.Layer<
         Effect.catch(() => Effect.void),
       ),
     );
-    yield* ipc.handleQuery("window-sessions:bootstrap", (event) =>
-      authorize(event, "Window Session bootstrap").pipe(
-        Effect.andThen(
-          parse("bootstrap-window-session", () => ({
-            session: windows.bootstrap(
-              event.sender.id,
-              new URL(event.senderFrame?.url ?? "").searchParams.get("spaceId"),
-            ),
-          })),
-        ),
-      ),
-    );
     yield* ipc.handlePlainCommand("window-sessions:save-layout", (event, input: unknown) =>
       authorize(event, "Window Session layout").pipe(
         Effect.andThen(
@@ -169,7 +193,7 @@ export const live: Layer.Layer<
         ),
         Effect.flatMap((layout) =>
           parse("save-window-layout", () => {
-            const spaceId = new URL(event.senderFrame?.url ?? "").searchParams.get("spaceId");
+            const spaceId = rendererSpaceParameter(event.senderFrame?.url ?? "");
             if (layout.spaceId !== spaceId)
               throw new Error("Window Session layout requires its sending Space");
             const window = windows.get(event.sender.id);

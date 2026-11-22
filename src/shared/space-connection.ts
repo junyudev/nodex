@@ -137,7 +137,6 @@ export const CHAT_STOP_RESERVED_REASON =
 
 export interface SpaceConnectionIpcApi {
   "spaces:list": { args: []; result: readonly SpaceConnectionSummary[] };
-  "spaces:context": { args: []; result: SpaceConnectionSummary };
   "spaces:join": { args: [input: JoinSpaceInput]; result: SpaceConnectionSummary };
   "spaces:leave": { args: [spaceId: SpaceId]; result: void };
   "spaces:switch": { args: [spaceId: SpaceId]; result: string };

@@ -17,7 +17,7 @@ export async function attachComposerFailureEvidence(page: Page, testInfo: TestIn
         }),
       ),
       persisted: await window.api?.invoke("persisted-atom:sync-request"),
-      windowSession: await window.api?.invoke("window-sessions:bootstrap"),
+      binding: await window.api?.invoke("app:await-initialization"),
     }));
     await testInfo.attach("initial-composer-state.json", {
       body: JSON.stringify(state, null, 2),

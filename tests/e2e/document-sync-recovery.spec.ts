@@ -13,7 +13,7 @@ import {
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
-import { invokeIpc } from "./support/editor-scenario";
+import { readWindowBinding } from "./support/window-binding";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
 
 test("editing, native reorder and cancelled structural waits recover through Electron and Core @automatic", async () => {
@@ -176,7 +176,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       ).toContain("remains independent");
 
       // Fault fixture: preserve a real engine snapshot containing edits Core has never seen.
-      const { spaceId, memberId } = await invokeIpc(page, "spaces:context");
+      const { spaceId, memberId } = (await readWindowBinding(page)).space;
       const databaseName = JSON.stringify(["space", spaceId, memberId, "nodex-document-cache"]);
       const retainedBytes = await page.evaluate(
         async ({ databaseName, documentId }) => {

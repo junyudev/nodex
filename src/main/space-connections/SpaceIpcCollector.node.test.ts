@@ -57,9 +57,12 @@ const routedProcess = Effect.fn("routedProcess")(function* (scope: Scope.Scope) 
   const routing = Context.get(context, ElectronSpaceIpc);
   const team = makeSpaceIpcCollector(routing);
   yield* routing
-    .configure(({ channel, event, request, personal }) => {
-      const { spaceId, args } = request as { spaceId: string; args: readonly unknown[] };
-      return spaceId === "team" ? team.invoke(channel, event, args) : personal(args);
+    .configure({
+      context: () => Effect.fail(new Error("Unused Space context")),
+      dispatch: ({ channel, event, request, personal }) => {
+        const { spaceId, args } = request as { spaceId: string; args: readonly unknown[] };
+        return spaceId === "team" ? team.invoke(channel, event, args) : personal(args);
+      },
     })
     .pipe(Effect.provideService(Scope.Scope, scope));
   return { process, routing, team };

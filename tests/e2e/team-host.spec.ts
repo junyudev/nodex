@@ -21,6 +21,7 @@ import { enrollRemoteCore } from "../../src/main/core-client/remote-http";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { createConvergenceBoardPage, invokeIpc } from "./support/editor-scenario";
+import { readWindowBinding } from "./support/window-binding";
 import { parseDatabaseViewId } from "../../src/shared/database-identities";
 import { proveTwoDesktopBudget } from "./support/team-budget";
 
@@ -373,7 +374,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         const card = page.locator(`[data-board-uuid-v7="${created.page_id}"]:visible`);
         await expect(card).toBeVisible();
         await openBoardPageFromCard({ card, page, tabName: "Host runner task" });
-        const member = (await invokeIpc(page, "spaces:context")).memberId;
+        const member = (await readWindowBinding(page)).space.memberId;
         if (!member) throw new Error("Missing joined Member");
         const assign = async (pageId: string) => {
           const detail = await invokeIpc(page, "pages:detail:get", initialized.projectId, pageId);
@@ -806,7 +807,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
           .toBe("completed");
         // A Member starts a chat of their own on the host from New chat, as on their own
         // desktop, and edits the message they sent there; no other Member may.
-        const { memberId: desktopMember } = await invokeIpc(page, "spaces:context");
+        const { memberId: desktopMember } = (await readWindowBinding(page)).space;
         /** The started chats Core records this desktop's Member as having opened, read-only. */
         const ownChats = (projectId: string | null) => {
           const database = new DatabaseSync(path.join(home, "nodex.db"), { readOnly: true });

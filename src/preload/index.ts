@@ -4,7 +4,11 @@ import {
   EXECUTE_FOCUSED_HISTORY_CHANNEL,
   type SurfaceHistoryDirection,
 } from "../shared/surface-history";
-import type { AppInitializationStep, RendererInitializationReport } from "../shared/app-startup";
+import type {
+  AppInitializationStep,
+  RendererInitializationReport,
+  WindowBootstrap,
+} from "../shared/app-startup";
 import {
   CORE_AUTHORITY_STATUS_CHANNEL,
   GET_CORE_AUTHORITY_STATUS_CHANNEL,
@@ -55,7 +59,7 @@ import {
 } from "../shared/codex-host-chunked-message";
 import type { IpcApi } from "../shared/ipc-api";
 import { isSpaceIpcChannel } from "../shared/space-ipc-policy";
-import type { SpaceConnectionSummary, SpaceRequest } from "../shared/space-connection";
+import type { SpaceRequest } from "../shared/space-connection";
 import {
   CodexNativeIpcClient,
   isCodexNativeIpcChannel,
@@ -160,14 +164,10 @@ function memoizeSuccessfulRequest<T>(read: () => Promise<T>): () => Promise<T> {
     }));
 }
 
+// The reply names this document's Space, so every Space request waits for the same one read.
 const awaitInitialization = memoizeSuccessfulRequest(
-  () => ipcRenderer.invoke("app:await-initialization") as Promise<void>,
+  () => ipcRenderer.invoke("app:await-initialization") as Promise<WindowBootstrap>,
 );
-const readSpaceContext = memoizeSuccessfulRequest(async () => {
-  // Main installs Space routing after bootstrap IPC, before opening the renderer gate.
-  await awaitInitialization();
-  return ipcRenderer.invoke("spaces:context") as Promise<SpaceConnectionSummary>;
-});
 
 const invokeBoundIpc = async <Channel extends keyof IpcApi>(
   channel: Channel,
@@ -175,8 +175,8 @@ const invokeBoundIpc = async <Channel extends keyof IpcApi>(
 ): Promise<IpcApi[Channel]["result"]> => {
   if (!isSpaceIpcChannel(channel))
     return ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
-  const context = await readSpaceContext();
-  const request: SpaceRequest<IpcApi[Channel]["args"]> = { spaceId: context.spaceId, args };
+  const { space } = await awaitInitialization();
+  const request: SpaceRequest<IpcApi[Channel]["args"]> = { spaceId: space.spaceId, args };
   return ipcRenderer.invoke(channel, request) as Promise<IpcApi[Channel]["result"]>;
 };
 
@@ -199,7 +199,6 @@ const invokeIpc = <Channel extends keyof IpcApi>(
 
 contextBridge.exposeInMainWorld("api", {
   getWindowZoomFactor: () => webFrame.getZoomFactor(),
-  getSpaceContext: readSpaceContext,
   invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {

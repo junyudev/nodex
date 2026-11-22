@@ -4,7 +4,7 @@ import { DEFAULT_CODEX_HOST_ID } from "../../src/shared/codex-host";
 import type { IpcEvents } from "../../src/shared/ipc-api";
 import { readbackId } from "../../src/shared/readback";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
-import { invokeIpc } from "./support/editor-scenario";
+import { readWindowBinding } from "./support/window-binding";
 
 /** Hit-tests the centre of an app surface that overlaps a Browser page. */
 async function expectAboveWebContent(overlay: Locator, name: string) {
@@ -62,7 +62,7 @@ test("App surfaces that overlap a Browser page sit above its content @automatic"
         await page.getByRole("button", { name: "Browser options", exact: true }).click();
         await page.getByRole("menuitem", { name: "Hide device toolbar", exact: true }).click();
 
-        const { spaceId } = await invokeIpc(page, "spaces:context");
+        const { spaceId } = (await readWindowBinding(page)).space;
         const sessionId = "background-session";
         const threadId = "background-thread";
         const runId = "background-run";
