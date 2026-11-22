@@ -28,6 +28,7 @@ import {
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
 } from "../../shared/schemas/project-sessions";
+import { ProjectSessionSummaryLanesInputSchema } from "../../shared/schemas/session-order";
 import type {
   CodexBackgroundProcessRecord,
   Project,
@@ -302,6 +303,11 @@ export interface ProjectWorkspaceService {
     projectId: string | null,
     input?: ProjectSessionSummaryWindowInput,
   ) => ProjectWorkspaceEffect<ProjectSessionSummaryWindow>;
+  /** Several lanes of one scope's chat list, in request order, from one Core snapshot. */
+  readonly listProjectSessionSummaryLanes: (
+    projectId: string | null,
+    lanes: readonly ProjectSessionSummaryWindowInput[],
+  ) => ProjectWorkspaceEffect<readonly ProjectSessionSummaryWindow[]>;
   readonly readSidebarOverview: (
     includeArchived?: boolean,
     input?: ProjectSessionSummaryWindowInput,
@@ -780,26 +786,48 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       });
     });
 
+    const taskLane = (input?: ProjectSessionSummaryWindowInput) => ({
+      include_archived: input?.includeArchived ?? false,
+      placement_scope: input?.placementScope ?? "all",
+      order: input?.order ?? "activity",
+      window: { after: input?.after ?? null, first: input?.first },
+    });
+    const summaryWindowFromCore = (
+      tasks: Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "task_window" }>["tasks"],
+    ): ProjectSessionSummaryWindow => ({
+      items: tasks.items.map(projectWorkspaceTaskFromCore),
+      nextCursor: tasks.next_cursor ?? null,
+      hasMore: tasks.next_cursor !== null && tasks.next_cursor !== undefined,
+      projectionRevision: tasks.authority.projection_revision,
+    });
+
     const listProjectSessionSummaryWindow = Effect.fn(
       "ProjectWorkspace.listProjectSessionSummaryWindow",
     )(function* (projectId: string | null, input?: ProjectSessionSummaryWindowInput) {
       const snapshot = yield* read("session.window", {
         kind: "task_window",
         project_id: projectId,
-        include_archived: input?.includeArchived ?? false,
-        placement_scope: input?.placementScope ?? "all",
-        order: input?.order ?? "activity",
-        window: { after: input?.after ?? null, first: input?.first },
+        ...taskLane(input),
       });
-      return yield* evaluate("session.window", () => {
-        const tasks = expectVariant(snapshot, "task_window").tasks;
-        return {
-          items: tasks.items.map(projectWorkspaceTaskFromCore),
-          nextCursor: tasks.next_cursor ?? null,
-          hasMore: tasks.next_cursor !== null && tasks.next_cursor !== undefined,
-          projectionRevision: tasks.authority.projection_revision,
-        } satisfies ProjectSessionSummaryWindow;
+      return yield* evaluate("session.window", () =>
+        summaryWindowFromCore(expectVariant(snapshot, "task_window").tasks),
+      );
+    });
+
+    const listProjectSessionSummaryLanes = Effect.fn(
+      "ProjectWorkspace.listProjectSessionSummaryLanes",
+    )(function* (projectId: string | null, input: readonly ProjectSessionSummaryWindowInput[]) {
+      const lanes = yield* evaluate("session.lanes", () =>
+        ProjectSessionSummaryLanesInputSchema.parse(input),
+      );
+      const snapshot = yield* read("session.lanes", {
+        kind: "task_windows",
+        project_id: projectId,
+        lanes: lanes.map(taskLane),
       });
+      return yield* evaluate("session.lanes", () =>
+        expectVariant(snapshot, "task_windows").lanes.map(summaryWindowFromCore),
+      );
     });
 
     const readSidebarOverview = Effect.fn("ProjectWorkspace.readSidebarOverview")(function* (
@@ -1773,6 +1801,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       setPinnedProjectOrder,
       setProjectLifecycle,
       listProjectSessionSummaryWindow,
+      listProjectSessionSummaryLanes,
       readSidebarOverview,
       getProjectSession: readSession,
       listSessionSideChats,

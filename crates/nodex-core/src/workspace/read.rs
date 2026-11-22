@@ -557,6 +557,18 @@ pub(super) fn read(
                 &window,
             )?,
         }),
+        ProjectWorkspaceRead::TaskWindows { project_id, lanes } => {
+            Ok(ProjectWorkspaceReadValue::TaskWindows {
+                lanes: super::task_window::read_task_lanes(
+                    connection,
+                    library_id,
+                    &member,
+                    commit_head,
+                    project_id.as_deref(),
+                    &lanes,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::SidebarOverview {
             include_archived,
             pinned_window,

@@ -33,6 +33,7 @@ import {
   installMotionEnabledMatchMediaForTest,
   installReducedMotionMatchMediaForTest,
   invokeCalls,
+  isSessionSummaryRead,
   mockInvokeImpl,
   renderWorkbench,
   rendererCommandPayload,
@@ -185,9 +186,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(
       invokeCalls.some((call) => call[0] === "project-sessions:list" && call[1] === "alpha"),
     ).toBe(false);
-    expect(
-      invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "alpha"),
-    ).toBe(true);
+    expect(invokeCalls.some((call) => isSessionSummaryRead(call, "alpha"))).toBe(true);
     expect(
       invokeCalls.some(
         (call) => call[0] === "project-sessions:get" && call[1] === "session:alpha:database-view",
@@ -227,9 +226,7 @@ describe("workbench session shell / sidebar-core", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const initialSummaryCallCount = invokeCalls.filter(
-      (call) => call[0] === "workspace:tasks:list",
-    ).length;
+    const initialSummaryCallCount = invokeCalls.filter((call) => isSessionSummaryRead(call)).length;
     expect(screen.getByText("No projectless chats") !== null).toBe(true);
 
     await act(async () => {
@@ -244,7 +241,7 @@ describe("workbench session shell / sidebar-core", () => {
     });
     await settleAsyncRender();
 
-    expect(invokeCalls.filter((call) => call[0] === "workspace:tasks:list").length).toBe(
+    expect(invokeCalls.filter((call) => isSessionSummaryRead(call)).length).toBe(
       initialSummaryCallCount,
     );
     expect(screen.getByText("No projectless chats") !== null).toBe(true);
@@ -268,9 +265,7 @@ describe("workbench session shell / sidebar-core", () => {
 
     expect(screen.getAllByText("Projectless only chat").length).toBeGreaterThan(0);
     expect(screen.queryByText("No projects found.")).toBe(null);
-    expect(invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === null)).toBe(
-      true,
-    );
+    expect(invokeCalls.some((call) => isSessionSummaryRead(call, null))).toBe(true);
   });
 
   test("enters an explicit projectless composition after the final Project disappears", async () => {

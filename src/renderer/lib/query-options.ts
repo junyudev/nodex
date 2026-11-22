@@ -6,6 +6,7 @@ import { invokeRendererQuery as invoke } from "./renderer-command";
 import { isHostedChat } from "./hosted-chat";
 import { queryKeys } from "./query-keys";
 import { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
+import { readSessionSummaryLane } from "./session-summary-lanes";
 import type {
   AutomationRunsInboxResponse,
   CodexComposerChatGptConversationListResult,
@@ -133,11 +134,11 @@ export function projectSessionSummariesQueryOptions(
   return queryOptions({
     queryKey,
     queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
-      const incoming = (await invoke("workspace:tasks:list", projectId, {
+      const incoming = await readSessionSummaryLane(projectId, {
         first: 50,
         placementScope,
         order,
-      })) as ProjectSessionSummaryWindow;
+      });
       return preferNewestProjectSessionSummaryWindow(
         client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),
         incoming,

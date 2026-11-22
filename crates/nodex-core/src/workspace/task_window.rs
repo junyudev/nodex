@@ -2,9 +2,10 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
-    ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskPlacementScope,
-    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
+    CodexThreadActiveFlag, CodexThreadStatusType, MAX_PROJECT_WORKSPACE_TASK_LANES,
+    ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskLane,
+    ProjectWorkspaceTaskPlacementScope, ProjectWorkspaceTaskSummary,
+    ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
@@ -85,6 +86,37 @@ pub(super) fn read_task_window(
         order,
         request,
     )
+}
+
+pub(super) fn read_task_lanes(
+    connection: &Connection,
+    library_id: &str,
+    member: &str,
+    commit_head: i64,
+    project_id: Option<&str>,
+    lanes: &[ProjectWorkspaceTaskLane],
+) -> Result<Vec<CollectionWindow<ProjectWorkspaceTaskSummary>>, StoreError> {
+    if lanes.is_empty() || lanes.len() > MAX_PROJECT_WORKSPACE_TASK_LANES {
+        return Err(invalid(&format!(
+            "A task lane read asks for 1 to {MAX_PROJECT_WORKSPACE_TASK_LANES} lanes"
+        )));
+    }
+    lanes
+        .iter()
+        .map(|lane| {
+            read_task_window(
+                connection,
+                library_id,
+                member,
+                commit_head,
+                project_id,
+                lane.include_archived.unwrap_or(false),
+                lane.placement_scope,
+                lane.order,
+                &lane.window,
+            )
+        })
+        .collect()
 }
 
 pub(super) fn read_pinned_task_window(
@@ -608,6 +640,60 @@ mod tests {
         assert_eq!(next.items.len(), 1);
         assert_ne!(first.items[0].session.id, next.items[0].session.id);
         assert!(next.next_cursor.is_none());
+
+        // One lane read returns each lane exactly as its own task window read would.
+        let lane = |placement_scope| ProjectWorkspaceTaskLane {
+            include_archived: Some(false),
+            placement_scope,
+            order: Default::default(),
+            window: CollectionWindowRequest {
+                after: None,
+                first: Some(50),
+            },
+        };
+        let ProjectWorkspaceReadValue::TaskWindows { lanes } = read(
+            module,
+            ProjectWorkspaceRead::TaskWindows {
+                project_id: None,
+                lanes: vec![
+                    lane(ProjectWorkspaceTaskPlacementScope::All),
+                    lane(ProjectWorkspaceTaskPlacementScope::Builtin),
+                ],
+            },
+        ) else {
+            panic!("task lanes read");
+        };
+        let ids = |window: &CollectionWindow<ProjectWorkspaceTaskSummary>| {
+            window
+                .items
+                .iter()
+                .map(|task| task.session.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            lanes.iter().map(ids).collect::<Vec<_>>(),
+            vec![ids(&generic_first), ids(&builtin)]
+        );
+        assert!(lanes[0].next_cursor.is_some());
+        assert!(lanes[1].next_cursor.is_none());
+        for count in [0, MAX_PROJECT_WORKSPACE_TASK_LANES + 1] {
+            let rejected = module
+                .read(
+                    &context(),
+                    nodex_core_contracts::ModuleReadRequest {
+                        contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::TaskWindows {
+                            project_id: None,
+                            lanes: vec![lane(ProjectWorkspaceTaskPlacementScope::All); count],
+                        },
+                    },
+                )
+                .expect_err("lane count is bounded");
+            assert_eq!(
+                rejected.code,
+                nodex_core_contracts::CoreErrorCode::InvalidInput
+            );
+        }
         for (placement_scope, after) in [
             (ProjectWorkspaceTaskPlacementScope::All, first.next_cursor),
             (

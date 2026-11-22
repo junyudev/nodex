@@ -239,6 +239,12 @@ pub enum ProjectWorkspaceRead {
         order: ProjectWorkspaceTaskOrder,
         window: CollectionWindowRequest,
     },
+    /// Up to [`MAX_PROJECT_WORKSPACE_TASK_LANES`] lanes of one scope's task list, in request
+    /// order, from one snapshot.
+    TaskWindows {
+        project_id: Option<String>,
+        lanes: Vec<ProjectWorkspaceTaskLane>,
+    },
     SidebarOverview {
         include_archived: Option<bool>,
         pinned_window: CollectionWindowRequest,
@@ -576,6 +582,9 @@ pub enum ProjectWorkspaceReadValue {
     TaskWindow {
         tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
     },
+    TaskWindows {
+        lanes: Vec<CollectionWindow<ProjectWorkspaceTaskSummary>>,
+    },
     SidebarOverview {
         pinned_tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
     },
@@ -780,6 +789,20 @@ pub enum ProjectWorkspaceTaskOrder {
     #[default]
     Activity,
     Manual,
+}
+
+/// Lanes one task lane read may carry.
+pub const MAX_PROJECT_WORKSPACE_TASK_LANES: usize = 4;
+
+/// One lane of a scope's task list, as a single task window read would ask for it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceTaskLane {
+    pub include_archived: Option<bool>,
+    #[serde(default)]
+    pub placement_scope: ProjectWorkspaceTaskPlacementScope,
+    #[serde(default)]
+    pub order: ProjectWorkspaceTaskOrder,
+    pub window: CollectionWindowRequest,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

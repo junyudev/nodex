@@ -14,6 +14,7 @@ import {
   getLastThreadStageActions,
   installTerminalEventApiMock,
   invokeCalls,
+  isSessionSummaryRead,
   mockInvokeImpl,
   pendingWorktreeWarningListener,
   renderWorkbench,
@@ -705,9 +706,7 @@ describe("workbench session shell / automations-conversation", () => {
       runInEnvironmentPath: null,
       interactionMode: "default",
     });
-    expect(
-      invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "alpha"),
-    ).toBe(true);
+    expect(invokeCalls.some((call) => isSessionSummaryRead(call, "alpha"))).toBe(true);
   });
 
   test("inline message edit submits one prepared Session rewrite", async () => {
@@ -875,9 +874,7 @@ describe("workbench session shell / automations-conversation", () => {
       runInEnvironmentPath: null,
       interactionMode: "default",
     });
-    expect(
-      invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "beta"),
-    ).toBe(true);
+    expect(invokeCalls.some((call) => isSessionSummaryRead(call, "beta"))).toBe(true);
   });
 
   test("session composer submit passes the selected new-worktree target", async () => {

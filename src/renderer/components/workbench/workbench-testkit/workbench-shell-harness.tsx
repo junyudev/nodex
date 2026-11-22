@@ -153,6 +153,10 @@ import {
 } from "@/lib/page-title-projection-context";
 
 export let invokeCalls: unknown[][] = [];
+/** Whether a recorded call read a scope's chat list, one lane or several at once. */
+export const isSessionSummaryRead = (call: readonly unknown[], projectId?: string | null) =>
+  (call[0] === "workspace:tasks:list" || call[0] === "workspace:tasks:lanes") &&
+  (projectId === undefined || call[1] === projectId);
 
 export const rendererCommandPayload = (
   call: readonly unknown[] | undefined,
@@ -235,6 +239,15 @@ export function setMockLibraryStatus(status: "empty" | "ready"): void {
 const invokeRendererHarness = async (channel: string, ...args: unknown[]): Promise<unknown> => {
   invokeCalls.push([channel, ...args]);
   if (channel === "projects:bootstrap") return { status: mockLibraryStatus };
+  // Tests describe a chat list one lane at a time; a read of several lanes answers each alike.
+  if (channel === "workspace:tasks:lanes") {
+    const [projectId, lanes] = args as [string | null, readonly unknown[]];
+    return await Promise.all(
+      lanes.map(
+        async (lane) => (await mockInvokeImpl?.("workspace:tasks:list", projectId, lane)) ?? null,
+      ),
+    );
+  }
   return (await mockInvokeImpl?.(channel, ...args)) ?? null;
 };
 export let agentRuntimeLaunchCalls: AgentRuntimeLaunch[] = [];

@@ -327,6 +327,7 @@ type QueryEndpointPolicy =
   | "thread-terminal-snapshot"
   | "workspace-directory-entries"
   | "workspace-path-states"
+  | "workspace:tasks:lanes"
   | "workspace:tasks:list"
   | "worktrees:environments:config:read"
   | "worktrees:environments:configs:list"

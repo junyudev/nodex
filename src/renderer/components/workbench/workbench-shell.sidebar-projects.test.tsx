@@ -18,6 +18,7 @@ import {
   getThreadRow,
   getThreadRowTitles,
   invokeCalls,
+  isSessionSummaryRead,
   openPanelMenu,
   openProjectBoard,
   renderWorkbench,
@@ -978,8 +979,8 @@ describe("workbench session shell / sidebar-projects", () => {
     const betaFullRefreshCountBefore = invokeCalls.filter(
       (call) => call[0] === "project-sessions:list" && call[1] === "beta",
     ).length;
-    const betaSummaryRefreshCountBefore = invokeCalls.filter(
-      (call) => call[0] === "workspace:tasks:list" && call[1] === "beta",
+    const betaSummaryRefreshCountBefore = invokeCalls.filter((call) =>
+      isSessionSummaryRead(call, "beta"),
     ).length;
     await act(async () => {
       codexHostMessageListener?.({
@@ -993,8 +994,8 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
 
     await waitFor(() => {
-      const betaSummaryRefreshCount = invokeCalls.filter(
-        (call) => call[0] === "workspace:tasks:list" && call[1] === "beta",
+      const betaSummaryRefreshCount = invokeCalls.filter((call) =>
+        isSessionSummaryRead(call, "beta"),
       ).length;
       expect(betaSummaryRefreshCount).toBe(betaSummaryRefreshCountBefore);
       const betaFullRefreshCountAfter = invokeCalls.filter(

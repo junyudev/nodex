@@ -305,6 +305,9 @@ const readModels = Layer.effectDiscard(
     yield* ipc.handleQuery("workspace:tasks:list", (_, projectId, input) =>
       projects.listProjectSessionSummaryWindow(projectId, input),
     );
+    yield* ipc.handleQuery("workspace:tasks:lanes", (_, projectId, lanes) =>
+      projects.listProjectSessionSummaryLanes(projectId, lanes),
+    );
     yield* ipc.handleQuery("inbox:counts", () =>
       core.workspace.read({ kind: "inbox_counts" }, undefined, null).pipe(
         Effect.map((snapshot) => {

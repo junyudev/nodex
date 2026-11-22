@@ -533,6 +533,22 @@ export const live: Layer.Layer<
         return window;
       }),
     );
+    yield* invokeEffectQuery("workspace:tasks:lanes", (_, projectId, lanes) =>
+      Effect.gen(function* () {
+        const startedAt = getDevRuntimeMetricStart();
+        const windows = yield* projects.listProjectSessionSummaryLanes(projectId, lanes);
+        yield* Effect.sync(() =>
+          logDevRuntimeMetric("ipc.workspace_tasks_lanes", {
+            projectId,
+            laneCount: windows.length,
+            itemCount: windows.reduce((count, window) => count + window.items.length, 0),
+            approxPayloadBytes: approximateJsonPayloadBytes(windows),
+            durationMs: getDevRuntimeMetricDurationMs(startedAt),
+          }),
+        );
+        return windows;
+      }),
+    );
     yield* invokeEffectQuery("project-sessions:side-chats", (_, sourceSessionId, input) =>
       projects.listSessionSideChats(sourceSessionId, input),
     );

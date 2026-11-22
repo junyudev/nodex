@@ -43677,6 +43677,34 @@
               },
               {
                 "type": "object",
+                "description": "Up to [`MAX_PROJECT_WORKSPACE_TASK_LANES`] lanes of one scope's task list, in request\norder, from one snapshot.",
+                "required": [
+                  "lanes",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "task_windows"
+                    ]
+                  },
+                  "lanes": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceTaskLane"
+                    }
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "pinned_window",
                   "kind"
@@ -54929,6 +54957,30 @@
           }
         }
       },
+      "ProjectWorkspaceTaskLane": {
+        "type": "object",
+        "description": "One lane of a scope's task list, as a single task window read would ask for it.",
+        "required": [
+          "window"
+        ],
+        "properties": {
+          "include_archived": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "order": {
+            "$ref": "#/components/schemas/ProjectWorkspaceTaskOrder"
+          },
+          "placement_scope": {
+            "$ref": "#/components/schemas/ProjectWorkspaceTaskPlacementScope"
+          },
+          "window": {
+            "$ref": "#/components/schemas/CollectionWindowRequest"
+          }
+        }
+      },
       "ProjectWorkspaceTaskOrder": {
         "type": "string",
         "enum": [
@@ -63608,6 +63660,27 @@
                           },
                           "tasks": {
                             "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "lanes",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "task_windows"
+                            ]
+                          },
+                          "lanes": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                            }
                           }
                         }
                       },

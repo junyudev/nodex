@@ -10427,6 +10427,11 @@ export interface components {
                 readonly project_id?: string | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
+                /** @enum {string} */
+                readonly kind: "task_windows";
+                readonly lanes: readonly components["schemas"]["ProjectWorkspaceTaskLane"][];
+                readonly project_id?: string | null;
+            } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "sidebar_overview";
@@ -13143,6 +13148,13 @@ export interface components {
             readonly root_thread_id: string;
             readonly source_epoch: string;
         };
+        /** @description One lane of a scope's task list, as a single task window read would ask for it. */
+        readonly ProjectWorkspaceTaskLane: {
+            readonly include_archived?: boolean | null;
+            readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
+            readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
+            readonly window: components["schemas"]["CollectionWindowRequest"];
+        };
         /** @enum {string} */
         readonly ProjectWorkspaceTaskOrder: "activity" | "manual";
         /** @enum {string} */
@@ -14926,6 +14938,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "task_window";
                     readonly tasks: components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "task_windows";
+                    readonly lanes: readonly components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"][];
                 } | {
                     /** @enum {string} */
                     readonly kind: "sidebar_overview";

@@ -1308,6 +1308,11 @@ export interface IpcApi
     args: [projectId: string | null, input?: ProjectSessionSummaryWindowInput];
     result: ProjectSessionSummaryWindow;
   };
+  /** Several lanes of one scope's chat list, in request order, from one Core snapshot. */
+  "workspace:tasks:lanes": {
+    args: [projectId: string | null, lanes: readonly ProjectSessionSummaryWindowInput[]];
+    result: readonly ProjectSessionSummaryWindow[];
+  };
   "project-sessions:side-chats": {
     args: [sourceSessionId: string, input?: SessionSideChatWindowInput];
     result: SessionSideChatWindow;

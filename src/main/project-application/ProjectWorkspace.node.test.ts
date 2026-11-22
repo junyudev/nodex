@@ -209,6 +209,64 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
   }),
 );
 
+it.effect("reads several lanes of one scope's chat list from one Core read", () =>
+  Effect.gen(function* () {
+    const observed: Array<Parameters<CoreModuleClients["workspace"]["read"]>[0]> = [];
+    const window = (projectionRevision: number) => ({
+      items: [],
+      next_cursor: null,
+      authority: { projection_revision: projectionRevision },
+    });
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "task_windows") return Effect.die("Unexpected Core read");
+      observed.push(input);
+      return Effect.succeed({
+        value: { kind: "task_windows", lanes: input.lanes.map((_, index) => window(index + 1)) },
+      } as unknown as ProjectWorkspaceReadSnapshot);
+    };
+    const { scope, workspace } = yield* open(core(reads));
+
+    const lanes = yield* workspace.listProjectSessionSummaryLanes("project:one", [
+      { first: 50 },
+      { first: 50, placementScope: "builtin", order: "manual" },
+    ]);
+    assert.deepEqual(
+      lanes.map((lane) => lane.projectionRevision),
+      [1, 2],
+    );
+    assert.deepEqual(observed, [
+      {
+        kind: "task_windows",
+        project_id: "project:one",
+        lanes: [
+          {
+            include_archived: false,
+            placement_scope: "all",
+            order: "activity",
+            window: { after: null, first: 50 },
+          },
+          {
+            include_archived: false,
+            placement_scope: "builtin",
+            order: "manual",
+            window: { after: null, first: 50 },
+          },
+        ],
+      },
+    ]);
+    // Core accepts at most four lanes; a larger read fails before reaching it.
+    const oversized = yield* workspace
+      .listProjectSessionSummaryLanes(
+        null,
+        Array.from({ length: 5 }, () => ({ first: 50 })),
+      )
+      .pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(oversized));
+    assert.strictEqual(observed.length, 1);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect(
   "Thread admission distinguishes Core rejection, lost replies, and committed readback failure",
   () =>

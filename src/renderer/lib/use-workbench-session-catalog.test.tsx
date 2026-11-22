@@ -211,24 +211,37 @@ describe("useWorkbenchSessionCatalog", () => {
     const next = makeSummary("next-visible-chat", "alpha");
     const moved = makeSummary("moved-into-sidebar", "alpha");
     let revision = 1;
+    const windowFor = (projectId: string | null, input: ProjectSessionSummaryWindowInput) => {
+      if (projectId === null) return makeWindow([]);
+      if (input.placementScope === "all")
+        return makeWindow([section, visible], { projectionRevision: revision });
+      expect(input.placementScope).toBe("builtin");
+      expect(input.order).toBe("manual");
+      if (revision === 2) return makeWindow([moved, visible], { projectionRevision: revision });
+      if (input.after) {
+        expect(input.after).toBe("builtin-next");
+        return makeWindow([next]);
+      }
+      return makeWindow([visible], { nextCursor: "builtin-next", hasMore: true });
+    };
+    const requests: { readonly projectId: string | null; readonly lanes: string[] }[] = [];
+    const laneName = (input: ProjectSessionSummaryWindowInput) =>
+      `${input.placementScope ?? "all"}:${input.order ?? "activity"}`;
     invokeMock.mockImplementation(
       async (
         channel: string,
         projectId: string | null,
-        input: ProjectSessionSummaryWindowInput,
+        input: ProjectSessionSummaryWindowInput | readonly ProjectSessionSummaryWindowInput[],
       ) => {
-        expect(channel).toBe("workspace:tasks:list");
-        if (projectId === null) return makeWindow([]);
-        if (input.placementScope === "all")
-          return makeWindow([section, visible], { projectionRevision: revision });
-        expect(input.placementScope).toBe("builtin");
-        expect(input.order).toBe("manual");
-        if (revision === 2) return makeWindow([moved, visible], { projectionRevision: revision });
-        if (input.after) {
-          expect(input.after).toBe("builtin-next");
-          return makeWindow([next]);
+        if (channel === "workspace:tasks:lanes") {
+          const lanes = input as readonly ProjectSessionSummaryWindowInput[];
+          requests.push({ projectId, lanes: lanes.map(laneName) });
+          return lanes.map((lane) => windowFor(projectId, lane));
         }
-        return makeWindow([visible], { nextCursor: "builtin-next", hasMore: true });
+        expect(channel).toBe("workspace:tasks:list");
+        const lane = input as ProjectSessionSummaryWindowInput;
+        requests.push({ projectId, lanes: [laneName(lane)] });
+        return windowFor(projectId, lane);
       },
     );
     const client = new QueryClient({
@@ -264,6 +277,15 @@ describe("useWorkbenchSessionCatalog", () => {
       expect(
         hook.result.current.catalog.collectionsByProject.alpha.projections.map((item) => item.id),
       ).toEqual([section.id, visible.id]);
+      // The first screen asks for both lanes of each scope in one request.
+      expect(
+        [...requests].sort((left, right) =>
+          String(left.projectId).localeCompare(String(right.projectId)),
+        ),
+      ).toEqual([
+        { projectId: "alpha", lanes: ["all:activity", "builtin:manual"] },
+        { projectId: null, lanes: ["all:activity", "builtin:manual"] },
+      ]);
       await act(async () => {
         await hook.result.current.sidebar.loadMore("alpha");
       });
