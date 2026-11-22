@@ -27,6 +27,7 @@ import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
 import type { AgentAccountIpcApi } from "./agent-accounts-api";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
+import type { RendererFrameHealth } from "./diagnostics/frame-health";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
 import type {
   CodexVisualizationStateIdentity,
@@ -1031,6 +1032,10 @@ export interface IpcApi
   };
   "diagnostics:renderer-log": {
     args: [input: RendererDiagnosticsLogInput];
+    result: void;
+  };
+  "diagnostics:renderer-frames": {
+    args: [input: RendererFrameHealth];
     result: void;
   };
   "persisted-atom:sync-request": { args: []; result: PersistedAtomSnapshot };

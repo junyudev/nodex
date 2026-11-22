@@ -37,6 +37,8 @@ import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
 import { classifyRuntimeFrame } from "../../../shared/diagnostics/runtime-work";
 import { AgentRuntimeWorkId, AgentRuntimeWorkLedger } from "../../agent-runtime/AgentRuntimeWork";
+import { MainStreamBursts } from "../../diagnostics/stream-bursts";
+import { processRoles } from "../../process-telemetry/process-roles";
 import { appToolsHostCallTimeoutMs } from "@nodex/app-tools-mcp/manifest";
 import { agentProcessLaunch, type AgentRunner } from "../../../host/HostAgentPolicy";
 
@@ -542,6 +544,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           }),
       ),
     );
+  const unlist = processRoles.enlist("agent-runtime", process.pid);
+  yield* Scope.addFinalizer(processScope, Effect.sync(unlist));
 
   // A slot belongs to engine work until its reply, even if its caller stops waiting.
   const release = (id: string) =>
@@ -758,10 +762,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ),
     Effect.forkIn(scope),
   );
+  const bursts = yield* MainStreamBursts;
   const frames = createAgentRuntimeFrameDecoder(
     MAXIMUM_FRAME_BYTES,
     ledger && attribution
       ? (frame, bytes) => {
+          bursts?.observe(bytes);
           const described = classifyRuntimeFrame(frame);
           if (described?.kind === "event") {
             const owner = attribution.observations.get(described.subscriptionId);
@@ -775,7 +781,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           if (request.method === "events.observe" && !described.success)
             attribution.observations.delete(described.id);
         }
-      : undefined,
+      : bursts
+        ? (_frame, bytes) => bursts.observe(bytes)
+        : undefined,
   );
   const output = yield* process.stdout.pipe(
     Stream.mapEffect((chunk) =>

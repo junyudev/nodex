@@ -2,6 +2,7 @@ import { live as gitActionsLive } from "../git-application/GitActions";
 import { GitMessageGeneration } from "../git-application/GitMessageGeneration";
 import { live as gitActionOperationRuntimeLive } from "../host-runtime/GitActionOperationRuntime";
 import { live as nativeChatSearchIndex } from "../chat-search/NativeChatSearchIndex";
+import { live as runtimeHealthMonitor } from "../diagnostics/RuntimeHealthMonitor";
 import { desktopLayer as scopedAgentCore } from "../platform/node/ScopedAgentCoreServer";
 import * as ReadbackRuntime from "../host-runtime/ReadbackRuntime";
 import * as MobileApplication from "../../host/mobile/MobileApplication";
@@ -75,6 +76,7 @@ import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { TerminalRuntimeMap } from "../terminal-runtime/TerminalRuntimeMap";
+import type { ProcessTelemetry } from "../platform/node/ProcessTelemetry";
 import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
 import { MainConfig } from "./MainConfig";
@@ -151,7 +153,7 @@ const gitActions = gitActionsLive.pipe(
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(
-    Layer.mergeAll(chatSearchLive, nativeChatSearchIndex, gitActions).pipe(
+    Layer.mergeAll(chatSearchLive, nativeChatSearchIndex, runtimeHealthMonitor, gitActions).pipe(
       Layer.provideMerge(executionGraph),
     ),
   ),
@@ -224,6 +226,7 @@ export const live: Layer.Layer<
   | ScopedCallbackRuntime
   | TerminalSessions
   | TerminalRuntimeMap
+  | ProcessTelemetry
   | ApplicationInitializationRuntime
   | ApplicationWindowShellRuntime
   | AppProtocolRuntime.AppProtocolRuntime

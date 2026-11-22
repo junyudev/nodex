@@ -9,6 +9,8 @@ import {
   personalStateKeySpace,
 } from "../../../shared/space-personal-state";
 import { MainConfig } from "../../app/MainConfig";
+import { RendererFrameHealthSchema } from "../../../shared/diagnostics/frame-health";
+import { isDevRuntimeMetricsEnabled, logDevRuntimeMetric } from "../../dev-runtime-metrics";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { ProfilePersistedAtoms } from "../../local-store/ProfilePersistedAtoms";
 import { getLogger } from "../../logging/logger";
@@ -72,6 +74,18 @@ export const live: Layer.Layer<
         Effect.tap(() =>
           Effect.sync(() => {
             if (config.assistantStreamingDebug) diagnostics.info(input.message, input.fields);
+          }),
+        ),
+      ),
+    );
+    yield* handleControl("diagnostics:renderer-frames", (event, input) =>
+      authorize(event).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (!isDevRuntimeMetricsEnabled()) return;
+            const frames = RendererFrameHealthSchema.safeParse(input);
+            if (frames.success)
+              logDevRuntimeMetric("renderer.frames", { window: event.sender.id, ...frames.data });
           }),
         ),
       ),

@@ -439,6 +439,7 @@ type ControlEndpointPolicy =
   | "codex:thread:view-active:set"
   | "codex:user-input:auto-resolution:activity"
   | "codex:user-input:respond"
+  | "diagnostics:renderer-frames"
   | "diagnostics:renderer-log"
   | "document-sync:awareness:publish"
   | "document-sync:subscribe"

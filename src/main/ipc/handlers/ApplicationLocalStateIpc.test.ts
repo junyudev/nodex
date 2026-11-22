@@ -47,6 +47,7 @@ it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () 
     );
 
     assert.deepStrictEqual([...channels].sort(), [
+      "diagnostics:renderer-frames",
       "diagnostics:renderer-log",
       "persisted-atom:sync-request",
       "persisted-atom:update",

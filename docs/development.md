@@ -390,6 +390,17 @@ and first committed content to paint, with a `cold`, `warm` or `cache` cohort an
 `snapshot_failed` or `app_disposed`. It is recorded as one `nodex.runtime.navigation` Performance
 measure carrying the window's work for it, without trace sampling, and reports no usage analytics.
 See [Runtime conversation work](#runtime-conversation-work) for the corpora and gates built on it.
+`runtime-metrics` also logs one `runtime.health` metric a minute: how late Main's timers ran
+(p50, p90, p99, max and mean delay beyond the timer's resolution), Main's heap, CPU over the
+minute and resident memory for `main`, `renderer`, `gpu`, `utility`, `core`, `agent-runtime` and
+`work` (everything else Main and the Runtime start), Core's request, admission, writer-queue and
+transaction activity during the minute, and restarts of Core, the Runtime and Electron helpers.
+A Runtime stream burst (about 512 KiB or 200 frames within a second, at most once a minute) adds
+a `trigger: "burst"` reading over the following second. Each visible window reports one
+`renderer.frames` metric a minute with its long animation frames: count, total duration and
+blocking time, and the longest frame's style and layout time and longest script by invoker, file
+and function. Compare builds by their medians across the same scenario; nothing here records
+content.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server

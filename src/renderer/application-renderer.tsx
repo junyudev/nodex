@@ -10,6 +10,7 @@ import {
   ApplicationReadinessRoot,
   createApplicationReadiness,
 } from "./bootstrap/application-surface";
+import { enableRendererFrameHealth } from "./lib/frame-health";
 import { enableRendererRuntimeWork } from "./lib/runtime-work";
 import "./globals.css";
 
@@ -24,8 +25,10 @@ export async function mountApplicationRenderer({
   if (!rootElement) throw new Error("Nodex renderer root is missing");
 
   initializeApplicationAppearance();
-  if (runtimeCapabilities.enabledDevelopmentFeatures.includes("runtime-metrics"))
+  if (runtimeCapabilities.enabledDevelopmentFeatures.includes("runtime-metrics")) {
     enableRendererRuntimeWork();
+    enableRendererFrameHealth();
+  }
 
   const Agentation =
     import.meta.env.DEV && runtimeCapabilities.enabledDevelopmentFeatures.includes("agentation")
