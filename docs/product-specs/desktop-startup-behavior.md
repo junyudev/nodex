@@ -116,7 +116,11 @@ Windows storage and loader evidence are specified in the
   from the ordinary Workbench, whichever chunk carries it, or when one of them no longer appears
   in the build.
 - The same check reports, without a budget yet, the Main application code evaluated before the
-  first window: the bootstrap entry and every application chunk it requires while loading.
+  first window: the Main application and every chunk it requires while loading.
+- A packaged Nodex compiles its Main code from Node's compile cache once it has run: the
+  bootstrap entry enables the cache in the account's own cache folder, then loads the Main
+  application. The first launch of each version compiles from source and fills the cache;
+  development builds always compile from source.
 - The application origin takes part in V8's code cache. A renderer script that has run before is
   compiled from the Profile's on-disk cache in later windows and launches instead of from source;
   the cache costs disk space about the size of the renderer's JavaScript, and an updated script

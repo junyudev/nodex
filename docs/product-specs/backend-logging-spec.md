@@ -304,7 +304,7 @@ observable even if the file sink is under pressure.
 
 ### App Lifecycle
 
-[src/main/bootstrap.ts](../../src/main/bootstrap.ts) and [src/main/app/MainApplicationLive.ts](../../src/main/app/MainApplicationLive.ts) log:
+[src/main/main-process.ts](../../src/main/main-process.ts) and [src/main/app/MainApplicationLive.ts](../../src/main/app/MainApplicationLive.ts) log:
 
 - bootstrap startup/import failures
 - main-process startup

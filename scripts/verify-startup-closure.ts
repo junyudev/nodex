@@ -26,7 +26,8 @@ const workbench = measureWorkbenchClosure({
   rootChunkName: "application-renderer",
   onDemandPackages: ON_DEMAND_PACKAGES,
 });
-const main = measureMainPreWindowClosure(path.resolve("out/main"), "bootstrap.js");
+// The bootstrap entry only enables the compile cache, then requires the Main application.
+const main = measureMainPreWindowClosure(path.resolve("out/main"), "main-process.js");
 
 process.stdout.write(
   `${JSON.stringify(

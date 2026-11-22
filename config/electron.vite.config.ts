@@ -127,6 +127,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
         rollupOptions: {
           input: {
             bootstrap: resolve(repositoryRoot, "src/main/bootstrap.ts"),
+            "main-process": resolve(repositoryRoot, "src/main/main-process.ts"),
             serve: resolve(repositoryRoot, "src/host/serve-entry.ts"),
             "file-index-worker": resolve(repositoryRoot, "src/main/file-index-worker/entry.ts"),
             "git-worker": resolve(repositoryRoot, "src/main/git-worker/entry.ts"),

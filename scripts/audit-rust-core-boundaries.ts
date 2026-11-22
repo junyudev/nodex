@@ -122,7 +122,7 @@ for (const file of productionMainFiles) {
 }
 
 const productionMainBundlePromise = auditDesktopImportBoundaries(
-  path.join(repositoryRoot, "src/main/bootstrap.ts"),
+  path.join(repositoryRoot, "src/main/main-process.ts"),
 );
 
 for (const file of ["src/shared/ipc-api.ts"]) {

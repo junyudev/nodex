@@ -1,0 +1,506 @@
+import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
+import { app, BrowserWindow, dialog } from "electron";
+import { appBuildOrdinal } from "../shared/app-version";
+import { getMainIntl } from "./i18n/main-intl";
+import { readPackagedAppBuildVersion } from "./packaged-app-build-version";
+import { mkdirSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+import type * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import { configureInstanceScopePaths } from "./instance-scope";
+import { resolveBootstrapConfig } from "./bootstrap-config";
+import { BootstrapRuntimeEventQueue } from "./bootstrap-events";
+import { isWindowsStartupActivation } from "./windows-desktop-policy";
+import { configureBackendLogger, getLogger, shutdownBackendLogger } from "./logging/logger";
+import {
+  getDiagnosticsSettings,
+  getLanguagePreference,
+} from "./settings/application-settings-persistence";
+import {
+  activateElectronLanguagePreference,
+  pinSystemLanguages,
+} from "./i18n/electron-language-settings";
+import { captureMainException, initializeMainSentry } from "./observability/sentry-main";
+import { electronMainSentryAdapter } from "./observability/sentry-electron-main-adapter";
+import {
+  runMacApplicationsInstallerGate,
+  type MacApplicationsInstallerEnvironment,
+} from "./macos-applications-installer";
+import * as MainApp from "./app/MainApp";
+import * as MainApplicationLive from "./app/MainApplicationLive";
+import * as MainEntry from "./app/MainEntry";
+import * as MainFoundationLive from "./app/MainFoundationLive";
+import { MainApplicationError, type MainExit } from "./app/MainExit";
+import type { MainFailurePresentation } from "./app/MainFatalIncident";
+import { MainObservability } from "./app/MainObservability";
+import { ScopedCallbackRuntime } from "./app/ScopedCallbackRuntime";
+import { assertRustDataAuthorityEnvironment } from "./data-authority";
+import { registerNodexPrivilegedSchemes } from "./privileged-schemes";
+import {
+  ISOLATED_RUN_ID_ENV,
+  markIsolatedRunClaimReady,
+  publishIsolatedRunClaim,
+  resolveIsolatedRunBootstrapAccess,
+  type IsolatedRunBootstrapAccess,
+} from "./core-client/isolated-run-ownership";
+import { resolveChromeHostRegistration } from "./browser-use/chrome/ChromeHostRegistrationPolicy";
+import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
+
+// Disposable test launches pin Auto detect so English assertions hold on any system language.
+const pinnedSystemLanguages = process.env.NODEX_INTERNAL_SYSTEM_LANGUAGES;
+delete process.env.NODEX_INTERNAL_SYSTEM_LANGUAGES;
+if (!app.isPackaged && pinnedSystemLanguages) {
+  pinSystemLanguages(pinnedSystemLanguages.split(",").filter(Boolean));
+}
+
+const browserRegistrationHome = app.getPath("home");
+const browserHostMode = process.env.NODEX_INTERNAL_BROWSER_HOST_MODE;
+delete process.env.NODEX_INTERNAL_BROWSER_HOST_MODE;
+// A seeded development launch can use the same isolated home as Electron scenarios.
+const scenarioHome = process.env.NODEX_INTERNAL_SCENARIO_HOME;
+delete process.env.NODEX_INTERNAL_SCENARIO_HOME;
+if (!app.isPackaged && scenarioHome && isAbsolute(scenarioHome)) {
+  const documents = join(scenarioHome, "Documents");
+  mkdirSync(documents, { recursive: true });
+  app.setPath("home", scenarioHome);
+  app.setPath("documents", documents);
+  process.env.HOME = scenarioHome;
+}
+
+process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
+const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];
+delete process.env[ISOLATED_RUN_ID_ENV];
+// Nodex owns the Desktop Tool configuration of every process it starts.
+const ignoredDesktopToolHostBindings = desktopToolHostBindingNames(process.env);
+for (const name of ignoredDesktopToolHostBindings) delete process.env[name];
+
+const bootstrapConfig = resolveBootstrapConfig({ isPackaged: app.isPackaged });
+const { nodexHome } = bootstrapConfig;
+process.env.NODEX_HOME = nodexHome;
+const backendLoggerConfiguration = {
+  cwd: process.cwd(),
+  environment: bootstrapConfig.environment,
+  nodexHome,
+};
+// A rejected second launch must not append to or prune the primary's log files.
+configureBackendLogger({
+  ...backendLoggerConfiguration,
+  environment: { ...bootstrapConfig.environment, NODEX_LOG_FILE: "false" },
+});
+configureInstanceScopePaths(app, nodexHome);
+const runtimeQueue = new BootstrapRuntimeEventQueue();
+const bootstrapLogger = getLogger({ scope: "bootstrap" });
+let primaryIsolatedRunId: string | null = null;
+
+function logBootstrap(
+  level: "info" | "warn" | "error",
+  message: string,
+  fields: Record<string, unknown> = {},
+): void {
+  bootstrapLogger[level](message, fields);
+}
+
+const appVersion = app.getVersion();
+const appBuildVersion = readBuildVersion();
+
+function readBuildVersion(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  try {
+    return readPackagedAppBuildVersion(process.platform, process.resourcesPath);
+  } catch (error) {
+    logBootstrap("warn", "Could not read the packaged app build version", { error });
+    return undefined;
+  }
+}
+
+function initializeBootstrapDiagnostics(): Promise<boolean> {
+  try {
+    return initializeMainSentry({
+      appVersion,
+      appBuildVersion,
+      arch: process.arch,
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      settings: getDiagnosticsSettings({
+        environment: bootstrapConfig.environment,
+        isPackaged: app.isPackaged,
+        settingsPath: bootstrapConfig.profileSettingsPath,
+      }),
+      adapter: electronMainSentryAdapter,
+    }).catch((error: unknown) => {
+      logBootstrap("warn", "Sentry diagnostics failed to initialize", { error });
+      return false;
+    });
+  } catch (error) {
+    logBootstrap("warn", "Sentry diagnostics failed to initialize", { error });
+    return Promise.resolve(false);
+  }
+}
+
+const mainSentryInitialization = initializeBootstrapDiagnostics();
+// Sentry registers its IPC scheme and proxies later registrations during its
+// synchronous init phase. Register Nodex schemes afterward so Chromium receives
+// one combined privilege set instead of losing secure-context privileges.
+registerNodexPrivilegedSchemes();
+
+function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEnvironment {
+  let moveConflictCancelled = false;
+  return {
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    launchKind: primaryIsolatedRunId ? "supervised" : "ordinary",
+    isInApplicationsFolder: () => {
+      if (typeof app.isInApplicationsFolder !== "function") return true;
+      return app.isInApplicationsFolder();
+    },
+    showInstallPrompt: async () => {
+      const response = await dialog.showMessageBox({
+        type: "question",
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.move",
+            defaultMessage: "Move to Applications",
+          }),
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.continueAnyway",
+            defaultMessage: "Continue Anyway",
+          }),
+          getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+        ],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.question",
+          defaultMessage: "Move Nodex to Applications?",
+        }),
+        detail: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.reason",
+          defaultMessage:
+            "Nodex is running from outside the Applications folder. Moving it to Applications improves launch, update, and permission behavior on macOS.",
+        }),
+      });
+
+      if (response.response === 0) return "move";
+      if (response.response === 1) return "continue";
+      return "quit";
+    },
+    showMoveFailedPrompt: async (error) => {
+      if (moveConflictCancelled) {
+        moveConflictCancelled = false;
+        return "quit";
+      }
+      const response = await dialog.showMessageBox({
+        type: "warning",
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.continueAnyway",
+            defaultMessage: "Continue Anyway",
+          }),
+          getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+        ],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.moveFailed",
+          defaultMessage: "Nodex could not move itself to Applications.",
+        }),
+        detail:
+          error instanceof Error
+            ? error.message
+            : getMainIntl().formatMessage({
+                id: "main.dialog.moveToApplications.manual",
+                defaultMessage:
+                  "You can continue from the current location or quit and move Nodex manually.",
+              }),
+      });
+
+      return response.response === 0 ? "continue" : "quit";
+    },
+    confirmMoveConflict: (conflictType) => {
+      if (conflictType === "existsAndRunning") {
+        moveConflictCancelled = true;
+        dialog.showMessageBoxSync({
+          type: "warning",
+          buttons: [
+            getMainIntl().formatMessage({ id: "main.dialog.common.ok", defaultMessage: "OK" }),
+          ],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+          message: getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.quitInstalledCopy",
+            defaultMessage: "Quit the installed copy of Nodex first.",
+          }),
+          detail: getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.runningDetail",
+            defaultMessage:
+              "Nodex cannot replace the copy in Applications while that copy is running.",
+          }),
+        });
+        return false;
+      }
+      const response = dialog.showMessageBoxSync({
+        type: "warning",
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.cancelMove",
+            defaultMessage: "Cancel Move",
+          }),
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.replace",
+            defaultMessage: "Replace Existing App",
+          }),
+        ],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.replaceQuestion",
+          defaultMessage: "Replace the existing Nodex app in Applications?",
+        }),
+        detail: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.replaceDetail",
+          defaultMessage: "A copy of Nodex already exists in the Applications folder.",
+        }),
+      });
+
+      moveConflictCancelled = response !== 1;
+      return response === 1;
+    },
+    moveToApplicationsFolder: (options) => app.moveToApplicationsFolder(options),
+    log: logBootstrap,
+  };
+}
+
+async function handleApplicationFailure(
+  exit: Extract<MainExit, { readonly _tag: "Failure" }>,
+  presentation: MainFailurePresentation,
+) {
+  const isRuntimeFailure = exit.phase === "runtime";
+  const message = isRuntimeFailure
+    ? "Nodex encountered an unrecoverable error"
+    : "Nodex failed to start";
+  logBootstrap("error", message, { incidentId: presentation.incidentId, phase: exit.phase });
+
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue;
+    window.destroy();
+  }
+
+  if (exit.phase === "closing") {
+    app.quit();
+    return;
+  }
+
+  await dialog.showMessageBox({
+    type: "error",
+    buttons: [
+      getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+    ],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    message: isRuntimeFailure
+      ? getMainIntl().formatMessage({
+          id: "main.dialog.fatal.runtime",
+          defaultMessage: "Nodex encountered an unrecoverable error",
+        })
+      : getMainIntl().formatMessage({
+          id: "main.dialog.fatal.startup",
+          defaultMessage: "Nodex failed to start",
+        }),
+    detail: presentation.detail,
+  });
+
+  app.quit();
+}
+
+function launchMainApplication(): void {
+  const ordinal = appBuildOrdinal(appBuildVersion);
+  if (process.platform === "darwin" && ordinal !== null) {
+    app.setAboutPanelOptions({ applicationVersion: appVersion, version: String(ordinal) });
+  }
+  const startupEvents = runtimeQueue.takePendingEvents();
+  const foundation = MainFoundationLive.make({
+    assistantStreamingDebug: bootstrapConfig.environment.NODEX_ASSISTANT_STREAMING_DEBUG === "1",
+    appVersion,
+    ...(appBuildVersion === undefined ? {} : { appBuildVersion }),
+    arch: process.arch,
+    argv: [...process.argv],
+    composerAppshotHelperPath:
+      bootstrapConfig.environment.NODEX_COMPOSER_APPSHOT_HELPER?.trim() || null,
+    chromeHostRegistration: resolveChromeHostRegistration({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      isolatedRunId: primaryIsolatedRunId,
+      homeDirectory: browserRegistrationHome,
+      nodexHome,
+      personalNodexHome: bootstrapConfig.personalNodexHome,
+      launchMode: browserHostMode,
+      hasScenarioHome: Boolean(scenarioHome),
+    }),
+    documentsPath: app.getPath("documents"),
+    environment: bootstrapConfig.environment,
+    environmentPath: bootstrapConfig.environment.PATH ?? null,
+    homeDirectory: app.getPath("home"),
+    projectsDirectory: bootstrapConfig.environment.NODEX_PROJECTS_DIR ?? null,
+    isolatedRunId: primaryIsolatedRunId,
+    isDefaultApp: process.defaultApp === true,
+    isPackaged: app.isPackaged,
+    markdownModulePath: markdownWasmPath,
+    nodexHome,
+    platform: process.platform,
+    profileSettingsPath: bootstrapConfig.profileSettingsPath,
+    projectRootPath: app.getAppPath(),
+    rendererUrl: bootstrapConfig.environment.ELECTRON_RENDERER_URL ?? null,
+    resourcesPath: process.resourcesPath,
+    runtimeBinaryPath: process.execPath,
+  });
+  const application = Effect.gen(function* () {
+    const callbacks = yield* ScopedCallbackRuntime;
+    const observability = yield* MainObservability;
+    const exit = yield* MainApp.program({
+      initialEvents: startupEvents,
+      applicationLayer: MainApplicationLive.productionLive,
+      runStartupGate: Effect.tryPromise({
+        try: async () => {
+          await mainSentryInitialization;
+          let languagePreference = null;
+          try {
+            languagePreference = getLanguagePreference({
+              environment: bootstrapConfig.environment,
+              settingsPath: bootstrapConfig.profileSettingsPath,
+            });
+          } catch (error) {
+            logBootstrap("warn", "Could not read the Profile display language", { error });
+          }
+          await activateElectronLanguagePreference(languagePreference);
+          assertRustDataAuthorityEnvironment(bootstrapConfig.environment);
+          return await runMacApplicationsInstallerGate(createMacApplicationsInstallerEnvironment());
+        },
+        catch: (cause) =>
+          new MainApplicationError({ phase: "pre-ready", operation: "startup-gate", cause }),
+      }),
+      onApplicationReady: (application) =>
+        Effect.acquireRelease(
+          Effect.tryPromise({
+            try: () =>
+              runtimeQueue.attachController({
+                handleOpenUrl: (url) =>
+                  callbacks.runPromise(application.handleBootstrapEvent({ type: "open-url", url })),
+                handleSecondInstance: (argv) =>
+                  callbacks.runPromise(
+                    application.handleBootstrapEvent({ type: "second-instance", argv }),
+                  ),
+              }),
+            catch: (cause) =>
+              new MainApplicationError({
+                phase: "startup",
+                operation: "bootstrap-handoff",
+                cause,
+              }),
+          }),
+          (release) => Effect.sync(release),
+        ).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              if (!primaryIsolatedRunId) return;
+              markIsolatedRunClaimReady({ nodexHome, runId: primaryIsolatedRunId });
+            }),
+          ),
+          Effect.asVoid,
+        ),
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.succeed({
+          _tag: "Failure",
+          phase: "startup",
+          cause: cause as Cause.Cause<MainApplicationError>,
+        } satisfies MainExit),
+      ),
+    );
+    const presentation = yield* observability.reportExit(exit);
+    if (exit._tag === "Failure" && presentation) {
+      yield* Effect.tryPromise(() => handleApplicationFailure(exit, presentation)).pipe(
+        Effect.orDie,
+      );
+    }
+  }).pipe(
+    // this is the unique process entry that owns the foundation Layer.
+    Effect.provide(foundation),
+  );
+  MainEntry.runMain(application);
+}
+
+function registerPrimaryInstance(): void {
+  app.on("second-instance", (_event, argv) => {
+    if (isWindowsStartupActivation(process.platform, argv)) return;
+    void runtimeQueue.enqueueSecondInstance(argv);
+  });
+
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    void runtimeQueue.enqueueOpenUrl(url);
+  });
+
+  process.on("uncaughtException", (error) => {
+    logBootstrap("error", "Uncaught Main process exception", { error });
+    captureMainException(error, {
+      tags: { runtime: "electron-main", kind: "uncaughtException" },
+    });
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logBootstrap("error", "Unhandled Main process rejection", { reason });
+    captureMainException(reason, {
+      tags: { runtime: "electron-main", kind: "unhandledRejection" },
+    });
+  });
+}
+
+function bootstrapApplication(): boolean {
+  let isolatedRunAccess: IsolatedRunBootstrapAccess;
+  try {
+    isolatedRunAccess = resolveIsolatedRunBootstrapAccess({
+      nodexHome,
+      inheritedRunId: inheritedIsolatedRunId,
+    });
+  } catch (error) {
+    logBootstrap("error", "Isolated run ownership validation failed", { error });
+    return false;
+  }
+
+  const hasSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!hasSingleInstanceLock) {
+    logBootstrap("info", "Another Nodex instance already owns this profile");
+    return false;
+  }
+  configureBackendLogger(backendLoggerConfiguration);
+  if (ignoredDesktopToolHostBindings.length > 0) {
+    logBootstrap("info", "Ignored Desktop Tool bindings inherited from the launching environment", {
+      names: ignoredDesktopToolHostBindings,
+    });
+  }
+
+  if (isolatedRunAccess.kind === "supervised") {
+    try {
+      publishIsolatedRunClaim({
+        nodexHome,
+        runId: isolatedRunAccess.runId,
+        hostPid: process.pid,
+      });
+      primaryIsolatedRunId = isolatedRunAccess.runId;
+    } catch (error) {
+      logBootstrap("error", "Isolated run primary-host claim failed", { error });
+      return false;
+    }
+  }
+
+  registerPrimaryInstance();
+  return true;
+}
+
+if (bootstrapApplication()) launchMainApplication();
+else void shutdownBackendLogger().finally(() => app.quit());
