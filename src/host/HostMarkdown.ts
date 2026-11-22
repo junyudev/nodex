@@ -6,8 +6,9 @@ import { initMarkdownSync } from "../shared/nodex-markdown";
 
 /**
  * Nodex Markdown is one synchronous module per process. Every host, a desktop or a headless Space
- * host, loads the module its own bundle ships at the base of its graph, before any owner reads or
- * writes Markdown. The module ships with the application, so failing to load it is a defect.
+ * host, loads the module its own bundle ships at the base of the graph that owns Markdown, before
+ * any owner reads or writes it; the desktop's startup window does not wait for it. The module
+ * ships with the application, so failing to load it is a defect.
  */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {

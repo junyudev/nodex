@@ -115,8 +115,10 @@ Windows storage and loader evidence are specified in the
   through the hidden source maps and fails when code from any of them is statically reachable
   from the ordinary Workbench, whichever chunk carries it, or when one of them no longer appears
   in the build.
-- The same check reports, without a budget yet, the Main application code evaluated before the
-  first window: the Main application and every chunk it requires while loading.
+- Main evaluates only its lifecycle, configuration, foundation services and the pre-Core window
+  shell before the startup window appears. The application graph, which is most of Main's code
+  and includes Markdown, loads once that shell exists. The same check measures what Main
+  evaluates first and enforces 1.38 MiB, about 2% above the measured size.
 - A packaged Nodex compiles its Main code from Node's compile cache once it has run: the
   bootstrap entry enables the cache in the account's own cache folder, then loads the Main
   application. The first launch of each version compiles from source and fills the cache;

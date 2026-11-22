@@ -5,6 +5,8 @@ import { measureMainPreWindowClosure, measureWorkbenchClosure } from "./lib/star
 // recorded with the change that needs the bytes, never a reaction to a failed build.
 const MAX_WORKBENCH_JAVASCRIPT_BYTES = Math.round(13.78 * 1024 * 1024);
 const MAX_WORKBENCH_CSS_BYTES = 712 * 1024;
+/** What Main evaluates before its startup window; the application graph loads behind the window. */
+const MAX_MAIN_PRE_WINDOW_BYTES = Math.round(1.38 * 1024 * 1024);
 
 // Packages whose surfaces load them on demand. None may enter the ordinary Workbench.
 const ON_DEMAND_PACKAGES = [
@@ -38,7 +40,7 @@ process.stdout.write(
         css: { ...workbench.css, budgetBytes: MAX_WORKBENCH_CSS_BYTES },
         onDemandPackages: Object.fromEntries(workbench.onDemandPackageFiles),
       },
-      mainPreWindow: main,
+      mainPreWindow: { ...main, budgetBytes: MAX_MAIN_PRE_WINDOW_BYTES },
     },
     null,
     2,
@@ -60,6 +62,11 @@ const failures = [
     : []),
   ...(workbench.css.bytes > MAX_WORKBENCH_CSS_BYTES
     ? [`Workbench CSS is ${workbench.css.bytes} bytes (budget ${MAX_WORKBENCH_CSS_BYTES})`]
+    : []),
+  ...(main.bytes > MAX_MAIN_PRE_WINDOW_BYTES
+    ? [
+        `Main code before the first window is ${main.bytes} bytes (budget ${MAX_MAIN_PRE_WINDOW_BYTES})`,
+      ]
     : []),
 ];
 if (failures.length > 0) {

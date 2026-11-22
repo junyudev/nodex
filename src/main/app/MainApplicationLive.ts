@@ -28,6 +28,7 @@ import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
 import { ChatSearch, live as chatSearchLive } from "../chat-search/ChatSearch";
 import { live as insightsLive } from "../insights/Insights";
 import * as Effect from "effect/Effect";
+import * as HostMarkdown from "../../host/HostMarkdown";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -74,13 +75,10 @@ import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { TerminalRuntimeMap } from "../terminal-runtime/TerminalRuntimeMap";
-import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
 import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
 import { MainConfig } from "./MainConfig";
 import { NativeNotificationAuthorization } from "../platform/electron/NativeNotificationAuthorization";
-import * as Cause from "effect/Cause";
-import { MainObservability } from "./MainObservability";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
@@ -93,7 +91,6 @@ import * as CodexApplicationLive from "./CodexApplicationLive";
 import * as ConversationApplicationLive from "./ConversationApplicationLive";
 import * as CoreApplicationLive from "./CoreApplicationLive";
 import * as HostApplicationLive from "./HostApplicationLive";
-import * as ApplicationStateLive from "./ApplicationStateLive";
 import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
 import * as NodexAccountLive from "./NodexAccountLive";
 import * as HostDesktopToolsLive from "./HostDesktopToolsLive";
@@ -108,10 +105,7 @@ import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
-import {
-  HostShellEnvironment,
-  live as shellEnvironmentLive,
-} from "../host-runtime/HostShellEnvironment";
+import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
@@ -128,16 +122,6 @@ const applicationLogger = getLogger({ subsystem: "app" });
 // A failed external navigation must not tear down the desktop's other Spaces.
 const reportSpaceLinkFailure = (cause: unknown) =>
   Effect.sync(() => applicationLogger.warn("Could not open Space link", { cause }));
-const shellEnvironment = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return shellEnvironmentLive({
-      baseEnvironment: config.environment,
-      platform: config.platform as NodeJS.Platform,
-    });
-  }),
-);
-
 const appComponents = AppComponents.live.pipe(
   Layer.provide(Layer.merge(AppComponentActivation.live, AppComponentFetch.live)),
   Layer.provideMerge(codexPlatform),
@@ -514,105 +498,8 @@ export const live: Layer.Layer<
       ),
     );
   }),
-).pipe(Layer.provide(applicationGraph.pipe(Layer.provide(scopedAgentCore))));
-
-const startupFailureLive = (
-  error:
-    | ApplicationHostRuntimeError
-    | BrowserApplicationError
-    | BrowserProfileRuntimeError
-    | BrowserUseRuntimeError
-    | CoreRuntimeError
-    | ExecutionHostRuntimeError
-    | CodexComposerPredictionError
-    | MainApplicationError,
-): Layer.Layer<
-  MainApplication,
-  never,
-  | ApplicationInitializationRuntime
-  | ApplicationWindowShellRuntime
-  | MainShutdown
-  | MainObservability
-  | ScopedCallbackRuntime
-  | WindowRuntime
-  | WindowsTrayRuntime
-  | MainConfig
-> =>
-  Layer.effect(
-    MainApplication,
-    Effect.gen(function* () {
-      const callbacks = yield* ScopedCallbackRuntime;
-      const initialization = yield* ApplicationInitializationRuntime;
-      const shell = yield* ApplicationWindowShellRuntime;
-      const shutdown = yield* MainShutdown;
-      const windows = yield* WindowRuntime;
-      const config = yield* MainConfig;
-      const tray = yield* WindowsTrayRuntime;
-
-      applicationLogger.error("Desktop app startup failed; preserving the canonical window", {
-        error,
-      });
-      const observability = yield* MainObservability;
-      yield* observability.reportExit({
-        _tag: "Failure",
-        phase: "startup",
-        cause: Cause.fail(runtimeError("startup", error)),
-      });
-      yield* initialization.markFailed;
-      yield* tray.markApplicationFailed;
-      shell.failAll(error);
-
-      const revealFailure = Effect.sync(() => {
-        const window = windows.getLastFocused();
-        if (!window || window.isDestroyed()) return;
-        if (config.platform === "win32" && window.isMinimized()) window.restore();
-        window.show();
-        window.focus();
-      });
-      yield* tray.actions.pipe(
-        Stream.runForEach((action) => {
-          if (action.kind === "quit")
-            return shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid);
-          if (action.kind === "menu") return tray.showMenu([]);
-          return revealFailure;
-        }),
-        Effect.forkScoped,
-      );
-
-      for (const window of windows.all()) {
-        const onClosed = (): void => {
-          if (windows.count() > 0) return;
-          callbacks.fork(shutdown.request({ _tag: "UserQuit" }).pipe(Effect.asVoid));
-        };
-        window.once("closed", onClosed);
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            window.removeListener("closed", onClosed);
-          }),
-        );
-      }
-
-      return MainApplication.of({
-        activate: revealFailure,
-        handleBootstrapEvent: (event) => {
-          if (config.platform !== "win32") return Effect.void;
-          if (
-            event.type === "second-instance" &&
-            isWindowsStartupActivation(config.platform, event.argv)
-          )
-            return Effect.void;
-          return revealFailure;
-        },
-        prepareShutdown: Effect.void,
-        readiness: "startup-failed",
-      });
-    }),
-  );
-
-/** Keeps the pre-Core shell Scope alive while the full authority graph acquires. */
-export const productionLive = live.pipe(
-  Layer.catch(startupFailureLive),
-  Layer.provideMerge(ApplicationStateLive.live),
-  Layer.provideMerge(TerminalRuntimeLive.live),
-  Layer.provideMerge(shellEnvironment),
+).pipe(
+  Layer.provide(applicationGraph.pipe(Layer.provide(scopedAgentCore))),
+  // Markdown loads at the base of the graph that owns every reader and writer of it.
+  Layer.provide(HostMarkdown.live),
 );
