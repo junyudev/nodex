@@ -2,8 +2,12 @@ import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Schema from "effect/Schema";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { z } from "zod";
 import {
   nativeSearchThreadId,
@@ -15,6 +19,7 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { readCodexHistoryItems } from "../codex-application/CodexHistoryItems";
+import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { projectChat, type ChatListingItem } from "./ChatCatalogProjection";
 
 const Position = z.strictObject({
@@ -33,22 +38,57 @@ const staleCursor = (cause: unknown) => {
   );
 };
 
-/** Main owns native-host access; Runtime owns the disposable history cache and its one search index.
- * One producer page per chat per pass keeps startup and live turn delivery independent of backfill. */
+/** Rounds start at least this far apart, so each chat reads at most one history page a second. */
+const ROUND_SPACING_MS = 1_000;
+/** A turn lands as several Core commits; a short pause gathers them into one round. */
+const SIGNAL_SETTLE = "100 millis";
+/** A sweep rereads every native chat, one Core page per 100, to recover a dropped change notice
+ * and prune removed chats. Five minutes keeps an idle Profile's cost negligible while bounding how
+ * long either can linger; a chat in failure backoff still waits for its own retry time. */
+const SWEEP_INTERVAL_MS = 300_000;
+/** Core reads at most 100 Sessions by identity. A larger backlog is cheaper as one sweep. */
+const SESSION_BATCH = 100;
+const MAX_CHANGED_SESSIONS = 1_000;
+
+const nativeTarget = (row: ChatListingItem) => {
+  const chat = projectChat(row, undefined, true);
+  if (chat?.binding?.kind !== "native" || chat.backend !== "codex") return null;
+  const binding = chat.binding;
+  return { row, chat, binding, threadId: nativeSearchThreadId(binding.hostId, binding.threadId) };
+};
+type NativeTarget = NonNullable<ReturnType<typeof nativeTarget>>;
+
+/**
+ * Main owns native-host access; Runtime owns the disposable history cache and its one search
+ * index. One producer page per chat per round keeps startup and live turn delivery independent of
+ * backfill. Rounds run only when there is work: Core Session changes reread the changed chats by
+ * identity, a native host's availability change sweeps every chat, and a chat that is backfilling,
+ * streaming or backing off schedules its own next read. A periodic sweep is the safety net.
+ */
 export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
   const runtime = yield* AgentRuntimeApplication;
   const gateway = yield* CodexGateway;
   const managers = yield* CodexMainConversationManagers;
+  const notifications = yield* DatabaseNotifierRuntime;
   const observedRevisions = new Map<
     string,
     { readonly revision: string; readonly retryAt?: number; readonly delay?: number }
   >();
-  const ingest = Effect.fn("NativeChatSearchIndex.ingest")(function* (row: ChatListingItem) {
-    const chat = projectChat(row, undefined, true);
-    if (chat?.binding?.kind !== "native" || chat.backend !== "codex") return null;
-    const binding = chat.binding;
-    const threadId = nativeSearchThreadId(binding.hostId, binding.threadId);
+  /** Chats with another read due: 0 for the next round, or the end of a failure backoff. */
+  const followUps = new Map<string, { readonly row: ChatListingItem; readonly dueAt: number }>();
+  const changedSessions = new Set<string>();
+  const hostAvailability = new Map<string, string>();
+  let sweepRequested = true;
+  const wake = yield* Queue.sliding<void>(1);
+
+  /** Reads at most one producer page. Null settles the chat until its revision changes. */
+  const ingest = Effect.fn("NativeChatSearchIndex.ingest")(function* ({
+    row,
+    chat,
+    binding,
+    threadId,
+  }: NativeTarget) {
     let observed = yield* gateway.connection(binding.hostId).pipe(Effect.result);
     // Local Codex starts on demand. Warm its history owner in this background fiber;
     // disconnected remote hosts stay partial until their existing owner reconnects.
@@ -72,13 +112,13 @@ export const make = Effect.gen(function* () {
       row.task.thread?.status,
     ]);
     const previous = observedRevisions.get(threadId);
-    const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+    const now = yield* Clock.currentTimeMillis;
     if (
       previous?.revision === revision &&
       (previous.retryAt === undefined || now < previous.retryAt)
     )
-      return threadId;
-    yield* Effect.gen(function* () {
+      return previous.retryAt ?? null;
+    const dueAt: number | null = yield* Effect.gen(function* () {
       const state = yield* runtime.syncNativeSearchHistory({
         kind: "admit",
         threadId,
@@ -86,7 +126,7 @@ export const make = Effect.gen(function* () {
       });
       if (state.complete || connection === null) {
         observedRevisions.set(threadId, { revision });
-        return;
+        return null;
       }
       const manager = yield* managers.get(binding.hostId);
       const target = {
@@ -100,7 +140,7 @@ export const make = Effect.gen(function* () {
       ).pipe(Effect.result);
       if (decoded._tag === "Failure") {
         yield* runtime.syncNativeSearchHistory({ kind: "reset", threadId });
-        return;
+        return 0;
       }
       const position = decoded.success;
       const mode =
@@ -142,11 +182,11 @@ export const make = Effect.gen(function* () {
         )
       ) {
         yield* runtime.syncNativeSearchHistory({ kind: "reset", threadId });
-        return;
+        return 0;
       }
       if (native.nextCursor !== null && native.nextCursor === cursor) {
         yield* runtime.syncNativeSearchHistory({ kind: "reset", threadId });
-        return;
+        return 0;
       }
       let streaming = false;
       const items = native.data.flatMap((entry): NativeSearchItem[] => {
@@ -246,7 +286,9 @@ export const make = Effect.gen(function* () {
         });
         yield* Effect.yieldNow;
       }
-      if (published.complete) observedRevisions.set(threadId, { revision });
+      if (!published.complete) return 0;
+      observedRevisions.set(threadId, { revision });
+      return null;
     }).pipe(
       Effect.catch(() =>
         Effect.gen(function* () {
@@ -256,66 +298,185 @@ export const make = Effect.gen(function* () {
             300_000,
             previous?.revision === revision ? (previous.delay ?? 5_000) * 2 : 5_000,
           );
-          const failedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+          const failedAt = yield* Clock.currentTimeMillis;
           observedRevisions.set(threadId, { revision, delay, retryAt: failedAt + delay });
+          return failedAt + delay;
         }),
       ),
     );
     yield* Effect.yieldNow;
-    return threadId;
+    return dueAt;
   });
-  const pass = Effect.gen(function* () {
-    const admitted: string[] = [];
-    for (const archived of [false, true]) {
-      let after: string | null = null;
-      const seen = new Set<string>();
-      do {
-        const response: Effect.Success<ReturnType<typeof core.workspace.read>> =
-          yield* core.workspace.read({
-            kind: "session_window",
-            archived,
-            native_only: true,
-            order: "identity",
-            window: { first: 100, ...(after ? { after } : {}) },
-          });
-        if (response.value.kind !== "session_window") return;
-        const page = response.value.sessions;
-        const keys = yield* Effect.forEach(page.items, ingest, { concurrency: 4 });
-        admitted.push(...keys.filter((key): key is string => key !== null));
-        after = page.next_cursor ?? null;
-        if (after && seen.has(after)) return;
-        if (after) seen.add(after);
-      } while (after !== null);
+
+  /** One read per native chat, scheduling the chats that still have work. */
+  const ingestRows = (rows: Iterable<ChatListingItem>, admitted?: Set<string>) => {
+    const targets = new Map<string, NativeTarget>();
+    for (const row of rows) {
+      const target = nativeTarget(row);
+      if (target) targets.set(target.threadId, target);
     }
-    yield* runtime.syncNativeSearchHistory({ kind: "prune", threadIds: admitted });
-    const present = new Set(admitted);
+    for (const threadId of targets.keys()) admitted?.add(threadId);
+    return Effect.forEach(
+      targets.values(),
+      (target) =>
+        ingest(target).pipe(
+          Effect.map((dueAt) => {
+            if (dueAt === null) followUps.delete(target.threadId);
+            else followUps.set(target.threadId, { row: target.row, dueAt });
+          }),
+        ),
+      { concurrency: 4, discard: true },
+    );
+  };
+
+  const forEachPage = Effect.fnUntraced(function* (
+    request: { readonly archived: boolean; readonly sessionIds?: readonly string[] },
+    visit: (items: readonly ChatListingItem[]) => Effect.Effect<void>,
+  ) {
+    let after: string | null = null;
+    const seen = new Set<string>();
+    do {
+      const response: Effect.Success<ReturnType<typeof core.workspace.read>> =
+        yield* core.workspace.read({
+          kind: "session_window",
+          archived: request.archived,
+          native_only: true,
+          order: "identity",
+          ...(request.sessionIds ? { session_ids: request.sessionIds } : {}),
+          window: { first: SESSION_BATCH, ...(after ? { after } : {}) },
+        });
+      if (response.value.kind !== "session_window")
+        return yield* Effect.fail(new Error("Core returned a non-Session window"));
+      yield* visit(response.value.sessions.items);
+      after = response.value.sessions.next_cursor ?? null;
+      if (after && seen.has(after))
+        return yield* Effect.fail(new Error("Session cursor did not advance"));
+      if (after) seen.add(after);
+    } while (after !== null);
+  });
+
+  const sweep = Effect.gen(function* () {
+    changedSessions.clear();
+    const admitted = new Set<string>();
+    for (const archived of [false, true])
+      yield* forEachPage({ archived }, (items) => ingestRows(items, admitted));
+    yield* runtime.syncNativeSearchHistory({ kind: "prune", threadIds: [...admitted] });
     for (const key of observedRevisions.keys())
-      if (!present.has(key)) observedRevisions.delete(key);
-  }).pipe(
-    Effect.provideService(CoreApplicationAgent, null),
-    Effect.provideService(CoreRequestClass, "background"),
+      if (!admitted.has(key)) observedRevisions.delete(key);
+    for (const key of followUps.keys()) if (!admitted.has(key)) followUps.delete(key);
+  });
+
+  const refresh = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const sessionIds = [...changedSessions];
+    changedSessions.clear();
+    const current: ChatListingItem[] = [];
+    yield* Effect.forEach(
+      Array.from({ length: Math.ceil(sessionIds.length / SESSION_BATCH) }, (_, index) =>
+        sessionIds.slice(index * SESSION_BATCH, (index + 1) * SESSION_BATCH),
+      ),
+      (batch) =>
+        Effect.forEach(
+          [false, true],
+          (archived) =>
+            forEachPage({ archived, sessionIds: batch }, (items) =>
+              Effect.sync(() => current.push(...items)),
+            ),
+          { discard: true },
+        ),
+      { discard: true },
+    ).pipe(
+      Effect.tapCause(() =>
+        Effect.sync(() => {
+          for (const id of sessionIds) changedSessions.add(id);
+        }),
+      ),
+    );
+    // Core's current rows supersede retained ones. A changed chat it no longer lists natively
+    // stops reading its host, and the next sweep prunes it.
+    const changed = new Set(sessionIds);
+    const due: ChatListingItem[] = [];
+    for (const [key, { row, dueAt }] of followUps)
+      if (changed.has(row.task.session.id)) followUps.delete(key);
+      else if (dueAt <= now) due.push(row);
+    yield* ingestRows([...due, ...current]);
+  });
+
+  const signal = Queue.offer(wake, undefined).pipe(Effect.asVoid);
+  // Subscribe before the first round so no change can fall between its reads and the signal.
+  yield* notifications.projectSessionInvalidations.pipe(
+    Stream.runForEach((event) =>
+      Effect.suspend(() => {
+        const detail = event.detailInvalidation;
+        if (detail.kind === "sessions") {
+          if (detail.sessionIds.length === 0) return Effect.void;
+          for (const id of detail.sessionIds) changedSessions.add(id);
+        }
+        if (detail.kind === "all" || changedSessions.size > MAX_CHANGED_SESSIONS) {
+          sweepRequested = true;
+          changedSessions.clear();
+        }
+        return signal;
+      }),
+    ),
+    Effect.forkScoped({ startImmediately: true }),
   );
-  return pass;
-});
-export const install = Effect.gen(function* () {
-  const pass = yield* make;
+  // Revisions carry each host's connection generation. A change makes every chat on that host
+  // stale, and a host that becomes ready lets chats it left partial catch up.
+  yield* gateway.events.pipe(
+    Stream.runForEach((event) =>
+      Effect.suspend(() => {
+        if (event.kind !== "connection") return Effect.void;
+        const connection = event.value;
+        const availability =
+          connection.kind === "ready" ? `ready:${connection.generation}` : "unavailable";
+        if (hostAvailability.get(connection.hostId) === availability) return Effect.void;
+        hostAvailability.set(connection.hostId, availability);
+        sweepRequested = true;
+        return signal;
+      }),
+    ),
+    Effect.forkScoped({ startImmediately: true }),
+  );
+
   let failed = false;
+  let nextSweepAt = 0;
+  // The first sweep waits one round spacing, so indexing never competes with startup reads.
+  let lastRoundAt = yield* Clock.currentTimeMillis;
+  const nextRoundAt = () => {
+    let at = sweepRequested || changedSessions.size > 0 ? 0 : nextSweepAt;
+    for (const { dueAt } of followUps.values()) at = Math.min(at, dueAt);
+    return Math.max(at, lastRoundAt + ROUND_SPACING_MS);
+  };
   yield* Effect.gen(function* () {
     while (true) {
-      yield* pass.pipe(
+      const now = yield* Clock.currentTimeMillis;
+      const at = nextRoundAt();
+      if (at > now) {
+        const woken = yield* Queue.take(wake).pipe(Effect.timeoutOption(at - now));
+        if (Option.isSome(woken)) yield* Effect.sleep(SIGNAL_SETTLE);
+        continue;
+      }
+      const full = sweepRequested || now >= nextSweepAt;
+      sweepRequested = false;
+      yield* (full ? sweep : refresh).pipe(
         Effect.tap(() =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             failed = false;
+            if (full) nextSweepAt = (yield* Clock.currentTimeMillis) + SWEEP_INTERVAL_MS;
           }),
         ),
         Effect.catch((cause) => {
+          if (full) sweepRequested = true;
           if (failed) return Effect.void;
           failed = true;
           return Effect.logWarning("Native chat indexing will retry", { cause });
         }),
+        Effect.provideService(CoreApplicationAgent, null),
+        Effect.provideService(CoreRequestClass, "background"),
       );
-      yield* Effect.sleep("1 second");
+      lastRoundAt = yield* Clock.currentTimeMillis;
     }
-  }).pipe(Effect.forkScoped);
+  }).pipe(Effect.forkScoped({ startImmediately: true }));
 });
-export const live = Layer.effectDiscard(install);
+export const live = Layer.effectDiscard(make);

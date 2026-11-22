@@ -198,7 +198,9 @@ Search matches titles, Projects, branches, pull requests, opening prompts, and
 available messages. Agent Runtime indexes messages from every available Provider,
 including native Codex. It also indexes completed command lines up to 4,096 characters
 and the paths of changed files. History joins in the background and reports partial
-coverage while it catches up.
+coverage while it catches up. Native Codex history refreshes when a chat changes or its host
+connects again; an idle Profile does not reread it, apart from a sweep every five minutes that
+recovers missed changes and drops removed chats.
 
 The weakest required word determines the match class. Within each placement
 group, title leads other metadata, followed by message and then command or path. A phrase in
