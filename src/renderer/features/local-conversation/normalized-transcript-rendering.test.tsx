@@ -341,11 +341,12 @@ describe("normalized production transcript rendering", () => {
 
   test("hidden reasoning streams update the compact thinking label independently", async () => {
     const owner = ownerWithTurns([
-      [{ type: "reasoning", id: "reason", summary: ["Preparing"], content: [] }],
+      [{ type: "reasoning", id: "reason", summary: ["**Preparing**"], content: [] }],
     ]);
     const rendered = vi.fn();
     const view = render(rows(owner, rendered));
     await settleAsyncRender();
+    // The Thought's heading is the group's compact live label.
     expect(view.getAllByText("Preparing")[0]).toBeDefined();
     const before = rendered.mock.calls.length;
     await act(async () => {
@@ -356,7 +357,7 @@ describe("normalized production transcript rendering", () => {
             type: "text",
             key: { ...key, entityKey: "turn:turn-0", itemId: "reason" },
             target: { field: "summary", index: 0 },
-            edits: [{ at: 9, deleteCount: 0, insert: " the patch" }],
+            edits: [{ at: 11, deleteCount: 0, insert: " the patch" }],
           },
         ],
       });

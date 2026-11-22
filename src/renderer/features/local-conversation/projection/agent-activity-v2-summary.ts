@@ -209,16 +209,17 @@ export function resolveThreadAgentActivityGroupState(input: {
     input.isLatestVisibleUnit && input.isTurnInProgress && !input.isActivitySliceClosed;
   if (!isOpenLatestUnit) return { kind: "summary" };
 
-  if (input.isExploring) {
-    const explorationItem = selectThreadExplorationActivityItem(input.unit);
-    if (explorationItem != null) return { kind: "active", item: explorationItem };
-  }
-
+  // The newest running tool owns the header; a review waiting on it never does.
   for (let index = input.unit.items.length - 1; index >= 0; index -= 1) {
     const activityItem = input.unit.items[index];
     if (activityItem == null || !isThreadAgentActivityItemInProgress(activityItem)) continue;
-    if (activityItem.item.type === "automaticApprovalReview") return { kind: "thinking" };
+    if (activityItem.item.type === "automaticApprovalReview") continue;
     return { kind: "active", item: activityItem };
+  }
+  // An exploration that is still going keeps naming its latest read between reads.
+  if (input.isExploring) {
+    const explorationItem = selectThreadExplorationActivityItem(input.unit);
+    if (explorationItem != null) return { kind: "active", item: explorationItem };
   }
   return { kind: "thinking" };
 }

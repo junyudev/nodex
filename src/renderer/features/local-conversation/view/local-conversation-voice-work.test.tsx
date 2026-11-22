@@ -114,8 +114,8 @@ test("actual native work reveals terminal assistant without folding or adding Tu
   expect(screen.queryByText("Native terminal answer")).toBeNull();
   expect(screen.queryByRole("button", { name: /previous message/ })).toBeNull();
   expect(screen.queryByText(/Working for/)).toBeNull();
-  const thinking = await screen.findAllByText("Thinking");
-  expect(thinking.filter((node) => !node.closest('[aria-hidden="true"]'))).toHaveLength(1);
+  const working = await screen.findAllByText("Working");
+  expect(working.filter((node) => !node.closest('[aria-hidden="true"]'))).toHaveLength(1);
   expect(fullReads).not.toHaveBeenCalled();
   const next = fixture(true);
   await act(async () => {

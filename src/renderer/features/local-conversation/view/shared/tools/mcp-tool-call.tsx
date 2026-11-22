@@ -1,5 +1,4 @@
 import { useIntl } from "@/lib/i18n";
-import { motion } from "motion/react";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { PanelRightVisibleIcon } from "@/components/shared/icons";
 import { resolveCodexWebMcpActivities } from "../../../../../../shared/codex-webmcp-tool-call";
@@ -13,21 +12,23 @@ import type {
 import type { ThreadStageActions } from "../../../thread-stage-types";
 import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
 import { useMcpResource, useMcpServerStatuses } from "../../../../../lib/use-mcp-queries";
-import { cn } from "../../../../../lib/utils";
 import {
   buildTextPreview,
   INLINE_TEXT_PREVIEW_MAX_CHARS,
   type TextPreview,
 } from "../../../../../lib/text-preview";
-import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
 import { ThreadActionIconButton } from "../thread-message-actions";
-import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import {
   AutomaticApprovalReviewRows,
   AutomaticApprovalReviewShield,
 } from "../automatic-approval-review-surface";
-import { ThreadRichActivityHeader, ThreadActivityShell, ToolErrorDetail } from "./tool-primitives";
+import {
+  ThreadActivityDisclosureRegion,
+  ThreadActivityShell,
+  ThreadRichActivityHeader,
+  ToolErrorDetail,
+} from "./tool-primitives";
 import { asRecord } from "./tool-call-utils";
 import { ToolActivityIcon, resolveMcpSourceIcon } from "./tool-call-icons";
 import { resolveMcpToolActivityLabel } from "./mcp-tool-call-labels";
@@ -619,7 +620,6 @@ export function McpToolCall({
     isExpanded,
     payload?.outputOmitted,
   );
-  const { elementHeightPx, elementRef } = useMeasuredElementHeight();
   const hasSuccessfulResult = payload?.result?.type === "success";
   // Runtime call IDs identify another execution owner; its rows cannot read the native gateway's
   // catalog or widgets. Typed results remain inspectable until that owner exposes resource reads.
@@ -721,21 +721,9 @@ export function McpToolCall({
     />
   );
   const body = canExpand ? (
-    <motion.div
-      initial={false}
-      animate={{
-        height: isBodyExpanded ? elementHeightPx : 0,
-        opacity: isBodyExpanded ? 1 : 0,
-      }}
-      transition={CODEX_THREAD_ACCORDION_TRANSITION}
-      className={cn(isBodyExpanded ? "overflow-visible" : "overflow-hidden")}
-      data-thread-find-skip={isBodyExpanded ? undefined : true}
-      style={{
-        pointerEvents: isBodyExpanded ? "auto" : "none",
-      }}
-    >
-      <div ref={isBodyExpanded ? elementRef : null} className="flex flex-col gap-0.5 pt-1">
-        {isBodyExpanded ? (
+    <ThreadActivityDisclosureRegion expanded={isBodyExpanded}>
+      <div className="flex flex-col gap-0.5 pt-1">
+        {
           <>
             {hasApprovalReviews ? (
               <AutomaticApprovalReviewRows
@@ -776,9 +764,9 @@ export function McpToolCall({
               )}
             </div>
           </>
-        ) : null}
+        }
       </div>
-    </motion.div>
+    </ThreadActivityDisclosureRegion>
   ) : null;
 
   const webMcpActivities = resolveCodexWebMcpActivities(payload);

@@ -396,7 +396,7 @@ describe("v2 activity summary fact accumulator", () => {
     ).toBe("summary");
   });
 
-  test("selects the latest exploration run and falls back to thinking", () => {
+  test("gives the header to the newest running tool, then the latest exploration, then thinking", () => {
     const buildExec = (
       id: string,
       status: "completed" | "inProgress",
@@ -437,8 +437,18 @@ describe("v2 activity summary fact accumulator", () => {
         buildExec("latest-read", "completed", "read"),
       ] as const,
     };
-    const exploring = resolveThreadAgentActivityGroupState({
+    const running = resolveThreadAgentActivityGroupState({
       unit,
+      isLatestVisibleUnit: true,
+      isTurnInProgress: true,
+      isActivitySliceClosed: false,
+      isExploring: true,
+    });
+    const exploring = resolveThreadAgentActivityGroupState({
+      unit: {
+        ...unit,
+        items: unit.items.slice(1) as [(typeof unit.items)[1], (typeof unit.items)[2]],
+      },
       isLatestVisibleUnit: true,
       isTurnInProgress: true,
       isActivitySliceClosed: false,
@@ -452,6 +462,7 @@ describe("v2 activity summary fact accumulator", () => {
       isExploring: false,
     });
 
+    expect(running.kind === "active" ? running.item.item.id : "").toBe("old-running-read");
     expect(exploring.kind === "active" ? exploring.item.item.id : "").toBe("latest-read");
     expect(thinking.kind).toBe("thinking");
   });

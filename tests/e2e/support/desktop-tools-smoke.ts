@@ -336,9 +336,12 @@ export async function runDesktopSmoke(
       const activity = page.getByRole("button", { name: /^Worked for/u });
       if ((await activity.count()) && (await activity.getAttribute("aria-expanded")) !== "true")
         await activity.click();
-      const body = page.getByTestId("agent-activity-group-body");
-      if ((await body.count()) && (await body.getAttribute("aria-hidden")) === "true")
-        await body.locator("..").getByRole("button").first().click();
+      const groupToggle = page.getByTestId("agent-activity-group-toggle");
+      if (
+        (await groupToggle.count()) &&
+        (await groupToggle.getAttribute("aria-expanded")) !== "true"
+      )
+        await groupToggle.click();
       const row = page.getByRole("button", { name: script.browser[1]!.title, exact: true });
       await expect(row).toBeVisible();
       await row.click();

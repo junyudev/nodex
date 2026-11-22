@@ -940,20 +940,25 @@ export interface ThreadAgentActivityCompletedHeader {
   iconItem: ThreadAgentActivityGroupEntryModel | null;
 }
 
+/**
+ * What a live group's header says. `active` names a tool, `thinking` is a gap that a named
+ * thought may fill, and `summary` is the settled group. The view owns how a change is animated.
+ */
 export type ThreadAgentActivityGroupHeader =
   | {
       kind: "summary";
-      key: "summary";
     }
   | {
       kind: "active";
-      key: string;
       item: ThreadAgentActivityGroupEntryModel;
       label: string;
+      /** Identity of the wording; the same command or read keeps its label in place. */
+      labelKey: string;
+      /** False when a finished read stands in for an exploration that is still going. */
+      inProgress: boolean;
     }
   | {
       kind: "thinking";
-      key: "thinking";
       message: string | null;
     };
 
@@ -987,7 +992,6 @@ export interface ThreadAgentActivityGroupBlockModel extends ThreadRenderKeyedBlo
   completedHeader: ThreadAgentActivityCompletedHeader;
   header: ThreadAgentActivityGroupHeader;
   mcpApps?: readonly ProtocolAppInfo[];
-  shouldAnimateInitialCollapse: boolean;
   status?: CodexConversationItem["status"];
 }
 

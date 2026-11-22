@@ -70,9 +70,8 @@ const importedHistory = async (
 };
 
 const expectMissingImageRecords = async (page: Page, names: readonly string[]) => {
-  for (const group of await page.getByTestId("agent-activity-group-body").all()) {
-    if ((await group.getAttribute("aria-hidden")) === "true")
-      await group.locator("..").getByRole("button").first().click();
+  for (const toggle of await page.getByTestId("agent-activity-group-toggle").all()) {
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   }
   const inspected = page.getByRole("button", {
     name: "Viewed an image · file missing",

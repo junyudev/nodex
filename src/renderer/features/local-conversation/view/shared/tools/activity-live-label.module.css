@@ -1,0 +1,127 @@
+/*
+ * A live activity label hands over to the next one in place: the old label fades while the new
+ * one is uncovered from left to right under a feathered edge, in step with its first shimmer
+ * sweep. The viewport and its label slide in opposite directions, so the glyphs stay still and
+ * only the clipping edge moves.
+ */
+.slot {
+  --shimmer-sweep-duration: 1s;
+  vertical-align: top;
+  max-width: 100%;
+  display: inline-grid;
+  overflow: hidden;
+}
+
+.viewport,
+.outgoing {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.viewport {
+  display: grid;
+}
+
+.label,
+.outgoing {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* Scoped under the slot so it outranks the shimmer's own `animation: none`. */
+.slot > .outgoing {
+  pointer-events: none;
+  animation: release-label var(--transition-duration-moderate) ease-out both;
+}
+
+.reveal {
+  --handoff-offset: -108%;
+  margin-right: -1em;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 1em), #0000);
+}
+
+.reveal > .label {
+  --handoff-offset: 108%;
+  padding-right: 1em;
+}
+
+.reveal,
+.reveal > .label {
+  animation: reveal-label var(--shimmer-sweep-duration) linear both;
+}
+
+/* The first tool of a turn takes over the turn's thinking line and makes room for its icon. */
+.makeRoom {
+  animation: make-room var(--transition-duration-moderate) ease-out both;
+}
+
+.receive {
+  animation: receive-label var(--transition-duration-moderate) ease-out both;
+}
+
+@keyframes release-label {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes reveal-label {
+  0% {
+    transform: translateX(var(--handoff-offset));
+  }
+  74%,
+  to {
+    transform: translate(0);
+  }
+}
+
+@keyframes make-room {
+  0% {
+    transform: translateX(calc(-1 * (var(--icon-size, 16px) + var(--spacing) * 2)));
+  }
+  to {
+    transform: translate(0);
+  }
+}
+
+@keyframes receive-label {
+  0% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+[dir="rtl"] .makeRoom {
+  animation-name: make-room-rtl;
+}
+
+@keyframes make-room-rtl {
+  0% {
+    transform: translateX(calc(var(--icon-size, 16px) + var(--spacing) * 2));
+  }
+  to {
+    transform: translate(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot > .outgoing {
+    visibility: hidden;
+    animation-duration: 0s;
+  }
+  .reveal,
+  .reveal > .label {
+    animation-duration: 0s;
+  }
+  .reveal {
+    mask-image: none;
+  }
+  .makeRoom,
+  .receive {
+    animation: none;
+  }
+}

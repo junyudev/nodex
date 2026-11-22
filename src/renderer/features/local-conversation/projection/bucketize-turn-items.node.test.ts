@@ -1819,7 +1819,6 @@ describe("bucketizeTurnItems", () => {
     const [group] = turn.blocks;
     expect(group?.type === "agentActivityGroup" ? group.header : null).toEqual({
       kind: "thinking",
-      key: "thinking",
       message: null,
     });
     // Prose thinking names no status of its own: the status line stays Thinking.

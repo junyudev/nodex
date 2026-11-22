@@ -1415,12 +1415,12 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
             (await activity.getAttribute("aria-expanded")) !== "true"
           )
             await activity.click();
-          const groupBody = page.getByTestId("agent-activity-group-body");
+          const groupToggle = page.getByTestId("agent-activity-group-toggle");
           if (
-            (await groupBody.count()) > 0 &&
-            (await groupBody.getAttribute("aria-hidden")) === "true"
+            (await groupToggle.count()) > 0 &&
+            (await groupToggle.getAttribute("aria-expanded")) !== "true"
           )
-            await groupBody.locator("..").getByRole("button").first().click();
+            await groupToggle.click();
           const tool = page.getByRole("button", {
             name: toolTitle,
             exact: true,

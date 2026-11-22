@@ -26,6 +26,7 @@ import { normalizeEnvironmentAwareAppResourceSource } from "../../../../../lib/a
 import { useTheme } from "../../../../../lib/use-theme";
 import { cn } from "../../../../../lib/utils";
 import type { ThreadBlockModel } from "../../../thread-stage-types";
+import type { ActivitySpriteName } from "./activity-icon-swap";
 import {
   AutomaticApprovalReviewIcon,
   ActivityListFilesIcon,
@@ -35,13 +36,13 @@ import {
   ComputerUseIcon,
   ConnectorFallbackIcon,
   BoardIcon,
-  EditFilesIcon,
+  PencilActivityIcon,
   ConnectorGlobeIcon,
   HooksIcon,
   InboxIcon,
   PageIcon,
   PluginsIcon,
-  ReadFilesIcon,
+  ReadingActivityIcon,
   ClockIcon,
   SidebarVisibleIcon,
   SkillIcon,
@@ -93,7 +94,7 @@ export type ToolActivityIconDescriptor =
       fallbackIcon: ToolActivityIconId;
     };
 
-const ACTIVITY_ICON_CLASS_NAME = "icon-xs shrink-0 text-token-conversation-body";
+const ACTIVITY_ICON_CLASS_NAME = "icon-xs shrink-0 text-(--color-text-tertiary)";
 const SOURCE_ICON_CLASS_NAME =
   "icon-xs shrink-0 rounded-2xs bg-token-main-surface-primary object-contain text-token-text-secondary";
 
@@ -142,7 +143,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "denied":
       return <DeniedCircleIcon aria-hidden className={iconClassName} />;
     case "edit-files":
-      return <EditFilesIcon aria-hidden className={iconClassName} />;
+      return <PencilActivityIcon aria-hidden className={iconClassName} />;
     case "hooks":
       return <HooksIcon aria-hidden className={iconClassName} />;
     case "inbox":
@@ -156,7 +157,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "plugin":
       return <PluginsIcon aria-hidden className={iconClassName} />;
     case "read-files":
-      return <ReadFilesIcon aria-hidden className={iconClassName} />;
+      return <ReadingActivityIcon aria-hidden className={iconClassName} />;
     case "schedule":
       return <ClockIcon className={iconClassName} />;
     case "settings":
@@ -505,6 +506,43 @@ export function resolveToolActivityEntryIcon(
     return resolveDynamicToolFallbackIcon(call);
   }
   return null;
+}
+
+/** The glyph family an icon belongs to; consecutive activities in one family keep the icon still. */
+export function resolveToolActivityIconKey(descriptor: ToolActivityIconDescriptor): string {
+  return descriptor.kind === "semantic"
+    ? descriptor.icon
+    : `logo:${descriptor.logoUrl ?? descriptor.logoDarkUrl ?? descriptor.alt}`;
+}
+
+/**
+ * The animated stand-in a running activity shows in a live group header. Shell work thinks,
+ * reads turn pages, local searches scan, and browser or computer control moves a cursor; edits,
+ * native web searches and other tools keep their static glyph.
+ */
+export function resolveToolActivitySprite(
+  entry: Extract<ThreadBlockModel, { type: "agentActivityGroup" }>["entries"][number],
+  descriptor: ToolActivityIconDescriptor,
+): ActivitySpriteName | null {
+  const icon = descriptor.kind === "semantic" ? descriptor.icon : descriptor.fallbackIcon;
+  switch (icon) {
+    case "run-command":
+    case "node-repl":
+      return "code-thinking";
+    case "read-files":
+    case "skill":
+      return entry.type === "exec" ? "reading" : null;
+    case "code-searching":
+    case "list-files":
+      return entry.type === "exec" ? "code-searching" : null;
+    case "web-search":
+      return entry.type === "exec" ? "web-search" : null;
+    case "browser-use":
+    case "computer-use":
+      return "computer";
+    default:
+      return null;
+  }
 }
 
 export const toolCallIconTestHelpers = {

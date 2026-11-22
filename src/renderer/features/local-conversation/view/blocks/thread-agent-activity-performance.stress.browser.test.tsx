@@ -140,17 +140,14 @@ function sumCommitDuration(commits: readonly ProfileCommit[], stage: TraceStage)
     .reduce((total, commit) => total + commit.actualDurationMs, 0);
 }
 
-function groupScroller(body: HTMLElement): HTMLElement {
-  const measuredBody = body.firstElementChild;
-  const scroller = measuredBody?.firstElementChild;
-  if (!(scroller instanceof HTMLElement)) {
-    throw new Error("Expected the mixed activity body scroller.");
-  }
-  return scroller;
+function groupSteps(body: HTMLElement): HTMLElement {
+  const steps = body.querySelector("[data-activity-steps]");
+  if (!(steps instanceof HTMLElement)) throw new Error("Expected the activity steps list.");
+  return steps;
 }
 
 function countGroupRows(body: HTMLElement): number {
-  return groupScroller(body).children.length;
+  return groupSteps(body).children.length;
 }
 
 async function renderAndSettle(ui: ReactElement): Promise<ReturnType<typeof render>> {
@@ -198,10 +195,8 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
     const view = await renderAndSettle(renderGroup(initialBlock));
     const disclosure = view.container.querySelector<HTMLButtonElement>("button[aria-expanded]");
     if (!disclosure) throw new Error("Expected the activity disclosure button.");
-    const collapsedBody = view.getByTestId("agent-activity-group-body");
-    expect(collapsedBody.getAttribute("aria-hidden")).toBe("true");
-    expect(collapsedBody.hasAttribute("inert")).toBe(true);
-    expect(countGroupRows(collapsedBody)).toBe(initialBlock.entries.length);
+    // A closed group keeps none of its rows mounted.
+    expect(view.queryByTestId("agent-activity-group-body")).toBe(null);
 
     stage = "collapsed-stream";
     const collapsedStreamStartedAt = performance.now();
@@ -212,10 +207,7 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
         view.rerender(renderGroup(currentBlock));
         await Promise.resolve();
       });
-      const body = view.getByTestId("agent-activity-group-body");
-      expect(body.getAttribute("aria-hidden")).toBe("true");
-      expect(body.hasAttribute("inert")).toBe(true);
-      expect(countGroupRows(body)).toBe(currentBlock.entries.length);
+      expect(view.queryByTestId("agent-activity-group-body")).toBe(null);
     }
     const collapsedStreamLatencyMs = performance.now() - collapsedStreamStartedAt;
     const collapsedStreamCommitMs = sumCommitDuration(commits, "collapsed-stream");
@@ -235,13 +227,13 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
     const openLatencyMs = performance.now() - openStartedAt;
     const openCommitMs = sumCommitDuration(commits, "open");
     const body = view.getByTestId("agent-activity-group-body");
-    const scroller = groupScroller(body);
-    const rowWrappersBeforeStream = [...scroller.children];
+    const steps = groupSteps(body);
+    const rowWrappersBeforeStream = [...steps.children];
     const childListMutations: MutationRecord[] = [];
     const mutationObserver = new MutationObserver((records) => {
       childListMutations.push(...records.filter((record) => record.type === "childList"));
     });
-    mutationObserver.observe(scroller, { childList: true });
+    mutationObserver.observe(steps, { childList: true });
 
     stage = "expanded-stream";
     const expandedStreamingBlock = buildStreamingUpdate(currentBlock, 4);
@@ -256,7 +248,7 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
     mutationObserver.disconnect();
     const expandedStreamLatencyMs = performance.now() - expandedStreamStartedAt;
     const expandedStreamCommitMs = sumCommitDuration(commits, "expanded-stream");
-    const rowWrappersAfterStream = [...scroller.children];
+    const rowWrappersAfterStream = [...steps.children];
 
     performance.measure(OPEN_TRACE_NAME, {
       start: openStartedAt,
@@ -295,9 +287,7 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      const collapsed = view.getByTestId("agent-activity-group-body");
-      expect(collapsed.getAttribute("aria-hidden")).toBe("true");
-      expect(collapsed.hasAttribute("inert")).toBe(true);
+      expect(view.queryByTestId("agent-activity-group-body")).toBe(null);
     });
   });
 
@@ -347,10 +337,9 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
     await act(async () => {
       await userEvent.keyboard("{Space}");
     });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
     await waitFor(() => {
-      const body = view.getByTestId("agent-activity-group-body");
-      expect(body.getAttribute("aria-hidden")).toBe("true");
-      expect(body.hasAttribute("inert")).toBe(true);
+      expect(view.queryByTestId("agent-activity-group-body")).toBe(null);
     });
   });
 
@@ -385,49 +374,48 @@ describe("ThreadAgentActivityGroupBlock Chromium behavior", () => {
     }
   });
 
-  test("scales the exact rem body cap at a high root font size", async () => {
-    const originalRootFontSize = document.documentElement.style.fontSize;
-    document.documentElement.style.fontSize = "20px";
+  test("grows a long group to its natural height under one hairline", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const maitaiStore = createMaitaiStore();
+    const view = await renderAndSettle(
+      <MaitaiProvider store={maitaiStore}>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <div style={{ width: 320 }}>
+              <ThreadAgentActivityGroupBlock
+                block={buildLargeMixedGroup()}
+                isLatestTurn={false}
+                isStreamingTurn={false}
+              />
+            </div>
+          </TooltipProvider>
+        </QueryClientProvider>
+      </MaitaiProvider>,
+    );
+    const disclosure = view.container.querySelector<HTMLButtonElement>("button[aria-expanded]");
+    if (!disclosure) throw new Error("Expected the activity disclosure button.");
 
-    try {
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
-      const maitaiStore = createMaitaiStore();
-      const view = await renderAndSettle(
-        <MaitaiProvider store={maitaiStore}>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <div data-testid="scaled-activity-host" style={{ width: 320 }}>
-                <ThreadAgentActivityGroupBlock
-                  block={buildLargeMixedGroup()}
-                  isLatestTurn={false}
-                  isStreamingTurn={false}
-                />
-              </div>
-            </TooltipProvider>
-          </QueryClientProvider>
-        </MaitaiProvider>,
-      );
-      const disclosure = view.container.querySelector<HTMLButtonElement>("button[aria-expanded]");
-      if (!disclosure) throw new Error("Expected the activity disclosure button.");
+    await act(async () => {
+      fireEvent.click(disclosure);
+      await Promise.resolve();
+    });
+    const body = await waitFor(() => view.getByTestId("agent-activity-group-body"));
+    await waitFor(() => {
+      expect(getComputedStyle(body).overflow).toBe("visible");
+    });
+    const steps = groupSteps(body);
+    const stepsStyle = getComputedStyle(steps);
+    const rule = getComputedStyle(steps, "::before");
 
-      await act(async () => {
-        fireEvent.click(disclosure);
-        await Promise.resolve();
-      });
-      const body = await waitFor(() => view.getByTestId("agent-activity-group-body"));
-      const scroller = groupScroller(body);
-
-      const scrollerStyle = getComputedStyle(scroller);
-      expect(getComputedStyle(document.documentElement).fontSize).toBe("20px");
-      expect(scrollerStyle.maxHeight).toBe("280px");
-      expect(scrollerStyle.getPropertyValue("--conversation-grouped-item-gap").trim()).toBe("4px");
-      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
-      expect(scroller.clientHeight).toBe(280);
-      expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth);
-    } finally {
-      document.documentElement.style.fontSize = originalRootFontSize;
-    }
+    expect(stepsStyle.maxHeight).toBe("none");
+    expect(stepsStyle.overflowY).toBe("visible");
+    expect(stepsStyle.rowGap).toBe("12px");
+    expect(stepsStyle.paddingInlineStart).toBe("24px");
+    expect(steps.scrollHeight).toBe(steps.clientHeight);
+    expect(body.getBoundingClientRect().height).toBeGreaterThanOrEqual(steps.scrollHeight);
+    expect(rule.borderInlineStartWidth).toBe("1px");
+    expect(rule.insetInlineStart).toBe("8px");
   });
 });

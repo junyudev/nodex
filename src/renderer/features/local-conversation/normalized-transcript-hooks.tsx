@@ -252,9 +252,16 @@ export function CodexTranscriptReasoningSummary({
   readonly fallback: string | null;
 }) {
   const intl = useIntl();
-  const block = useCodexTranscriptBlock(item ?? EMPTY_REASONING_BLOCK);
-  const heading = item ? resolveThoughtHeading(block.entry.markdownText) : null;
+  const heading = useCodexTranscriptReasoningHeading(item);
   return <>{heading ?? fallback ?? intl.formatMessage(THOUGHT_STATUS_FALLBACK_MESSAGE)}</>;
+}
+
+/** The latest heading of a streaming Thought, or `null` until it names one. */
+export function useCodexTranscriptReasoningHeading(
+  item: ThreadTranscriptBlockModel | null,
+): string | null {
+  const block = useCodexTranscriptBlock(item ?? EMPTY_REASONING_BLOCK);
+  return item ? resolveThoughtHeading(block.entry.markdownText) : null;
 }
 
 const EMPTY_REASONING_BLOCK: ThreadTranscriptBlockModel = {

@@ -91,11 +91,13 @@ describe("WorktreeInitActivityList", () => {
       view.getByRole("button", { name: "Environment setup skipped" }).getAttribute("aria-expanded"),
     ).toBe("false");
     const worktreeButton = view.getByRole("button", { name: "Worktree created" });
-    const worktreeBody = worktreeButton.parentElement?.nextElementSibling;
-    expect(worktreeBody?.getAttribute("aria-hidden")).toBe("true");
-    expect((view.container.textContent ?? "").includes("plain red")).toBe(true);
+    expect(worktreeButton.parentElement?.nextElementSibling ?? null).toBe(null);
+    expect((view.container.textContent ?? "").includes("plain red")).toBe(false);
     fireEvent.click(view.getByRole("button", { name: "Worktree created" }));
-    expect(worktreeBody?.getAttribute("aria-hidden")).toBe("false");
+    expect(worktreeButton.parentElement?.nextElementSibling?.getAttribute("aria-hidden")).toBe(
+      "false",
+    );
+    expect((view.container.textContent ?? "").includes("plain red")).toBe(true);
     expect((view.container.textContent ?? "").includes("\u001b")).toBe(false);
   });
 
@@ -121,6 +123,7 @@ describe("WorktreeInitActivityList", () => {
       </TooltipProvider>,
     );
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
     expect((view.container.textContent ?? "").includes("Applying diff")).toBe(true);
   });
 

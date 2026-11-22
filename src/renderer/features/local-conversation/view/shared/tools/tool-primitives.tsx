@@ -1,18 +1,16 @@
 import { useIntl } from "@/lib/i18n";
 import { registerContentSearchRevealOwner } from "../../../../content-search/content-search-reveal-owner";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, useMemo, useState } from "react";
+import type { ReactNode, Ref } from "react";
 import { ChevronRightIcon } from "@/components/shared/icons";
-import { readResizeObserverBorderBoxSize } from "@/lib/resize-observer-size";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import { motion } from "motion/react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { cn } from "../../../../../lib/utils";
 import type { SemanticActivityStatus } from "../../../../../lib/semantic-activity-status";
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import { ToolCallCodePanel } from "./tool-call-inspection";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
-
-const THREAD_ACTIVITY_SUMMARY_DEFER_MS = 1000;
+import { CodexShimmerProvider } from "../codex-shimmer-text";
 
 /* ------------------------------------------------------------------ */
 /*  ThreadActivityShell                                                */
@@ -51,12 +49,14 @@ export function ThreadActivityChevron({ expanded }: { expanded: boolean }) {
 function ThreadActivityHeaderContent({
   children,
   className,
+  id,
 }: {
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
-    <span className={cn("font-sans inline-flex min-w-0 items-center gap-1.5", className)}>
+    <span id={id} className={cn("font-sans inline-flex min-w-0 items-center gap-2", className)}>
       {children}
     </span>
   );
@@ -109,12 +109,19 @@ export interface ThreadActivityShellProps {
   body?: ReactNode;
   className?: string;
   header: ReactNode;
+  ref?: Ref<HTMLDivElement>;
   testId?: string;
 }
 
-export function ThreadActivityShell({ body, className, header, testId }: ThreadActivityShellProps) {
+export function ThreadActivityShell({
+  body,
+  className,
+  header,
+  ref,
+  testId,
+}: ThreadActivityShellProps) {
   return (
-    <div className="min-w-0 text-size-chat relative overflow-visible py-0">
+    <div ref={ref} className="min-w-0 text-size-chat relative overflow-visible py-0">
       <div data-testid={testId} className={cn("flex min-w-0 flex-col", className)}>
         {header}
         {body}
@@ -123,104 +130,12 @@ export function ThreadActivityShell({ body, className, header, testId }: ThreadA
   );
 }
 
-export type ThreadActivitySummaryTransition = "static" | "immediate" | "deferred";
-
-interface ThreadActivitySummaryTransitionState {
-  key: string;
-  node: ReactNode;
-}
-
-interface ThreadActivitySummaryTransitionProps {
-  summary: ReactNode;
-  summaryKey: string;
-  summaryTransition: Exclude<ThreadActivitySummaryTransition, "static">;
-}
-
-function ThreadActivitySummaryTransitionNode({
-  summary,
-  summaryKey,
-  summaryTransition,
-}: ThreadActivitySummaryTransitionProps) {
-  const [renderedSummary, setRenderedSummary] = useState<ThreadActivitySummaryTransitionState>(
-    () => ({
-      key: summaryKey,
-      node: summary,
-    }),
-  );
-  const lastCommitAtRef = useRef<number | null>(null);
-  const timeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const now = Date.now();
-    if (lastCommitAtRef.current === null) lastCommitAtRef.current = now;
-    if (summaryKey === renderedSummary.key) return;
-
-    const nextSummary = {
-      key: summaryKey,
-      node: summary,
-    };
-    const commit = () => {
-      timeoutRef.current = null;
-      lastCommitAtRef.current = Date.now();
-      setRenderedSummary(nextSummary);
-    };
-
-    if (summaryTransition === "immediate") {
-      if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      commit();
-      return;
-    }
-
-    const remainingMs = THREAD_ACTIVITY_SUMMARY_DEFER_MS - (now - lastCommitAtRef.current);
-    if (remainingMs <= 0) {
-      commit();
-      return;
-    }
-
-    timeoutRef.current = window.setTimeout(commit, remainingMs);
-    return () => {
-      if (timeoutRef.current === null) return;
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    };
-  }, [renderedSummary.key, summary, summaryKey, summaryTransition]);
-
-  return (
-    <span className="flex min-h-4 max-w-full min-w-0 items-center truncate">
-      {summaryTransition === "immediate" || renderedSummary.key === summaryKey
-        ? summary
-        : renderedSummary.node}
-    </span>
-  );
-}
-
 export interface ThreadActivitySummaryTextProps {
   children: ReactNode;
   className?: string;
-  summaryKey?: string | null;
-  summaryTransition?: ThreadActivitySummaryTransition;
 }
 
-export function ThreadActivitySummaryText({
-  children,
-  className,
-  summaryKey,
-  summaryTransition = "static",
-}: ThreadActivitySummaryTextProps) {
-  const content =
-    summaryKey == null || summaryTransition === "static" ? (
-      children
-    ) : (
-      <ThreadActivitySummaryTransitionNode
-        summary={children}
-        summaryKey={summaryKey}
-        summaryTransition={summaryTransition}
-      />
-    );
-
+export function ThreadActivitySummaryText({ children, className }: ThreadActivitySummaryTextProps) {
   return (
     <span
       className={cn(
@@ -228,77 +143,9 @@ export function ThreadActivitySummaryText({
         className,
       )}
     >
-      {content}
+      {children}
     </span>
   );
-}
-
-export interface ThreadActivityDisclosureProps {
-  accessibleLabel?: string;
-  /** Rendered beside the summary, outside its muted text treatment. */
-  accessory?: ReactNode;
-  inspector?: ReactNode;
-  autoExpandWhileRunning?: boolean;
-  bodyClassName?: string;
-  bodyTestId?: string;
-  canExpand?: boolean;
-  children: ReactNode | ((expanded: boolean) => ReactNode);
-  className?: string;
-  defaultExpanded?: boolean;
-  indentContent?: boolean;
-  headerClassName?: string;
-  headerTestId?: string;
-  icon?: ReactNode;
-  onExpand?: () => void;
-  revealForSearch?: boolean;
-  /** Live content shown under the header while the body is collapsed. */
-  preview?: ReactNode;
-  shouldAnimateInitialCollapse?: boolean;
-  status: SemanticActivityStatus;
-  summary: ReactNode | ((expanded: boolean) => ReactNode);
-  summaryClassName?: string;
-  summaryKey?: string | null;
-  summaryTransition?: ThreadActivitySummaryTransition;
-  testId?: string;
-}
-
-function useMeasuredThreadActivityBodyHeight(): {
-  elementHeightPx: number;
-  elementRef: (element: HTMLDivElement | null) => void;
-} {
-  const [elementHeightPx, setElementHeightPx] = useState(0);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const updateHeight = useCallback((height: number) => {
-    setElementHeightPx((current) => (current === height ? current : height));
-  }, []);
-  const elementRef = useCallback(
-    (element: HTMLDivElement | null) => {
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-      if (!element) return;
-
-      updateHeight(element.scrollHeight);
-      if (typeof ResizeObserver === "undefined") return;
-
-      const resizeObserver = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (!entry) return;
-        updateHeight(readResizeObserverBorderBoxSize(entry).height);
-      });
-      resizeObserver.observe(element);
-      resizeObserverRef.current = resizeObserver;
-    },
-    [updateHeight],
-  );
-
-  useEffect(
-    () => () => {
-      resizeObserverRef.current?.disconnect();
-    },
-    [],
-  );
-
-  return { elementHeightPx, elementRef };
 }
 
 /** A named object inside an activity sentence: quiet like the sentence, marked as openable. */
@@ -321,16 +168,86 @@ export function ThreadActivitySummaryLabel({
     <span
       id={id}
       className={cn(
-        "min-w-0 flex-1 truncate text-text/60 [&_[data-codex-shimmer]]:align-top [&_*:not(button)]:!text-text/60",
+        "min-w-0 flex-1 truncate [--agent-activity-summary-color:var(--color-text-tertiary)] text-(--agent-activity-summary-color) [&_[data-codex-shimmer]]:align-top [&_*:not(button)]:!text-(--agent-activity-summary-color)",
         // File references wrap their labels; preserve the button's independent hover tone.
         "[&_[data-agent-activity-file-link]_*]:!text-inherit",
         interactive &&
-          "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:!text-token-foreground [@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:[&_*:not(button)]:!text-token-foreground",
+          "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:[--agent-activity-summary-color:var(--color-text)]",
         className,
       )}
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * A disclosure header whose whole row is one toggle. The transparent button covers the row so
+ * links and buttons inside the label keep their own clicks; the chevron trails the content.
+ * Without a disclosure the same row renders without its toggle, so gaining one later never
+ * remounts the label.
+ */
+export function ThreadActivityDisclosureHeader({
+  accessibleLabel,
+  accessory,
+  children,
+  className,
+  disclosure,
+  inspector,
+  labelId,
+  testId,
+  toggleTestId,
+}: {
+  accessibleLabel?: string;
+  accessory?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  disclosure?: ThreadActivityDisclosureState;
+  /** A control at the row's end, above its disclosure target and revealed by the row's hover. */
+  inspector?: ReactNode;
+  /** The element that names the toggle when there is no accessible label. */
+  labelId?: string;
+  testId?: string;
+  toggleTestId?: string;
+}) {
+  const contentId = useId();
+  return (
+    <div
+      className={cn(
+        "group/activity-header relative inline-flex max-w-full min-w-0 items-center gap-1 self-start",
+        className,
+      )}
+      data-testid={testId}
+    >
+      {disclosure ? (
+        <button
+          type="button"
+          aria-label={accessibleLabel}
+          aria-labelledby={accessibleLabel === undefined ? (labelId ?? contentId) : undefined}
+          aria-expanded={disclosure.expanded}
+          className="absolute inset-0 cursor-interaction rounded-md focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:ring-inset focus-visible:outline-none"
+          data-testid={toggleTestId}
+          onClick={disclosure.onToggle}
+        />
+      ) : null}
+      <ThreadActivityHeaderContent
+        id={labelId === undefined ? contentId : undefined}
+        className={cn(
+          "text-size-chat relative shrink truncate",
+          disclosure &&
+            "pointer-events-none [&_a]:pointer-events-auto [&_button]:pointer-events-auto",
+        )}
+      >
+        {children}
+      </ThreadActivityHeaderContent>
+      {accessory}
+      {disclosure ? (
+        <span className="pointer-events-none relative flex">
+          <ThreadActivityChevron expanded={disclosure.expanded} />
+        </span>
+      ) : null}
+      {inspector}
+    </div>
   );
 }
 
@@ -359,7 +276,7 @@ export function ThreadRichActivityHeader({
   const summaryId = useId();
   const content = (
     <>
-      <span className="contents text-text/60">{icon}</span>
+      <span className="contents text-(--color-text-tertiary)">{icon}</span>
       <ThreadActivitySummaryLabel
         id={disclosure ? summaryId : undefined}
         className={summaryClassName}
@@ -370,44 +287,194 @@ export function ThreadRichActivityHeader({
     </>
   );
 
-  if (!disclosure) {
-    return (
-      <ThreadActivityHeader
-        accessory={inspector}
-        className={cn("max-w-full", className)}
-        testId={testId}
-      >
-        {content}
-      </ThreadActivityHeader>
-    );
-  }
+  return (
+    <ThreadActivityDisclosureHeader
+      accessibleLabel={accessibleLabel}
+      accessory={accessory}
+      className={className}
+      disclosure={disclosure}
+      inspector={inspector}
+      labelId={summaryId}
+      testId={testId}
+    >
+      {content}
+    </ThreadActivityDisclosureHeader>
+  );
+}
 
+/* ------------------------------------------------------------------ */
+/*  Disclosure body                                                    */
+/* ------------------------------------------------------------------ */
+
+function ThreadActivityRegionPanel({
+  children,
+  className,
+  reducedMotion,
+  testId,
+}: {
+  children: ReactNode;
+  className?: string;
+  reducedMotion: boolean;
+  testId?: string;
+}) {
+  // A closing body keeps its height animation but leaves the tab order and pointer at once.
+  const isPresent = useIsPresent();
+  return (
+    <motion.div
+      aria-hidden={!isPresent}
+      inert={!isPresent}
+      className={cn("overflow-hidden", !isPresent && "pointer-events-none", className)}
+      data-testid={testId}
+      initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+      animate={{
+        height: "auto",
+        opacity: 1,
+        overflow: "hidden",
+        transitionEnd: { overflow: "visible" },
+      }}
+      exit={{ height: 0, opacity: 0, overflow: "hidden" }}
+      transition={reducedMotion ? { duration: 0 } : CODEX_THREAD_ACCORDION_TRANSITION}
+      style={{ overflow: "hidden" }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
+ * The body of an activity disclosure. It exists only while open, grows to its natural height,
+ * and settles with visible overflow so nested popovers and focus rings are never clipped.
+ */
+export function ThreadActivityDisclosureRegion({
+  children,
+  className,
+  expanded,
+  testId,
+}: {
+  children: ReactNode;
+  className?: string;
+  expanded: boolean;
+  testId?: string;
+}) {
+  const reducedMotion = useResolvedReducedMotion();
+  return (
+    <AnimatePresence initial={false}>
+      {expanded ? (
+        <ThreadActivityRegionPanel
+          key="activity-region"
+          className={className}
+          reducedMotion={reducedMotion}
+          testId={testId}
+        >
+          {children}
+        </ThreadActivityRegionPanel>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+const ThreadActivityStepContext = createContext(false);
+
+/** Whether a row is a step inside a work group, where it reads as terse as a log line. */
+export function useIsThreadActivityStep(): boolean {
+  return useContext(ThreadActivityStepContext);
+}
+
+/**
+ * The steps of a work group: an indented list hanging from a hairline that starts under the
+ * header icon. It grows with its rows; only an individual row's own output may scroll. The group
+ * header speaks for running work, so steps never shimmer.
+ */
+export function ThreadActivitySteps({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div
       className={cn(
-        "group/activity-header relative inline-flex max-w-full min-w-0 items-center gap-1 self-start",
+        "relative flex min-w-0 flex-col gap-3 ps-6 pt-3",
+        "before:pointer-events-none before:absolute before:start-2 before:top-3 before:bottom-0 before:border-s before:border-(--color-border) before:content-['']",
         className,
       )}
-      data-testid={testId}
+      data-activity-steps=""
     >
-      <button
-        type="button"
-        aria-label={accessibleLabel}
-        aria-labelledby={accessibleLabel === undefined ? summaryId : undefined}
-        aria-expanded={disclosure.expanded}
-        className="absolute inset-0 cursor-interaction focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:ring-inset focus-visible:outline-none"
-        onClick={disclosure.onToggle}
-      />
-      <ThreadActivityHeaderContent className="text-size-chat pointer-events-none relative shrink truncate [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
-        {content}
-      </ThreadActivityHeaderContent>
-      {accessory}
-      <span className="pointer-events-none relative flex">
-        <ThreadActivityChevron expanded={disclosure.expanded} />
-      </span>
-      {inspector}
+      <ThreadActivityStepContext.Provider value>
+        <CodexShimmerProvider enabled={false}>{children}</CodexShimmerProvider>
+      </ThreadActivityStepContext.Provider>
     </div>
   );
+}
+
+export interface ThreadActivityDisclosureProps {
+  accessibleLabel?: string;
+  /** Rendered beside the summary, outside its muted text treatment. */
+  accessory?: ReactNode;
+  inspector?: ReactNode;
+  autoExpandWhileRunning?: boolean;
+  bodyClassName?: string;
+  bodyTestId?: string;
+  canExpand?: boolean;
+  children: ReactNode | ((expanded: boolean) => ReactNode);
+  className?: string;
+  defaultExpanded?: boolean;
+  indentContent?: boolean;
+  headerClassName?: string;
+  headerTestId?: string;
+  icon?: ReactNode;
+  onExpand?: () => void;
+  revealForSearch?: boolean;
+  /** Live content shown under the header while the body is collapsed. */
+  preview?: ReactNode;
+  status: SemanticActivityStatus;
+  summary: ReactNode | ((expanded: boolean) => ReactNode);
+  summaryClassName?: string;
+  testId?: string;
+}
+
+/** Local open state that search can reveal while the body is closed and unmounted. */
+export function useThreadActivityDisclosureState(input: {
+  autoExpandWhileRunning?: boolean;
+  canExpand: boolean;
+  defaultExpanded?: boolean;
+  isRunning: boolean;
+  onExpand?: () => void;
+  revealForSearch?: boolean;
+}) {
+  const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
+  const [normallyExpanded, setNormallyExpanded] = useState(input.defaultExpanded ?? false);
+  const shouldUseRunningExpansion = input.autoExpandWhileRunning === true && input.isRunning;
+  const expanded =
+    input.canExpand && (shouldUseRunningExpansion ? !manuallyCollapsed : normallyExpanded);
+  const { onExpand } = input;
+
+  const toggle = () => {
+    if (!expanded) onExpand?.();
+    if (shouldUseRunningExpansion) {
+      setManuallyCollapsed((current) => !current);
+      return;
+    }
+    setNormallyExpanded((current) => !current);
+  };
+  const revealForSearch = input.revealForSearch === true && input.canExpand && !expanded;
+  const bindRevealOwner = useCallback(
+    (element: HTMLElement | null) => {
+      if (!element || !revealForSearch) return;
+      return registerContentSearchRevealOwner(element, () => {
+        if (shouldUseRunningExpansion) setManuallyCollapsed(false);
+        else setNormallyExpanded(true);
+      });
+    },
+    [revealForSearch, shouldUseRunningExpansion],
+  );
+
+  return {
+    bindRevealOwner,
+    disclosure: input.canExpand ? { expanded, onToggle: toggle } : undefined,
+    expanded,
+  };
 }
 
 export function ThreadActivityDisclosure({
@@ -431,43 +498,17 @@ export function ThreadActivityDisclosure({
   status,
   summary,
   summaryClassName,
-  summaryKey,
-  summaryTransition,
   testId,
 }: ThreadActivityDisclosureProps) {
   const hasBody = canExpand && children !== null && children !== undefined;
-  const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
-  const [normallyExpanded, setNormallyExpanded] = useState(defaultExpanded);
-  const { elementHeightPx, elementRef } = useMeasuredThreadActivityBodyHeight();
-  const isRunning = status === "running";
-  const shouldUseRunningExpansion = autoExpandWhileRunning && isRunning;
-  const expanded = hasBody && (shouldUseRunningExpansion ? !manuallyCollapsed : normallyExpanded);
-
-  const handleToggle = () => {
-    if (!expanded) onExpand?.();
-    if (shouldUseRunningExpansion) {
-      setManuallyCollapsed((current) => !current);
-      return;
-    }
-    setNormallyExpanded((current) => !current);
-  };
-
-  const bindBody = useCallback(
-    (element: HTMLDivElement | null) => {
-      elementRef(element);
-      if (!element || !revealForSearch || expanded) return;
-      const release = registerContentSearchRevealOwner(element, () => {
-        if (shouldUseRunningExpansion) setManuallyCollapsed(false);
-        else setNormallyExpanded(true);
-      });
-      return () => {
-        release();
-        elementRef(null);
-      };
-    },
-    [elementRef, expanded, revealForSearch, shouldUseRunningExpansion],
-  );
-  const disclosure = hasBody ? { expanded, onToggle: handleToggle } : undefined;
+  const { bindRevealOwner, disclosure, expanded } = useThreadActivityDisclosureState({
+    autoExpandWhileRunning,
+    canExpand: hasBody,
+    defaultExpanded,
+    isRunning: status === "running",
+    onExpand,
+    revealForSearch,
+  });
   const summaryNode = typeof summary === "function" ? summary(expanded) : summary;
   const header =
     icon === undefined ? (
@@ -476,11 +517,7 @@ export function ThreadActivityDisclosure({
         disclosure={disclosure}
         testId={headerTestId}
       >
-        <ThreadActivitySummaryText
-          className={summaryClassName}
-          summaryKey={summaryKey}
-          summaryTransition={summaryTransition}
-        >
+        <ThreadActivitySummaryText className={summaryClassName}>
           {summaryNode}
         </ThreadActivitySummaryText>
       </ThreadActivityHeader>
@@ -497,113 +534,28 @@ export function ThreadActivityDisclosure({
         testId={headerTestId}
       />
     );
-  const body = hasBody ? (
-    <motion.div
-      initial={false}
-      animate={{
-        height: expanded ? elementHeightPx : 0,
-        opacity: expanded ? 1 : 0,
-      }}
-      aria-hidden={!expanded}
-      inert={!expanded}
-      className={expanded ? "overflow-visible" : "overflow-hidden"}
-      data-testid={bodyTestId}
-      style={{ pointerEvents: expanded ? "auto" : "none" }}
-      transition={CODEX_THREAD_ACCORDION_TRANSITION}
-    >
-      <div
-        ref={bindBody}
-        className={cn("flex flex-col gap-2 pt-2 pb-1", indentContent && "ps-6", bodyClassName)}
-      >
-        {typeof children === "function" ? children(expanded) : children}
-      </div>
-    </motion.div>
-  ) : null;
 
   return (
     <ThreadActivityShell
+      ref={bindRevealOwner}
       body={
         <>
           {expanded ? null : preview}
-          {body}
+          {hasBody ? (
+            <ThreadActivityDisclosureRegion expanded={expanded} testId={bodyTestId}>
+              <div
+                className={cn("flex flex-col gap-3 pt-3", indentContent && "ps-6", bodyClassName)}
+              >
+                {typeof children === "function" ? children(expanded) : children}
+              </div>
+            </ThreadActivityDisclosureRegion>
+          ) : null}
         </>
       }
       className={className}
       header={header}
       testId={testId}
     />
-  );
-}
-
-export type ThreadActivityListViewState = "preview" | "collapsed" | "expanded";
-
-export interface ThreadActivityListItem {
-  key: string;
-  node: ReactNode;
-}
-
-export type ThreadActivityListMaxHeightByState = Record<
-  ThreadActivityListViewState,
-  CSSProperties["maxHeight"]
->;
-
-export const THREAD_ACTIVITY_LIST_20_REM_MAX_HEIGHT_BY_STATE = {
-  preview: "20rem",
-  expanded: "20rem",
-  collapsed: "0px",
-} satisfies ThreadActivityListMaxHeightByState;
-
-export const THREAD_ACTIVITY_LIST_7_TO_20_REM_MAX_HEIGHT_BY_STATE = {
-  preview: "7rem",
-  expanded: "20rem",
-  collapsed: "0px",
-} satisfies ThreadActivityListMaxHeightByState;
-
-export interface ThreadActivityListProps {
-  allowHorizontalScroll?: boolean;
-  autoScrollToBottom?: boolean;
-  className?: string;
-  contentClassName?: string;
-  disableMaxHeight?: boolean;
-  items: readonly ThreadActivityListItem[];
-  maxHeightByState: ThreadActivityListMaxHeightByState;
-  testId?: string;
-  viewState?: ThreadActivityListViewState;
-}
-
-export function ThreadActivityList({
-  allowHorizontalScroll = false,
-  autoScrollToBottom = true,
-  className,
-  contentClassName,
-  disableMaxHeight = false,
-  items,
-  maxHeightByState,
-  testId,
-  viewState = "preview",
-}: ThreadActivityListProps) {
-  const maxHeight = maxHeightByState[viewState];
-  const style = disableMaxHeight ? undefined : { maxHeight };
-  const renderedItems =
-    viewState === "collapsed" ? null : items.map((item) => <div key={item.key}>{item.node}</div>);
-
-  return (
-    <div
-      className={cn(
-        "vertical-scroll-fade-mask [--edge-fade-distance:1.5rem] overflow-y-auto",
-        autoScrollToBottom && "flex flex-col-reverse",
-        !allowHorizontalScroll && "overflow-x-hidden",
-        className,
-      )}
-      data-testid={testId}
-      style={style}
-    >
-      <div
-        className={cn("flex flex-col gap-1", contentClassName, viewState === "preview" && "pb-1")}
-      >
-        {renderedItems}
-      </div>
-    </div>
   );
 }
 

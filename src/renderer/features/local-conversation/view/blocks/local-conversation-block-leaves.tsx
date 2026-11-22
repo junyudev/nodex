@@ -7,7 +7,7 @@ import { LocalConversationCreatedThreadCards } from "../local-conversation-creat
 import { readAssistantCreatedThreadResults } from "../../projection/assistant-created-thread-results";
 import { useCreatedThreadSourceAeon } from "../../created-thread-host-hooks";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
-import { useCallback, useContext, useEffect, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { SendIcon } from "@/components/shared/icons/generic-icons";
 import {
@@ -63,11 +63,23 @@ import { DynamicToolCallSummary } from "../shared/tools/dynamic-tool-call";
 import { WorktreeInitActivityList } from "../shared/tools/worktree-init-activity-list";
 import {
   JsonBlock,
-  ThreadActivityDisclosure,
-  ThreadActivitySummaryLabel,
-  type ThreadActivitySummaryTransition,
+  ThreadActivityDisclosureHeader,
+  ThreadActivityDisclosureRegion,
+  ThreadActivityShell,
+  ThreadActivitySteps,
+  useThreadActivityDisclosureState,
 } from "../shared/tools/tool-primitives";
-import { ToolActivityIcon, resolveToolActivityEntryIcon } from "../shared/tools/tool-call-icons";
+import {
+  ToolActivityIcon,
+  resolveToolActivityEntryIcon,
+  resolveToolActivityIconKey,
+  resolveToolActivitySprite,
+} from "../shared/tools/tool-call-icons";
+import {
+  ActivityGroupHeaderLabel,
+  useActivityOpeningLabel,
+  type ActivityHeaderModel,
+} from "../shared/tools/activity-group-header-label";
 import { MessageText } from "@/components/message/message-document";
 import {
   CODEX_THREAD_ACCORDION_TRANSITION,
@@ -76,7 +88,6 @@ import {
 } from "../shared/thread-motion";
 import { ConversationRecoverySurface } from "../shared/conversation-recovery-surface";
 import { useConversationRecoveryActions } from "../conversation-recovery-actions";
-import { CodexShimmerProvider, CodexShimmerText } from "../shared/codex-shimmer-text";
 import { AnsweredUserInputBlock } from "../composer/request-cards/answered-user-input-block";
 import { AutomationAttribution, ConversationAttribution } from "../shared/conversation-attribution";
 import {
@@ -88,7 +99,6 @@ import { NfmImagePlaceholderContext } from "@/components/board/nfm-renderer";
 import type { ImagePlaceholderReference } from "../../../../../shared/message-agent-input";
 import { useWorkedForLabelText } from "../shared/use-worked-for-label";
 import type { CodexWorktreeInitActivity } from "../../../../lib/codex-worktree-init-activity";
-import { semanticActivityStatusFromLifecycle } from "../../../../lib/semantic-activity-status";
 import type {
   CodexConversationChildMembership,
   CodexConversationItem,
@@ -111,7 +121,6 @@ import {
 import type {
   ThreadBlockModel,
   ThreadAgentActivityCompletedSummaryPart,
-  ThreadAgentActivityGroupHeader,
   ThreadPlanSidePanelState,
   ThreadStageActions,
   ThreadSubagentActivityInlineRowModel,
@@ -128,8 +137,9 @@ import { UserMessageEditForm } from "../shared/user-message-edit-form";
 import {
   useCodexTranscriptBlock,
   useCodexTranscriptDelegatedTaskEntries,
-  CodexTranscriptReasoningSummary,
+  useCodexTranscriptReasoningHeading,
 } from "../../normalized-transcript-hooks";
+import { THOUGHT_STATUS_FALLBACK_MESSAGE } from "../../../../../shared/thought-presentation";
 
 export interface ThreadLeafBlockProps {
   hostId?: string;
@@ -490,20 +500,107 @@ function CompletedActivitySummaryText({
   ));
 }
 
-function ActiveActivitySummaryText({
-  header,
-}: {
-  header: Extract<ThreadAgentActivityGroupHeader, { kind: "active" }>;
-}) {
-  if (header.item.type === "dynamicToolCall") {
-    const call = header.item.entry.dynamicToolCall;
-    if (call) {
-      return <DynamicToolCallSummary call={{ ...call, completed: false }} variant="summary-text" />;
-    }
+/** A thought that names itself fills a gap; the generic thinking label does not. */
+function resolveNamedThought(heading: string | null, intl: IntlShape): string | null {
+  const named = heading?.trim();
+  if (!named) return null;
+  return named === intl.formatMessage(THOUGHT_STATUS_FALLBACK_MESSAGE) ? null : named;
+}
+
+function useAgentActivityGroupHeaderModel(
+  block: Extract<ThreadBlockModel, { type: "agentActivityGroup" }>,
+): ActivityHeaderModel {
+  const intl = useIntl();
+  const latestEntry = block.entries.at(-1) ?? null;
+  const isThoughtOnly = block.entries.every((entry) => entry.type === "reasoning");
+  const currentThought =
+    block.header.kind === "thinking" && latestEntry?.type === "reasoning"
+      ? (latestEntry as ThreadTranscriptBlockModel)
+      : null;
+  const thoughtHeading = useCodexTranscriptReasoningHeading(currentThought);
+  const header = block.header;
+
+  if (header.kind === "summary") {
+    const iconItem = block.completedHeader.iconItem;
+    const descriptor =
+      iconItem == null ? null : resolveToolActivityEntryIcon(iconItem, block.mcpApps ?? []);
+    return {
+      kind: "settled",
+      label:
+        isThoughtOnly && block.completedHeader.parts.length === 0 ? (
+          formatThoughtLabel(
+            sumThoughtDurations(block.entries.map((entry) => entry.entry.thought?.durationMs)),
+            intl,
+          )
+        ) : (
+          <CompletedActivitySummaryText parts={block.completedHeader.parts} />
+        ),
+      labelKey: "summary",
+      icons: descriptor
+        ? { original: <ToolActivityIcon descriptor={descriptor} />, alternate: null }
+        : null,
+      iconKey: descriptor ? resolveToolActivityIconKey(descriptor) : "none",
+      animateIcon: false,
+    };
   }
 
-  return <CodexShimmerText>{header.label}</CodexShimmerText>;
+  if (header.kind === "active") {
+    const descriptor = resolveToolActivityEntryIcon(header.item, block.mcpApps ?? []);
+    const alternate = descriptor ? resolveToolActivitySprite(header.item, descriptor) : null;
+    const call = header.item.type === "dynamicToolCall" ? header.item.entry.dynamicToolCall : null;
+    return {
+      kind: "working",
+      label: call ? (
+        <DynamicToolCallSummary call={{ ...call, completed: false }} variant="summary-text" />
+      ) : (
+        header.label
+      ),
+      labelKey: header.labelKey,
+      icons: descriptor
+        ? { original: <ToolActivityIcon descriptor={descriptor} />, alternate }
+        : NO_ACTIVITY_ICONS,
+      iconKey: descriptor ? resolveToolActivityIconKey(descriptor) : "none",
+      animateIcon: header.inProgress && alternate != null,
+    };
+  }
+
+  const namedThought = resolveNamedThought(thoughtHeading ?? header.message, intl);
+  if (isThoughtOnly) {
+    // A group of thoughts alone reads like the turn's thinking line it replaced.
+    const label = namedThought ?? intl.formatMessage(THOUGHT_STATUS_FALLBACK_MESSAGE);
+    return {
+      kind: "working",
+      label,
+      labelKey: `thought:${label}`,
+      icons: NO_ACTIVITY_ICONS,
+      iconKey: "none",
+      animateIcon: false,
+    };
+  }
+  if (namedThought != null) {
+    return {
+      kind: "working",
+      label: namedThought,
+      labelKey: `thought:${namedThought}`,
+      icons: null,
+      iconKey: "working",
+      animateIcon: false,
+    };
+  }
+  return {
+    kind: "between-tools",
+    label: intl.formatMessage({
+      id: "conversation.blockLeaves.groupWorking",
+      defaultMessage: "Working",
+    }),
+    labelKey: "between-tools",
+    icons: null,
+    iconKey: "working",
+    animateIcon: false,
+  };
 }
+
+const NO_ACTIVITY_ICONS = { original: null, alternate: null } as const;
 
 export function ThreadAgentActivityGroupBlock({
   block,
@@ -519,112 +616,117 @@ export function ThreadAgentActivityGroupBlock({
   onOpenMcpAppSidePanel,
   turnDiffHoverPreviewDisabled,
 }: ThreadSpecialBlockProps) {
-  const intl = useIntl();
   if (block.type !== "agentActivityGroup") return null;
-  const iconItem =
-    block.header.kind === "thinking"
-      ? null
-      : block.header.kind === "active"
-        ? block.header.item
-        : block.completedHeader.iconItem;
-  const icon =
-    iconItem == null ? null : resolveToolActivityEntryIcon(iconItem, block.mcpApps ?? []);
-  const summaryTransition: ThreadActivitySummaryTransition =
-    block.header.kind === "summary" ? "immediate" : "deferred";
-  const isThoughtOnly = block.entries.every((entry) => entry.type === "reasoning");
-  const latestThought = block.entries.findLast((entry) => entry.type === "reasoning") ?? null;
-  const summaryText =
-    block.header.kind === "summary" ? (
-      isThoughtOnly && block.completedHeader.parts.length === 0 ? (
-        formatThoughtLabel(
-          sumThoughtDurations(block.entries.map((entry) => entry.entry.thought?.durationMs)),
-          intl,
-        )
-      ) : (
-        <CompletedActivitySummaryText parts={block.completedHeader.parts} />
-      )
-    ) : block.header.kind === "active" ? (
-      <ActiveActivitySummaryText header={block.header} />
-    ) : (
-      <CodexShimmerText>
-        <CodexTranscriptReasoningSummary item={latestThought} fallback={block.header.message} />
-      </CodexShimmerText>
-    );
-  const summary = (
-    <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 overflow-hidden">
-      {icon ? <ToolActivityIcon descriptor={icon} /> : null}
-      <ThreadActivitySummaryLabel interactive={block.canExpand}>
-        {summaryText}
-      </ThreadActivitySummaryLabel>
-    </span>
+  return (
+    <AgentActivityGroup
+      block={block}
+      isLatestTurn={isLatestTurn}
+      isStreamingTurn={isStreamingTurn}
+      projectWorkspacePath={projectWorkspacePath}
+      projectlessOutputDirectory={projectlessOutputDirectory}
+      threadCwd={threadCwd}
+      onOpenTurnDiffReview={onOpenTurnDiffReview}
+      onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
+      onOpenThread={onOpenThread}
+      onOpenSummaryAutomation={onOpenSummaryAutomation}
+      onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
+      turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+    />
   );
-  const body = (
-    <CodexShimmerProvider enabled={false}>
-      <div
-        // The bound keeps a list of one-line rows compact; an opened row needs room to be read.
-        className="vertical-scroll-fade-mask flex max-h-56 flex-col overflow-x-hidden overflow-y-auto [--edge-fade-distance:1.5rem] has-[[aria-expanded=true]]:max-h-[min(36rem,70vh)]"
-        style={
-          {
-            "--conversation-patch-file-gap": "var(--conversation-grouped-item-gap, 4px)",
-          } as CSSProperties
-        }
-      >
-        {block.bodyEntries.map((entry) => (
-          <div key={entry.id}>
-            <div
-              aria-hidden="true"
-              className="w-full"
-              style={{ height: "var(--conversation-grouped-item-gap, 4px)" }}
-            />
-            {renderCollapsedActivityEntry({
-              entry,
-              isLatestTurn,
-              isStreamingTurn,
-              projectWorkspacePath,
-              projectlessOutputDirectory,
-              threadCwd,
-              onOpenTurnDiffReview,
-              onOpenTurnDiffFileInSidePanel,
-              onOpenThread,
-              onOpenSummaryAutomation,
-              onOpenMcpAppSidePanel,
-              turnDiffHoverPreviewDisabled,
-            })}
-          </div>
-        ))}
-      </div>
-    </CodexShimmerProvider>
+}
+
+/**
+ * A run of tool work as one line: live, it names the running tool; settled, it summarizes what
+ * was done. Opened, the steps hang from a hairline under the header icon at their natural height.
+ */
+function AgentActivityGroup({
+  block,
+  isLatestTurn,
+  isStreamingTurn,
+  projectWorkspacePath,
+  projectlessOutputDirectory,
+  threadCwd,
+  onOpenTurnDiffReview,
+  onOpenTurnDiffFileInSidePanel,
+  onOpenThread,
+  onOpenSummaryAutomation,
+  onOpenMcpAppSidePanel,
+  turnDiffHoverPreviewDisabled,
+}: ThreadSpecialBlockProps & {
+  block: Extract<ThreadBlockModel, { type: "agentActivityGroup" }>;
+}) {
+  const header = useAgentActivityGroupHeaderModel(block);
+  const { bindRevealOwner, disclosure, expanded } = useThreadActivityDisclosureState({
+    canExpand: block.canExpand,
+    isRunning: false,
+    revealForSearch: true,
+  });
+  const latestThought = block.entries.findLast((entry) => entry.type === "reasoning") ?? null;
+  const openingLabel = useActivityOpeningLabel();
+  const label = (
+    <ActivityGroupHeaderLabel
+      header={header}
+      interactive={disclosure !== undefined}
+      openingLabel={openingLabel?.label}
+      onOpeningLabelExit={openingLabel?.onExit}
+    />
   );
 
   return (
-    <ThreadActivityDisclosure
-      bodyTestId="agent-activity-group-body"
-      revealForSearch
-      canExpand={block.canExpand}
-      indentContent={false}
-      status={semanticActivityStatusFromLifecycle(
-        block.status,
-        block.header.kind === "summary" ? "completed" : "running",
-      )}
-      summary={summary}
-      summaryKey={block.header.key}
-      summaryTransition={summaryTransition}
-      shouldAnimateInitialCollapse={block.shouldAnimateInitialCollapse}
-      preview={
-        latestThought ? (
-          <ThreadThoughtLivePreview
-            block={latestThought as ThreadTranscriptBlockModel}
-            active={block.header.kind === "thinking" && block.entries.at(-1) === latestThought}
-            isLatestTurn={isLatestTurn}
-            isStreamingTurn={isStreamingTurn}
-            projectWorkspacePath={projectWorkspacePath}
-            threadCwd={threadCwd}
-          />
-        ) : null
+    <ThreadActivityShell
+      ref={bindRevealOwner}
+      testId="agent-activity-group"
+      header={
+        <ThreadActivityDisclosureHeader
+          disclosure={disclosure}
+          toggleTestId="agent-activity-group-toggle"
+        >
+          {label}
+        </ThreadActivityDisclosureHeader>
       }
-    >
-      {body}
-    </ThreadActivityDisclosure>
+      body={
+        <>
+          {expanded || latestThought == null ? null : (
+            <ThreadThoughtLivePreview
+              block={latestThought as ThreadTranscriptBlockModel}
+              active={block.header.kind === "thinking" && block.entries.at(-1) === latestThought}
+              isLatestTurn={isLatestTurn}
+              isStreamingTurn={isStreamingTurn}
+              projectWorkspacePath={projectWorkspacePath}
+              threadCwd={threadCwd}
+            />
+          )}
+          {block.canExpand ? (
+            <ThreadActivityDisclosureRegion
+              expanded={expanded}
+              className="-ms-2 ps-2"
+              testId="agent-activity-group-body"
+            >
+              <ThreadActivitySteps>
+                {block.bodyEntries.map((entry) => (
+                  <div key={entry.id} className="min-w-0 empty:hidden">
+                    {renderCollapsedActivityEntry({
+                      entry,
+                      isLatestTurn,
+                      isStreamingTurn,
+                      projectWorkspacePath,
+                      projectlessOutputDirectory,
+                      threadCwd,
+                      onOpenTurnDiffReview,
+                      onOpenTurnDiffFileInSidePanel,
+                      onOpenThread,
+                      onOpenSummaryAutomation,
+                      onOpenMcpAppSidePanel,
+                      turnDiffHoverPreviewDisabled,
+                    })}
+                  </div>
+                ))}
+              </ThreadActivitySteps>
+            </ThreadActivityDisclosureRegion>
+          ) : null}
+        </>
+      }
+    />
   );
 }
 

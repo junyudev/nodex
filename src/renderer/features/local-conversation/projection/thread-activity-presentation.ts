@@ -175,7 +175,6 @@ export function projectThreadActivityPresentation(
         state,
         thinkingFallbackMessage:
           liveActivity.fallback.owner === "group" ? liveActivity.fallback.message : null,
-        shouldAnimateInitialCollapse: context.isLatestVisibleUnit && context.isActivitySliceOpen,
       },
     );
     return { kind: "agentActivityGroup", targetAttributes, block };

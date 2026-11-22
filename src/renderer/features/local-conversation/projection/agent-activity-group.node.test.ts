@@ -294,6 +294,37 @@ describe("generic v2 agent activity group projection", () => {
     expect(completed.completedHeader.parts).toEqual([{ kind: "fileChanges", count: 1 }]);
   });
 
+  test("names live reads by their file and live folders relative to the command's folder", () => {
+    const cwd = "/workspace/tinyboard";
+    const label = (action: CodexCommandAction) =>
+      resolveAgentActivityGroupActiveSummary([
+        buildBlock(`live-${action.type}`, "exec", {
+          status: "inProgress",
+          cwd,
+          command: action.command,
+          commandActions: [action],
+        }),
+      ])?.label;
+
+    expect(
+      label({
+        type: "read",
+        command: "cat /workspace/tinyboard/src/tasks.js",
+        name: "tasks.js",
+        path: "/workspace/tinyboard/src/tasks.js",
+      }),
+    ).toBe("Reading tasks.js");
+    expect(label({ type: "search", command: "rg x src", query: "x", path: `${cwd}/src` })).toBe(
+      "Searching files in src folder",
+    );
+    expect(label({ type: "listFiles", command: "ls", path: cwd })).toBe(
+      "Listing files in . folder",
+    );
+    expect(label({ type: "listFiles", command: "ls /tmp", path: "/tmp" })).toBe(
+      "Listing files in /tmp folder",
+    );
+  });
+
   test("resolves MCP active headers from app identity, operation, and invocation context", () => {
     const app = mcpApp("connector_notion", "Notion");
     const item = mcpBlock("notion-search", {

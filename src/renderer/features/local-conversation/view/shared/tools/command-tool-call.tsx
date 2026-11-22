@@ -1,5 +1,4 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
-import { motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { CheckmarkIcon } from "@/components/shared/icons";
 import {
@@ -12,8 +11,6 @@ import { resolveCodexThreadDetailLevel } from "../../../../../lib/codex-thread-s
 import { useCodexThreadSettings } from "../../../../../lib/use-codex-thread-settings";
 import { cn } from "../../../../../lib/utils";
 import { FileLinkAnchor } from "../../../../../components/shared/file-link-anchor";
-import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
-import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import {
   AutomaticApprovalReviewRows,
@@ -34,8 +31,10 @@ import {
 import { semanticActivityStatusFromLifecycle } from "../../../../../lib/semantic-activity-status";
 import {
   ThreadActivityDisclosure,
+  ThreadActivityDisclosureRegion,
   ThreadActivityShell,
   ThreadRichActivityHeader,
+  useIsThreadActivityStep,
   ToolErrorDetail,
 } from "./tool-primitives";
 import { ThreadExecShellContainer } from "./thread-command-shell-block";
@@ -64,8 +63,11 @@ interface CommandSummaryLabelInput {
   command: string;
   elapsedLabel?: string | null;
   effectiveStatus: string | undefined;
+  exitCode?: number | null;
   isExpanded: boolean;
   isTurnInProgress: boolean;
+  /** A step inside a work group: the command itself is the label, wrapped only when it failed. */
+  nested?: boolean;
   processId: number | string | null | undefined;
   showRawCommand?: boolean;
   wasDeclinedByAutoReview?: boolean;
@@ -277,8 +279,10 @@ export function resolveCommandSummaryLabel(
     command,
     elapsedLabel,
     effectiveStatus,
+    exitCode = null,
     isExpanded,
     isTurnInProgress,
+    nested = false,
     processId,
     showRawCommand = true,
     wasDeclinedByAutoReview = false,
@@ -301,6 +305,39 @@ export function resolveCommandSummaryLabel(
           id: "conversation.commandToolCall.declined",
           defaultMessage: "Command declined by auto-review",
         });
+  }
+
+  const isBackgroundTerminalRunning = isInProgress && !isTurnInProgress;
+  if (nested && showRawCommand && commandText.length > 0 && !wasInterrupted) {
+    if (
+      effectiveStatus === "declined" ||
+      effectiveStatus === "failed" ||
+      (!isInProgress && exitCode !== null && exitCode !== 0)
+    ) {
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.nestedUnsuccessful",
+          defaultMessage:
+            "{status, select, declined {Declined {command}} other {Command failed ({command})}}",
+        },
+        { status: effectiveStatus === "declined" ? "declined" : "failed", command: commandText },
+      );
+    }
+    if (isInProgress && !isBackgroundTerminalRunning) {
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.nestedRunning",
+          defaultMessage:
+            "{hasElapsed, select, yes {Running {command} for {elapsed}} other {Running {command}}}",
+        },
+        {
+          command: commandText,
+          elapsed: elapsedLabel ?? "",
+          hasElapsed: elapsedLabel ? "yes" : "no",
+        },
+      );
+    }
+    if (!isInProgress) return commandText;
   }
 
   const elapsed = elapsedLabel
@@ -342,7 +379,6 @@ export function resolveCommandSummaryLabel(
     );
   }
 
-  const isBackgroundTerminalRunning = isInProgress && !isTurnInProgress;
   const isFinishedBackgroundTerminal =
     !isInProgress && !isTurnInProgress && processId !== null && processId !== undefined;
   const shouldUseSkillScriptSummary =
@@ -785,6 +821,7 @@ export function CommandToolCall({
   const intl = useIntl();
   const { settings } = useCodexThreadSettings();
   const threadDetailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
+  const isActivityStep = useIsThreadActivityStep();
 
   const rawCommand =
     typeof item.command === "string" && item.command.trim().length > 0 ? item.command : "";
@@ -833,7 +870,6 @@ export function CommandToolCall({
     !isSingleSkillDefinitionRead &&
     automaticApprovalReviews.length === 0;
   const [viewState, setViewState] = useState<CommandViewState>("collapsed");
-  const { elementHeightPx: bodyHeightPx, elementRef: bodyRef } = useMeasuredElementHeight();
 
   const isExpanded = !hideRawCommand && viewState === "expanded";
   // Opening a finished command reads output its live projection withheld, once per open.
@@ -870,8 +906,10 @@ export function CommandToolCall({
           command: displayCommand,
           elapsedLabel,
           effectiveStatus,
+          exitCode,
           isExpanded,
           isTurnInProgress: isStreamingTurn,
+          nested: isActivityStep && threadDetailLevel !== "STEPS_PROSE",
           processId: item.processId,
           showRawCommand: !hideRawCommand,
           wasDeclinedByAutoReview,
@@ -912,7 +950,7 @@ export function CommandToolCall({
   );
 
   const body = isExploration ? (
-    <div className="pt-2">
+    <div className="pt-3">
       <div className="flex flex-col gap-1.5 text-size-chat-sm text-token-description-foreground">
         {commandActions.map((action, index) => (
           <div
@@ -928,7 +966,7 @@ export function CommandToolCall({
       </div>
     </div>
   ) : (
-    <div className={cn("flex flex-col gap-2", automaticApprovalReviews.length === 0 && "pt-2")}>
+    <div className={cn("flex flex-col gap-3", automaticApprovalReviews.length === 0 && "pt-3")}>
       <AutomaticApprovalReviewRows
         items={automaticApprovalReviews}
         isDeclined={wasDeclinedByAutoReview}
@@ -948,29 +986,12 @@ export function CommandToolCall({
       />
     </div>
   );
-  const measuredHeight = isExpanded ? bodyHeightPx : 0;
-  const isMeasuredOpen = isExpanded;
-
   return (
     <ThreadActivityShell
       body={
-        <motion.div
-          className={cn(isMeasuredOpen ? "overflow-visible" : "overflow-hidden")}
-          data-testid="exec-shell-body"
-          data-thread-find-skip={isMeasuredOpen ? undefined : true}
-          initial={false}
-          animate={{
-            height: Math.max(measuredHeight, 0),
-            opacity: isMeasuredOpen ? 1 : 0,
-          }}
-          transition={CODEX_THREAD_ACCORDION_TRANSITION}
-          style={{
-            overflow: isExpanded ? "visible" : "hidden",
-            pointerEvents: isMeasuredOpen ? "auto" : "none",
-          }}
-        >
-          {isMeasuredOpen ? <div ref={bodyRef}>{body}</div> : null}
-        </motion.div>
+        <ThreadActivityDisclosureRegion expanded={isExpanded} testId="exec-shell-body">
+          {body}
+        </ThreadActivityDisclosureRegion>
       }
       className="relative overflow-clip"
       header={header}

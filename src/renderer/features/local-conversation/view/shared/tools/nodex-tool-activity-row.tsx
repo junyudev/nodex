@@ -373,6 +373,7 @@ export function NodexToolActivityRow({ item, onOpenThread }: ToolComponentProps)
             additions={change.additions}
             deletions={change.deletions}
             className="text-size-chat-sm"
+            tone="activity"
           />
         ) : null
       }

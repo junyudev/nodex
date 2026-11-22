@@ -34,6 +34,7 @@ import {
   buildThreadAgentActivityDynamicCompletedParts,
   collectThreadAgentActivitySummaryFacts,
   formatThreadAgentActivityGroupHeader,
+  isThreadAgentActivityItemInProgress,
   orderThreadAgentActivityMcpSources,
   selectThreadAgentActivityMcpIconItem,
   type ThreadAgentActivityApprovalFailure,
@@ -128,8 +129,20 @@ function resolveWebSearchSummaryDetail(entry: CodexConversationItem): string {
   return describeWebSearchAction(action, fallbackQuery).trim();
 }
 
-function formatActivePath(path: string | null | undefined): string {
-  return normalizeExplorationPath(path)?.replace(/^\/+/, "") ?? path?.trim() ?? "";
+/** A path as the reader knows it: relative to the command's folder when it lies inside it. */
+function formatActivePath(path: string | null | undefined, cwd: string | null = null): string {
+  const normalized = normalizeExplorationPath(path) ?? path?.trim() ?? "";
+  const root = cwd?.trim().replace(/\/+$/, "");
+  if (root && normalized === root) return ".";
+  if (root && normalized.startsWith(`${root}/`)) return normalized.slice(root.length + 1);
+  return normalized;
+}
+
+/** A read names its file, as the finished read does. */
+function formatReadTarget(action: Extract<CodexCommandAction, { type: "read" }>): string {
+  const name = action.name?.trim().replace(/^\.\//, "");
+  if (name) return name;
+  return formatActivePath(action.path).split("/").filter(Boolean).at(-1) ?? "";
 }
 
 function formatReadActiveSummary(
@@ -147,7 +160,7 @@ function formatReadActiveSummary(
       { skill: skillPathInfo.skillName },
     );
 
-  const target = formatActivePath(action.path || action.name);
+  const target = formatReadTarget(action);
   return target.length > 0
     ? getIntl().formatMessage(
         { id: "conversation.agentActivityGroup.readingTarget", defaultMessage: "Reading {target}" },
@@ -161,8 +174,9 @@ function formatReadActiveSummary(
 
 function formatSearchActiveSummary(
   action: Extract<CodexCommandAction, { type: "search" }>,
+  cwd: string | null,
 ): string {
-  const folder = formatActivePath(action.path);
+  const folder = formatActivePath(action.path, cwd);
   if (folder.length > 0)
     return getIntl().formatMessage(
       {
@@ -189,8 +203,9 @@ function formatSearchActiveSummary(
 
 function formatListFilesActiveSummary(
   action: Extract<CodexCommandAction, { type: "listFiles" }>,
+  cwd: string | null,
 ): string {
-  const folder = formatActivePath(action.path);
+  const folder = formatActivePath(action.path, cwd);
   return folder.length > 0
     ? getIntl().formatMessage(
         {
@@ -210,8 +225,8 @@ function formatExplorationActiveSummary(
   cwd: string | null,
 ): string | null {
   if (action.type === "read") return formatReadActiveSummary(action, cwd);
-  if (action.type === "search") return formatSearchActiveSummary(action);
-  if (action.type === "listFiles") return formatListFilesActiveSummary(action);
+  if (action.type === "search") return formatSearchActiveSummary(action, cwd);
+  if (action.type === "listFiles") return formatListFilesActiveSummary(action, cwd);
   return null;
 }
 
@@ -446,8 +461,13 @@ function resolveCollapsedActivityActiveSummaryPass(
 export function resolveAgentActivityGroupActiveSummary(
   entries: readonly ThreadAgentActivityGroupEntryModel[],
   resolvedApps: readonly ProtocolAppInfo[] = [],
+  options: { inProgressOnly?: boolean } = {},
 ): ThreadAgentActivityGroupActiveSummary | null {
-  return resolveCollapsedActivityActiveSummaryPass(entries, true, resolvedApps);
+  return resolveCollapsedActivityActiveSummaryPass(
+    entries,
+    options.inProgressOnly ?? true,
+    resolvedApps,
+  );
 }
 
 function resolveConversationItemKeyId(entry: CodexConversationItem): string | null {
@@ -861,20 +881,19 @@ function buildAgentActivityGroupHeader(input: {
   thinkingFallbackMessage: string | null;
   resolvedApps: readonly ProtocolAppInfo[];
 }): ThreadAgentActivityGroupBlockModel["header"] {
-  if (input.state.kind === "summary") return { kind: "summary", key: "summary" };
+  if (input.state.kind === "summary") return { kind: "summary" };
   if (input.state.kind === "thinking") {
-    return {
-      kind: "thinking",
-      key: "thinking",
-      message: input.thinkingFallbackMessage,
-    };
+    return { kind: "thinking", message: input.thinkingFallbackMessage };
   }
 
-  const item = input.state.item.item;
+  const activityItem = input.state.item;
+  const item = activityItem.item;
   if (!("entry" in item)) {
     throw new Error("A group active header requires a transcript activity item");
   }
-  const activeSummary = resolveAgentActivityGroupActiveSummary([item], input.resolvedApps);
+  const activeSummary = resolveAgentActivityGroupActiveSummary([item], input.resolvedApps, {
+    inProgressOnly: false,
+  });
   const label = formatThreadAgentActivityGroupHeader({
     state: input.state,
     completedParts: [],
@@ -884,9 +903,11 @@ function buildAgentActivityGroupHeader(input: {
   });
   return {
     kind: "active",
-    key: activeSummary?.key ?? item.id,
     item,
     label,
+    // Wording, not call identity: rerunning the same command keeps the label where it is.
+    labelKey: `${item.type}:${label}`,
+    inProgress: isThreadAgentActivityItemInProgress(activityItem),
   };
 }
 
@@ -899,7 +920,6 @@ export function buildV2AgentActivityGroupBlock(
     resolvedApps?: readonly ProtocolAppInfo[];
     state?: ThreadAgentActivityGroupState;
     thinkingFallbackMessage?: string | null;
-    shouldAnimateInitialCollapse?: boolean;
   } = {},
 ): ThreadAgentActivityGroupBlockModel {
   const seed = entries[0];
@@ -970,7 +990,6 @@ export function buildV2AgentActivityGroupBlock(
     header,
     mcpApps: resolvedApps,
     canExpand: options.canExpand ?? entries.length > 0,
-    shouldAnimateInitialCollapse: options.shouldAnimateInitialCollapse ?? false,
     status: mergeActivityStatus(entries),
   };
 }

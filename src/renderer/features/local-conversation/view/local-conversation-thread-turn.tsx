@@ -1,6 +1,13 @@
 import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, useLayoutEffect, useRef, type ReactNode, type RefCallback } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefCallback,
+} from "react";
 import { AutomaticApprovalReviewIcon, ChevronRightIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
@@ -12,6 +19,7 @@ import type {
   ThreadBlockModel,
   ThreadPlanSidePanelState,
   ThreadStageActions,
+  ThreadTranscriptBlockModel,
   ThreadTurnModel,
   UserTurnEdit,
 } from "../thread-stage-types";
@@ -20,6 +28,7 @@ import { useWorkedForLabelText } from "./shared/use-worked-for-label";
 import { CodexShimmerText } from "./shared/codex-shimmer-text";
 import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer";
 import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
+import { ActivityOpeningLabelProvider } from "./shared/tools/activity-group-header-label";
 import {
   isDeniedAgentBodyUnit,
   projectAgentBodyCollapsePresentation,
@@ -227,33 +236,70 @@ function AgentBodyUnitFrame({
   );
 }
 
-function ThreadLiveActivityFallbackForTurn({ turn }: { turn: ThreadTurnModel }) {
+/** What the Turn's standalone thinking line says: its latest Thought, or the fallback wording. */
+interface ThreadThinkingLine {
+  reasoning: ThreadTranscriptBlockModel | null;
+  message: string | null;
+}
+
+function resolveThreadThinkingLine(turn: ThreadTurnModel): ThreadThinkingLine | null {
   if (turn.liveActivity.fallback.owner !== "standalone") return null;
   const reasoning = turn.turn?.items.findLast(
     (item) => item.kind === "reasoning" || item.semanticKind === "reasoning",
   );
-  return (
-    <ThreadLiveActivityFallback
-      message={
-        <CodexTranscriptReasoningSummary
-          item={
-            reasoning
-              ? {
-                  id: reasoning.itemId,
-                  turnId: reasoning.turnId,
-                  createdAt: reasoning.createdAt,
-                  updatedAt: reasoning.updatedAt,
-                  searchableText: "",
-                  type: "reasoning",
-                  entry: reasoning,
-                }
-              : null
-          }
-          fallback={turn.liveActivity.fallback.message}
-        />
-      }
-    />
+  return {
+    reasoning: reasoning
+      ? {
+          id: reasoning.itemId,
+          turnId: reasoning.turnId,
+          createdAt: reasoning.createdAt,
+          updatedAt: reasoning.updatedAt,
+          searchableText: "",
+          type: "reasoning",
+          entry: reasoning,
+        }
+      : null,
+    message: turn.liveActivity.fallback.message,
+  };
+}
+
+function ThreadThinkingLineText({ line }: { line: ThreadThinkingLine }) {
+  return <CodexTranscriptReasoningSummary item={line.reasoning} fallback={line.message} />;
+}
+
+function isSameThinkingLine(a: ThreadThinkingLine | null, b: ThreadThinkingLine | null) {
+  if (a === null || b === null) return a === b;
+  return a.reasoning?.id === b.reasoning?.id && a.message === b.message;
+}
+
+/**
+ * When the first tool replaces the Turn's thinking line, the line's words become the outgoing
+ * label of that tool's group header, so the header grows out of the line instead of cutting in.
+ */
+function useThinkingLineHandoff(turn: ThreadTurnModel, latestGroupKey: string | null) {
+  const line = resolveThreadThinkingLine(turn);
+  const [shownLine, setShownLine] = useState(line);
+  const [handoff, setHandoff] = useState<{ groupKey: string; line: ThreadThinkingLine } | null>(
+    null,
   );
+  if (!isSameThinkingLine(line, shownLine)) {
+    setShownLine(line);
+    if (line === null && shownLine !== null && latestGroupKey !== null && turn.isStreamingTurn) {
+      setHandoff({ groupKey: latestGroupKey, line: shownLine });
+    }
+  }
+  if (handoff !== null && !turn.isStreamingTurn) setHandoff(null);
+  return {
+    line,
+    handoff:
+      handoff === null
+        ? null
+        : {
+            groupKey: handoff.groupKey,
+            label: <ThreadThinkingLineText line={handoff.line} />,
+            onExit: () => setHandoff(null),
+          },
+  };
 }
 
 export function resolveThreadBlockRenderKey(block: { id: string; renderKey?: unknown }): string {
@@ -318,6 +364,13 @@ function ThreadTurnBody({
   )?.unit;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
+  const latestBodyUnit = agentBodyUnits.at(-1);
+  const { line: thinkingLine, handoff: thinkingLineHandoff } = useThinkingLineHandoff(
+    turn,
+    latestBodyUnit?.kind === "agentActivityGroup"
+      ? resolveThreadBlockRenderKey(latestBodyUnit.block)
+      : null,
+  );
   const toggleAgentBody = (revealDeniedAction: boolean) => {
     const target = revealDeniedAction
       ? bodyUnits.find(({ unit }) => isDeniedAgentBodyUnit(unit))?.unit
@@ -489,7 +542,17 @@ function ThreadTurnBody({
                             unit === latestFollowBodyUnit ? latestTurnFollowContentRef : undefined
                           }
                         >
-                          {renderAgentUnit(unit, persistent && effectiveAgentBodyCollapsed)}
+                          {/* Always provided, so starting or ending a handoff never remounts the unit. */}
+                          <ActivityOpeningLabelProvider
+                            value={
+                              thinkingLineHandoff?.groupKey ===
+                              resolveThreadBlockRenderKey(unit.block)
+                                ? thinkingLineHandoff
+                                : null
+                            }
+                          >
+                            {renderAgentUnit(unit, persistent && effectiveAgentBodyCollapsed)}
+                          </ActivityOpeningLabelProvider>
                         </AgentBodyUnitFrame>
                       </motion.div>
                     )}
@@ -529,7 +592,11 @@ function ThreadTurnBody({
             ) : null}
             {firstResponseSection === "fallback" ? firstResponseMarker : null}
             <div ref={latestTurnFollowContentRef}>
-              <ThreadLiveActivityFallbackForTurn turn={turn} />
+              {thinkingLine ? (
+                <ThreadLiveActivityFallback
+                  message={<ThreadThinkingLineText line={thinkingLine} />}
+                />
+              ) : null}
             </div>
           </>
         ) : null}

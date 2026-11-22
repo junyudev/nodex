@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../../lib/codex-thread-settings";
 import { render, settleAsyncRender, textContent } from "../../../../../test/dom";
@@ -155,10 +155,7 @@ describe("CommandToolCall render state", () => {
     const shimmer = container.querySelector<HTMLElement>(".loading-shimmer-pure-text");
     expect(shimmer?.firstChild?.textContent ?? "").toBe("Running command");
     expect(Boolean(shimmer?.textContent?.includes("bun test"))).toBe(false);
-    const collapsedBody = container.querySelector('[data-thread-find-skip="true"]');
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect((collapsedBody as HTMLElement | null)?.style.height === "0px").toBe(true);
-    expect(Boolean(container.querySelector('[data-testid="exec-shell-body"]'))).toBe(true);
+    expect(container.querySelector('[data-testid="exec-shell-body"]')).toBe(null);
     expect(Boolean(textContent(container).includes("Shell"))).toBe(false);
   });
 
@@ -332,6 +329,43 @@ describe("CommandToolCall render state", () => {
     ).toBe("Started background terminal running check.py from Review Helper skill");
   });
 
+  test("labels a command inside a work group by the command itself", () => {
+    const nested = (input: Partial<Parameters<typeof resolveCommandSummaryLabel>[0]>) =>
+      resolveCommandSummaryLabel({
+        command: "git status -sb",
+        effectiveStatus: "completed",
+        exitCode: 0,
+        isExpanded: false,
+        isTurnInProgress: true,
+        nested: true,
+        processId: null,
+        ...input,
+      });
+
+    expect(nested({})).toBe("git status -sb");
+    expect(nested({ isExpanded: true })).toBe("git status -sb");
+    expect(nested({ effectiveStatus: "inProgress", exitCode: null })).toBe(
+      "Running git status -sb",
+    );
+    expect(nested({ effectiveStatus: "inProgress", exitCode: null, elapsedLabel: "12s" })).toBe(
+      "Running git status -sb for 12s",
+    );
+    expect(nested({ exitCode: 1 })).toBe("Command failed (git status -sb)");
+    expect(nested({ effectiveStatus: "declined", exitCode: null })).toBe("Declined git status -sb");
+    // Stopped and background commands keep their standalone wording.
+    expect(nested({ effectiveStatus: "interrupted", exitCode: null })).toBe(
+      "Stopped git status -sb",
+    );
+    expect(
+      nested({
+        effectiveStatus: "inProgress",
+        exitCode: null,
+        isTurnInProgress: false,
+        processId: "7",
+      }),
+    ).toBe("Started background terminal with git status -sb");
+  });
+
   test("switches settled generic command summary from specific collapsed text to generic expanded text", async () => {
     const { container } = render(
       <TooltipProvider>
@@ -425,9 +459,7 @@ describe("CommandToolCall render state", () => {
         </CodexThreadSettingsProvider>
       </TooltipProvider>,
     );
-    const collapsedBody = container.querySelector('[data-thread-find-skip="true"]');
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect((collapsedBody as HTMLElement | null)?.style.height === "0px").toBe(true);
+    expect(container.querySelector('[data-testid="exec-shell-body"]')).toBe(null);
   });
 
   test("keeps settled commands collapsed on first mount in steps-with-output mode", () => {
@@ -444,10 +476,7 @@ describe("CommandToolCall render state", () => {
       </TooltipProvider>,
     );
 
-    const collapsedBody = container.querySelector('[data-thread-find-skip="true"]');
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect((collapsedBody as HTMLElement | null)?.style.height === "0px").toBe(true);
-    expect(Boolean(container.querySelector('[data-testid="exec-shell-body"]'))).toBe(true);
+    expect(container.querySelector('[data-testid="exec-shell-body"]')).toBe(null);
     expect(Boolean(textContent(container).includes("Shell"))).toBe(false);
   });
 
@@ -835,10 +864,10 @@ describe("CommandToolCall render state", () => {
     fireEvent.click(summaryToggle as HTMLElement);
     await settleAsyncRender();
 
-    const collapsedBody = container.querySelector('[data-thread-find-skip="true"]');
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect(Boolean(container.querySelector('[data-testid="exec-shell-body"]'))).toBe(true);
-    expect(Boolean(textContent(container).includes("Shell"))).toBe(false);
+    expect(summaryToggle?.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="exec-shell-body"]')).toBe(null);
+    });
   });
 
   test("keeps an expanded command shell open when a running command settles", async () => {
@@ -952,19 +981,20 @@ describe("CommandToolCall render state", () => {
     );
 
     expect(Boolean(textContent(container).includes("Searched for needle in src"))).toBe(true);
-    expect(Boolean(textContent(container).includes("Auto-review approved"))).toBe(true);
+    expect(Boolean(textContent(container).includes("Auto-review approved"))).toBe(false);
     expect(Boolean(container.querySelector('[data-testid="exec-shell-body"]'))).toBe(false);
 
     const disclosure = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
     expect(Boolean(disclosure)).toBe(true);
-    const disclosureBody = disclosure?.parentElement?.nextElementSibling;
-    expect(disclosureBody?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosure?.parentElement?.nextElementSibling ?? null).toBe(null);
 
     fireEvent.click(disclosure as HTMLButtonElement);
     await settleAsyncRender();
 
     expect(disclosure?.getAttribute("aria-expanded") ?? "").toBe("true");
-    expect(disclosureBody?.getAttribute("aria-hidden")).toBe("false");
+    expect(disclosure?.parentElement?.nextElementSibling?.getAttribute("aria-hidden")).toBe(
+      "false",
+    );
     expect(Boolean(textContent(container).includes("Auto-review approved"))).toBe(true);
   });
 

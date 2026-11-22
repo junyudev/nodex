@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - Searching chats no longer holds up the rest of Nodex. Results are ranked in the background, so typing in Find stays smooth while replies stream, and an idle Nodex no longer rereads every Codex chat each second: it refreshes only the chats that changed or whose host reconnected.
 - One Writing model writes chat titles, commit messages and pull request descriptions. Choose it in **Settings > General > Chats**; it replaces the chat title model, and any Agent can do the writing. When your choice is unavailable, Nodex uses the Agent of the chat you are in, then another available Agent.
 - Setup's first task reads in plain words and in your display language. It no longer asks for a "Nodex Page" before you have seen one.
+- An Agent's work in a chat reads as one live line. While it works, the line names the tool that is running, and each new tool's words wipe in as the last ones fade, without cutting in mid-shimmer. Its icon animates while the tool runs and holds still between tools. Opened, the steps hang from a thin line at their full length instead of scrolling in a short box: each command shows the command itself, each edit its file and line counts.
 
 ### Fixed
 

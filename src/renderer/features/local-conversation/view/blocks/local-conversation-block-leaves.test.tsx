@@ -6,7 +6,6 @@ import type { CodexConversationItem } from "../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
 import {
   installAsyncRequestAnimationFrame,
-  installElementScrollHeight,
   installMeasuredResizeObserver,
   installWindowApi,
 } from "../../../../test/browser-globals";
@@ -37,12 +36,18 @@ import {
   buildThreadWorktreeInitActivities,
 } from "./local-conversation-block-leaves";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
+import {
+  ACTIVITY_HEADER_FIRST_GAP_DELAY_MS,
+  ActivityOpeningLabelProvider,
+} from "../shared/tools/activity-group-header-label";
+import { CODEX_SHIMMER_CADENCE_MS } from "../shared/codex-shimmer-text";
 import { ConversationImageInputContext } from "../../conversation-image-input";
 import { ConversationRecoveryActionsProvider } from "../conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "../hook-feedback-settings-navigation";
 import { useLocalConversationEditingTurnIds } from "../local-conversation-thread-view-state";
 import type {
   ThreadAgentActivityGroupBlockModel,
+  ThreadAgentActivityGroupEntryModel,
   ThreadOpenThreadContext,
   ThreadTranscriptBlockModel,
 } from "../../thread-stage-types";
@@ -142,8 +147,7 @@ function buildAgentActivityGroupBlock(
       parts: [],
       iconItem: entries[0] ?? null,
     },
-    header: overrides.header ?? { kind: "summary", key: "summary" },
-    shouldAnimateInitialCollapse: overrides.shouldAnimateInitialCollapse ?? false,
+    header: overrides.header ?? { kind: "summary" },
     status: overrides.status ?? "completed",
     ...overrides,
   };
@@ -1405,12 +1409,24 @@ describe("ThreadAssistantBodyBlock streaming markdown", () => {
 });
 
 describe("ThreadAgentActivityGroupBlock", () => {
-  beforeEach(() => {
-    installElementScrollHeight(120);
-    installMeasuredResizeObserver({ blockSize: 120, inlineSize: 320 });
-  });
+  /** The header's visible label sits beside its overlay toggle, not inside it. */
+  function groupHeader(toggle: HTMLElement): HTMLElement {
+    const header = toggle.parentElement;
+    if (!header) throw new Error("Expected the activity group header.");
+    return header;
+  }
 
-  test("starts collapsed and expands a Codex-style body with original flat entries", async () => {
+  function activeHeader(item: ThreadAgentActivityGroupEntryModel, label: string) {
+    return {
+      kind: "active" as const,
+      item,
+      label,
+      labelKey: `${item.type}:${label}`,
+      inProgress: true,
+    };
+  }
+
+  test("starts collapsed and mounts its steps only when opened, at their natural height", async () => {
     const readBlock = buildCommandBlock("item-1", [
       { type: "read", command: "cat a.ts", name: "./src/a.ts", path: "./src/a.ts" },
     ]);
@@ -1431,11 +1447,7 @@ describe("ThreadAgentActivityGroupBlock", () => {
 
     const summaryButton = getByRole("button", { name: /Read files/i });
     expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("false");
-    const collapsedBody = container.querySelector<HTMLElement>(
-      "[data-testid='agent-activity-group-body']",
-    );
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("true");
-    expect(collapsedBody?.hasAttribute("inert")).toBe(true);
+    expect(container.querySelector("[data-testid='agent-activity-group-body']")).toBe(null);
 
     await act(async () => {
       fireEvent.click(summaryButton);
@@ -1443,8 +1455,9 @@ describe("ThreadAgentActivityGroupBlock", () => {
     });
     await settleAsyncRender();
 
+    const body = container.querySelector<HTMLElement>("[data-testid='agent-activity-group-body']");
     expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("true");
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("false");
+    expect(body?.getAttribute("aria-hidden")).toBe("false");
     expect(Boolean(textContent(container).includes("Read src/a.ts"))).toBe(true);
     expect(
       applyContentSearchDomMarks({
@@ -1455,14 +1468,9 @@ describe("ThreadAgentActivityGroupBlock", () => {
     ).toBe(true);
     expect(Boolean(textContent(container).includes("Exploration"))).toBe(false);
     expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-    const scroller = [
-      ...container.querySelectorAll<HTMLElement>(".vertical-scroll-fade-mask"),
-    ].find((element) => element.style.getPropertyValue("--conversation-patch-file-gap") !== "");
-    const groupedSpacer = scroller?.firstElementChild?.firstElementChild as HTMLElement | null;
-    expect(scroller?.style.getPropertyValue("--conversation-patch-file-gap") ?? "").toBe(
-      "var(--conversation-grouped-item-gap, 4px)",
-    );
-    expect(groupedSpacer?.getAttribute("aria-hidden") ?? "").toBe("true");
+    // No capped scroller: the steps grow with their rows.
+    expect(body?.querySelector("[data-activity-steps]")).not.toBe(null);
+    expect(body?.querySelector(".vertical-scroll-fade-mask")).toBe(null);
   });
 
   test("shimmers only the latest streaming active summary", () => {
@@ -1475,12 +1483,7 @@ describe("ThreadAgentActivityGroupBlock", () => {
       id: "activity-active",
       searchableText: "activity active",
       status: "inProgress",
-      header: {
-        kind: "active",
-        key: "item-command-active",
-        label: "Running bun test",
-        item: commandBlock,
-      },
+      header: activeHeader(commandBlock, "Running bun test"),
       completedHeader: {
         parts: [{ kind: "commands", count: 1 }],
         iconItem: commandBlock,
@@ -1494,43 +1497,270 @@ describe("ThreadAgentActivityGroupBlock", () => {
       </TooltipProvider>,
     );
 
-    const summaryButton = getByRole("button", { name: /Running bun test/i });
-    const shimmer = summaryButton.querySelector<HTMLElement>(".loading-shimmer-pure-text");
+    const header = groupHeader(getByRole("button", { name: /Running bun test/i }));
+    const shimmer = header.querySelector<HTMLElement>(".loading-shimmer-pure-text");
     expect(shimmer?.firstChild?.textContent ?? "").toBe("Running bun test");
-    expect(Boolean(textContent(summaryButton).includes("Ran 1 command"))).toBe(false);
+    expect(header.querySelector("[role='status']")).not.toBe(null);
+    expect(Boolean(textContent(header).includes("Ran 1 command"))).toBe(false);
   });
 
-  test("renders the latest open group's Thinking fallback as its only live header", () => {
-    const commandBlock = buildCommandBlock("item-command-completed", [], {
-      status: "completed",
-      command: "pnpm test",
-      exitCode: 0,
+  test("opens on a gap with nothing to say, then admits it is working after a beat", async () => {
+    vi.useFakeTimers();
+    try {
+      const commandBlock = buildCommandBlock("item-command-completed", [], {
+        status: "completed",
+        command: "pnpm test",
+        exitCode: 0,
+      });
+      const block = buildAgentActivityGroupBlock({
+        id: "activity-gap-owner",
+        searchableText: "completed command",
+        header: { kind: "thinking", message: null },
+        completedHeader: {
+          parts: [{ kind: "commands", count: 1 }],
+          iconItem: commandBlock,
+        },
+        entries: [commandBlock],
+      });
+
+      const { container } = render(
+        <TooltipProvider>
+          <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
+        </TooltipProvider>,
+      );
+      expect(textContent(container).includes("Working")).toBe(false);
+      expect(textContent(container).includes("Ran a command")).toBe(false);
+
+      await act(async () => {
+        vi.advanceTimersByTime(ACTIVITY_HEADER_FIRST_GAP_DELAY_MS);
+        await Promise.resolve();
+      });
+      const header = groupHeader(
+        container.querySelector<HTMLElement>("[data-testid='agent-activity-group-toggle']")!,
+      );
+      expect(textContent(header).includes("Working")).toBe(true);
+      expect(header.querySelectorAll(".loading-shimmer-pure-text").length).toBe(1);
+      expect(header.querySelectorAll("[data-tool-activity-icon]").length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps its live label when it becomes expandable in the middle of a gap", async () => {
+    const listBlock = buildCommandBlock("item-list-live", [
+      { type: "listFiles", command: "ls src", path: "src" },
+    ]);
+    const renderGroup = (
+      header: ThreadAgentActivityGroupBlockModel["header"],
+      canExpand: boolean,
+    ) => (
+      <TooltipProvider>
+        <ThreadAgentActivityGroupBlock
+          block={buildAgentActivityGroupBlock({
+            id: "activity-becomes-expandable",
+            status: "inProgress",
+            header,
+            canExpand,
+            completedHeader: { parts: [{ kind: "exploration" }], iconItem: listBlock },
+            entries: [listBlock],
+          })}
+          isLatestTurn={true}
+          isStreamingTurn={true}
+        />
+      </TooltipProvider>
+    );
+    const view = render(renderGroup(activeHeader(listBlock, "Listing files in src folder"), false));
+    expect(view.queryByTestId("agent-activity-group-toggle")).toBe(null);
+
+    // The listing finishes: its row becomes visible and the header enters a gap.
+    view.rerender(renderGroup({ kind: "thinking", message: null }, true));
+    expect(view.getByTestId("agent-activity-group-toggle")).toBeTruthy();
+    expect(textContent(view.container).includes("Listing files in src folder")).toBe(true);
+    // The gap stops the scanning animation; its glyph fades back to the folder.
+    await waitFor(() => {
+      expect(view.container.querySelector("[data-activity-sprite]")).toBe(null);
+    });
+  });
+
+  test("carries the turn's thinking line until a tool speaks, then hands it over", async () => {
+    const commandBlock = buildCommandBlock("item-command-opening", [], {
+      status: "inProgress",
+      command: "ls",
+      exitCode: undefined,
+    });
+    const renderGroup = (header: ThreadAgentActivityGroupBlockModel["header"]) => (
+      <TooltipProvider>
+        <ActivityOpeningLabelProvider value={{ label: "Planning the steps", onExit: () => {} }}>
+          <ThreadAgentActivityGroupBlock
+            block={buildAgentActivityGroupBlock({
+              id: "activity-opening",
+              status: "inProgress",
+              header,
+              completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
+              entries: [commandBlock],
+            })}
+            isLatestTurn={true}
+            isStreamingTurn={true}
+          />
+        </ActivityOpeningLabelProvider>
+      </TooltipProvider>
+    );
+    const view = render(renderGroup({ kind: "thinking", message: null }));
+    // No blank beat and no generic Working: the thinking line's words carry on in the header.
+    expect(textContent(view.container).includes("Planning the steps")).toBe(true);
+    expect(textContent(view.container).includes("Working")).toBe(false);
+
+    view.rerender(renderGroup(activeHeader(commandBlock, "Running ls")));
+    expect(textContent(view.container).includes("Running ls")).toBe(true);
+    expect(view.container.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(null);
+  });
+
+  test("holds the running tool's label through a gap and lets a named thought replace it", async () => {
+    vi.useFakeTimers();
+    try {
+      const commandBlock = buildCommandBlock("item-command-gap", [], {
+        status: "inProgress",
+        command: "bun test",
+        exitCode: undefined,
+      });
+      const renderGroup = (header: ThreadAgentActivityGroupBlockModel["header"]) => (
+        <TooltipProvider>
+          <ThreadAgentActivityGroupBlock
+            block={buildAgentActivityGroupBlock({
+              id: "activity-gap",
+              status: "inProgress",
+              header,
+              completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
+              entries: [commandBlock],
+            })}
+            isLatestTurn={true}
+            isStreamingTurn={true}
+          />
+        </TooltipProvider>
+      );
+      const view = render(renderGroup(activeHeader(commandBlock, "Running bun test")));
+      await act(async () => {
+        vi.advanceTimersByTime(CODEX_SHIMMER_CADENCE_MS.activeDuration);
+        await Promise.resolve();
+      });
+
+      view.rerender(renderGroup({ kind: "thinking", message: null }));
+      await act(async () => {
+        vi.advanceTimersByTime(ACTIVITY_HEADER_FIRST_GAP_DELAY_MS * 2);
+        await Promise.resolve();
+      });
+      expect(textContent(view.container).includes("Running bun test")).toBe(true);
+      expect(textContent(view.container).includes("Working")).toBe(false);
+      // The tool's icon stays on screen while the gap holds its label.
+      expect(view.container.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(
+        null,
+      );
+
+      view.rerender(renderGroup({ kind: "thinking", message: "Checking the failing case" }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(textContent(view.container).includes("Checking the failing case")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("hands a new label over only after the current sweep, then releases the old one", async () => {
+    vi.useFakeTimers();
+    // Sweeps run only on screen; give the header a visible box.
+    let rectOwner: object | null = document.createElement("span");
+    while (rectOwner && !Object.hasOwn(rectOwner, "getBoundingClientRect")) {
+      rectOwner = Object.getPrototypeOf(rectOwner) as object | null;
+    }
+    const onScreen = vi.spyOn(rectOwner as Element, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 320,
+      bottom: 20,
+      width: 320,
+      height: 20,
+    } as DOMRect);
+    const shown = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    try {
+      const buildBlock = (key: string, label: string) => {
+        const commandBlock = buildCommandBlock(key, [], {
+          status: "inProgress",
+          command: label.replace(/^Running /, ""),
+          exitCode: undefined,
+        });
+        return buildAgentActivityGroupBlock({
+          id: "activity-handoff",
+          searchableText: label,
+          status: "inProgress",
+          entries: [commandBlock],
+          completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
+          header: activeHeader(commandBlock, label),
+        });
+      };
+      const renderGroup = (block: ThreadAgentActivityGroupBlockModel) => (
+        <TooltipProvider>
+          <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
+        </TooltipProvider>
+      );
+      const view = render(renderGroup(buildBlock("first", "Running first command")));
+      const status = () => view.container.querySelector<HTMLElement>("[role='status']")!;
+      expect(textContent(status()).includes("Running first command")).toBe(true);
+
+      // The first label is still sweeping in, so the next one waits for it.
+      view.rerender(renderGroup(buildBlock("second", "Running second command")));
+      expect(textContent(status()).includes("Running second command")).toBe(false);
+
+      await act(async () => {
+        vi.advanceTimersByTime(CODEX_SHIMMER_CADENCE_MS.activeDuration);
+        await Promise.resolve();
+      });
+      const outgoing = status().querySelector<HTMLElement>("[aria-hidden='true'][inert]");
+      expect(textContent(outgoing!)).toBe("Running first command");
+      expect(textContent(status()).includes("Running second command")).toBe(true);
+
+      await act(async () => {
+        vi.advanceTimersByTime(CODEX_SHIMMER_CADENCE_MS.activeDuration);
+        await Promise.resolve();
+      });
+      expect(status().querySelector("[inert]")).toBe(null);
+      expect(textContent(status()).includes("Running first command")).toBe(false);
+
+      // The same command running again keeps its label in place.
+      view.rerender(renderGroup(buildBlock("third", "Running second command")));
+      expect(status().querySelector("[inert]")).toBe(null);
+    } finally {
+      shown.mockRestore();
+      onScreen.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test("animates a running tool's icon and settles to its family glyph", () => {
+    const commandBlock = buildCommandBlock("item-command-sprite", [], {
+      status: "inProgress",
+      command: "bun test",
+      exitCode: undefined,
     });
     const block = buildAgentActivityGroupBlock({
-      id: "activity-thinking-owner",
-      searchableText: "completed command",
-      header: {
-        kind: "thinking",
-        key: "thinking",
-        message: null,
-      },
-      completedHeader: {
-        parts: [{ kind: "commands", count: 1 }],
-        iconItem: commandBlock,
-      },
+      id: "activity-sprite",
+      status: "inProgress",
+      header: activeHeader(commandBlock, "Running bun test"),
+      completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
       entries: [commandBlock],
     });
 
-    const { getByRole } = render(
+    const { container } = render(
       <TooltipProvider>
         <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
       </TooltipProvider>,
     );
 
-    const summaryButton = getByRole("button", { name: /Thinking/i });
-    expect(Boolean(textContent(summaryButton).includes("Ran a command"))).toBe(false);
-    expect(summaryButton.querySelectorAll(".loading-shimmer-pure-text").length).toBe(1);
-    expect(summaryButton.querySelectorAll("[data-tool-activity-icon]").length).toBe(0);
+    const iconCell = container.querySelector<HTMLElement>("[data-activity-icon-key]");
+    expect(iconCell?.dataset.activityIconKey).toBe("run-command");
+    expect(iconCell?.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(null);
   });
 
   test("does not shimmer a latest streaming completed fallback summary", () => {
@@ -1584,96 +1814,6 @@ describe("ThreadAgentActivityGroupBlock", () => {
     expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
   });
 
-  test("defers live active summary changes through the shared activity disclosure", async () => {
-    const originalDateNow = Date.now;
-    const originalSetTimeout = window.setTimeout;
-    const originalClearTimeout = window.clearTimeout;
-    let now = 0;
-    let nextTimerId = 1;
-    const scheduledTimers = new Map<number, { callback: () => void; delay: number }>();
-    Date.now = () => now;
-    window.setTimeout = ((callback: TimerHandler, delay?: number) => {
-      const timerId = nextTimerId++;
-      if (typeof callback === "function") {
-        scheduledTimers.set(timerId, { callback: () => callback(), delay: delay ?? 0 });
-      }
-      return timerId;
-    }) as typeof window.setTimeout;
-    window.clearTimeout = ((timerId?: number) => {
-      if (timerId !== undefined) scheduledTimers.delete(timerId);
-    }) as typeof window.clearTimeout;
-
-    const buildBlock = (key: string, label: string) => {
-      const commandBlock = buildCommandBlock(key, [], {
-        status: "inProgress",
-        command: label.replace(/^Running /, ""),
-        exitCode: undefined,
-      });
-      return buildAgentActivityGroupBlock({
-        id: "activity-deferred-summary",
-        searchableText: label,
-        status: "inProgress",
-        entries: [commandBlock],
-        completedHeader: {
-          parts: [{ kind: "commands", count: 1 }],
-          iconItem: commandBlock,
-        },
-        header: {
-          kind: "active",
-          key,
-          item: commandBlock,
-          label,
-        },
-      });
-    };
-
-    try {
-      const view = render(
-        <TooltipProvider>
-          <ThreadAgentActivityGroupBlock
-            block={buildBlock("first", "Running first command")}
-            isLatestTurn={true}
-            isStreamingTurn={true}
-          />
-        </TooltipProvider>,
-      );
-
-      expect(Boolean(textContent(view.container).includes("Running first command"))).toBe(true);
-
-      now = 100;
-      await act(async () => {
-        view.rerender(
-          <TooltipProvider>
-            <ThreadAgentActivityGroupBlock
-              block={buildBlock("second", "Running second command")}
-              isLatestTurn={true}
-              isStreamingTurn={true}
-            />
-          </TooltipProvider>,
-        );
-        await Promise.resolve();
-      });
-
-      expect(textContent(view.container).includes("Running first command")).toBe(true);
-      expect(textContent(view.container).includes("Running second command")).toBe(false);
-      const summaryTimer =
-        Array.from(scheduledTimers.values()).find((timer) => timer.delay === 900) ?? null;
-      expect(Boolean(summaryTimer)).toBe(true);
-
-      now = 1000;
-      await act(async () => {
-        summaryTimer?.callback();
-        await Promise.resolve();
-      });
-
-      expect(textContent(view.container).includes("Running second command")).toBe(true);
-    } finally {
-      Date.now = originalDateNow;
-      window.setTimeout = originalSetTimeout;
-      window.clearTimeout = originalClearTimeout;
-    }
-  });
-
   test("renders a live file-change header from the exact active item", async () => {
     const liveFileChangeEntry = buildFileChangeEntry("item-file-live");
     const content = Array.from({ length: 85 }, (_, index) => `line ${index + 1}`).join("\n");
@@ -1697,12 +1837,7 @@ describe("ThreadAgentActivityGroupBlock", () => {
       id: "activity-file-live",
       searchableText: "activity file live",
       status: "inProgress",
-      header: {
-        kind: "active",
-        key: "item-file-live",
-        item: fileChangeBlock,
-        label: "Editing files",
-      },
+      header: activeHeader(fileChangeBlock, "Editing files"),
       completedHeader: {
         parts: [{ kind: "fileChanges", count: 1 }],
         iconItem: fileChangeBlock,
@@ -1720,11 +1855,12 @@ describe("ThreadAgentActivityGroupBlock", () => {
       "button[aria-expanded='false']",
     );
     if (!summaryButton) throw new Error("Expected collapsed activity summary button");
-    expect(Boolean(textContent(summaryButton).includes("Editing files"))).toBe(true);
-    const shimmer = summaryButton.querySelector<HTMLElement>(".loading-shimmer-pure-text");
-    expect(Boolean(shimmer)).toBe(true);
+    const header = groupHeader(summaryButton);
+    expect(Boolean(textContent(header).includes("Editing files"))).toBe(true);
+    const shimmer = header.querySelector<HTMLElement>(".loading-shimmer-pure-text");
     expect(shimmer?.firstChild?.textContent ?? "").toBe("Editing files");
-    expect(Boolean(summaryButton.querySelector(".diff-stat-digit-stack-8"))).toBe(false);
+    expect(header.querySelector("[data-tool-activity-icon='edit-files']")).not.toBe(null);
+    expect(Boolean(header.querySelector(".diff-stat-digit-stack-8"))).toBe(false);
 
     fireEvent.click(summaryButton);
     await settleAsyncRender();
@@ -1762,43 +1898,6 @@ describe("ThreadAgentActivityGroupBlock", () => {
     expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
   });
 
-  test("never shimmers a completed aggregate summary", () => {
-    const fileChangeEntry = buildFileChangeEntry("item-file-aggregate");
-    const fileChangeBlock = {
-      id: fileChangeEntry.entryId ?? fileChangeEntry.itemId,
-      turnId: fileChangeEntry.turnId,
-      createdAt: fileChangeEntry.createdAt,
-      updatedAt: fileChangeEntry.updatedAt,
-      searchableText: "file change",
-      type: "fileChange" as const,
-      entry: fileChangeEntry,
-      status: fileChangeEntry.status,
-    };
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-aggregate",
-      searchableText: "activity aggregate",
-      completedHeader: {
-        parts: [{ kind: "fileChanges", count: 1 }],
-        iconItem: fileChangeBlock,
-      },
-      entries: [fileChangeBlock],
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = getByRole("button", { name: /Edited a file/i });
-    expect(Boolean(summaryButton.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-    const initiallyMountedBody = container.querySelector<HTMLElement>(
-      "[data-testid='agent-activity-group-body']",
-    );
-    expect(initiallyMountedBody?.getAttribute("aria-hidden")).toBe("true");
-    expect(initiallyMountedBody?.hasAttribute("inert")).toBe(true);
-  });
-
   test("renders a completed single-file change as an aggregate activity header before the row", async () => {
     const fileChangeEntry = buildFileChangeEntry("item-file-single");
     const fileChangeBlock = {
@@ -1823,16 +1922,14 @@ describe("ThreadAgentActivityGroupBlock", () => {
 
     const { container, getByRole } = render(
       <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={false} isStreamingTurn={false} />
+        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={false} isStreamingTurn={true} />
       </TooltipProvider>,
     );
 
     const summaryButton = getByRole("button", { name: /Edited a file/i });
-    expect(Boolean(textContent(summaryButton).includes("2 lines"))).toBe(false);
-    const collapsedBody = container.querySelector<HTMLElement>(
-      "[data-testid='agent-activity-group-body']",
-    );
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("true");
+    expect(groupHeader(summaryButton).querySelector(".loading-shimmer-pure-text")).toBe(null);
+    expect(Boolean(textContent(groupHeader(summaryButton)).includes("2 lines"))).toBe(false);
+    expect(container.querySelector("[data-testid='agent-activity-group-body']")).toBe(null);
 
     fireEvent.click(summaryButton);
     await waitFor(() => {
@@ -1842,14 +1939,18 @@ describe("ThreadAgentActivityGroupBlock", () => {
     });
 
     const content = textContent(container);
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("false");
+    expect(
+      container
+        .querySelector("[data-testid='agent-activity-group-body']")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("false");
     expect(Boolean(content.includes("Edited"))).toBe(true);
     expect(Boolean(content.includes("edited.ts"))).toBe(true);
     expect(Boolean(content.includes("+1"))).toBe(true);
     expect(Boolean(content.includes("-1"))).toBe(true);
   });
 
-  test("keeps family-specific leading icons on expanded tool rows", async () => {
+  test("keeps family-specific leading icons and terse command wording on its steps", async () => {
     const commandEntry = buildCommandEntry("item-command", [], {
       command: "bun test",
       commandActions: [],
@@ -1905,21 +2006,23 @@ describe("ThreadAgentActivityGroupBlock", () => {
     );
 
     const summaryButton = getByRole("button", { name: /Edited a file/i });
-    expect(summaryButton.querySelectorAll("[data-tool-activity-icon='edit-files']").length).toBe(1);
-    expect(summaryButton.querySelectorAll("[data-tool-activity-icon='run-command']").length).toBe(
-      0,
-    );
+    const header = groupHeader(summaryButton);
+    expect(header.querySelectorAll("[data-tool-activity-icon='edit-files']").length).toBe(1);
+    expect(header.querySelectorAll("[data-tool-activity-icon='run-command']").length).toBe(0);
 
     fireEvent.click(summaryButton);
     await settleAsyncRender();
 
-    const content = textContent(container);
+    const groupBody = container.querySelector<HTMLElement>(
+      "[data-testid='agent-activity-group-body']",
+    );
+    const content = textContent(groupBody!);
     expect(content.includes("Read src/a.ts")).toBe(true);
     expect(content.includes("Searched for thing in src")).toBe(true);
     expect(content.includes("Listed files in src")).toBe(true);
-    expect(content.includes("Ran bun test")).toBe(true);
-    expect(content.includes("Edited")).toBe(true);
-    const groupBody = container.querySelector("[data-testid='agent-activity-group-body']");
+    expect(content.includes("bun test")).toBe(true);
+    expect(content.includes("Ran bun test")).toBe(false);
+    expect(content.includes("edited.ts")).toBe(true);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='read-files']").length).toBe(1);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='code-searching']").length).toBe(
       1,

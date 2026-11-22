@@ -101,7 +101,8 @@ test.each(["light", "dark"] as const)(
         await userEvent.keyboard("{Enter}");
       });
       await waitFor(() => expect(disclosure).toHaveAttribute("aria-expanded", "false"));
-      expect(view.container.querySelector("img")).toBeNull();
+      // The result leaves with its closing body, then unmounts.
+      await waitFor(() => expect(view.container.querySelector("img")).toBeNull());
     } finally {
       view.unmount();
     }

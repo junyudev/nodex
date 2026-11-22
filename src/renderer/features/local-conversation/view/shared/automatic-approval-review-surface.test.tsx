@@ -48,20 +48,20 @@ describe("AutomaticApprovalReviewSurface", () => {
     const { getByRole, container } = render(<AutomaticApprovalReviewSurface item={item} />);
 
     const trigger = getByRole("button", { name: "bun test" });
-    const summary = textContent(container);
-    expect(summary.includes("bun test")).toBe(true);
-    expect(summary.includes("Auto-review approved")).toBe(true);
-    expect(summary.includes("Automatic approval review")).toBe(false);
-    expect(summary.includes("Low risk")).toBe(false);
-    expect(summary.includes("Only local tests are executed.")).toBe(true);
+    expect(textContent(container).includes("bun test")).toBe(true);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosureBody(trigger)).toBe(null);
 
     fireEvent.click(trigger);
     await waitFor(() => {
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
     });
     expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("false");
+    const summary = textContent(container);
+    expect(summary.includes("Auto-review approved")).toBe(true);
+    expect(summary.includes("Automatic approval review")).toBe(false);
+    expect(summary.includes("Low risk")).toBe(false);
+    expect(summary.includes("Only local tests are executed.")).toBe(true);
 
     const reviewTrigger =
       Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")).find(
@@ -93,7 +93,7 @@ describe("AutomaticApprovalReviewSurface", () => {
       <AutomaticApprovalReviewSurface item={item} />,
     );
     const trigger = getByRole("button", { name: "Request" });
-    expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosureBody(trigger)).toBe(null);
 
     await act(async () => {
       fireEvent.click(trigger);
@@ -132,10 +132,9 @@ describe("AutomaticApprovalReviewSurface", () => {
     const trigger = getByRole("button", { name: "bun test" });
     const content = textContent(container);
     expect(content.includes("bun test")).toBe(true);
-    expect(content.includes("Auto-reviewing")).toBe(true);
     expect(content.includes("Medium risk")).toBe(false);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("true");
+    expect(disclosureBody(trigger)).toBe(null);
     expect(container.querySelector(".codex-cadenced-shimmer") === null).toBe(false);
 
     fireEvent.click(trigger);

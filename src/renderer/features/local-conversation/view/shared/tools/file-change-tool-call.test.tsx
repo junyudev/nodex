@@ -565,9 +565,8 @@ describe("FileChangeToolCall", () => {
       </TooltipProvider>,
     );
 
-    const collapsedBody = container.querySelector<HTMLElement>("[data-file-change-row-body]");
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect(Boolean(collapsedBody?.querySelector("diffs-container"))).toBe(false);
+    expect(container.querySelector("[data-file-change-row-body]")).toBe(null);
+    expect(Boolean(container.querySelector("diffs-container"))).toBe(false);
     expect(Boolean(container.querySelector('button[aria-label="Copy diff"]'))).toBe(false);
 
     const summaryToggle = fileChangeHeaders(container)[0] ?? null;

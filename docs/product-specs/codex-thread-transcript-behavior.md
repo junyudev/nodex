@@ -549,12 +549,11 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Tool and action surfaces use the shared local icon asset module:
   - semantic tool glyphs cover command execution, file edits, web/search, code search, list-files, approvals, denials, skills, hooks, plugins, connectors, and generic source fallbacks
   - decorative row glyphs are hidden from assistive technology; website favicons use decorative empty-alt images, while source logos expose meaningful alt text
-  - icon rendering is surface-specific, not universal: collapsed activity headers and top-level command/web/MCP surfaces may show glyphs, while nested collapsed-activity body rows often stay text-only
-  - visible activity glyphs use the documented `icon-xs` muted contract, chevrons use `icon-2xs`, and source/card glyphs use `icon-sm`
+  - every activity row shows its family glyph: a terminal for commands, an open book for reads, a magnifier for searches, a folder for listings and a plain pencil for edits, with source logos for connectors
+  - visible activity glyphs use the documented `icon-xs` tertiary-text contract, chevrons use `icon-2xs`, and source/card glyphs use `icon-sm`
 - Standalone top-level web rows prefer extracted site favicons through the Google favicon URL helper and fall back to the semantic web-search glyph when no stable domain is available. Grouped web-search headers use the semantic web-search glyph, while expanded/detail web rows render the favicon only when a `faviconUrl` exists; they do not add a globe fallback when no site favicon was resolved.
 - A web-search row is groupable only when its visible query is non-empty after trimming; action-detail payloads such as fallback `queries` do not create a visible row by themselves. Web rows do not pre-group before the generic v2 pass. A live activity group whose open slice is web-search-owned renders `Searching the web` plus the latest active query/detail; a settled group renders `Searched the web`, and expanded bodies render direct detail rows without a nested web-search header.
 - Web-search action detail text follows the same display normalization across standalone rows, grouped headers, and grouped detail rows: `search` uses the first query, multi-query searches append `...`, `openPage` uses the URL, `findInPage` uses `'{pattern}' in {url}`, and search queries with removable `site:` filters render as `query text | domain · domain`.
-- Web-search detail rows use the shared bounded activity-list behavior owned by their v2 group: preview content caps at 7rem, expanded content caps at 20rem, and collapsed shells keep `0px` height without row content.
 - MCP, plugin, connector, and elicitation rows resolve source logos from available metadata, Browser Use / computer-use source identifiers, connector/plugin logo URLs, then the generic source fallback.
 - Script calls use their whitespace-normalized, 80-character-bounded `title` argument, falling back to `Running JavaScript` or `Ran JavaScript`. Node REPL and CUA REPL use the terminal glyph when richer source identity is absent. The Agent Runtime retains MCP call identity, metadata and typed results through projection; application tools retain their specialized registry. Expanding a withheld result hydrates only its addressed runtime item, and image descriptors resolve the original result-content index through the owning conversation. Native call identity remains distinct from the runtime row identity used for detail reads.
 - Completed MCP server elicitation is an agent-activity leaf, not a trailing raw-payload row. `mcpToolCall` completion summarizes as `Requested permission`; other supported kinds use `Completed request`. The default-collapsed body preserves one question/answer pair, with answers `Accepted`, `Cancelled`, `Declined`, or `Completed`; tool suggestions use their suggestion reason as the question. Incomplete and unsupported OpenAI-form elicitations do not render this completed leaf, while an OpenAI form containing an `openai/imagePicker` property remains eligible for ordinary v2 grouping.
@@ -577,14 +576,27 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - The app-server `wait_threads` dynamic tool waits for the first of one to eight tasks to complete or need attention. It accepts a timeout from zero to 120,000 ms, rejects the calling task and duplicate host/task pairs, reports per-target failures, and uses independent generation/revision cursors to omit unchanged final text. Commentary does not wake the wait; timeout includes compact current progress. New input to the calling task interrupts its wait successfully; completion of the calling Turn suppresses a late response. Native metadata and the latest full Turn are read without resuming the target.
 - Interruption starts Browser activity release immediately. Native idle status also releases browser control. Ordinary captured routes remain available for later use; temporary session routes are disposed. This activity release is separate from completed-Turn tab finalization.
 
-- Transient tool labels use Nodex's `CodexShimmerText` wrapper. Inactive labels render plain text. Active labels default to the cadenced treatment: after a 600 ms delay, two clipped transform sweeps run once for 1,000 ms with `steps(48,end)`, then remain still until the next four-second cadence. Classic two-second `background-position` shimmer is an explicit variant reserved for the active Browser and background-Subagent working labels that require it. Both treatments become static for operating-system reduced motion, and an activity body can disable shimmer for its entire subtree.
-- Group headers have exactly three presentation states. `summary` is static and
-  transitions immediately; `active` uses the selected tool's family label and
-  icon with shimmer; `thinking` has no tool icon and shimmers the assigned
-  reasoning heading or generic `Thinking`. Expanded activity-group bodies
-  disable shimmer for nested command, web, MCP, patch, and Subagent labels, so
-  one active group has at most its header sweep. Running counts cannot make a
-  completed group summary shimmer.
+- Transient tool labels use Nodex's `CodexShimmerText` wrapper. Inactive labels render plain text. Active labels default to the cadenced treatment: after a 600 ms delay, two clipped transform sweeps run once for 1,000 ms with `steps(48,end)`, then remain still until the next four-second cadence. A label that has just been revealed sweeps at once instead of waiting, and reports when each sweep starts and ends. Sweeps run only while the label is on screen, the window is visible and motion is allowed; a sweep in progress ends when any of those stops. Classic two-second `background-position` shimmer is an explicit variant reserved for the active Browser and background-Subagent working labels that require it. Both treatments become static for reduced motion, and an activity body can disable shimmer for its entire subtree.
+- A group header is one line: a leading glyph and a label. Live, it is in one of
+  three states. `working` names the running tool with its family glyph, or a
+  Thought that names itself with the glyph already on screen; `between tools` is a
+  gap with nothing new to say; `settled` is the static completed summary. A gap
+  keeps the label and glyph already on screen and stops their animation. Only a
+  group that opens on a gap shows `Working`, with a wrench glyph, and only after
+  one second. A group of Thoughts alone shows the newest Thought's heading, or
+  `Thinking`, without a glyph. Expanded activity-group bodies disable shimmer for
+  nested command, web, MCP, patch, and Subagent labels, so one active group has at
+  most its header sweep. Running counts cannot make a completed group summary
+  shimmer.
+- A live label never changes in the middle of a sweep. A new label waits for the
+  current sweep to end, then replaces the old one in place: the old label fades out
+  over 200 ms while the new one is uncovered left to right behind a 1em feathered
+  edge, reaching rest at 740 ms of its first one-second sweep. Labels are
+  identified by their wording, so a repeated command or read keeps its label still
+  while its content updates. Settling replaces the live label at once. When the
+  first tool of a Turn replaces the Turn's thinking row, the row's words become the
+  outgoing label and the new label slides right by the glyph's width over 200 ms as
+  its glyph fades in. Reduced motion shows each change at once.
 - Completed group headers retain ordered typed parts until rendering instead of
   flattening facts into a projection-owned sentence. Part order is named MCP
   sources, loaded tools, unnamed MCP calls, file changes, stopped file creation,
@@ -600,8 +612,14 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Collapsed MCP summary stats preserve a source-keyed map with source key/name/logo/native-app metadata plus total and running counts. Same-source calls fold into one source entry; built-in Browser Use and computer-use source kinds take precedence over incidental raw source keys, raw non-integration keys are preserved when no built-in source kind applies, and computer-use target app fields preserve native-app identity. Browser-use displays as `the browser`; `server:node_repl` formats as command activity; app/native/browser source metadata can drive both summary wording and collapsed-header icon fallback. The same source resolver determines ordinary group summary facts and standalone MCP app/computer-use presentation without creating a source-specific pre-group.
 - Header icon ownership follows header state: a completed summary uses evidence
   from its first typed part, an active header uses the selected active item, and a
-  thinking header renders no tool icon. Filtering expanded body rows cannot
-  change that choice.
+  gap borrows the glyph on screen. Filtering expanded body rows cannot change that
+  choice. A change of glyph family crossfades in place over 150 ms; consecutive
+  tools of one family keep the glyph still. While the header's tool runs, its glyph
+  hands over to an animated version of itself: shell commands and REPLs think,
+  reads turn pages, local searches and listings scan, web `curl` commands search,
+  and browser or computer control moves a cursor. Edits, native web searches and
+  other tools keep their static glyph. The animation decodes before it replaces
+  the glyph, stops with the tool or at a gap, and is absent under reduced motion.
 - Standalone automatic approval review items render as an activity disclosure whose header summarizes the reviewed action, such as `pnpm test`, `Editing src/app.ts`, `Network access to api.openai.com`, `MCP search on Docs`, or `Permission request: reason`. The header shows the muted shield accessory and shimmers only while the review item is in progress. Expanding that activity reveals the same compact review row used by attached tool-body reviews.
 - Compact automatic approval review rows render only the review status title. High-risk denials fold into `Auto-review denied high risk`, and the row does not render separate status chips, risk labels, or an `Automatic approval review` noun label. Expandable rows reveal the trimmed rationale or Codex fallback reviewer-agent summary; non-expandable rows render title text only.
 - Each legacy multi-agent tool call remains a standalone disclosure; consecutive calls are not coalesced. Wait calls are hidden. Status priority is inProgress, failed, completed. Headers count the union of receiver and agent-state IDs, including list actions, while expanded rows require a nonblank receiver nickname, directly supplied or derived from receiver source metadata. Failed actions use “Failed to interrupt” and “Failed to list”. Spawn model tooltips use the explicit spawn model or parent latest model, never a guessed child model; nonspawn calls do not synthesize spawn-model metadata.
@@ -690,7 +708,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - embedded per-file patch previews suppress the diff library's built-in file header because the surrounding thread row already owns the filename and line-count summary
 - Expanded agent-activity bodies retain each source call's tool surface, including its family or source icon when defined and its subtype-owned detail expansion. Parsed command actions remain direct rows within the source-call wrapper. The group does not introduce additional `Explored...` or `Searched web...` subgroup headers.
 - Tool-call expansion is subtype-owned local UI state; the mounted thread persists collapsed turns, not collapsed tool rows.
-- Rich tool-call and grouped-activity headers share one neutral foreground-at-60% summary tone across their label descendants, including Read, Search, List, shell, web, connector, and dynamic tool rows. Nested detail styles do not weaken it, and lifecycle status does not recolor the summary. Explicit icon accents and independent inline buttons keep their own semantic treatment; diff statistics and other accessories sit outside the summary tone boundary. An expandable header highlights its summary on hover, while hovering a file reference highlights only that reference and preserves its independent open action.
+- Rich tool-call and grouped-activity headers share the tertiary text tone across their label descendants and glyphs, including Read, Search, List, shell, web, connector, and dynamic tool rows. Nested detail styles do not weaken it, and lifecycle status does not recolor the summary. Explicit icon accents and independent inline buttons keep their own semantic treatment. A row's `+N -M` counts rest in the same quiet tone and take the added and deleted colors while the row is hovered. An expandable header highlights its summary in the full text tone on hover, while hovering a file reference highlights only that reference and preserves its independent open action. A live header label uses the shimmer's own base tone.
 - A command or patch declined with an attached denied Auto-review is a standalone refusal. Commands bypass parsed read/search/list labels and display `Command declined by auto-review`; the warning shield replaces the ordinary source glyph and redundant trailing review shield. Expanded refusal details explain the explicit authorization requirement, including high-risk context when supplied, and retain the command output or patch. A denied review alone does not turn a normally completed or failed execution into a refusal.
 - Command execution cards consume parsed `commandActions` metadata (`read`, `listFiles`, `search`) before falling back to generic shell rendering. A single parsed read/search/list action renders as a compact transcript row instead of an expandable shell card; when such a compact row has attached Auto-review lifecycle, it becomes a compact activity disclosure whose body contains the Auto-review rows. Exploration groups retain attached command Auto-review rows for collapsed-summary failure folding instead of treating those reviews as separate activity rows.
 - In-progress parsed read/search/list rows stay hidden until completion, except skill-definition reads in `STEPS_PROSE`, which render as `Reading <skill> skill`.
@@ -702,25 +720,32 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - `STEPS_COMMANDS` shows command cards and keeps generic shell rows collapsed by default
   - `STEPS_EXECUTION` shows command cards without auto-opening generic shell rows
 - Running generic command rows start collapsed and stay under manual disclosure control while running and after settlement.
-- Command shell rows keep a stable `exec-shell-body` wrapper with collapsed search skipping, but mount shell/review content only while expanded.
+- Command shell rows mount their `exec-shell-body` only while expanded; closing animates it away and then unmounts it.
 - Command rows with attached Auto-review lifecycle show a compact shield indicator in the header. Expanded command shell rows render attached Auto-review rows before the `Shell` chrome. The shell chrome is one rounded strong-border surface and includes the command line, copy-command/output controls, and a reversed scroll output area capped at 140px. Blank running output stays empty; blank settled output reads `No output`. The footer is blank while running, then reads `Stopped`, `Success`, `Exit code {code}`, or `Exit code unknown` from canonical command status and exit-code fields.
 - MCP rows with attached Auto-review lifecycle show the same compact shield indicator in the header and render attached Auto-review rows before MCP app/resource/content/error/raw-output body content. Normal expanded MCP bodies keep attached review rows expandable so their rationale can be inspected; MCP app/resource card bodies render those attached review rows as title-only, non-expandable compact rows with card-body horizontal padding before the app/loading/error surface.
-- Generic command headers use command-row-specific semantic labels. Active foreground commands render `Running command` with only the status phrase shimmering and may append an elapsed timer. Collapsed settled commands render `Ran <command>` or `Stopped <command>`, while expanded settled commands fall back to `Ran command` or `Stopped command` and expose the exact command through the shell body. Current-date commands render `Checking` / `Checked` / `Stopped checking the current date and time`. Background terminal rows render `Started background terminal...`, `Background terminal finished...`, or `Background terminal stopped...`; skill scripts under a skill `scripts/` folder render as `script <file> from <skill> skill` in the command-specific forms. Foreground elapsed text uses `for` while running, `in` when completed, and `after` when interrupted. Ordinary background-terminal summaries omit elapsed time; current-date detection takes precedence over background wording.
-- While the current turn is still active, a trailing activity slice owned by exploration remains visually `in progress` (`Exploring` shimmer) until a non-exploration item appears in that same turn or the turn stops.
-- Generic agent-activity groups use one local four-phase disclosure
-  (`collapsed`, `opening`, `expanded`, `closing`) and one measured body. The same
-  header node is rendered collapsed and expanded; expansion only adds filtered
-  tool rows. The body remains mounted through transition phases, receives pointer
-  events only when fully expanded, and never gains a separate preview topology.
+- Generic command headers use command-row-specific semantic labels. Active foreground commands render `Running command` with only the status phrase shimmering and may append an elapsed timer. Collapsed settled commands render `Ran <command>` or `Stopped <command>`, while expanded settled commands fall back to `Ran command` or `Stopped command` and expose the exact command through the shell body. Current-date commands render `Checking` / `Checked` / `Stopped checking the current date and time`. Background terminal rows render `Started background terminal...`, `Background terminal finished...`, or `Background terminal stopped...`; skill scripts under a skill `scripts/` folder render as `script <file> from <skill> skill` in the command-specific forms. Foreground elapsed text uses `for` while running, `in` when completed, and `after` when interrupted. Ordinary background-terminal summaries omit elapsed time; current-date detection takes precedence over background wording. Inside an activity group a command is a terse step: a finished command shows the command itself, a running one `Running <command>` with `for <elapsed>` once timed, a failed or nonzero exit `Command failed (<command>)` and a declined one `Declined <command>`. Stopped, background-terminal and auto-review refusal rows keep their standalone wording, and `STEPS_PROSE` keeps the generic labels.
+- While the current turn is still active, a trailing activity slice owned by exploration remains visually `in progress`, its header naming the latest read, until a non-exploration item appears in that same turn or the turn stops.
+- Activity disclosures, for groups and for individual tool rows, render the same
+  header node collapsed and expanded, and mount their body only while open. Opening
+  grows the body from zero to its natural height and full opacity over 300 ms with
+  `cubic-bezier(0.19, 1, 0.22, 1)`; closing reverses it, leaves the tab order and
+  pointer at once, then unmounts. Overflow becomes visible once the body settles.
+  Reduced motion opens and closes at once. Search reveals a closed body through its
+  disclosure's reveal owner before highlighting inside it.
+- An expanded group lists its filtered tool rows as steps: an indented column
+  hanging from a 1px border-tone hairline that starts under the header glyph, with
+  12 px between rows. The list grows with its rows and never scrolls; only a row's
+  own output, such as command output, may bound and scroll itself. The chevron
+  appears on hover or focus and stays visible, turned, while the group is open.
 - Completed proposed-plan cards render as a 200px in-thread preview with `Plan` header actions for download, copy, and opening the right-panel `Plan` tab. The in-thread card does not own a local accordion.
 - While the right-panel `Plan` tab is active for the same plan key, the card body remains mounted but collapses to `max-height: 0`, `opacity: 0`, `aria-hidden`, and `inert`; clicking the full-card close overlay removes that renderer-local tab. The right-panel tab renders the full markdown in its own scroll container.
 - In-progress proposed-plan cards keep the `Writing plan` header and preview body, suppress the fallback `Thinking` activity row, and do not expose the side-panel open action until the plan item completes.
-- Generic activity groups are steady-state collapsed. The latest open group may
-  receive an initial-collapse entrance signal, but streaming state does not
-  auto-expand it and reduced motion suppresses the nonessential transition.
-- Running group headers are selected from full tool facts: exploration may own
-  `Exploring`, otherwise the newest strict-active ordinary tool owns its concrete
-  label, and an open group with no strict-active tool enters `thinking`.
+- Generic activity groups are steady-state collapsed. Streaming state does not
+  auto-expand a group, and settling does not collapse one the reader opened.
+- Running group headers are selected from full tool facts: the newest running
+  ordinary tool owns its concrete label, an in-progress Auto-review never does, a
+  still-running exploration keeps naming its latest read between reads, and an open
+  group with no running tool enters `thinking`.
   Completed groups render the typed static aggregate. Standalone family leaves
   keep their own tool-only labels.
 - Command execution headers show `in <cwd>` only when the command ran outside the active project workspace path.

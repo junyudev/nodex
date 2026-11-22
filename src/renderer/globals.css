@@ -1629,9 +1629,16 @@
   }
 }
 
+.truncate > .codex-cadenced-shimmer {
+  max-width: 100%;
+  text-overflow: inherit;
+  overflow: hidden;
+}
+
 .codex-cadenced-shimmer-sweep {
   pointer-events: none;
   width: 100%;
+  text-overflow: inherit;
   position: absolute;
   inset: 0 auto 0 0;
   overflow: hidden;
@@ -1642,9 +1649,11 @@
 
 .codex-cadenced-shimmer-highlight {
   width: 100%;
+  text-overflow: inherit;
   text-fill-color: currentColor;
   -webkit-text-fill-color: currentColor;
   display: block;
+  overflow: hidden;
   transform: translate(50%);
 }
 

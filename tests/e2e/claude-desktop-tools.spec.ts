@@ -608,9 +608,12 @@ for (const mode of ["full-access", "approval-required"] as const) {
         if ((await activity.count()) && (await activity.getAttribute("aria-expanded")) !== "true")
           // The title bar can cover this row after the reply scrolls; the keyboard does not care.
           await activity.press("Enter");
-        const groupBody = page.getByTestId("agent-activity-group-body");
-        if ((await groupBody.count()) && (await groupBody.getAttribute("aria-hidden")) === "true")
-          await groupBody.locator("..").getByRole("button").first().click();
+        const groupToggle = page.getByTestId("agent-activity-group-toggle");
+        if (
+          (await groupToggle.count()) &&
+          (await groupToggle.getAttribute("aria-expanded")) !== "true"
+        )
+          await groupToggle.click();
         const row = page.getByRole("button", {
           name: "Open the Claude Browser fixture",
           exact: true,
@@ -1187,9 +1190,9 @@ test("Claude and Runtime grants survive Stop and restart and end on a permission
     const activity = page.getByRole("button", { name: /^Worked for/u }).last();
     if ((await activity.count()) && (await activity.getAttribute("aria-expanded")) !== "true")
       await activity.click();
-    const groupBody = page.getByTestId("agent-activity-group-body").last();
-    if ((await groupBody.count()) && (await groupBody.getAttribute("aria-hidden")) === "true")
-      await groupBody.locator("..").getByRole("button").first().click();
+    const groupToggle = page.getByTestId("agent-activity-group-toggle").last();
+    if ((await groupToggle.count()) && (await groupToggle.getAttribute("aria-expanded")) !== "true")
+      await groupToggle.click();
     await expect(
       page.getByRole("button", { name: "Chat grant revoked", exact: true }),
     ).toBeVisible();

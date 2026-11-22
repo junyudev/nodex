@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { render, textContent } from "../../../../test/dom";
 import {
   CODEX_SHIMMER_CADENCE_MS,
@@ -86,6 +86,39 @@ describe("CodexShimmerText", () => {
     } finally {
       window.matchMedia = originalMatchMedia;
       window.setTimeout = originalSetTimeout;
+    }
+  });
+
+  test("sweeps a revealed label at once and never reports an end just for being torn down", () => {
+    let rectOwner: object | null = document.createElement("span");
+    while (rectOwner && !Object.hasOwn(rectOwner, "getBoundingClientRect")) {
+      rectOwner = Object.getPrototypeOf(rectOwner) as object | null;
+    }
+    const onScreen = vi.spyOn(rectOwner as Element, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 200,
+      bottom: 20,
+      width: 200,
+      height: 20,
+    } as DOMRect);
+    const shown = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    const sweeps: boolean[] = [];
+    try {
+      const view = render(
+        <CodexShimmerText startWithSweep onSweepChange={(sweeping) => sweeps.push(sweeping)}>
+          Running tests
+        </CodexShimmerText>,
+      );
+      expect(sweeps).toEqual([true]);
+      // Unmounting (or a remounted effect) is not the end of a sweep its owner should act on.
+      view.unmount();
+      expect(sweeps).toEqual([true]);
+    } finally {
+      shown.mockRestore();
+      onScreen.mockRestore();
     }
   });
 });

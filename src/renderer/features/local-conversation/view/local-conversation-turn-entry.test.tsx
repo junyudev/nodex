@@ -1942,7 +1942,7 @@ describe("Thoughts in a Turn", () => {
     return view;
   }
 
-  test("reads a streaming prose Thought under a one-line Thinking status", async () => {
+  test("reads a streaming prose Thought under the group's quiet Working status", async () => {
     const turnId = "turn_prose";
     const view = await renderTurn({
       threadId: "thread_1",
@@ -1956,7 +1956,8 @@ describe("Thoughts in a Turn", () => {
       ],
     });
 
-    view.getByRole("button", { name: "Thinking" });
+    // A prose Thought names nothing, so the group opens on a gap and says Working after a beat.
+    await view.findByRole("button", { name: "Working" });
     expect(view.queryByRole("button", { name: /status label/u })).toBeNull();
     const preview = view.getByTestId("thought-live-preview");
     expect(preview.getAttribute("aria-hidden")).toBe("false");

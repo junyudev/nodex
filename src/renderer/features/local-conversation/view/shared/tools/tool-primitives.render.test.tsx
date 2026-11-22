@@ -1,19 +1,14 @@
-import { beforeEach, describe, expect, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { render, textContent } from "../../../../../test/dom";
 import {
-  installElementScrollHeight,
-  installMeasuredResizeObserver,
-} from "../../../../../test/browser-globals";
-import {
   ThreadActivityDisclosure,
   ThreadActivityHeader,
-  ThreadActivityList,
-  THREAD_ACTIVITY_LIST_7_TO_20_REM_MAX_HEIGHT_BY_STATE,
-  THREAD_ACTIVITY_LIST_20_REM_MAX_HEIGHT_BY_STATE,
   ThreadActivityShell,
-  ThreadActivitySummaryText,
+  ThreadActivitySteps,
+  useIsThreadActivityStep,
 } from "./tool-primitives";
+import { CodexShimmerText } from "../codex-shimmer-text";
 
 describe("ThreadActivityShell", () => {
   test("renders a static activity header without disclosure button semantics", () => {
@@ -93,11 +88,6 @@ describe("ThreadActivityShell", () => {
 });
 
 describe("ThreadActivityDisclosure", () => {
-  beforeEach(() => {
-    installElementScrollHeight(120);
-    installMeasuredResizeObserver({ blockSize: 120, inlineSize: 320 });
-  });
-
   test("uses a rich overlay button labelled by its summary while preserving nested controls", () => {
     const { container } = render(
       <ThreadActivityDisclosure
@@ -143,7 +133,7 @@ describe("ThreadActivityDisclosure", () => {
     expect(button?.getAttribute("aria-labelledby") ?? "").toBe("");
   });
 
-  test("keeps a collapsed body mounted, hidden, inert, and measured across toggles", async () => {
+  test("mounts the body only while open and lets it leave before unmounting", async () => {
     let expandCount = 0;
     const { container } = render(
       <ThreadActivityDisclosure
@@ -160,13 +150,8 @@ describe("ThreadActivityDisclosure", () => {
     );
 
     const button = container.querySelector<HTMLButtonElement>("[data-testid='activity-header']");
-    const collapsedBody = container.querySelector<HTMLElement>("[data-testid='activity-body']");
     expect(button?.getAttribute("aria-expanded") ?? "").toBe("false");
-    expect(Boolean(collapsedBody)).toBe(true);
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("true");
-    expect(collapsedBody?.hasAttribute("inert")).toBe(true);
-    expect(collapsedBody?.style.pointerEvents ?? "").toBe("none");
-    expect(textContent(collapsedBody as HTMLElement)).toContain("patch rows");
+    expect(container.querySelector("[data-testid='activity-body']")).toBe(null);
 
     await act(async () => {
       fireEvent.click(button as HTMLButtonElement);
@@ -175,26 +160,20 @@ describe("ThreadActivityDisclosure", () => {
 
     const expandedBody = container.querySelector<HTMLElement>("[data-testid='activity-body']");
     expect(expandCount).toBe(1);
-    expect(expandedBody).toBe(collapsedBody);
     expect(button?.getAttribute("aria-expanded") ?? "").toBe("true");
     expect(expandedBody?.getAttribute("aria-hidden")).toBe("false");
     expect(expandedBody?.hasAttribute("inert")).toBe(false);
-    expect(expandedBody?.style.pointerEvents ?? "").toBe("auto");
-    await waitFor(() => {
-      expect(expandedBody?.style.height).toBe("120px");
-    });
+    expect(textContent(expandedBody as HTMLElement)).toContain("patch rows");
 
     await act(async () => {
       fireEvent.click(button as HTMLButtonElement);
       await Promise.resolve();
     });
-    expect(container.querySelector<HTMLElement>("[data-testid='activity-body']")).toBe(
-      collapsedBody,
-    );
     expect(button?.getAttribute("aria-expanded") ?? "").toBe("false");
-    expect(collapsedBody?.getAttribute("aria-hidden")).toBe("true");
-    expect(collapsedBody?.hasAttribute("inert")).toBe(true);
-    expect(collapsedBody?.style.pointerEvents ?? "").toBe("none");
+    expect(expandCount).toBe(1);
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='activity-body']")).toBe(null);
+    });
   });
 
   test("opens running activities by default and preserves a manual collapse", async () => {
@@ -241,8 +220,6 @@ describe("ThreadActivityDisclosure", () => {
         defaultExpanded
         headerTestId="activity-header"
         summary="Running command"
-        summaryKey="active:command"
-        summaryTransition="deferred"
       >
         <div data-testid="stable-activity-body">stream output</div>
       </ThreadActivityDisclosure>,
@@ -258,8 +235,6 @@ describe("ThreadActivityDisclosure", () => {
           defaultExpanded
           headerTestId="activity-header"
           summary="Ran command"
-          summaryKey="summary"
-          summaryTransition="immediate"
         >
           <div data-testid="stable-activity-body">stream output complete</div>
         </ThreadActivityDisclosure>,
@@ -298,246 +273,24 @@ describe("ThreadActivityDisclosure", () => {
   });
 });
 
-describe("ThreadActivitySummaryText", () => {
-  test("renders static summary changes immediately", () => {
+describe("ThreadActivitySteps", () => {
+  test("marks its rows as quiet nested steps", () => {
+    function StepProbe() {
+      return <span data-testid="probe">{useIsThreadActivityStep() ? "step" : "row"}</span>;
+    }
     const view = render(
-      <ThreadActivitySummaryText summaryKey="old" summaryTransition="static">
-        Edited a file
-      </ThreadActivitySummaryText>,
+      <>
+        <StepProbe />
+        <ThreadActivitySteps>
+          <StepProbe />
+          <CodexShimmerText>Running ls</CodexShimmerText>
+        </ThreadActivitySteps>
+      </>,
     );
 
-    view.rerender(
-      <ThreadActivitySummaryText summaryKey="new" summaryTransition="static">
-        Edited 2 files
-      </ThreadActivitySummaryText>,
-    );
-
-    expect(textContent(view.container)).toBe("Edited 2 files");
-  });
-
-  test("renders immediate summary changes without waiting for the defer window", async () => {
-    const originalDateNow = Date.now;
-    let now = 0;
-    Date.now = () => now;
-
-    try {
-      const view = render(
-        <ThreadActivitySummaryText summaryKey="old" summaryTransition="deferred">
-          Searching the web
-        </ThreadActivitySummaryText>,
-      );
-
-      now = 100;
-      await act(async () => {
-        view.rerender(
-          <ThreadActivitySummaryText summaryKey="new" summaryTransition="immediate">
-            Searched the web
-          </ThreadActivitySummaryText>,
-        );
-        await Promise.resolve();
-      });
-
-      expect(textContent(view.container)).toBe("Searched the web");
-    } finally {
-      Date.now = originalDateNow;
-    }
-  });
-
-  test("defers keyed summary changes until the 1000ms commit window elapses", async () => {
-    const originalDateNow = Date.now;
-    const originalSetTimeout = window.setTimeout;
-    const originalClearTimeout = window.clearTimeout;
-    let now = 0;
-    let nextTimerId = 900_000;
-    let scheduledTimerId: number | null = null;
-    let scheduledDelay = -1;
-    let scheduledCallback: (() => void) | null = null;
-    Date.now = () => now;
-    window.setTimeout = ((callback: TimerHandler, delay?: number) => {
-      const timerId = nextTimerId++;
-      scheduledTimerId = timerId;
-      scheduledDelay = delay ?? 0;
-      scheduledCallback = typeof callback === "function" ? () => callback() : null;
-      return timerId;
-    }) as typeof window.setTimeout;
-    window.clearTimeout = ((timerId?: number) => {
-      if (timerId !== scheduledTimerId) return;
-      scheduledCallback = null;
-      scheduledTimerId = null;
-    }) as typeof window.clearTimeout;
-
-    try {
-      const view = render(
-        <ThreadActivitySummaryText summaryKey="old" summaryTransition="deferred">
-          Editing src/old.ts
-        </ThreadActivitySummaryText>,
-      );
-
-      now = 100;
-      await act(async () => {
-        view.rerender(
-          <ThreadActivitySummaryText summaryKey="new" summaryTransition="deferred">
-            Editing src/new.ts
-          </ThreadActivitySummaryText>,
-        );
-        await Promise.resolve();
-      });
-
-      expect(textContent(view.container)).toBe("Editing src/old.ts");
-      expect(scheduledDelay).toBe(900);
-      expect(Boolean(scheduledCallback)).toBe(true);
-
-      now = 1000;
-      await act(async () => {
-        scheduledCallback?.();
-        await Promise.resolve();
-      });
-
-      expect(textContent(view.container)).toBe("Editing src/new.ts");
-    } finally {
-      Date.now = originalDateNow;
-      window.setTimeout = originalSetTimeout;
-      window.clearTimeout = originalClearTimeout;
-    }
-  });
-
-  test("immediate summary changes cancel a pending deferred update", async () => {
-    const originalDateNow = Date.now;
-    const originalSetTimeout = window.setTimeout;
-    const originalClearTimeout = window.clearTimeout;
-    let now = 0;
-    let nextTimerId = 910_000;
-    let scheduledTimerId: number | null = null;
-    let clearCount = 0;
-    let scheduledCallback: (() => void) | null = null;
-    Date.now = () => now;
-    window.setTimeout = ((callback: TimerHandler) => {
-      const timerId = nextTimerId++;
-      scheduledTimerId = timerId;
-      scheduledCallback = typeof callback === "function" ? () => callback() : null;
-      return timerId;
-    }) as typeof window.setTimeout;
-    window.clearTimeout = ((timerId?: number) => {
-      if (timerId !== scheduledTimerId) return;
-      clearCount += 1;
-      scheduledCallback = null;
-      scheduledTimerId = null;
-    }) as typeof window.clearTimeout;
-
-    try {
-      const view = render(
-        <ThreadActivitySummaryText summaryKey="old" summaryTransition="deferred">
-          Running old step
-        </ThreadActivitySummaryText>,
-      );
-
-      now = 100;
-      await act(async () => {
-        view.rerender(
-          <ThreadActivitySummaryText summaryKey="deferred" summaryTransition="deferred">
-            Running deferred step
-          </ThreadActivitySummaryText>,
-        );
-        await Promise.resolve();
-      });
-      expect(Boolean(scheduledCallback)).toBe(true);
-
-      now = 150;
-      await act(async () => {
-        view.rerender(
-          <ThreadActivitySummaryText summaryKey="final" summaryTransition="immediate">
-            Final summary
-          </ThreadActivitySummaryText>,
-        );
-        await Promise.resolve();
-      });
-
-      expect(clearCount).toBe(1);
-      expect(Boolean(scheduledCallback)).toBe(false);
-      expect(textContent(view.container)).toBe("Final summary");
-    } finally {
-      Date.now = originalDateNow;
-      window.setTimeout = originalSetTimeout;
-      window.clearTimeout = originalClearTimeout;
-    }
-  });
-});
-
-describe("ThreadActivityList", () => {
-  const items = [
-    { key: "first", node: <span data-testid="first-row">first</span> },
-    { key: "second", node: <span data-testid="second-row">second</span> },
-  ];
-
-  test("renders preview lists as bounded fade-mask scroll containers", () => {
-    const { container } = render(
-      <ThreadActivityList
-        items={items}
-        maxHeightByState={THREAD_ACTIVITY_LIST_7_TO_20_REM_MAX_HEIGHT_BY_STATE}
-        testId="activity-list"
-      />,
-    );
-
-    const list = container.querySelector<HTMLElement>("[data-testid='activity-list']");
-    const content = list?.firstElementChild as HTMLElement | null;
-    expect(Boolean(list)).toBe(true);
-    expect(list?.style.maxHeight ?? "").toBe("7rem");
-    expect(Boolean(list?.classList.contains("vertical-scroll-fade-mask"))).toBe(true);
-    expect(Boolean(list?.classList.contains("flex-col-reverse"))).toBe(true);
-    expect(Boolean(list?.classList.contains("overflow-x-hidden"))).toBe(true);
-    expect(Boolean(content?.classList.contains("pb-1"))).toBe(true);
-    expect(textContent(content ?? container)).toBe("firstsecond");
-  });
-
-  test("uses view state to hide collapsed rows while retaining the list shell", () => {
-    const view = render(
-      <ThreadActivityList
-        items={items}
-        maxHeightByState={THREAD_ACTIVITY_LIST_20_REM_MAX_HEIGHT_BY_STATE}
-        testId="activity-list"
-        viewState="expanded"
-      />,
-    );
-
-    const expandedList = view.container.querySelector<HTMLElement>("[data-testid='activity-list']");
-    expect(expandedList?.style.maxHeight ?? "").toBe("20rem");
-    expect(Boolean(view.container.querySelector("[data-testid='first-row']"))).toBe(true);
-
-    view.rerender(
-      <ThreadActivityList
-        items={items}
-        maxHeightByState={THREAD_ACTIVITY_LIST_20_REM_MAX_HEIGHT_BY_STATE}
-        testId="activity-list"
-        viewState="collapsed"
-      />,
-    );
-
-    const collapsedList = view.container.querySelector<HTMLElement>(
-      "[data-testid='activity-list']",
-    );
-    expect(Boolean(collapsedList)).toBe(true);
-    expect(collapsedList?.style.maxHeight ?? "").toBe("0px");
-    expect(Boolean(view.container.querySelector("[data-testid='first-row']"))).toBe(false);
-    expect(textContent(collapsedList ?? view.container)).toBe("");
-  });
-
-  test("can opt out of reverse auto-scroll, horizontal clipping, and max-height", () => {
-    const { container } = render(
-      <ThreadActivityList
-        allowHorizontalScroll
-        autoScrollToBottom={false}
-        disableMaxHeight
-        items={items}
-        maxHeightByState={THREAD_ACTIVITY_LIST_7_TO_20_REM_MAX_HEIGHT_BY_STATE}
-        testId="activity-list"
-        viewState="expanded"
-      />,
-    );
-
-    const list = container.querySelector<HTMLElement>("[data-testid='activity-list']");
-    expect(Boolean(list?.classList.contains("flex-col-reverse"))).toBe(false);
-    expect(Boolean(list?.classList.contains("overflow-x-hidden"))).toBe(false);
-    expect(list?.style.maxHeight ?? "").toBe("");
-    expect(textContent(list ?? container)).toBe("firstsecond");
+    expect(view.getAllByTestId("probe").map((probe) => probe.textContent)).toEqual(["row", "step"]);
+    expect(
+      view.container.querySelector("[data-codex-shimmer]")?.getAttribute("data-codex-shimmer"),
+    ).toBe("static");
   });
 });

@@ -1,0 +1,249 @@
+/*
+ * Animated activity glyphs. Each sprite is a horizontal strip of 64 px frames used as a
+ * mask over currentColor, so it inherits the icon's text color like an ordinary SVG.
+ */
+.icon {
+  vertical-align: middle;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  position: relative;
+}
+
+.viewport {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: hidden;
+}
+
+.rows {
+  width: 100%;
+  height: calc(100% * var(--rows));
+  display: block;
+}
+
+.frames {
+  width: calc(100% * var(--columns));
+  height: 100%;
+  animation: across var(--row-duration) steps(var(--columns), end) infinite;
+  background-color: currentColor;
+  display: block;
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+
+@keyframes across {
+  to {
+    transform: translate(-100%);
+  }
+}
+
+.codeSearching {
+  --columns: 120;
+  --rows: 1;
+  --row-duration: 1.2s;
+}
+
+.webSearch {
+  --columns: 100;
+  --rows: 1;
+  --row-duration: 1.66667s;
+}
+
+.codeThinking {
+  --columns: 100;
+  --rows: 1;
+  --row-duration: 1.66667s;
+}
+
+.codeThinking .frames {
+  animation-name: hold-code-thinking;
+  animation-timing-function: step-end;
+}
+
+@keyframes hold-code-thinking {
+  0% {
+    animation-timing-function: steps(2, end);
+    transform: translate(0%);
+  }
+  2% {
+    transform: translate(-2%);
+  }
+  4% {
+    transform: translate(-4%);
+  }
+  8% {
+    transform: translate(-8%);
+  }
+  12% {
+    transform: translate(-12%);
+  }
+  16% {
+    transform: translate(-16%);
+  }
+  28% {
+    animation-timing-function: steps(11, end);
+    transform: translate(-28%);
+  }
+  39% {
+    transform: translate(-39%);
+  }
+  43% {
+    animation-timing-function: steps(10, end);
+    transform: translate(-43%);
+  }
+  53% {
+    transform: translate(-53%);
+  }
+  58% {
+    animation-timing-function: steps(10, end);
+    transform: translate(-58%);
+  }
+  68% {
+    transform: translate(-68%);
+  }
+  to {
+    transform: translate(0%);
+  }
+}
+
+.reading {
+  --columns: 90;
+  --rows: 1;
+  --row-duration: 0.6s;
+}
+
+.reading .frames {
+  animation-name: reading-turn;
+  animation-timing-function: step-end;
+  animation-delay: -243ms;
+}
+
+/* Only the page-turn frames of the strip loop while a file is being read. */
+@keyframes reading-turn {
+  0%,
+  to {
+    transform: translate(-18.8889%);
+  }
+  6.08866% {
+    transform: translate(-20%);
+  }
+  11.5706% {
+    transform: translate(-21.1111%);
+  }
+  16.3386% {
+    transform: translate(-22.2222%);
+  }
+  19.8114% {
+    transform: translate(-23.3333%);
+  }
+  23.6224% {
+    transform: translate(-24.4444%);
+  }
+  29.3289% {
+    transform: translate(-25.5556%);
+  }
+  35.2272% {
+    transform: translate(-26.6667%);
+  }
+  40.4347% {
+    transform: translate(-27.7778%);
+  }
+  43.8057% {
+    transform: translate(-28.8889%);
+  }
+  47.1533% {
+    transform: translate(-30%);
+  }
+  50.5095% {
+    transform: translate(-31.1111%);
+  }
+  53.7779% {
+    transform: translate(-32.2222%);
+  }
+  56.9688% {
+    transform: translate(-33.3333%);
+  }
+  60.249% {
+    transform: translate(-34.4444%);
+  }
+  63.1912% {
+    transform: translate(-35.5556%);
+  }
+  66.184% {
+    transform: translate(-36.6667%);
+  }
+  69.1816% {
+    transform: translate(-37.7778%);
+  }
+  72.2419% {
+    transform: translate(-38.8889%);
+  }
+  75.3325% {
+    transform: translate(-40%);
+  }
+  78.5519% {
+    transform: translate(-41.1111%);
+  }
+  82.1871% {
+    transform: translate(-42.2222%);
+  }
+  85.9013% {
+    transform: translate(-43.3333%);
+  }
+  89.6785% {
+    transform: translate(-44.4444%);
+  }
+  93.7312% {
+    transform: translate(-45.5556%);
+  }
+}
+
+.computer {
+  --columns: 90;
+  --rows: 2;
+  --row-duration: 3s;
+}
+
+.computer .frames {
+  animation-name: hold-computer;
+  animation-timing-function: step-end;
+}
+
+@keyframes hold-computer {
+  0% {
+    animation-timing-function: steps(43, end);
+    transform: translate(0%);
+  }
+  23.8889% {
+    transform: translate(-47.7778%);
+  }
+  26.6667% {
+    animation-timing-function: steps(40, end);
+    transform: translate(-53.3333%);
+  }
+  48.8889% {
+    transform: translate(-97.7778%);
+  }
+  50% {
+    transform: translateY(-50%);
+  }
+  52.7778% {
+    animation-timing-function: steps(77, end);
+    transform: translate(-5.55556%, -50%);
+  }
+  95.5556% {
+    transform: translate(-91.1111%, -50%);
+  }
+  to {
+    transform: translate(0%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frames {
+    animation: none;
+  }
+}

@@ -1,7 +1,6 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/react";
-import { motion } from "motion/react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { reviewDiffPreferencesAtom } from "@/features/review/model/review-view-state";
 import { useScopedAtomValue } from "@/lib/maitai";
@@ -33,12 +32,11 @@ import {
   AutomaticApprovalReviewShield,
 } from "../automatic-approval-review-surface";
 import { CodexShimmerText } from "../codex-shimmer-text";
-import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
-import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CopyMessageActionButton } from "../thread-message-actions";
 import {
   ACTIVITY_INLINE_LINK_CLASS_NAME,
   CodeBlock,
+  ThreadActivityDisclosureRegion,
   ThreadRichActivityHeader,
 } from "./tool-primitives";
 import {
@@ -593,7 +591,6 @@ function FileChangeRow({
   const intl = useIntl();
   const [isExpanded, setIsExpanded] = useState(false);
   const fileReferenceRouter = useFileReferenceRouter();
-  const { elementHeightPx, elementRef } = useMeasuredElementHeight();
 
   function openExternalFile() {
     if (!row.openPath) return;
@@ -681,7 +678,7 @@ function FileChangeRow({
   const hasApprovalReviews = row.automaticApprovalReviews.length > 0;
   const wasDeclinedByAutoReview = row.state === "auto-review-declined";
   const bodyContent = (
-    <div ref={row.state === "streaming" ? undefined : elementRef}>
+    <div>
       {hasApprovalReviews ? (
         <AutomaticApprovalReviewRows
           items={row.automaticApprovalReviews}
@@ -727,6 +724,7 @@ function FileChangeRow({
           deletions={row.summary.deletions}
           showZero={row.action === "delete"}
           className="text-size-chat-sm"
+          tone="activity"
         />
         <DiffSummaryIndicator action={row.action} summary={row.summary} />
       </div>
@@ -769,22 +767,17 @@ function FileChangeRow({
       <div data-file-change-row-body="">{bodyContent}</div>
     ) : null
   ) : (
-    <motion.div
-      data-file-change-row-body=""
-      className={cn(isExpanded ? "overflow-visible" : "overflow-hidden")}
-      initial={false}
-      animate={{
-        height: isExpanded ? elementHeightPx : 0,
-        opacity: isExpanded ? 1 : 0,
-      }}
-      transition={CODEX_THREAD_ACCORDION_TRANSITION}
-      style={{ pointerEvents: isExpanded ? "auto" : "none" }}
-    >
-      {isExpanded ? bodyContent : null}
-    </motion.div>
+    <ThreadActivityDisclosureRegion expanded={isExpanded}>
+      <div data-file-change-row-body="">{bodyContent}</div>
+    </ThreadActivityDisclosureRegion>
   );
   const rowContent = (
-    <div className={cn("overflow-clip", row.state === "pending" ? "rounded-xl" : "rounded-lg")}>
+    <div
+      className={cn(
+        "relative flex min-w-0 flex-col overflow-clip",
+        row.state === "pending" ? "rounded-xl" : "rounded-lg",
+      )}
+    >
       {header}
       {body}
     </div>
