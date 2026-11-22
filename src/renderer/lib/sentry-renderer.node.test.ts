@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import type { DiagnosticsSettings } from "./types";
 import { initializeRendererSentry, resetRendererSentryForTests } from "./sentry-renderer";
+import { startInactiveSpan, withActiveSpan, type RendererTracing } from "./renderer-tracing";
 
 function buildSettings(
   enabled: boolean,
@@ -48,6 +49,28 @@ describe("renderer Sentry diagnostics", () => {
 
     expect(initialized).toBe(false);
     expect(settingsRead).toBe(false);
+  });
+
+  test("traces with the SDK only once diagnostics initialize it", async () => {
+    process.env.NODEX_SENTRY_FORCE_TEST = "1";
+    const recorded = { isRecording: () => true } as ReturnType<
+      RendererTracing["startInactiveSpan"]
+    >;
+    const tracing = {
+      startInactiveSpan: () => recorded,
+      withActiveSpan: (_span: unknown, callback: () => unknown) => callback(),
+      continueTrace: (_options: unknown, callback: () => unknown) => callback(),
+    } as unknown as RendererTracing;
+    const idle = startInactiveSpan({ name: "before diagnostics" });
+    expect(idle.isRecording()).toBe(false);
+    expect(withActiveSpan(idle, () => "ran")).toBe("ran");
+
+    await initializeRendererSentry({
+      getSettings: async () => buildSettings(true),
+      adapter: { init: () => {}, replayIntegration: () => ({}), tracing },
+    });
+
+    expect(startInactiveSpan({ name: "after diagnostics" })).toBe(recorded);
   });
 
   test("does not initialize when diagnostics are disabled", async () => {

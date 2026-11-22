@@ -2,10 +2,12 @@ import type { DiagnosticsSettings } from "./types";
 import { invokeRendererQuery as invoke } from "./renderer-command";
 import { createSentryPrivacyOptions } from "../../shared/diagnostics/sentry-options";
 import { isDiagnosticsSettings } from "../../shared/diagnostics/diagnostics-settings";
+import { installRendererTracing, type RendererTracing } from "./renderer-tracing";
 
 interface RendererSentryAdapter {
   init: (options: Record<string, unknown>) => void;
   replayIntegration: (options: Record<string, unknown>) => unknown;
+  readonly tracing?: RendererTracing;
 }
 
 interface RendererProcessLike {
@@ -70,6 +72,7 @@ async function loadDefaultAdapter(): Promise<RendererSentryAdapter> {
       sentry.init(options, react.init);
     },
     replayIntegration: (options) => sentry.replayIntegration(options),
+    tracing: react,
   };
 }
 
@@ -104,10 +107,12 @@ export async function initializeRendererSentry(
   // Renderer scope tags merge into Main's shared scope and would relabel Main's own events;
   // the SDK's per-event `event.process` tag already identifies the reporting process.
   adapter.init(initOptions);
+  if (adapter.tracing) installRendererTracing(adapter.tracing);
   initialized = true;
   return true;
 }
 
 export function resetRendererSentryForTests(): void {
   initialized = false;
+  installRendererTracing(null);
 }

@@ -1,4 +1,4 @@
-import { startInactiveSpan, withActiveSpan } from "@sentry/react";
+import { startInactiveSpan, withActiveSpan, type RendererSpan } from "./renderer-tracing";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
 
 export function codexPerformanceNow(): number {
@@ -41,9 +41,7 @@ export interface CodexPerformanceSpanStartOptions {
   readonly traceAttributes: Readonly<Record<string, string>>;
 }
 
-function spanTraceContext(
-  span: ReturnType<typeof startInactiveSpan>,
-): CodexRequestTraceContext | null {
+function spanTraceContext(span: RendererSpan): CodexRequestTraceContext | null {
   if (!span.isRecording()) return null;
   const context = span.spanContext();
   const traceFlags = (context.traceFlags & 1).toString(16).padStart(2, "0");

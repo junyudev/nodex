@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { installRendererTracing, type RendererTracing } from "../../lib/renderer-tracing";
 
 const spans: Array<{
   readonly name: string;
@@ -7,7 +8,7 @@ const spans: Array<{
   ended: number;
 }> = [];
 
-vi.mock("@sentry/react", () => ({
+installRendererTracing({
   continueTrace: (_options: unknown, callback: () => unknown) => callback(),
   withActiveSpan: (_span: unknown, callback: () => unknown) => callback(),
   startInactiveSpan: ({
@@ -34,7 +35,7 @@ vi.mock("@sentry/react", () => ({
       },
     };
   },
-}));
+} as unknown as RendererTracing);
 
 import { startCodexServerResponseInteractionTrace } from "./codex-request-interaction-trace";
 import { RendererAppServerRequestClient } from "./renderer-app-server-request-client";

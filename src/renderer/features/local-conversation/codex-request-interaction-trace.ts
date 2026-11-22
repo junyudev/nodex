@@ -1,4 +1,9 @@
-import { continueTrace, startInactiveSpan, withActiveSpan } from "@sentry/react";
+import {
+  continueTrace,
+  startInactiveSpan,
+  withActiveSpan,
+  type RendererSpan,
+} from "../../lib/renderer-tracing";
 
 import type { CodexRequestTraceContext } from "../../../shared/codex-request-lifecycle";
 
@@ -20,9 +25,7 @@ const WORKSPACE_DISCOVERY_GROUP_WINDOW_MS = 1_000;
 const WORKSPACE_DISCOVERY_TIMEOUT_MS = 30_000;
 const activeWorkspaceDiscovery = new Map<string, CodexWorkspaceDiscoveryInteraction>();
 
-function traceFromSpan(
-  span: ReturnType<typeof startInactiveSpan>,
-): CodexRequestTraceContext | null {
+function traceFromSpan(span: RendererSpan): CodexRequestTraceContext | null {
   if (!span.isRecording()) return null;
   const context = span.spanContext();
   const traceFlags = (context.traceFlags & 1).toString(16).padStart(2, "0");
@@ -39,7 +42,7 @@ function failureReason(error: unknown): string {
   return "operation";
 }
 
-function markSpanFailure(span: ReturnType<typeof startInactiveSpan>, error: unknown): void {
+function markSpanFailure(span: RendererSpan, error: unknown): void {
   span.setAttribute("codex.outcome", "failure");
   span.setAttribute("error.category", failureReason(error));
   span.setAttribute("error.type", "operation_failed");
