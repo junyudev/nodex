@@ -11,6 +11,7 @@ export interface AgentRuntimeBootstrap {
   readonly automaticWorkAtOnce?: number;
   readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly modelPolicy?: ModelPolicy;
+  readonly subagentsMayDelegate?: boolean;
   readonly providers: AgentRuntimeConfiguration["providers"];
   readonly hostSessionPlugins?: true;
   readonly hostTools?: NonNullable<AgentRuntimeConfiguration["host"]>["tools"];
@@ -22,7 +23,12 @@ export async function readAgentRuntimeBootstrap(
 ): Promise<
   Pick<
     AgentRuntimeConfiguration,
-    "providers" | "host" | "automaticWorkAtOnce" | "pausedThreadIds" | "modelPolicy"
+    | "providers"
+    | "host"
+    | "automaticWorkAtOnce"
+    | "pausedThreadIds"
+    | "modelPolicy"
+    | "subagentsMayDelegate"
   >
 > {
   const first = await lines.next();
@@ -36,6 +42,8 @@ export async function readAgentRuntimeBootstrap(
     throw new Error("Agent Runtime expected a bootstrap frame first.");
   if (frame.hostTools !== undefined && !Array.isArray(frame.hostTools))
     throw new Error("Agent Runtime bootstrap host tools must be a list.");
+  if (frame.subagentsMayDelegate !== undefined && typeof frame.subagentsMayDelegate !== "boolean")
+    throw new Error("Agent Runtime bootstrap delegation setting must be a boolean.");
   if (
     frame.hostSessionPlugins !== undefined &&
     (frame.hostSessionPlugins !== true || frame.hostTools === undefined)
@@ -51,6 +59,9 @@ export async function readAgentRuntimeBootstrap(
     ...(bootstrap.modelPolicy === undefined
       ? {}
       : { modelPolicy: ModelPolicySchema.parse(bootstrap.modelPolicy) }),
+    ...(bootstrap.subagentsMayDelegate === undefined
+      ? {}
+      : { subagentsMayDelegate: bootstrap.subagentsMayDelegate }),
     ...(bootstrap.hostTools === undefined
       ? {}
       : {

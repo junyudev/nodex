@@ -198,6 +198,10 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     }),
   ),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
+  mayDelegate: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Default true, within what the person allows. false keeps the task from delegating or starting chats of its own; pass it when the person wants the task done without more Agents.",
+  }),
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
 
@@ -546,6 +550,11 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
     }),
   ),
   providers: Schema.Array(OrchestratorMcpProviderCapability),
+  /** Whether the caller may delegate now; a refusal says who kept it from delegating. */
+  delegation: Schema.Struct({
+    allowed: Schema.Boolean,
+    reason: Schema.NullOr(Schema.String),
+  }),
 });
 export type OrchestratorMcpCapabilitiesResult = typeof OrchestratorMcpCapabilitiesResult.Type;
 
@@ -684,6 +693,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
   {
     code: Schema.Literals([
       "capability_denied",
+      "delegation_denied",
       "parent_not_active",
       "provider_unavailable",
       "model_unavailable",

@@ -59,6 +59,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapter";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
+import { subagentInstructions } from "../nodex/Instructions.ts";
 
 const layerTestDatabase = SqlitePersistence.layerMemory;
 const layerTestStores = Layer.merge(EventStore.layer, ProjectionStore.layer).pipe(
@@ -5324,10 +5325,12 @@ it.effect("awaits admission of the exact host Turn before native execution", () 
   }),
 );
 
-it.effect.each([true, false])(
-  "ProviderSessionManagerV2 supplies one side policy and preserves ordinary guidance, side=%s",
-  (side) =>
+it.effect.each(["lead", "side", "subagent", "withheld"] as const)(
+  "ProviderSessionManagerV2 supplies one side policy and each Thread's own guidance, %s",
+  (kind) =>
     Effect.gen(function* () {
+      const side = kind === "side";
+      const subagent = kind === "subagent" || kind === "withheld";
       const state = yield* Ref.make(emptyState);
       const turnInputs = yield* Ref.make<readonly ProviderAdapter.ProviderAdapterV2TurnInput[]>([]);
       yield* Effect.gen(function* () {
@@ -5348,6 +5351,16 @@ it.effect.each([true, false])(
                 },
               }
             : {}),
+          ...(subagent
+            ? {
+                lineage: {
+                  parentThreadId: ThreadId.make("policy-lead"),
+                  relationshipToParent: "subagent" as const,
+                  rootThreadId: ThreadId.make("policy-lead"),
+                },
+              }
+            : {}),
+          ...(kind === "withheld" ? { mayDelegate: false } : {}),
         };
         yield* sink.write({ events: [{ ...created, payload: appThread }] });
         const providerSessionId = yield* ids.allocate.providerSession({
@@ -5393,9 +5406,14 @@ it.effect.each([true, false])(
             ? `Host context ready.\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`
             : "Host context ready.",
         );
+        // A subagent learns its place in the work tree, and whether its delegator withheld more.
         assert.equal(
           turn!.hostOrchestrationInstructions,
-          side ? undefined : "Use delegate_task for delegated work.",
+          side
+            ? undefined
+            : subagent
+              ? `Use delegate_task for delegated work.\n\n${subagentInstructions(kind === "withheld")}`
+              : "Use delegate_task for delegated work.",
         );
         const combined = [turn!.hostInstructions, turn!.hostOrchestrationInstructions].join("\n");
         assert.equal(combined.split(SIDE_CHAT_DEVELOPER_INSTRUCTIONS).length - 1, side ? 1 : 0);

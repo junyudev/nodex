@@ -202,7 +202,13 @@ describe("workbench settings search catalog", () => {
   });
 
   test("finds default permissions on the Agents page without raw Codex config", () => {
-    for (const query of ["Default permissions", "Full access", "Ask for approval"]) {
+    for (const query of [
+      "Default permissions",
+      "Full access",
+      "Ask for approval",
+      "Subagents can delegate",
+      "nested delegation",
+    ]) {
       expect(hasSectionResult(query, "agent")).toBe(true);
       expect(settingsSearchAnchor("agent", query)).toBe("default-permissions");
     }

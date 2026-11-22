@@ -2817,6 +2817,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: "The execution location transaction changed.",
       });
+    if (
+      command.type === "thread.metadata.update" &&
+      command.subagentsMayDelegate !== undefined &&
+      thread.lineage.rootThreadId !== thread.id
+    )
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Only a conversation's lead chooses whether its subagents may delegate.",
+      });
     if (command.type === "thread.metadata.update" && command.expectedEmpty === true) {
       const records = yield* projectionStore
         .getThreadRecords(command.threadId, ["runs"])
@@ -3283,8 +3293,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     snooze: command.limitRecovery.snooze ?? previousRecovery?.snooze ?? false,
                     requestId: command.commandId,
                   };
+          const { subagentsMayDelegate: _subagentsMayDelegate, ...withoutDelegationChoice } =
+            thread;
           return {
-            ...thread,
+            ...(command.subagentsMayDelegate === undefined
+              ? thread
+              : command.subagentsMayDelegate === null
+                ? withoutDelegationChoice
+                : { ...thread, subagentsMayDelegate: command.subagentsMayDelegate }),
             ...(command.title === undefined ? {} : { title: command.title }),
             ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
             ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
@@ -7868,6 +7884,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
         runtimeMode: command.runtimeMode,
         interactionMode: command.interactionMode,
+        ...(command.mayDelegate === false ? { mayDelegate: false } : {}),
       };
       const task: OrchestrationV2Subagent = {
         id: taskNodeId,

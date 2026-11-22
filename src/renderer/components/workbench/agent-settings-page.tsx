@@ -22,6 +22,7 @@ import {
   useNodexSettingsDisclosures,
 } from "../ui/settings";
 import { AgentCapacitySettingControl } from "./agent-capacity-setting-control";
+import { SubagentDelegationSettingControl } from "@/features/subagent-delegation/subagent-delegation-controls";
 import { DefaultPermissionsSettingControl } from "./default-permissions-setting-control";
 import {
   ArtifactOpeningSettingRow,
@@ -77,6 +78,12 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
             })}
           >
             <AgentCapacitySettingControl />
+          </SettingRow>
+          <SettingRow
+            label={intl.formatMessage(settingsMessages.agentsSubagentsCanDelegate)}
+            description={intl.formatMessage(settingsMessages.agentsSubagentsCanDelegateDescription)}
+          >
+            <SubagentDelegationSettingControl />
           </SettingRow>
         </SectionBlock>
         <SectionBlock id="agent-instructions">

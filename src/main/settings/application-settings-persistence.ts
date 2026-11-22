@@ -193,6 +193,7 @@ interface ServerTomlConfig {
   inbox_suggestion_speed?: string;
   inbox_suggestion_concurrency?: number;
   automatic_work_at_once?: number;
+  subagents_may_delegate?: boolean;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
   inbox_chat_model?: string;
@@ -1613,6 +1614,9 @@ export function getAgentRuntimeSettings(
       AgentRuntimeWritingModelSchema.safeParse(config.writing_model ?? config.title_model).data ??
       null,
     instructions: readAgentInstructionsSettings(config.agent_instructions),
+    subagentsMayDelegate:
+      AgentRuntimeSettingsSchema.shape.subagentsMayDelegate.safeParse(config.subagents_may_delegate)
+        .data ?? DEFAULT_AGENT_RUNTIME_SETTINGS.subagentsMayDelegate,
   };
 }
 
@@ -1645,6 +1649,7 @@ export function updateAgentRuntimeSettings(
     ...loadProfileServerTomlConfig(source),
     default_runtime_mode: settings.defaultRuntimeMode,
     automatic_work_at_once: settings.automaticWorkAtOnce,
+    subagents_may_delegate: settings.subagentsMayDelegate,
   };
   delete server.title_model;
   if (settings.writingModel) server.writing_model = settings.writingModel;

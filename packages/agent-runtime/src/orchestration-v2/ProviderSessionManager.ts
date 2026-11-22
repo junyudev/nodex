@@ -2,6 +2,7 @@ import { DesktopTools } from "../desktopTools/DesktopTools.ts";
 import type { McpProviderSessionConfig } from "@nodex/provider-core/server/mcpSession";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
+import { subagentInstructions } from "../nodex/Instructions.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import { AgentScope } from "@nodex/runtime-shared/AgentScope";
@@ -2349,7 +2350,9 @@ export const layerWithOptions = (
                                   ? {}
                                   : {
                                       hostOrchestrationInstructions:
-                                        executionHost.orchestrationInstructions,
+                                        input.appThread.lineage.relationshipToParent === "subagent"
+                                          ? `${executionHost.orchestrationInstructions}\n\n${subagentInstructions(input.appThread.mayDelegate === false)}`
+                                          : executionHost.orchestrationInstructions,
                                     }),
                               }),
                             ),

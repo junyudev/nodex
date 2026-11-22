@@ -8,6 +8,7 @@ import {
   questionNoticeText,
 } from "../orchestration-v2/DelegatedTaskQuestions.ts";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
+import * as Delegation from "../nodex/Delegation.ts";
 import { canStartModel } from "../../../../src/shared/model-policy.ts";
 import { recordTaskResult } from "./TaskResultDelivery.ts";
 import { pendingUserQuestionIds, readUserQuestion } from "../nodex/PendingUserQuestions.ts";
@@ -42,6 +43,7 @@ import {
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadSendInput,
   type OrchestratorMcpThreadSendResult,
+  type OrchestrationV2AppThread,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
   ProviderRequestKind,
@@ -577,6 +579,12 @@ export const make = Effect.gen(function* () {
 
   const loadThreadMetadata = (threadId: ThreadId) =>
     threadManagement.getThreadRecords(threadId, []).pipe(Effect.mapError(threadManagementFailure));
+
+  /** Who, if anyone, keeps this Thread's Agent from delegating. */
+  const delegationRefusal = (thread: OrchestrationV2AppThread) =>
+    Delegation.refusalOf(thread, (threadId) =>
+      threadManagement.getThreadRecords(threadId, []).pipe(Effect.map(({ thread }) => thread)),
+    );
 
   const sourceRun = (scope: McpThreadInvocationScope, targetRunId?: RunId) =>
     Effect.gen(function* () {
@@ -1538,7 +1546,12 @@ export const make = Effect.gen(function* () {
         const run = scope.thread ? yield* sourceRun(scope as McpThreadInvocationScope) : undefined;
         const callerSelection = run?.modelSelection ?? parent?.thread.modelSelection;
         const origin = yield* owner.origin(true, callerSelection?.instanceId);
+        const refusal = parent === undefined ? null : yield* delegationRefusal(parent.thread);
         return {
+          delegation: {
+            allowed: refusal === null,
+            reason: refusal === null ? null : Delegation.DELEGATION_REFUSAL_MESSAGE[refusal],
+          },
           inherited:
             callerSelection === undefined
               ? null
@@ -1597,6 +1610,15 @@ export const make = Effect.gen(function* () {
           operation: "delegate-task",
         });
         const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
+        // A retry replays what was already accepted, whatever the person has chosen since.
+        const refusal = isRetryOfAcceptedDelegation
+          ? null
+          : yield* delegationRefusal(parent.thread);
+        if (refusal !== null)
+          return yield* failure(
+            "delegation_denied",
+            Delegation.DELEGATION_REFUSAL_MESSAGE[refusal],
+          );
         const target = yield* resolveTargetRechecking({
           parent,
           callerSelection: parentRun.modelSelection,
@@ -1631,6 +1653,7 @@ export const make = Effect.gen(function* () {
             modelSelection: target.modelSelection,
             runtimeMode,
             interactionMode,
+            ...(input.mayDelegate === false ? { mayDelegate: false } : {}),
             // Async delegations wake the parent on every child terminal; wait
             // delegations deliver through the blocking tool call, so a wake is
             // only needed if the parent settled first (timeout, disconnect).

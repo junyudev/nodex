@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -564,6 +565,7 @@ export function SubagentsPanelOverviewContent({
   onLoadMore,
   overview,
   rootThreadId,
+  delegation,
 }: {
   expandedSections?: ReadonlySet<SubagentSectionId>;
   onSelect: (row: CodexSubagentOverviewRow) => void;
@@ -573,6 +575,8 @@ export function SubagentsPanelOverviewContent({
   onLoadMore?: (sectionId: SubagentSectionId) => void;
   overview: CodexSubagentOverviewWindow;
   rootThreadId: string;
+  /** Whether this conversation's subagents may delegate, shown even before the first one. */
+  delegation?: ReactNode;
 }) {
   const intl = useIntl();
   const { view, setView } = useSubagentsOverviewView();
@@ -662,9 +666,10 @@ export function SubagentsPanelOverviewContent({
       data-subagents-overview-view={showMap ? "map" : "list"}
     >
       <div className="mx-auto w-full max-w-[var(--thread-content-max-width)]">
-        {hasSubagents ? (
-          <div className="mb-3 flex justify-end px-2">
-            <SubagentsOverviewViewToggle view={view} onChange={setView} />
+        {hasSubagents || delegation ? (
+          <div className="mb-3 flex min-h-6 items-center justify-between gap-3 px-2">
+            {delegation ?? <span />}
+            {hasSubagents ? <SubagentsOverviewViewToggle view={view} onChange={setView} /> : null}
           </div>
         ) : null}
         {showMap ? (

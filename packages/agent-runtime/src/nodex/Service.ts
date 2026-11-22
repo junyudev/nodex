@@ -7,6 +7,7 @@ import { canAdvanceReadback } from "../orchestration-v2/RunReadback.ts";
 import * as SessionPause from "./SessionPause.ts";
 import type { AgentRuntimeOperations } from "./Interface.ts";
 import { RuntimeModelPolicy, executionProviders } from "./ModelPolicy.ts";
+import * as Delegation from "./Delegation.ts";
 import {
   isModelOn,
   spendsNodexCredit,
@@ -379,6 +380,7 @@ const AgentRequest = Schema.Union([
       terminalCursor: Schema.optional(Schema.String),
     }),
   ),
+  request("thread.delegation", Schema.Struct({ threadId: ThreadId })),
   request(
     "models.assert",
     Schema.Struct({
@@ -401,6 +403,7 @@ const AgentRequest = Schema.Union([
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 16 })),
       ),
       modelPolicy: Schema.optional(Schema.Unknown),
+      subagentsMayDelegate: Schema.optional(Schema.Boolean),
     }),
   ),
   request("attachments.persist", PersistChatAttachmentsInput),
@@ -983,6 +986,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const codexClients = yield* CodexAppServerClientFactory;
   const instances = yield* ProviderInstanceRegistry;
   const modelPolicy = yield* RuntimeModelPolicy;
+  const delegation = yield* Delegation.RuntimeDelegation;
   const providerConfiguration = yield* ProviderConfiguration.make(
     executionProviders(
       (yield* modelPolicy.current).policy,
@@ -1273,6 +1277,20 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* threads.backgroundOutput(input.input);
       case "tasks.cancel":
         return yield* threads.cancelDelegatedTask(input.input);
+      case "thread.delegation": {
+        const readThread = (threadId: ThreadId) =>
+          projections.getThreadRecords(threadId, []).pipe(Effect.map(({ thread }) => thread));
+        const thread = yield* readThread(input.input.threadId);
+        const lead =
+          thread.lineage.rootThreadId === thread.id
+            ? thread
+            : yield* readThread(thread.lineage.rootThreadId);
+        const refusal = yield* Delegation.refusalOf(thread, () => Effect.succeed(lead));
+        return {
+          subagentsMayDelegate: lead.subagentsMayDelegate ?? null,
+          refusal: refusal === null ? null : Delegation.DELEGATION_REFUSAL_MESSAGE[refusal],
+        };
+      }
       case "tasks.overview":
         return yield* projections
           .getThreadSubagentOverview({
@@ -1361,6 +1379,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return result;
       }
       case "providers.configure": {
+        if (input.input.subagentsMayDelegate !== undefined)
+          yield* delegation.replace(input.input.subagentsMayDelegate);
         if (input.input.automaticWorkAtOnce !== undefined) {
           yield* RunAdmission.configure(input.input.automaticWorkAtOnce).pipe(
             Effect.provideService(SqlClient.SqlClient, sql),
@@ -2111,7 +2131,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 "turn-item.updated",
               ]
             : treeLead !== undefined
-              ? (["subagent.updated"] as const)
+              ? // The lead's metadata carries the conversation's delegation choice.
+                (["subagent.updated", "thread.metadata-updated"] as const)
               : input.input.eventTypes;
         // Type-specific channels filter before retaining live events or decoding SQL replay.
         const stream =
@@ -2182,6 +2203,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 Stream.runForEach((stored) =>
                   Effect.gen(function* () {
                     let overviewTask: AgentSubagentOverviewItem | undefined;
+                    if (
+                      treeLead !== undefined &&
+                      stored.event.type === "thread.metadata-updated" &&
+                      stored.event.threadId !== treeLead
+                    )
+                      return;
                     if (treeLead !== undefined && stored.event.type === "subagent.updated") {
                       const delegates = yield* observationRootsOf(
                         stored.event.threadId,

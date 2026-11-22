@@ -191,6 +191,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:session:overview", (event, value) =>
       handle(event, Inputs.AgentRuntimeOverviewSchema, value, application.overview),
     );
+    yield* ipc.handleQuery("agent-runtime:session:delegation", (event, value) =>
+      handle(event, Inputs.AgentRuntimeTargetSchema, value, application.delegation),
+    );
     yield* ipc.handlePlainCommand("agent-runtime:session:message", (event, value) =>
       handle(event, Inputs.AgentRuntimeMessageInputSchema, value, application.message),
     );
@@ -225,6 +228,14 @@ export const live = Layer.effectDiscard(
     );
     yield* ipc.handlePlainCommand("agent-runtime:session:set-modes", (event, value) =>
       handle(event, Inputs.AgentRuntimeModesSchema, value, application.setModes),
+    );
+    yield* ipc.handlePlainCommand("agent-runtime:session:set-subagent-delegation", (event, value) =>
+      handle(
+        event,
+        Inputs.AgentRuntimeSubagentDelegationSchema,
+        value,
+        application.setSubagentDelegation,
+      ),
     );
     yield* ipc.handlePlainCommand("agent-runtime:session:compact", (event, value) =>
       handle(event, Inputs.AgentRuntimeCompactSchema, value, application.compact),

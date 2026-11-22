@@ -351,6 +351,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       defaultRuntimeMode: "full-access",
       writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      subagentsMayDelegate: true,
     });
     assert.deepEqual(
       yield* handlers.get("settings:agent-runtime:update")!(event, { defaultRuntimeMode: "auto" }),
@@ -359,6 +360,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
         defaultRuntimeMode: "auto",
         writingModel: null,
         instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+        subagentsMayDelegate: true,
       },
     );
     assert.strictEqual(providerRefreshes, 1);

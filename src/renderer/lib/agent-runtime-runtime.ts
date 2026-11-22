@@ -10,6 +10,7 @@ import type {
   AgentRuntimeStopInput,
   AgentRuntimeResponseInput,
   AgentRuntimeModeInput,
+  AgentRuntimeSubagentDelegationInput,
   AgentRuntimeClearContextInput,
   AgentRuntimeCompactInput,
   AgentRuntimeRewriteMessageInput,
@@ -148,6 +149,14 @@ const setModes = defineRendererCommand({
   protocol: { kind: "returned_value" },
   trace: { scopeKind: "session" },
 });
+const setSubagentDelegation = defineRendererCommand({
+  key: "agent_runtime.session.subagent_delegation",
+  channel: "agent-runtime:session:set-subagent-delegation",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
 const compact = defineRendererCommand({
   key: "agent_runtime.session.compact",
   channel: "agent-runtime:session:compact",
@@ -256,6 +265,13 @@ export interface AgentRuntimeRendererTransport {
   readonly stop: (input: AgentRuntimeStopInput) => Promise<{ readonly stopped: boolean }>;
   readonly respond: (input: AgentRuntimeResponseInput) => Promise<{ readonly sequence: number }>;
   readonly setModes: (input: AgentRuntimeModeInput) => Promise<{ readonly changed: boolean }>;
+  /** The conversation's choice for its subagents; null follows Settings. */
+  readonly delegation: (
+    target: AgentRuntimeSessionTarget,
+  ) => Promise<AgentRuntimeIpcApi["agent-runtime:session:delegation"]["result"]>;
+  readonly setSubagentDelegation: (
+    input: AgentRuntimeSubagentDelegationInput,
+  ) => Promise<{ readonly changed: boolean }>;
   readonly compact: (
     input: AgentRuntimeCompactInput,
   ) => Promise<AgentRuntimeOperations["thread.compact"]["output"]>;
@@ -347,6 +363,8 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   stop: (input) => invokePlainCommand(stop, input),
   respond: (input) => invokePlainCommand(respond, input),
   setModes: (input) => invokePlainCommand(setModes, input),
+  delegation: (input) => invokeRendererQuery("agent-runtime:session:delegation", input),
+  setSubagentDelegation: (input) => invokePlainCommand(setSubagentDelegation, input),
   compact: (input) => invokePlainCommand(compact, input),
   clearContext: (input) => invokePlainCommand(clearContext, input),
   rewriteMessage: (input) => invokePlainCommand(rewriteMessage, input),

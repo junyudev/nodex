@@ -128,6 +128,22 @@ does not widen what its parent may do to it. Queue edits, queue steering and Sto
 caller's captured ceiling to that command check. Workspace handoffs retain the admission ceiling
 through restart and apply it again when dispatching their follow-up message.
 
+### Subagents that delegate
+
+The Agent the person talks to may always delegate. Whether a subagent may delegate in turn, or
+start chats with `create_session` or `fork_session`, is decided in this order: the Agent that
+delegated it can withhold it for that one task; then the conversation's own choice, set in its
+Subagents tab; then **Subagents can delegate** in Settings → Agents, which is on by default. A
+conversation keeps a choice only while it differs from Settings, so switching back follows
+Settings again. A subagent that may not delegate is refused with `delegation_denied` and a message
+naming who decided, and is asked to finish the work itself and say what else would need another
+Agent. A retry of a delegation that was already accepted is not refused. An Agent's own built-in
+subagents, such as those Codex or Claude Code start themselves, follow that Agent's rules.
+
+Every subagent is told that another Agent delegated its task and that it should do the work itself,
+delegating only when its task asks for it. A delegator passes `mayDelegate: false` when the person
+wants a task done without more Agents.
+
 Agents never answer execution approvals. A delegated wait returns when its task needs an
 approval; the person answers it in the task's chat. Question tools answer information questions
 only.

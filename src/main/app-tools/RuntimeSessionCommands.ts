@@ -58,6 +58,10 @@ export const makeWithCapture = (
       };
 
       const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
+      // Starting a chat starts another Agent, which a subagent may only do where delegation is on.
+      const delegationRefusal = hosted
+        ? application.delegationRefusal(hosted.threadId)
+        : Effect.succeed(null);
       const execute = Effect.gen(function* () {
         if (input.name === "session_question") {
           const parsed = parseAppToolArguments(sessionQuestionSchema, input.arguments);
@@ -125,6 +129,8 @@ export const makeWithCapture = (
           const parsed = parseAppToolArguments(sessionForkSchema, input.arguments);
           if (!parsed.success) return parsed.result;
           const request = parsed.data;
+          const refusal = yield* delegationRefusal;
+          if (refusal !== null) return toolFailure("delegation_denied", refusal);
           const operation = yield* admitOperation(
             input,
             authority,
@@ -175,6 +181,8 @@ export const makeWithCapture = (
         const parsed = parseAppToolArguments(createSessionSchema, input.arguments);
         if (!parsed.success) return parsed.result;
         const request = parsed.data;
+        const refusal = yield* delegationRefusal;
+        if (refusal !== null) return toolFailure("delegation_denied", refusal);
         const projectId = request.target.type === "project" ? request.target.projectId : null;
         const callerFacts = yield* intake.inspect(callerTarget);
         if (

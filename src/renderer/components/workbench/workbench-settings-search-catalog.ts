@@ -833,6 +833,15 @@ export const settingsMessages = defineMessages({
     id: "settings.agents.whatNewChatsCanDoOn",
     defaultMessage: "What new chats can do on this computer without asking.",
   },
+  agentsSubagentsCanDelegate: {
+    id: "settings.agents.subagentsCanDelegate",
+    defaultMessage: "Subagents can delegate",
+  },
+  agentsSubagentsCanDelegateDescription: {
+    id: "settings.agents.subagentsCanDelegateDescription",
+    defaultMessage:
+      "Off, only the Agent you talk to delegates and starts chats. A chat can choose otherwise in its Subagents tab. Agents’ built-in subagents follow their own rules.",
+  },
   codexSpeed: { id: "settings.codex.speed", defaultMessage: "Speed" },
   codexTheSpeedNewCodexChatsStart: {
     id: "settings.codex.theSpeedNewCodexChatsStart",
@@ -2013,6 +2022,11 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.agentsDefaultPermissions,
             settingsMessages.agentsWhatNewChatsCanDoOn,
             ["Ask for approval", "Approve for me", "Full access", "approvals", "sandbox"],
+          ),
+          entry(
+            settingsMessages.agentsSubagentsCanDelegate,
+            settingsMessages.agentsSubagentsCanDelegateDescription,
+            ["nested", "delegation", "delegate_task", "spawn"],
           ),
         ],
       },

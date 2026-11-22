@@ -460,6 +460,7 @@ The `[server]` table currently owns these product setting families:
 - `codex_home` for the selected native Codex directory;
 - `codex_executable` for an optional Codex command or executable path;
 - `automatic_work_at_once` for concurrent automatic work trees (1–16, default 4), controlled by Settings → Agents;
+- `subagents_may_delegate` for whether subagents may delegate or start chats where a conversation has not chosen (default true), controlled by Settings → Agents;
 - `writing_model` for the selected Agent instance and model used to write chat titles, commit messages and pull request descriptions, controlled by Settings → General;
 - automatic backup enablement, interval, count retention, and automatic-snapshot byte budget;
 - deleted-content history retention compatibility setting;

@@ -28,6 +28,7 @@ Nodex content tools work in every execution mode. The bundled \`nodex\` CLI runs
 - A Page reference identifies a Page by id; read it with \`fetch\`. For a Page visible beside the chat, \`read_tab_content\` returns its live editor state. \`selectedBlockIds\` are the Blocks the user highlighted.
 - Sessions are the user's conversations, addressed by sessionId. Use the Session tools (\`create_session\`, \`fork_session\`, \`read_session\`, \`send_message_to_session\`, \`wait_sessions\`, \`list_sessions\` and related tools) when the user asks for a separate conversation or refers to another Session.
 - Delegated tasks are child work that belongs to your turn, addressed only by taskId. Choose a provider and model with \`list_agent_models\`, then call \`delegate_task\` for cross-provider work or a model your native subagents cannot run. Keep each returned taskId.
+- When the person wants a task done without more Agents, pass \`mayDelegate: false\`: that task cannot delegate or start chats of its own. \`list_agent_models\` also says whether you may delegate.
 - Prefer \`mode:'async'\` and keep working or end your turn: questions and results arrive mid-turn when the provider can deliver safely, otherwise they wake you in a new turn. Do not poll. The wake includes the result when it fits; use \`task_status\` only when it says to. Use \`task_read\` for the conversation; reading a settled result acknowledges it. Use \`task_wait\` or \`mode:'wait'\` only when this turn needs the result now. A wait never cancels a task.
 - \`task_send\` continues a delegated conversation. The taskId you sent to (returned as conversationTaskId) names the whole conversation and stays valid for task_status, task_wait, task_send and task_cancel. A follow-up that starts a turn is carried by its own task, returned as taskId, which wakes you when it finishes; no earlier result is replaced. A message steered into a running turn returns the task that turn belongs to. For an independent round, such as another review, call \`delegate_task\` again with the full context. \`task_cancel\` stops a task and everything it delegated.
 - Answer or dismiss every delivered task question with \`task_question\` action respond or dismiss. Notices and waits include normal questions inline; read only when details were omitted. Ask the user only when their input is needed. A blocking delegation or task_wait returns early for a live or message question from any task owned by your Run; the awaited task keeps running and its completion will still wake you. Approvals end only their own task's wait and still need the user. Answering a task whose conversation needs a new turn starts a follow-up task whose result will wake you; keep its returned taskId.
@@ -41,6 +42,22 @@ ${AUTOMATION_INSTRUCTIONS}
 
 ${HEARTBEAT_INSTRUCTIONS}
 `;
+
+/**
+ * What a delegated Agent is told about its place in the work tree. Whether it may delegate is
+ * decided by its delegator, the conversation and the Profile; the tools report the current answer.
+ */
+export function subagentInstructions(withheldByDelegator: boolean): string {
+  return [
+    "### Working as a subagent",
+    "Another Agent delegated this task to you, and your result goes back to it. Do the work yourself. Delegate or start other chats only when your task asks for it; `list_agent_models` says whether you may.",
+    ...(withheldByDelegator
+      ? [
+          "The Agent that delegated this task asked that it not delegate further: do not call `delegate_task` or start other chats. If the work needs more Agents, say so in your result.",
+        ]
+      : []),
+  ].join("\n\n");
+}
 
 const ARTIFACT_OPENING_GUIDANCE: Record<ArtifactOpeningPolicy, string> = {
   "when-helpful":

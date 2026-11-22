@@ -180,6 +180,10 @@ export const AgentRuntimeModesSchema = AgentRuntimeTargetSchema.extend({
   runtimeMode: AgentRuntimeModeSchema.optional(),
   interactionMode: AgentRuntimeInteractionModeSchema.optional(),
 });
+export const AgentRuntimeSubagentDelegationSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id,
+  subagentsMayDelegate: z.boolean().nullable(),
+});
 export const AgentRuntimeCompactSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   /** Compacting continues this failed reply once the context fits again. */

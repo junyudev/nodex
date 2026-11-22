@@ -3590,6 +3590,28 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { changed: true };
   });
 
+  /** The lead carries its conversation's choice, so the Session's own Thread is the target. */
+  const setSubagentDelegation = Effect.fn("AgentRuntimeApplication.setSubagentDelegation")(
+    function* (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeSubagentDelegationInput,
+    ) {
+      if (!validId(input.requestId))
+        return yield* failure("delegation", "A request identity is required");
+      const connection = yield* options.connect;
+      const loaded = yield* targetInfo(connection, { sessionId: input.sessionId }, true);
+      yield* dispatch(connection, {
+        type: "thread.metadata.update",
+        commandId: commandId("subagent-delegation", {
+          threadId: loaded.threadId,
+          requestId: input.requestId,
+        }),
+        threadId: loaded.threadId,
+        subagentsMayDelegate: input.subagentsMayDelegate,
+      });
+      return { changed: true };
+    },
+  );
+
   const readCleanups = Effect.fn("AgentRuntimeApplication.readCleanups")(function* (
     connection: AgentRuntimeApplicationConnection,
     after: string | null,
@@ -5171,6 +5193,29 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     respond: (input: Parameters<typeof respond>[0]) =>
       ownedWrite("respond", respond(input).pipe(Effect.mapError(questionResponseFailure))),
     setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),
+    setSubagentDelegation: (input: Parameters<typeof setSubagentDelegation>[0]) =>
+      ownedWrite("delegation", setSubagentDelegation(input)),
+    delegation: (input: AgentRuntimeSessionTarget) =>
+      ownedOpenRead(
+        "delegation",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, { sessionId: input.sessionId });
+          const { subagentsMayDelegate } = yield* connection.request("thread.delegation", {
+            threadId: loaded.threadId,
+          });
+          return { subagentsMayDelegate };
+        }),
+      ),
+    /** What a Thread's Agent reads when it may not start other Agents; null when it may. */
+    delegationRefusal: (threadId: string) =>
+      owned(
+        "delegation",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          return (yield* connection.request("thread.delegation", { threadId })).refusal;
+        }),
+      ),
     compact: (input: import("../../shared/agent-runtime-api").AgentRuntimeCompactInput) =>
       ownedWrite(
         "compact",

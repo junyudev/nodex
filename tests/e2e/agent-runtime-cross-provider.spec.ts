@@ -202,6 +202,24 @@ test("delegates across Codex and Claude through the Session UI and restores chil
     const claudeChild = firstOverview.terminal.items.find((task) => task.origin === "app_owned");
     if (!claudeChild?.childThreadId) throw new Error("Claude child missing from bounded metadata");
     await openSubagentsPanel(page);
+    // The work tree says whether its subagents may delegate, and one chat can answer for itself.
+    const overview = page.locator("[data-subagents-panel-overview]").first();
+    const delegation = overview.getByRole("switch", {
+      name: "Subagents can delegate",
+      exact: true,
+    });
+    const chosen = async () =>
+      (await invoke(page, "agent-runtime:session:delegation", { sessionId: codexSession }))
+        .subagentsMayDelegate;
+    await expect(delegation).toHaveAttribute("aria-checked", "true");
+    await overview.screenshot({ path: testInfo.outputPath("subagents-delegation-follows.png") });
+    await delegation.click();
+    await expect(overview.getByText("This chat", { exact: true })).toBeVisible();
+    await expect.poll(chosen).toBe(false);
+    await overview.screenshot({ path: testInfo.outputPath("subagents-delegation-this-chat.png") });
+    await delegation.click();
+    await expect(overview.getByText("This chat", { exact: true })).toHaveCount(0);
+    await expect.poll(chosen).toBeNull();
     await page
       .getByRole("button", {
         name: `Open subagent ${claudeChild.title ?? "Subagent"}`,

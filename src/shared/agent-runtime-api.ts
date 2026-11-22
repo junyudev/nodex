@@ -224,6 +224,11 @@ export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly runtimeMode?: RuntimeMode;
   readonly interactionMode?: CreateThread["interactionMode"];
 };
+/** A conversation's choice for its subagents; null returns it to the Settings choice. */
+export type AgentRuntimeSubagentDelegationInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+  readonly subagentsMayDelegate: boolean | null;
+};
 export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly failedRunId?: string;
@@ -467,6 +472,10 @@ export interface AgentRuntimeIpcApi {
     args: [input: AgentRuntimeOverviewInput];
     result: AgentRuntimeOperations["tasks.overview"]["output"];
   };
+  "agent-runtime:session:delegation": {
+    args: [input: AgentRuntimeSessionTarget];
+    result: { readonly subagentsMayDelegate: boolean | null };
+  };
   "agent-runtime:session:message": {
     args: [input: AgentRuntimeMessageInput];
     result: { readonly sequence: number; readonly sideChatTitle?: string };
@@ -505,6 +514,10 @@ export interface AgentRuntimeIpcApi {
   };
   "agent-runtime:session:set-modes": {
     args: [input: AgentRuntimeModeInput];
+    result: { readonly changed: boolean };
+  };
+  "agent-runtime:session:set-subagent-delegation": {
+    args: [input: AgentRuntimeSubagentDelegationInput];
     result: { readonly changed: boolean };
   };
   "agent-runtime:session:compact": {

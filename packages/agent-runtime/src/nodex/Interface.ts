@@ -133,6 +133,8 @@ export interface AgentRuntimeConfiguration {
   readonly pausedThreadIds?: ReadonlyArray<string>;
   readonly cwd: string;
   readonly modelPolicy?: ModelPolicy;
+  /** Whether subagents may delegate where a conversation has not chosen; defaults to true. */
+  readonly subagentsMayDelegate?: boolean;
   readonly providers: Readonly<Record<string, AgentWire<ProviderInstanceConfig>>>;
   readonly host?: {
     readonly tools: ReadonlyArray<AgentHostTool>;
@@ -458,6 +460,17 @@ export interface AgentRuntimeOperations
     };
     readonly output: { readonly taskId: string; readonly status: string };
   };
+  /**
+   * Delegation in this Thread's conversation: the lead's choice for its subagents (null follows
+   * the Profile), and what this Thread's own Agent reads if it may not start other Agents.
+   */
+  readonly "thread.delegation": {
+    readonly input: { readonly threadId: string };
+    readonly output: {
+      readonly subagentsMayDelegate: boolean | null;
+      readonly refusal: string | null;
+    };
+  };
   readonly "tasks.overview": {
     readonly input: {
       readonly threadId: string;
@@ -622,6 +635,7 @@ export interface AgentRuntimeOperations
       readonly providers: AgentRuntimeConfiguration["providers"];
       readonly automaticWorkAtOnce?: number;
       readonly modelPolicy?: ModelPolicy;
+      readonly subagentsMayDelegate?: boolean;
     };
     readonly output: {
       readonly applied: boolean;

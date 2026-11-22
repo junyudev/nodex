@@ -1,3 +1,4 @@
+import * as Delegation from "./Delegation.ts";
 import * as ModelPolicy from "./ModelPolicy.ts";
 import { DEFAULT_MODEL_POLICY } from "../../../../src/shared/model-policy.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -242,6 +243,12 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
       Layer.provideMerge(layerPolicy),
     )
     .pipe(
+      Layer.provideMerge(
+        Layer.effect(
+          Delegation.RuntimeDelegation,
+          Delegation.make(configuration.subagentsMayDelegate ?? true),
+        ),
+      ),
       Layer.provideMerge(
         Layer.effect(
           ModelPolicy.RuntimeModelPolicy,

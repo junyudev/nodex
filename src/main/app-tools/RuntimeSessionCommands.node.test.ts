@@ -91,6 +91,7 @@ const fixture = (
     targetDefault?: boolean;
     nativeQuestions?: typeof nativeQuestionTestLayers;
     policyFailure?: "model_off" | "credit_requires_person";
+    delegationRefusal?: string;
   } = {},
 ) => {
   const frozen = authority;
@@ -162,6 +163,8 @@ const fixture = (
     Effect.provideService(CodexTurnAuthority, {} as never),
     Effect.provideService(AgentRuntimeApplication, {
       assertModelPolicy: () => Effect.void,
+      delegationRefusal: (threadId: string) =>
+        method("delegationRefusal", options.delegationRefusal ?? null)(threadId),
       nativeMessageReceipt: () => Effect.succeed(null),
       replayMessage: (input: { messageId: string }) =>
         Effect.succeed(deliveries.get(input.messageId) ?? null),
@@ -282,6 +285,34 @@ it.effect.each([
       { type: "text", text: "Choose another model in Settings → Models." },
     ]);
   }),
+);
+it.effect.each(["create_session", "fork_session"] as const)(
+  "refuses $name for a subagent that may not delegate, before starting anything",
+  (name) =>
+    Effect.gen(function* () {
+      const refusal = "The person turned off delegation by subagents in Settings.";
+      const f = fixture({ delegationRefusal: refusal });
+      const execute = yield* f.execute;
+      const result = yield* execute({
+        caller: f.caller,
+        name,
+        arguments:
+          name === "create_session"
+            ? {
+                prompt: "Must not start",
+                target: { type: "project", projectId: "project", environment: { type: "local" } },
+              }
+            : {},
+      });
+      assert.isTrue(result.isError);
+      assert.deepEqual(result.structuredContent, { error: { code: "delegation_denied" } });
+      assert.deepEqual(result.content, [{ type: "text", text: refusal }]);
+      assert.deepEqual(
+        f.calls.map((call) => call.name),
+        ["delegationRefusal"],
+      );
+      assert.deepEqual(f.calls[0]?.input, "child");
+    }),
 );
 it.effect(
   "forks the current child within its bound product Session using exact engine identity",

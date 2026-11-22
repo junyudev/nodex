@@ -902,6 +902,12 @@ at the top of the overview switches between them. The choice belongs to the pers
 every chat and window, and starts as the map. Until the conversation has a subagent the
 overview says so in words and offers no choice.
 
+Beside that control, **Subagents can delegate** shows whether this conversation's subagents may
+delegate or start chats, from the first delegation on. It follows Settings → Agents and reads
+`This chat` only while the conversation answers differently; the order of who decides is in
+[Agent permissions](agent-permissions-behavior.md#subagents-that-delegate). A choice made in another
+window reaches an open overview without reopening it.
+
 The map shows who leads and who runs what. The lead's card names its Agent as the lead, then
 the chat's title, its model and effort, and how many subagents have reported back. Each
 subagent's card names its Agent, its own name beside its avatar, its model and effort and its
@@ -1138,6 +1144,11 @@ conversation task remains a valid handle for reads, follow-ups and cancellation.
 replaced by a later follow-up. A message steered into a running
 Run joins that Run and returns the task that Run belongs to; a message that joins a Run no delegated
 task owns returns no taskId. A restart keeps the interrupted Run's task, which carries the restarted Run.
+
+`list_agent_models` reports whether the caller may delegate now and, if not, who decided.
+`delegate_task` accepts `mayDelegate: false` to keep that task from delegating or starting chats;
+a caller that may not delegate is refused with `delegation_denied`, as
+[Agent permissions](agent-permissions-behavior.md#subagents-that-delegate) describes.
 
 `delegate_task`, `task_send` and `task_cancel` accept optional `idempotencyKey`, an opaque
 1–128-character string. Omit it for a first attempt; reuse it with identical arguments only

@@ -474,6 +474,13 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   sideChat: Schema.optional(OrchestrationV2SideChat),
   capturedContext: Schema.optional(Schema.Literal(true)),
+  /**
+   * On a conversation's lead: whether its subagents may delegate, as the person chose for this
+   * conversation. Absent follows the Profile setting.
+   */
+  subagentsMayDelegate: Schema.optional(Schema.Boolean),
+  /** On a subagent: false when the Agent that delegated it kept it from delegating. */
+  mayDelegate: Schema.optional(Schema.Boolean),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -3396,6 +3403,8 @@ export const OrchestrationV2Command = Schema.Union([
     expectedExecutionHandoffId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
+    /** A lead's choice for its subagents' delegation; null returns it to the Profile setting. */
+    subagentsMayDelegate: Schema.optional(Schema.NullOr(Schema.Boolean)),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -3742,6 +3751,8 @@ export const OrchestrationV2Command = Schema.Union([
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
+    /** False keeps the task from delegating work of its own. */
+    mayDelegate: Schema.optional(Schema.Boolean),
     // Omitted behaves as "settled_only" (no wake while the parent has a live
     // run); producers that want fire-and-forget wakes must set "always".
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),

@@ -1,4 +1,6 @@
 import { RuntimeModelPolicy, make as makeModelPolicy } from "../nodex/ModelPolicy.ts";
+import * as Delegation from "../nodex/Delegation.ts";
+import { DELEGATION_REFUSAL_MESSAGE } from "../nodex/Delegation.ts";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../src/shared/model-policy.ts";
 import { TASK_RESULT_DELIVERY_META } from "./TaskResultDelivery.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -474,6 +476,7 @@ describe("task tools", () => {
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("mcp-task-tools");
         const policyOwner = yield* makeModelPolicy(DEFAULT_MODEL_POLICY, {});
+        const delegationOwner = yield* Delegation.make(true);
         const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
         const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
           makeDeterministicAdapter({
@@ -599,6 +602,7 @@ describe("task tools", () => {
           Layer.provide(ServerSettings.layerTest()),
           Layer.provide(NodeServices.layer),
           Layer.provide(Layer.succeed(RuntimeModelPolicy, policyOwner)),
+          Layer.provide(Layer.succeed(Delegation.RuntimeDelegation, delegationOwner)),
         );
 
         yield* Effect.gen(function* () {
@@ -857,6 +861,109 @@ describe("task tools", () => {
           expect(
             acknowledged.subagents.find((task) => task.id === started.taskId)?.completionDelivery,
           ).toMatchObject({ state: "acknowledged", observedByRunId: parentRun.id });
+
+          // The subagent asks the same tools; who may start more Agents is decided above it.
+          const child = yield* orchestrator.getThreadProjection(childThreadId);
+          const childRun = child.runs[0]!;
+          const childProviderThread = child.providerThreads[0]!;
+          const invokeAsChild = (name: string, args: Record<string, unknown>) =>
+            server.callTool({ name, arguments: args }).pipe(
+              Effect.provideService(ExecutionHost.McpTurnAdmission, {
+                actor: {
+                  runtimeId: "runtime-mcp-task",
+                  runtimeGeneration: "generation-mcp-task",
+                  projectId,
+                  threadId: childThreadId,
+                  runId: childRun.id,
+                  attemptId: child.attempts.find((attempt) => attempt.runId === childRun.id)!.id,
+                  providerInstanceId: claudeInstanceId,
+                  providerSessionId: childProviderThread.providerSessionId!,
+                  providerThreadId: childProviderThread.id,
+                  nativeGeneration: 1,
+                  nativeThreadRef: childProviderThread.nativeThreadRef,
+                  cwd,
+                },
+                requestId: undefined,
+                assertCurrent: () => Effect.void,
+              }),
+              Effect.provideService(
+                McpInvocationContext.McpInvocationContext,
+                scopeFor(childThreadId, claudeInstanceId),
+              ),
+              Effect.provideService(McpSchema.McpServerClient, client),
+            );
+          const childDelegation = () =>
+            invokeAsChild("list_agent_models", {}).pipe(
+              Effect.flatMap((result) => decodeModels(result.structuredContent)),
+              Effect.orDie,
+              Effect.map(({ delegation }) => delegation),
+            );
+          const nested = {
+            task: "Delegate once more",
+            target: { providerInstanceId: codexInstanceId },
+          };
+          expect(yield* childDelegation()).toEqual({ allowed: true, reason: null });
+          expect(models.delegation).toEqual({ allowed: true, reason: null });
+          // Off in Settings, then answered otherwise by the conversation, then off for it alone.
+          yield* delegationOwner.replace(false);
+          expect(declaredFailure(yield* invokeAsChild("delegate_task", nested))).toMatchObject({
+            code: "delegation_denied",
+            message: DELEGATION_REFUSAL_MESSAGE.settings,
+          });
+          expect(yield* childDelegation()).toEqual({
+            allowed: false,
+            reason: DELEGATION_REFUSAL_MESSAGE.settings,
+          });
+          const choose = (subagentsMayDelegate: boolean | null, ordinal: number) =>
+            orchestrator.dispatch({
+              type: "thread.metadata.update",
+              commandId: CommandId.make(`subagent-delegation-${ordinal}`),
+              threadId: parentThreadId,
+              subagentsMayDelegate,
+            });
+          yield* choose(true, 1);
+          expect(yield* childDelegation()).toEqual({ allowed: true, reason: null });
+          yield* delegationOwner.replace(true);
+          yield* choose(false, 2);
+          expect(declaredFailure(yield* invokeAsChild("delegate_task", nested))).toMatchObject({
+            code: "delegation_denied",
+            message: DELEGATION_REFUSAL_MESSAGE.conversation,
+          });
+          // Only the lead holds the conversation's choice, and its lead still delegates.
+          const childChoice = yield* orchestrator
+            .dispatch({
+              type: "thread.metadata.update",
+              commandId: CommandId.make("subagent-delegation-child"),
+              threadId: childThreadId,
+              subagentsMayDelegate: true,
+            })
+            .pipe(Effect.flip);
+          expect(String(childChoice.cause)).toContain("Only a conversation's lead");
+          expect(
+            (yield* decodeModels(yield* call("list_agent_models", {})).pipe(Effect.orDie))
+              .delegation,
+          ).toEqual({ allowed: true, reason: null });
+          yield* choose(null, 3);
+          expect(
+            (yield* orchestrator.getThreadProjection(parentThreadId)).thread,
+          ).not.toHaveProperty("subagentsMayDelegate");
+          expect(yield* childDelegation()).toEqual({ allowed: true, reason: null });
+          // A delegator can withhold delegation from one task; the lead's choice stays its own.
+          yield* choose(true, 4);
+          const withheld = yield* decodeTaskView(
+            yield* call("delegate_task", {
+              task: "Do this without more Agents",
+              target: { providerInstanceId: claudeInstanceId, model: claudeModel },
+              mayDelegate: false,
+            }),
+          ).pipe(Effect.orDie);
+          const withheldThread = (yield* orchestrator.getThreadProjection(
+            yield* childThreadOf(orchestrator, withheld.taskId),
+          )).thread;
+          expect(withheldThread.mayDelegate).toBe(false);
+          expect(withheldThread).not.toHaveProperty("subagentsMayDelegate");
+          expect(child.thread).not.toHaveProperty("mayDelegate");
+          yield* choose(null, 5);
 
           yield* policyOwner.replace({ policy: claudeOff, providers: {} });
           expect(

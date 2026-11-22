@@ -18,6 +18,8 @@ export const AgentRuntimeSettingsSchema = z
     writingModel: AgentRuntimeWritingModelSchema.nullable(),
     /** The person's own instructions, sent with every Agent turn. */
     instructions: AgentInstructionsSettingsSchema,
+    /** Whether subagents may delegate or start chats where a conversation has not chosen. */
+    subagentsMayDelegate: z.boolean(),
   })
   .strict();
 export type AgentRuntimeSettings = z.infer<typeof AgentRuntimeSettingsSchema>;
@@ -31,4 +33,5 @@ export const DEFAULT_AGENT_RUNTIME_SETTINGS: AgentRuntimeSettings = {
   automaticWorkAtOnce: 4,
   writingModel: null,
   instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+  subagentsMayDelegate: true,
 };

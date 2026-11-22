@@ -492,6 +492,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     pausedThreadIds: options.configuration.pausedThreadIds,
     providers: options.configuration.providers,
     modelPolicy: options.configuration.modelPolicy,
+    subagentsMayDelegate: options.configuration.subagentsMayDelegate,
     ...(options.configuration.host
       ? {
           hostTools: options.configuration.host.tools,

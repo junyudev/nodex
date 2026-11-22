@@ -54,8 +54,14 @@ export function makeSubagentChildThread(input: {
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
 }): OrchestrationV2AppThread {
+  // A conversation's delegation choice stays on its lead, and a delegator's limit is per task.
+  const {
+    subagentsMayDelegate: _subagentsMayDelegate,
+    mayDelegate: _mayDelegate,
+    ...parentThread
+  } = input.parentThread;
   return {
-    ...input.parentThread,
+    ...parentThread,
     createdBy: input.createdBy,
     creationSource: input.creationSource,
     id: input.childThreadId,

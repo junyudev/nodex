@@ -12,7 +12,7 @@ import type { Project, ProjectSession, CodexComposerIntent } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { toast } from "@/components/ui/toast";
 import type { FirstSubmissionIdentity } from "@/features/conversation-launch/session-first-submission-owner";
@@ -21,6 +21,8 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { SubagentDelegationConversationControl } from "@/features/subagent-delegation/subagent-delegation-controls";
+import { subagentDelegationQueryOptions } from "@/features/subagent-delegation/subagent-delegation";
 import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
@@ -344,6 +346,11 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     /** Advances when task metadata invalidates derived attention or section totals. */
     recount: number;
   }>({ source: null, error: null, recount: 0 });
+  const queryClient = useQueryClient();
+  // The lead's metadata carries this conversation's delegation choice.
+  const refreshDelegation = useEffectEvent(
+    () => void queryClient.invalidateQueries(subagentDelegationQueryOptions(input.sessionId)),
+  );
   // Each subagent answers for the Run that started it, as Core admits its stop.
   const canStopRun = useRunStopCapabilities(
     input.sessionId,
@@ -401,6 +408,10 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
             return;
           }
           if (notification.type !== "event") return;
+          if (notification.event.event.type === "thread.metadata-updated") {
+            refreshDelegation();
+            return;
+          }
           const task = notification.event.overviewTask;
           if (task === undefined) return;
           reports.current += 1;
@@ -564,6 +575,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       <div className="min-h-0 flex-1">
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
+          delegation={<SubagentDelegationConversationControl sessionId={input.sessionId} />}
           overview={projectAgentRuntimeSubagentOverview(input.threadId, source, canStopRun)}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
           isStopping={(row) => {

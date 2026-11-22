@@ -758,6 +758,7 @@ const supervisor = Layer.effectContext(
         automaticWorkAtOnce: snapshot.agentRuntime.automaticWorkAtOnce,
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,
+        subagentsMayDelegate: snapshot.agentRuntime.subagentsMayDelegate,
         host: { tools: appToolCatalog, ...(catalog ? { sessionPlugins: true } : {}) },
       };
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
@@ -905,6 +906,7 @@ const supervisor = Layer.effectContext(
             providers: configuration.providers,
             automaticWorkAtOnce: configuration.automaticWorkAtOnce,
             modelPolicy: configuration.modelPolicy,
+            subagentsMayDelegate: configuration.subagentsMayDelegate,
           });
           prepared.set(connection.identity, configuration);
           return result;

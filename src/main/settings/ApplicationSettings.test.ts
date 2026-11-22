@@ -1079,6 +1079,7 @@ it.effect("persists the Profile's default native execution mode and rejects inva
       automaticWorkAtOnce: 4,
       writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      subagentsMayDelegate: true,
     });
     for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
       yield* settings.update({ type: "update-agent-runtime", input: { defaultRuntimeMode } });
@@ -1097,6 +1098,34 @@ it.effect("persists the Profile's default native execution mode and rejects inva
       "Failure",
     );
     assert.equal(readFileSync(settingsPath, "utf8"), before);
+  }),
+);
+
+it.effect("persists whether subagents may delegate, independent of the other Agent settings", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture("");
+    const source = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const settings = yield* makeApplicationSettings(source);
+    yield* settings.update({
+      type: "update-agent-runtime",
+      input: { subagentsMayDelegate: false },
+    });
+    const reopened = yield* (yield* makeApplicationSettings(source)).snapshot();
+    assert.isFalse(reopened.agentRuntime.subagentsMayDelegate);
+    assert.equal(reopened.agentRuntime.defaultRuntimeMode, "full-access");
+    assert.propertyVal(
+      parseToml(readFileSync(settingsPath, "utf8")).server,
+      "subagents_may_delegate",
+      false,
+    );
+    // A damaged value falls back to the default without resetting its neighbours.
+    writeFileSync(
+      settingsPath,
+      '[server]\ndefault_runtime_mode = "auto"\nsubagents_may_delegate = "no"\n',
+    );
+    const damaged = (yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime;
+    assert.isTrue(damaged.subagentsMayDelegate);
+    assert.equal(damaged.defaultRuntimeMode, "auto");
   }),
 );
 
@@ -1121,6 +1150,7 @@ it.effect("migrates the writing model and keeps it independent of permission mod
       defaultRuntimeMode: "auto",
       writingModel,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      subagentsMayDelegate: true,
     });
 
     yield* settings.update({ type: "update-agent-runtime", input: { writingModel: null } });
@@ -1129,6 +1159,7 @@ it.effect("migrates the writing model and keeps it independent of permission mod
       defaultRuntimeMode: "auto",
       writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      subagentsMayDelegate: true,
     });
     assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
 
@@ -1141,6 +1172,7 @@ it.effect("migrates the writing model and keeps it independent of permission mod
       defaultRuntimeMode: "auto",
       writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+      subagentsMayDelegate: true,
     });
   }),
 );
@@ -1206,6 +1238,7 @@ it.effect(
           automaticWorkAtOnce,
           writingModel: null,
           instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
+          subagentsMayDelegate: true,
         });
       }
       const before = readFileSync(settingsPath, "utf8");
