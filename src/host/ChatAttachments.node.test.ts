@@ -328,7 +328,7 @@ const nativeFixture = Effect.gen(function* () {
                   thread: {
                     threadId: "codex-thread",
                     executionHostId: "local",
-                    backendBinding: { kind: "codex" },
+                    backendBinding: { driver: "codex", instanceId: "codex" },
                   },
                 } as unknown as ProjectSession)
               : null,

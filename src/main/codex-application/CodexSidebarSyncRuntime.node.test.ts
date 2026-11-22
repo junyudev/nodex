@@ -118,7 +118,7 @@ const archivedTask = (id: string, pinned: boolean) => ({
       thread_id: `thread-${id}`,
       archived: true,
       parent_thread_id: null,
-      backend_binding: { kind: "codex" },
+      backend_binding: { driver: "codex", instanceId: "codex" },
       updated_at: 1,
       created_at: 1,
       status: { status_type: "idle", active_flags: [] },

@@ -1,3 +1,4 @@
+import { agentDefinition } from "./agents/registry.ts";
 import { z } from "zod";
 
 /** Profile authority. Entries are exceptions, so newly advertised models follow their provider. */
@@ -37,7 +38,7 @@ export const isProviderOn = (policy: ModelPolicy, provider: PolicyProvider): boo
   !policy.providersOff.includes(policyProviderKey(provider));
 /** OpenCode's models run on third parties' terms, so a person turns them on; others start on. */
 const onByDefault = (provider: PolicyProvider): boolean =>
-  !["opencode", "opencode2"].includes(provider.driver);
+  agentDefinition(provider.driver).capabilities.modelsOptIn !== true;
 export const isModelSwitchOn = (
   policy: ModelPolicy,
   provider: PolicyProvider,

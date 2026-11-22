@@ -19,28 +19,22 @@ describe("Agent settings navigation", () => {
   });
 
   it("opens an API key's own connection rather than Claude Code, which runs it", () => {
-    expect(
-      agentSettingsTarget({
-        kind: "claude",
-        instanceConfigId: "key_deepseek_c1",
-        runtimeInstanceId: "key_deepseek_c1",
-      }),
-    ).toEqual({ kind: "keys", instanceId: "c1" });
-    expect(
-      agentSettingsTarget({
-        kind: "acp",
-        agentDefinitionId: "custom-acp",
-        instanceConfigId: "i1",
-      }),
-    ).toEqual({ kind: "acp", instanceId: "i1" });
-    expect(agentSettingsTarget({ kind: "antigravity", instanceConfigId: "work" })).toEqual({
+    expect(agentSettingsTarget({ driver: "claudeAgent", instanceId: "key_deepseek_c1" })).toEqual({
+      kind: "keys",
+      instanceId: "c1",
+    });
+    expect(agentSettingsTarget({ driver: "acpRegistry", instanceId: "i1" })).toEqual({
+      kind: "acp",
+      instanceId: "i1",
+    });
+    expect(agentSettingsTarget({ driver: "antigravity", instanceId: "work" })).toEqual({
       kind: "antigravity",
       instanceId: "work",
     });
     expect(agentSettingsKindForAnchor(agentSettingsAnchor("antigravity", "work"))).toBe(
       "antigravity",
     );
-    expect(agentSettingsTarget({ kind: "claude", instanceConfigId: "work" })).toEqual({
+    expect(agentSettingsTarget({ driver: "claudeAgent", instanceId: "work" })).toEqual({
       kind: "claude",
     });
   });

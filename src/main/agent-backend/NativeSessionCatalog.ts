@@ -1,3 +1,5 @@
+import { claudeAgent } from "../../shared/agents/claude";
+import { agentProfilesFor } from "../../shared/agents/profiles";
 import * as Context from "effect/Context";
 import { isAgentRuntimeCodexThreadSource } from "@nodex/agent-runtime/contracts";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
@@ -128,7 +130,7 @@ export const make = Effect.gen(function* () {
     instanceConfigId: string | undefined,
   ) {
     const snapshot = yield* settings.snapshot();
-    const profile = snapshot.claudeAgents.instances.find(
+    const profile = agentProfilesFor(snapshot.agentProfiles, claudeAgent.driver).find(
       (instance) => instance.id === instanceConfigId && instance.enabled,
     );
     if (!profile)
@@ -353,7 +355,7 @@ export const make = Effect.gen(function* () {
         if (backend !== "codex") {
           const profiles = input.instanceConfigId
             ? [yield* requireClaudeProfile(input.instanceConfigId)]
-            : (yield* settings.snapshot()).claudeAgents.instances
+            : agentProfilesFor((yield* settings.snapshot()).agentProfiles, claudeAgent.driver)
                 .filter((profile) => profile.enabled)
                 .map((profile) => profile.id);
           for (const profile of profiles) {

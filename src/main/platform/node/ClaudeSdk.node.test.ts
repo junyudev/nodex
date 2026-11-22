@@ -1,15 +1,13 @@
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import { claudeEnvironment, claudeDiscoveryOptions } from "./ClaudeSdk";
-const instance = {
+const instance = claudeProfile({
   id: "work",
   displayName: "Work",
-  binaryPath: "claude",
-  configDirectory: "/config/work",
-  enabled: true,
-  environment: [],
-  customModels: [],
-};
+  settings: { configDirectory: "/config/work", customModels: [] },
+});
+
 it("uses native configuration sources and isolates account selection without changing HOME", () => {
   const environment = {
     HOME: "/users/me",
@@ -45,11 +43,16 @@ it("uses native configuration sources and isolates account selection without cha
 
 it("expands explicit native account paths and rejects relative account drift", () => {
   expect(
-    claudeEnvironment({ HOME: "/users/me" }, { ...instance, configDirectory: "~/work-claude" })
-      .CLAUDE_CONFIG_DIR,
+    claudeEnvironment(
+      { HOME: "/users/me" },
+      { ...instance, settings: { ...instance.settings, configDirectory: "~/work-claude" } },
+    ).CLAUDE_CONFIG_DIR,
   ).toBe(join("/users/me", "work-claude"));
   expect(() =>
-    claudeEnvironment({ HOME: "/users/me" }, { ...instance, configDirectory: "relative" }),
+    claudeEnvironment(
+      { HOME: "/users/me" },
+      { ...instance, settings: { ...instance.settings, configDirectory: "relative" } },
+    ),
   ).toThrow("must be absolute");
 });
 

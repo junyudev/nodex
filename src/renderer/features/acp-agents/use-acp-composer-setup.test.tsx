@@ -14,7 +14,10 @@ import {
   providerSnapshot,
   registryInstance,
 } from "./acp-agents.test-fixtures";
-import { useAcpComposerSetup } from "./use-acp-composer-setup";
+import { useComposerAgentSetup } from "../agent-readiness/use-composer-agent-setup";
+import { agentReadinessNotice } from "../local-conversation/agent-readiness-notice";
+import { getIntl } from "@/lib/i18n";
+import { AgentSettingsNavigationProvider } from "@/lib/agent-settings-navigation";
 
 const press = async (element: HTMLElement) =>
   act(async () => {
@@ -31,31 +34,42 @@ const scripted = registryInstance({
   source: { kind: "registry", agentId: "scripted", distribution: "auto" },
 });
 const binding = (instance: typeof qoder): AgentBackendBinding => ({
-  kind: "acp",
-  agentDefinitionId: instance.agentDefinitionId,
-  instanceConfigId: instance.id,
+  driver: "acpRegistry",
+  instanceId: instance.id,
 });
 
 function Composer({
   owner,
   providers,
-  openSettings,
 }: {
   readonly owner: AcpAgentsOwner;
   readonly providers: readonly AcpProviderSnapshot[];
-  readonly openSettings: (instanceId: string) => void;
 }) {
-  const { setups, notice } = useAcpComposerSetup({
-    owner,
-    providers,
+  const setup = useComposerAgentSetup({
+    hosted: false,
+    acpOwner: owner,
     instances: [
       { binding: binding(qoder), label: "Qoder", enabled: true },
       { binding: binding(scripted), label: "Scripted", enabled: true },
-      { binding: { kind: "codex" }, label: "Codex", enabled: true },
     ],
-    selected: binding(qoder),
-    openSettings,
+    refreshCatalog: () => {},
+    checkCatalogAgain: async () => {},
   });
+  const setups = setup.setupRows(providers);
+  const selected = binding(qoder);
+  const readiness = setup.read(
+    selected,
+    providers.find(({ instanceId }) => instanceId === selected.instanceId),
+  );
+  const notice = readiness
+    ? agentReadinessNotice(
+        selected.instanceId,
+        "Qoder",
+        readiness,
+        () => setup.run(selected, readiness.action),
+        getIntl(),
+      )
+    : null;
   return (
     <NodexTooltipProvider delay={0}>
       <ul aria-label="Setup">
@@ -101,7 +115,11 @@ describe("ACP setup in the Composer", () => {
     });
     const openSettings = vi.fn();
     const view = renderWithAppMaitai(
-      <Composer owner={owner} providers={providers} openSettings={openSettings} />,
+      <AgentSettingsNavigationProvider
+        openAgentSettings={(_, instanceId) => openSettings(instanceId)}
+      >
+        <Composer owner={owner} providers={providers} />
+      </AgentSettingsNavigationProvider>,
     );
     expect(view.getByRole("list", { name: "Setup" }).textContent).toBe(
       "Qoder: Sign inScripted: Install",
@@ -114,7 +132,7 @@ describe("ACP setup in the Composer", () => {
     await press(signIn);
     await waitFor(() =>
       expect(main.accounts.start).toHaveBeenCalledWith({
-        backend: { kind: "acp", instanceConfigId: "qoder-main" },
+        backend: { driver: "acpRegistry", instanceId: "qoder-main" },
         methodId: "agent",
       }),
     );

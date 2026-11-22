@@ -25,7 +25,7 @@ import type {
   NativeSessionCatalogInput,
   NativeSessionCatalogPage,
 } from "../../../shared/native-session-catalog";
-import type { ClaudeAgentSettings, Project, ProjectWindow } from "../../../shared/types";
+import type { Project, ProjectWindow } from "../../../shared/types";
 import {
   nativeConversationImportLedger,
   nativeConversationImportedCopy,
@@ -72,14 +72,16 @@ import {
   type ConversationImportDestinations,
   type ConversationImportRowState,
 } from "./conversation-import-list";
-import { readClaudeAgentSettings } from "./workbench-settings-overlay-deps";
+import { readAgentProfiles } from "@/lib/agent-profiles-runtime";
+import { claudeAgent } from "../../../shared/agents/claude";
+import type { AgentProfile } from "../../../shared/agents/profiles";
 import type {
   SettingsOpenThread,
   SettingsSectionPageProps,
 } from "./workbench-settings-page-registry";
 
 export interface ConversationImportRuntime {
-  readonly profiles: () => Promise<ClaudeAgentSettings>;
+  readonly profiles: () => Promise<{ instances: AgentProfile<typeof claudeAgent.driver>[] }>;
   readonly projects: (after?: string | null) => Promise<ProjectWindow>;
   readonly list: (input: NativeSessionCatalogInput) => Promise<NativeSessionCatalogPage>;
   readonly preview: (
@@ -93,7 +95,7 @@ export interface ConversationImportRuntime {
 }
 
 const defaultRuntime: ConversationImportRuntime = {
-  profiles: readClaudeAgentSettings,
+  profiles: () => readAgentProfiles(claudeAgent.driver),
   projects: readNativeSessionProjects,
   list: listNativeSessions,
   preview: previewNativeConversationImport,
@@ -123,7 +125,9 @@ export function ConversationImportSettingsPage({
   readonly ledger?: NativeConversationImportLedger;
 }) {
   const intl = useIntl();
-  const [profiles, setProfiles] = useState<ClaudeAgentSettings | null>(null);
+  const [profiles, setProfiles] = useState<{
+    instances: AgentProfile<typeof claudeAgent.driver>[];
+  } | null>(null);
   const [profilesError, setProfilesError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectWindow | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);

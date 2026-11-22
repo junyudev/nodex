@@ -1,11 +1,10 @@
+import { AgentBackendBindingSchema } from "./agent-backend";
 import { z } from "zod";
 import type { AgentAccountOperations } from "../agent-accounts-api";
 
 const id = z.string().trim().min(1).max(256);
 const target = {
-  backend: z
-    .object({ kind: z.enum(["acp", "antigravity"]), instanceConfigId: id.max(128) })
-    .strict(),
+  backend: AgentBackendBindingSchema,
 };
 const flow = { ...target, flowId: id };
 const response = z.discriminatedUnion("type", [

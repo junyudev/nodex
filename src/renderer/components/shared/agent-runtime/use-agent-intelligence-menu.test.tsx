@@ -17,9 +17,9 @@ import {
   type AgentIntelligenceMenu,
 } from "./use-agent-intelligence-menu";
 
-const CODEX = { kind: "codex" } as const;
-const CLAUDE = { kind: "claude", instanceConfigId: "work" } as const;
-const OPENCODE = { kind: "opencode", instanceConfigId: "local" } as const;
+const CODEX = { driver: "codex", instanceId: "codex" } as const;
+const CLAUDE = { driver: "claudeAgent", instanceId: "work" } as const;
+const OPENCODE = { driver: "opencode", instanceId: "local" } as const;
 
 function modelWithEffort(id: string) {
   return {
@@ -163,7 +163,7 @@ test("uses Codex's default slider position and applies effort and speed to the s
 
 test.each([
   [OPENCODE, "variant"],
-  [{ kind: "antigravity", instanceConfigId: "work" } as const, "thinking_level"],
+  [{ driver: "antigravity", instanceId: "work" } as const, "thinking_level"],
 ])(
   "projects %o's thought-level select from the same choices used in the footer",
   async (binding, optionId) => {
@@ -207,7 +207,7 @@ test.each([
         },
         models: [],
         selection: {
-          kind: binding.kind,
+          kind: binding.driver,
           model: "model",
           reasoningEffort: "none",
           serviceTier: null,
@@ -251,11 +251,16 @@ test("queues native changes, shows their intent, and rejects writes without bloc
   const props = {
     models: [model],
     agent: { binding: CLAUDE, label: "Work" },
-    selection: { kind: "claude", model: model.id, reasoningEffort: "medium", serviceTier: null },
+    selection: {
+      kind: "claudeAgent",
+      model: model.id,
+      reasoningEffort: "medium",
+      serviceTier: null,
+    },
     onSelectionChange: () => {},
     provider: {
       label: "Work",
-      selection: "claude",
+      selection: "claudeAgent",
       nativeIntelligence: {
         selected: { thinking: true },
         capabilities: { disableThinking: true, fastMode: true, ultracode: true },

@@ -67,7 +67,7 @@ const coreThread = (threadId: string, overrides: Partial<CoreThread> = {}): Core
     agent_path: null,
     thread_name: threadId,
     thread_preview: "",
-    backend_binding: { kind: "codex" },
+    backend_binding: { driver: "codex", instanceId: "codex" },
     model_id: "gpt-test",
     reasoning_effort: "high",
     service_tier: null,
@@ -1166,11 +1166,7 @@ it.effect("never admits an ACP Thread to any Codex directory fidelity", () =>
         [
           "thread-acp",
           coreThread("thread-acp", {
-            backend_binding: {
-              kind: "acp",
-              agent_definition_id: "claude-code",
-              instance_config_id: null,
-            },
+            backend_binding: { driver: "acpRegistry", instanceId: "claude-code" },
           }),
         ],
       ]);

@@ -8,7 +8,6 @@ import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 import type { ConversationAgent } from "../../../../../shared/conversation-identity";
 import {
-  agentHarnessAccent,
   agentIdentityText,
   type AgentIdentityPresentation,
 } from "../../agent-identity-presentation";
@@ -254,7 +253,7 @@ function DelegationEdge({
   readonly returnPath: string;
   readonly reducedMotion: boolean;
 }) {
-  const color = agentHarnessAccent(useAgentIdentity(agent)?.kind ?? null) ?? NEUTRAL_EDGE;
+  const color = useAgentIdentity(agent)?.accent ?? NEUTRAL_EDGE;
   // Only a result seen arriving is sent back along the edge; one that was already in is not.
   const [arrival] = useState(() => ({ watched: state === "flowing" || state === "paused" }));
   if (state === "ended")
@@ -373,11 +372,11 @@ function HarnessMark({
   readonly agent: ConversationAgent | null | undefined;
   readonly identity: AgentIdentityPresentation | null;
 }) {
-  if (!identity?.kind) return null;
+  if (!identity?.driver) return null;
   return (
     <span className="flex w-4.5 shrink-0 justify-center">
       <AgentInstanceIcon
-        binding={{ kind: identity.kind, runtimeInstanceId: agent?.providerInstanceId ?? undefined }}
+        binding={{ driver: identity.driver, instanceId: agent?.providerInstanceId ?? undefined }}
         className="size-3.5"
       />
     </span>
@@ -549,7 +548,10 @@ function DelegationNodeCard({
       : "cursor-default",
   );
   return (
-    <div className="group/node relative size-full" data-agent-kind={identity?.kind ?? undefined}>
+    <div
+      className="group/node relative size-full"
+      data-agent-driver={identity?.driver ?? undefined}
+    >
       {row.canOpen ? (
         <button
           type="button"

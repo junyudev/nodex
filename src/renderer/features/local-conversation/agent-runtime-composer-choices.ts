@@ -5,7 +5,6 @@ import { rendererSpace } from "@/lib/renderer-space";
 import type { SpaceConnectionSummary } from "../../../shared/space-connection";
 import { spaceStorageKeyFor } from "../../../shared/space-personal-state";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
   AgentRuntimeComposerChoiceSchema,
@@ -57,7 +56,7 @@ export function rememberedAgentModelOptions(
   memory: AgentRuntimeModelOptionMemory,
   chosen: Pick<AgentModelSelection, "binding" | "model">,
 ): ModelOptions | undefined {
-  const instanceId = agentRuntimeProviderId(chosen.binding);
+  const instanceId = chosen.binding.instanceId;
   return instanceId ? memory[instanceId]?.[chosen.model] : undefined;
 }
 
@@ -66,7 +65,7 @@ export function rememberAgentModelOptions(
   current: AgentRuntimeModelOptionMemory,
   chosen: AgentModelSelection,
 ): AgentRuntimeModelOptionMemory {
-  const instanceId = agentRuntimeProviderId(chosen.binding);
+  const instanceId = chosen.binding.instanceId;
   if (!instanceId) return current;
   const { [chosen.model]: _previous, ...others } = current[instanceId] ?? {};
   const models = Object.fromEntries(

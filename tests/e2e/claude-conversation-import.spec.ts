@@ -5,7 +5,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type {
   NativeConversationImportPreviewResult,
   NativeConversationImportInput,
@@ -106,13 +105,15 @@ test("imports Claude history as an independent executable copy with a replacemen
       writeFileSync(executable, `#!${process.execPath}\nimport(${JSON.stringify(peer)});\n`, {
         mode: 0o755,
       });
-      await invokeIpc(page, "settings:claude-agents:update", {
+      await invokeIpc(page, "settings:agent-profiles:update", {
+        driver: "claudeAgent",
         instances: [
           {
+            driver: "claudeAgent",
+            settings: { configDirectory: nativeHome, customModels: [] },
             id: "native-work",
             displayName: "Work",
             binaryPath: executable,
-            configDirectory: nativeHome,
             enabled: true,
             environment: [],
           },
@@ -184,9 +185,7 @@ test("imports Claude history as an independent executable copy with a replacemen
       const execution = { sessionId: imported.sessionId, threadId: imported.threadId };
       const copied = await readRuntimeConversation(page, execution);
       expect(copied.snapshot.projection.runs).toEqual([]);
-      expect(copied.snapshot.projection.thread.modelSelection.instanceId).toBe(
-        agentRuntimeProviderId({ kind: "claude", instanceConfigId: "native-work" }),
-      );
+      expect(copied.snapshot.projection.thread.modelSelection.instanceId).toBe("native-work");
       const items = copied.snapshot.projection.visibleTurnItems.map((row) => row.item);
       const user = items.find((item) => item.type === "user_message");
       expect(user?.type).toBe("user_message");

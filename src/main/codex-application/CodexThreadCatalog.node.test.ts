@@ -50,13 +50,7 @@ const emptyCoreWindow = (kind: "project_window" | "sidebar_overview" | "task_win
 
 const coreTask = (
   threadId: string,
-  backendBinding:
-    | { readonly kind: "codex" }
-    | {
-        readonly kind: "acp";
-        readonly agent_definition_id: string;
-        readonly instance_config_id: string | null;
-      },
+  backendBinding: { readonly driver: string; readonly instanceId: string },
 ) => ({
   session: {
     id: `session-${threadId}`,
@@ -105,7 +99,7 @@ const coreTask = (
 });
 
 const runtimeTask = (sessionId: string) => {
-  const task = coreTask(`unused-${sessionId}`, { kind: "codex" });
+  const task = coreTask(`unused-${sessionId}`, { driver: "codex", instanceId: "codex" });
   return {
     session: {
       ...task.session,
@@ -121,12 +115,8 @@ const runtimeTask = (sessionId: string) => {
 const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
   const tasks = {
     items: [
-      coreTask("thread-codex", { kind: "codex" }),
-      coreTask("thread-acp", {
-        kind: "acp",
-        agent_definition_id: "claude-code",
-        instance_config_id: null,
-      }),
+      coreTask("thread-codex", { driver: "codex", instanceId: "codex" }),
+      coreTask("thread-acp", { driver: "acpRegistry", instanceId: "claude-code" }),
       ...(kind === "task_window" ? [runtimeTask("session-runtime")] : []),
     ],
     next_cursor: null,
@@ -190,7 +180,7 @@ it.effect("moves a Thread across Projects while preserving its physical workspac
       const applied: Array<{ intent: Record<string, unknown> }> = [];
       let moved = false;
       const sourceThread = {
-        ...coreTask("thread-move", { kind: "codex" }).thread,
+        ...coreTask("thread-move", { driver: "codex", instanceId: "codex" }).thread,
         project_id: "project-a",
         cwd: "/workspace/a",
         pinned_order: null,
@@ -272,7 +262,7 @@ it.effect("unpins a moved chat before applying its manual destination placement"
               value: {
                 kind,
                 thread: {
-                  ...coreTask("thread-move", { kind: "codex" }).thread,
+                  ...coreTask("thread-move", { driver: "codex", instanceId: "codex" }).thread,
                   project_id: projectId,
                   pinned_order: pinned ? 0 : null,
                   has_unread_turn: false,

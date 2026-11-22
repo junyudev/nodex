@@ -11,7 +11,6 @@ import {
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import type { ScriptedAcpScenario } from "../../scripts/scenarios/runtime/scripted-acp-agent";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { invokeIpc } from "./support/editor-scenario";
 import { MobilePhone, type PhoneChannel } from "./support/mobile-phone";
@@ -414,11 +413,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
     });
 
     await test.step("start a chat and follow patches through approval and a follow-up", async () => {
-      const providerInstanceId = agentRuntimeProviderId({
-        kind: "acp",
-        instanceConfigId: instanceId,
-        agentDefinitionId,
-      })!;
+      const providerInstanceId = instanceId!;
       const catalog = await connected.request("agents.catalog", {});
       const provider = catalog.providers.find(
         (provider) => provider.instanceId === providerInstanceId,

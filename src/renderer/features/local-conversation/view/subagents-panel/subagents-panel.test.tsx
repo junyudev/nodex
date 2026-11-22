@@ -149,7 +149,12 @@ test("marks each subagent's harness beside its model, and leaves unknown Agents 
   const claude: CodexSubagentOverviewRow = {
     ...buildRow(2, "active"),
     displayName: "Copy review",
-    agent: { kind: "claude", providerInstanceId: null, model: "claude-sonnet-5-5", effort: null },
+    agent: {
+      kind: "claudeAgent",
+      providerInstanceId: null,
+      model: "claude-sonnet-5-5",
+      effort: null,
+    },
   };
   const view = render(
     <SubagentsPanelOverviewContent
@@ -161,7 +166,7 @@ test("marks each subagent's harness beside its model, and leaves unknown Agents 
   const row = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
   expect(within(row("WebAuthn routes")).getByText("GPT-6.1 Sol")).toBeTruthy();
   expect(row("WebAuthn routes").querySelector('[data-agent-identity="codex"] svg')).not.toBeNull();
-  expect(row("Copy review").querySelector('[data-agent-identity="claude"]')).not.toBeNull();
+  expect(row("Copy review").querySelector('[data-agent-identity="claudeAgent"]')).not.toBeNull();
   expect(row("active 3").querySelector("[data-agent-identity]")).toBeNull();
   view.unmount();
 });
@@ -638,7 +643,7 @@ describe("the overview as a map", () => {
       title: "Passkey sign-in",
       role: "chat",
       agent: {
-        kind: "claude",
+        kind: "claudeAgent",
         providerInstanceId: null,
         model: "claude-opus-5-5",
         effort: "high",
@@ -686,7 +691,7 @@ describe("the overview as a map", () => {
     const node = (name: string) => card(name).closest("[data-delegation-node]") as HTMLElement;
     expect(node("WebAuthn routes").dataset.delegationEdge).toBe("returned");
     expect(node("Passkey docs").dataset.delegationEdge).toBe("flowing");
-    expect(card("Passkey docs").parentElement?.dataset.agentKind).toBe("opencode");
+    expect(card("Passkey docs").parentElement?.dataset.agentDriver).toBe("opencode");
 
     fireEvent.click(card("Sign-in tests"));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ threadId: "active-3" }));
@@ -714,7 +719,7 @@ describe("the overview as a map", () => {
     expect(within(card("Research batch")).getByText("Antigravity")).toBeTruthy();
     expect(within(card("Research batch")).getByText("Idle")).toBeTruthy();
     expect(node("Research batch").dataset.delegationEdge).toBe("returned");
-    expect(card("Layout pass").parentElement?.dataset.agentKind).toBe("antigravity");
+    expect(card("Layout pass").parentElement?.dataset.agentDriver).toBe("antigravity");
     expect(node("Layout pass").dataset.delegationEdge).toBe("flowing");
     view.unmount();
   });

@@ -430,7 +430,7 @@ export const make: Effect.Effect<
       for (const { task } of response.value.sessions.items) {
         if (
           task.thread?.execution_host_id !== hostId ||
-          task.thread.backend_binding.kind !== "codex"
+          task.thread.backend_binding.driver !== "codex"
         )
           continue;
         tasks.push({

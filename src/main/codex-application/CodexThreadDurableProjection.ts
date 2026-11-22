@@ -102,7 +102,7 @@ const isCoreNotFound = (cause: unknown): boolean =>
 
 const acceptsTerminalOwner = (thread: CoreThread | null, hostId: string): boolean =>
   thread === null ||
-  (thread.backend_binding.kind === "codex" &&
+  (thread.backend_binding.driver === "codex" &&
     (thread.execution_host_id.trim() || DEFAULT_CODEX_HOST_ID) ===
       (hostId.trim() || DEFAULT_CODEX_HOST_ID));
 

@@ -178,7 +178,10 @@ const harness = (
                             thread: {
                               thread_id: task.threadId,
                               execution_host_id: "local",
-                              backend_binding: { kind: backendKind },
+                              backend_binding: {
+                                driver: backendKind === "acp" ? "acpRegistry" : backendKind,
+                                instanceId: backendKind,
+                              },
                             },
                           },
                         },
@@ -331,12 +334,8 @@ const harness = (
           executionHostId: "local",
           backendBinding:
             backendKind === "codex"
-              ? { kind: "codex" }
-              : {
-                  kind: "acp",
-                  agentDefinitionId: "claude-agent-acp",
-                  instanceConfigId: "claude-main",
-                },
+              ? { driver: "codex", instanceId: "codex" }
+              : { driver: "acpRegistry", instanceId: "claude-main" },
         },
       } as never),
   } as unknown as CodexThreadDirectory["Service"]);

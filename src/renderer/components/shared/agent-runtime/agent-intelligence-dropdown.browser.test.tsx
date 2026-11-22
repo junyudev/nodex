@@ -41,7 +41,7 @@ test("selects effort with the pointer after a model change commits", async () =>
         selectedModel: committed.model,
         selectedReasoningEffort: "medium",
         availableModels: models,
-        provider: { kind: "claude", selection: "claude" },
+        provider: { kind: "claudeAgent", selection: "claudeAgent" },
       } as ThreadFooterModel,
       {
         onIntelligenceSelectionChange: (selection: AgentIntelligenceSelection) =>
@@ -58,14 +58,14 @@ test("selects effort with the pointer after a model change commits", async () =>
         <div style={{ position: "fixed", bottom: 100, right: 200 }}>
           <AgentIntelligenceDropdown
             models={models}
-            agent={{ binding: { kind: "claude", instanceConfigId: "claude" }, label: "Claude" }}
+            agent={{ binding: { driver: "claudeAgent", instanceId: "claude" }, label: "Claude" }}
             selection={controller.selection}
             onSelectionChange={controller.select}
             open={controller.isOpen}
             onOpenChange={controller.setOpen}
             provider={{
               label: "Claude",
-              selection: "claude",
+              selection: "claudeAgent",
               nativeIntelligence: {
                 selected: { thinking: true, fast: false },
                 capabilities: { fastMode: committed.fastMode },
@@ -107,7 +107,7 @@ test("opens the model menu without widening the button, aligned to its trailing 
   function Probe() {
     const [open, setOpen] = useState(false);
     const [selection, setSelection] = useState<AgentIntelligenceSelection>({
-      kind: "claude",
+      kind: "claudeAgent",
       model: "claude-opus-5",
       reasoningEffort: "medium",
       serviceTier: null,
@@ -118,12 +118,12 @@ test("opens the model menu without widening the button, aligned to its trailing 
         <div style={{ position: "fixed", bottom: 100, right: 16 }}>
           <AgentIntelligenceDropdown
             models={models}
-            agent={{ binding: { kind: "claude", instanceConfigId: "claude" }, label: "Claude" }}
+            agent={{ binding: { driver: "claudeAgent", instanceId: "claude" }, label: "Claude" }}
             selection={selection}
             onSelectionChange={setSelection}
             open={open}
             onOpenChange={setOpen}
-            provider={{ label: "Claude", selection: "claude" }}
+            provider={{ label: "Claude", selection: "claudeAgent" }}
           />
         </div>
       </NodexTooltipProvider>

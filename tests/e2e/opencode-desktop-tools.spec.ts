@@ -4,7 +4,6 @@ import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { startScriptedChatCompletionsServer } from "../../scripts/scenarios/runtime/scripted-chat-completions-server";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../src/shared/model-policy";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { invokeIpc } from "./support/agent-smoke-harness";
 import { chooseComposerModel, refreshComposerModels } from "./support/composer-model-picker";
 import {
@@ -164,15 +163,16 @@ for (const scenario of ["browser", "approval", "unavailable"] as const) {
             const configDir = path.join(profileDirectory, "config", "opencode");
             fs.mkdirSync(configDir, { recursive: true });
             fs.writeFileSync(path.join(configDir, "opencode.json"), JSON.stringify(config));
-            await invokeIpc(page, "settings:opencode-agents:update", {
+            await invokeIpc(page, "settings:agent-profiles:update", {
+              driver: "opencode",
               instances: [
                 {
-                  id: "opencode-default",
+                  driver: "opencode",
+                  settings: { profileDirectory, serverUrl: null },
+                  id: "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw",
                   displayName: "OpenCode Desktop fixture",
                   enabled: true,
                   binaryPath,
-                  profileDirectory,
-                  serverUrl: null,
                   environment: Object.entries({
                     OPENCODE_DISABLE_MODELS_FETCH: "true",
                     OPENCODE_DISABLE_FREE_MODELS: "true",
@@ -184,10 +184,7 @@ for (const scenario of ["browser", "approval", "unavailable"] as const) {
                 },
               ],
             });
-            const instanceId = agentRuntimeProviderId({
-              kind: "opencode",
-              instanceConfigId: "opencode-default",
-            });
+            const instanceId = "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw";
             if (!instanceId) throw new Error("OpenCode fixture instance has no Runtime identity");
             // A new OpenCode model is off until explicitly enabled in this disposable Profile.
             await invokeIpc(

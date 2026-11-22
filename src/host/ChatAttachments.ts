@@ -238,7 +238,7 @@ export const make = Effect.gen(function* () {
     if (
       !native ||
       chat.executionRef ||
-      thread?.backendBinding.kind !== "codex" ||
+      thread?.backendBinding.driver !== "codex" ||
       input.sourceThreadId !== thread.threadId
     )
       return yield* unavailable();

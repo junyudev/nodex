@@ -76,7 +76,10 @@ const setup = (
                   thread:
                     options.denied || (options.changed && reads > 1)
                       ? null
-                      : { thread_id: "target-thread", backend_binding: { kind: "codex" } },
+                      : {
+                          thread_id: "target-thread",
+                          backend_binding: { driver: "codex", instanceId: "codex" },
+                        },
                 },
               };
             }),

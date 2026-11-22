@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vite-plus/test";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { resolveInboxModel, type InboxAgentChoice } from "../../../shared/inbox";
 import {
   chooseInboxModel,
@@ -86,7 +85,7 @@ describe("what an Inbox chat runs on", () => {
     });
     expect(
       chooseInboxModel(priorityCatalog, chosen, {
-        binding: { kind: "codex" },
+        binding: { driver: "codex", instanceId: "codex" },
         model: "gpt-6-astra",
       }).serviceTier,
     ).toBe("fast");
@@ -139,7 +138,7 @@ describe("what an Inbox chat runs on", () => {
   test("names a configured Claude account and its effort", () => {
     const catalog = inboxAgentsFixture();
     const shown = describeInboxAgent(catalog, codex({ instanceId: CLAUDE_INSTANCE_ID }));
-    expect(shown.kind).toBe("claude");
+    expect(shown.kind).toBe("claudeAgent");
     expect(inboxAgentLine(shown)).toBe("Work · Opus 5.5 · High");
   });
 
@@ -236,7 +235,10 @@ describe("choosing in the Inbox's model menu", () => {
       (candidate) => candidate.model.id === "gpt-6.1-sol",
     );
     expect(entry?.model.displayName).toBe("GPT-6.1 Sol");
-    expect(entry?.selection).toEqual({ binding: { kind: "codex" }, model: "gpt-6.1-sol" });
+    expect(entry?.selection).toEqual({
+      binding: { driver: "codex", instanceId: "codex" },
+      model: "gpt-6.1-sol",
+    });
   });
 
   test("lists every configured Agent's models and marks the resolved default", () => {
@@ -246,15 +248,18 @@ describe("choosing in the Inbox's model menu", () => {
       "Codex:gpt-6-luna",
       "Work:claude-opus-5-5",
     ]);
-    expect(picker.selected).toEqual({ binding: { kind: "codex" }, model: "gpt-6-astra" });
+    expect(picker.selected).toEqual({
+      binding: { driver: "codex", instanceId: "codex" },
+      model: "gpt-6-astra",
+    });
     expect(picker.reasoningEffort).toBe("medium");
   });
 
   test("offers suggestions only on Agents that can write them", () => {
-    const binding = { kind: "opencode", instanceConfigId: "work" } as const;
+    const binding = { driver: "opencode", instanceId: "work" } as const;
     const opencode = {
       ...codexProvider(),
-      instanceId: agentRuntimeProviderId(binding)!,
+      instanceId: binding.instanceId!,
       driver: "opencode",
       displayName: "OpenCode",
     };
@@ -280,7 +285,10 @@ describe("choosing in the Inbox's model menu", () => {
       serviceTier: null,
     });
     expect(
-      chooseInboxModel(catalog, chosen, { binding: { kind: "codex" }, model: "gpt-6-luna" }),
+      chooseInboxModel(catalog, chosen, {
+        binding: { driver: "codex", instanceId: "codex" },
+        model: "gpt-6-luna",
+      }),
     ).toEqual(codex({ model: "gpt-6-luna" }));
   });
 });

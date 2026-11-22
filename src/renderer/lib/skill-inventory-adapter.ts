@@ -80,7 +80,7 @@ export function subscribeComposerSkillInvalidation(
 }
 
 export function subscribeSkillScopeChanges(projectId: string | null, listener: () => void) {
-  const stopProfiles = window.api?.on("claude-agent-settings-changed", listener);
+  const stopProfiles = window.api?.on("agent-settings-changed", listener);
   const stopProjects = window.api?.on("projects-changed", (raw) => {
     const event = raw as IpcEvents["projects-changed"];
     if (

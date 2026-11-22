@@ -13,7 +13,7 @@ import {
 import { AgentProviderIcon, CompactChevronDownIcon } from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
-import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { useMountAction } from "@/lib/use-mount-action";
 import {
@@ -282,7 +282,10 @@ export function InboxAgentPicker({
             : null,
         choose: (selection) => onChange(chooseInboxModel(agents, value, selection)),
         refresh: agents.refresh,
-        manage: () => openAgentSettings?.(model.kind),
+        manage: () => {
+          const target = agentSettingsTarget(model.selected.binding);
+          openAgentSettings?.(target.kind, target.instanceId);
+        },
         configOptions: model.configOptions,
         toggles,
         changeConfig: async (_id, next) => {

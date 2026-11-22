@@ -57,33 +57,31 @@ describe("Automation tool input", () => {
   });
 
   it("accepts an exact ACP instance without treating a missing instance as a default", () => {
-    const backendBinding = {
-      kind: "acp",
-      agentDefinitionId: "scripted-agent",
-      instanceConfigId: "personal",
-    };
+    const backendBinding = { driver: "acpRegistry", instanceId: "personal" };
     expect(automationSchema.parse({ ...cron, backendBinding })).toMatchObject({ backendBinding });
     expect(automationSchema.parse({ ...heartbeat, backendBinding })).toMatchObject({
       backendBinding,
     });
-    for (const instanceConfigId of [null, undefined, "", " "]) {
+    for (const instanceId of [null, undefined, "", " "]) {
       expect(
         automationSchema.safeParse({
           ...cron,
-          backendBinding: { ...backendBinding, instanceConfigId },
+          backendBinding: { ...backendBinding, instanceId },
         }).success,
       ).toBe(false);
     }
   });
 
-  it("retains exact configured native Agent instances in Automations and proposed edits", () => {
-    for (const kind of ["claude", "opencode"] as const) {
-      const backendBinding = { kind, instanceConfigId: "configured-instance" };
+  it("retains exact configured and unfamiliar Agent instances in Automations and proposed edits", () => {
+    for (const driver of ["claudeAgent", "opencode", "futureAgent"] as const) {
+      const backendBinding = { driver, instanceId: "configured-instance" };
       expect(automationSchema.parse({ ...cron, backendBinding })).toMatchObject({ backendBinding });
       expect(
         automationSchema.parse({ ...heartbeat, operation: "suggested_create", backendBinding }),
       ).toMatchObject({ backendBinding });
-      expect(automationSchema.safeParse({ ...cron, backendBinding: { kind } }).success).toBe(false);
+      expect(automationSchema.safeParse({ ...cron, backendBinding: { driver } }).success).toBe(
+        false,
+      );
     }
   });
 
@@ -111,7 +109,7 @@ describe("Automation tool input", () => {
     }
   });
 
-  it("rejects mixed targets, unsupported backends, caller authority, and unimplemented modes", () => {
+  it("rejects mixed targets, malformed bindings, caller authority, and unimplemented modes", () => {
     for (const input of [
       { ...cron, projectId: undefined },
       { ...cron, executionEnvironment: undefined },
@@ -119,7 +117,7 @@ describe("Automation tool input", () => {
       { ...heartbeat, projectId: "project-1" },
       { ...heartbeat, cwds: ["/workspace"] },
       { ...heartbeat, targetThreadId: "thread-1" },
-      { ...heartbeat, backendBinding: { kind: "acp", agentDefinitionId: "agent-1" } },
+      { ...heartbeat, backendBinding: { driver: "acpRegistry", instanceId: "1-invalid" } },
       { ...heartbeat, authority: { scope: "library" } },
       { operation: "view", id: "automation-1", operationId: "unexpected" },
     ]) {

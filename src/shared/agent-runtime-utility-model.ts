@@ -1,3 +1,4 @@
+import { agentDefinition } from "./agents/registry";
 import type { AgentCommand, AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { isModelOn, modelIsOn, spendsNodexCredit, type ModelPolicy } from "./model-policy";
 
@@ -76,9 +77,9 @@ export const economicalUtilityModel = <Model extends { readonly slug: string }>(
   readonly driver: string;
   readonly models: readonly Model[];
 }): Model | undefined =>
-  provider.driver === "codex"
+  agentDefinition(provider.driver).capabilities.utilityModels === "codex"
     ? provider.models.find((model) => model.slug === "gpt-6-luna")
-    : provider.driver === "claudeAgent"
+    : agentDefinition(provider.driver).capabilities.utilityModels === "claude"
       ? (provider.models.find((model) => /haiku/i.test(model.slug)) ??
         provider.models.find((model) => /sonnet/i.test(model.slug)))
       : undefined;

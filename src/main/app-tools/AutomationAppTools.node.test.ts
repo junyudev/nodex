@@ -25,7 +25,6 @@ import {
   AgentRuntimeApplicationError,
 } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { CoreModuleResponseError } from "../core-client/core-client";
 
 const authority: NodexAgentTurnContext = {
@@ -95,7 +94,7 @@ const item: Automation = {
   model: "chosen-model",
   reasoningEffort: "ultra",
   serviceTier: "priority",
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   cwds: ["/workspace/project-a"],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
@@ -117,9 +116,12 @@ const setup = (
       automations: { get: () => Effect.succeed(item), ...definitions },
     } as never),
     Effect.provideService(ProjectWorkspace, {
-      getThread: () => Effect.succeed({ backendBinding: { kind: "codex" } } as never),
+      getThread: () =>
+        Effect.succeed({ backendBinding: { driver: "codex", instanceId: "codex" } } as never),
       getProjectSession: () =>
-        Effect.succeed({ thread: { backendBinding: { kind: "codex" } } } as never),
+        Effect.succeed({
+          thread: { backendBinding: { driver: "codex", instanceId: "codex" } },
+        } as never),
       ...options.workspace,
     } as ProjectWorkspaceService),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
@@ -195,12 +197,14 @@ it.effect(
             Effect.succeed({
               thread: {
                 providerInstanceId: target.execution?.threadId === "child" ? instanceId : "codex",
+                providerDriver: "codex",
               },
             }),
           catalog: () =>
             Effect.succeed([
               {
                 instanceId,
+                driver: "codex",
                 enabled: true,
                 installed: true,
                 status: "ready",
@@ -229,7 +233,7 @@ it.effect(
       });
       assert.isUndefined(result.isError);
       assert.deepInclude(definitions[0], {
-        backendBinding: { kind: "codex", runtimeInstanceId: instanceId },
+        backendBinding: { driver: "codex", instanceId: instanceId },
       });
       assert.deepEqual(admissions, [
         [
@@ -293,7 +297,7 @@ it.effect("Run for another Member is directed to a suggestion for that Owner to 
       mode: "run",
       ownerMemberId: "member:b",
       runbookPageId: "runbook",
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
     });
   }),
 );
@@ -319,7 +323,9 @@ it.effect(
       } satisfies AutomationCreateInput;
       const result = yield* execute(input({ ...fields, operation: "create" }));
       assert.isUndefined(result.isError);
-      assert.deepEqual(received, [{ ...fields, backendBinding: { kind: "codex" } }]);
+      assert.deepEqual(received, [
+        { ...fields, backendBinding: { driver: "codex", instanceId: "codex" } },
+      ]);
     }),
 );
 
@@ -361,7 +367,7 @@ it.effect("an edit only another Owner may make is directed to a suggestion for t
     assert.deepEqual(proposed.structuredContent?.proposal, {
       ...fields,
       operation: "suggested_update",
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
     });
   }),
 );
@@ -450,7 +456,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     assert.deepStrictEqual(calls[0], calls[2]);
     assert.deepStrictEqual(calls[0], {
       operation: "create",
-      definition: { ...cron, backendBinding: { kind: "codex" } },
+      definition: { ...cron, backendBinding: { driver: "codex", instanceId: "codex" } },
       command: { operationId },
       provenance,
     });
@@ -476,7 +482,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
         id: item.id,
         status: "PAUSED",
         notificationPolicy: null,
-        backendBinding: { kind: "codex" },
+        backendBinding: { driver: "codex", instanceId: "codex" },
       },
       command: { operationId: updateId, expectedRevision: 1 },
       provenance,
@@ -548,8 +554,16 @@ it.effect("defaults Heartbeats to the caller's stable Session and preserves expl
     );
     assert.deepStrictEqual(lookups, [{ threadId: "thread:a", provenance }]);
     assert.deepStrictEqual(targets, [
-      { ...definition, targetSessionId: "session:caller", backendBinding: { kind: "codex" } },
-      { ...definition, targetSessionId: "session:other", backendBinding: { kind: "codex" } },
+      {
+        ...definition,
+        targetSessionId: "session:caller",
+        backendBinding: { driver: "codex", instanceId: "codex" },
+      },
+      {
+        ...definition,
+        targetSessionId: "session:other",
+        backendBinding: { driver: "codex", instanceId: "codex" },
+      },
     ]);
   }),
 );
@@ -633,7 +647,11 @@ it.effect("returns review proposals without mutation and rejects stale update pr
     const execute = yield* setup({ get: () => Effect.succeed(item) }, {});
     const created = yield* execute(input({ ...cron, operation: "suggested_create" }));
     assert.deepStrictEqual(created.structuredContent, {
-      proposal: { ...cron, operation: "suggested_create", backendBinding: { kind: "codex" } },
+      proposal: {
+        ...cron,
+        operation: "suggested_create",
+        backendBinding: { driver: "codex", instanceId: "codex" },
+      },
       committed: false,
     });
     const args = {
@@ -644,7 +662,7 @@ it.effect("returns review proposals without mutation and rejects stale update pr
       status: "PAUSED",
     };
     assert.deepStrictEqual((yield* execute(input(args))).structuredContent, {
-      proposal: { ...args, backendBinding: { kind: "codex" } },
+      proposal: { ...args, backendBinding: { driver: "codex", instanceId: "codex" } },
       committed: false,
     });
     assert.deepStrictEqual(
@@ -686,10 +704,18 @@ it.effect(
         } as never),
         Effect.provideService(AgentRuntimeApplication, {
           assertModelPolicy: () => Effect.void,
-          inspect: () => Effect.succeed({ thread: { providerInstanceId: "codex" } }),
+          inspect: () =>
+            Effect.succeed({ thread: { providerInstanceId: "codex", providerDriver: "codex" } }),
           catalog: () =>
             Effect.succeed([
-              { instanceId: "codex", models: [], enabled: true, installed: true, status: "ready" },
+              {
+                instanceId: "codex",
+                driver: "codex",
+                models: [],
+                enabled: true,
+                installed: true,
+                status: "ready",
+              },
             ]),
         } as never),
         Effect.provideService(AutomationApplication, {
@@ -720,7 +746,8 @@ it.effect(
         "runtime-session",
       );
       assert.deepEqual((definitions[0] as { backendBinding: unknown }).backendBinding, {
-        kind: "codex",
+        driver: "codex",
+        instanceId: "codex",
       });
     }),
 );
@@ -729,23 +756,19 @@ it.effect(
   "ACP callers keep their exact instance for Cron and Heartbeat tools and cannot schedule a disabled account",
   () =>
     Effect.gen(function* () {
-      const binding = {
-        kind: "acp",
-        agentDefinitionId: "scripted-agent",
-        instanceConfigId: "personal",
-      } as const;
-      const providerId = agentRuntimeProviderId(binding);
+      const binding = { driver: "acpRegistry", instanceId: "personal" } as const;
+      const providerId = binding.instanceId;
       const workHeartbeat: Automation = {
         ...item,
         id: "automation:work-heartbeat",
         kind: "heartbeat",
         targetSessionId: "work-session",
-        backendBinding: { ...binding, instanceConfigId: "work" },
+        backendBinding: { ...binding, instanceId: "work" },
       };
       let enabled = true;
       const definitions: Array<Parameters<Automations["create"]>[0]> = [];
       const caller = createHostedAppToolCaller({
-        backend: "acp",
+        backend: "acpRegistry",
         authority,
         callId: "acp-automation",
         generation: 1,
@@ -770,9 +793,7 @@ it.effect(
         Effect.provideService(ApplicationSettings, {
           snapshot: () =>
             Effect.succeed({
-              claudeAgents: { instances: [] },
-              openCodeAgents: { instances: [] },
-              antigravityAgents: { instances: [] },
+              agentProfiles: [],
               acpAgents: {
                 instances: ["personal", "work"].map((id) => ({
                   id,
@@ -784,11 +805,15 @@ it.effect(
         } as never),
         Effect.provideService(AgentRuntimeApplication, {
           assertModelPolicy: () => Effect.void,
-          inspect: () => Effect.succeed({ thread: { providerInstanceId: providerId } }),
+          inspect: () =>
+            Effect.succeed({
+              thread: { providerInstanceId: providerId, providerDriver: binding.driver },
+            }),
           catalog: () =>
             Effect.succeed([
               {
                 instanceId: providerId,
+                driver: binding.driver,
                 enabled: true,
                 installed: true,
                 status: "ready",
@@ -841,7 +866,7 @@ it.effect(
         ...heartbeat,
         operation: "create",
         name: "Wrong instance",
-        backendBinding: { ...binding, instanceConfigId: "work" },
+        backendBinding: { ...binding, instanceId: "work" },
       });
       assert.deepEqual(wrongInstance.structuredContent, { error: sessionAgent });
       assert.deepEqual(failureBody(wrongInstance), {

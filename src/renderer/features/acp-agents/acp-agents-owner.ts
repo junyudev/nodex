@@ -1,3 +1,4 @@
+import { newAgentInstanceId } from "../../../shared/agents/instance-id";
 import { agentAccountsRuntime, type AgentAccountsRuntime } from "../../lib/agent-accounts-runtime";
 import {
   createAgentAccountOwner,
@@ -180,7 +181,7 @@ export function createAcpAgentsOwner(input: {
   readonly now?: () => number;
 }): AcpAgentsOwner {
   const { runtime, journal } = input;
-  const createId = input.createId ?? (() => crypto.randomUUID());
+  const createId = input.createId ?? (() => newAgentInstanceId("acpRegistry"));
   const listeners = new Set<() => void>();
   let snapshot = EMPTY_SNAPSHOT;
   let stopChanges: (() => void) | null = null;
@@ -548,7 +549,7 @@ export function createAcpAgentsOwner(input: {
     const existing = accounts.get(instanceId);
     if (existing) return existing;
     const created = createAgentAccountOwner({
-      backend: { kind: "acp", instanceConfigId: instanceId },
+      backend: { driver: "acpRegistry", instanceId: instanceId },
       runtime: input.accountRuntime ?? agentAccountsRuntime,
       onSignedIn: () => {
         const activity = snapshot.activities.get(instanceId);

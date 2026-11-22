@@ -143,7 +143,7 @@ const materializePageFileProvenance = async (
   const attach = async (
     pageId: string,
     file: FileFixture,
-    attachedByAgent?: { readonly sessionId: string; readonly backend: "codex" | "claude" },
+    attachedByAgent?: { readonly sessionId: string; readonly driver: string },
   ) => {
     const fileId = createUuidV7();
     await port.createLibraryFile({
@@ -176,7 +176,7 @@ const materializePageFileProvenance = async (
   const reportFileIds: string[] = [];
   for (const file of reportFiles) {
     reportFileIds.push(
-      await attach(reportPageId, file, { sessionId: reportChat.sessionId, backend: "codex" }),
+      await attach(reportPageId, file, { sessionId: reportChat.sessionId, driver: "codex" }),
     );
   }
   const reportBody = await port.replaceOwnedDocument({
@@ -198,7 +198,7 @@ const materializePageFileProvenance = async (
   await attach(
     mixedPageId,
     { ...dark, path: "mockups/settings-dark.png" },
-    { sessionId: mixedChat.sessionId, backend: "claude" },
+    { sessionId: mixedChat.sessionId, driver: "claudeAgent" },
   );
   const light = await fixture("settings/settings-light.png", "image/png");
   const lightFileId = createUuidV7();

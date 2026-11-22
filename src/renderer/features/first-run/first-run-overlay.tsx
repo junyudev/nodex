@@ -1,4 +1,4 @@
-import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -184,9 +184,10 @@ function FirstRunFlow({
               <FirstRunAgentsStep
                 entry={entry}
                 onContinue={advance}
-                onOpenAgentSettings={() => {
+                onOpenAgentSettings={(binding) => {
                   void close(async () => {
-                    openAgentSettings?.("antigravity");
+                    const target = binding && agentSettingsTarget(binding);
+                    openAgentSettings?.(target?.kind, target?.instanceId);
                   });
                 }}
               />

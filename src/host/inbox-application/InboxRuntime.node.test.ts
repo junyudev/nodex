@@ -872,7 +872,7 @@ it.effect("persists remote uncertainty before submitting and never automatically
       thread: {
         threadId: "thread:remote",
         executionHostId: "ssh:remote",
-        backendBinding: { kind: "codex" },
+        backendBinding: { driver: "codex", instanceId: "codex" },
         archived: false,
         statusType: "idle",
       } as ProjectSession["thread"],
@@ -946,7 +946,7 @@ it.effect("a remote live acknowledgment remains unknown until durable evidence e
       thread: {
         threadId: "thread:remote",
         executionHostId: "ssh:remote",
-        backendBinding: { kind: "codex" },
+        backendBinding: { driver: "codex", instanceId: "codex" },
         archived: false,
         statusType: "idle",
       } as ProjectSession["thread"],

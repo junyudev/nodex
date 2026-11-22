@@ -10,7 +10,6 @@ import type {
   AcpAgentConfigurationStatus,
   AcpAgentInstanceConfig,
 } from "../../shared/acp-agent-settings";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 export type ProviderConfigurationResult = AgentRuntimeOperations["providers.configure"]["output"];
 
 export function acpConfigurationStatus(
@@ -20,19 +19,7 @@ export function acpConfigurationStatus(
   if (result === null) return { configurationStatus: "failed", deferredInstanceIds: [] };
   const deferred = new Set(result.deferredInstanceIds);
   const deferredInstanceIds = [
-    ...new Set(
-      instances
-        .filter((instance) =>
-          deferred.has(
-            agentRuntimeProviderId({
-              kind: "acp",
-              agentDefinitionId: instance.agentDefinitionId,
-              instanceConfigId: instance.id,
-            })!,
-          ),
-        )
-        .map(({ id }) => id),
-    ),
+    ...new Set(instances.filter((instance) => deferred.has(instance.id!)).map(({ id }) => id)),
   ];
   return {
     deferredInstanceIds,

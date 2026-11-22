@@ -159,6 +159,14 @@ with a concrete reason; broad file or
 directory suppressions require a scoped config override and an invariant-based
 rationale here.
 
+## Agent driver boundaries
+
+`vp run agent-drivers:verify` checks product TypeScript for driver literals outside Agent
+definitions and driver-owned modules. Shared behavior uses Agent definition capabilities or
+properties reported by the Runtime. The baseline records remaining literals by file
+and their purpose. Run `vp run agent-drivers:verify --update` after removing literals.
+The update refuses increases.
+
 ## Test timing
 
 The warning ratchet covers `*.test.ts`, `*.test.tsx`, `*.spec.ts`, and JS/TS

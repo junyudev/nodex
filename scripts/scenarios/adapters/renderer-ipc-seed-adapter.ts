@@ -692,7 +692,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       threadSource: "user",
       threadName: input.thread.threadName,
       threadPreview: input.thread.threadPreview,
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       statusType: input.thread.statusType,
       statusActiveFlags: [...input.thread.statusActiveFlags],
       createdAt: observedAt,

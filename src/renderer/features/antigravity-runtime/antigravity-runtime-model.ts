@@ -353,3 +353,51 @@ export function antigravityExecutableDescription(
     .filter(Boolean)
     .join(" · ");
 }
+
+/** Facts from installation inspection, independent of the Agent's account and models. */
+export function antigravityInstallationReadiness(
+  view: AntigravityRuntimeViewInput,
+  instanceId?: string,
+) {
+  const { inspection, operation } = view.state ?? {};
+  const choice = inspection?.instances.find((entry) => entry.instanceId === instanceId);
+  const executable = choice
+    ? choice.executablePath
+      ? choice
+      : null
+    : (inspection?.managed ?? inspection?.path);
+  const found = Boolean(executable);
+  if (inspection && executable) {
+    const version = antigravityRequiredVersion(executable.version, inspection);
+    if (version) return { problem: { kind: "needs-update", version }, found } as const;
+  }
+  if (
+    view.pending === "install" ||
+    (operation?.phase === "running" && operation.kind === "install")
+  ) {
+    const progress = operation?.progress;
+    return {
+      problem: {
+        kind: "installing",
+        ...(progress?.totalBytes
+          ? { progress: Math.min(1, progress.downloadedBytes / progress.totalBytes) }
+          : {}),
+      },
+      found,
+    } as const;
+  }
+  const failure =
+    view.error?.action === "install"
+      ? view.error.message
+      : operation?.kind === "install" && operation.phase === "failed"
+        ? operation.error?.message
+        : null;
+  if (failure)
+    return {
+      problem: { kind: "installation-failed", retry: "settings" },
+      detail: failure,
+      found,
+    } as const;
+  if (inspection && !executable) return { problem: { kind: "not-installed" }, found } as const;
+  return undefined;
+}

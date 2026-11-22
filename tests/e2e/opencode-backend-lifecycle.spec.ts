@@ -11,7 +11,6 @@ import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/rendere
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
 import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { waitForRuntimeCompletedAgentTurn } from "./support/agent-smoke-harness";
 import type { ProjectSession } from "../../src/shared/types";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
@@ -80,15 +79,16 @@ test("chooses an OpenCode model with native options before its first prompt and 
       new RendererIpcSeedAdapter(page),
       sourceRoot,
     );
-    await invoke(page, "settings:opencode-agents:update", {
+    await invoke(page, "settings:agent-profiles:update", {
+      driver: "opencode",
       instances: [
         {
-          id: "opencode-default",
+          driver: "opencode",
+          settings: { profileDirectory, serverUrl: null },
+          id: "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw",
           displayName: "OpenCode",
           enabled: true,
           binaryPath,
-          profileDirectory,
-          serverUrl: null,
           environment: [],
         },
       ],
@@ -158,9 +158,7 @@ test("chooses an OpenCode model with native options before its first prompt and 
     const target = { sessionId, threadId };
     const completed = await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
     const thread = completed.snapshot.projection.thread;
-    expect(thread.providerInstanceId).toBe(
-      agentRuntimeProviderId({ kind: "opencode", instanceConfigId: "opencode-default" }),
-    );
+    expect(thread.providerInstanceId).toBe("opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw");
     expect(thread.modelSelection).toMatchObject({ model: "moonshot/kimi-k3" });
     expect(thread.modelSelection.options).toEqual(
       expect.arrayContaining([expect.objectContaining({ value: "high" })]),

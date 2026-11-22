@@ -542,7 +542,7 @@ describe("buildComposerSlashCommands", () => {
   test("lists the intelligence menu's enabled models and puts off models in a search-only section", async () => {
     const current: AgentIntelligenceModelChoice = {
       key: "sonnet",
-      binding: { kind: "codex" },
+      binding: { driver: "codex", instanceId: "codex" },
       label: "Sonnet",
       detail: "Balanced",
       tooltip: null,

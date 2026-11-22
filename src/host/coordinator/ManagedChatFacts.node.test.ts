@@ -201,7 +201,7 @@ it.effect(
         resolve: () =>
           Effect.succeed({
             durable: {
-              backendBinding: { kind: "codex" },
+              backendBinding: { driver: "codex", instanceId: "codex" },
               executionHostId: "local",
               updatedAt: "2026-11-03T00:01:00Z",
             },

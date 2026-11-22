@@ -34,7 +34,7 @@ describe("automations/ask-in-inbox scenario", () => {
         expect(
           tasks.every(
             (task) =>
-              task.backendBinding.kind === "codex" &&
+              task.backendBinding.driver === "codex" &&
               task.model === "gpt-6.1-sol" &&
               task.reasoningEffort === "high",
           ),

@@ -140,7 +140,7 @@ export const live: Layer.Layer<
             );
           }
           const thread = snapshot.value.thread;
-          if (thread.backend_binding.kind !== "codex") {
+          if (thread.backend_binding.driver !== "codex") {
             return Effect.fail(
               error("read", threadId, new Error("Task handoff requires a native Codex Thread")),
             );

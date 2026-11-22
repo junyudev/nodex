@@ -986,9 +986,9 @@ test("imported native history pages remain readable without a Composer or execut
     runtime,
     executionAvailable: false,
     provider: {
-      kind: "claude",
+      kind: "claudeAgent",
       label: "Claude",
-      selection: "claude",
+      selection: "claudeAgent",
       commands: [],
     },
   });
@@ -1369,7 +1369,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       const attachment = { status: "attached" } as const;
       const connection = { status: "connected", retries: 0 } as const;
       const runtime: ConversationRuntime = {
-        kind: "claude",
+        kind: "claudeAgent",
         hostId: "local",
         read: (id) => (id === parent.threadId ? parent : (observations.get(id ?? "") ?? null)),
         subscribe: () => () => {},
@@ -1393,7 +1393,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
           onOpenThread,
           summaryPanelOpen: true,
           provider: {
-            kind: "claude",
+            kind: "claudeAgent",
             label: "Claude",
             selection: "claude:work",
             commands: [],
@@ -1532,7 +1532,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(runtime.resume).not.toHaveBeenCalled();
   });
 
-  test.each(["claude", "acp"] as const)(
+  test.each(["claudeAgent", "acpRegistry"] as const)(
     "active skill reload uses the provider's discovery owner (%s)",
     async (kind) => {
       invokeCalls = [];
@@ -1565,25 +1565,25 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         provider: {
           kind,
           label: kind,
-          selection: `${kind}:work`,
+          selection: `${kind}_work`,
           commands: [],
           refreshSkills,
         },
       });
       const button = view.getByRole("button", { name: "Reload active skills" });
-      expect((button as HTMLButtonElement).disabled).toBe(kind === "acp");
+      expect((button as HTMLButtonElement).disabled).toBe(kind === "acpRegistry");
       await act(async () => {
         fireEvent.click(button);
         await Promise.resolve();
       });
-      expect(refreshSkills).toHaveBeenCalledTimes(kind === "claude" ? 1 : 0);
+      expect(refreshSkills).toHaveBeenCalledTimes(kind === "claudeAgent" ? 1 : 0);
       expect(invokeCalls.filter((call) => call.channel === "codex:composer-skills:list")).toEqual(
         [],
       );
     },
   );
 
-  test.each(["claude", "codex"] as const)(
+  test.each(["claudeAgent", "codex"] as const)(
     "shared child selectors keep the runtime observation owner (%s)",
     async (kind) => {
       const { useConversationSubset } = await import("../local-conversation-store");

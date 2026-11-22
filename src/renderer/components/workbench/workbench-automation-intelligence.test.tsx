@@ -32,20 +32,24 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
     error: null,
     refresh: () => {},
     instances: [
-      { binding: { kind: "claude", instanceConfigId: "gateway" }, label: "Gateway", enabled: true },
       {
-        binding: { kind: "claude", instanceConfigId: "disabled" },
+        binding: { driver: "claudeAgent", instanceId: "gateway" },
+        label: "Gateway",
+        enabled: true,
+      },
+      {
+        binding: { driver: "claudeAgent", instanceId: "disabled" },
         label: "Disabled profile",
         enabled: false,
       },
-      { binding: { kind: "opencode", instanceConfigId: "open" }, label: "OpenCode", enabled: true },
+      { binding: { driver: "opencode", instanceId: "open" }, label: "OpenCode", enabled: true },
       {
-        binding: { kind: "antigravity", instanceConfigId: "google-work" },
+        binding: { driver: "antigravity", instanceId: "google-work" },
         label: "Antigravity work",
         enabled: true,
       },
       {
-        binding: { kind: "acp", agentDefinitionId: "scripted-agent", instanceConfigId: "acp-work" },
+        binding: { driver: "acpRegistry", instanceId: "acp-work" },
         label: "ACP work",
         enabled: true,
       },
@@ -53,8 +57,8 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
   }),
 }));
 const runtimeModels = vi.hoisted(() =>
-  vi.fn((binding: { kind: string }) =>
-    binding.kind === "acp" || binding.kind === "antigravity"
+  vi.fn((binding: { driver: string }) =>
+    binding.driver === "acpRegistry" || binding.driver === "antigravity"
       ? {
           loading: false,
           discovered: true,
@@ -158,7 +162,7 @@ test("automations select the exact enabled Claude profile, concrete model and ad
   expect(view.queryByRole("menuitem", { name: "Disabled profile" })).toBeNull();
   await click(await view.findByRole("menuitem", { name: "Gateway" }));
   expect(changed.mock.lastCall?.[0]).toMatchObject({
-    backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+    backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
     model: "default",
     reasoningEffort: "default",
     serviceTier: "",
@@ -190,7 +194,7 @@ test("automations select the exact enabled Claude profile, concrete model and ad
     await Promise.resolve();
   });
   expect(changed.mock.lastCall?.[0]).toMatchObject({
-    backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+    backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
     model: "vendor-sonnet",
     reasoningEffort: "max",
     serviceTier: "",
@@ -220,11 +224,7 @@ test("automations can run an ACP instance with its exact advertised model and op
   expect(view.queryByRole("menuitem", { name: "OpenCode" })).toBeNull();
   await click(await view.findByRole("menuitem", { name: "ACP work" }));
   expect(changed.mock.lastCall?.[0]).toMatchObject({
-    backendBinding: {
-      kind: "acp",
-      agentDefinitionId: "scripted-agent",
-      instanceConfigId: "acp-work",
-    },
+    backendBinding: { driver: "acpRegistry", instanceId: "acp-work" },
     model: "",
     reasoningEffort: "",
     serviceTier: "",
@@ -267,7 +267,7 @@ test("scheduled Antigravity chats choose a real model and its thinking level", a
   await click(view.getByRole("button", { name: "Automations agent" }));
   await click(await view.findByRole("menuitem", { name: "Antigravity work" }));
   expect(changed.mock.lastCall?.[0]).toMatchObject({
-    backendBinding: { kind: "antigravity", instanceConfigId: "google-work" },
+    backendBinding: { driver: "antigravity", instanceId: "google-work" },
     model: "",
     reasoningEffort: "",
   });

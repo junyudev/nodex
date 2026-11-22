@@ -7,7 +7,6 @@ import { readPastedTextAttachment } from "./api";
 import { agentRuntimeRuntime, type AgentRuntimeRendererTransport } from "./agent-runtime-runtime";
 import { agentRuntimePromptImages, prepareAgentRuntimeMessage } from "./agent-runtime-prompt";
 import {
-  agentRuntimeProviderBackendKind,
   defaultAgentRuntimeModelSelection,
   requireAgentRuntimeModelSelection,
   type AgentRuntimeNewChatDefaults,
@@ -26,7 +25,7 @@ export async function launchAgentRuntimeSession(
     /** No picker shows these launches, so they never count as attended. */
     readonly newChatDefaults?: Omit<AgentRuntimeNewChatDefaults, "attended">;
     readonly modelSelection?: AgentRuntimeLaunch["modelSelection"];
-    readonly onSelectionResolved?: (kind: AgentBackendBinding["kind"]) => void;
+    readonly onSelectionResolved?: (kind: AgentBackendBinding["driver"]) => void;
     readonly interactionMode?: AgentRuntimeLaunch["interactionMode"];
     readonly runInTarget?: AgentRuntimeLaunch["runInTarget"];
     readonly runInEnvironmentPath?: AgentRuntimeLaunch["runInEnvironmentPath"];
@@ -43,7 +42,7 @@ export async function launchAgentRuntimeSession(
     providers,
     input.modelSelection ?? defaultAgentRuntimeModelSelection(providers, input.newChatDefaults),
   );
-  const kind = agentRuntimeProviderBackendKind(provider);
+  const kind = provider.driver;
   input.onSelectionResolved?.(kind);
   const prepared = await prepareAgentRuntimeMessage(
     {

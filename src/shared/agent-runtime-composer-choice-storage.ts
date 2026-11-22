@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decodeLegacyAgentBinding } from "./agents/legacy-identity";
 import { AgentBackendBindingSchema } from "./schemas/agent-backend";
 import {
   AgentRuntimeInteractionModeSchema,
@@ -21,7 +22,10 @@ export const AgentRuntimeComposerOptionsSchema = z
   .max(32);
 
 export const AgentRuntimeComposerSelectionSchema = z.strictObject({
-  binding: AgentBackendBindingSchema,
+  binding: z.preprocess(
+    (stored) => decodeLegacyAgentBinding(stored) ?? stored,
+    AgentBackendBindingSchema,
+  ),
   model: z.string().trim().min(1).max(256),
   options: AgentRuntimeComposerOptionsSchema.optional(),
   modeId: z.string().min(1).max(256).optional(),

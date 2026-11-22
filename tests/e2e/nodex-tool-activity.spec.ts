@@ -176,17 +176,19 @@ test("Agent tool rows name what they touched in plain language", async () => {
   });
   try {
     const page = await harness.launch();
-    await invokeIpc(page, "settings:claude-agents:update", {
+    await invokeIpc(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
-          id: "claude-default",
+          driver: "claudeAgent",
+          settings: { configDirectory: harness.profile.claudeConfigHome, customModels: [] },
+          id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
           displayName: "Claude Code",
           binaryPath: createRequire(
             createRequire(path.join(process.cwd(), "package.json")).resolve(
               "@anthropic-ai/claude-agent-sdk",
             ),
           ).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`),
-          configDirectory: harness.profile.claudeConfigHome,
           enabled: true,
           environment: Object.entries(server.environment).map(([name, value]) => ({
             name,

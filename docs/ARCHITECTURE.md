@@ -1017,6 +1017,11 @@ Adapters retain backend identity and capability boundaries. Presentation reuse n
 Codex protocol authority for another backend. Product capabilities belong to
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
 
+The Runtime instance reference supplies the Agent identity at every product boundary.
+Core stores its open driver and exact instance ID. Desktop resolves Profile configuration
+and presentation through the provider snapshot and the shared Agent definition registry.
+An attributed Run records the driver and the Host's label so its history remains readable.
+
 Model discovery belongs to the Main backend catalog, scoped by configured runtime identity and
 Core-derived execution location. A renderer model choice carries the complete runtime/model/options
 value; attached Thread routing remains immutable. Core stores generic runtime preferences separately

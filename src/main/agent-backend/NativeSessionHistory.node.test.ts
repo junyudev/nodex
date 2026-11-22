@@ -1,3 +1,4 @@
+import { claudeProfile, openCodeProfile } from "../../shared/agents/profile.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -48,11 +49,17 @@ const fixture = (
           Effect.succeed({
             threadId: "thread",
             cwd,
-            backendBinding: { kind: backend, instanceConfigId: "profile" },
+            backendBinding: {
+              driver: backend === "claude" ? "claudeAgent" : backend,
+              instanceId: "profile",
+            },
           }),
         readThreadBackendSession: () =>
           Effect.succeed({
-            backendBinding: { kind: backend, instanceConfigId: "profile" },
+            backendBinding: {
+              driver: backend === "claude" ? "claudeAgent" : backend,
+              instanceId: "profile",
+            },
             backendSessionId: sessionId,
             nativeHome: "/account",
             nativeState: null,
@@ -60,16 +67,20 @@ const fixture = (
       } as never),
       Effect.provideService(ApplicationSettings, {
         snapshot: () => Effect.succeed({ revision }),
-        claudeLaunchConfiguration: () =>
+        agentProfileLaunchConfiguration: (driver: string) =>
           Effect.succeed({
-            instance: { id: "profile", configDirectory: "/account" },
+            profile:
+              driver === "opencode"
+                ? openCodeProfile({
+                    binaryPath: "/opencode",
+                    settings: { profileDirectory: "/account", serverUrl: null },
+                  })
+                : claudeProfile({
+                    id: "profile",
+                    settings: { configDirectory: "/account", customModels: [] },
+                  }),
             environment: {},
-          }),
-        openCodeLaunchConfiguration: () =>
-          Effect.succeed({
-            instance: { binaryPath: "/opencode", serverUrl: null },
-            profileDirectory: "/account",
-            environment: {},
+            secrets: {},
           }),
       } as never),
       Effect.provideService(ClaudeSdk, {

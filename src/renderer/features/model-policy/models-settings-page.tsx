@@ -32,7 +32,6 @@ import { resolveNodexAccountView } from "@/features/nodex-account/nodex-account-
 import { useNodexAccount } from "@/features/nodex-account/use-nodex-account";
 import { creditWorkStoppedBy, type StoppedCreditWork } from "@/lib/model-policy-stopped-work";
 import { cn } from "@/lib/utils";
-import { agentBackendKindOfRuntimeDriver } from "../../../shared/agent-backend";
 import {
   isModelOn,
   isFreeModel,
@@ -353,8 +352,9 @@ function ProviderCard({
 }) {
   const intl = useIntl();
   const title = provider.displayName ?? provider.instanceId;
-  const kind = agentBackendKindOfRuntimeDriver(provider.driver) ?? "acp";
-  const icon = <AgentInstanceIcon binding={{ kind, runtimeInstanceId: provider.instanceId }} />;
+  const icon = (
+    <AgentInstanceIcon binding={{ driver: provider.driver, instanceId: provider.instanceId }} />
+  );
   const id = policyProviderKey(provider);
   if (!isProviderOn(policy, provider)) {
     return (

@@ -12,7 +12,6 @@ import {
   AGENT_CLI_PROJECT_NAME,
   AGENT_CLI_SCENARIO_ID,
 } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type { IpcApi } from "../../src/shared/ipc-api";
 import { chooseComposerModel, openComposerModelPicker } from "./support/composer-model-picker";
 
@@ -116,28 +115,30 @@ for (const kind of ["claude", "opencode"] as const) {
       await materializeScenario(AGENT_CLI_SCENARIO_ID, new RendererIpcSeedAdapter(page), workspace);
       const instanceConfigId = `${kind}-default`;
       if (kind === "claude") {
-        await invoke(page, "settings:claude-agents:update", {
+        await invoke(page, "settings:agent-profiles:update", {
+          driver: "claudeAgent",
           instances: [
             {
+              driver: "claudeAgent",
+              settings: { configDirectory: nativeHome, customModels: [] },
               id: instanceConfigId,
               displayName: "Claude Code",
               binaryPath,
-              configDirectory: nativeHome,
               enabled: true,
-              customModels: [],
               environment: [],
             },
           ],
         });
       } else {
-        await invoke(page, "settings:opencode-agents:update", {
+        await invoke(page, "settings:agent-profiles:update", {
+          driver: "opencode",
           instances: [
             {
+              driver: "opencode",
+              settings: { profileDirectory: nativeHome, serverUrl: null },
               id: instanceConfigId,
               displayName: "OpenCode",
               binaryPath,
-              profileDirectory: nativeHome,
-              serverUrl: null,
               enabled: true,
               environment: [],
             },
@@ -198,7 +199,7 @@ for (const kind of ["claude", "opencode"] as const) {
       expect(
         (await invoke(page, "agent-runtime:session:inspect", { sessionId: sourceId })).thread
           .modelSelection.instanceId,
-      ).toBe(agentRuntimeProviderId({ kind, instanceConfigId }));
+      ).toBe(instanceConfigId);
 
       await page.getByRole("button", { name: "Chat actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Fork", exact: true }).hover();

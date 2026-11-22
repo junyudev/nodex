@@ -355,7 +355,7 @@ test("benchmarks native paginated history without running a model Turn", async (
         sessionId: attached.sessionId,
         projectId: null,
         threadId: corpus.threadId,
-        backendBinding: { kind: "codex" },
+        backendBinding: { driver: "codex", instanceId: "codex" },
         executionHostId: "local",
         cwd: corpus.workspace,
       });

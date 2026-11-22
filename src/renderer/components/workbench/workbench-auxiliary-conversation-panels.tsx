@@ -427,7 +427,7 @@ function NativeSubagentsPanelSessionTab({
         const root = sourceSession.thread;
         if (
           sourceSession.id !== tab.sessionId ||
-          root?.backendBinding.kind !== "codex" ||
+          root?.backendBinding.driver !== "codex" ||
           root.threadId !== tab.rootThreadId
         )
           return;

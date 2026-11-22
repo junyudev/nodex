@@ -14,9 +14,11 @@ describe("heartbeat Session targets", () => {
       }) as Automation;
     expect(
       listHeartbeatAutomationTargetSessionIds([
-        definition("codex", "session:one", { backendBinding: { kind: "codex" } }),
+        definition("codex", "session:one", {
+          backendBinding: { driver: "codex", instanceId: "codex" },
+        }),
         definition("claude", "session:one", {
-          backendBinding: { kind: "claude", instanceConfigId: "team" },
+          backendBinding: { driver: "claudeAgent", instanceId: "team" },
         }),
         definition("two", "session:two"),
         definition("paused", "session:paused", { status: "PAUSED" }),

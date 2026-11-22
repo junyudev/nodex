@@ -99,12 +99,8 @@ const buildTools = (
                         thread: {
                           backend_binding:
                             backend === "codex"
-                              ? { kind: "codex" }
-                              : {
-                                  kind: "acp",
-                                  agent_definition_id: "claude-agent-acp",
-                                  instance_config_id: "claude:default",
-                                },
+                              ? { driver: "codex", instanceId: "codex" }
+                              : { driver: "acpRegistry", instanceId: "acp_claude" },
                         },
                       },
                     } as never;

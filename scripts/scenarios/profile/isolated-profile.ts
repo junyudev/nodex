@@ -1,3 +1,5 @@
+import { stringify as stringifyToml } from "smol-toml";
+import { readStoredAgentProfiles } from "../../../src/main/settings/agent-profile-store";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -140,24 +142,14 @@ const ensureOwnedRootShape = async (
  * without one), and every catalog read would wait for that probe. Scenarios configure their own
  * peers.
  */
-const SCENARIO_PROFILE_SETTINGS = `[server]
-antigravity_agent_instances = []
-
-[[server.claude_agent_instances]]
-id = "claude-default"
-displayName = "Claude Code"
-binaryPath = "claude"
-configDirectory = ""
-enabled = false
-environment = []
-
-[[server.opencode_agent_instances]]
-id = "opencode-default"
-displayName = "OpenCode"
-enabled = false
-binaryPath = "opencode"
-environment = []
-`;
+const SCENARIO_PROFILE_SETTINGS = stringifyToml({
+  server: {
+    agent_instances: readStoredAgentProfiles(undefined).map((profile) => ({
+      ...profile,
+      enabled: false,
+    })),
+  },
+});
 
 const descriptorFrom = (
   runRoot: string,

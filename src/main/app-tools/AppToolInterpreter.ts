@@ -47,7 +47,7 @@ import { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session
 import { isNativeAppTool, nativeAppToolCatalog } from "./HostedAppToolCatalog";
 import { captureAppToolAuthority } from "./AppToolCaller";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { isNativeAgentBackendKind } from "../../shared/agent-backend";
+import { agentDefinition } from "../../shared/agents/registry";
 
 export const make = Effect.gen(function* () {
   const workspace = yield* ProjectWorkspace;
@@ -76,7 +76,7 @@ export const make = Effect.gen(function* () {
     input: AppToolInvocation,
   ): Effect.fn.Return<CallToolResult> {
     if (!input.caller.isActive()) return failure("call_withdrawn");
-    const native = isNativeAgentBackendKind(input.caller.backend);
+    const native = agentDefinition(input.caller.backend).capabilities.nativeApplicationTools;
     if (native && !isNativeAppTool(input.name)) return failure("tool_unavailable");
     if (native && !(yield* captureAppToolAuthority(input.caller, turns)))
       return failure("authority_unavailable");

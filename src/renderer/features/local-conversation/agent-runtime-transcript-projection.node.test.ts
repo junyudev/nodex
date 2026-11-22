@@ -537,7 +537,7 @@ describe("Runtime application tool presentation", () => {
       cwds: ["/workspace"],
       executionEnvironment: "local",
     };
-    const proposal = { ...arguments_, backendBinding: { kind: "codex" } };
+    const proposal = { ...arguments_, backendBinding: { driver: "codex", instanceId: "codex" } };
     const projected = projectAgentRuntimeItem({
       ...tool("nodex_app.automations_update"),
       input: arguments_,
@@ -837,7 +837,7 @@ describe("Runtime delegated task rows", () => {
       childThreadId: "child",
       title: "Review the auth module",
       providerInstanceId: "claude",
-      agentKind: "claude",
+      agentKind: "claudeAgent",
       status: "running",
       prompt: "Review the auth module\nand report findings",
       summary: "Reading files",

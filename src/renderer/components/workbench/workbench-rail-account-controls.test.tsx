@@ -97,7 +97,7 @@ type ClaudeProvider = NonNullable<SubscriptionUsageSnapshot["providers"]>[number
 function claudeProvider(overrides: { readonly readAt?: number | null } = {}): ClaudeProvider {
   const readAt = overrides.readAt === undefined ? Date.now() - 2 * HOUR : overrides.readAt;
   return {
-    instanceId: "claude-default",
+    instanceId: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
     driver: "claudeAgent",
     enabled: true,
     installed: true,
@@ -573,7 +573,9 @@ describe("WorkbenchRailAccountControls", () => {
       fireEvent.click(signOut);
       await Promise.resolve();
     });
-    await waitFor(() => expect(signedOut).toEqual([["claude-default"]]));
+    await waitFor(() =>
+      expect(signedOut).toEqual([["claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks"]]),
+    );
   });
 
   test("a Claude reading Main could not refresh keeps its level and says so", async () => {

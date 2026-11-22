@@ -41,11 +41,11 @@ permission modes it enforces; native permission requests follow
 
 ## Configuration and discovery
 
-The five backend identities are Codex, Claude Code, OpenCode, Antigravity and ACP.
-Antigravity has an explicit profile identity for conversations, attribution and Automations;
-it never falls through to ACP. Its profiles start empty, isolate each account's credentials,
-and obtain models from the account. Models default on; only OpenCode has an opt-in model
-policy. See [Antigravity configuration](../CONFIGURATION.md#antigravity-instances).
+An Agent binding is the Agent Runtime's instance reference, with an open `driver` and
+an exact `instanceId`. The default Codex instance uses `codex` for both fields.
+Core stores the same reference for Threads and Automations. Agent settings and provider
+snapshots supply the instance's display name and, for an ACP instance, its Registry
+entry. An Agent whose driver is unavailable remains identifiable in history.
 
 Instances are configured per Profile. Executables, native profile directories and
 external endpoint credentials remain explicit inputs. Sensitive environment rows use
@@ -148,6 +148,15 @@ wait. The marker is absent once the check settles. Cached model choices can popu
 row. A previously served catalog can still supply settled rows while the Agent Runtime is
 stopped. Active catalog observers receive updates as checks settle, retry or discover more
 information.
+
+Every provider snapshot reports whether its executable is installed. An installation source can
+name a Component by ID, a driver-managed runtime by ID, or an executable supplied by the person.
+When the declaration is absent, the Agent resolves its executable from the person's environment.
+The install owner adds current facts such as download progress, retry status or a required version.
+
+[Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
+uses the definition, the provider snapshot and the install owner's facts to describe one current
+problem and one next step. The installer for each source retains its own lifecycle.
 
 Codex checks its executable, local sign-in and account in that order within a shared 30-second
 budget. A completed check preserves the version and sign-in state it established. A missing
@@ -321,3 +330,28 @@ unowned allocations; committed execution locations remain attached through uncer
 readback. No automation or imported-history path can create a second local execution
 owner. See [Automations behavior](automations-behavior.md),
 [Configuration](../CONFIGURATION.md) and [Security](../SECURITY.md).
+
+## Adding a built-in Agent
+
+Register the driver with Agent Runtime and publish what it actually knows in provider
+snapshots: its execution capabilities, where its executable comes from, readiness, account,
+model inventory and usage. Add an Agent definition in `src/shared/agents` and place it in
+registry order with its label, mark, Settings anchor and product capabilities. Declare its
+sign-in style, any model discovery or choice requirement, and its first-run placement if
+setup should offer it. An absent product capability stays off.
+
+For a built-in Agent configured by profiles, give the definition its ordered fields, message
+descriptors, defaults, executable and environment policies, and summary and search copy.
+The shared profile store, settings IPC and form use the same definition. Register a Main
+provider builder to translate the profile and its resolved settings into the driver's
+Runtime configuration. Use the renderer's named slots when the Agent needs an account
+row, executable status, shared runtime controls or a bespoke editor. Add any custom field
+validation alongside its descriptor.
+
+The composer, model picker and first-run presentation consume the same readiness problem and
+next step. Add an adapter at the installation owner if the Agent introduces a new installer.
+Keep native protocol, launch and account commands with their owners. If the Agent reports
+subscription usage, its snapshot supplies the account and windows; the definition can supply
+a usage-meter preference and account presentation details.
+
+The same Core binding and Store schema admit the new driver and its instances.

@@ -136,7 +136,7 @@ export const openCodeCatalog = (
     })
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
   return {
-    binding: { kind: "opencode", instanceConfigId },
+    binding: { driver: "opencode", instanceId: instanceConfigId },
     models,
     configOptions: defaultModel
       ? openCodeConfigOptions(inventory, {

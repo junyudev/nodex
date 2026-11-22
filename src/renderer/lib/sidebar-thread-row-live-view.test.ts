@@ -5,7 +5,7 @@ import { projectSidebarThreadRowLiveView } from "./sidebar-thread-row-live-view"
 const item: CodexSidebarThreadItem = {
   key: "local:session:session-1",
   kind: "local",
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   runLocation: { kind: "local-checkout" },
   hostId: "local",
   threadId: "session-1",

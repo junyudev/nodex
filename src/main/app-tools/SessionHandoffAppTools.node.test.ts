@@ -60,7 +60,7 @@ const withNativeFacts = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           thread: {
             threadId: id === "caller-session" ? "caller" : "target-thread",
             executionHostId: "local",
-            backendBinding: { kind: "codex" },
+            backendBinding: { driver: "codex", instanceId: "codex" },
           },
         }),
     } as never),
@@ -122,7 +122,13 @@ const setup = (
                       ? null
                       : {
                           thread_id: options.threadId ?? "target-thread",
-                          backend_binding: { kind: options.backend ?? "codex" },
+                          backend_binding: {
+                            driver:
+                              options.backend === "acp"
+                                ? "acpRegistry"
+                                : (options.backend ?? "codex"),
+                            instanceId: options.backend ?? "codex",
+                          },
                         },
                 },
               }),

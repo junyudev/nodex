@@ -2,7 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import {
   AGENT_ENVIRONMENT_LIMIT,
-  AgentEnvironmentValueSchema,
+  createAgentEnvironmentNameSchema,
 } from "../../shared/agent-environment";
 import {
   ACP_AGENT_INSTANCE_LIMIT,
@@ -17,27 +17,21 @@ import { CLAUDE_ACP_AGENT_DEFINITION } from "../../shared/acp-agent-definitions"
 import {
   presentAgentEnvironment,
   resolveAgentEnvironment,
+  storedAgentEnvironmentSchema,
   writeAgentEnvironments,
   type AgentEnvironmentStorage,
 } from "./agent-environment-storage";
 
-const name = z.string().superRefine((value, context) => {
-  const message = acpEnvironmentNameError(value);
-  if (message) context.addIssue({ code: "custom", message });
+const storedEnvironment = storedAgentEnvironmentSchema(
+  createAgentEnvironmentNameSchema(acpEnvironmentNameError),
+).superRefine((variable, context) => {
+  if (!isAcpProfileEnvironmentName(variable.name)) return;
+  if (variable.sensitive || !path.isAbsolute(variable.value))
+    context.addIssue({
+      code: "custom",
+      message: "Saved profile directories must be nonsecret absolute paths.",
+    });
 });
-const storedEnvironment = z
-  .discriminatedUnion("sensitive", [
-    z.object({ name, sensitive: z.literal(false), value: AgentEnvironmentValueSchema }).strict(),
-    z.object({ name, sensitive: z.literal(true), secretRef: z.uuid() }).strict(),
-  ])
-  .superRefine((variable, context) => {
-    if (!isAcpProfileEnvironmentName(variable.name)) return;
-    if (variable.sensitive || !path.isAbsolute(variable.value))
-      context.addIssue({
-        code: "custom",
-        message: "Saved profile directories must be nonsecret absolute paths.",
-      });
-  });
 const storedInstance = z
   .object({
     ...AcpAgentInstanceFields,

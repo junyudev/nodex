@@ -1,3 +1,4 @@
+import { openCodeProfileDirectory } from "./opencode/OpenCodeProfileProvider";
 import * as Effect from "effect/Effect";
 import { isDeepStrictEqual } from "node:util";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -98,7 +99,8 @@ export const make = Effect.gen(function* () {
     if (
       !thread ||
       !session ||
-      (session.backendBinding.kind !== "claude" && session.backendBinding.kind !== "opencode") ||
+      (session.backendBinding.driver !== "claudeAgent" &&
+        session.backendBinding.driver !== "opencode") ||
       !isDeepStrictEqual(thread.backendBinding, session.backendBinding) ||
       !thread.cwd
     )
@@ -120,11 +122,14 @@ export const make = Effect.gen(function* () {
     source: Effect.Success<ReturnType<typeof descriptor>>,
   ) {
     const binding = source.session.backendBinding;
-    if (binding.kind !== "claude")
+    if (binding.driver !== "claudeAgent")
       return yield* Effect.fail(new Error("This history is not Claude"));
-    const launch = yield* settings.claudeLaunchConfiguration(binding.instanceConfigId);
+    const launch = yield* settings.agentProfileLaunchConfiguration(
+      binding.driver,
+      binding.instanceId,
+    );
     const input = {
-      instance: launch.instance,
+      instance: launch.profile,
       environment: { ...config.environment, ...launch.environment },
       cwd: source.thread.cwd!,
       sessionId: source.session.backendSessionId,
@@ -141,16 +146,23 @@ export const make = Effect.gen(function* () {
     Effect.scoped(
       Effect.gen(function* () {
         const binding = source.session.backendBinding;
-        if (binding.kind !== "opencode")
+        if (binding.driver !== "opencode")
           return yield* Effect.fail(new Error("This history is not OpenCode"));
-        const launch = yield* settings.openCodeLaunchConfiguration(binding.instanceConfigId);
-        const nativeHome = launch.instance.serverUrl ?? launch.profileDirectory;
+        const launch = yield* settings.agentProfileLaunchConfiguration(
+          binding.driver,
+          binding.instanceId,
+        );
+        const profileDirectory = openCodeProfileDirectory(
+          launch.profile,
+          config.profileSettingsPath,
+        );
+        const nativeHome = launch.profile.settings.serverUrl ?? profileDirectory;
         if (source.session.nativeHome && nativeHome !== source.session.nativeHome)
           return yield* Effect.fail(new Error("The OpenCode history profile changed"));
         const connection = yield* opencode.open({
-          binaryPath: launch.instance.binaryPath,
-          serverUrl: launch.instance.serverUrl,
-          profileDirectory: launch.profileDirectory,
+          binaryPath: launch.profile.binaryPath,
+          serverUrl: launch.profile.settings.serverUrl,
+          profileDirectory,
           cwd: source.thread.cwd!,
           environment: { ...config.environment, ...launch.environment },
           ...(launch.environment.OPENCODE_SERVER_PASSWORD
@@ -175,14 +187,14 @@ export const make = Effect.gen(function* () {
       )
         return yield* Effect.fail(new Error("Native history page is invalid"));
       const empty = emptyAgentConversationSnapshot({
-        backend: source.session.backendBinding.kind,
+        backend: source.session.backendBinding.driver === "claudeAgent" ? "claude" : "opencode",
         threadId: input.threadId,
         sessionId: source.session.backendSessionId,
       });
       let snapshot;
       let before: string | null;
       let hasMore: boolean;
-      if (source.session.backendBinding.kind === "claude") {
+      if (source.session.backendBinding.driver === "claudeAgent") {
         const { input: native, home } = yield* claudeInput(source);
         const page = yield* claude.historyPage(native, {
           limit,
@@ -265,7 +277,7 @@ export const make = Effect.gen(function* () {
       if (source.session.backendSessionId !== input.expectedSessionId)
         return yield* Effect.fail(new Error("The native image source changed"));
       const image =
-        source.session.backendBinding.kind === "claude"
+        source.session.backendBinding.driver === "claudeAgent"
           ? yield* claudeInput(source).pipe(
               Effect.flatMap(({ input: native }) =>
                 claude.historyImage(native, input.nativeMessageId, input.index),
@@ -309,7 +321,7 @@ export const make = Effect.gen(function* () {
       if (source.session.backendSessionId !== input.expectedSessionId)
         return yield* Effect.fail(new Error("The native tool output source changed"));
       const output =
-        source.session.backendBinding.kind === "claude"
+        source.session.backendBinding.driver === "claudeAgent"
           ? yield* claudeInput(source).pipe(
               Effect.flatMap(({ input: native }) =>
                 claude.historyToolOutput(native, input.nativeMessageId, input.toolUseId),

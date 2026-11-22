@@ -1,10 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vite-plus/test";
-import type { ClaudeAgentSettings } from "../../../shared/claude-agent-settings";
-import {
-  defaultOpenCodeInstance,
-  type OpenCodeAgentSettings,
-} from "../../../shared/opencode-agent-settings";
+import { openCodeProfile } from "../../../shared/agents/profile.test-fixtures";
+import type { AgentProfile } from "../../../shared/agents/profiles";
+import { profileAgentDefinitions } from "../../../shared/agents/registry";
 import type { AcpAgentSettings } from "../../../shared/types";
 import { useAgentInstances } from "./use-agent-instances";
 
@@ -13,9 +11,8 @@ const mocks = vi.hoisted(() => {
   return {
     remote: false,
     catalog: vi.fn(),
-    readClaude: vi.fn<() => Promise<ClaudeAgentSettings>>(),
-    readOpenCode: vi.fn<() => Promise<OpenCodeAgentSettings>>(),
-    readAntigravity: vi.fn(async () => ({ instances: [] })),
+    readOpenCode: vi.fn<() => Promise<{ instances: AgentProfile[] }>>(),
+    readProfiles: vi.fn(),
     readAcp: vi.fn<() => Promise<AcpAgentSettings>>(),
     subscribe: vi.fn((listener: () => void) => {
       listeners.add(listener);
@@ -34,14 +31,10 @@ vi.mock("../../lib/agent-runtime-runtime", () => ({
   agentRuntimeRuntime: { catalog: mocks.catalog },
 }));
 vi.mock("../../lib/workbench-settings-runtime", () => ({
-  readClaudeAgentSettings: mocks.readClaude,
   readAcpAgentSettings: mocks.readAcp,
 }));
-vi.mock("../../lib/opencode-agent-settings-runtime", () => ({
-  readOpenCodeAgentSettings: mocks.readOpenCode,
-}));
-vi.mock("../../lib/antigravity-agent-settings-runtime", () => ({
-  readAntigravityAgentSettings: mocks.readAntigravity,
+vi.mock("../../lib/agent-profiles-runtime", () => ({
+  readAgentProfiles: mocks.readProfiles,
 }));
 vi.mock("../../lib/renderer-transport", () => ({
   resolveRendererTransport: () => ({ subscribeAgentSettingsChanges: mocks.subscribe }),
@@ -49,7 +42,11 @@ vi.mock("../../lib/renderer-transport", () => ({
 beforeEach(() => {
   mocks.remote = false;
   mocks.catalog.mockReset();
-  mocks.readClaude.mockReset().mockResolvedValue({ instances: [] });
+  mocks.readProfiles
+    .mockReset()
+    .mockImplementation((driver) =>
+      driver === "opencode" ? mocks.readOpenCode() : Promise.resolve({ instances: [] }),
+    );
   mocks.readAcp.mockReset().mockResolvedValue({ instances: [] });
   mocks.readOpenCode.mockReset().mockResolvedValue({ instances: [] });
 });
@@ -63,8 +60,8 @@ test("a settings read failure remains explicit instead of classifying the select
 });
 
 test("a late settings read cannot re-enable a profile disabled by a newer settings event", async () => {
-  let complete!: (settings: OpenCodeAgentSettings) => void;
-  const instance = { ...defaultOpenCodeInstance(), enabled: true };
+  let complete!: (settings: { instances: AgentProfile[] }) => void;
+  const instance = { ...openCodeProfile(), enabled: true };
   mocks.readOpenCode
     .mockReturnValueOnce(
       new Promise((resolve) => {
@@ -87,7 +84,7 @@ test("a late settings read cannot re-enable a profile disabled by a newer settin
 });
 
 test("refresh retries failed profile settings and recovers inventory without blocking Codex", async () => {
-  const instance = defaultOpenCodeInstance();
+  const instance = openCodeProfile();
   mocks.readOpenCode
     .mockRejectedValueOnce(new Error("Could not read Agent profiles"))
     .mockResolvedValueOnce({ instances: [instance] });
@@ -100,24 +97,26 @@ test("refresh retries failed profile settings and recovers inventory without blo
   expect(result.current.error).toBeNull();
   expect(result.current.instances).toEqual([
     {
-      binding: { kind: "opencode", instanceConfigId: instance.id },
+      binding: { driver: "opencode", instanceId: instance.id },
       label: instance.displayName,
       enabled: instance.enabled,
       usesHostExecutable: true,
     },
   ]);
-  expect(mocks.readClaude).toHaveBeenCalledTimes(2);
+  expect(mocks.readProfiles.mock.calls.map(([driver]) => driver)).toEqual(
+    [...profileAgentDefinitions, ...profileAgentDefinitions].map(({ driver }) => driver),
+  );
   expect(mocks.readOpenCode).toHaveBeenCalledTimes(2);
   expect(mocks.readAcp).toHaveBeenCalledTimes(2);
 });
 
 test("only local profiles running the default executable depend on host OpenCode setup", async () => {
-  const base = defaultOpenCodeInstance();
+  const base = openCodeProfile();
   mocks.readOpenCode.mockResolvedValueOnce({
     instances: [
       { ...base, enabled: false },
       { ...base, id: "custom", binaryPath: "/opt/opencode/bin/opencode" },
-      { ...base, id: "server", serverUrl: "http://127.0.0.1:4096" },
+      { ...base, id: "server", settings: { ...base.settings, serverUrl: "http://127.0.0.1:4096" } },
     ],
   });
   const { result } = renderHook(() => useAgentInstances());
@@ -145,28 +144,19 @@ test("team inventories preserve host provider identity and never read desktop pr
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.instances).toEqual([
     {
-      binding: {
-        kind: "claude",
-        instanceConfigId: "claude_team",
-        runtimeInstanceId: "claude_team",
-      },
+      binding: { driver: "claudeAgent", instanceId: "claude_team" },
       label: "Team Claude",
       enabled: true,
       usesHostExecutable: false,
     },
     {
-      binding: {
-        kind: "acp",
-        instanceConfigId: "acp_team",
-        runtimeInstanceId: "acp_team",
-        agentDefinitionId: "acp_team",
-      },
+      binding: { driver: "acpRegistry", instanceId: "acp_team" },
       label: "Team Agent",
       enabled: false,
       usesHostExecutable: false,
     },
   ]);
-  expect(mocks.readClaude).not.toHaveBeenCalled();
+  expect(mocks.readProfiles).not.toHaveBeenCalled();
   expect(mocks.readAcp).not.toHaveBeenCalled();
   expect(mocks.readOpenCode).not.toHaveBeenCalled();
 });

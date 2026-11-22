@@ -98,7 +98,7 @@ const fixture = (
               thread: {
                 threadId: "native-thread",
                 executionHostId: "local",
-                backendBinding: { kind: "codex" },
+                backendBinding: { driver: "codex", instanceId: "codex" },
               },
             }),
         } as never),

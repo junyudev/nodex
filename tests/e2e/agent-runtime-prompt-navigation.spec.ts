@@ -55,15 +55,16 @@ test("a reopened Claude chat navigates every prompt, including history it has no
       BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
     });
     await materializeScenario(AGENT_CLI_SCENARIO_ID, new RendererIpcSeedAdapter(page), workspace);
-    await invoke(page, "settings:claude-agents:update", {
+    await invoke(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
-          id: "claude-default",
+          driver: "claudeAgent",
+          settings: { configDirectory: nativeHome, customModels: [] },
+          id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
           displayName: "Claude Code",
           binaryPath,
-          configDirectory: nativeHome,
           enabled: true,
-          customModels: [],
           environment: [],
         },
       ],

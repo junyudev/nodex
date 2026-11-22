@@ -11,7 +11,6 @@ import {
 } from "../../shared/model-policy";
 import {
   defaultAgentRuntimeModelSelection,
-  agentRuntimeProviderBackendKind,
   requireAgentRuntimeModelSelection,
   resolveAgentRuntimeChatModel,
 } from "./agent-runtime-model-selection";
@@ -92,7 +91,6 @@ it("keeps an Antigravity model on its own backend and exact account", () => {
     displayName: "Google Work",
     models: [{ ...provider.models[0]!, aliases: [ANTIGRAVITY_DEFAULT_MODEL] }],
   };
-  expect(agentRuntimeProviderBackendKind(google)).toBe("antigravity");
   expect(defaultAgentRuntimeModelSelection([google])).toMatchObject({
     instanceId: "antigravity_work",
   });
@@ -117,7 +115,7 @@ it("automatic composer defaults skip off models while a remembered off model rem
   );
   expect(defaultAgentRuntimeModelSelection(providers)?.model).toBe("luna");
   const remembered = defaultAgentRuntimeModelSelection(providers, {
-    remembered: { binding: { kind: "codex" }, model: "sol" },
+    remembered: { binding: { driver: "codex", instanceId: "codex" }, model: "sol" },
   });
   expect(remembered?.model).toBe("sol");
   expect(() => requireAgentRuntimeModelSelection(providers, remembered)).toThrow(
@@ -137,7 +135,7 @@ it("automatic choices use Claude while Codex is unavailable and retain explicit 
   const providers = [unavailable, claude, nodex];
   expect(
     defaultAgentRuntimeModelSelection(providers, {
-      remembered: { binding: { kind: "codex" }, model: "sol" },
+      remembered: { binding: { driver: "codex", instanceId: "codex" }, model: "sol" },
     }),
   ).toEqual({ instanceId: claude.instanceId, model: "opus" });
   expect(resolveInboxModel(providers, DEFAULT_INBOX_SETTINGS.chatAgent, "chat")).toMatchObject({
@@ -174,7 +172,7 @@ it("keeps an attended new chat on Codex while it installs and falls back before 
     installed: false,
     status: "error",
     availability: "unavailable",
-    requiredComponent: "codex",
+    installationSource: { kind: "component", id: "codex" },
     componentUnavailableReason: "not-installed",
   } as const;
   const installing = { ...dormant, componentUnavailableReason: "installing" } as const;
@@ -189,11 +187,7 @@ it("keeps an attended new chat on Codex while it installs and falls back before 
 
 describe("the remembered new chat choice", () => {
   const sonnet = {
-    binding: {
-      kind: "claude" as const,
-      instanceConfigId: "work",
-      runtimeInstanceId: claude.instanceId,
-    },
+    binding: { driver: "claudeAgent" as const, instanceId: claude.instanceId },
     model: "sonnet",
     options: [{ id: "effort", value: "max" }],
   };
@@ -268,7 +262,11 @@ describe("the remembered new chat choice", () => {
     const fast = [{ id: "serviceTier", value: "fast" }];
     expect(
       defaultAgentRuntimeModelSelection([provider], {
-        remembered: { binding: { kind: "codex" }, model: "sol", options: fast },
+        remembered: {
+          binding: { driver: "codex", instanceId: "codex" },
+          model: "sol",
+          options: fast,
+        },
         codexServiceTier: null,
       })?.options,
     ).toEqual([{ id: "serviceTier", value: "default" }]);
@@ -279,7 +277,7 @@ describe("the remembered new chat choice", () => {
 
   describe("on a credit model", () => {
     const credit = {
-      binding: { kind: "codex" as const, runtimeInstanceId: nodex.instanceId },
+      binding: { driver: "codex" as const, instanceId: nodex.instanceId },
       model: "sol",
       options: [{ id: "serviceTier", value: "fast" }],
     };

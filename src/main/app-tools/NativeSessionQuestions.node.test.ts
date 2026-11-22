@@ -127,7 +127,11 @@ const fixture = (hostId = "local", follower = false) => {
     id: "session",
     archived: false,
     executionRef: null,
-    thread: { threadId: "thread", executionHostId: hostId, backendBinding: { kind: "codex" } },
+    thread: {
+      threadId: "thread",
+      executionHostId: hostId,
+      backendBinding: { driver: "codex", instanceId: "codex" },
+    },
   } as ProjectSession;
   let loaded = true;
   let rejectAsync = false;

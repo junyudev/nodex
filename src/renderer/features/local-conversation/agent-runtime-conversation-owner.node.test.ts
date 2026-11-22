@@ -3451,7 +3451,7 @@ describe("Runtime Composer context usage", () => {
           payload: {
             ...provider,
             id: "acp-provider",
-            driver: "acp",
+            driver: "acpRegistry",
             providerInstanceId: "acp",
             contextUsage: { usedTokens: 42_000 },
           },
@@ -3468,7 +3468,7 @@ describe("Runtime Composer context usage", () => {
           payload: {
             ...provider,
             id: "acp-provider",
-            driver: "acp",
+            driver: "acpRegistry",
             providerInstanceId: "acp",
             contextUsage: { usedTokens: 42_000, maxTokens: 128_000 },
           },

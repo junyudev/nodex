@@ -3,7 +3,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   acpAgentsSummary,
   acpCommandLine,
-  acpComposerSetupHint,
   acpFailureCopy,
   acpImportedHistoryEmptyState,
   acpPendingImportedHistory,
@@ -304,41 +303,6 @@ describe("ACP presentation helpers", () => {
   test("another instance of the same Agent gets a distinct name", () => {
     expect(acpInstanceName("Qoder", ["qoder", "Qoder 2"])).toBe("Qoder 3");
     expect(acpInstanceName("Qoder", [])).toBe("Qoder");
-  });
-});
-
-describe("ACP composer setup", () => {
-  test("only unusable enabled instances are offered, with their next step", () => {
-    const model = { slug: "m", name: "M", isCustom: false, capabilities: null };
-    expect(acpComposerSetupHint(providerSnapshot({ models: [model], ...discovered() }))).toBeNull();
-    // A refused Connect is recorded on the provider, so every window offers sign-in.
-    expect(
-      acpComposerSetupHint(
-        providerSnapshot({
-          auth: { status: "unauthenticated" },
-          ...discovered({ status: "failed" }),
-        }),
-      ),
-    ).toEqual({ hint: "Sign in", tone: "default" });
-    expect(acpComposerSetupHint(providerSnapshot(discovered({ status: "failed" })))).toEqual({
-      hint: "Connect",
-      tone: "danger",
-    });
-    expect(acpComposerSetupHint(providerSnapshot({ enabled: false }))).toBeNull();
-    expect(
-      acpComposerSetupHint(
-        providerSnapshot({ auth: { status: "unauthenticated" }, models: [model] }),
-      ),
-    ).toEqual({ hint: "Sign in", tone: "default" });
-    expect(acpComposerSetupHint(providerSnapshot({ installed: false }))).toEqual({
-      hint: "Install",
-      tone: "default",
-    });
-    expect(acpComposerSetupHint(providerSnapshot({ status: "error" }))).toEqual({
-      hint: "Unavailable",
-      tone: "danger",
-    });
-    expect(acpComposerSetupHint(providerSnapshot())).toEqual({ hint: "Connect", tone: "default" });
   });
 });
 

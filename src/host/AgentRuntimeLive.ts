@@ -1,4 +1,6 @@
-import type { AntigravitySettings } from "../../packages/agent-runtime/vendor/contracts/src/settings";
+import { buildAgentProfileProvider } from "../main/agent-backend/profile-providers";
+import { CODEX_BINDING, codexAgent } from "../shared/agents/codex";
+import { declaredSubscriptionAgents } from "../shared/subscription-usage";
 
 import { ExecutionNode } from "./ExecutionNodeLive";
 import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
@@ -38,12 +40,10 @@ import * as Schedule from "effect/Schedule";
 import { make as makePageWorkspaces } from "../main/agent-backend/PageWorkspaceApplication";
 import * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
-import { agentRuntimeProviderId } from "../shared/agent-runtime-provider";
 import {
   codexAppServerEndpointEnvironment,
   codexCliAppServerArgs,
 } from "../shared/codex-app-server-launch";
-import type { ClaudeAgentInstanceConfig } from "../shared/types";
 import { acpProviderConfiguration } from "../main/agent-runtime/AcpProviderConfiguration";
 import {
   NativePromptImages,
@@ -125,9 +125,7 @@ import { acquireAgentRuntimeProcess } from "../main/platform/node/AgentRuntimePr
 import { codexAccountHistoryEnvironment } from "../main/platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../main/platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../main/platform/node/NodexCliShell";
-import { hostEnvironmentValue } from "../main/platform/node/HostExecutableSearch";
 import { agentRuntimeHostEnvironment } from "../main/agent-runtime/AgentRuntimeHostEnvironment";
-import { resolveOpenCodeLaunch } from "../main/platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
 import { UserPresence } from "./UserPresence";
@@ -155,42 +153,6 @@ import { PluginCatalogSource } from "./agent-plugins/PluginCatalogSource";
 
 /** A quiet execution process with no live or pending work stops after this period. */
 const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
-
-/** Custom capabilities use the execution catalog's option IDs. */
-export function runtimeClaudeModels(instance: ClaudeAgentInstanceConfig) {
-  return instance.customModels.map(({ id, displayName, traits }) => ({
-    slug: id,
-    name: displayName,
-    capabilities: {
-      optionDescriptors: [
-        ...(traits.effortLevels?.length
-          ? [
-              {
-                id: "effort",
-                label: "Effort",
-                type: "select" as const,
-                options: traits.effortLevels.map((effort) => ({ id: effort, label: effort })),
-              },
-            ]
-          : []),
-        ...(traits.fastMode ? [{ id: "fastMode", label: "Fast", type: "boolean" as const }] : []),
-        ...(traits.adaptiveThinking || traits.disableThinking
-          ? [{ id: "thinking", label: "Thinking", type: "boolean" as const }]
-          : []),
-        ...(traits.contextWindows?.length
-          ? [
-              {
-                id: "contextWindow",
-                label: "Context",
-                type: "select" as const,
-                options: traits.contextWindows.map((window) => ({ id: window, label: window })),
-              },
-            ]
-          : []),
-      ],
-    },
-  }));
-}
 
 class HostActivation extends Context.Service<
   HostActivation,
@@ -364,13 +326,7 @@ const supervisor = Layer.effectContext(
             codexLaunch.declaration,
             yield* readManagedCodexAvailability,
           ],
-          providers: [
-            snapshot.claudeAgents,
-            snapshot.openCodeAgents,
-            snapshot.antigravityAgents,
-            snapshot.acpAgents,
-            snapshot.providerKeys,
-          ],
+          providers: [snapshot.agentProfiles, snapshot.acpAgents, snapshot.providerKeys],
           modelPolicy: snapshot.modelPolicy,
           nodex: (yield* managedAccount)?.identity ?? null,
         };
@@ -396,18 +352,21 @@ const supervisor = Layer.effectContext(
           // The kept catalog and deferred live refresh can both be older than Main's Components.
           const current = visible.map((provider) => {
             if (!provider.enabled) return provider;
-            if (
+            const usesComponent =
               component &&
-              provider.driver === "codex" &&
-              !(platform.usesExternalExecutable && provider.instanceId === "codex") &&
-              codex.status === "unavailable"
-            ) {
+              provider.driver === CODEX_BINDING.driver &&
+              !(
+                platform.usesExternalExecutable && provider.instanceId === CODEX_BINDING.instanceId
+              );
+            if (usesComponent) {
+              const installationSource = codexAgent.setup.installation;
+              if (codex.status === "available") return { ...provider, installationSource };
               return {
                 ...provider,
                 installed: false,
                 status: "error" as const,
                 availability: "unavailable" as const,
-                requiredComponent: "codex" as const,
+                installationSource,
                 componentUnavailableReason: codex.reason,
                 unavailableReason: codex.message,
                 message: codex.message,
@@ -469,12 +428,9 @@ const supervisor = Layer.effectContext(
           const histories = yield* physicalNativeImportSources(connection);
           const providerId =
             input.backendKind === "codex"
-              ? agentRuntimeProviderId({ kind: "codex" })
+              ? "codex"
               : input.instanceConfigId
-                ? agentRuntimeProviderId({
-                    kind: "claude",
-                    instanceConfigId: input.instanceConfigId,
-                  })
+                ? input.instanceConfigId
                 : null;
           const source = histories.find((history) => history.providerInstanceId === providerId);
           const expectedDriver = input.backendKind === "codex" ? "codex" : "claudeAgent";
@@ -647,7 +603,7 @@ const supervisor = Layer.effectContext(
           ? {
               ...(current.reason === "external-unusable"
                 ? {}
-                : { requiredComponent: "codex" as const }),
+                : { installationSource: codexAgent.setup.installation }),
               reason: current.reason,
               message: current.message,
             }
@@ -691,120 +647,22 @@ const supervisor = Layer.effectContext(
           },
         },
       };
-      for (const configured of snapshot.claudeAgents.instances) {
-        const id = agentRuntimeProviderId({ kind: "claude", instanceConfigId: configured.id });
-        if (!id) continue;
-        const launch = configured.enabled
-          ? yield* settings.claudeLaunchConfiguration(configured.id)
+      for (const profile of snapshot.agentProfiles) {
+        const launch = profile.enabled
+          ? yield* settings.agentProfileLaunchConfiguration(profile.driver, profile.id)
           : null;
-        const historyDirectory = configured.environment.find(
-          (entry) => entry.name === "CLAUDE_CONFIG_DIR" && !entry.sensitive,
-        );
-        providers[id] = {
-          driver: "claudeAgent",
-          displayName: configured.displayName,
-          enabled: configured.enabled,
-          environment: Object.entries(launch?.environment ?? {}).map(([name, value]) => ({
-            name,
-            value,
-            sensitive: configured.environment.some(
-              (entry) => entry.name === name && entry.sensitive,
-            ),
-          })),
-          config: {
-            binaryPath: configured.binaryPath,
-            homePath:
-              configured.configDirectory ||
-              (historyDirectory && !historyDirectory.sensitive ? historyDirectory.value : ""),
-            customModels: runtimeClaudeModels(configured),
-            modelTraits: Object.fromEntries(
-              configured.customModels.map(({ id, traits }) => [id, traits]),
-            ),
-          },
-        };
-      }
-      for (const configured of snapshot.openCodeAgents.instances) {
-        const id = agentRuntimeProviderId({ kind: "opencode", instanceConfigId: configured.id });
-        if (!id) continue;
-        const launch = configured.enabled
-          ? yield* settings.openCodeLaunchConfiguration(configured.id)
-          : null;
-        const profile = launch?.profileDirectory;
-        const resolved = yield* resolveOpenCodeLaunch(
+        providers[profile.id] = yield* buildAgentProfileProvider(
+          launch?.profile ?? profile,
+          launch,
           {
-            binaryPath: configured.binaryPath,
-            serverUrl: configured.serverUrl,
-            inheritedEnvironment: environment,
-            environment: launch?.environment ?? {},
-            homeDirectory: config.homeDirectory,
-            platform: config.platform,
+            config,
+            environment,
+            shell,
           },
-          shell,
         );
-        const variables = {
-          ...resolved.environment,
-          ...(profile
-            ? {
-                XDG_DATA_HOME: join(profile, "data"),
-                XDG_CONFIG_HOME: join(profile, "config"),
-                XDG_CACHE_HOME: join(profile, "cache"),
-                XDG_STATE_HOME: join(profile, "state"),
-                OPENCODE_CONFIG_DIR: join(profile, "config", "opencode"),
-                OPENCODE_TEST_HOME: profile,
-              }
-            : {}),
-        };
-        providers[id] = {
-          driver: "opencode",
-          displayName: configured.displayName,
-          enabled: configured.enabled,
-          environment: Object.entries(variables).map(([name, value]) => ({
-            name,
-            value,
-            sensitive: configured.environment.some(
-              (entry) => entry.name === name && entry.sensitive,
-            ),
-          })),
-          config: {
-            // Keep command selection scoped to the launch environment, including a
-            // worktree's PATH changes.
-            binaryPath: configured.binaryPath,
-            serverUrl: configured.serverUrl ?? "",
-            serverPassword: launch?.environment.OPENCODE_SERVER_PASSWORD ?? "",
-          },
-        };
-      }
-      for (const configured of snapshot.antigravityAgents.instances) {
-        const id = agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: configured.id });
-        if (!id) continue;
-        const launch = configured.enabled
-          ? yield* settings.antigravityLaunchConfiguration(configured.id)
-          : null;
-        providers[id] = {
-          driver: "antigravity",
-          displayName: configured.displayName,
-          enabled: configured.enabled,
-          environment: ["PATH", "PATHEXT"].flatMap((name) => {
-            const value = hostEnvironmentValue(environment, name, config.platform);
-            return value === undefined ? [] : [{ name, value, sensitive: false }];
-          }),
-          config: {
-            enabled: configured.enabled,
-            authMethod: configured.authMethod,
-            apiKey: launch?.apiKey ?? "",
-            gcpProject: configured.gcpProject,
-            gcpLocation: configured.gcpLocation,
-            binaryPath: configured.binaryPath,
-            customModels: [],
-          } satisfies AntigravitySettings,
-        };
       }
       for (const configured of snapshot.acpAgents.instances) {
-        const id = agentRuntimeProviderId({
-          kind: "acp",
-          agentDefinitionId: configured.agentDefinitionId,
-          instanceConfigId: configured.id,
-        });
+        const id = configured.id;
         if (!id) continue;
         const launch = configured.enabled
           ? yield* settings.acpLaunchConfiguration(configured.id)
@@ -1154,25 +1012,9 @@ const supervisor = Layer.effectContext(
     const subscriptionUsage = yield* makeSubscriptionUsage({
       meters: (yield* settings.snapshot()).usageMeters,
       meterChanges: settings.usageMeterSettingsChanges,
-      declared: settings.snapshot().pipe(
-        Effect.map((snapshot) => ({
-          claude: snapshot.claudeAgents.instances.flatMap((profile) => {
-            const id = profile.enabled
-              ? agentRuntimeProviderId({ kind: "claude", instanceConfigId: profile.id })
-              : null;
-            return id ? [id] : [];
-          }),
-          antigravity: snapshot.antigravityAgents.instances.flatMap((profile) => {
-            const google =
-              profile.authMethod === "oauth-personal" || profile.authMethod === "oauth-business";
-            const id =
-              profile.enabled && google
-                ? agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: profile.id })
-                : null;
-            return id ? [id] : [];
-          }),
-        })),
-      ),
+      declared: settings
+        .snapshot()
+        .pipe(Effect.map((snapshot) => declaredSubscriptionAgents(snapshot.agentProfiles))),
       known: product.knownCatalog(),
       refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true }),
       refreshWhileRunning: (instanceIds) =>

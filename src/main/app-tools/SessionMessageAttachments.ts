@@ -82,7 +82,7 @@ export const makeWithNative = (nativeAttachments: Effect.Success<typeof makeNati
               const thread = source.value.thread;
               if (
                 !thread ||
-                thread.backend_binding.kind !== "codex" ||
+                thread.backend_binding.driver !== "codex" ||
                 reference.execution ||
                 !reference.runId ||
                 (reference.sourceThreadId && reference.sourceThreadId !== thread.thread_id)

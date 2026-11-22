@@ -15,10 +15,7 @@ import {
   projectCodexMarkdownLabel,
   projectCodexMarkdownToPlainText,
 } from "../../shared/codex-markdown-text";
-import {
-  projectAgentBackendBindingFromCore,
-  type DesktopProjectWorkspaceThread,
-} from "../core-client/project-workspace-adapter";
+import { type DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexThreadStatusSchema } from "../../shared/schemas/codex";
 import { hasCodexSubagentSource } from "../../shared/codex-subagent-metadata";
@@ -201,7 +198,7 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
   projectId: task.session.project_id ?? null,
   noThreadFallbackTitle: task.session.no_thread_fallback_title,
   displayTitle:
-    task.thread?.backend_binding.kind === "codex"
+    task.thread?.backend_binding.driver === "codex"
       ? projectCodexCatalogDisplayTitle(task.session.display_title)
       : task.session.display_title,
   activityAt: task.session.activity_at,
@@ -241,7 +238,7 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
               serviceTier: normalizeCodexServiceTier(task.thread.service_tier),
             }
           : null,
-        backendBinding: projectAgentBackendBindingFromCore(task.thread.backend_binding),
+        backendBinding: task.thread.backend_binding,
         executionHostId: task.thread.execution_host_id,
         cwd: task.thread.cwd ?? undefined,
         managedWorktreePath: task.thread.managed_worktree_path ?? null,

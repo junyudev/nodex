@@ -59,7 +59,7 @@ const fixture = Effect.gen(function* () {
           thread: {
             threadId: "native-thread",
             executionHostId: controls.hostId,
-            backendBinding: { kind: "codex" },
+            backendBinding: { driver: "codex", instanceId: "codex" },
           },
         })),
     } as never),

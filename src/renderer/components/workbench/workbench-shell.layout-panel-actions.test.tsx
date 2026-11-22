@@ -3198,7 +3198,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         source.executionRef = null;
         source.thread = {
           ...source.thread!,
-          backendBinding: { kind: "claude", instanceConfigId: "native-claude" },
+          backendBinding: { driver: "claudeAgent", instanceId: "native-claude" },
         };
       }
       const screen = renderWorkbench({

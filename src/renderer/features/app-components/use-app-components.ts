@@ -25,8 +25,7 @@ export function subscribeProviderComponentReadiness(listener: () => void) {
   const read = () =>
     appComponentsOwner
       .getSnapshot()
-      ?.components.filter(({ id }) => id === "codex" || id === "claude-code")
-      .map((component) => providerComponentReadiness(component))
+      ?.components.map((component) => providerComponentReadiness(component))
       .join(",");
   let previous = read();
   return appComponentsOwner.subscribe(() => {

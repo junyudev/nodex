@@ -145,7 +145,7 @@ const rootDirectoryEntry = {
       reasoningEffort: "high",
       serviceTier: null,
     },
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     executionHostId: "remote-a",
     cwd: "/repo",
     writableRoots: ["/repo"],
@@ -554,11 +554,7 @@ it.effect("rejects an ACP root before reading Codex capabilities or remote topol
         ...rootDirectoryEntry,
         durable: {
           ...rootDirectoryEntry.durable,
-          backendBinding: {
-            kind: "acp",
-            agentDefinitionId: "claude-agent-acp",
-            instanceConfigId: "claude-local",
-          },
+          backendBinding: { driver: "acpRegistry", instanceId: "claude-local" },
         },
       } as CodexThreadDirectoryEntry;
       const service = yield* buildDirectory({

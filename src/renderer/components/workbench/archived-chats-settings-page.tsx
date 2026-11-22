@@ -70,7 +70,7 @@ function isNativeThreadChat(chat: CodexSidebarThreadItem): boolean {
 
 function requireSessionId(chat: CodexSidebarThreadItem): string {
   if (chat.sessionId) return chat.sessionId;
-  throw new Error(`Archived ${chat.backendBinding.kind} chat has no durable Session identity.`);
+  throw new Error(`Archived ${chat.backendBinding.driver} chat has no durable Session identity.`);
 }
 
 export function selectArchivedRootChats(snapshot: CodexSidebarSnapshot): CodexSidebarThreadItem[] {

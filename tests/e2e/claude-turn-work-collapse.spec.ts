@@ -48,13 +48,15 @@ test("keeps every final Claude reply block visible while completed work is colla
     });
     const page = await harness.launch();
     page.on("pageerror", (error) => rendererErrors.push(error.message));
-    await invokeIpc(page, "settings:claude-agents:update", {
+    await invokeIpc(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
-          id: "claude-default",
+          driver: "claudeAgent",
+          settings: { configDirectory: nativeHome, customModels: [] },
+          id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
           displayName: "Claude Code",
           binaryPath,
-          configDirectory: nativeHome,
           enabled: true,
           environment: [],
         },

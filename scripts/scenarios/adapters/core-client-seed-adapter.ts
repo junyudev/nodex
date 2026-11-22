@@ -1,3 +1,4 @@
+import { agentAttributionLabel } from "../../../src/shared/agents/registry";
 import { assessSeededAutomationCheck } from "../seed/automation-event";
 import { createHash } from "node:crypto";
 import {
@@ -869,7 +870,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     const agentAttribution = input.attachedByAgent
       ? await this.#runtime.rootClient.issueAgentAttribution({
           session_id: input.attachedByAgent.sessionId,
-          backend: input.attachedByAgent.backend,
+          driver: input.attachedByAgent.driver,
+          label: agentAttributionLabel(input.attachedByAgent.driver),
         })
       : undefined;
     const result = requireSuccess(
@@ -1017,7 +1019,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           threadSource: "user",
           threadName: input.thread.threadName,
           threadPreview: input.thread.threadPreview,
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           status: {
             statusType: input.thread.statusType,
             activeFlags: [...input.thread.statusActiveFlags],
@@ -1033,7 +1035,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           threadSource: "user",
           threadName: input.thread.threadName,
           threadPreview: input.thread.threadPreview,
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           statusType: input.thread.statusType,
           statusActiveFlags: [...input.thread.statusActiveFlags],
           createdAt: observedAt,

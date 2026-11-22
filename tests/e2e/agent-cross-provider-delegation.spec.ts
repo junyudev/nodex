@@ -116,11 +116,11 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
       page.locator("[data-delegation-node]").filter({ has: row(name) });
     await expect(page.locator("[data-delegation-lead]")).toContainText("Claude Code · lead");
     await expect(page.locator("[data-delegation-lead]")).toContainText("Delegating · 1/4 back");
-    await expect(node("WebAuthn routes").locator('[data-agent-kind="codex"]')).toContainText(
+    await expect(node("WebAuthn routes").locator('[data-agent-driver="codex"]')).toContainText(
       "GPT-6.1 Sol · Extra High",
     );
     await expect(node("WebAuthn routes")).toHaveAttribute("data-delegation-edge", "returned");
-    await expect(node("Passkey docs").locator('[data-agent-kind="opencode"]')).toContainText(
+    await expect(node("Passkey docs").locator('[data-agent-driver="opencode"]')).toContainText(
       "GLM-5.3-Flash Free",
     );
     await expect(node("Passkey docs")).toHaveAttribute("data-delegation-edge", "flowing");

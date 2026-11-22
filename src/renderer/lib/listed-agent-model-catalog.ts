@@ -44,7 +44,7 @@ export function resolveListedModelEffort(
       nextModelId: next.id,
       models,
     });
-  if (selection.kind === "claude" || selection.kind === "antigravity")
+  if (selection.kind === "claudeAgent" || selection.kind === "antigravity")
     return next.supportedReasoningEfforts.some(
       (option) => option.reasoningEffort === selection.reasoningEffort,
     )
@@ -74,7 +74,7 @@ export function listedModelCatalog(input: {
   const listed = models.filter((model) => !model.hidden);
   const current = listed.find((model) => model.id === selection.model);
   const efforts =
-    selection.kind === "codex" || selection.kind === "claude"
+    selection.kind === "codex" || selection.kind === "claudeAgent"
       ? []
       : (current?.supportedReasoningEfforts ?? []);
   return {

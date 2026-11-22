@@ -502,9 +502,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (typeof payload?.revision === "number") callback(payload);
       });
     },
-    subscribeClaudeAgentSettingsChanges(callback) {
-      return bridge.on("claude-agent-settings-changed", callback);
-    },
     subscribeAgentRuntimeSessionEvents(callback) {
       return bridge.on("agent-runtime:session-event", (...args: unknown[]) => {
         const payload = args[0] as

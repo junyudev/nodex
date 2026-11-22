@@ -9,7 +9,6 @@ import {
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type { IpcApi } from "../../src/shared/ipc-api";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -103,15 +102,16 @@ test("delegates across Codex and Claude through the Session UI and restores chil
   };
   try {
     let page = await launch();
-    await invoke(page, "settings:claude-agents:update", {
+    await invoke(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
+          driver: "claudeAgent",
+          settings: { configDirectory: path.join(fixture, "claude-home"), customModels: [] },
           id: "claude-fixture",
           displayName: "Runtime Claude",
           binaryPath: claude,
-          configDirectory: path.join(fixture, "claude-home"),
           enabled: true,
-          customModels: [],
           environment: [
             { name: "NODEX_TEST_CROSS_PROVIDER_HOME", value: fixture, sensitive: false },
           ],
@@ -119,11 +119,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
       ],
     });
     const providers = await waitForCodexRuntimeCatalog(page);
-    const claudeProvider = providers.find(
-      (provider) =>
-        provider.instanceId ===
-        agentRuntimeProviderId({ kind: "claude", instanceConfigId: "claude-fixture" }),
-    );
+    const claudeProvider = providers.find((provider) => provider.instanceId === "claude-fixture");
     const codexProvider = providers.find((provider) => provider.instanceId === "codex");
     expect(claudeProvider?.installed).toBe(true);
     expect(claudeProvider?.status).not.toBe("error");

@@ -3,7 +3,6 @@ import { NodexButton } from "@/components/ui/button";
 import { NodexSettingsRow } from "@/components/ui/settings";
 import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   antigravityExecutableDescription,
   antigravityRuntimeView,
@@ -115,7 +114,7 @@ export function AntigravityProfileExecutable({
 }: RuntimeStatusProps & { readonly profileId: string; readonly binaryPath?: string }) {
   const intl = useIntl();
   const inspection = useAntigravityRuntime(owner, open).state?.inspection;
-  const instanceId = agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: profileId });
+  const instanceId = profileId;
   const choice = inspection?.instances.find((entry) => entry.instanceId === instanceId);
   return <span>{antigravityExecutableDescription(choice, inspection, binaryPath, intl)}</span>;
 }

@@ -1,3 +1,5 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
+import { agentDefinition } from "../../../shared/agents/registry";
 import { getIntl } from "@/lib/i18n";
 import type {
   Automation,
@@ -89,13 +91,16 @@ function normalizeExecutionEnvironment(
   return executionEnvironment === "local" ? "local" : "worktree";
 }
 
-/** Claude uses its own default; an ACP model sends only options it advertises. */
-function defaultAutomationReasoningEffort(
-  binding: AgentBackendBinding,
-): AutomationReasoningEffort | "" {
-  if (binding.kind === "claude") return "default";
-  if (binding.kind === "acp" || binding.kind === "antigravity") return "";
-  return DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
+export function defaultAutomationIntelligence(binding: AgentBackendBinding): {
+  model: string;
+  reasoningEffort: AutomationReasoningEffort | "";
+} {
+  const source = agentDefinition(binding.driver).capabilities.automation?.modelSource;
+  if (source === "native") return { model: "default", reasoningEffort: "default" };
+  return {
+    model: "",
+    reasoningEffort: source === "appServer" ? DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT : "",
+  };
 }
 
 export function createAutomationId(
@@ -120,7 +125,8 @@ export function createWorkbenchAutomationDraft(
 ): WorkbenchAutomationDraft {
   const { automation } = input;
   const kind = normalizeKind(automation?.kind ?? "cron");
-  const backendBinding = automation?.backendBinding ?? { kind: "codex" as const };
+  const backendBinding = automation?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING;
+  const defaults = defaultAutomationIntelligence(backendBinding);
   return {
     id: automation?.id ?? input.id ?? createAutomationId(),
     expectedRevision: automation?.automationRevision,
@@ -141,14 +147,9 @@ export function createWorkbenchAutomationDraft(
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
     rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
-    model:
-      kind === "cron"
-        ? (automation?.model ?? (backendBinding.kind === "claude" ? "default" : ""))
-        : "",
+    model: kind === "cron" ? (automation?.model ?? defaults.model) : "",
     reasoningEffort:
-      kind === "cron"
-        ? (automation?.reasoningEffort ?? defaultAutomationReasoningEffort(backendBinding))
-        : "",
+      kind === "cron" ? (automation?.reasoningEffort ?? defaults.reasoningEffort) : "",
     serviceTier: kind === "cron" ? (automation?.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(automation?.cwds ?? [])] : [],
     executionEnvironment: automation?.executionEnvironment ?? "local",
@@ -161,7 +162,8 @@ export function createWorkbenchAutomationDraftFromCreateInput(
   input: AutomationCreateInput,
 ): WorkbenchAutomationDraft {
   const kind = normalizeKind(input.kind);
-  const backendBinding = input.backendBinding ?? { kind: "codex" as const };
+  const backendBinding = input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING;
+  const defaults = defaultAutomationIntelligence(backendBinding);
   return {
     id: createAutomationId(),
     backendBinding,
@@ -181,12 +183,8 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     name: input.name ?? "",
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
-    model:
-      kind === "cron" ? (input.model ?? (backendBinding.kind === "claude" ? "default" : "")) : "",
-    reasoningEffort:
-      kind === "cron"
-        ? (input.reasoningEffort ?? defaultAutomationReasoningEffort(backendBinding))
-        : "",
+    model: kind === "cron" ? (input.model ?? defaults.model) : "",
+    reasoningEffort: kind === "cron" ? (input.reasoningEffort ?? defaults.reasoningEffort) : "",
     serviceTier: kind === "cron" ? (input.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(input.cwds ?? [])] : [],
     executionEnvironment: input.executionEnvironment ?? (input.projectId ? "worktree" : "local"),
@@ -253,7 +251,11 @@ export function resolveWorkbenchAutomationDraftModelSettings(input: {
   draft: WorkbenchAutomationDraft;
   models: readonly AgentModelOption[];
 }): WorkbenchAutomationDraft {
-  if (input.draft.backendBinding.kind !== "codex") return input.draft;
+  if (
+    agentDefinition(input.draft.backendBinding.driver).capabilities.automation?.modelSource !==
+    "appServer"
+  )
+    return input.draft;
   if (input.draft.kind !== "cron") {
     if (
       input.draft.model === "" &&
@@ -646,7 +648,9 @@ export function isWorkbenchAutomationDraftDirty(input: {
 }): boolean {
   const { draft, existing } = input;
   if (!existing) return true;
-  const nativeCron = draft.kind === "cron" && draft.backendBinding.kind === "claude";
+  const nativeCron =
+    draft.kind === "cron" &&
+    agentDefinition(draft.backendBinding.driver).capabilities.automation?.modelSource === "native";
 
   return (
     JSON.stringify(draft.backendBinding) !== JSON.stringify(existing.backendBinding) ||
@@ -721,7 +725,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
   }
 
   return (
-    draft.backendBinding.kind !== "codex" ||
+    draft.backendBinding.instanceId !== CODEX_AGENT_BACKEND_BINDING.instanceId ||
     normalizeKind(draft.kind) !== "cron" ||
     draft.projectId !== null ||
     normalizeStatus(draft.status) !== "ACTIVE" ||

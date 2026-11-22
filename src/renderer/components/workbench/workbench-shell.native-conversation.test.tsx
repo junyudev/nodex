@@ -98,7 +98,7 @@ test("a native import without an execution reference opens its passive history s
     executionRef: null,
     thread: {
       ...attached.thread!,
-      backendBinding: { kind: "claude" as const, instanceConfigId: "native" },
+      backendBinding: { driver: "claudeAgent" as const, instanceId: "native" },
     },
   };
   const screen = renderWorkbench({

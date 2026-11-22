@@ -46,12 +46,8 @@ const coreThread = (
     thread_preview: "",
     backend_binding:
       backendKind === "codex"
-        ? { kind: "codex" }
-        : {
-            kind: "acp",
-            agent_definition_id: "claude-agent-acp",
-            instance_config_id: "claude-local",
-          },
+        ? { driver: "codex", instanceId: "codex" }
+        : { driver: "acpRegistry", instanceId: "claude-local" },
     model_id: "gpt-test",
     reasoning_effort: "high",
     service_tier: null,

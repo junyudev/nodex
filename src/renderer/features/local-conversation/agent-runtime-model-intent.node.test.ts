@@ -7,7 +7,7 @@ import {
 } from "./agent-runtime-model-intent";
 import type { AgentRuntimeProvider } from "./agent-runtime-conversation-adapter";
 
-const binding = { kind: "claude" as const, instanceConfigId: "claude" };
+const binding = { driver: "claudeAgent" as const, instanceId: "claude" };
 const model = (slug: string, full: boolean): AgentRuntimeProvider["models"][number] => ({
   slug,
   name: slug,

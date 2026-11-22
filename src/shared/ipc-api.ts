@@ -1,3 +1,5 @@
+import type { AgentProfile, AgentProfilesUpdate } from "./agents/profiles";
+import type { ProfileAgentDriver } from "./agents/registry";
 import type { CodexExecutableSettings } from "./codex-executable-settings";
 import type { FindPhase, FindRequest, FindResponse } from "./find";
 import type { PluginAppIpcApi, PluginAppViewEvent } from "./agent-plugins/ipc";
@@ -32,14 +34,6 @@ import type {
   CodexVisualizationStateWriteInput,
   CodexVisualizationStateWriteResult,
 } from "./codex-visualization-state";
-import type {
-  OpenCodeAgentSettings,
-  UpdateOpenCodeAgentSettingsInput,
-} from "./opencode-agent-settings";
-import type {
-  AntigravityAgentSettings,
-  UpdateAntigravityAgentSettingsInput,
-} from "./antigravity-agent-settings";
 import type {
   CodexHomeSettingsSnapshot,
   CodexHomeSettingsUpdateInput,
@@ -273,7 +267,6 @@ import type {
 
 import type {
   AcpAgentSettings,
-  ClaudeAgentSettings,
   BackupRecord,
   BackupCapacity,
   SnapshotStorageOptimization,
@@ -451,7 +444,6 @@ import type {
   TerminalViewLeaseResult,
   ThreadNotificationSettings,
   UpdateAcpAgentSettingsInput,
-  UpdateClaudeAgentSettingsInput,
   UpdateDiagnosticsSettingsInput,
   UpdateTelemetrySettingsInput,
   UpdateBackupSettingsInput,
@@ -1519,8 +1511,6 @@ export interface IpcApi
     args: [input: CodexHomeSettingsUpdateInput];
     result: CodexHomeSettingsSnapshot;
   };
-  "settings:opencode-agents:get": { args: []; result: OpenCodeAgentSettings };
-  "settings:antigravity-agents:get": { args: []; result: AntigravityAgentSettings };
   "nodex-account:read": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "nodex-account:sign-in": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "nodex-account:cancel-sign-in": {
@@ -1609,18 +1599,13 @@ export interface IpcApi
     args: [];
     result: import("./opencode-setup").OpenCodeSetupState;
   };
-  "settings:opencode-agents:update": {
-    args: [input: UpdateOpenCodeAgentSettingsInput];
-    result: OpenCodeAgentSettings;
+  "settings:agent-profiles:get": {
+    args: [driver: ProfileAgentDriver];
+    result: { instances: AgentProfile[] };
   };
-  "settings:antigravity-agents:update": {
-    args: [input: UpdateAntigravityAgentSettingsInput];
-    result: AntigravityAgentSettings;
-  };
-  "settings:claude-agents:get": { args: []; result: ClaudeAgentSettings };
-  "settings:claude-agents:update": {
-    args: [input: UpdateClaudeAgentSettingsInput];
-    result: ClaudeAgentSettings;
+  "settings:agent-profiles:update": {
+    args: [input: AgentProfilesUpdate];
+    result: { instances: AgentProfile[] };
   };
   "settings:acp-agents:get": { args: []; result: AcpAgentSettings };
   "settings:acp-agents:configuration-status": {
@@ -3360,7 +3345,6 @@ export interface IpcEvents {
   "browser-local-server-preferences-changed": BrowserLocalServerPreferences;
   "remote-hosted-pip:revision": RemoteHostedPipRevisionEvent;
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
-  "claude-agent-settings-changed": void;
   "agent-settings-changed": void;
   "terminal-shell-settings-changed": import("./terminal-shell-settings").TerminalShellSettings;
   "link-opening-settings-changed": import("./link-opening-settings").LinkOpeningSettings;

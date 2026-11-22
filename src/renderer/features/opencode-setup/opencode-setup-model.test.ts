@@ -1,11 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentEnvironmentVariable } from "../../../shared/agent-environment";
-import { defaultOpenCodeInstance } from "../../../shared/opencode-agent-settings";
+import { openCodeProfile } from "../../../shared/agents/profile.test-fixtures";
 import type { OpenCodeInstallFailureReason } from "../../../shared/opencode-setup";
 import {
   openCodeExecutableStatusAction,
   openCodeInstallView,
-  openCodeModelSetupEntry,
+  dependsOnHostOpenCode,
+  openCodeInstallationReadiness,
   usesHostOpenCodeExecutable,
   type OpenCodeSetupInstance,
 } from "./opencode-setup-model";
@@ -17,7 +18,7 @@ const snapshot = (patch: Partial<OpenCodeSetupSnapshot>): OpenCodeSetupSnapshot 
   ...patch,
 });
 const hostProfile: OpenCodeSetupInstance = {
-  binding: { kind: "opencode" },
+  binding: { driver: "opencode" },
   enabled: true,
   usesHostExecutable: true,
 };
@@ -37,7 +38,11 @@ const failed = (reason: OpenCodeInstallFailureReason, executable = setupState(0)
 
 describe("profiles that depend on host setup", () => {
   test("only a local profile resolving the bare default executable through the host", () => {
-    const base = defaultOpenCodeInstance();
+    const base = {
+      binaryPath: openCodeProfile().binaryPath,
+      serverUrl: null,
+      environment: [] as readonly { name: string }[],
+    };
     // Saved variables keep their full shape; the predicate reads only their names.
     const explicitPath: AgentEnvironmentVariable = {
       name: "PATH",
@@ -60,79 +65,19 @@ describe("profiles that depend on host setup", () => {
   });
 });
 
-describe("model menu setup entry", () => {
-  test("is offered only while an enabled profile runs the host executable", () => {
-    const offered = { hint: "Install", tone: "default", action: "dialog" };
-    expect(openCodeModelSetupEntry(missing, [hostProfile])).toEqual(offered);
-    expect(openCodeModelSetupEntry(missing, [{ ...hostProfile, enabled: false }])).toBeNull();
-    expect(
-      openCodeModelSetupEntry(missing, [{ ...hostProfile, usesHostExecutable: false }]),
-    ).toBeNull();
-    expect(
-      openCodeModelSetupEntry(missing, [{ binding: { kind: "claude" }, enabled: true }]),
-    ).toBeNull();
+describe("host installation facts", () => {
+  test("only enabled profiles using the host executable depend on installation", () => {
+    expect(dependsOnHostOpenCode([hostProfile])).toBe(true);
+    expect(dependsOnHostOpenCode([{ ...hostProfile, enabled: false }])).toBe(false);
+    expect(dependsOnHostOpenCode([{ ...hostProfile, usesHostExecutable: false }])).toBe(false);
   });
 
-  test("is absent before Main answers, on unsupported hosts and once OpenCode is ready", () => {
-    expect(openCodeModelSetupEntry(EMPTY_OPENCODE_SETUP_SNAPSHOT, [hostProfile])).toBeNull();
-    expect(
-      openCodeModelSetupEntry(snapshot({ state: setupState(1, { supported: false }) }), [
-        hostProfile,
-      ]),
-    ).toBeNull();
-    expect(
-      openCodeModelSetupEntry(
-        snapshot({ state: setupState(1, { executable: readyExecutable() }) }),
-        [hostProfile],
-      ),
-    ).toBeNull();
-  });
-
-  test("shows a percentage only when the installer reports one", () => {
-    const running = (progress: number | null) =>
-      snapshot({
-        state: setupState(2, {
-          installation: { phase: "running", log: { lines: [], progress } },
-        }),
-      });
-    expect(openCodeModelSetupEntry(running(0.416), [hostProfile])).toEqual({
-      hint: "42%",
-      tone: "default",
-      action: "dialog",
+  test("preserves whether the installer can retry", () => {
+    expect(openCodeInstallationReadiness(openCodeInstallView(failed("timeout")))).toMatchObject({
+      problem: { kind: "installation-failed", retry: "manual" },
     });
-    expect(openCodeModelSetupEntry(running(null), [hostProfile])?.hint).toBe("Installing…");
-    expect(
-      openCodeModelSetupEntry(snapshot({ state: setupState(1), request: "install" }), [hostProfile])
-        ?.hint,
-    ).toBe("Installing…");
-  });
-
-  test("reopens a failure and routes executables Nodex must not replace to settings", () => {
-    expect(openCodeModelSetupEntry(failed("timeout"), [hostProfile])).toEqual({
-      hint: "Failed",
-      tone: "danger",
-      action: "dialog",
-    });
-    const outdated = snapshot({
-      state: setupState(1, {
-        executable: {
-          status: "incompatible",
-          binaryPath: "/opt/homebrew/bin/opencode",
-          version: "1.10.2",
-          minimumVersion: "1.14.19",
-        },
-      }),
-    });
-    expect(openCodeModelSetupEntry(outdated, [hostProfile])).toMatchObject({
-      hint: "Update",
-      action: "settings",
-    });
-    const unusable = snapshot({
-      state: setupState(1, { executable: { status: "unusable", message: "Invalid version" } }),
-    });
-    expect(openCodeModelSetupEntry(unusable, [hostProfile])).toMatchObject({
-      hint: "Unavailable",
-      action: "settings",
+    expect(openCodeInstallationReadiness(openCodeInstallView(missing))).toMatchObject({
+      problem: { kind: "not-installed" },
     });
   });
 });

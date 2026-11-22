@@ -1,6 +1,7 @@
+import type { AgentInstallationReadiness } from "../../../shared/agents/readiness";
 import { getIntl, defineMessage } from "@/lib/i18n";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
-import { defaultOpenCodeInstance } from "../../../shared/opencode-agent-settings";
+import { openCodeAgent } from "../../../shared/agents/opencode";
 import type {
   OpenCodeInstallFailureReason,
   OpenCodeInstallerLog,
@@ -22,12 +23,13 @@ export const usesHostOpenCodeExecutable = (instance: {
   readonly serverUrl: string | null;
   readonly environment: readonly { readonly name: string }[];
 }): boolean =>
-  !instance.serverUrl &&
-  instance.binaryPath.trim() === defaultOpenCodeInstance().binaryPath &&
-  !instance.environment.some(({ name }) => name.trim() === "PATH");
+  openCodeAgent.profile.usesHostExecutable({
+    ...instance,
+    settings: { serverUrl: instance.serverUrl },
+  });
 
 export interface OpenCodeSetupInstance {
-  readonly binding: Pick<AgentBackendBinding, "kind">;
+  readonly binding: Pick<AgentBackendBinding, "driver">;
   readonly enabled: boolean;
   readonly usesHostExecutable?: boolean;
 }
@@ -36,7 +38,7 @@ export interface OpenCodeSetupInstance {
 export const dependsOnHostOpenCode = (instances: readonly OpenCodeSetupInstance[]): boolean =>
   instances.some(
     (instance) =>
-      instance.binding.kind === "opencode" &&
+      instance.binding.driver === "opencode" &&
       instance.enabled &&
       instance.usesHostExecutable === true,
   );
@@ -154,73 +156,34 @@ export function openCodeInstallView(snapshot: OpenCodeSetupSnapshot): OpenCodeIn
 export const formatInstallProgress = (progress: number | null): string | null =>
   progress === null ? null : `${Math.round(progress * 100)}%`;
 
-export interface OpenCodeModelSetupEntry {
-  readonly hint: string;
-  readonly tone: "default" | "danger";
-  /** Opening the dialog never starts installation; only its Install action does. */
-  readonly action: "dialog" | "settings";
-}
-
-/** The model menu offers host setup only where installing could add an enabled profile's models. */
-export function openCodeModelSetupEntry(
-  snapshot: OpenCodeSetupSnapshot,
-  instances: readonly OpenCodeSetupInstance[],
-  intl = getIntl(),
-): OpenCodeModelSetupEntry | null {
-  if (!dependsOnHostOpenCode(instances) || !snapshot.state?.supported) return null;
-  const view = openCodeInstallView(snapshot);
+/** The host installer supplies facts to Agent readiness. The dialog owns its log and controls. */
+export function openCodeInstallationReadiness(
+  view: OpenCodeInstallView,
+): AgentInstallationReadiness | undefined {
   switch (view.kind) {
     case "loading":
-    case "unreadable":
+      return { problem: { kind: "checking" } };
     case "ready":
-      return null;
+      return undefined;
+    case "unreadable":
+    case "unusable":
+      return { problem: { kind: "could-not-start" }, detail: view.message };
     case "idle":
-      return {
-        hint: intl.formatMessage({
-          id: "opencodeSetup.opencodeSetupModel.install",
-          defaultMessage: "Install",
-        }),
-        tone: "default",
-        action: "dialog",
-      };
+      return view.supported ? { problem: { kind: "not-installed" } } : undefined;
     case "running":
       return {
-        hint:
-          formatInstallProgress(view.log.progress) ??
-          intl.formatMessage({
-            id: "opencodeSetup.opencodeSetupModel.installing",
-            defaultMessage: "Installing…",
-          }),
-        tone: "default",
-        action: "dialog",
+        problem: {
+          kind: "installing",
+          ...(view.log.progress !== null ? { progress: view.log.progress } : {}),
+        },
       };
     case "failed":
       return {
-        hint: intl.formatMessage({
-          id: "opencodeSetup.opencodeSetupModel.failed",
-          defaultMessage: "Failed",
-        }),
-        tone: "danger",
-        action: "dialog",
+        problem: { kind: "installation-failed", retry: view.retryable ? "manual" : "settings" },
+        detail: view.message,
       };
     case "outdated":
-      return {
-        hint: intl.formatMessage({
-          id: "opencodeSetup.opencodeSetupModel.update",
-          defaultMessage: "Update",
-        }),
-        tone: "default",
-        action: "settings",
-      };
-    case "unusable":
-      return {
-        hint: intl.formatMessage({
-          id: "opencodeSetup.opencodeSetupModel.unavailable",
-          defaultMessage: "Unavailable",
-        }),
-        tone: "default",
-        action: "settings",
-      };
+      return { problem: { kind: "needs-update", version: view.minimumVersion }, found: true };
   }
 }
 

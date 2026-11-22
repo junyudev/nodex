@@ -11,7 +11,6 @@ import { make as makeAppToolOperation } from "./AppToolOperation";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import type { makeSetSessionUnreadWithNative } from "../project-application/SessionUnread";
-import { projectAgentBackendBindingFromCore } from "../core-client/project-workspace-adapter";
 import type { make as makeNativeControls } from "../codex-application/CodexSessionControls";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
@@ -135,9 +134,7 @@ export const makeWithPorts = (
               thread: session.thread
                 ? {
                     threadId: session.thread.thread_id,
-                    backendBinding: projectAgentBackendBindingFromCore(
-                      session.thread.backend_binding,
-                    ),
+                    backendBinding: session.thread.backend_binding,
                   }
                 : null,
             };

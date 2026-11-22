@@ -1,0 +1,1001 @@
+{
+  "src/host/AgentRuntimeLive.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claudeAgent": 3,
+      "codex": 13
+    }
+  },
+  "src/host/ChatAttachments.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/host/ProviderConfigurationLive.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/host/agent-plugins/AgentPluginReader.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2,
+      "claude": 3
+    }
+  },
+  "src/host/agent-plugins/PluginMcp.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "claude": 2
+    }
+  },
+  "src/host/agent-plugins/PluginSessions.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "acp": 2,
+      "opencode": 1,
+      "antigravity": 1
+    }
+  },
+  "src/host/agent-plugins/PluginSkills.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2,
+      "claude": 2
+    }
+  },
+  "src/host/inbox-application/InboxDispatchRuntime.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/host/mobile/transcript.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/agent-accounts/AgentAccounts.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "acpRegistry": 3,
+      "antigravity": 2
+    }
+  },
+  "src/main/agent-backend/AgentBackendApplication.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2,
+      "opencode": 1,
+      "claudeAgent": 5
+    }
+  },
+  "src/main/agent-backend/AgentBackendRegistry.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 3,
+      "acp": 4,
+      "acpRegistry": 2
+    }
+  },
+  "src/main/agent-backend/AgentConversationProjection.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "acp": 2,
+      "claude": 1,
+      "opencode": 1,
+      "antigravity": 1
+    }
+  },
+  "src/main/agent-backend/NativeSessionCatalog.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 7,
+      "claude": 4
+    }
+  },
+  "src/main/agent-backend/NativeSessionHistory.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "claudeAgent": 6,
+      "opencode": 3,
+      "claude": 1
+    }
+  },
+  "src/main/agent-backend/NativeSessionState.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "claude": 1
+    }
+  },
+  "src/main/agent-runtime/AcpProviderConfiguration.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "acpRegistry": 1
+    }
+  },
+  "src/main/agent-runtime/AgentRuntimeAntigravityInstallation.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "antigravity": 2
+    }
+  },
+  "src/main/agent-runtime/AgentRuntimeApplication.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 10,
+      "claude": 3,
+      "claudeAgent": 2
+    }
+  },
+  "src/main/agent-runtime/AgentRuntimeHost.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 6,
+      "opencode": 2
+    }
+  },
+  "src/main/agent-runtime/AgentRuntimeNativeImportSources.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 5,
+      "claude": 4
+    }
+  },
+  "src/main/agent-runtime/model-policy-catalog.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 2,
+      "claude": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/main/agent-runtime/provider-key-providers.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "claude": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/main/agent-skill-setup.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 5
+    }
+  },
+  "src/main/app-components/AppComponentCatalog.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-components/AppComponentStore.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 3
+    }
+  },
+  "src/main/app-components/AppComponents.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 5
+    }
+  },
+  "src/main/app-components/CodexComponent.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 4
+    }
+  },
+  "src/main/app-components/activation/codex.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-components/definitions/codex.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/app-tools/AppToolCaller.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/AppToolInterpreter.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/HandoffStatusAppTools.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/NativeSessionHistory.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/NativeSessionMessageIntake.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/NativeSessionPermissionFacts.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/app-tools/NativeSessionQuestions.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/NativeSessionReadDetails.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/SessionHandoffAppTools.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/SessionMessageAttachments.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/SessionObservation.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 6
+    }
+  },
+  "src/main/app-tools/SessionReadDetails.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/app-tools/SessionWaiter.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/chat-search/NativeChatSearchIndex.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/core-client/project-workspace-adapter.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/core-runtime/CoreApplicationProjectionRuntime.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/file-link-opener.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "antigravity": 3
+    }
+  },
+  "src/main/host-runtime/ClockAutomationRuntime.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/host-runtime/CodexRendererProjectionRuntime.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/host-runtime/RemoteHostedPipRuntime.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 7
+    }
+  },
+  "src/main/host-runtime/RendererClientRuntime.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/host-runtime/SkillInventory.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 5,
+      "claude": 3
+    }
+  },
+  "src/main/host-runtime/ThreadExecution.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/ipc/handlers/CodexWorkspaceIpc.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/ipc/handlers/NativeSessionCatalogIpc.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "claude": 3,
+      "codex": 2
+    }
+  },
+  "src/main/nodex-account/managed-providers.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2,
+      "claude": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/main/platform/node/AcpProfilePaths.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "opencode": 1
+    }
+  },
+  "src/main/platform/node/AgentRuntimeProcess.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "claude": 1,
+      "acp": 1,
+      "opencode": 1,
+      "antigravity": 1
+    }
+  },
+  "src/main/platform/node/CodexProcessExecutionHost.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/platform/node/CodexSshProxy.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/platform/node/CodexSshSession.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/platform/node/OpenCodeExecutable.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "opencode": 1
+    }
+  },
+  "src/main/platform/node/OpenCodeInstallPlatform.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "opencode": 5,
+      "opencode2": 1
+    }
+  },
+  "src/main/platform/node/OpenCodeSdk.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "opencode": 4
+    }
+  },
+  "src/main/platform/node/seed-codex-package.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/main/platform/node/stage-codex-package.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 4
+    }
+  },
+  "src/main/project-application/SessionUnread.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/main/settings/acp-agent-environment.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "acp": 2
+    }
+  },
+  "src/renderer/components/board/editor/agent-config-chip.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/components/shared/agent-runtime/use-agent-intelligence-menu.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/components/shared/icons/skill-fallback-icons.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/codex-home-settings-control.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/codex-setup-import-control.tsx": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 3
+    }
+  },
+  "src/renderer/components/workbench/conversation-import-list.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "claude": 1
+    }
+  },
+  "src/renderer/components/workbench/conversation-import-settings-page.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 1,
+      "claude": 1
+    }
+  },
+  "src/renderer/components/workbench/general-settings-page.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/components/workbench/page-turn.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/sidebar-thread-backend-routing.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/components/workbench/usage-meter-setting-rows.tsx": {
+    "reason": "Existing usage or analytics integration owns its published family values.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/use-page-chat-send-port.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/components/workbench/workbench-rail-account-controls.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 3
+    }
+  },
+  "src/renderer/components/workbench/workbench-runtime.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/components/workbench/workbench-session-thread-route.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "acpRegistry": 1,
+      "codex": 3
+    }
+  },
+  "src/renderer/components/workbench/workbench-settings-search-catalog.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 2,
+      "acp": 1,
+      "claude": 1
+    }
+  },
+  "src/renderer/features/dictation/voice-settings-page.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/features/first-run/first-run-agents-step.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "acp": 1
+    }
+  },
+  "src/renderer/features/first-run/first-run-terminal.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "claude": 1
+    }
+  },
+  "src/renderer/features/inbox/inbox-agent-model.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 4,
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/features/insights/insights-charts.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 1
+    }
+  },
+  "src/renderer/features/insights/insights-format.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 3,
+      "codex": 1
+    }
+  },
+  "src/renderer/features/insights/insights-route.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 1
+    }
+  },
+  "src/renderer/features/local-conversation/agent-identity-presentation.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 7,
+      "claudeAgent": 7,
+      "antigravity": 1,
+      "opencode": 1
+    }
+  },
+  "src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "antigravity": 2
+    }
+  },
+  "src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "antigravity": 1
+    }
+  },
+  "src/renderer/features/local-conversation/conversation-provider-controls.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/local-conversation-store.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/native-conversation-history-adapter.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2,
+      "claudeAgent": 1,
+      "opencode": 1,
+      "antigravity": 1
+    }
+  },
+  "src/renderer/features/local-conversation/normalized-transcript-read-owner.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/projection/build-turn-render-model.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/projection/normalized-timeline-entries.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/features/local-conversation/use-background-subagent-rows.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 3
+    }
+  },
+  "src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2,
+      "acpRegistry": 1
+    }
+  },
+  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 5,
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/features/local-conversation/view/connected-review-diff-panel.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "claudeAgent": 1,
+      "claude": 1,
+      "antigravity": 2,
+      "opencode": 2,
+      "acpRegistry": 1,
+      "acp": 1,
+      "codex": 1
+    }
+  },
+  "src/renderer/features/local-conversation/view/connected-thread-stage.tsx": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "claudeAgent": 3,
+      "claude": 2,
+      "codex": 7,
+      "acpRegistry": 1
+    }
+  },
+  "src/renderer/features/model-policy/models-settings-page.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "codex": 1,
+      "opencode": 1,
+      "opencode2": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/features/nodex-account/nodex-credit-meter.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/features/plugins/view/plugins-route.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 3
+    }
+  },
+  "src/renderer/features/skills/skill-presentation.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/features/skills/skill-test-fixtures.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 2,
+      "claude": 1
+    }
+  },
+  "src/renderer/features/skills/use-page-skill-mentions.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 1,
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/agent-runtime-model-selection.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "antigravity": 1,
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/lib/agent-settings-navigation.tsx": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "acp": 1
+    }
+  },
+  "src/renderer/lib/codex-created-thread-runtime.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/lib/command-palette-sections.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/conversation-identity.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/created-thread-navigation.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/file-tree-icons.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 2
+    }
+  },
+  "src/renderer/lib/listed-agent-model-catalog.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 3,
+      "claudeAgent": 2,
+      "antigravity": 2
+    }
+  },
+  "src/renderer/lib/model-policy-stopped-work.ts": {
+    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
+    "literals": {
+      "claudeAgent": 1
+    }
+  },
+  "src/renderer/lib/native-conversation-import-model.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "claude": 2,
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/query-keys.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/usage-meter.ts": {
+    "reason": "Existing usage or analytics integration owns its published family values.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/renderer/lib/use-workbench-session-commands.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "antigravity": 2
+    }
+  },
+  "src/renderer/lib/workbench-panel-capabilities.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/renderer/lib/workbench-ui-scopes.tsx": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "claude": 1
+    }
+  },
+  "src/renderer/lib/workbench-workspace-context.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/agent-conversation.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "acp": 2,
+      "claude": 2,
+      "opencode": 2,
+      "antigravity": 2
+    }
+  },
+  "src/shared/agent-import.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/agent-plugins/types.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "claude": 1
+    }
+  },
+  "src/shared/agent-runtime-agent-config.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/agent-runtime-subagent-display.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/agent-runtime-utility-model.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2,
+      "claude": 1
+    }
+  },
+  "src/shared/app-component-manifest.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/app-components.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/codex-app-server-release-lock.d.mts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/shared/codex-created-thread-result.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/shared/codex-runtime-metadata.d.mts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/shared/codex-runtime-metadata.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "codex": 2
+    }
+  },
+  "src/shared/file-link-openers.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "antigravity": 2
+    }
+  },
+  "src/shared/find.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/inbox.ts": {
+    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
+    "literals": {
+      "codex": 2,
+      "claude": 1
+    }
+  },
+  "src/shared/insights.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "claude": 2,
+      "codex": 2
+    }
+  },
+  "src/shared/native-session-catalog.ts": {
+    "reason": "Native app-server, history, or remote host transport integration.",
+    "literals": {
+      "claude": 1,
+      "codex": 1
+    }
+  },
+  "src/shared/nodex-app-tools/find-contract.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/nodex-app-tools/session-history.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1
+    }
+  },
+  "src/shared/product-analytics/catalog.ts": {
+    "reason": "Existing usage or analytics integration owns its published family values.",
+    "literals": {
+      "codex": 1,
+      "claude": 1,
+      "opencode": 1,
+      "antigravity": 1,
+      "acp": 1
+    }
+  },
+  "src/shared/skill-inventory.ts": {
+    "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
+    "literals": {
+      "codex": 1,
+      "claude": 1
+    }
+  }
+}

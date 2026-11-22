@@ -46,7 +46,7 @@ const thread = (overrides: Partial<DesktopProjectWorkspaceThread> = {}) =>
     agentPath: null,
     threadName: "Thread A",
     threadPreview: "",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     executionHostId: "local",
     cwd: "/worktrees/a/packages/app",
     managedWorktreePath: "/worktrees/a",
@@ -492,11 +492,7 @@ it.effect("rejects ACP lifecycle before invoking any Codex owner", () =>
   Effect.gen(function* () {
     const events: string[] = [];
     const currentThread = thread({
-      backendBinding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-local",
-      },
+      backendBinding: { driver: "acpRegistry", instanceId: "claude-local" },
       archived: true,
       managedWorktreePath: null,
     });

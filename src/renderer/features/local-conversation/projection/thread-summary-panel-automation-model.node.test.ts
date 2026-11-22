@@ -25,7 +25,7 @@ function automation(overrides: Partial<Automation> = {}): Automation {
     model: null,
     reasoningEffort: null,
     serviceTier: null,
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,

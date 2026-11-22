@@ -122,7 +122,7 @@ it.effect(
                 thread_id: "native-root",
                 expected_project_id: null,
                 thread_patch: {
-                  backend_binding: { kind: "codex" },
+                  backend_binding: { driver: "codex", instanceId: "codex" },
                   execution_host_id: "local",
                   thread_preview: "Native opening",
                   thread_name: "Native unique title",
@@ -138,7 +138,7 @@ it.effect(
               kind: "upsert_thread",
               thread_id: "native-child",
               patch: {
-                backend_binding: { kind: "codex" },
+                backend_binding: { driver: "codex", instanceId: "codex" },
                 execution_host_id: "local",
                 parent_thread_id: "native-root",
                 thread_name: "Hidden child conversation",

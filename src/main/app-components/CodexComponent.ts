@@ -33,7 +33,7 @@ export const needsCodexComponentForAccounts = (input: {
 type SessionWindow = Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "session_window" }>;
 export const hasCodexSession = (
   items: readonly Pick<SessionWindow["sessions"]["items"][number]["task"], "thread">[],
-): boolean => items.some(({ thread }) => thread?.backend_binding.kind === "codex");
+): boolean => items.some(({ thread }) => thread?.backend_binding.driver === "codex");
 
 const turnedOff = "Codex is turned off in Settings → General → Components.";
 

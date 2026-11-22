@@ -130,13 +130,18 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     expect(environmentSaved).toEqual({ type: "success" });
     runGit(sourceRoot, ["add", ".codex"]);
     runGit(sourceRoot, ["commit", "-m", "Configure isolated worktree environment"]);
-    await invoke(page, "settings:claude-agents:update", {
+    await invoke(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
-          id: "claude-default",
+          driver: "claudeAgent",
+          settings: {
+            configDirectory: path.join(harness.profile.runRoot, "claude-config"),
+            customModels: [],
+          },
+          id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
           displayName: "Claude Code",
           binaryPath,
-          configDirectory: path.join(harness.profile.runRoot, "claude-config"),
           enabled: true,
           environment: [],
         },
@@ -169,11 +174,10 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       "Saved secret — enter to replace",
     );
     await page.screenshot({ path: test.info().outputPath("claude-environment-settings.png") });
-    const savedSettings = await invoke<import("../../src/shared/types").ClaudeAgentSettings>(
-      page,
-      "settings:claude-agents:get",
-    );
-    expect(savedSettings.instances[0]?.environment[1]).toEqual({
+    const savedSettings = await invoke<{
+      instances: import("../../src/shared/agents/profiles").AgentProfile[];
+    }>(page, "settings:agent-profiles:get", "claudeAgent");
+    expect(savedSettings.instances[0]?.environment?.[1]).toEqual({
       name: "ANTHROPIC_AUTH_TOKEN",
       sensitive: true,
       value: null,

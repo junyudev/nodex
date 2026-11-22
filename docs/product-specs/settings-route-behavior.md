@@ -84,11 +84,11 @@ Conversations owns source discovery, destination selection and independent conve
 for Codex and Claude, as described in
 [Native Conversation Import Behavior](native-conversation-connection-behavior.md), and imports of
 conversations saved by ACP Agents, as described in [ACP Agent behavior](acp-agent-behavior.md).
-Agents shows one collapsible card per Agent kind, in the order Codex, Claude Code, API keys,
+Agents shows one collapsible card per Agent kind, in the order Codex, Claude Code, Antigravity, API keys,
 OpenCode and Other agents. Every card starts closed with a short status summary, so the page reads as a list of
 Agents; opening one reveals its setup, and cards stay open while Settings remains on Agents. A search
 result, Manage link or deep link that names an Agent, profile or ACP instance opens its card on
-arrival; one that names only the page opens it with every card closed. Claude Code and OpenCode list
+arrival; one that names only the page opens it with every card closed. Claude Code, Antigravity and OpenCode list
 one row per profile, API keys one row per connected provider, and Other agents one row per ACP
 instance, each expanding in place. API keys owns connecting, renaming, replacing the key of,
 checking the models of and removing [API key connections](agent-backend-behavior.md#api-keys); with

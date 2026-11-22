@@ -158,7 +158,10 @@ it.effect(
         Effect.succeed({
           value: {
             kind: "thread",
-            thread: { backend_binding: { kind: "codex" }, execution_host_id: "foreign" },
+            thread: {
+              backend_binding: { driver: "codex", instanceId: "codex" },
+              execution_host_id: "foreign",
+            },
           },
         }),
       );
@@ -245,7 +248,10 @@ it.effect("rechecks the account, entity host and Endpoint after yielded admissio
     yield* Deferred.succeed(resume, {
       value: {
         kind: "thread",
-        thread: { backend_binding: { kind: "codex" }, execution_host_id: target.hostId },
+        thread: {
+          backend_binding: { driver: "codex", instanceId: "codex" },
+          execution_host_id: target.hostId,
+        },
       },
     });
     assert.strictEqual((yield* Fiber.join(prepare))._tag, "Failure");

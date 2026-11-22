@@ -4,7 +4,6 @@ import type { PageAssignee } from "../../../shared/work-graph";
 import { AgentProviderIcon, AssigneeIcon } from "@/components/shared/icons";
 import { useMembers } from "@/lib/members-runtime";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
-import { agentRuntimeProviderBackendKind } from "@/lib/agent-runtime-model-selection";
 
 export function PageAssigneeLabel({ assignee }: { readonly assignee: PageAssignee | null }) {
   const intl = useIntl();
@@ -36,10 +35,7 @@ export function PageAssigneeLabel({ assignee }: { readonly assignee: PageAssigne
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       {provider ? (
-        <AgentProviderIcon
-          kind={agentRuntimeProviderBackendKind(provider)}
-          className="size-3.5 shrink-0"
-        />
+        <AgentProviderIcon kind={provider.driver} className="size-3.5 shrink-0" />
       ) : (
         <AssigneeIcon className="size-3.5 shrink-0" />
       )}

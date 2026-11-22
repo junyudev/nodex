@@ -20,7 +20,8 @@ export function deriveComposerIntelligenceSelection(
   return {
     kind,
     model: model.selectedModel,
-    reasoningEffort: model.provider?.kind === "acp" ? "none" : model.selectedReasoningEffort,
+    reasoningEffort:
+      model.provider?.kind === "acpRegistry" ? "none" : model.selectedReasoningEffort,
     serviceTier: kind === "codex" ? serviceTier : null,
   };
 }

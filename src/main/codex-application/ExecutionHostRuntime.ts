@@ -604,7 +604,7 @@ export const threadHostResolverLive: Layer.Layer<
                     }),
                   );
                 }
-                if (snapshot.value.thread.backend_binding.kind !== "codex") {
+                if (snapshot.value.thread.backend_binding.driver !== "codex") {
                   return Effect.fail(
                     codexRuntimeError({
                       operation: "thread-host.resolve-backend",

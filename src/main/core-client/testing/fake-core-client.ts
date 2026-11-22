@@ -325,7 +325,7 @@ export class FakeCoreClient implements CoreClientPort {
   }
 
   async issueAgentAttribution(input: import("../types").AgentAttributionRequest): Promise<string> {
-    return `fake-attribution:${input.backend}:${input.session_id}`;
+    return `fake-attribution:${input.driver}:${input.session_id}`;
   }
 
   async recordAgentRun(_input: import("../types").RecordAgentRunRequest): Promise<void> {}

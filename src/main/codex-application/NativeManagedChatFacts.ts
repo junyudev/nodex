@@ -29,7 +29,7 @@ export const live = Layer.effect(
           threadId: session.thread_id,
           fidelity: "durable",
         });
-        if (!entry || entry.durable.backendBinding.kind !== "codex")
+        if (!entry || entry.durable.backendBinding.driver !== "codex")
           return unavailableManagedChatFacts;
         const details = yield* nativeDetails({
           threadId: session.thread_id,

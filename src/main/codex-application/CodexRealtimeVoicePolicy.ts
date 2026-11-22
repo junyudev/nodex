@@ -92,7 +92,7 @@ export const make = Effect.gen(function* () {
           : Effect.fail(changed()),
       ),
     );
-    if (row && (row.backend_binding.kind !== "codex" || row.execution_host_id !== target.hostId))
+    if (row && (row.backend_binding.driver !== "codex" || row.execution_host_id !== target.hostId))
       return yield* changed();
     if (entities.current(target.threadId)?.readCanonicalState()?.hostId !== target.hostId)
       return yield* changed();

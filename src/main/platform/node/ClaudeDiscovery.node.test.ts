@@ -22,7 +22,7 @@ import {
   parseClaudeSkillFrontmatter,
   probeClaudeVersion,
 } from "./ClaudeDiscovery";
-import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 
 it.live.skipIf(process.platform === "win32")(
   "native version cancellation awaits a child that ignores TERM",
@@ -208,7 +208,7 @@ for (const gitMarker of ["directory", "file"] as const)
   );
 
 test("catalog identity reacts to secret and workspace changes without publishing a secret", () => {
-  const instance = defaultClaudeInstance();
+  const instance = claudeProfile();
   const fingerprint = claudeDiscoveryFingerprint(
     instance,
     { ANTHROPIC_AUTH_TOKEN: "private" },

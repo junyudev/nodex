@@ -1,3 +1,6 @@
+import { CODEX_BINDING } from "../../../shared/agents/codex";
+import { agentSettingsSections } from "../../../shared/agents/registry";
+import { AgentProfileSettingsSection } from "./agent-instance-settings-control";
 import { providerComponentSetup } from "@/features/app-components/provider-component-setup";
 import {
   runAppComponentChange,
@@ -18,7 +21,6 @@ import {
   NodexSettingsSection as SectionBlock,
   useNodexSettingsDisclosures,
 } from "../ui/settings";
-import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
 import { AgentCapacitySettingControl } from "./agent-capacity-setting-control";
 import { DefaultPermissionsSettingControl } from "./default-permissions-setting-control";
 import {
@@ -27,17 +29,17 @@ import {
   StandingInstructionsRow,
 } from "./agent-instructions-settings-control";
 import { CodexAgentSettingsSection } from "./codex-home-settings-control";
-import { AntigravityAgentSettingsControl } from "./antigravity-agent-settings-control";
-import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
 /** Every coding Agent Nodex can run, most common first; each opens to its own setup. */
 export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageProps) {
   const intl = useIntl();
-  const codex = useAgentRuntimeProviders().data?.find(({ instanceId }) => instanceId === "codex");
+  const codex = useAgentRuntimeProviders().data?.find(
+    ({ instanceId }) => instanceId === CODEX_BINDING.instanceId,
+  );
   const components = useAppComponents();
   const workbench = useWorkbenchWindowOwner();
-  const component = components.state?.components.find(({ id }) => id === "codex");
+  const component = components.state?.components.find(({ id }) => id === CODEX_BINDING.driver);
   const externalUnavailable = codex?.componentUnavailableReason === "external-unusable";
   const setup = externalUnavailable ? null : providerComponentSetup(codex, component, intl);
   const handleSetupAction = () => {
@@ -82,31 +84,43 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
           <StandingInstructionsRow />
           <EffectiveInstructionsRow />
         </SectionBlock>
-        <CodexAgentSettingsSection
-          open={open}
-          disclosure={disclosure("codex")}
-          unavailable={
-            setup?.title ??
-            ((!component || externalUnavailable) && codex?.componentUnavailableReason
-              ? codex.message
-              : undefined)
-          }
-          setupAction={
-            setup?.actionLabel ? { label: setup.actionLabel, run: handleSetupAction } : null
-          }
-        />
-        <ClaudeAgentSettingsControl open={open} disclosure={disclosure("claude")} />
-        <AntigravityAgentSettingsControl
-          open={open}
-          anchor={settingsAnchor ?? null}
-          disclosure={disclosure("antigravity")}
-        />
-        <ProviderKeysSettingsSection
-          anchor={settingsAnchor ?? null}
-          disclosure={disclosure("keys")}
-        />
-        <OpenCodeAgentSettingsControl open={open} disclosure={disclosure("opencode")} />
-        <AcpAgentsSettingsSection anchor={settingsAnchor ?? null} disclosure={disclosure("acp")} />
+        {agentSettingsSections.map((section) => {
+          const anchor = section.settingsAnchor;
+          const state = disclosure(anchor);
+          const location = settingsAnchor ?? null;
+          if ("profile" in section)
+            return (
+              <AgentProfileSettingsSection
+                key={anchor}
+                definition={section}
+                disclosure={state}
+                anchor={location}
+                open={open}
+              />
+            );
+          if (anchor === "keys")
+            return (
+              <ProviderKeysSettingsSection key={anchor} disclosure={state} anchor={location} />
+            );
+          if (anchor === CODEX_BINDING.driver)
+            return (
+              <CodexAgentSettingsSection
+                key={anchor}
+                open={open}
+                disclosure={state}
+                unavailable={
+                  setup?.title ??
+                  ((!component || externalUnavailable) && codex?.componentUnavailableReason
+                    ? codex.message
+                    : undefined)
+                }
+                setupAction={
+                  setup?.actionLabel ? { label: setup.actionLabel, run: handleSetupAction } : null
+                }
+              />
+            );
+          return <AcpAgentsSettingsSection key={anchor} disclosure={state} anchor={location} />;
+        })}
       </div>
     </SettingsPageSurface>
   );

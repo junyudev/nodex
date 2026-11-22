@@ -31,7 +31,7 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     model: null,
     reasoningEffort: null,
     serviceTier: null,
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     cwds: ["/repo/project"],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,

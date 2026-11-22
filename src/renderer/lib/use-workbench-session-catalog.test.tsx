@@ -703,7 +703,7 @@ describe("useWorkbenchSessionCatalog", () => {
       threadId: "thread:alpha",
       cwd: "/work/alpha",
       executionProfile: null,
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       managedWorktreePath: null,
       projectlessOutputDirectory: null,
       projectlessWorkspaceBrowserRoot: null,

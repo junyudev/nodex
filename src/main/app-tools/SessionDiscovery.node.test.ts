@@ -29,7 +29,7 @@ const native = (id: string, day: number, projectId: string | null = "project:a")
         thread_id: `thread:${id}`,
         recency_at: Date.parse(at(day)),
         thread_preview: id,
-        backend_binding: { kind: "codex" },
+        backend_binding: { driver: "codex", instanceId: "codex" },
         status: { status_type: "idle", active_flags: [] },
       },
     },
@@ -184,7 +184,7 @@ it.effect(
       });
       assert.equal(shortened.sessions[0]?.sessionId, "session:9");
       assert.equal(shortened.sessions[0]?.preview, "Prompt runtime:9");
-      assert.equal(shortened.sessions[0]?.backend, "claude");
+      assert.equal(shortened.sessions[0]?.backend, "claudeAgent");
       const otherProfile = yield* f
         .list({ archived: false, limit: 1, cursor: first.nextCursor! })
         .pipe(

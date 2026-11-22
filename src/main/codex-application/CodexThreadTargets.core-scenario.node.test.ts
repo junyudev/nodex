@@ -249,7 +249,7 @@ it.effect(
               kind: "upsert_thread",
               thread_id: "true-child",
               patch: {
-                backend_binding: { kind: "codex" },
+                backend_binding: { driver: "codex", instanceId: "codex" },
                 execution_host_id: target.hostId,
                 parent_thread_id: target.threadId,
               },
@@ -399,7 +399,7 @@ it.effect(
                 thread_id: "racing-root",
                 patch: {
                   execution_host_id: "ssh:foreign",
-                  backend_binding: { kind: "codex" },
+                  backend_binding: { driver: "codex", instanceId: "codex" },
                   thread_name: "Foreign title",
                 },
               },

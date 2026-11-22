@@ -251,7 +251,7 @@ test("moves draft and attached Chats through Section boundaries and built-in des
       threadSource: "user",
       threadName: "Inbox chat",
       threadPreview: "Move this chat into the custom Section",
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       statusType: "idle",
       statusActiveFlags: [],
       createdAt: started.thread.createdAt * 1000,

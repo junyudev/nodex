@@ -148,7 +148,7 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
           operation,
         });
       }
-      if (!thread || thread.backend_binding.kind !== "codex")
+      if (!thread || thread.backend_binding.driver !== "codex")
         return toolFailure("session_backend_unavailable");
       if (thread.thread_id === input.caller.threadId)
         return toolFailure("cannot_handoff_calling_session");

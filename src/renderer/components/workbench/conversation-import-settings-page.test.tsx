@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, it, vi } from "vite-plus/test";
-import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 import type {
   NativeConversationImportInput,
   NativeConversationImportOutcome,
@@ -8,7 +8,7 @@ import type {
   NativeConversationImportPreviewResult,
   NativeSessionCatalogPage,
 } from "../../../shared/native-session-catalog";
-import type { ClaudeAgentSettings, ProjectWindow } from "../../../shared/types";
+import type { ProjectWindow } from "../../../shared/types";
 import {
   createNativeConversationImportLedger,
   type NativeConversationImportLedger,
@@ -67,8 +67,8 @@ const projectWindow: ProjectWindow = {
   storeEpoch: "epoch",
   projectionRevision: 1,
 };
-const workProfiles: ClaudeAgentSettings = {
-  instances: [{ ...defaultClaudeInstance(), id: "work", displayName: "Work" }],
+const workProfiles: Awaited<ReturnType<ConversationImportRuntime["profiles"]>> = {
+  instances: [{ ...claudeProfile(), id: "work", displayName: "Work" }],
 };
 const imported = (input: NativeConversationImportInput): NativeConversationImportOutcome => ({
   kind: "imported",
@@ -383,7 +383,7 @@ it("keeps the active destination and Claude sources when Projects fail to load",
 });
 
 it("adds Claude sources to a browse that started before profiles loaded", async () => {
-  const profiles = deferred<ClaudeAgentSettings>();
+  const profiles = deferred<Awaited<ReturnType<ConversationImportRuntime["profiles"]>>>();
   const runtime = makeRuntime({ profiles: () => profiles.promise });
   await renderPage(runtime);
   await row("Migrate billing");

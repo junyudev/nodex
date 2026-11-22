@@ -3,16 +3,15 @@ import path from "node:path";
 import { makePersistedAtomStore } from "../../../src/main/local-store/persisted-atoms";
 import {
   getModelPolicy,
-  updateClaudeAgentSettings,
+  updateAgentProfiles,
   updateModelPolicy,
-  updateOpenCodeAgentSettings,
 } from "../../../src/main/settings/application-settings-persistence";
 import {
   AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
   agentRuntimeChoiceKey,
   AgentRuntimeComposerChoiceSchema,
 } from "../../../src/shared/agent-runtime-composer-choice-storage";
-import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
+import { CODEX_BINDING } from "../../../src/shared/agents/codex";
 import { setModelOn } from "../../../src/shared/model-policy";
 import { spaceStorageKeyFor } from "../../../src/shared/space-personal-state";
 import type { ScenarioManifest } from "../contracts";
@@ -33,10 +32,8 @@ export const prepareCrossProviderDelegationRuntime = (input: {
   const parentSession = input.manifest.entityIdsByKey?.parentSession;
   const releaseNotesSession = input.manifest.entityIdsByKey?.releaseNotesSession;
   if (!parentSession || !releaseNotesSession) throw new Error("Lumen Session identities missing");
-  const claudeBinding = { kind: "claude", instanceConfigId: "lumen-claude" } as const;
-  const openCodeBinding = { kind: "opencode", instanceConfigId: "lumen-opencode" } as const;
-  const openCodeInstanceId = agentRuntimeProviderId(openCodeBinding);
-  if (!openCodeInstanceId) throw new Error("Lumen OpenCode instance identity missing");
+  const claudeBinding = { driver: "claudeAgent", instanceId: "lumen-claude" } as const;
+  const openCodeBinding = { driver: "opencode", instanceId: "lumen-opencode" } as const;
   const openCodeModel = "opencode/glm-5.3-flash-free";
   const children = [
     {
@@ -72,7 +69,7 @@ export const prepareCrossProviderDelegationRuntime = (input: {
       durationMs: 20_000,
       task: "Document passkey sign-in for users and admins, and when the password fallback goes away.",
       target: {
-        providerInstanceId: openCodeInstanceId,
+        providerInstanceId: openCodeBinding.instanceId,
         model: openCodeModel,
       },
       file: "docs/passkeys.md",
@@ -131,32 +128,34 @@ export const prepareCrossProviderDelegationRuntime = (input: {
   }
   prepareScenarioCodexAppServerRuntimeSync(root, path.join(root, "codex"));
   const settings = { settingsPath: path.join(input.nodexHome, "config.toml"), environment: {} };
-  updateClaudeAgentSettings(
+  updateAgentProfiles(
     {
+      driver: claudeBinding.driver,
       instances: [
         {
-          id: claudeBinding.instanceConfigId,
+          driver: claudeBinding.driver,
+          settings: { configDirectory: path.join(root, "claude-home"), customModels: [] },
+          id: claudeBinding.instanceId,
           displayName: "Claude Code",
           enabled: true,
           binaryPath: path.join(root, "claude"),
-          configDirectory: path.join(root, "claude-home"),
-          customModels: [],
           environment: [],
         },
       ],
     },
     settings,
   );
-  updateOpenCodeAgentSettings(
+  updateAgentProfiles(
     {
+      driver: openCodeBinding.driver,
       instances: [
         {
-          id: openCodeBinding.instanceConfigId,
+          driver: openCodeBinding.driver,
+          settings: { profileDirectory: path.join(root, "opencode-home"), serverUrl: null },
+          id: openCodeBinding.instanceId,
           displayName: "OpenCode",
           enabled: true,
           binaryPath: path.join(root, "opencode"),
-          profileDirectory: path.join(root, "opencode-home"),
-          serverUrl: null,
           environment: [],
         },
       ],
@@ -164,12 +163,7 @@ export const prepareCrossProviderDelegationRuntime = (input: {
     settings,
   );
   updateModelPolicy(
-    setModelOn(
-      getModelPolicy(settings),
-      { instanceId: openCodeInstanceId, driver: "opencode" },
-      openCodeModel,
-      true,
-    ),
+    setModelOn(getModelPolicy(settings), openCodeBinding, openCodeModel, true),
     settings,
   );
   const atoms = makePersistedAtomStore(input.nodexHome);
@@ -191,7 +185,7 @@ export const prepareCrossProviderDelegationRuntime = (input: {
       [agentRuntimeChoiceKey.draft(releaseNotesSession, input.manifest.projectId)]:
         AgentRuntimeComposerChoiceSchema.parse({
           selection: {
-            binding: { kind: "codex" },
+            binding: CODEX_BINDING,
             model: "gpt-6.1-sol",
             options: [{ id: "reasoningEffort", value: "high" }],
           },

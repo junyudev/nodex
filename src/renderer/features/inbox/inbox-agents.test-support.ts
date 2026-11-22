@@ -1,6 +1,5 @@
 import { vi } from "vite-plus/test";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { DEFAULT_INBOX_SETTINGS } from "../../../shared/inbox";
 import type { InboxAgents } from "./inbox-agent-picker";
 
@@ -51,8 +50,8 @@ export const codexProvider = (): Provider => ({
   skills: [],
 });
 
-export const CLAUDE_INSTANCE = { kind: "claude", instanceConfigId: "work" } as const;
-export const CLAUDE_INSTANCE_ID = agentRuntimeProviderId(CLAUDE_INSTANCE)!;
+export const CLAUDE_INSTANCE = { driver: "claudeAgent", instanceId: "work" } as const;
+export const CLAUDE_INSTANCE_ID = CLAUDE_INSTANCE.instanceId!;
 
 /** A Claude account the user named `Work`, whose model offers effort but no speed tier. */
 export const claudeProvider = (): Provider => ({

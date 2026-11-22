@@ -76,7 +76,6 @@ export interface RendererTransport {
   subscribeOpenCodeSetupChanges: (
     callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,
   ) => () => void;
-  subscribeClaudeAgentSettingsChanges: (callback: () => void) => () => void;
   sendGitWorkerMessage: (
     message: import("../../shared/git-worker-protocol").GitWorkerMessageFromView,
   ) => Promise<void>;

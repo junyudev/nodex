@@ -60,7 +60,9 @@ A Component becomes usable as soon as it is installed. The app does not restart,
 that starts afterwards can use it.
 
 While a Component installs, the rest of Nodex stays usable. Features show the
-Component's installation state when they need it to run.
+Component's installation state when they need it to run. Agent surfaces read that state through
+[Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
+together with the provider snapshot. Components own download progress, retry and activation.
 
 - **Codex.** An existing sign-in or Codex Session, access to Codex models with Nodex credits,
   choosing a Codex model, or starting sign-in requests Codex. Sign-in waits for installation

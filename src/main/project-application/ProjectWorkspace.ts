@@ -99,7 +99,6 @@ import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry
 import { CoreModuleResponseError } from "../core-client/core-client";
 import {
   projectWorkspaceBackgroundProcessFromCore,
-  projectAgentBackendBindingToCore,
   projectWorkspaceExecutionProfilePatchToCore,
   projectWorkspaceProjectFromCore,
   projectWorkspacePageChatActivitySummaryFromCore,
@@ -1898,7 +1897,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
                       )
                     : {}),
                   ...(hasBackendBinding && parsed.backendBinding
-                    ? { backend_binding: projectAgentBackendBindingToCore(parsed.backendBinding) }
+                    ? { backend_binding: parsed.backendBinding }
                     : {}),
                   ...(parsed.runtimeWorkspaceRoots === undefined
                     ? {

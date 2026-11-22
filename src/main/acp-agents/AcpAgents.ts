@@ -14,7 +14,6 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import type { AcpFailure, AcpMethod, AcpOperations } from "../../shared/acp-api";
 import type { AgentAcpFailure } from "@nodex/agent-runtime/contracts";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import { AgentRuntimeProviderConfiguration } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -69,11 +68,7 @@ export const make = Effect.gen(function* () {
         message: "ACP Agent instance is unavailable or disabled.",
         reason: "disabled",
       });
-    const providerId = agentRuntimeProviderId({
-      kind: "acp",
-      agentDefinitionId: configured.agentDefinitionId,
-      instanceConfigId: configured.id,
-    });
+    const providerId = configured.id;
     if (!providerId)
       return yield* new AgentManagementError({ message: "ACP Agent identity is unavailable." });
     return { instanceId: providerId };

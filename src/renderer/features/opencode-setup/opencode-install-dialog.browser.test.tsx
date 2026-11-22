@@ -17,12 +17,15 @@ import {
   readyExecutable,
   setupState,
 } from "./opencode-setup.test-fixtures";
-import { useOpenCodeModelSetup } from "./use-opencode-setup";
+import { useHostOpenCodeInstallation } from "./use-opencode-setup";
 
 installRendererThemeFixture();
 
-const codex = { kind: "codex" } as const;
-const opencode = { kind: "opencode", instanceConfigId: "opencode-default" } as const;
+const codex = { driver: "codex", instanceId: "codex" } as const;
+const opencode = {
+  driver: "opencode",
+  instanceId: "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw",
+} as const;
 const chosenModel = catalogModel("gpt-sol", "GPT Sol");
 const freeModel = catalogModel("opencode/glm-5.3-flash-free", "GLM Flash Free");
 const chosen = { binding: codex, model: chosenModel.id };
@@ -37,7 +40,7 @@ const installed: AgentModelPickerEntry[] = [
 function ComposerModelMenu({ owner }: { readonly owner: OpenCodeSetupOwner }) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState(installed);
-  const { setup } = useOpenCodeModelSetup({
+  const host = useHostOpenCodeInstallation({
     instances: hostProfiles,
     owner,
     onReady: () =>
@@ -51,6 +54,20 @@ function ComposerModelMenu({ owner }: { readonly owner: OpenCodeSetupOwner }) {
         },
       ]),
   });
+  const problem = host.installation?.problem;
+  const setup =
+    problem && problem.kind !== "checking"
+      ? {
+          kind: opencode.driver,
+          label: "Free OpenCode models",
+          hint: problem.kind === "not-installed" ? "Install" : "Installing",
+          tone: "default" as const,
+          action: {
+            kind: "open" as const,
+            open: ({ showModels }: { showModels: () => void }) => host.open(showModels),
+          },
+        }
+      : null;
   return (
     <div style={{ position: "fixed", right: 40, bottom: 40 }}>
       <AgentIntelligenceDropdown

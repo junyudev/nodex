@@ -110,9 +110,9 @@ it.effect(
       const start = handlers.get("agent-accounts:start")!;
       assert.isTrue(isSpaceIpcChannel("agent-accounts:start"));
       assert.isTrue(isSpaceIpcChannel("agent-accounts:read"));
-      const backend = { kind: "antigravity", instanceConfigId: "personal" };
+      const backend = { driver: "antigravity", instanceId: "personal" };
       yield* start(event, { backend });
-      yield* start(event, { backend: { kind: "acp", instanceConfigId: "work" } });
+      yield* start(event, { backend: { driver: "acpRegistry", instanceId: "work" } });
       assert.equal(calls[0]?.ownerId, calls[1]?.ownerId);
       assert.isNotEmpty(calls[0]!.ownerId);
       const foreign = {

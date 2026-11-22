@@ -34,7 +34,7 @@ function task(overrides: Partial<Automation> = {}): Automation {
     model: null,
     reasoningEffort: null,
     serviceTier: null,
-    backendBinding: { kind: "codex" } as Automation["backendBinding"],
+    backendBinding: { driver: "codex", instanceId: "codex" } as Automation["backendBinding"],
     cwds: [],
     executionEnvironment: "local",
     localEnvironmentConfigPath: null,

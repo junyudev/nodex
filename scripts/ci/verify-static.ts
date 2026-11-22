@@ -19,6 +19,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "integrated TypeScript, Effect, lint, and format diagnostics",
   },
   {
+    command: ["run", "agent-drivers:verify"],
+    group: "source-ownership",
+    id: "agent-driver-boundaries",
+    name: "Agent driver boundaries",
+  },
+  {
     command: ["run", "verify:source-type-ownership"],
     group: "source-ownership",
     id: "source-type-ownership",

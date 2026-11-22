@@ -12,7 +12,7 @@ beforeEach(() => vi.clearAllMocks());
 const chat = (threadId: string): CodexSidebarThreadItem => ({
   key: threadId,
   kind: "local",
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   runLocation: { kind: "local-checkout" },
   hostId: "local",
   threadId,

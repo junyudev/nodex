@@ -49,7 +49,7 @@ const task: Automation = {
   model: null,
   reasoningEffort: null,
   serviceTier: null,
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   cwds: ["/repo"],
   executionEnvironment: "worktree",
   localEnvironmentConfigPath: null,

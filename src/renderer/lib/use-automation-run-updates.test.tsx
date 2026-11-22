@@ -36,7 +36,7 @@ function makeAutomation(id: string): Automation {
     model: null,
     reasoningEffort: null,
     serviceTier: null,
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     cwds: ["/tmp/codex"],
     executionEnvironment: "local",
     localEnvironmentConfigPath: null,

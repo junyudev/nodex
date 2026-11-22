@@ -1,3 +1,4 @@
+import { claudeProfile } from "../../shared/agents/profile.test-fixtures";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -81,12 +82,7 @@ const harness = (
     snapshot: () =>
       Effect.succeed({
         codexHome: { activeHomePath: activeHome },
-        claudeAgents: {
-          instances: (options.claudeProfiles ?? []).map((profile) => ({
-            id: profile.id,
-            enabled: true,
-          })),
-        },
+        agentProfiles: (options.claudeProfiles ?? []).map(({ id }) => claudeProfile({ id })),
       }),
   } as unknown as ApplicationSettings["Service"];
   const gateway = {

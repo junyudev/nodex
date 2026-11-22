@@ -34,7 +34,6 @@ import { ConversationRuntimeContext } from "./conversation-runtime";
 import { CodexTranscriptReadOwnerContext } from "./normalized-transcript-hooks";
 import { ConversationMarkdownSourceProvider } from "./view/conversation-markdown-source";
 import { MarkdownCore } from "./view/shared/markdown/markdown-core";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { CodexThreadSettingsProvider } from "../../lib/use-codex-thread-settings";
 import { CodexServiceTierSettingsProvider } from "../../lib/use-codex-service-tier-settings";
 import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-tier-settings";
@@ -248,9 +247,9 @@ describe("Agent Runtime composer readiness", () => {
   };
 
   it("keeps the Antigravity profile and sends its advertised thinking option with the next message", async () => {
-    const binding = { kind: "antigravity" as const, instanceConfigId: "work" };
+    const binding = { driver: "antigravity" as const, instanceId: "work" };
     const configured = [{ binding, label: "Work", enabled: true }];
-    const instanceId = agentRuntimeProviderId(binding)!;
+    const instanceId = binding.instanceId!;
     const modelSelection = { instanceId, model: "gemini" };
     const antigravity: AgentRuntimeProvider = {
       ...provider,
@@ -373,7 +372,7 @@ describe("Agent Runtime composer readiness", () => {
     const { result, unmount } = mountChat(false);
     await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
     expect(result.current.provider.modelCatalog?.selected).toEqual({
-      binding: { kind: "codex" },
+      binding: { driver: "codex", instanceId: "codex" },
       model: "",
     });
     expect(result.current.provider.notice).toMatchObject({ title: "Connect an agent to start" });
@@ -383,7 +382,13 @@ describe("Agent Runtime composer readiness", () => {
     await act(async () => unmount());
   });
 
-  it("waits for Check again to refresh signed-out Codex before clearing a started chat's notice", async () => {
+  const unresponsiveCodex: AgentRuntimeProvider = {
+    ...codexProvider,
+    status: "error",
+    issue: "unresponsive",
+  };
+
+  it("waits for Check again to refresh unresponsive Codex before clearing a started chat's notice", async () => {
     let resolveRefresh!: (providers: AgentRuntimeProvider[]) => void;
     const refreshedCatalog = {
       promise: new Promise<AgentRuntimeProvider[]>((resolve) => {
@@ -393,18 +398,18 @@ describe("Agent Runtime composer readiness", () => {
     };
     const catalog = vi
       .spyOn(agentRuntimeRuntime, "catalog")
-      .mockResolvedValueOnce([signedOutCodex])
+      .mockResolvedValueOnce([unresponsiveCodex])
       .mockReturnValue(refreshedCatalog.promise);
     const { result, unmount } = mountChat(true);
     await waitFor(() => expect(result.current.state.connection).toBe("ready"));
     await waitFor(() =>
       expect(result.current.provider.notice).toMatchObject({
-        title: "Codex isn’t signed in",
+        title: "Codex didn’t respond in time",
         tone: "warning",
       }),
     );
     const actions = result.current.provider.notice!.actions!;
-    expect(actions.map(({ label }) => label)).toEqual(["Sign in", "Check again"]);
+    expect(actions.map(({ label }) => label)).toEqual(["Check again"]);
     const checkAgain = actions.find(({ label }) => label === "Check again")!;
     let settled = false;
     let checking: Promise<void> | undefined;
@@ -416,7 +421,7 @@ describe("Agent Runtime composer readiness", () => {
     });
     expect(catalog).toHaveBeenLastCalledWith({ refresh: true });
     expect(settled).toBe(false);
-    expect(result.current.provider.notice?.title).toBe("Codex isn’t signed in");
+    expect(result.current.provider.notice?.title).toBe("Codex didn’t respond in time");
     await act(async () => {
       refreshedCatalog.resolve([codexProvider]);
       await checking;
@@ -427,11 +432,11 @@ describe("Agent Runtime composer readiness", () => {
   });
 
   it("shows a catalog load failure ahead of a started Agent's readiness notice", async () => {
-    const catalog = vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([signedOutCodex]);
+    const catalog = vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([unresponsiveCodex]);
     const { result, unmount } = mountChat(true);
     await waitFor(() => expect(result.current.state.connection).toBe("ready"));
     await waitFor(() =>
-      expect(result.current.provider.notice?.title).toBe("Codex isn’t signed in"),
+      expect(result.current.provider.notice?.title).toBe("Codex didn’t respond in time"),
     );
     catalog.mockRejectedValueOnce(new Error("Agent catalog is offline"));
     await act(async () => {
@@ -455,8 +460,8 @@ describe("Agent Runtime failed-provider settings", () => {
   it.each(["configured", "missing-configuration", "codex", "no-window-navigation"] as const)(
     "keeps the failed Agent's settings authority with %s",
     async (scenario) => {
-      const binding = { kind: "claude" as const, instanceConfigId: "failed-settings" };
-      const instanceId = agentRuntimeProviderId(binding)!;
+      const binding = { driver: "claudeAgent" as const, instanceId: "failed-settings" };
+      const instanceId = binding.instanceId!;
       const modelSelection = {
         instanceId: scenario === "codex" ? "codex" : instanceId,
         model: "model",
@@ -478,7 +483,7 @@ describe("Agent Runtime failed-provider settings", () => {
               appThreadId: "engine-thread",
               providerInstanceId: modelSelection.instanceId,
               providerSessionId: null,
-              nativeThreadRef: { driver: "claude", nativeId: "native", strength: "strong" },
+              nativeThreadRef: { driver: "claudeAgent", nativeId: "native", strength: "strong" },
             }),
           ],
         },
@@ -494,7 +499,7 @@ describe("Agent Runtime failed-provider settings", () => {
       };
       vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
         provider,
-        { ...provider, instanceId, driver: "claude", displayName: "Claude" },
+        { ...provider, instanceId, driver: "claudeAgent", displayName: "Claude" },
       ]);
       vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
       vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
@@ -535,7 +540,7 @@ describe("Agent Runtime failed-provider settings", () => {
       if (scenario === "configured") {
         await act(async () => {
           await result.current.provider.modelCatalog!.choose({
-            binding: { kind: "codex" },
+            binding: { driver: "codex", instanceId: "codex" },
             model: "model",
           });
         });
@@ -557,8 +562,8 @@ describe("Agent Runtime response fork entrypoint", () => {
   it.each(["claude", "opencode"] as const)(
     "forks a completed %s response from its exact Run and opens the accepted Session",
     async (kind) => {
-      const binding = { kind, instanceConfigId: "fork-test" };
-      const instanceId = agentRuntimeProviderId(binding);
+      const binding = { driver: kind === "claude" ? "claudeAgent" : kind, instanceId: "fork-test" };
+      const instanceId = binding.instanceId;
       if (!instanceId) throw new Error("Expected the configured Agent Instance");
       const configured = [{ binding, label: kind, enabled: true }];
       const sessionId = `${kind}-response-fork`;
@@ -762,7 +767,8 @@ it("shows one installation status when an earlier provider sharing the Component
     source: "nodex",
     driver: "claudeAgent",
     installed: false,
-    requiredComponent: "claude-code",
+    installationSource: { kind: "component", id: "claude-code" },
+    componentUnavailableReason: "installing",
   };
   vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
     provider,
@@ -774,7 +780,7 @@ it("shows one installation status when an earlier provider sharing the Component
   const { result, unmount } = mountDraft("draft-with-installing-claude");
   await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
   expect(result.current.provider.modelCatalog?.setups).toEqual([
-    expect.objectContaining({ kind: "claude", label: "Installing Claude Code…" }),
+    expect.objectContaining({ kind: "claudeAgent", label: "Installing Claude Code…" }),
   ]);
   await act(async () => unmount());
 });
@@ -1344,13 +1350,13 @@ describe("Agent Runtime Codex controls", () => {
 });
 
 describe("Agent Runtime Agent switching", () => {
-  const claudeBinding = { kind: "claude" as const, instanceConfigId: "switch-claude" };
-  const claudeId = agentRuntimeProviderId(claudeBinding)!;
+  const claudeBinding = { driver: "claudeAgent" as const, instanceId: "switch-claude" };
+  const claudeId = claudeBinding.instanceId!;
   const configured = [{ binding: claudeBinding, enabled: true, label: "Claude" }];
   const claudeProvider = {
     ...provider,
     instanceId: claudeId,
-    driver: "claude",
+    driver: "claudeAgent",
     displayName: "Claude",
     models: [{ slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null }],
   } as unknown as AgentRuntimeProvider;
@@ -1441,7 +1447,9 @@ describe("Agent Runtime Agent switching", () => {
   const claudeEntry = (result: {
     current: ReturnType<typeof useAgentRuntimeConversationAdapter>;
   }) =>
-    result.current.provider.modelCatalog!.entries.find((entry) => entry.binding.kind === "claude")!;
+    result.current.provider.modelCatalog!.entries.find(
+      (entry) => entry.binding.driver === "claudeAgent",
+    )!;
 
   it("continues a finished Codex chat on Claude from the next message, then follows the chat", async () => {
     const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
@@ -1453,7 +1461,7 @@ describe("Agent Runtime Agent switching", () => {
       await result.current.provider.modelCatalog!.choose(claudeEntry(result).selection);
     });
     // The Composer now speaks for Claude; the chat itself is unchanged until a message uses it.
-    expect(result.current.provider.kind).toBe("claude");
+    expect(result.current.provider.kind).toBe("claudeAgent");
     expect(result.current.selectedModel).toBe("sonnet");
     expect(message).not.toHaveBeenCalled();
     await act(async () => {
@@ -1505,9 +1513,9 @@ describe("Agent Runtime Agent switching", () => {
     await act(async () => {
       await result.current.provider.modelCatalog!.choose(claudeEntry(result).selection);
     });
-    expect(result.current.provider.kind).toBe("claude");
+    expect(result.current.provider.kind).toBe("claudeAgent");
     const gptEntry = result.current.provider.modelCatalog!.entries.find(
-      (entry) => entry.binding.kind === "codex" && entry.model.id === "gpt",
+      (entry) => entry.binding.driver === "codex" && entry.model.id === "gpt",
     )!;
     await act(async () => {
       await result.current.provider.modelCatalog!.choose(gptEntry.selection);
@@ -1521,7 +1529,7 @@ describe("Agent Runtime Agent switching", () => {
     // A new window store reads the same persisted choice, as after a restart.
     const reopened = renderHook(useChat, { wrapper: SavedSettingsWorkbench });
     await waitFor(() => expect(reopened.result.current.state.connection).toBe("ready"));
-    await waitFor(() => expect(reopened.result.current.provider.kind).toBe("claude"));
+    await waitFor(() => expect(reopened.result.current.provider.kind).toBe("claudeAgent"));
     await act(async () => reopened.unmount());
   });
 
@@ -1542,8 +1550,8 @@ describe("Agent Runtime Agent switching", () => {
 });
 
 describe("Agent Runtime new chat memory", () => {
-  const claudeBinding = { kind: "claude" as const, instanceConfigId: "memory-claude" };
-  const claudeId = agentRuntimeProviderId(claudeBinding)!;
+  const claudeBinding = { driver: "claudeAgent" as const, instanceId: "memory-claude" };
+  const claudeId = claudeBinding.instanceId!;
   const configured = [{ binding: claudeBinding, enabled: true, label: "Claude" }];
   const claudeProvider = {
     ...provider,
@@ -1585,7 +1593,7 @@ describe("Agent Runtime new chat memory", () => {
 
     const next = mountDraft("memory-next", configured);
     await waitFor(() => expect(next.result.current.provider.modelCatalog?.loading).toBe(false));
-    expect(next.result.current.provider.kind).toBe("claude");
+    expect(next.result.current.provider.kind).toBe("claudeAgent");
     expect(next.result.current.selectedModel).toBe("sonnet");
     await act(async () => next.unmount());
   });
@@ -1672,7 +1680,7 @@ describe("Agent Runtime new chat memory", () => {
     const loading = mountDraft("memory-loading", configured);
     await waitFor(() => expect(loading.result.current.selectedModel).toBe("sonnet"));
     expect(loading.result.current.provider.modelCatalog?.loading).toBe(true);
-    expect(loading.result.current.provider.kind).toBe("claude");
+    expect(loading.result.current.provider.kind).toBe("claudeAgent");
     // Claude is gone from what the catalog answers, so this chat starts on Codex instead.
     await act(async () => {
       answer([codexProvider]);
@@ -1743,9 +1751,9 @@ describe("Agent Runtime new chat memory", () => {
 
     const next = mountDraft("memory-credit-next");
     await waitFor(() => expect(next.result.current.provider.modelCatalog?.loading).toBe(false));
-    expect(
-      agentRuntimeProviderId(next.result.current.provider.modelCatalog!.selected.binding),
-    ).toBe(nodexProvider.instanceId);
+    expect(next.result.current.provider.modelCatalog!.selected.binding.instanceId).toBe(
+      nodexProvider.instanceId,
+    );
     await act(async () => next.unmount());
   });
 });
@@ -2050,12 +2058,12 @@ describe("Agent Runtime conversation adapter", () => {
   });
 
   it("shares Claude draft intent across presentations and restores unsupported preferences on switching back", async () => {
-    const binding = { kind: "claude" as const, instanceConfigId: "intent-claude" };
+    const binding = { driver: "claudeAgent" as const, instanceId: "intent-claude" };
     const configured = [{ binding, enabled: true, label: "Claude" }];
     const claude = {
       ...provider,
-      instanceId: agentRuntimeProviderId(binding)!,
-      driver: "claude",
+      instanceId: binding.instanceId!,
+      driver: "claudeAgent",
       displayName: "Claude",
       slashCommands: [
         {
@@ -2543,7 +2551,10 @@ describe("Agent Runtime image capabilities", () => {
     const images = [{ source: "data:image/png;base64,aGVsbG8=" }];
     for (const model of ["text", "unknown"]) {
       await act(async () => {
-        await result.current.provider.modelCatalog!.choose({ binding: { kind: "codex" }, model });
+        await result.current.provider.modelCatalog!.choose({
+          binding: { driver: "codex", instanceId: "codex" },
+          model,
+        });
       });
       expect(supportsConversationProviderControl(result.current.provider, "images")).toBe(false);
       await act(async () => {
@@ -2564,7 +2575,7 @@ describe("Agent Runtime image capabilities", () => {
     });
     await act(async () => {
       await result.current.provider.modelCatalog!.choose({
-        binding: { kind: "codex" },
+        binding: { driver: "codex", instanceId: "codex" },
         model: "vision",
       });
     });
@@ -2580,10 +2591,13 @@ describe("Agent Runtime image capabilities", () => {
 
 describe("Host OpenCode setup", () => {
   it("reloads the catalog once OpenCode is ready without replacing the chosen model", async () => {
-    const binding = { kind: "opencode", instanceConfigId: "opencode-default" } as const;
+    const binding = {
+      driver: "opencode",
+      instanceId: "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw",
+    } as const;
     const missingOpenCode = {
       ...provider,
-      instanceId: agentRuntimeProviderId(binding),
+      instanceId: binding.instanceId,
       driver: "opencode",
       displayName: "OpenCode",
       installed: false,
@@ -2631,7 +2645,7 @@ describe("Host OpenCode setup", () => {
     );
     await act(async () => {
       await result.current.provider.modelCatalog!.choose({
-        binding: { kind: "codex" },
+        binding: { driver: "codex", instanceId: "codex" },
         model: "gpt-mini",
       });
     });
@@ -2661,11 +2675,11 @@ describe("Host OpenCode setup", () => {
 });
 
 it("projects OpenCode variant and thought selectors as reasoning choices", async () => {
-  const binding = { kind: "opencode", instanceConfigId: "reasoning-options" } as const;
+  const binding = { driver: "opencode", instanceId: "reasoning-options" } as const;
   const model = "model";
   const openCode: AgentRuntimeProvider = {
     ...provider,
-    instanceId: agentRuntimeProviderId(binding)!,
+    instanceId: binding.instanceId!,
     driver: "opencode",
     models: [
       {
@@ -2732,12 +2746,8 @@ describe("Agent Runtime imported native history", () => {
   ])(
     "explains history the Agent hasn't restored yet ($capabilities)",
     async ({ capabilities, description }) => {
-      const binding = {
-        kind: "acp" as const,
-        agentDefinitionId: "scripted-agent",
-        instanceConfigId: "acp-personal",
-      };
-      const instanceId = agentRuntimeProviderId(binding)!;
+      const binding = { driver: "acpRegistry" as const, instanceId: "acp-personal" };
+      const instanceId = binding.instanceId!;
       const modelSelection = { instanceId, model: "default" };
       const imported = agentRuntimeSnapshotFixture({
         thread: { modelSelection, activeProviderThreadId: "imported-thread" },
@@ -2801,20 +2811,16 @@ describe("Agent Runtime imported native history", () => {
 describe("Agent Runtime sent-message editing capabilities", () => {
   it.each([
     { driver: "opencode", supportsConversationRollback: true, editable: true },
-    { driver: "acp", supportsConversationRollback: undefined, editable: false },
-    { driver: "acp", supportsConversationRollback: false, editable: false },
+    { driver: "acpRegistry", supportsConversationRollback: undefined, editable: false },
+    { driver: "acpRegistry", supportsConversationRollback: false, editable: false },
   ])(
     "requires an explicit historical rewind capability: $driver/$supportsConversationRollback",
     async ({ driver, supportsConversationRollback, editable }) => {
       const binding =
         driver === "opencode"
-          ? { kind: "opencode" as const, instanceConfigId: "edit-capability-agent" }
-          : {
-              kind: "acp" as const,
-              agentDefinitionId: "reset-only",
-              instanceConfigId: "edit-capability-agent",
-            };
-      const instanceId = agentRuntimeProviderId(binding)!;
+          ? { driver: "opencode" as const, instanceId: "edit-capability-agent" }
+          : { driver: "acpRegistry" as const, instanceId: "edit-capability-agent" };
+      const instanceId = binding.instanceId!;
       vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
         {
           ...provider,
@@ -2862,12 +2868,8 @@ describe("Agent Runtime sent-message editing capabilities", () => {
 
 describe("Agent Runtime effective image capability", () => {
   it("refreshes image support after a live ACP handshake without replacing the model's options", async () => {
-    const binding = {
-      kind: "acp" as const,
-      agentDefinitionId: "image-negotiation",
-      instanceConfigId: "live-image-negotiation",
-    };
-    const instanceId = agentRuntimeProviderId(binding)!;
+    const binding = { driver: "acpRegistry" as const, instanceId: "live-image-negotiation" };
+    const instanceId = binding.instanceId!;
     const sessionId = "live-image-negotiation-session";
     const options = [{ id: "effort", value: "high" }];
     const liveProvider = (inputModalities?: ("text" | "image")[]) =>
@@ -3120,7 +3122,7 @@ describe("Agent Runtime effective image capability", () => {
       );
       await act(async () => {
         await result.current.provider.modelCatalog!.choose({
-          binding: { kind: "codex" },
+          binding: { driver: "codex", instanceId: "codex" },
           model: "text-only",
         });
       });
@@ -3468,14 +3470,14 @@ it("keeps managed Codex and Claude choices without user-configured instances", a
   await waitFor(() => expect(result.current.provider.modelCatalog?.entries).toHaveLength(3));
   for (const instance of managed) {
     const entry = result.current.provider.modelCatalog!.entries.find(
-      (entry) => agentRuntimeProviderId(entry.binding) === instance.instanceId,
+      (entry) => entry.binding.instanceId === instance.instanceId,
     )!;
     expect(entry.label).toBe("Nodex");
     await act(async () => {
       await result.current.provider.modelCatalog!.choose(entry.selection);
     });
     await waitFor(() =>
-      expect(agentRuntimeProviderId(result.current.provider.modelCatalog!.selected.binding)).toBe(
+      expect(result.current.provider.modelCatalog!.selected.binding.instanceId).toBe(
         instance.instanceId,
       ),
     );

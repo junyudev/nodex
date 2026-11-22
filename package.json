@@ -186,6 +186,7 @@
     "install:local:mac": "tsx scripts/install-local-macos.ts",
     "fmt": "vp fmt",
     "check:changed": "tsx scripts/testing/check-changed.ts",
+    "agent-drivers:verify": "tsx scripts/ci/agent-driver-boundaries.ts",
     "verify:static": "tsx scripts/ci/verify-static.ts",
     "i18n:check": "tsx scripts/i18n/check-messages.ts",
     "verify:source": "vp run verify:static && vp run core:fmt && vp run core:clippy && vp run core:test && vp run test && vp run test:stress && vp run test:browser",

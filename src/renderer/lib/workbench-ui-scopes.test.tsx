@@ -61,7 +61,7 @@ function projectSession(threadId: string | null = null): ProjectSession {
           projectId: "project-1",
           threadId,
           threadPreview: "Task",
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           executionHostId: "local",
           statusType: "idle",
           statusActiveFlags: [],

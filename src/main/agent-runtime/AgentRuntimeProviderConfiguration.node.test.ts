@@ -1,3 +1,10 @@
+import { join } from "node:path";
+import { buildAgentProfileProvider } from "../agent-backend/profile-providers";
+import {
+  antigravityProfile,
+  claudeProfile,
+  openCodeProfile,
+} from "../../shared/agents/profile.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -147,4 +154,108 @@ it.effect("confirmed retirement leaves the process running", () =>
     });
     assert.equal(yield* Ref.get(stopped), 0);
   }),
+);
+
+it.effect(
+  "declares the three profiles with their exact Runtime configuration and secret flags",
+  () =>
+    Effect.gen(function* () {
+      const home = join("/fixture", "nodex");
+      const context = {
+        config: {
+          homeDirectory: home,
+          profileSettingsPath: join(home, "config.toml"),
+          platform: "darwin" as const,
+        },
+        environment: { PATH: "/fixture/bin", GEMINI_API_KEY: "ambient" },
+        shell: {} as never,
+      };
+      const model = { id: "gateway/private", displayName: "Private", traits: { fastMode: true } };
+      const claude = claudeProfile({
+        settings: { customModels: [model], configDirectory: "/fixture/account" },
+        environment: [{ name: "TOKEN", sensitive: true, value: null }],
+      });
+      const openCode = openCodeProfile({
+        settings: { serverUrl: "http://127.0.0.1:4096", profileDirectory: null },
+        environment: [{ name: "OPENCODE_SERVER_PASSWORD", sensitive: true, value: null }],
+      });
+      const antigravity = antigravityProfile({
+        settings: {
+          authMethod: "agent-platform",
+          apiKey: null,
+          gcpProject: "work",
+          gcpLocation: "us-central1",
+        },
+      });
+      const [claudeConfig, openCodeConfig, antigravityConfig, disabled] = yield* Effect.all([
+        buildAgentProfileProvider(
+          claude,
+          { environment: { TOKEN: "claude-secret" }, secrets: {} },
+          context,
+        ),
+        buildAgentProfileProvider(
+          openCode,
+          { environment: { OPENCODE_SERVER_PASSWORD: "password" }, secrets: {} },
+          context,
+        ),
+        buildAgentProfileProvider(
+          antigravity,
+          { environment: {}, secrets: { apiKey: "antigravity-secret" } },
+          context,
+        ),
+        buildAgentProfileProvider({ ...antigravity, enabled: false }, null, context),
+      ]);
+      assert.deepEqual(claudeConfig.environment, [
+        { name: "TOKEN", value: "claude-secret", sensitive: true },
+      ]);
+      assert.deepEqual(claudeConfig.config, {
+        binaryPath: "claude",
+        homePath: "/fixture/account",
+        customModels: [
+          {
+            slug: model.id,
+            name: model.displayName,
+            capabilities: {
+              optionDescriptors: [{ id: "fastMode", label: "Fast", type: "boolean" }],
+            },
+          },
+        ],
+        modelTraits: { [model.id]: model.traits },
+      });
+      assert.deepEqual(openCodeConfig.config, {
+        binaryPath: "opencode",
+        serverUrl: "http://127.0.0.1:4096",
+        serverPassword: "password",
+      });
+      assert.deepEqual(
+        openCodeConfig.environment?.find(({ name }) => name === "XDG_CONFIG_HOME"),
+        {
+          name: "XDG_CONFIG_HOME",
+          value: join(home, "agents", "opencode", openCode.id, "config"),
+          sensitive: false,
+        },
+      );
+      assert.deepEqual(
+        openCodeConfig.environment?.find(({ name }) => name === "OPENCODE_SERVER_PASSWORD"),
+        {
+          name: "OPENCODE_SERVER_PASSWORD",
+          value: "password",
+          sensitive: true,
+        },
+      );
+      assert.deepEqual(antigravityConfig.environment, [
+        { name: "PATH", value: "/fixture/bin", sensitive: false },
+      ]);
+      assert.deepEqual(antigravityConfig.config, {
+        enabled: true,
+        authMethod: "agent-platform",
+        apiKey: "antigravity-secret",
+        gcpProject: "work",
+        gcpLocation: "us-central1",
+        binaryPath: "",
+        customModels: [],
+      });
+      assert.strictEqual(disabled.enabled, false);
+      assert.notMatch(JSON.stringify(disabled.config), /antigravity-secret/);
+    }),
 );

@@ -19,7 +19,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import * as NodeServices from "./NodeServices";
 import { AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
-import { OPENCODE_MANAGED_ENVIRONMENT_NAMES } from "../../../shared/opencode-agent-settings";
+import { OPENCODE_MANAGED_ENVIRONMENT_NAMES } from "../../../shared/agents/opencode";
 
 export interface OpenCodeLaunchInput {
   readonly binaryPath: string;

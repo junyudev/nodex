@@ -25,7 +25,7 @@ function thread(cwd: string): ProjectSessionThreadLink {
     threadId: "thread-1",
     threadName: "Thread",
     threadPreview: "Thread",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     executionHostId: "local",
     cwd,
     statusType: "notLoaded",

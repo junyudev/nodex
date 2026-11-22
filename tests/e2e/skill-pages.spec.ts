@@ -30,16 +30,17 @@ test("opens and edits skills in their Project folders", async ({}, testInfo) => 
       const openSkillsList = () =>
         customize.getByRole("button", { name: "Skills", exact: true }).click();
       // Folder discovery needs a Claude instance, but the test never starts a conversation.
-      await invokeIpc(page, "settings:claude-agents:update", {
+      await invokeIpc(page, "settings:agent-profiles:update", {
+        driver: "claudeAgent",
         instances: [
           {
-            id: "claude-default",
+            driver: "claudeAgent",
+            settings: { configDirectory: profile.claudeConfigHome, customModels: [] },
+            id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
             displayName: "Claude Code",
             binaryPath: path.join(profile.runRoot, "unavailable-claude"),
-            configDirectory: profile.claudeConfigHome,
             enabled: true,
             environment: [],
-            customModels: [],
           },
         ],
       });

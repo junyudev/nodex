@@ -155,7 +155,10 @@ const fixture = (kind: Kind = "runtime") => {
                         thread_id: "native:a",
                         execution_host_id: "host:a",
                         updated_at: at,
-                        backend_binding: { kind: state.kind === "native" ? "codex" : "acp" },
+                        backend_binding:
+                          state.kind === "native"
+                            ? { driver: "codex", instanceId: "codex" }
+                            : { driver: "acpRegistry", instanceId: "test" },
                         status: { status_type: "idle", active_flags: [] },
                       }
                     : null,
@@ -188,7 +191,7 @@ const fixture = (kind: Kind = "runtime") => {
             threadId: state.executionThread ?? state.root,
             thread: {
               providerInstanceId: state.provider,
-              providerDriver: "claude",
+              providerDriver: "claudeAgent",
               modelSelection: { instanceId: state.provider, model: "model:a" },
               status: state.status,
               activeRunId: state.activeRunId,
@@ -380,7 +383,7 @@ it.effect(
       const f = fixture();
       const owner = yield* f.owner;
       const result = yield* owner.inspect(input.sessionId, provenance);
-      assert.equal(result.backend, "claude");
+      assert.equal(result.backend, "claudeAgent");
       assert.deepEqual(result.agent, {
         providerInstanceId: "custom-agent-route",
         model: "model:a",

@@ -33,7 +33,7 @@ const nativeCodex: SessionExecutionSource = {
   thread: {
     threadId: "codex-1",
     executionHostId: "ssh-host",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     parentThreadId: null,
     cwd: " /remote/repo ",
     managedWorktreePath: null,
@@ -44,7 +44,7 @@ const nativeClaude: SessionExecutionSource = {
   thread: {
     threadId: "claude-1",
     executionHostId: "local",
-    backendBinding: { kind: "claude", instanceConfigId: "claude-main" },
+    backendBinding: { driver: "claudeAgent", instanceId: "claude-main" },
     cwd: "/repo",
   },
 };

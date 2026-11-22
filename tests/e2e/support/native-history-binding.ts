@@ -27,7 +27,7 @@ export async function seedNativeHistoryBinding(
       session_id: createUuidV7(),
       thread_id: entry.nativeSessionId,
       project_id: null,
-      backend_binding: { kind: "codex" },
+      backend_binding: { driver: "codex", instanceId: "codex" },
       native_session_id: entry.nativeSessionId,
       native_home: nativeHome,
       title: entry.title,

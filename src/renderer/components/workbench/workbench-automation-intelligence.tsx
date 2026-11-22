@@ -1,3 +1,5 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
+import { agentDefinition } from "../../../shared/agents/registry";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
@@ -13,15 +15,12 @@ import { resolveNativeIntelligenceSelection } from "@/lib/native-intelligence-se
 import { isClaudeEffortLevel } from "../../../shared/claude-models";
 import { useClaudeModelCatalog } from "@/features/local-conversation/use-claude-model-catalog";
 import type { AgentModelOption } from "../../../shared/types";
-import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import {
+  defaultAutomationIntelligence,
   resolveWorkbenchAutomationDraftModelSettings,
   type WorkbenchAutomationDraft,
 } from "./workbench-automation-draft";
 import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
-
-const bindingValue = (binding: AgentBackendBinding) =>
-  binding.kind === "codex" ? "codex" : `${binding.kind}:${binding.instanceConfigId ?? ""}`;
 
 interface AutomationDraftEditor {
   readonly draft: WorkbenchAutomationDraft;
@@ -34,51 +33,44 @@ export function useAutomationAgent({ draft, codexModels, onChange }: AutomationD
   const intl = useIntl();
   const { instances } = useAgentInstances();
   const binding = draft.backendBinding;
-  const value = bindingValue(binding);
+  const value = binding.instanceId;
+  const definition = agentDefinition(binding.driver);
+  const modelSource = definition.capabilities.automation?.modelSource;
+  const defaultBinding = CODEX_AGENT_BACKEND_BINDING;
+  const defaultDefinition = agentDefinition(defaultBinding.driver);
   const scheduled = instances.filter(
-    (instance) =>
-      instance.enabled &&
-      (instance.binding.kind === "claude" ||
-        instance.binding.kind === "acp" ||
-        instance.binding.kind === "antigravity"),
+    ({ enabled, binding }) =>
+      enabled &&
+      binding.instanceId !== defaultBinding.instanceId &&
+      agentDefinition(binding.driver).capabilities.automation !== undefined,
   );
-  const current = instances.find((instance) => bindingValue(instance.binding) === value);
+  const current = instances.find((instance) => instance.binding.instanceId === value);
   const label =
-    binding.kind === "codex"
-      ? "Codex"
-      : (current?.label ??
-        (binding.kind === "acp" || binding.kind === "antigravity"
-          ? intl.formatMessage({
-              id: "workbench.workbenchAutomationIntelligence.unavailableAgent",
-              defaultMessage: "Unavailable Agent",
-            })
-          : binding.instanceConfigId || "Claude"));
+    current?.label ??
+    (modelSource === "discovery" || modelSource === "account"
+      ? intl.formatMessage({
+          id: "workbench.workbenchAutomationIntelligence.unavailableAgent",
+          defaultMessage: "Unavailable Agent",
+        })
+      : definition.label);
   const options = [
-    { value: "codex", label: "Codex" },
+    { value: defaultBinding.instanceId, label: defaultDefinition.label },
     ...scheduled.map((instance) => ({
-      value: bindingValue(instance.binding),
+      value: instance.binding.instanceId,
       label: instance.label,
     })),
   ];
   const select = (next: string) => {
     if (next === value) return;
-    const backendBinding: AgentBackendBinding =
-      next === "codex"
-        ? { kind: "codex" }
-        : (scheduled.find((instance) => bindingValue(instance.binding) === next)?.binding ?? {
-            kind: "codex",
-          });
+    const backendBinding =
+      next === defaultBinding.instanceId
+        ? defaultBinding
+        : scheduled.find((instance) => instance.binding.instanceId === next)?.binding;
+    if (!backendBinding) return;
     const changed = {
       ...draft,
       backendBinding,
-      // Account-based Agents start with their own catalog and option choices.
-      model: backendBinding.kind === "claude" ? "default" : "",
-      reasoningEffort:
-        backendBinding.kind === "claude"
-          ? "default"
-          : backendBinding.kind === "acp" || backendBinding.kind === "antigravity"
-            ? ""
-            : "medium",
+      ...defaultAutomationIntelligence(backendBinding),
       serviceTier: "",
       localEnvironmentConfigPath: "",
     };
@@ -133,12 +125,14 @@ export function AutomationModelPicker({
   onChange,
 }: AutomationDraftEditor & { readonly agent: AutomationAgent; readonly disabled: boolean }) {
   const binding = draft.backendBinding;
-  const isClaude = binding.kind === "claude";
-  const usesRuntimeCatalog = binding.kind === "acp" || binding.kind === "antigravity";
+  const modelSource = agentDefinition(binding.driver).capabilities.automation?.modelSource;
+  const usesNativeIntelligence = modelSource === "native";
+  const usesRuntimeCatalog = modelSource === "discovery" || modelSource === "account";
+  const usesAppServer = modelSource === "appServer";
   const runtime = useAcpAutomationModels(binding);
   const catalog = useClaudeModelCatalog(
-    isClaude
-      ? { kind: "project", instanceConfigId: binding.instanceConfigId, projectId: draft.projectId }
+    usesNativeIntelligence
+      ? { kind: "project", instanceConfigId: binding.instanceId, projectId: draft.projectId }
       : null,
   );
   const intelligence = resolveNativeIntelligenceSelection(
@@ -149,13 +143,15 @@ export function AutomationModelPicker({
     catalog.discovery?.intelligence,
     true,
   );
-  const models = isClaude
+  const models = usesNativeIntelligence
     ? catalog.options.map((option) =>
         projectNativeModelOption(option, option.value === catalog.discovery?.intelligence.model),
       )
     : usesRuntimeCatalog
       ? runtime.models
-      : codexModels;
+      : usesAppServer
+        ? codexModels
+        : [];
   /** Retain only a thinking level the selected model offers. */
   const runtimeEffort = (model: string, effort: string) => {
     const efforts = runtime.models.find((option) => option.id === model)?.supportedReasoningEfforts;
@@ -171,19 +167,22 @@ export function AutomationModelPicker({
       triggerStyle="settings"
       agent={{ binding, label: agent.label }}
       selection={{
-        kind: binding.kind,
-        model: isClaude
+        kind: binding.driver,
+        model: usesNativeIntelligence
           ? intelligence.model
           : usesRuntimeCatalog
             ? draft.model
-            : draft.model || "default",
-        reasoningEffort: isClaude
+            : usesAppServer
+              ? draft.model || "default"
+              : draft.model,
+        reasoningEffort: usesNativeIntelligence
           ? intelligence.effort
           : usesRuntimeCatalog
             ? draft.reasoningEffort || "default"
-            : draft.reasoningEffort || "medium",
-        serviceTier:
-          isClaude || usesRuntimeCatalog ? null : normalizeCodexServiceTier(draft.serviceTier),
+            : usesAppServer
+              ? draft.reasoningEffort || "medium"
+              : draft.reasoningEffort,
+        serviceTier: usesAppServer ? normalizeCodexServiceTier(draft.serviceTier) : null,
       }}
       onSelectionChange={(next, change) => {
         const model = change === "model" ? next.model : draft.model;
@@ -193,7 +192,7 @@ export function AutomationModelPicker({
           reasoningEffort: usesRuntimeCatalog
             ? runtimeEffort(model, next.reasoningEffort)
             : next.reasoningEffort,
-          serviceTier: isClaude || usesRuntimeCatalog ? "" : (next.serviceTier ?? ""),
+          serviceTier: usesAppServer ? (next.serviceTier ?? "") : "",
         });
       }}
     />

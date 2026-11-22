@@ -464,7 +464,7 @@ export interface CodexCanonicalDelegatedTaskItem {
   readonly agentPath?: string;
   readonly providerInstanceId: string;
   /** The harness that runs the task, known even after its Agent is no longer configured. */
-  readonly agentKind: import("../conversation-identity").AgentBackendKind | null;
+  readonly agentKind: import("../agent-backend").AgentBackendBinding["driver"] | null;
   readonly status: CodexDelegatedTaskStatus;
   /** Bounded instruction preview from the transcript window. */
   readonly prompt: string;

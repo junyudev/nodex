@@ -28,7 +28,12 @@ export const withAgentCliScenario = <A>(
         server.issue({
           owner,
           projectId,
-          attribution: { session_id: sessionId, run_id: `fixture:${owner}`, backend: "codex" },
+          attribution: {
+            session_id: sessionId,
+            run_id: `fixture:${owner}`,
+            driver: "codex",
+            label: "Codex",
+          },
           identity: scenario.runtime.identity,
           authorize: async () => "allowed",
         }),

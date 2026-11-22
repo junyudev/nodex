@@ -290,7 +290,7 @@ export const make = Effect.gen(function* () {
       !thread ||
       thread.archived ||
       thread.executionHostId === CODEX_APP_LOCAL_HOST_ID ||
-      thread.backendBinding.kind !== "codex" ||
+      thread.backendBinding.driver !== "codex" ||
       Option.isNone(remoteTurns)
     )
       return yield* inbox.failDispatch(work, "This chat's runtime is unavailable", "unavailable");

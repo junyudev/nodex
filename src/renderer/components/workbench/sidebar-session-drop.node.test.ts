@@ -66,7 +66,7 @@ const nativeSession = session({
     projectId: "project-alpha",
     threadId: "thread-alpha",
     threadPreview: "",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     executionHostId: "local",
     statusType: "idle",
     statusActiveFlags: [],

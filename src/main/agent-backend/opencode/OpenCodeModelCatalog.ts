@@ -1,3 +1,5 @@
+import { openCodeAgent } from "../../../shared/agents/opencode";
+import { openCodeProfileDirectory } from "./OpenCodeProfileProvider";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -61,17 +63,19 @@ export const make = Effect.gen(function* () {
     environment?: Readonly<Record<string, string>>,
     workspaceEnvironment?: CodexStoredShellEnvironment | null,
   ) {
-    const launch = yield* settings.openCodeLaunchConfiguration(instanceId).pipe(
-      Effect.mapError((cause) =>
-        agentRuntimeError({
-          operation: "opencode.settings",
-          reason: "initialize",
-          retryable: false,
-          cause,
-        }),
-      ),
-    );
-    if (!launch.instance.enabled)
+    const launch = yield* settings
+      .agentProfileLaunchConfiguration(openCodeAgent.driver, instanceId)
+      .pipe(
+        Effect.mapError((cause) =>
+          agentRuntimeError({
+            operation: "opencode.settings",
+            reason: "initialize",
+            retryable: false,
+            cause,
+          }),
+        ),
+      );
+    if (!launch.profile.enabled)
       return yield* Effect.fail(
         failure("settings", "This OpenCode instance is disabled", "authorization"),
       );
@@ -82,8 +86,8 @@ export const make = Effect.gen(function* () {
     );
     const resolved = yield* resolveOpenCodeLaunch(
       {
-        binaryPath: launch.instance.binaryPath,
-        serverUrl: launch.instance.serverUrl,
+        binaryPath: launch.profile.binaryPath,
+        serverUrl: launch.profile.settings.serverUrl,
         inheritedEnvironment: base,
         environment:
           workspaceEnvironment?.set.PATH === undefined &&
@@ -98,9 +102,9 @@ export const make = Effect.gen(function* () {
     );
     return {
       binaryPath: resolved.binaryPath,
-      serverUrl: launch.instance.serverUrl,
+      serverUrl: launch.profile.settings.serverUrl,
       cwd,
-      profileDirectory: launch.profileDirectory,
+      profileDirectory: openCodeProfileDirectory(launch.profile, config.profileSettingsPath),
       environment: { ...base, ...resolved.environment },
       ...(launch.environment.OPENCODE_SERVER_PASSWORD
         ? { serverPassword: launch.environment.OPENCODE_SERVER_PASSWORD }
@@ -155,7 +159,7 @@ export const make = Effect.gen(function* () {
       ).pipe(
         Effect.catch((error) =>
           Effect.succeed({
-            binding: { kind: "opencode", instanceConfigId: input.instanceConfigId },
+            binding: { driver: "opencode", instanceId: input.instanceConfigId },
             models: [],
             configOptions: [],
             modes: null,

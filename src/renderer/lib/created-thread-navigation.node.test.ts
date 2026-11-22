@@ -31,7 +31,7 @@ const session: ProjectSession = {
     projectId: null,
     threadId: "same",
     executionHostId: "remote",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     threadPreview: "",
     statusType: "idle",
     statusActiveFlags: [],

@@ -29,7 +29,9 @@ test("counts recognized OpenAI credit models and existing Codex Sessions as dema
   >["sessions"]["items"][number]["task"];
   const task = (kind: string) =>
     ({
-      thread: { backend_binding: { kind } },
+      thread: {
+        backend_binding: { driver: kind === "claude" ? "claudeAgent" : kind, instanceId: kind },
+      },
     }) as Pick<Task, "thread">;
   expect(hasCodexSession([task("claude"), task("codex")])).toBe(true);
   expect(hasCodexSession([task("claude")])).toBe(false);

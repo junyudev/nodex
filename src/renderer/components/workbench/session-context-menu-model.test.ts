@@ -47,7 +47,7 @@ function makeAttachedSession(overrides: Partial<ProjectSession> = {}): ProjectSe
       projectId: "project-1",
       threadId: "thread-1",
       threadPreview: "",
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       executionHostId: "local",
       cwd: "/tmp/project",
       statusType: "idle",
@@ -275,11 +275,7 @@ describe("session context menu model", () => {
       session: makeAttachedSession({
         thread: {
           ...makeAttachedSession().thread!,
-          backendBinding: {
-            kind: "acp",
-            agentDefinitionId: "claude-agent-acp",
-            instanceConfigId: "claude-main",
-          },
+          backendBinding: { driver: "acpRegistry", instanceId: "claude-main" },
         },
       }),
       projects: [makeProject("project-1", "Current"), makeProject("project-2", "Destination")],

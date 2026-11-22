@@ -872,9 +872,9 @@ test("saving a mounted Claude side draft freezes input and restores its complete
             composerScopeIdentity: target.composerScopeIdentity,
             conversation: { ...base.conversation!, threadId: target.threadId },
             provider: {
-              kind: "claude",
+              kind: "claudeAgent",
               label: "Claude",
-              selection: "claude",
+              selection: "claudeAgent",
               commands: [],
               controls: { images: true, goals: true },
             },

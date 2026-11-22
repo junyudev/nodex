@@ -65,11 +65,11 @@ vi.mock("@/lib/query-options", () => ({
 vi.mock("@/lib/agent-backend-runtime", () => ({
   agentBackendRuntime: { claudeDiscovery: ports.claude },
 }));
-vi.mock("@/lib/workbench-settings-runtime", () => ({
-  readClaudeAgentSettings: async () => ({ instances: [{ id: "claude", enabled: true }] }),
+vi.mock("@/lib/agent-profiles-runtime", () => ({
+  readAgentProfiles: async () => ({ instances: [{ id: "claude", enabled: true }] }),
 }));
 vi.mock("@/lib/renderer-transport", () => ({
-  resolveRendererTransport: () => ({ subscribeClaudeAgentSettingsChanges: () => () => {} }),
+  resolveRendererTransport: () => ({ subscribeAgentSettingsChanges: () => () => {} }),
 }));
 
 test("merges personal and Project skills by name and fences inventory when the Page route changes", async () => {

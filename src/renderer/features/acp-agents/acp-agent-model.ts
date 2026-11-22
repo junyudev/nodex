@@ -1,3 +1,4 @@
+import type { AgentInstallationReadiness } from "../../../shared/agents/readiness";
 import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AcpFailure, AcpOperations } from "../../../shared/acp-api";
@@ -5,7 +6,6 @@ import type {
   AcpAgentInstanceConfig,
   AcpAgentInstanceInput,
 } from "../../../shared/acp-agent-settings";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { formatBytes } from "../../lib/file-metadata-format";
 import type { AgentAccountState } from "../../../shared/agent-accounts-api";
 
@@ -28,11 +28,7 @@ export {
 } from "../../lib/agent-management-result";
 
 export const acpProviderId = (instance: Pick<AcpAgentInstanceConfig, "id" | "agentDefinitionId">) =>
-  agentRuntimeProviderId({
-    kind: "acp",
-    agentDefinitionId: instance.agentDefinitionId,
-    instanceConfigId: instance.id,
-  });
+  instance.id;
 
 /** Saved instances round-trip as update input; masked secrets stay `null` to keep their value. */
 export const acpInstanceInput = (instance: AcpAgentInstanceConfig): AcpAgentInstanceInput => ({
@@ -897,37 +893,38 @@ export function acpRegistryIconUrl(icon: string | null): string | null {
   }
 }
 
-/**
- * What the model menu offers for an enabled ACP instance whose models aren't usable yet, from the
- * Runtime's provider state, which also records a refused Connect. Null once its models are known.
- */
-export function acpComposerSetupHint(
-  provider: AcpProviderSnapshot | undefined,
-): { readonly hint: string; readonly tone: "default" | "danger" } | null {
-  if (!provider || !provider.enabled) return null;
-  if (provider.auth.status === "unauthenticated")
-    return {
-      hint: getIntl().formatMessage({
-        id: "acpAgents.acpAgentModel.signIn",
-        defaultMessage: "Sign in",
-      }),
-      tone: "default",
-    };
-  if (!provider.installed)
-    return { hint: getIntl().formatMessage(ACP_STATUS_ACTION_LABELS.install), tone: "default" };
-  if (provider.status === "error")
-    return {
-      hint: getIntl().formatMessage({
-        id: "acpAgents.acpAgentModel.unavailable",
-        defaultMessage: "Unavailable",
-      }),
-      tone: "danger",
-    };
-  if (provider.discovery?.status === "failed")
-    return { hint: getIntl().formatMessage(ACP_STATUS_ACTION_LABELS.connect), tone: "danger" };
-  if (!acpProviderDiscovered(provider))
-    return { hint: getIntl().formatMessage(ACP_STATUS_ACTION_LABELS.connect), tone: "default" };
-  return null;
+/** Translate Registry inspection and setup activity into facts used by Agent readiness. */
+export function acpInstallationReadiness(
+  status: AcpInstanceStatus,
+): AgentInstallationReadiness | undefined {
+  const found = true;
+  switch (status.kind) {
+    case "ready":
+      return undefined;
+    case "checking":
+      return { problem: { kind: "checking" }, found };
+    case "installing":
+    case "pending":
+      return { problem: { kind: "installing" }, found };
+    case "connecting":
+      return { problem: { kind: "connecting" }, found };
+    case "off":
+      return { problem: { kind: "turned-off" }, found };
+    case "sign-in":
+      return { problem: { kind: "signed-out" }, found };
+    case "not-installed":
+      return { problem: { kind: "not-installed" }, found };
+    case "not-connected":
+      return { problem: { kind: "not-connected" }, found };
+    case "failed":
+      return {
+        problem: { kind: "connection-failed" },
+        found,
+        detail: status.detail ?? status.label,
+      };
+    default:
+      return { problem: { kind: "could-not-start" }, found, detail: status.detail ?? status.label };
+  }
 }
 
 /**
@@ -949,10 +946,15 @@ export function acpAgentsSummary(
       }),
       attention: null,
     };
-  const waiting = statuses.filter(
-    (status) =>
-      status.tone === "danger" || status.kind === "sign-in" || status.kind === "not-installed",
-  ).length;
+  const waiting = statuses.filter((status) => {
+    const kind = acpInstallationReadiness(status)?.problem.kind;
+    return (
+      kind === "could-not-start" ||
+      kind === "connection-failed" ||
+      kind === "signed-out" ||
+      kind === "not-installed"
+    );
+  }).length;
   return {
     text:
       statuses.length === 1

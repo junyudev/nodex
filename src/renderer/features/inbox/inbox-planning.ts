@@ -6,7 +6,6 @@ import {
 } from "../../../shared/inbox";
 import { INBOX_MODEL_GUIDE, inboxModelGuideEntry } from "../../../shared/inbox-model-guide";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
-import { agentRuntimeProviderBackendKind } from "@/lib/agent-runtime-model-selection";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   describeUsageMeter,
@@ -46,7 +45,7 @@ export type InboxPlanningBudget =
 export interface InboxPlanningModel {
   readonly key: string;
   /** The Agent's mark. */
-  readonly kind: AgentBackendBinding["kind"];
+  readonly kind: AgentBackendBinding["driver"];
   /** The guide's family, with its Agent when that says more than the mark; else the Agent. */
   readonly title: string;
   /** What the guide says the family does well, in one line. */
@@ -124,7 +123,7 @@ export function inboxPlanningModels(
     .filter(isInboxChatCandidate)
     .flatMap((provider): InboxPlanningModel[] => {
       const { agent, named } = inboxAgentIdentity(catalog, provider.instanceId);
-      const kind = agentRuntimeProviderBackendKind(provider);
+      const kind = provider.driver;
       const usage = describeUsageMeter(runtimeUsageReading(provider, false), now);
       const budget = inboxPlanningBudget(usage, now);
       // Only the models a suggestion is actually offered speak for the Agent.

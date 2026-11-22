@@ -15,7 +15,6 @@ import {
 import type { AcpOperations } from "../../src/shared/acp-api";
 import type { AcpAgentSettings } from "../../src/shared/acp-agent-settings";
 import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type { ProjectSession } from "../../src/shared/types";
 
 const instanceName = "Registry Setup Agent";
@@ -311,11 +310,7 @@ test("installs an ACP Agent from the Registry and chats with the installed Agent
         { sessionId, threadId: executionRef!.threadId },
       );
       const { thread, providerThreads } = control.snapshot.projection;
-      const providerId = agentRuntimeProviderId({
-        kind: "acp",
-        agentDefinitionId: instance.agentDefinitionId,
-        instanceConfigId: instance.id,
-      });
+      const providerId = instance.id;
       expect(thread.providerInstanceId).toBe(providerId);
       expect(thread.modelSelection).toMatchObject({
         instanceId: providerId,

@@ -6,7 +6,6 @@ import { render, settleAsyncRender } from "@/test/dom";
 import { DEFAULT_INBOX_SETTINGS, type InboxChat } from "../../../shared/inbox";
 import { readInboxChatTargets, readInboxSettings, updateInboxSettings } from "@/lib/inbox-runtime";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { agentRuntimeProvidersQueryOptions } from "@/lib/use-agent-runtime-providers";
 import { InboxDispatchEditor, draftFromAction } from "./inbox-dispatch-editor";
 import { InboxSettingsPage } from "./inbox-settings-page";
@@ -27,8 +26,8 @@ vi.mock("@/lib/inbox-runtime", () => ({
 const { agentSettingsListeners } = vi.hoisted(() => ({
   agentSettingsListeners: new Set<() => void>(),
 }));
-const OPENCODE_INSTANCE = { kind: "opencode", instanceConfigId: "work" } as const;
-const OPENCODE_INSTANCE_ID = agentRuntimeProviderId(OPENCODE_INSTANCE)!;
+const OPENCODE_INSTANCE = { driver: "opencode", instanceId: "work" } as const;
+const OPENCODE_INSTANCE_ID = OPENCODE_INSTANCE.instanceId!;
 vi.mock("@/lib/agent-runtime-runtime", () => ({ agentRuntimeRuntime: { catalog: vi.fn() } }));
 vi.mock("@/features/local-conversation/use-agent-instances", () => ({
   useAgentInstances: () => ({

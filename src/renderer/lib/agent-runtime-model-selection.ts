@@ -1,6 +1,9 @@
+import { CODEX_BINDING } from "../../shared/agents/codex";
+import { agentReadiness } from "../../shared/agents/readiness";
+import { agentDefinition } from "../../shared/agents/registry";
 import { getIntl, type IntlShape } from "@/lib/i18n";
+import { agentReadinessView } from "@/lib/agent-readiness-view";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
-import { managedRuntimeBinding } from "../../shared/managed-runtime-instances";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type AgentRuntimeOperations,
@@ -12,7 +15,6 @@ import type { AgentModelOption } from "../../shared/types";
 import { formatAgentModelName, formatCodexReasoningEffortLabel } from "./codex-thread-settings";
 import {
   agentRuntimeModelSelection,
-  agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   isAgentRuntimeEffortOption,
 } from "../../shared/agent-runtime-provider";
@@ -30,13 +32,14 @@ export interface AgentRuntimeNewChatDefaults {
   readonly attended?: boolean;
 }
 
-export const isAgentRuntimeProviderAvailable = (provider: Provider): boolean =>
-  provider.enabled &&
-  provider.installed &&
-  (provider.driver !== "antigravity" || provider.auth.status !== "unauthenticated") &&
-  provider.availability !== "unavailable" &&
-  provider.status !== "error" &&
-  provider.status !== "disabled";
+export function isAgentRuntimeProviderAvailable(provider: Provider): boolean {
+  if (!provider.enabled || !provider.installed || provider.status === "error") return false;
+  const definition = agentDefinition(provider.driver);
+  const readiness = agentReadiness({ definition, provider });
+  return (
+    !readiness || (readiness.problem.kind === "signed-out" && definition.setup?.models !== "choose")
+  );
+}
 
 /**
  * A new chat without its own choice starts on the remembered one while its Agent offers it; a
@@ -57,7 +60,7 @@ export function defaultAgentRuntimeModelSelection(
     const fitted = applyAgentRuntimeOptionIntent(
       model.capabilities?.optionDescriptors ?? [],
       options,
-      provider.instanceId === "codex" && codexServiceTier !== undefined
+      provider.instanceId === CODEX_BINDING.instanceId && codexServiceTier !== undefined
         ? { serviceTier: codexServiceTier }
         : {},
     );
@@ -70,9 +73,10 @@ export function defaultAgentRuntimeModelSelection(
   const canChoose = (provider: Provider) =>
     isAgentRuntimeProviderAvailable(provider) ||
     (attended &&
-      provider.instanceId === "codex" &&
+      provider.installationSource?.kind === "component" &&
       provider.enabled &&
-      provider.componentUnavailableReason === "installing");
+      agentReadiness({ definition: agentDefinition(provider.driver), provider })?.problem.kind ===
+        "installing");
   const rememberedProvider = providers.find(
     (provider) => provider.instanceId === remembered?.instanceId,
   );
@@ -95,7 +99,7 @@ export function defaultAgentRuntimeModelSelection(
     );
   const provider =
     available.find((entry) => entry.instanceId === remembered?.instanceId) ??
-    available.find((entry) => entry.instanceId === "codex") ??
+    available.find((entry) => entry.instanceId === CODEX_BINDING.instanceId) ??
     available[0];
   if (!provider) return null;
   return starting(
@@ -106,7 +110,7 @@ export function defaultAgentRuntimeModelSelection(
 
 /** The session default is the one alias that may resolve to a different model ID in chat. */
 export function resolveAgentRuntimeChatModel(
-  kind: AgentBackendBinding["kind"],
+  kind: AgentBackendBinding["driver"],
   model: string,
   provider: Provider | undefined,
 ): string {
@@ -155,57 +159,61 @@ export function requireAgentRuntimeModelSelection(
       ),
       { code: "model_off", retryable: false },
     );
-  if (!provider || !isAgentRuntimeProviderAvailable(provider) || !model)
+  if (!provider || !isAgentRuntimeProviderAvailable(provider) || !model) {
+    const intl = getIntl();
+    const definition = agentDefinition(provider?.driver);
+    const readiness = provider && agentReadiness({ definition, provider, model: selection.model });
+    if (readiness && readiness.problem.kind !== "checking") {
+      const { title } = agentReadinessView(
+        provider?.displayName ?? definition.label,
+        readiness,
+        intl,
+      );
+      throw new Error(
+        intl.formatMessage(
+          {
+            id: "lib.agentRuntimeModelSelection.agentUnavailable",
+            defaultMessage: "The selected Agent is unavailable. {reason}",
+          },
+          { reason: title },
+        ),
+      );
+    }
     throw new Error(
-      getIntl().formatMessage({
+      intl.formatMessage({
         id: "lib.agentRuntimeModelSelection.modelUnavailable",
         defaultMessage:
           "The selected Agent or model is unavailable. Choose an available Agent model.",
       }),
     );
+  }
   return { provider, model, selection };
 }
 
-/** Runtime drivers use the same backend family as their configured desktop Agent. */
-export function agentRuntimeProviderBackendKind(provider: Provider): AgentBackendBinding["kind"] {
-  if (provider.driver === "codex") return "codex";
-  if (provider.driver === "claudeAgent") return "claude";
-  if (provider.driver === "opencode" || provider.driver === "opencode2") return "opencode";
-  if (provider.driver === "antigravity") return "antigravity";
-  return "acp";
-}
-
 export const agentEffortLabel = (
-  kind: AgentBackendBinding["kind"],
+  kind: AgentBackendBinding["driver"],
   effort: string,
   intl: IntlShape = getIntl(),
 ): string =>
-  kind === "claude" && effort === "low"
+  kind === "claudeAgent" && effort === "low"
     ? intl.formatMessage({ id: "lib.agentRuntimeModelSelection.claudeLow", defaultMessage: "Low" })
     : formatCodexReasoningEffortLabel(effort, intl);
 
-/** The configured Agent behind a Runtime provider instance; Codex needs no configuration. */
-export function agentRuntimeBinding(
-  instanceId: string,
-  instances: readonly { readonly binding: AgentBackendBinding }[],
-): AgentBackendBinding | undefined {
-  const managed = managedRuntimeBinding(instanceId);
-  if (managed) return managed;
-  return instanceId === "codex"
-    ? { kind: "codex" }
-    : instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)?.binding;
-}
+/** The catalog already names the same instance the product stores. */
+export const agentRuntimeBinding = ({
+  driver,
+  instanceId,
+}: Pick<Provider, "driver" | "instanceId">): AgentBackendBinding => ({ driver, instanceId });
 
 /** The configured Agent name the user chose, then the provider's own name. */
 export function agentRuntimeProviderLabel(
-  provider: Pick<Provider, "instanceId" | "displayName">,
+  provider: Pick<Provider, "instanceId" | "displayName" | "driver">,
   instances: readonly { readonly binding: AgentBackendBinding; readonly label: string }[],
 ): string {
   return (
-    instances.find((entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId)
-      ?.label ??
+    instances.find((entry) => entry.binding.instanceId === provider.instanceId)?.label ??
     provider.displayName ??
-    (provider.instanceId === "codex" ? "Codex" : "Agent")
+    agentDefinition(provider.driver).label
   );
 }
 
@@ -225,8 +233,8 @@ export function agentRuntimePickerEntries(
   canServe: (provider: Provider) => boolean,
 ) {
   return catalog.providers.flatMap((provider) => {
-    const binding = agentRuntimeBinding(provider.instanceId, catalog.instances);
-    if (!binding || !isAgentRuntimeProviderAvailable(provider) || !canServe(provider)) return [];
+    const binding = agentRuntimeBinding(provider);
+    if (!isAgentRuntimeProviderAvailable(provider) || !canServe(provider)) return [];
     const label = agentRuntimeProviderLabel(provider, catalog.instances);
     return provider.models
       .filter(

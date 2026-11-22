@@ -11,7 +11,11 @@ const labels = new Map<string, AgentRuntimeProviderLabel>([
   ["codex", { label: "Codex", kind: "codex", models: new Map([["gpt-6.1-sol", "GPT-6.1-Sol"]]) }],
   [
     "claude_work",
-    { label: "Claude", kind: "claude", models: new Map([["claude-opus-5-5", "Claude Opus 5.5"]]) },
+    {
+      label: "Claude",
+      kind: "claudeAgent",
+      models: new Map([["claude-opus-5-5", "Claude Opus 5.5"]]),
+    },
   ],
   [
     "opencode_free",
@@ -37,8 +41,8 @@ describe("Agent identity presentation", () => {
       agent({ kind: "codex", providerInstanceId: "codex", model: "gpt-6.1-sol", effort: "xhigh" }),
       labels,
     );
-    expect(sol).toEqual({
-      kind: "codex",
+    expect(sol).toMatchObject({
+      driver: "codex",
       agentName: "Codex",
       modelName: "GPT-6.1 Sol",
       effortName: "Extra High",
@@ -55,8 +59,10 @@ describe("Agent identity presentation", () => {
       agent({ providerInstanceId: "opencode_free", model: "openai/gpt-6.1-sol" }),
       labels,
     );
-    expect(viaOpenCode.kind).toBe("opencode");
+    expect(viaOpenCode.driver).toBe("opencode");
     expect(agentIdentityText(viaOpenCode, "agent")).toBe("OpenCode · GPT-6.1 Sol");
+    expect(viaOpenCode.accent).toBe("#e7b549");
+    expect(presentAgentIdentity(agent({ kind: "unlisted-driver" }), labels).accent).toBeNull();
   });
 
   test("lets a model named after its Agent stand alone", () => {
@@ -69,10 +75,10 @@ describe("Agent identity presentation", () => {
   });
 
   test("names the harness itself before its configuration loads, and nothing when unknown", () => {
-    const unconfigured = presentAgentIdentity(agent({ kind: "claude" }), new Map());
+    const unconfigured = presentAgentIdentity(agent({ kind: "claudeAgent" }), new Map());
     expect(agentIdentityText(unconfigured, "model")).toBe("Claude Code");
     expect(agentIdentityText(unconfigured, "agent")).toBe("Claude Code");
     expect(agentIdentityText(presentAgentIdentity(agent({}), new Map()), "agent")).toBeNull();
-    expect(presentAgentIdentity(agent({ kind: "acp" }), new Map()).agentName).toBeNull();
+    expect(presentAgentIdentity(agent({ kind: "acpRegistry" }), new Map()).agentName).toBeNull();
   });
 });

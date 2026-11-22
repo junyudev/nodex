@@ -48,13 +48,13 @@ export function AgentIdentity({
   return (
     <span
       className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
-      data-agent-identity={identity.kind ?? "unknown"}
+      data-agent-identity={identity.driver ?? "unknown"}
     >
-      {identity.kind ? (
+      {identity.driver ? (
         <AgentInstanceIcon
           binding={{
-            kind: identity.kind,
-            runtimeInstanceId: agent?.providerInstanceId ?? undefined,
+            driver: identity.driver,
+            instanceId: agent?.providerInstanceId ?? undefined,
           }}
           className={cn("shrink-0", markClassName)}
         />

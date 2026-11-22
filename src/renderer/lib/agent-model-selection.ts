@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type {
   AgentSessionConfigOption,
@@ -5,34 +6,24 @@ import type {
 } from "../../shared/agent-conversation";
 import type { AgentModelCatalog, AgentModelSelection } from "../../shared/agent-model-catalog";
 
-export const agentBindingKey = (binding: AgentBackendBinding): string =>
-  binding.runtimeInstanceId
-    ? `runtime:${binding.runtimeInstanceId}`
-    : binding.kind === "codex"
-      ? "codex"
-      : binding.kind === "acp"
-        ? JSON.stringify([binding.kind, binding.agentDefinitionId, binding.instanceConfigId])
-        : `${binding.kind}:${binding.instanceConfigId}`;
+export const agentBindingKey = (binding: AgentBackendBinding): string => binding.instanceId;
 
 export const agentModelKey = (binding: AgentBackendBinding, model: string): string =>
-  JSON.stringify([agentBindingKey(binding), model]);
-
-const BRANDED_RUNTIME_NAMES: Partial<Record<AgentBackendBinding["kind"], readonly string[]>> = {
-  codex: ["codex"],
-  claude: ["claude", "claude code"],
-};
+  JSON.stringify([binding.instanceId, model]);
 
 /**
  * Branded runtimes are identified by their mark, so a picker row names the runtime only when the
  * instance label adds information (for example a second Claude account).
  */
 export const agentRuntimeQualifier = (
-  binding: Pick<AgentBackendBinding, "kind">,
+  binding: Pick<AgentBackendBinding, "driver">,
   label: string,
 ): string | null => {
   const trimmed = label.trim();
   if (!trimmed) return null;
-  return BRANDED_RUNTIME_NAMES[binding.kind]?.includes(trimmed.toLowerCase()) ? null : trimmed;
+  return agentDefinition(binding.driver).redundantModelQualifiers?.includes(trimmed.toLowerCase())
+    ? null
+    : trimmed;
 };
 
 export const flattenAgentConfigOptions = (

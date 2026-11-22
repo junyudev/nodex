@@ -3,7 +3,6 @@ import type { PropsWithChildren } from "react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PersistedAtomSnapshot } from "../../shared/ipc-api";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import {
   agentRuntimeChoiceKey,
   agentRuntimeComposerChoicesAtom,
@@ -26,8 +25,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const binding = { kind: "opencode", instanceConfigId: "work" } as const;
-const instanceId = agentRuntimeProviderId(binding)!;
+const binding = { driver: "opencode", instanceId: "work" } as const;
+const instanceId = binding.instanceId!;
 const model = {
   slug: "chosen",
   name: "Chosen",
@@ -122,10 +121,10 @@ it("reads the target Session and Project choice instead of another draft's choic
   const { result, launch } = setup(async () =>
     snapshot({
       [agentRuntimeChoiceKey.draft("draft", "other-project")]: {
-        selection: { binding: { kind: "codex" }, model: "missing" },
+        selection: { binding: { driver: "codex", instanceId: "codex" }, model: "missing" },
       },
       [agentRuntimeChoiceKey.draft("other-draft", "project")]: {
-        selection: { binding: { kind: "codex" }, model: "missing" },
+        selection: { binding: { driver: "codex", instanceId: "codex" }, model: "missing" },
       },
       [agentRuntimeChoiceKey.draft("draft", "project")]: {
         selection: { binding, model: "chosen" },
@@ -197,7 +196,7 @@ it("never spends credit because a Composer once chose it: no picker shows this l
       revision: 1,
       values: {
         [agentRuntimeNewChatChoiceAtom().storageKey]: {
-          binding: { kind: "codex", runtimeInstanceId: credit },
+          binding: { driver: "codex", instanceId: credit },
           model: "chosen",
         },
       },

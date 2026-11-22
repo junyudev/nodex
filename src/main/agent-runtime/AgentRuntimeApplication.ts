@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { AgentRuntimeWorkLedger, countingCoreReads } from "./AgentRuntimeWork";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
@@ -112,12 +113,8 @@ export type {
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { type ConversationIdentity } from "../../shared/conversation-identity";
 import {
-  agentBackendKindOfDriver,
-  type ConversationIdentity,
-} from "../../shared/conversation-identity";
-import {
-  agentRuntimeProviderId,
   agentRuntimeWorkSelection,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeEffort,
@@ -2333,9 +2330,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
     const providerId =
       input.backendKind === "codex"
-        ? agentRuntimeProviderId({ kind: "codex" })
+        ? "codex"
         : input.instanceConfigId
-          ? agentRuntimeProviderId({ kind: "claude", instanceConfigId: input.instanceConfigId })
+          ? input.instanceConfigId
           : null;
     const provider = providers.find((entry) => entry.instanceId === providerId && entry.enabled);
     const model =
@@ -2516,7 +2513,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       session.archived ||
       session.executionRef ||
       !source ||
-      source.backendBinding.kind !== "codex" ||
+      source.backendBinding.driver !== "codex" ||
       source.threadId !== input.expectedNativeThreadId ||
       source.executionHostId !== input.expectedNativeHostId ||
       source.parentThreadId
@@ -2557,7 +2554,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       native.parentThreadId ||
       native.executionHostId !== "local" ||
       (input.source.threadId !== undefined && input.source.threadId !== native.threadId) ||
-      (native.backendBinding.kind !== "codex" && native.backendBinding.kind !== "claude") ||
+      (native.backendBinding.driver !== "codex" &&
+        native.backendBinding.driver !== "claudeAgent") ||
       !native.cwd ||
       !options.nativeImportSourceHome
     )
@@ -2565,16 +2563,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "create-side-chat",
         "Choose an active local conversation with readable history",
       );
-    const kind = native.backendBinding.kind;
+    const kind = agentDefinition(native.backendBinding.driver).capabilities.nativeHistory;
+    if (!kind) return yield* failure("create-side-chat", "The source Agent history is unavailable");
     const codexSettings = kind === "codex" ? options.nativeCodexSettings?.(native.threadId) : null;
-    const providerId = agentRuntimeProviderId(native.backendBinding);
+    const providerId = native.backendBinding.instanceId;
     const backend =
       kind === "claude" ? yield* workspace.readThreadBackendSession(native.threadId) : null;
     if (
       kind === "claude" &&
       (!backend ||
         backend.threadId !== native.threadId ||
-        agentRuntimeProviderId(backend.backendBinding) !== providerId ||
+        backend.backendBinding.instanceId !== providerId ||
         !validId(backend.backendSessionId))
     )
       return yield* failure("create-side-chat", "The source Agent history is unavailable");
@@ -2596,8 +2595,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("create-side-chat", "The source Agent has no available model");
     const sourceHome = yield* options.nativeImportSourceHome(connection, {
       backendKind: kind,
-      ...(native.backendBinding.kind === "claude"
-        ? { instanceConfigId: native.backendBinding.instanceConfigId }
+      ...(native.backendBinding.driver === "claudeAgent"
+        ? { instanceConfigId: native.backendBinding.instanceId }
         : {}),
     });
     if (backend?.nativeHome && backend.nativeHome !== sourceHome)
@@ -4462,7 +4461,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             session.executionRef ||
             session.thread?.threadId !== input.threadId ||
             session.thread.executionHostId !== input.hostId ||
-            session.thread.backendBinding.kind !== "codex"
+            session.thread.backendBinding.driver !== "codex"
           )
             return yield* failure(
               "native-message-reserve",
@@ -4832,7 +4831,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             title: (chat ? session.display_title : thread.title).trim() || session.display_title,
             role: chat ? "chat" : "subagent",
             agent: {
-              kind: agentBackendKindOfDriver(thread.providerDriver),
+              kind: thread.providerDriver ?? null,
               providerInstanceId: thread.modelSelection.instanceId,
               model: thread.modelSelection.model,
               effort: readAgentRuntimeEffort(thread.modelSelection.options),

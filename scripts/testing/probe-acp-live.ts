@@ -1,3 +1,4 @@
+import { stringify as stringifyToml } from "smol-toml";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +7,6 @@ import type { ElectronApplication, Page } from "playwright";
 import type { IpcApi } from "../../src/shared/ipc-api";
 import type { AgentAccountIpcApi } from "../../src/shared/agent-accounts-api";
 import type { AcpIpcApi, AcpOperations, AcpResult } from "../../src/shared/acp-api";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { acquireIsolatedRunLease } from "../../src/main/core-client/isolated-run-ownership";
@@ -129,7 +129,7 @@ async function main() {
     // Avoid even passive access to native host accounts before the first IPC request.
     await writeFile(
       path.join(home.nodexHome, "config.toml"),
-      '[[server.claude_agent_instances]]\nid = "claude-default"\ndisplayName = "Claude Code"\nbinaryPath = "claude"\nconfigDirectory = ""\nenabled = false\nenvironment = []\n\n[[server.opencode_agent_instances]]\nid = "opencode-default"\ndisplayName = "OpenCode"\nbinaryPath = "opencode"\nenabled = false\nenvironment = []\n',
+      stringifyToml({ server: { agent_instances: [] } }),
       { mode: 0o600 },
     );
   }
@@ -369,7 +369,7 @@ async function main() {
       status: connected.phase === "succeeded" ? "verified" : "failed",
       detail: connected.result ?? connected.error,
     };
-    const account = { backend: { kind: "acp", instanceConfigId: instanceId } } as const;
+    const account = { backend: { driver: "acpRegistry", instanceId } } as const;
     const readAuth = async () => {
       const state = await invoke(page, "agent-accounts:read", account);
       if (!state) throw new Error("The Agent account is unavailable.");
@@ -434,11 +434,7 @@ async function main() {
     if (!model)
       throw new Error("--exercise requires an explicit --model ID from the connection report.");
     report.selectedModel = model;
-    const providerId = agentRuntimeProviderId({
-      kind: "acp",
-      agentDefinitionId: agentId,
-      instanceConfigId: instanceId,
-    })!;
+    const providerId = instanceId!;
     const catalog = await invoke(page, "agent-runtime:providers:read", {
       instanceIds: [providerId],
     });

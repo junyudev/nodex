@@ -1,8 +1,7 @@
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
-import type { AntigravityAuthMethod } from "../../../shared/antigravity-agent-settings";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
+import type { AntigravityAuthMethod } from "../../../shared/agents/antigravity";
 import { providerSnapshot } from "../acp-agents/acp-agents.test-fixtures";
 import { AntigravityAccountRow } from "./antigravity-account-row";
 import { authState, fakeAccountRuntime, ok } from "./agent-account.test-fixtures";
@@ -26,7 +25,7 @@ const press = async (element: HTMLElement) =>
   });
 
 function mount(authMethod: AntigravityAuthMethod, instanceConfigId: string) {
-  const backend = { kind: "antigravity", instanceConfigId } as const;
+  const backend = { driver: "antigravity", instanceId: instanceConfigId } as const;
   const fake = fakeAccountRuntime();
   runtime.read.mockImplementation(fake.read);
   runtime.start.mockImplementation(fake.start);
@@ -44,7 +43,7 @@ function mount(authMethod: AntigravityAuthMethod, instanceConfigId: string) {
     readCatalog.mockResolvedValue([
       providerSnapshot({
         driver: "antigravity",
-        instanceId: agentRuntimeProviderId(backend)!,
+        instanceId: backend.instanceId!,
         auth,
       }),
     ]);

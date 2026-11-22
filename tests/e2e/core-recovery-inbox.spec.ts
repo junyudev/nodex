@@ -9,7 +9,6 @@ import {
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { readCoreRuntimeConnection } from "../../src/main/core-client/runtime-descriptor";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { invokeIpc } from "./support/editor-scenario";
 
 test("recovers Core loss while three Inbox chats run without repeating dispatch or Agent admission", async ({}, testInfo) => {
@@ -52,25 +51,23 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
     const page = await harness.launch();
     const seed = new RendererIpcSeedAdapter(page);
     await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
-    await invokeIpc(page, "settings:claude-agents:update", {
+    await invokeIpc(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
+          driver: "claudeAgent",
+          settings: { configDirectory: path.join(fixture, "claude-home"), customModels: [] },
           id: "recovery-claude",
           displayName: "Recovery Claude",
           binaryPath: path.join(fixture, "claude"),
-          configDirectory: path.join(fixture, "claude-home"),
           enabled: true,
-          customModels: [],
           environment: [
             { name: "NODEX_TEST_CROSS_PROVIDER_HOME", value: fixture, sensitive: false },
           ],
         },
       ],
     });
-    const claudeId = agentRuntimeProviderId({
-      kind: "claude",
-      instanceConfigId: "recovery-claude",
-    });
+    const claudeId = "recovery-claude";
     if (!claudeId) throw new Error("Fixture Claude identity is unavailable");
     const providers = await invokeIpc(page, "agent-runtime:providers:read", { refresh: true });
     const agents = ["codex", claudeId, claudeId].map((id) => {

@@ -47,7 +47,7 @@ function makeThread(input: {
   return {
     key: `local:${input.threadId}`,
     kind: "local",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     runLocation: { kind: "local-checkout" },
     hostId: "local",
     threadId: input.threadId,
@@ -650,11 +650,7 @@ describe("project thread reorder eligibility", () => {
   test("keeps ACP Threads out of Codex-owned move and reorder commands", () => {
     const acp: CodexSidebarThreadItem = {
       ...makeThread({ threadId: "thread:acp", projectId: "alpha" }),
-      backendBinding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-main",
-      },
+      backendBinding: { driver: "acpRegistry", instanceId: "claude-main" },
     };
 
     expect(isCodexSidebarThreadItemReorderable(acp)).toBe(false);

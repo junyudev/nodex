@@ -1,10 +1,11 @@
+import { agentDefinition } from "./agents/registry";
+import { legacyAgentInstanceId } from "./agents/legacy-identity";
 import type { AgentSelection } from "./work-graph";
 import { modelIsOn, spendsNodexCredit } from "./model-policy";
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { components } from "@nodex/core-protocol";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
 import {
-  agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   isAgentRuntimeEffortOption,
 } from "./agent-runtime-provider";
@@ -584,7 +585,7 @@ type InboxProviderModel = InboxProvider["models"][number];
 /** Suggestions read a message's images and may search the web, which only these Agents offer here. */
 export const supportsInboxStructuredGeneration = (
   provider: Pick<InboxProvider, "driver">,
-): boolean => provider.driver === "codex" || provider.driver === "claudeAgent";
+): boolean => agentDefinition(provider.driver).capabilities.inbox !== undefined;
 
 /**
  * Suggestions run for every captured message, so Codex defaults to its economical Sol model
@@ -631,7 +632,7 @@ export const inboxDefaultChatModel = <
  * effort they reason at a steady one that does not follow any chat preference.
  */
 const inboxSuggestionEffort = (provider: Pick<InboxProvider, "driver">) =>
-  provider.driver === "claudeAgent" ? "medium" : "high";
+  agentDefinition(provider.driver).capabilities.inbox?.suggestionEffort ?? "high";
 
 /** The effort a choice asks its model for, which the model may not offer. */
 export const inboxRequestedEffort = (
@@ -887,11 +888,8 @@ export const decodeInboxAgentBinding = (value: unknown): InboxAgentBinding | nul
   if (typeof value !== "string" || !value.trim()) return null;
   // Older Profile preferences named the native account instead of its Runtime instance.
   if (value.startsWith("claude:")) {
-    const instanceId = agentRuntimeProviderId({
-      kind: "claude",
-      instanceConfigId: value.slice("claude:".length).trim(),
-    });
-    return instanceId ? { instanceId } : null;
+    const configId = value.slice("claude:".length).trim();
+    return configId ? { instanceId: legacyAgentInstanceId("claude", configId) } : null;
   }
   return value.trim() === value && value.length <= 512 ? { instanceId: value } : null;
 };

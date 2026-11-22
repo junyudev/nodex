@@ -1,3 +1,5 @@
+import { antigravityAgent } from "../../shared/agents/antigravity";
+import { agentProfilesFor } from "../../shared/agents/profiles";
 import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -9,8 +11,6 @@ import type {
   AgentAccountOperations,
   AgentAccountState,
 } from "../../shared/agent-accounts-api";
-import type { AgentBackendBinding } from "../../shared/agent-backend";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { AgentManagementError } from "../agent-runtime/AgentManagementFailure";
 import { makeOperationCompletionObserver } from "../agent-runtime/AgentOperationCompletion";
 import { AgentRuntimeProviderConfiguration } from "../agent-runtime/AgentRuntimeProviderConfiguration";
@@ -37,10 +37,10 @@ const expired = () =>
     message: "This sign-in flow is no longer active. Start sign-in again.",
   });
 const key = (ownerId: string, backend: AgentAccountBackend) =>
-  JSON.stringify([ownerId, backend.kind, backend.instanceConfigId]);
+  JSON.stringify([ownerId, backend.driver, backend.instanceId]);
 const present = (backend: AgentAccountBackend, state: AgentAccountState): AgentAccountState => ({
   ...state,
-  instanceId: backend.instanceConfigId,
+  instanceId: backend.instanceId,
 });
 
 /** Resolves saved instances and binds every answer to the initiating window and Runtime. */
@@ -52,33 +52,26 @@ export const make = Effect.gen(function* () {
   const observeCompletion = yield* makeOperationCompletionObserver;
   const resolve = Effect.fn("AgentAccounts.resolve")(function* (backend: AgentAccountBackend) {
     const snapshot = yield* settings.snapshot();
-    const { kind, instanceConfigId } = backend;
-    const available = (entry: { readonly id: string; readonly enabled: boolean }) =>
-      entry.id === instanceConfigId && entry.enabled;
-    let binding: AgentBackendBinding | null = null;
-    if (kind === "acp") {
-      const instance = snapshot.acpAgents.instances.find(available);
-      if (instance)
-        binding = { kind, instanceConfigId, agentDefinitionId: instance.agentDefinitionId };
-    } else if (snapshot.antigravityAgents.instances.some(available)) {
-      binding = { kind, instanceConfigId };
-    }
-    if (!binding)
+    const { driver, instanceId } = backend;
+    const profiles =
+      driver === "acpRegistry"
+        ? snapshot.acpAgents.instances
+        : driver === "antigravity"
+          ? agentProfilesFor(snapshot.agentProfiles, antigravityAgent.driver)
+          : [];
+    if (!profiles.some((entry) => entry.id === instanceId && entry.enabled))
       return yield* new AgentManagementError({
         message: "This Agent profile is unavailable or disabled.",
         reason: "disabled",
       });
-    const instanceId = agentRuntimeProviderId(binding);
-    if (!instanceId)
-      return yield* new AgentManagementError({ message: "This Agent identity is unavailable." });
     return instanceId;
   });
   const configurationDigest = Effect.fn("AgentAccounts.configurationDigest")(function* (
     backend: AgentAccountBackend,
   ) {
-    const launch = yield* backend.kind === "acp"
-      ? settings.acpLaunchConfiguration(backend.instanceConfigId)
-      : settings.antigravityLaunchConfiguration(backend.instanceConfigId);
+    const launch = yield* backend.driver === "acpRegistry"
+      ? settings.acpLaunchConfiguration(backend.instanceId)
+      : settings.agentProfileLaunchConfiguration(antigravityAgent.driver, backend.instanceId);
     // Compare launch inputs including secrets without retaining them in flow metadata.
     return createHash("sha256").update(JSON.stringify(launch)).digest("hex");
   });
@@ -197,7 +190,7 @@ export const make = Effect.gen(function* () {
               slot: instanceId,
               generation,
               phase: result.phase,
-              onSucceeded: refreshAccount(process, instanceId, backend.kind === "antigravity"),
+              onSucceeded: refreshAccount(process, instanceId, backend.driver === "antigravity"),
               read: Effect.gen(function* () {
                 if (flows.get(flowKey) !== flow) return { phase: "cancelled" };
                 return yield* process.request("providers.auth.read", { instanceId, ownerId });
@@ -221,7 +214,7 @@ export const make = Effect.gen(function* () {
         // ACP reads methods on explicit setup. Antigravity's passive Account row never starts an idle Runtime.
         const process =
           resolved?.process ??
-          (yield* backend.kind === "acp" ? connection() : runtime.currentConnection);
+          (yield* backend.driver === "acpRegistry" ? connection() : runtime.currentConnection);
         if (!process) return null;
         const result = yield* process.request("providers.auth.read", { instanceId, ownerId });
         if (!(yield* current(process))) return yield* expired();

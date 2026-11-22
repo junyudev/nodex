@@ -1,3 +1,5 @@
+import { agentReadinessGuidance } from "../../main/agent-runtime/AgentReadinessGuidance";
+import { agentDefinition, sameAgentDriver } from "../../shared/agents/registry";
 import { automationNotificationDecision } from "../../shared/automation-notification-policy";
 import { quietAutomationTurnReason } from "../../shared/codex-thread-notification";
 import { parseCodexHeartbeatAssistantMessage } from "../../shared/codex-turn-notification";
@@ -18,7 +20,6 @@ import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeAp
 import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
 import { subscribe as subscribeExecutionChanges } from "../../main/agent-runtime/AgentRuntimeExecutionChanges";
 import {
-  agentRuntimeProviderId,
   agentRuntimeWorkSelection,
   isAgentRuntimeEffortOption,
 } from "../../shared/agent-runtime-provider";
@@ -150,22 +151,19 @@ export const live: Layer.Layer<
       definition: Pick<Automation, "backendBinding" | "model" | "reasoningEffort" | "serviceTier">,
       override?: InboxAgentChoice | null,
     ) {
+      const { driver, instanceId } = definition.backendBinding;
+      const checkProfile =
+        agentDefinition(driver).profileBased && !isManagedRuntimeInstanceId(instanceId);
       if (override) {
-        // Managed instances belong to the Runtime catalog, not native Profile configuration.
-        if (
-          override.instanceId === agentRuntimeProviderId(definition.backendBinding) &&
-          !isManagedRuntimeInstanceId(override.instanceId)
-        )
+        if (override.instanceId === instanceId && checkProfile)
           yield* backends.resolve(definition.backendBinding);
         const resolved = yield* resolveInboxModel(application, override);
         return { ...resolved, options: resolved.options ?? [] };
       }
-      const instanceId = agentRuntimeProviderId(definition.backendBinding);
-      // Managed instances belong to the Runtime catalog, not native Profile configuration.
-      if (!instanceId || !isManagedRuntimeInstanceId(instanceId))
-        yield* backends.resolve(definition.backendBinding);
+      // Ordinary profiles are checked against Settings even if the Runtime still has a catalog.
+      if (checkProfile) yield* backends.resolve(definition.backendBinding);
       const provider = (yield* application.catalog()).find(
-        (item) => item.instanceId === instanceId,
+        (item) => item.instanceId === instanceId && sameAgentDriver(item.driver, driver),
       );
       if (
         !provider?.enabled ||
@@ -175,7 +173,7 @@ export const live: Layer.Layer<
       )
         return yield* fail(
           "model",
-          provider?.unavailableReason ??
+          agentReadinessGuidance(provider) ??
             "This Automation's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
         );
       const model =
@@ -184,7 +182,8 @@ export const live: Layer.Layer<
       if (!model)
         return yield* fail(
           "model",
-          "This Automation's Agent has no models yet. Connect it in Settings.",
+          agentReadinessGuidance(provider, provider.models.length ? "choose-model" : "no-models") ??
+            "This Automation's Agent has no models yet. Connect it in Settings.",
         );
       const options = yield* Effect.try(() =>
         modelOption(provider, model, definition.reasoningEffort, definition.serviceTier),
@@ -243,9 +242,8 @@ export const live: Layer.Layer<
             const actual = yield* application.inspect({ sessionId });
             if (
               actual.thread.providerInstanceId !==
-              agentRuntimeProviderId(
-                input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
-              )
+              (input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING)
+                .instanceId
             )
               return yield* fail(
                 "prepare-definition",

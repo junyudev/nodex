@@ -5,7 +5,7 @@ import { useAgentModelCatalogs } from "./use-agent-model-catalog";
 import { modelCatalog } from "../../lib/agent-model-catalog.test-fixtures";
 
 const instance = {
-  binding: { kind: "opencode", instanceConfigId: "local" },
+  binding: { driver: "opencode", instanceId: "local" },
   label: "Local",
   enabled: true,
 } as const;
@@ -57,7 +57,7 @@ test("fences replies by Project and execution directory; explicit refresh asks t
 
 test("rejects a catalog from a different instance and pins attached discovery to the Thread", async () => {
   const read = vi.fn(async () =>
-    modelCatalog({ binding: { kind: "opencode", instanceConfigId: "other" } }),
+    modelCatalog({ binding: { driver: "opencode", instanceId: "other" } }),
   );
   const { result } = renderHook(() =>
     useAgentModelCatalogs(
@@ -85,26 +85,26 @@ test("bounds concurrent native discovery and does not dequeue more work after a 
     (input) =>
       new Promise<AgentModelCatalog>((resolve) => {
         if (input.scope.kind !== "project") throw new Error("Expected Project discovery");
-        pending.push({ resolve, instanceConfigId: input.scope.binding.instanceConfigId ?? "" });
+        pending.push({ resolve, instanceConfigId: input.scope.binding.instanceId ?? "" });
       }),
   );
   const instances = ["one", "two", "three", "four"].map((id) => ({
     ...instance,
-    binding: { kind: "opencode" as const, instanceConfigId: id },
+    binding: { driver: "opencode" as const, instanceId: id },
   }));
   const { unmount } = renderHook(() =>
     useAgentModelCatalogs({ instances, projectId: "project" }, { read, subscribe }),
   );
   expect(read).toHaveBeenCalledTimes(2);
   await act(async () => {
-    pending[0]?.resolve(modelCatalog({ binding: { kind: "opencode", instanceConfigId: "one" } }));
+    pending[0]?.resolve(modelCatalog({ binding: { driver: "opencode", instanceId: "one" } }));
   });
   expect(read).toHaveBeenCalledTimes(3);
   unmount();
   await act(async () => {
     for (const entry of pending.slice(1))
       entry.resolve(
-        modelCatalog({ binding: { kind: "opencode", instanceConfigId: entry.instanceConfigId } }),
+        modelCatalog({ binding: { driver: "opencode", instanceId: entry.instanceConfigId } }),
       );
   });
   expect(read).toHaveBeenCalledTimes(3);

@@ -1,3 +1,4 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../shared/agent-backend";
 import { rm } from "node:fs/promises";
 import { requiredNativeExecutable } from "../../scripts/testing/native-artifacts";
 import { execFileSync } from "node:child_process";
@@ -1564,7 +1565,7 @@ describe("Electron native data authority", () => {
               agentPath: "agents/session-launcher",
               threadName: "Electron linked Thread",
               threadPreview: "Native Session attach",
-              backendBinding: { kind: "codex" },
+              backendBinding: CODEX_AGENT_BACKEND_BINDING,
               cwd: nodexHome,
               statusType: "idle",
               statusActiveFlags: [],

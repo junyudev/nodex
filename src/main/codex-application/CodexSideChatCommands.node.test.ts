@@ -295,12 +295,8 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         cwd: "/workspace",
         backendBinding:
           options.parentBackend === "acp"
-            ? {
-                kind: "acp",
-                agentDefinitionId: "claude-agent-acp",
-                instanceConfigId: "claude-local",
-              }
-            : { kind: "codex" },
+            ? { driver: "acpRegistry", instanceId: "claude-local" }
+            : { driver: "codex", instanceId: "codex" },
         executionProfile: parentSnapshot.executionProfile,
         get executionHostId() {
           return options.directoryHost?.() ?? remoteHostId;

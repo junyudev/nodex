@@ -1,35 +1,14 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { utf8ToBytes } from "@noble/hashes/utils.js";
-import {
-  isProviderInstanceId,
-  type AgentWire,
-  type ModelSelection,
-} from "@nodex/agent-runtime/contracts";
+import { type AgentWire, type ModelSelection } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "./agent-backend";
 import { fitCodexServiceTier, normalizeCodexServiceTier } from "./codex-service-tier";
-
-/** Provider keys are shared by desktop configuration and model selection. */
-export function agentRuntimeProviderId(binding: AgentBackendBinding): string | null {
-  if (binding.runtimeInstanceId !== undefined)
-    return isProviderInstanceId(binding.runtimeInstanceId) ? binding.runtimeInstanceId : null;
-  if (binding.kind === "codex") return "codex";
-  const id = binding.instanceConfigId;
-  if (!id || id.trim() !== id || id.length > 128) return null;
-  const digest = sha256(utf8ToBytes(JSON.stringify([binding.kind, id])));
-  const encoded = btoa(String.fromCharCode(...digest))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/u, "");
-  return `${binding.kind}_${encoded}`;
-}
 
 export function agentRuntimeModelSelection(
   binding: AgentBackendBinding,
   model: string,
   options?: AgentWire<ModelSelection>["options"],
 ): AgentWire<ModelSelection> | null {
-  const instanceId = agentRuntimeProviderId(binding);
-  if (!instanceId || !model.trim()) return null;
+  const { instanceId } = binding;
+  if (!model.trim()) return null;
   return { instanceId, model: model.trim(), ...(options === undefined ? {} : { options }) };
 }
 
@@ -162,14 +141,4 @@ export function readAgentRuntimeServiceTier(
 ): string | null | undefined {
   const value = options?.find((option) => option.id === SERVICE_TIER_OPTION)?.value;
   return typeof value === "string" ? normalizeCodexServiceTier(value) : undefined;
-}
-
-/** Enough of a binding's provider to ask whether a model is on, before its catalog has loaded. */
-export function agentRuntimePolicyProvider(
-  binding: AgentBackendBinding,
-): { readonly instanceId: string; readonly driver: string } | null {
-  const instanceId = agentRuntimeProviderId(binding);
-  return instanceId
-    ? { instanceId, driver: binding.kind === "claude" ? "claudeAgent" : binding.kind }
-    : null;
 }

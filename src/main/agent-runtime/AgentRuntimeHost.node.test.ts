@@ -394,9 +394,22 @@ it.effect("a Turn's CLI is vouched for as its own Session's Agent", () =>
       f.bind(identity);
       yield* f.execute(prepareTurn(identity));
       assert.deepEqual(f.recordedRuns, [
-        { session_id: "session", run_id: "run:one", message_id: "message", backend },
+        {
+          session_id: "session",
+          run_id: "run:one",
+          message_id: "message",
+          driver: backend,
+          label: backend === "codex" ? "Codex" : "Antigravity",
+        },
       ]);
-      assert.deepEqual(f.attributions, [{ session_id: "session", run_id: "run:one", backend }]);
+      assert.deepEqual(f.attributions, [
+        {
+          session_id: "session",
+          run_id: "run:one",
+          driver: backend,
+          label: backend === "codex" ? "Codex" : "Antigravity",
+        },
+      ]);
     }
   }).pipe(Effect.scoped),
 );

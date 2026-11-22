@@ -1,3 +1,13 @@
+import { withAgentSecretChanges } from "./agent-environment-storage";
+import { hasLegacyAgentProfiles, migrateLegacyAgentProfiles } from "./agent-profile-migration";
+import {
+  readStoredAgentProfiles,
+  presentAgentProfiles,
+  resolveAgentProfile,
+  writeAgentProfiles,
+} from "./agent-profile-store";
+import type { AgentProfilesUpdate } from "../../shared/agents/profiles";
+import type { ProfileAgentDriver } from "../../shared/agents/registry";
 import {
   isAppComponentId,
   type AppComponentId,
@@ -66,32 +76,6 @@ import {
   DEFAULT_COMPOSER_PREDICTION_SETTINGS,
   type ComposerPredictionSettings,
 } from "../../shared/composer-prediction-settings";
-import {
-  presentOpenCodeInstances,
-  readStoredOpenCodeInstances,
-  resolveOpenCodeLaunchConfiguration,
-  writeOpenCodeInstances,
-} from "./opencode-agent-environment";
-import {
-  presentAntigravityInstances,
-  readStoredAntigravityInstances,
-  resolveAntigravityLaunchConfiguration,
-  writeAntigravityInstances,
-} from "./antigravity-agent-environment";
-import type {
-  OpenCodeAgentSettings,
-  UpdateOpenCodeAgentSettingsInput,
-} from "../../shared/opencode-agent-settings";
-import type {
-  AntigravityAgentSettings,
-  UpdateAntigravityAgentSettingsInput,
-} from "../../shared/antigravity-agent-settings";
-import {
-  presentClaudeInstances,
-  readStoredClaudeInstances,
-  resolveClaudeLaunchConfiguration,
-  writeClaudeInstances,
-} from "./claude-agent-environment";
 import type { SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import * as path from "path";
 import {
@@ -119,7 +103,6 @@ import {
 } from "../../shared/command-keybindings";
 import type {
   AcpAgentSettings,
-  ClaudeAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -136,7 +119,6 @@ import type {
   ThreadNotificationTurnMode,
   UpdateAppUpdateSettingsInput,
   UpdateAcpAgentSettingsInput,
-  UpdateClaudeAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexGitSettingsInput,
@@ -239,6 +221,8 @@ interface ServerTomlConfig {
   worktree_auto_delete_enabled?: boolean;
   worktree_auto_delete_limit?: number;
   execution_hosts?: unknown[];
+  agent_instances?: unknown[];
+  agent_instance_identity_version?: number;
   acp_agent_instances?: unknown[];
   claude_agent_instances?: unknown[];
   provider_keys?: unknown[];
@@ -400,6 +384,30 @@ function writeProfileServerTomlConfig(
   const nextToml = readTomlConfig(profileSettingsPath);
   nextToml.server = nextServer;
   writeTomlConfig(profileSettingsPath, nextToml);
+}
+
+/** Upgrade the Profile document and its secret references under the writer permit. */
+export function migrateProfileAgentProfiles(source: ApplicationSettingsDocumentSource): void {
+  const previous = loadProfileServerTomlConfig(source);
+  if (previous.agent_instances !== undefined) return;
+  const hasLegacyInbox = [previous.inbox_chat_agent, previous.inbox_suggestion_agent].some(
+    (agent) => agent?.startsWith("claude:"),
+  );
+  if (!hasLegacyAgentProfiles(source, previous) && !hasLegacyInbox) return;
+
+  withAgentSecretChanges((changes) => {
+    const migrated = migrateLegacyAgentProfiles(source, previous, changes);
+    const next = { ...previous, ...migrated };
+    delete next.claude_agent_instances;
+    delete next.opencode_agent_instances;
+    delete next.antigravity_agent_instances;
+    delete next.agent_instance_identity_version;
+    for (const key of ["inbox_chat_agent", "inbox_suggestion_agent"] as const) {
+      const binding = decodeInboxAgentBinding(next[key]);
+      if (binding) next[key] = encodeInboxAgentBinding(binding);
+    }
+    writeProfileServerTomlConfig(source, next);
+  });
 }
 
 function resolveConfiguredCodexHome(
@@ -1167,103 +1175,40 @@ export function updateProviderKeySettings(
   });
 }
 
-export function getClaudeAgentSettings(
-  source: ApplicationSettingsDocumentSource,
-): ClaudeAgentSettings {
-  return presentClaudeInstances(
-    readStoredClaudeInstances(loadProfileServerTomlConfig(source).claude_agent_instances),
+export function getAgentProfiles(source: ApplicationSettingsDocumentSource) {
+  return presentAgentProfiles(
+    readStoredAgentProfiles(loadProfileServerTomlConfig(source).agent_instances),
   );
 }
 
-export function getClaudeLaunchConfiguration(
+export function getAgentProfileLaunchConfiguration<Driver extends ProfileAgentDriver>(
   source: ApplicationSettingsDocumentSource,
+  driver: Driver,
   instanceId: string,
 ) {
-  return resolveClaudeLaunchConfiguration(
+  migrateProfileAgentProfiles(source);
+  return resolveAgentProfile(
     source,
-    readStoredClaudeInstances(loadProfileServerTomlConfig(source).claude_agent_instances),
+    readStoredAgentProfiles(loadProfileServerTomlConfig(source).agent_instances),
+    driver,
     instanceId,
   );
 }
 
-export function updateClaudeAgentSettings(
-  input: UpdateClaudeAgentSettingsInput,
+export function updateAgentProfiles(
+  input: AgentProfilesUpdate,
   source: ApplicationSettingsDocumentSource,
-): ClaudeAgentSettings {
+) {
+  migrateProfileAgentProfiles(source);
   const previous = loadProfileServerTomlConfig(source);
-  writeClaudeInstances(
+  writeAgentProfiles(
     source,
     input,
-    readStoredClaudeInstances(previous.claude_agent_instances),
-    (instances) => {
-      writeProfileServerTomlConfig(source, { ...previous, claude_agent_instances: instances });
+    readStoredAgentProfiles(previous.agent_instances),
+    (agent_instances) => {
+      writeProfileServerTomlConfig(source, { ...previous, agent_instances });
     },
   );
-  return getClaudeAgentSettings(source);
-}
-
-export function getOpenCodeAgentSettings(
-  source: ApplicationSettingsDocumentSource,
-): OpenCodeAgentSettings {
-  return presentOpenCodeInstances(
-    readStoredOpenCodeInstances(loadProfileServerTomlConfig(source).opencode_agent_instances),
-  );
-}
-export function getOpenCodeLaunchConfiguration(
-  source: ApplicationSettingsDocumentSource,
-  instanceId: string,
-) {
-  return resolveOpenCodeLaunchConfiguration(
-    source,
-    readStoredOpenCodeInstances(loadProfileServerTomlConfig(source).opencode_agent_instances),
-    instanceId,
-  );
-}
-export function updateOpenCodeAgentSettings(
-  input: UpdateOpenCodeAgentSettingsInput,
-  source: ApplicationSettingsDocumentSource,
-): OpenCodeAgentSettings {
-  const previous = loadProfileServerTomlConfig(source);
-  writeOpenCodeInstances(
-    source,
-    input,
-    readStoredOpenCodeInstances(previous.opencode_agent_instances),
-    (instances) =>
-      writeProfileServerTomlConfig(source, { ...previous, opencode_agent_instances: instances }),
-  );
-  return getOpenCodeAgentSettings(source);
-}
-
-export function getAntigravityAgentSettings(
-  source: ApplicationSettingsDocumentSource,
-): AntigravityAgentSettings {
-  return presentAntigravityInstances(
-    readStoredAntigravityInstances(loadProfileServerTomlConfig(source).antigravity_agent_instances),
-  );
-}
-export function getAntigravityLaunchConfiguration(
-  source: ApplicationSettingsDocumentSource,
-  instanceId: string,
-) {
-  return resolveAntigravityLaunchConfiguration(
-    source,
-    readStoredAntigravityInstances(loadProfileServerTomlConfig(source).antigravity_agent_instances),
-    instanceId,
-  );
-}
-export function updateAntigravityAgentSettings(
-  input: UpdateAntigravityAgentSettingsInput,
-  source: ApplicationSettingsDocumentSource,
-): AntigravityAgentSettings {
-  const previous = loadProfileServerTomlConfig(source);
-  writeAntigravityInstances(
-    source,
-    input,
-    readStoredAntigravityInstances(previous.antigravity_agent_instances),
-    (instances) =>
-      writeProfileServerTomlConfig(source, { ...previous, antigravity_agent_instances: instances }),
-  );
-  return getAntigravityAgentSettings(source);
 }
 
 export function getAcpAgentSettings(source: ApplicationSettingsDocumentSource): AcpAgentSettings {
@@ -1285,13 +1230,18 @@ export function updateAcpAgentSettings(
   input: UpdateAcpAgentSettingsInput,
   source: ApplicationSettingsDocumentSource,
 ): AcpAgentSettings {
+  migrateProfileAgentProfiles(source);
   const previous = loadProfileServerTomlConfig(source);
   writeAcpInstances(
     source,
     input,
     readStoredAcpInstances(previous.acp_agent_instances),
     (instances) =>
-      writeProfileServerTomlConfig(source, { ...previous, acp_agent_instances: instances }),
+      writeProfileServerTomlConfig(source, {
+        ...previous,
+        agent_instances: readStoredAgentProfiles(previous.agent_instances),
+        acp_agent_instances: instances,
+      }),
   );
   return getAcpAgentSettings(source);
 }

@@ -1,3 +1,5 @@
+import { claudeAgent } from "../../../shared/agents/claude";
+import { agentProfilesFor } from "../../../shared/agents/profiles";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -125,12 +127,12 @@ export const live = Layer.effectDiscard(
     );
     yield* handleQuery("native-sessions:discover-projects", () =>
       Effect.gen(function* () {
-        const { claudeAgents } = yield* settings.snapshot();
+        const { agentProfiles } = yield* settings.snapshot();
         const now = yield* Clock.currentTimeMillis;
         return yield* discoverProjects({
           sources: [
             { backendKind: "codex" as const },
-            ...claudeAgents.instances
+            ...agentProfilesFor(agentProfiles, claudeAgent.driver)
               .filter((instance) => instance.enabled)
               .map((instance) => ({
                 backendKind: "claude" as const,

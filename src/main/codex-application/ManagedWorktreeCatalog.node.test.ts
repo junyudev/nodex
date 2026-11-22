@@ -42,7 +42,7 @@ const makeThread = (
   agentPath: null,
   threadName: "First",
   threadPreview: "First preview",
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   executionHostId: "local",
   cwd: "/managed/shared/repository/packages/app",
   managedWorktreePath: "/managed/shared/repository",

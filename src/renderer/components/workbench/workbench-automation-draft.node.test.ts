@@ -75,7 +75,7 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     model: null,
     reasoningEffort: null,
     serviceTier: null,
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -125,10 +125,24 @@ describe("workbench automation draft", () => {
       scope: automation.scope,
     });
   });
+  test("an unregistered Agent's Automation keeps its identity and omits model defaults", () => {
+    const binding = { driver: "futureAgent", instanceId: "future-work" };
+    const draft = createWorkbenchAutomationDraft({
+      automation: makeAutomation({
+        kind: "cron",
+        targetSessionId: null,
+        backendBinding: binding,
+      }),
+    });
+    const resolved = resolveWorkbenchAutomationDraftModelSettings({ draft, models: MODELS });
+
+    expect(resolved).toMatchObject({ backendBinding: binding, model: "", reasoningEffort: "" });
+  });
+
   test("preserves a reviewed Claude profile and its Default intent when Codex models reload", () => {
     const draft = createWorkbenchAutomationDraftFromCreateInput({
       kind: "cron",
-      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       name: "Review",
       prompt: "Check progress",
       rrule: "FREQ=DAILY",
@@ -139,7 +153,7 @@ describe("workbench automation draft", () => {
     const resolved = resolveWorkbenchAutomationDraftModelSettings({ draft, models: MODELS });
     expect(resolved).toBe(draft);
     expect(buildAutomationCreateInput({ draft: resolved })).toMatchObject({
-      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       model: "default",
       reasoningEffort: "default",
       serviceTier: null,
@@ -149,7 +163,7 @@ describe("workbench automation draft", () => {
       targetSessionId: null,
       projectId: "project",
       cwds: ["/workspace"],
-      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       model: "vendor-sonnet",
       reasoningEffort: "max",
     });
@@ -165,14 +179,14 @@ describe("workbench automation draft", () => {
     expect(
       resolveWorkbenchAutomationDraftModelSettings({ draft: edit, models: MODELS }).model,
     ).toBe("vendor-sonnet");
-    edit.backendBinding = { kind: "claude", instanceConfigId: "other" };
+    edit.backendBinding = { driver: "claudeAgent", instanceId: "other" };
     expect(isWorkbenchAutomationDraftDirty({ draft: edit, existing: definition })).toBe(true);
   });
 
   test("retains a Claude heartbeat's exact profile and omits per-run model overrides", () => {
     const draft = createWorkbenchAutomationDraftFromCreateInput({
       kind: "heartbeat",
-      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       targetSessionId: "session",
       name: "Follow up",
       prompt: "Check progress",
@@ -180,7 +194,7 @@ describe("workbench automation draft", () => {
       model: "unused",
     });
     expect(buildAutomationCreateInput({ draft })).toMatchObject({
-      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       targetSessionId: "session",
       model: null,
       reasoningEffort: null,
@@ -534,7 +548,7 @@ test("builds a projectless local task without borrowing a directory or Project",
 test("an ACP task keeps its exact instance and sends only options its model advertises", () => {
   const draft = createWorkbenchAutomationDraftFromCreateInput({
     kind: "cron",
-    backendBinding: { kind: "acp", agentDefinitionId: "qoder-cli", instanceConfigId: "qoder-work" },
+    backendBinding: { driver: "acpRegistry", instanceId: "qoder-work" },
     name: "Nightly triage",
     prompt: "Triage new issues",
   });
@@ -543,7 +557,7 @@ test("an ACP task keeps its exact instance and sends only options its model adve
   expect(validateWorkbenchAutomationDraft(draft).missingRequirements).toContain("model");
   draft.model = "dfmodel";
   expect(buildAutomationCreateInput({ draft })).toMatchObject({
-    backendBinding: { kind: "acp", agentDefinitionId: "qoder-cli", instanceConfigId: "qoder-work" },
+    backendBinding: { driver: "acpRegistry", instanceId: "qoder-work" },
     model: "dfmodel",
     reasoningEffort: null,
     serviceTier: null,

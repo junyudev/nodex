@@ -12,7 +12,7 @@ import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import { ClaudeSdk, live } from "./ClaudeSdk";
-import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 import { makeAgentDiscoveryRequests } from "../../ipc/handlers/AgentDiscoveryRequests";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { live as shellEnvironmentLive } from "../../host-runtime/HostShellEnvironment";
@@ -75,15 +75,18 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
         const sdk = yield* ClaudeSdk;
         const session = yield* sdk.discover({
           instance: {
-            ...defaultClaudeInstance(),
+            ...claudeProfile(),
             binaryPath: script,
-            customModels: [
-              {
-                id: "gateway/private[1m]",
-                displayName: "Private",
-                traits: { adaptiveThinking: true, disableThinking: true },
-              },
-            ],
+            settings: {
+              configDirectory: "",
+              customModels: [
+                {
+                  id: "gateway/private[1m]",
+                  displayName: "Private",
+                  traits: { adaptiveThinking: true, disableThinking: true },
+                },
+              ],
+            },
           },
           environment: {
             HOME: root,
@@ -129,7 +132,7 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
         const unavailable = yield* Effect.result(
           sdk.discover({
             instance: {
-              ...defaultClaudeInstance(),
+              ...claudeProfile(),
               environment: [{ name: "PATH", value: "", sensitive: false }],
             },
             environment: { HOME: root, PATH: "" },
@@ -167,7 +170,7 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
         1,
         "fixture",
         sdk.discover({
-          instance: { ...defaultClaudeInstance(), binaryPath: script },
+          instance: { ...claudeProfile(), binaryPath: script },
           environment: {
             HOME: root,
             PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter),

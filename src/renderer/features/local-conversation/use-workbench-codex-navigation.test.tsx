@@ -142,7 +142,7 @@ it("starts synchronously before a Thread mounts and retains that dispatch span t
 it("keeps Pages, unknown or non-Codex Sessions and Side Chat panel changes out of native Thread navigation", async () => {
   const a = nativeSession({ id: "a", threadId: "thread-a" });
   const native = nativeSession({ id: "native", threadId: "claude-a" });
-  native.thread!.backendBinding = { kind: "claude", instanceConfigId: "claude" };
+  native.thread!.backendBinding = { driver: "claudeAgent", instanceId: "claude" };
   const blank = { ...a, id: "draft", thread: null };
   const side = nativeSession({ id: "side", threadId: "side-a" });
   observations.conversations.set("side-a", { source: { sideConversation: true } });

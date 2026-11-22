@@ -246,6 +246,14 @@ history. Setup migration copies supported configuration and Agent resources to t
 configuration; it does not import conversation history. Import receipts remain in the Nodex Profile. See
 [Native Conversation Import Behavior](product-specs/native-conversation-connection-behavior.md).
 
+## Agent instance identity
+
+A configured Agent profile's `id` is its Agent Runtime instance ID. Nodex uses that ID
+for model policy and saved model choices, and retains it across display name, executable,
+and credential edits. An instance ID starts with a letter and uses up to 64 letters,
+digits, hyphens, or underscores. Create an independent profile to use a separate account.
+Settings resolves an ACP profile's Registry entry from its configuration.
+
 ## Claude Code instances
 
 Settings > Agents > Claude Code exposes Claude Code with an enabled default instance, executable `claude`, and the
@@ -262,13 +270,10 @@ and starts its own native session when continued. Imported history and media bel
 Profile and remain available after the source conversation is removed.
 
 The official Claude Agent SDK loads user, project, and local configuration, including instructions,
-skills, hooks, and MCP servers. Nodex stores instance identity, display name, executable,
-config directory, enabled state, custom model declarations and environment overrides in the Profile's `claude_agent_instances`
-setting. Use **Agent > Claude Code > Environment variables** for API endpoints, authentication tokens,
-and other instance variables. Paste literal `export KEY="value"` or `KEY=value` lines into a row to
-import them. Sensitive values are encrypted separately under the selected Profile's `agent-secrets/claude`;
-ordinary settings contain only references. Saved secrets can be retained, replaced, or removed.
-An empty value overrides inheritance with an empty string; deleting the row restores inheritance.
+skills, hooks, and MCP servers. Use **Settings > Agents > Claude Code > Environment variables** for
+API endpoints, authentication tokens, and other instance variables. Paste literal
+`export KEY="value"` or `KEY=value` lines into a row to import them.
+An empty value overrides inheritance with an empty string. Deleting the row restores inheritance.
 Custom models pair a concrete ID with a display name and explicit supported effort, Fast, Thinking
 and context traits. Adaptive thinking and support for disabling thinking are separate capabilities;
 the latter enables Off in the Effort menu. Changes refresh discovery and apply when Claude next
@@ -281,6 +286,29 @@ The chat's selected model and the Profile's model policy own Claude's launch mod
 settings flags.
 Disabling it prevents new connections and leaves existing durable task bindings explicit.
 
+## Built-in Agent profiles
+
+Claude Code, OpenCode and Antigravity share the Profile's `server.agent_instances` list in
+`config.toml`. Each entry has a runtime `id`, a `driver`, a `display_name`, an `enabled` flag
+and a driver-specific `settings` table. Claude Code and OpenCode also have an `environment`
+list. Each driver supports up to 32 profiles. An ID is unique within the list, begins with an
+ASCII letter, has up to 64 characters, and may also contain ASCII digits, underscore or hyphen.
+
+| Driver        | Settings                                                                              |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `claudeAgent` | `binaryPath`, `configDirectory`, `customModels`                                       |
+| `opencode`    | `binaryPath`, `profileDirectory`, `serverUrl`                                         |
+| `antigravity` | `binaryPath`, `authMethod`, `gcpProject`, `gcpLocation`, encrypted `apiKey` reference |
+
+Nodex writes sensitive values to `<Profile>/agent-secrets/<driver>/` and keeps references in
+the settings document. It stages encrypted values before publishing the document and releases
+replaced or removed references after a successful save. Turning off a profile preserves its
+credentials. Removing it releases them. Settings reads show which secrets are saved. Resolved
+values are available only to trusted local launch code.
+
+ACP instances, API key connections and Codex home settings each have their own configuration
+and lifecycle.
+
 ## API key connections
 
 The Profile's `server.provider_keys` setting records each connection's target, name, enabled state,
@@ -290,28 +318,16 @@ separate configuration directory for each connection.
 
 ## Antigravity instances
 
-Antigravity is a separate Agent backend. Profiles start with no Antigravity accounts.
-Each entry in `[[server.antigravity_agent_instances]]` represents one account; up to 32
-entries may be saved, each with a unique `id`.
+Antigravity starts with no accounts. Each profile selects an authentication method:
+`oauth-personal` (default), `oauth-business`, `gemini-api-key` or `agent-platform`.
+`gcpProject` and `gcpLocation` specify the Google Cloud project and region when the method
+uses them. An empty executable selects the Nodex-managed runtime, then a compatible `agy`
+on PATH.
 
-| Field                       | Meaning                                                                                                     |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `id`                        | Stable profile identity, 1–128 ASCII letters, digits, underscores or hyphens                                |
-| `displayName`               | Name shown in Agent choices                                                                                 |
-| `enabled`                   | Whether the account may receive new work                                                                    |
-| `authMethod`                | `oauth-personal` (default), `oauth-business`, `gemini-api-key` or `agent-platform`                          |
-| `gcpProject`, `gcpLocation` | Google Cloud project and region; empty when unused                                                          |
-| `binaryPath`                | Empty selects the Nodex-managed runtime, then a compatible `agy` on PATH; otherwise the explicit executable |
-| `apiKeyRef`                 | Nodex-owned reference to an encrypted API key; never a plaintext key                                        |
-
-Supply keys through Agent settings. Main stages encrypted values under
-`<Profile>/agent-secrets/antigravity`, publishes their settings references last and
-releases retired references after a successful save or removal. Settings reads expose
-only `apiKey: null` and `hasApiKey`. Saving `apiKey: null` preserves that account's key;
-an empty string clears it. Resolved keys cross only the private runtime bootstrap boundary.
-Disabling an account keeps its key. Antigravity owns isolated credentials per account and
-strips ambient Google credentials; there is no environment-variable or custom-model editor.
-Models come from that account and default on under model policy.
+Supply keys through Agent settings. A saved key stays with its account until it is replaced,
+cleared, or the sign-in method stops using it. Antigravity keeps isolated credentials per
+account, strips ambient Google credentials and loads the models available to that account.
+Those models default on under model policy.
 
 Nodex stores the managed download under
 `<Profile>/agent-runtime/tools/antigravity-acp/<os>-<arch>/`. All Antigravity profiles

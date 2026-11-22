@@ -101,7 +101,7 @@ export const make = Effect.gen(function* () {
     if (result.value.kind !== "thread")
       return yield* fail(operation, new Error("Core returned a non-Thread target"));
     const thread = result.value.thread;
-    if (thread.backend_binding.kind !== "codex" || thread.execution_host_id !== input.hostId)
+    if (thread.backend_binding.driver !== "codex" || thread.execution_host_id !== input.hostId)
       return yield* fail(operation, new Error("Conversation execution binding changed"));
     return thread;
   });
@@ -294,7 +294,7 @@ export const make = Effect.gen(function* () {
           return yield* fail("read", new Error("Core returned a non-Thread target"));
         const thread = result.value.thread;
         if (
-          thread.backend_binding.kind !== "codex" ||
+          thread.backend_binding.driver !== "codex" ||
           (expectedHostId !== undefined && thread.execution_host_id !== expectedHostId)
         )
           return null;

@@ -28,7 +28,7 @@ export const codexLinkedRootSessionFixture = ({
     kind: "codex_thread_session",
     thread: {
       archived: false,
-      backend_binding: { kind: "codex" },
+      backend_binding: { driver: "codex", instanceId: "codex" },
       created_at: 0,
       dynamic_tool_catalogs: [],
       execution_host_id: hostId,

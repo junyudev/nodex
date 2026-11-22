@@ -19,7 +19,7 @@ const noChildren = [] as const;
 export function createNativeConversationHistoryRuntime(input: {
   readonly sessionId: string;
   readonly summary: Pick<CodexThreadSummary, "threadId" | "executionHostId">;
-  readonly backend: Exclude<AgentBackendBinding["kind"], "codex">;
+  readonly backend: Exclude<AgentBackendBinding["driver"], "codex">;
   readonly owner: NativeConversationHistoryOwner;
   readonly retain: () => () => void;
 }): ConversationRuntime {
@@ -67,7 +67,7 @@ export function createNativeConversationHistoryRuntime(input: {
 export function useNativeConversationHistoryAdapter(input: {
   readonly sessionId: string;
   readonly summary: CodexThreadSummary;
-  readonly backend: Exclude<AgentBackendBinding["kind"], "codex">;
+  readonly backend: Exclude<AgentBackendBinding["driver"], "codex">;
 }) {
   const intl = useIntl();
   const { sessionId, summary, backend } = input;
@@ -89,7 +89,7 @@ export function useNativeConversationHistoryAdapter(input: {
   const provider: ConversationProviderPresentation = {
     kind: backend,
     label:
-      backend === "claude"
+      backend === "claudeAgent"
         ? "Claude"
         : backend === "opencode"
           ? "OpenCode"

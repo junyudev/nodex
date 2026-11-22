@@ -25,7 +25,7 @@ export interface AgentModelPickerEntry {
 export interface AgentModelSetupPresentation {
   readonly instanceId?: string;
   readonly key?: string;
-  readonly kind: AgentBackendBinding["kind"];
+  readonly kind: AgentBackendBinding["driver"];
   readonly label: string;
   /** The next step or live state, such as `Install` or `42%`. */
   readonly hint?: string;

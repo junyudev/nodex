@@ -1,4 +1,3 @@
-import type { AgentBackendBinding } from "./agent-backend";
 import { isNodexProviderId } from "./nodex-models";
 import { isProviderKeyRuntimeInstanceId } from "./provider-keys";
 
@@ -9,11 +8,3 @@ import { isProviderKeyRuntimeInstanceId } from "./provider-keys";
  */
 export const isManagedRuntimeInstanceId = (instanceId: string): boolean =>
   isNodexProviderId(instanceId) || isProviderKeyRuntimeInstanceId(instanceId);
-
-/** The binding of a managed instance; null for an instance the Profile configures. */
-export function managedRuntimeBinding(instanceId: string): AgentBackendBinding | null {
-  if (!isManagedRuntimeInstanceId(instanceId)) return null;
-  return instanceId.startsWith("nodex_codex_")
-    ? { kind: "codex", runtimeInstanceId: instanceId }
-    : { kind: "claude", instanceConfigId: instanceId, runtimeInstanceId: instanceId };
-}

@@ -3,7 +3,7 @@ import type { AgentSessionConfigOption, AgentSessionModeState } from "./agent-co
 import type { ClaudeDiscovery } from "./claude-models";
 import type { AgentModelOption } from "./types";
 
-export type ExternalAgentBinding = Exclude<AgentBackendBinding, { kind: "codex" }>;
+export type ExternalAgentBinding = AgentBackendBinding;
 export interface AgentModelCatalogInput {
   readonly scope:
     | {

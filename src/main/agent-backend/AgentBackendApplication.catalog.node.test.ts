@@ -17,7 +17,7 @@ import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
 import { OpenCodeModelCatalog } from "./opencode/OpenCodeModelCatalog";
 
-const binding = { kind: "opencode", instanceConfigId: "work" } as const;
+const binding = { driver: "opencode", instanceId: "work" } as const;
 const catalog: AgentModelCatalog = {
   binding,
   models: [],
@@ -54,7 +54,7 @@ const fixture = Effect.gen(function* () {
     }),
     Effect.provideService(AgentBackendRegistry, {
       resolve: () =>
-        Effect.succeed({ kind: "opencode", binding, displayName: "Work", instance: {} as never }),
+        Effect.succeed({ kind: "profile", binding, displayName: "Work", instance: {} as never }),
       resolveAcpInstance: () => Effect.die("Unexpected ACP resolution"),
     }),
     Effect.provideService(ProjectWorkspace, { getProject: () => Effect.succeed(project) } as never),

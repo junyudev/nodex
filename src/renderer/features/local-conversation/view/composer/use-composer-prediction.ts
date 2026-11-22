@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../../../../shared/agents/registry";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
@@ -53,7 +54,10 @@ export function useComposerPrediction({
   const enabledPreference =
     !preference.isLoading && !preference.error && preference.settings.enabled;
   const allowed =
-    eligible && !isHostedChat() && (!override || override.kind === "codex") && threadId !== null;
+    eligible &&
+    !isHostedChat() &&
+    (!override || agentDefinition(override.kind).capabilities.predictions === true) &&
+    threadId !== null;
   const availability = useQuery({
     ...composerPredictionAvailabilityOptions(hostId),
     enabled: allowed && enabledPreference,

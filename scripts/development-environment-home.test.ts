@@ -2,6 +2,12 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { claudeAgent } from "../src/shared/agents/claude";
+import {
+  agentProfileInput,
+  agentProfilesFor,
+  createAgentProfile,
+} from "../src/shared/agents/profiles";
 
 import {
   cleanupDevelopmentEnvironmentHome,
@@ -13,8 +19,8 @@ import {
   updateDevelopmentAgentFiles,
 } from "./development-environment-home";
 import {
-  getClaudeAgentSettings,
-  updateClaudeAgentSettings,
+  getAgentProfiles,
+  updateAgentProfiles,
 } from "../src/main/settings/application-settings-persistence";
 
 const roots: string[] = [];
@@ -181,27 +187,24 @@ describe("development environment home", () => {
       updateDevelopmentAgentFiles(home, { claudeConfigDir: claudeConfig }),
     ).rejects.toThrow(`CLAUDE_CONFIG_DIR=${claudeConfig} claude auth login`);
     await mkdir(claudeConfig);
-    const other = {
-      id: "claude-work",
-      displayName: "Claude Work",
-      binaryPath: "claude",
-      configDirectory: "",
-      enabled: true,
-      customModels: [],
-      environment: [],
-    };
-    updateClaudeAgentSettings(
+    const other = { ...createAgentProfile(claudeAgent, "claude-work"), displayName: "Claude Work" };
+    const initial = agentProfilesFor(getAgentProfiles(source), claudeAgent.driver)[0]!;
+    updateAgentProfiles(
       {
-        instances: [{ ...getClaudeAgentSettings(source).instances[0]!, enabled: false }, other],
+        driver: claudeAgent.driver,
+        instances: [{ ...initial, enabled: false }, other].map(agentProfileInput),
       },
       source,
     );
 
     await updateDevelopmentAgentFiles(home, { claudeConfigDir: claudeConfig });
 
-    const { instances } = getClaudeAgentSettings(source);
-    expect(instances.map(({ id }) => id)).toEqual(["claude-default", "claude-work"]);
-    expect(instances[0]).toMatchObject({ configDirectory: claudeConfig, enabled: true });
+    const instances = agentProfilesFor(getAgentProfiles(source), claudeAgent.driver);
+    expect(instances.map(({ id }) => id)).toEqual([claudeAgent.profile.initialId, "claude-work"]);
+    expect(instances[0]).toMatchObject({
+      settings: { configDirectory: claudeConfig },
+      enabled: true,
+    });
     expect(instances[1]).toEqual(other);
   });
 

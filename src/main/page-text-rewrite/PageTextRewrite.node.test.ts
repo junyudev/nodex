@@ -123,7 +123,7 @@ it("chooses only usable utility providers and respects explicit utility models",
     { enabled: false },
     { installed: false },
     { auth: { status: "unauthenticated" as const } },
-    { driver: "acp" },
+    { driver: "acpRegistry" },
     { availability: "unavailable" as const },
     { supportsTextGeneration: false },
   ])

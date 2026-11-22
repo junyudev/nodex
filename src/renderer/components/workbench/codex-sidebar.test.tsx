@@ -30,7 +30,7 @@ function makeThreadItem(overrides: Partial<CodexSidebarThreadItem> = {}): CodexS
   return {
     key: "local:test-thread",
     kind: "local",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     runLocation: { kind: "local-checkout" },
     hostId: "local",
     threadId: "thread-test",

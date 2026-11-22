@@ -10,18 +10,30 @@ import { formatNodexCredits } from "../../../shared/nodex-models";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
 import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-instances";
 import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared/provider-keys";
-import type { AntigravityRuntimeInspection } from "../../../shared/antigravity-runtime";
-import { antigravityRequiredVersion } from "../antigravity-runtime/antigravity-runtime-model";
-import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
+import { acpInstallationReadiness, type AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
 import type { AppComponentId, AppComponentState } from "../../../shared/app-components";
-import { providerComponentSetup } from "../app-components/provider-component-setup";
+import {
+  componentInstallationReadiness,
+  componentReadinessLabel,
+} from "../app-components/provider-component-setup";
 import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import {
-  agentReadinessProblem,
-  isAgentUnchecked,
+  agentDefinition,
+  agentDefinitions,
+  sameAgentDriver,
+} from "../../../shared/agents/registry";
+import type { AgentDefinition } from "../../../shared/agents/definition";
+import type { AgentSetupTarget } from "@/lib/agent-settings-navigation";
+import {
+  agentReadiness,
+  type AgentInstallationReadiness,
+  type AgentReadiness,
+  type AgentReadinessAction,
   type AgentReadinessProblem,
-} from "../local-conversation/agent-readiness-notice";
+} from "../../../shared/agents/readiness";
+import { agentReadinessActionLabel, agentReadinessView } from "@/lib/agent-readiness-view";
+import { isAppComponentId } from "../../../shared/app-components";
 
 export const FIRST_RUN_STEPS = ["agents", "projects"] as const;
 export type FirstRunStep = (typeof FIRST_RUN_STEPS)[number];
@@ -120,26 +132,27 @@ type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number
 export type FirstRunAgentId = string;
 
 export type FirstRunAgentAction =
-  | "codex-sign-in"
-  | "codex-cancel-sign-in"
-  | "claude-sign-in"
-  | "claude-install"
+  | "browser-sign-in"
+  | "cancel-browser-sign-in"
+  | "terminal-sign-in"
+  | "terminal-install"
   | "nodex-sign-in"
   | "nodex-cancel-sign-in"
-  | "opencode-install"
-  | "opencode-use"
-  | "antigravity-settings"
-  | "acp-connect"
-  | "acp-sign-in"
+  | "use-free-models"
+  | "agent-settings"
+  | "connect"
+  | "inline-sign-in"
   | "api-key-add"
   | "component-settings"
   | "component-retry"
+  | "installer"
   | "check-again";
 
 export type FirstRunAgentMark =
-  | { readonly kind: "codex" | "claude" | "opencode" | "antigravity" | "nodex" }
+  | { readonly kind: "agent"; readonly driver: string }
+  | { readonly kind: "nodex" }
   | { readonly kind: "key"; readonly preset: ProviderKeyPresetId | null }
-  | { readonly kind: "acp"; readonly agentDefinitionId: string };
+  | { readonly kind: "registry"; readonly agentDefinitionId: string; readonly driver: string };
 
 export interface FirstRunAgentRow {
   readonly id: FirstRunAgentId;
@@ -164,6 +177,8 @@ export interface FirstRunAgentRow {
     /** The configured instance the action is for. */
     readonly target?: string;
     readonly componentId?: AppComponentId;
+    readonly binding?: AgentSetupTarget;
+    readonly sourceId?: string;
   } | null;
   /** The ways to add credits open beneath the row. */
   readonly offersTopUp?: boolean;
@@ -181,7 +196,7 @@ export interface FirstRunAgentInputs {
   /** Null until the first catalog read has answered. */
   readonly providers: readonly RuntimeProvider[] | null;
   readonly policy: ModelPolicy;
-  readonly codexLoginPending: boolean;
+  readonly pendingBrowserSignIn: string | null;
   readonly nodex: {
     readonly configured: boolean;
     readonly signedIn: boolean;
@@ -191,306 +206,331 @@ export interface FirstRunAgentInputs {
     readonly balance: number | null;
     readonly notice: string | null;
   };
-  readonly openCodeInstall: "checking" | "installing" | "installable" | "installed" | "unavailable";
-  /** Undefined until inspected, null if the inspection could not be read. */
-  readonly antigravityInspection: AntigravityRuntimeInspection | null | undefined;
+  readonly installations: {
+    readonly components: readonly AppComponentState[];
+    readonly managed: Readonly<
+      Record<string, (provider?: RuntimeProvider) => AgentInstallationReadiness | undefined>
+    >;
+  };
   /** Null until ACP settings are read. */
   readonly acpAgents: readonly FirstRunAcpAgent[] | null;
   /** Null until API key connections are read. */
   readonly providerKeys: readonly ProviderKeyConnection[] | null;
-  readonly codex?: AppComponentState;
-  readonly claudeCode?: AppComponentState;
 }
-
-const CLAUDE_DRIVER = "claudeAgent";
-const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
-
-const builtIn = (id: "codex" | "claude" | "opencode" | "antigravity" | "nodex") => ({
-  id,
-  slot: id,
-  mark: { kind: id },
-});
 
 const checkingDetail = (intl: IntlShape) =>
   intl.formatMessage({ id: "firstRun.firstRunModel.checking", defaultMessage: "Checking…" });
 
-const signInLabel = (intl: IntlShape) =>
-  intl.formatMessage({ id: "firstRun.firstRunModel.signIn", defaultMessage: "Sign in" });
-
-const connectLabel = (intl: IntlShape) =>
-  intl.formatMessage({ id: "firstRun.firstRunModel.connect", defaultMessage: "Connect" });
-
-const checkAgain = (intl: IntlShape): NonNullable<FirstRunAgentRow["action"]> => ({
-  kind: "check-again",
-  label: intl.formatMessage({
-    id: "firstRun.firstRunModel.checkAgain",
-    defaultMessage: "Check again",
-  }),
-});
-
-const checking = (
-  id: "codex" | "claude" | "opencode" | "antigravity",
-  label: string,
+function rowAction(
+  action: AgentReadinessAction | null,
+  binding: AgentSetupTarget,
   intl: IntlShape,
-): FirstRunAgentRow => ({
-  ...builtIn(id),
-  label,
-  detail: checkingDetail(intl),
-  state: "checking",
-  // Until it answers, an Agent holds the place of one that is there.
-  found: true,
-  action: null,
-});
+  problem?: AgentReadinessProblem,
+): FirstRunAgentRow["action"] {
+  if (!action) return null;
+  const base = { label: agentReadinessActionLabel(action, intl), binding };
+  switch (action.kind) {
+    case "sign-in":
+      if (action.via === "browser")
+        return { ...base, kind: "browser-sign-in", sourceId: action.owner };
+      if (action.via === "terminal")
+        return { ...base, kind: "terminal-sign-in", sourceId: action.owner };
+      if (action.via === "dialog" && binding.instanceId)
+        return { ...base, kind: "inline-sign-in", target: binding.instanceId };
+      return { ...base, kind: "agent-settings" };
+    case "connect":
+      return binding.instanceId ? { ...base, kind: "connect", target: binding.instanceId } : null;
+    case "components":
+      return { ...base, kind: "component-settings" };
+    case "check-again":
+      return { ...base, kind: "check-again" };
+    case "retry-installation":
+    case "install":
+      if (isAppComponentId(action.sourceId))
+        return { ...base, kind: "component-retry", componentId: action.sourceId };
+      return { ...base, kind: "installer", sourceId: action.sourceId };
+    case "settings":
+      return {
+        ...base,
+        kind: "agent-settings",
+        ...(problem?.kind === "not-installed"
+          ? {
+              label: intl.formatMessage({
+                id: "conversation.agentReadinessNotice.setUp",
+                defaultMessage: "Set up",
+              }),
+            }
+          : {}),
+      };
+  }
+}
+
+function readinessRow(
+  base: Pick<FirstRunAgentRow, "id" | "slot" | "mark" | "label">,
+  readiness: AgentReadiness,
+  binding: AgentSetupTarget,
+  intl: IntlShape,
+  provider?: RuntimeProvider,
+): FirstRunAgentRow {
+  const view = agentReadinessView(
+    componentReadinessLabel(provider, base.label, intl),
+    readiness,
+    intl,
+  );
+  const state =
+    readiness.problem.kind === "checking"
+      ? "checking"
+      : view.tone === "progress"
+        ? "waiting"
+        : "action";
+  return {
+    ...base,
+    detail: view.title,
+    state,
+    found:
+      state === "checking" ||
+      (readiness.found &&
+        !(
+          readiness.problem.kind === "signed-out" &&
+          readiness.action?.kind === "sign-in" &&
+          readiness.action.via === "browser"
+        )),
+    ...(view.detail ? { note: view.detail } : {}),
+    action:
+      state === "waiting" ? null : rowAction(readiness.action, binding, intl, readiness.problem),
+  };
+}
+
+function installationFor(
+  input: FirstRunAgentInputs,
+  definition: AgentDefinition,
+  provider?: RuntimeProvider,
+) {
+  const declared = definition.setup?.installation;
+  const fallback =
+    declared?.kind === "component" &&
+    !input.installations.components.some(({ id }) => id === declared.id)
+      ? undefined
+      : declared;
+  const source =
+    provider?.componentUnavailableReason === "external-unusable"
+      ? undefined
+      : (provider?.installationSource ?? fallback);
+  const component =
+    source?.kind === "component" &&
+    input.installations.components.find(({ id }) => id === source.id);
+  const installation = component
+    ? componentInstallationReadiness(component, provider?.installed === true)
+    : source?.kind === "managed"
+      ? input.installations.managed[source.id]?.(provider)
+      : undefined;
+  return { source, installation };
+}
 
 const signedInDetail = (provider: RuntimeProvider, intl: IntlShape): string =>
   provider.auth.email ??
   provider.auth.label ??
   intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" });
 
-/**
- * Who is signed in when the account itself couldn't be read: only this computer's sign-in is
- * known, so the row names its kind, such as `Signed in with ChatGPT`, unless it knows the person.
- */
-const signedInOffline = (provider: RuntimeProvider, intl: IntlShape): string =>
-  provider.auth.email ??
-  (provider.auth.label
-    ? intl.formatMessage(
-        {
-          id: "firstRun.firstRunModel.signedInWith",
-          defaultMessage: "Signed in with {account}",
-        },
-        { account: provider.auth.label },
-      )
-    : intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" }));
-
-const foundDetail = (rest: string, intl: IntlShape): string =>
-  intl.formatMessage(
-    {
-      id: "firstRun.firstRunModel.foundOnThisComputer",
-      defaultMessage: "Found on this computer · {command}",
-    },
-    { command: rest },
-  );
-
-type TroubledProblem = Extract<
-  AgentReadinessProblem,
-  "no-connection" | "not-responding" | "not-ready" | "not-installed"
->;
-
-/**
- * An installed Agent that was checked and can't take a message: the row says which of the things a
- * person can act on went wrong, and checking again is always one click away. Whatever the Agent
- * said for itself sits beneath the row when the row's own words don't already cover it.
- */
-function troubledRow(
-  id: "codex" | "claude" | "antigravity",
-  label: string,
-  provider: RuntimeProvider,
-  problem: TroubledProblem,
+function modelOptInRow(
+  base: Pick<FirstRunAgentRow, "id" | "slot" | "mark" | "label">,
+  providers: readonly RuntimeProvider[],
+  policy: ModelPolicy,
   intl: IntlShape,
 ): FirstRunAgentRow {
-  const row = {
-    ...builtIn(id),
-    label,
-    state: "action",
-    found: true,
-    action: checkAgain(intl),
-  } as const;
-  const said =
-    (provider.availability === "unavailable" ? provider.unavailableReason : null) ??
-    provider.message;
-  switch (problem) {
-    case "no-connection":
-      return {
-        ...row,
-        detail: intl.formatMessage(
-          {
-            id: "firstRun.firstRunModel.signedInCanTConnect",
-            defaultMessage: "{account} · Can’t connect. Check your network or proxy.",
-          },
-          { account: signedInOffline(provider, intl) },
-        ),
-      };
-    case "not-responding":
-      return {
-        ...row,
-        detail: intl.formatMessage({
-          id: "firstRun.firstRunModel.didnTRespondInTime",
-          defaultMessage: "Didn’t respond in time",
-        }),
-      };
-    default:
-      return {
-        ...row,
-        detail: intl.formatMessage({
-          id: "firstRun.firstRunModel.couldnTStart",
-          defaultMessage: "Couldn’t start",
-        }),
-        ...(said ? { note: said } : {}),
-      };
-  }
-}
-
-const turnedOffDetail = (intl: IntlShape) =>
-  intl.formatMessage({
-    id: "firstRun.firstRunModel.turnedOffInSettings",
-    defaultMessage: "Turned off in Settings → Agents",
-  });
-
-function codexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow {
-  const label = "Codex";
-  const provider = input.providers?.find((entry) => entry.instanceId === "codex");
-  if (!input.providers || isAgentUnchecked(provider)) return checking("codex", label, intl);
-  const externalUnavailable = provider?.componentUnavailableReason === "external-unusable";
-  const setup = externalUnavailable ? null : providerComponentSetup(provider, input.codex, intl);
-  if (setup)
+  const models = providers.flatMap((provider) =>
+    provider.models.map((model) => ({ provider, model })),
+  );
+  const onCount = models.filter(({ provider, model }) =>
+    isModelOn(policy, provider, model.slug),
+  ).length;
+  if (onCount > 0)
     return {
-      ...builtIn("codex"),
-      label,
-      detail: setup.title,
-      found: false,
-      state: setup.action ? "action" : "waiting",
-      action:
-        setup.action && setup.actionLabel
-          ? {
-              kind: setup.action === "retry" ? "component-retry" : "component-settings",
-              componentId: setup.id,
-              label: setup.actionLabel,
-            }
-          : null,
-    };
-  if (provider?.componentUnavailableReason && (!input.codex || externalUnavailable))
-    return {
-      ...builtIn("codex"),
-      label,
+      ...base,
+      found: true,
+      state: "ready",
+      action: null,
       detail:
-        provider.message ??
-        intl.formatMessage({
-          id: "firstRun.firstRunModel.couldnTStart",
-          defaultMessage: "Couldn’t start",
-        }),
-      found: false,
+        onCount === 1
+          ? intl.formatMessage({
+              id: "firstRun.firstRunModel.label1ModelOn",
+              defaultMessage: "1 model on",
+            })
+          : intl.formatMessage(
+              { id: "firstRun.firstRunModel.valueModelsOn", defaultMessage: "{value1} models on" },
+              { value1: onCount },
+            ),
+    };
+  if (!models.some(({ model }) => isFreeModel(model.slug)))
+    return {
+      ...base,
+      found: true,
       state: "action",
       action: null,
-    };
-  if (input.codexLoginPending)
-    return {
-      ...builtIn("codex"),
-      label,
       detail: intl.formatMessage({
-        id: "firstRun.firstRunModel.finishSigningInInYour",
-        defaultMessage: "Finish signing in in your browser",
+        id: "firstRun.firstRunModel.signInToAModel",
+        defaultMessage: "Sign in to a model provider in Settings",
       }),
+    };
+  return {
+    ...base,
+    found: true,
+    state: "action",
+    detail: intl.formatMessage({
+      id: "firstRun.firstRunModel.freeNoAccountProvidersMay",
+      defaultMessage: "Free, no account. Providers may keep what you send.",
+    }),
+    action: {
+      kind: "use-free-models",
+      binding: { driver: base.mark.kind === "agent" ? base.mark.driver : "" },
+      label: intl.formatMessage({
+        id: "firstRun.firstRunModel.useFreeModels",
+        defaultMessage: "Use free models",
+      }),
+    },
+  };
+}
+
+function builtInRow(
+  definition: AgentDefinition,
+  input: FirstRunAgentInputs,
+  intl: IntlShape,
+): FirstRunAgentRow | null {
+  const setup = definition.setup;
+  const id = definition.settingsAnchor ?? definition.driver;
+  const label = definition.label;
+  const base = { id, slot: id, label, mark: { kind: "agent", driver: definition.driver } } as const;
+  const profiles = (input.providers ?? []).filter(
+    (entry) =>
+      sameAgentDriver(entry.driver, definition.driver) &&
+      !spendsNodexCredit(entry) &&
+      !isManagedRuntimeInstanceId(entry.instanceId),
+  );
+  const checked = profiles.map((provider) => ({
+    provider,
+    readiness: agentReadiness({
+      definition,
+      provider,
+      ...installationFor(input, definition, provider),
+    }),
+  }));
+  const ready = checked.filter(
+    ({ provider, readiness }) =>
+      !readiness &&
+      (!setup?.firstRun?.requireKnownAccount || provider.auth.status === "authenticated"),
+  );
+  if (
+    setup?.signIn?.via === "browser" &&
+    input.pendingBrowserSignIn === setup.signIn.owner &&
+    !checked.some(({ readiness }) => readiness?.blocksSend)
+  )
+    return {
+      ...base,
       state: "waiting",
       found: false,
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.finishInBrowser",
+        defaultMessage: "Finish signing in in your browser",
+      }),
       action: {
-        kind: "codex-cancel-sign-in",
+        kind: "cancel-browser-sign-in",
         label: intl.formatMessage({
           id: "firstRun.firstRunModel.cancel",
           defaultMessage: "Cancel",
         }),
       },
     };
-  const problem = agentReadinessProblem(provider);
-  if (provider && !problem)
+  if (ready.length)
+    return definition.capabilities.modelsOptIn
+      ? modelOptInRow(
+          base,
+          ready.map(({ provider }) => provider),
+          input.policy,
+          intl,
+        )
+      : {
+          ...base,
+          state: "ready",
+          found: true,
+          action: null,
+          detail: signedInDetail(ready[0].provider, intl),
+        };
+  if (!input.providers || checked.some(({ readiness }) => readiness?.problem.kind === "checking"))
+    return { ...base, detail: checkingDetail(intl), state: "checking", found: true, action: null };
+  const candidate =
+    checked.find(({ provider }) => provider.enabled && provider.installed) ?? checked[0];
+  const provider = candidate?.provider;
+  const binding = {
+    driver: provider?.driver ?? definition.driver,
+    ...(provider ? { instanceId: provider.instanceId } : {}),
+  };
+  const readiness = candidate
+    ? candidate.readiness
+    : agentReadiness({ definition, ...installationFor(input, definition) });
+  if (
+    readiness?.problem.kind === "turned-off" &&
+    !readiness.problem.supplier &&
+    !setup?.firstRun?.showWhenOff
+  )
+    return null;
+  if (
+    setup?.firstRun?.terminalInstall &&
+    setup.signIn?.via === "terminal" &&
+    (!readiness || readiness.problem.kind === "not-installed")
+  ) {
+    const install = { kind: "install", sourceId: "" } as const;
     return {
-      ...builtIn("codex"),
-      label,
-      detail: signedInDetail(provider, intl),
-      state: "ready",
-      found: true,
-      action: null,
-    };
-  if (problem === "turned-off")
-    return {
-      ...builtIn("codex"),
-      label,
-      detail: turnedOffDetail(intl),
+      ...base,
       state: "action",
       found: false,
-      action: null,
-    };
-  if (
-    provider &&
-    problem &&
-    problem !== "signed-out" &&
-    problem !== "installing" &&
-    !provider.componentUnavailableReason
-  )
-    return troubledRow("codex", label, provider, problem, intl);
-  return {
-    ...builtIn("codex"),
-    label,
-    detail: intl.formatMessage({
-      id: "firstRun.firstRunModel.signInWithYourChatGPT",
-      defaultMessage: "Sign in with your ChatGPT account",
-    }),
-    state: "action",
-    found: false,
-    action: { kind: "codex-sign-in", label: signInLabel(intl) },
-  };
-}
-
-function claudeRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow | null {
-  const label = "Claude Code";
-  if (!input.providers) return checking("claude", label, intl);
-  // Nodex credits and API keys run on Claude Code too, but they are rows of their own.
-  const profiles = input.providers.filter(
-    (entry) =>
-      entry.driver === CLAUDE_DRIVER &&
-      !spendsNodexCredit(entry) &&
-      !isManagedRuntimeInstanceId(entry.instanceId),
-  );
-  const ready = profiles.find((entry) => !isAgentUnchecked(entry) && !agentReadinessProblem(entry));
-  if (ready)
-    return {
-      ...builtIn("claude"),
-      label,
-      detail: signedInDetail(ready, intl),
-      state: "ready",
-      found: true,
-      action: null,
-    };
-  if (profiles.some(isAgentUnchecked)) return checking("claude", label, intl);
-  const profile = profiles[0];
-  const problem = agentReadinessProblem(profile);
-  // Turning an Agent off is a choice this page doesn't argue with.
-  if (problem === "turned-off") return null;
-  if (problem === "signed-out")
-    return {
-      ...builtIn("claude"),
-      label,
-      detail: foundDetail(
-        intl.formatMessage({
-          id: "firstRun.firstRunModel.signInWithYourClaude",
-          defaultMessage: "Sign in with your Claude account",
-        }),
-        intl,
+      detail: intl.formatMessage(
+        {
+          id: "agentReadiness.installThenSignIn",
+          defaultMessage: "Install {label}, then sign in",
+        },
+        { label },
       ),
-      state: "action",
-      found: true,
-      action: { kind: "claude-sign-in", label: signInLabel(intl) },
+      action: {
+        kind: "terminal-install",
+        sourceId: setup.signIn.owner,
+        label: agentReadinessActionLabel(install, intl),
+      },
     };
-  if (profile && problem && problem !== "not-installed")
-    return problem === "installing"
-      ? checking("claude", label, intl)
-      : troubledRow("claude", label, profile, problem, intl);
-  return {
-    ...builtIn("claude"),
-    label,
-    detail: intl.formatMessage({
-      id: "firstRun.firstRunModel.installClaudeCodeThenSign",
-      defaultMessage: "Install Claude Code, then sign in",
-    }),
-    state: "action",
-    found: false,
-    action: {
-      kind: "claude-install",
-      label: intl.formatMessage({
-        id: "firstRun.firstRunModel.install",
-        defaultMessage: "Install",
+  }
+  if (
+    readiness &&
+    !(
+      readiness.problem.kind === "not-installed" &&
+      readiness.problem.onDemand &&
+      setup?.signIn?.via === "browser"
+    )
+  ) {
+    const row = readinessRow(base, readiness, binding, intl, provider);
+    if (
+      row.action?.kind !== "installer" ||
+      readiness.problem.kind !== "not-installed" ||
+      !definition.capabilities.modelsOptIn
+    )
+      return row;
+    return {
+      ...row,
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.freeNoAccountProvidersMay",
+        defaultMessage: "Free, no account. Providers may keep what you send.",
       }),
-    },
+    };
+  }
+  if (definition.capabilities.modelsOptIn || !setup?.signIn) return null;
+  // Before an account has been checked, offer setup without claiming a sign-out.
+  return {
+    ...base,
+    state: "action",
+    found: setup.signIn.via !== "browser" && provider?.installed === true,
+    action: rowAction({ kind: "sign-in", ...setup.signIn }, binding, intl),
+    detail: intl.formatMessage({
+      id: "firstRun.firstRunModel.signInToUseItsModels",
+      defaultMessage: "Sign in to use its models",
+    }),
   };
 }
 
@@ -498,7 +538,7 @@ function nodexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow
   const { nodex } = input;
   if (!nodex.configured) return null;
   // An account is signed in to, never found on a computer.
-  const id = { ...builtIn("nodex"), found: false };
+  const id = { id: "nodex", slot: "nodex", mark: { kind: "nodex" }, found: false } as const;
   const label = intl.formatMessage({
     id: "firstRun.firstRunModel.nodexCredits",
     defaultMessage: "Nodex credits",
@@ -546,7 +586,7 @@ function nodexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow
       action: {
         kind: "nodex-sign-in",
         label: returning
-          ? signInLabel(intl)
+          ? agentReadinessActionLabel({ kind: "sign-in", via: "settings" }, intl)
           : intl.formatMessage({
               id: "firstRun.firstRunModel.getStarted",
               defaultMessage: "Get started",
@@ -590,233 +630,37 @@ function nodexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow
   };
 }
 
-function openCodeRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow | null {
-  const label = "OpenCode";
-  const detail = intl.formatMessage({
-    id: "firstRun.firstRunModel.freeNoAccountProvidersMay",
-    defaultMessage: "Free, no account. Providers may keep what you send.",
-  });
-  if (input.openCodeInstall === "unavailable") return null;
-  if (input.openCodeInstall === "checking" || !input.providers)
-    return checking("opencode", label, intl);
-  if (input.openCodeInstall === "installing")
-    return {
-      ...builtIn("opencode"),
-      label,
-      detail: intl.formatMessage({
-        id: "firstRun.firstRunModel.installing",
-        defaultMessage: "Installing…",
-      }),
-      state: "waiting",
-      found: false,
-      action: null,
-    };
-  if (input.openCodeInstall === "installable")
-    return {
-      ...builtIn("opencode"),
-      label,
-      detail,
-      state: "action",
-      found: false,
-      action: {
-        kind: "opencode-install",
-        label: intl.formatMessage({
-          id: "firstRun.firstRunModel.install",
-          defaultMessage: "Install",
-        }),
-      },
-    };
-  const providers = input.providers.filter(
-    (entry) => OPENCODE_DRIVERS.includes(entry.driver) && !agentReadinessProblem(entry),
-  );
-  const freeModels = providers.flatMap((provider) =>
-    provider.models
-      .filter((model) => isFreeModel(model.slug))
-      .map((model) => ({ provider, model })),
-  );
-  const onCount = providers
-    .flatMap((provider) => provider.models.map((model) => ({ provider, model })))
-    .filter(({ provider, model }) => isModelOn(input.policy, provider, model.slug)).length;
-  if (onCount > 0)
-    return {
-      ...builtIn("opencode"),
-      label,
-      detail:
-        onCount === 1
-          ? intl.formatMessage({
-              id: "firstRun.firstRunModel.label1ModelOn",
-              defaultMessage: "1 model on",
-            })
-          : intl.formatMessage(
-              { id: "firstRun.firstRunModel.valueModelsOn", defaultMessage: "{value1} models on" },
-              { value1: onCount },
-            ),
-      state: "ready",
-      found: true,
-      action: null,
-    };
-  if (freeModels.length === 0)
-    return {
-      ...builtIn("opencode"),
-      label,
-      detail: intl.formatMessage({
-        id: "firstRun.firstRunModel.signInToAModel",
-        defaultMessage: "Sign in to a model provider in Settings",
-      }),
-      state: "action",
-      found: true,
-      action: null,
-    };
-  return {
-    ...builtIn("opencode"),
-    label,
-    detail,
-    state: "action",
-    found: true,
-    action: {
-      kind: "opencode-use",
-      label: intl.formatMessage({
-        id: "firstRun.firstRunModel.useFreeModels",
-        defaultMessage: "Use free models",
-      }),
-    },
-  };
-}
-
 /** ACP instances of the same Agent share a place in the setup list. */
 const acpSlot = (agentDefinitionId: string) => `acp-agent:${agentDefinitionId}`;
 
 function acpAgentRow(agent: FirstRunAcpAgent, intl: IntlShape): FirstRunAgentRow | null {
   const { status } = agent;
-  // Turning an Agent off is a choice this page doesn't argue with.
   if (status.kind === "off") return null;
-  const row = {
+  const definition = agentDefinitions.find(({ setup }) => setup?.models === "discover");
+  if (!definition) return null;
+  const binding = { driver: definition.driver, instanceId: agent.id };
+  const base = {
     id: `acp:${agent.id}`,
     slot: acpSlot(agent.agentDefinitionId),
-    mark: { kind: "acp", agentDefinitionId: agent.agentDefinitionId } as const,
+    mark: { kind: "registry", agentDefinitionId: agent.agentDefinitionId, driver: binding.driver },
     label: agent.label,
-    // The Profile already runs it, so it is as much here as an Agent found on the computer.
-    found: true,
-  };
-  switch (status.kind) {
-    case "ready":
-      return { ...row, detail: status.detail ?? status.label, state: "ready", action: null };
-    case "checking":
-      return { ...row, detail: checkingDetail(intl), state: "checking", action: null };
-    case "connecting":
-    case "installing":
-    case "pending":
-      return {
-        ...row,
-        detail: intl.formatMessage(
-          { id: "firstRun.firstRunModel.statusInProgress", defaultMessage: "{status}…" },
-          { status: status.label },
-        ),
-        state: "waiting",
-        action: null,
-      };
-    case "sign-in":
-      return {
-        ...row,
-        detail: intl.formatMessage({
-          id: "firstRun.firstRunModel.signInToUseItsModels",
-          defaultMessage: "Sign in to use its models",
-        }),
-        state: "action",
-        action: { kind: "acp-sign-in", label: signInLabel(intl), target: agent.id },
-      };
-    default:
-      return {
-        ...row,
-        detail: status.detail ?? status.label,
-        state: "action",
-        action:
-          status.action === "connect"
-            ? { kind: "acp-connect", label: connectLabel(intl), target: agent.id }
-            : null,
-      };
-  }
-}
-
-function antigravityRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow {
-  const label = "Antigravity";
-  const profiles = input.providers?.filter((provider) => provider.driver === "antigravity") ?? [];
-  const ready = profiles.find(
-    (provider) =>
-      !isAgentUnchecked(provider) &&
-      provider.installed &&
-      provider.auth.status === "authenticated" &&
-      !agentReadinessProblem(provider),
-  );
-  const base = { ...builtIn("antigravity"), label };
-  if (ready)
+  } as const;
+  if (status.kind === "ready")
     return {
       ...base,
-      detail: signedInDetail(ready, intl),
+      detail: status.detail ?? status.label,
       state: "ready",
       found: true,
       action: null,
     };
-  const inspection = input.antigravityInspection;
-  if (!input.providers || inspection === undefined || profiles.some(isAgentUnchecked))
-    return checking("antigravity", label, intl);
-
-  const profile = profiles.find((provider) => provider.enabled && provider.installed);
-  const selected = inspection?.instances.find(
-    ({ instanceId }) => instanceId === profile?.instanceId,
-  );
-  const executable = selected?.executablePath
-    ? selected
-    : (inspection?.managed ?? inspection?.path);
-  const minimum =
-    inspection && executable && antigravityRequiredVersion(executable.version, inspection);
-  const found = Boolean(executable || profile);
-  const setup = {
-    ...base,
-    state: "action",
-    found,
-  } as const;
-  if (minimum && executable) {
-    const command = executable.executablePath?.split(/[\\/]/u).at(-1);
-    return {
-      ...setup,
-      detail: intl.formatMessage(
-        {
-          id: "firstRun.firstRunModel.foundNeedsUpdate",
-          defaultMessage: "Found {command} · Update to {minimum} or newer to connect",
-        },
-        { command: [command, executable.version].filter(Boolean).join(" "), minimum },
-      ),
-      action: checkAgain(intl),
-    };
-  }
-  const problem = agentReadinessProblem(profile);
-  if (
-    profile &&
-    (problem === "no-connection" || problem === "not-responding" || problem === "not-ready")
-  )
-    return troubledRow("antigravity", label, profile, problem, intl);
-
-  const signIn = profile && problem !== "turned-off";
-  const detail = signIn
-    ? intl.formatMessage({
-        id: "firstRun.firstRunModel.signInToUseItsModels",
-        defaultMessage: "Sign in to use its models",
-      })
-    : intl.formatMessage({ id: "agents.antigravity.notSetUp", defaultMessage: "Not set up" });
-  return {
-    ...setup,
-    detail: found ? foundDetail(detail, intl) : detail,
-    action: {
-      kind: "antigravity-settings",
-      label: signIn
-        ? signInLabel(intl)
-        : intl.formatMessage({
-            id: "firstRun.firstRunModel.setUpAntigravity",
-            defaultMessage: "Set up",
-          }),
-    },
-  };
+  const readiness = agentReadiness({ definition, installation: acpInstallationReadiness(status) });
+  if (!readiness) return null;
+  const row = readinessRow(base, readiness, binding, intl);
+  // Registry installs still start from Settings or the setup dialog. A Connect action here
+  // is only for an instance that the Registry has already prepared.
+  return status.action === "connect" || status.action === "sign-in"
+    ? row
+    : { ...row, action: null };
 }
 
 function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly FirstRunAgentRow[] {
@@ -826,23 +670,37 @@ function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly 
       const provider = input.providers?.find(
         ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
       );
-      const setup = providerComponentSetup(provider, input.claudeCode, intl);
-      return {
+      const definition = agentDefinition(provider?.driver);
+      const readiness = provider
+        ? agentReadiness({
+            definition,
+            provider,
+            ...installationFor(input, definition, provider),
+          })
+        : null;
+      const base = {
         id: `key:${connection.id}`,
         slot: "api-key",
         mark: { kind: "key", preset: connection.preset },
         label: connection.displayName,
-        detail: setup?.title ?? providerKeyReadyDetail(connection, intl),
-        state: setup ? (setup.action ? "action" : "waiting") : "ready",
+      } as const;
+      if (readiness && provider)
+        return {
+          ...readinessRow(
+            base,
+            readiness,
+            { driver: provider.driver, instanceId: provider.instanceId },
+            intl,
+            provider,
+          ),
+          found: true,
+        };
+      return {
+        ...base,
+        detail: providerKeyReadyDetail(connection, intl),
+        state: "ready",
         found: true,
-        action:
-          setup?.action && setup.actionLabel
-            ? {
-                kind: setup.action === "retry" ? "component-retry" : "component-settings",
-                componentId: setup.id,
-                label: setup.actionLabel,
-              }
-            : null,
+        action: null,
       };
     }),
     {
@@ -881,15 +739,19 @@ export function firstRunAgentRows(
   input: FirstRunAgentInputs,
   intl: IntlShape = getIntl(),
 ): readonly FirstRunAgentRow[] {
+  const builtIns = agentDefinitions.flatMap((definition) => {
+    if (!definition.setup?.firstRun) return [];
+    const row = builtInRow(definition, input, intl);
+    return row ? [{ order: definition.setup.firstRun.order, row }] : [];
+  });
   return [
-    codexRow(input, intl),
-    claudeRow(input, intl),
-    nodexRow(input, intl),
-    ...(input.acpAgents ?? []).map((agent) => acpAgentRow(agent, intl)),
-    antigravityRow(input, intl),
-    ...providerKeyRows(input, intl),
-    openCodeRow(input, intl),
-  ].flatMap((row) => (row ? [row] : []));
+    ...builtIns,
+    { order: 2, row: nodexRow(input, intl) },
+    ...(input.acpAgents ?? []).map((agent) => ({ order: 3, row: acpAgentRow(agent, intl) })),
+    ...providerKeyRows(input, intl).map((row) => ({ order: 5, row })),
+  ]
+    .toSorted((left, right) => left.order - right.order)
+    .flatMap(({ row }) => (row ? [row] : []));
 }
 
 /** Whether every row has its first answer. */

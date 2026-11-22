@@ -64,11 +64,12 @@ async function connectScriptedClaude(page: Page, runRoot: string): Promise<void>
   writeFileSync(executable, `#!${process.execPath}\nimport(${JSON.stringify(peer)});\n`, {
     mode: 0o755,
   });
-  const settings = (await invokeIpc(page, "settings:claude-agents:get")) as {
+  const settings = (await invokeIpc(page, "settings:agent-profiles:get", "claudeAgent")) as {
     instances: readonly Record<string, unknown>[];
   };
-  await invokeIpc(page, "settings:claude-agents:update", {
-    instances: settings.instances.map((instance) => ({
+  await invokeIpc(page, "settings:agent-profiles:update", {
+    driver: "claudeAgent",
+    instances: settings.instances.map(({ savedSecrets: _saved, ...instance }) => ({
       ...instance,
       binaryPath: executable,
       enabled: true,

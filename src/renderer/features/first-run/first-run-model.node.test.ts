@@ -4,6 +4,7 @@ import {
   antigravityInspection,
   managedAntigravityExecutable,
 } from "../../../shared/antigravity-runtime.test-support";
+import { antigravityInstallationReadiness } from "../antigravity-runtime/antigravity-runtime-model";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import {
@@ -34,10 +35,17 @@ const provider = (overrides: Partial<Provider> & Pick<Provider, "instanceId" | "
     ...overrides,
   }) as Provider;
 
-const inputs = (overrides: Partial<FirstRunAgentInputs> = {}): FirstRunAgentInputs => ({
+const inputs = ({
+  openCodeInstall,
+  antigravityInspection: inspection,
+  ...overrides
+}: Partial<FirstRunAgentInputs> & {
+  openCodeInstall?: "installed" | "unavailable";
+  antigravityInspection?: ReturnType<typeof antigravityInspection>;
+} = {}): FirstRunAgentInputs => ({
   providers: [],
   policy: DEFAULT_MODEL_POLICY,
-  codexLoginPending: false,
+  pendingBrowserSignIn: null,
   nodex: {
     configured: false,
     signedIn: false,
@@ -46,8 +54,24 @@ const inputs = (overrides: Partial<FirstRunAgentInputs> = {}): FirstRunAgentInpu
     balance: null,
     notice: null,
   },
-  openCodeInstall: "installable",
-  antigravityInspection: antigravityInspection(),
+  installations: {
+    components: [],
+    managed: {
+      opencode: () => (openCodeInstall ? undefined : { problem: { kind: "not-installed" } }),
+      antigravity: (entry) =>
+        entry?.installed
+          ? undefined
+          : (antigravityInstallationReadiness({
+              state: {
+                inspection: inspection ?? antigravityInspection(),
+                revision: 1,
+                operation: null,
+              },
+              pending: null,
+              error: null,
+            }) ?? { problem: { kind: "not-connected" }, found: true }),
+    },
+  },
   acpAgents: [],
   providerKeys: [],
   ...overrides,
@@ -162,60 +186,31 @@ describe("first-run Agents", () => {
         ],
       }),
     );
-    expect(row(rows, "codex")?.action?.kind).toBe("codex-sign-in");
-    expect(row(rows, "claude")?.action?.kind).toBe("claude-install");
+    expect(row(rows, "codex")?.action?.kind).toBe("browser-sign-in");
+    expect(row(rows, "claude")?.action?.kind).toBe("terminal-install");
   });
 
-  it("says what went wrong with an installed Agent and always offers to check again", () => {
-    const codex = (overrides: Partial<Provider>) =>
-      row(
-        firstRunAgentRows(
-          inputs({
-            providers: [
-              provider({ instanceId: "codex", driver: "codex", status: "error", ...overrides }),
-            ],
+  it("keeps a checked failure above Agents that still need installing", () => {
+    const rows = firstRunAgentRows(
+      inputs({
+        providers: [
+          provider({
+            instanceId: "codex",
+            driver: "codex",
+            status: "error",
+            issue: "failed",
+            message: "exited with code 2",
           }),
-        ),
-        "codex",
-      );
-    // Signed in on this computer, with an account that couldn't be reached: a network problem.
-    expect(
-      codex({
-        issue: "account-unavailable",
-        auth: { status: "authenticated", email: "a@example.com" },
-        message: "workspace routing discovery failed",
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        state: "action",
-        found: true,
-        detail: "a@example.com · Can’t connect. Check your network or proxy.",
-        action: expect.objectContaining({ kind: "check-again" }),
+        ],
       }),
     );
-    // Offline, only the kind of sign-in is known.
-    expect(
-      codex({ issue: "account-unavailable", auth: { status: "authenticated", label: "ChatGPT" } }),
-    ).toMatchObject({
-      detail: "Signed in with ChatGPT · Can’t connect. Check your network or proxy.",
-    });
-    expect(codex({ issue: "account-unavailable" })).not.toHaveProperty("note");
-    expect(codex({ issue: "unresponsive", auth: { status: "unknown" } })).toMatchObject({
-      detail: "Didn’t respond in time",
-      action: { kind: "check-again" },
-    });
-    // Anything else carries the Agent's own words beneath the row.
-    expect(
-      codex({ issue: "failed", auth: { status: "unknown" }, message: "exited with code 2" }),
-    ).toMatchObject({
-      detail: "Couldn’t start",
+    expect(row(rows, "codex")).toMatchObject({
+      found: true,
+      state: "action",
+      detail: "Couldn’t start Codex",
       note: "exited with code 2",
       action: { kind: "check-again" },
     });
-    // Codex ships with Nodex, so it is never offered as something to install or sign in to.
-    expect(codex({ installed: false, auth: { status: "unknown" } })?.action?.kind).toBe(
-      "check-again",
-    );
   });
 
   it("leaves a turned-off Agent alone", () => {
@@ -227,15 +222,18 @@ describe("first-run Agents", () => {
         ],
       }),
     );
-    expect(row(rows, "codex")).toMatchObject({ state: "action", action: null });
+    expect(row(rows, "codex")).toMatchObject({
+      state: "action",
+      action: { kind: "agent-settings" },
+    });
     expect(row(rows, "claude")).toBeUndefined();
   });
 
   it("waits on a browser sign-in and lets it be cancelled", () => {
-    const rows = firstRunAgentRows(inputs({ codexLoginPending: true }));
+    const rows = firstRunAgentRows(inputs({ pendingBrowserSignIn: "native-account" }));
     expect(row(rows, "codex")).toMatchObject({
       state: "waiting",
-      action: { kind: "codex-cancel-sign-in" },
+      action: { kind: "cancel-browser-sign-in" },
     });
   });
 
@@ -308,7 +306,7 @@ describe("first-run Agents", () => {
     );
     expect(row(before, "opencode")).toMatchObject({
       state: "action",
-      action: { kind: "opencode-use" },
+      action: { kind: "use-free-models" },
     });
     expect(row(before, "opencode")?.detail).toContain("may keep what you send");
 
@@ -323,7 +321,7 @@ describe("first-run Agents", () => {
   });
 
   it("offers to install OpenCode when it's missing, and hides it where it can't run", () => {
-    expect(row(firstRunAgentRows(inputs()), "opencode")?.action?.kind).toBe("opencode-install");
+    expect(row(firstRunAgentRows(inputs()), "opencode")?.action?.kind).toBe("installer");
     expect(
       row(firstRunAgentRows(inputs({ openCodeInstall: "unavailable" })), "opencode"),
     ).toBeUndefined();
@@ -349,7 +347,7 @@ describe("first-run Agents", () => {
       // Claude Code is installed and only needs a sign-in; Codex and an API key start from nothing.
       expect(row(rows, "claude")).toMatchObject({
         found: true,
-        action: { kind: "claude-sign-in" },
+        action: { kind: "terminal-sign-in" },
       });
       expect(slots(rows).indexOf("claude")).toBeLessThan(slots(rows).indexOf("codex"));
       expect(slots(rows).indexOf("codex")).toBeLessThan(slots(rows).indexOf("api-key"));
@@ -411,7 +409,7 @@ describe("first-run Agents", () => {
         ],
       }),
     );
-    expect(row(rows, "claude")?.action?.kind).toBe("claude-sign-in");
+    expect(row(rows, "claude")?.action?.kind).toBe("terminal-sign-in");
   });
 
   describe("Agents on this computer", () => {
@@ -432,9 +430,9 @@ describe("first-run Agents", () => {
 
     it("offers Antigravity setup as its own built-in Agent", () => {
       expect(row(firstRunAgentRows(inputs()), "antigravity")).toMatchObject({
-        mark: { kind: "antigravity" },
-        detail: "Not set up",
-        action: { kind: "antigravity-settings", label: "Set up" },
+        mark: { kind: "agent", driver: "antigravity" },
+        detail: "Antigravity isn’t installed",
+        action: { kind: "agent-settings", label: "Set up" },
       });
     });
 
@@ -452,7 +450,7 @@ describe("first-run Agents", () => {
         const rows = firstRunAgentRows(inputs({ antigravityInspection: inspection }));
         expect(row(rows, "antigravity")).toMatchObject({
           found: true,
-          action: { kind: "antigravity-settings", label: "Set up" },
+          action: { kind: "agent-settings", label: "Settings" },
         });
         expect(arrangeFirstRunAgents(rows, placeFirstRunAgents([], rows))[0]?.id).toBe(
           "antigravity",
@@ -472,8 +470,8 @@ describe("first-run Agents", () => {
         row(firstRunAgentRows(inputs({ antigravityInspection: inspect })), "antigravity"),
       ).toMatchObject({
         found: true,
-        detail: "Found agy 1.4.9 · Update to 1.5.0 or newer to connect",
-        action: { kind: "check-again" },
+        detail: "Antigravity needs 1.5.0 or newer",
+        action: { kind: "agent-settings" },
       });
     });
 
@@ -482,6 +480,7 @@ describe("first-run Agents", () => {
         instanceId: "antigravity_work",
         driver: "antigravity",
         auth: { status: "authenticated", email: "work@example.test" },
+        models: [{ slug: "model", name: "Model", isCustom: false, capabilities: null }],
       });
       const project = (providers: readonly Provider[]) =>
         row(firstRunAgentRows(inputs({ providers })), "antigravity");
@@ -493,19 +492,23 @@ describe("first-run Agents", () => {
       expect(project([{ ...account, checkPending: true }])).toMatchObject({ state: "checking" });
       expect(project([{ ...account, auth: { status: "unauthenticated" } }])).toMatchObject({
         state: "action",
-        action: { kind: "antigravity-settings", label: "Sign in" },
+        action: { kind: "agent-settings", label: "Sign in" },
       });
       expect(project([{ ...account, status: "error", issue: "unresponsive" }])).toMatchObject({
-        detail: "Didn’t respond in time",
+        detail: "Antigravity didn’t respond in time",
         action: { kind: "check-again" },
       });
     });
 
     it("asks a configured Agent for its next step", () => {
       expect(
-        row(firstRunAgentRows(inputs({ acpAgents: [instance({ kind: "sign-in" })] })), "acp:i1")
-          ?.action,
-      ).toMatchObject({ kind: "acp-sign-in", target: "i1" });
+        row(
+          firstRunAgentRows(
+            inputs({ acpAgents: [instance({ kind: "sign-in", action: "sign-in" })] }),
+          ),
+          "acp:i1",
+        )?.action,
+      ).toMatchObject({ kind: "inline-sign-in", target: "i1" });
       expect(
         row(
           firstRunAgentRows(
@@ -513,7 +516,7 @@ describe("first-run Agents", () => {
           ),
           "acp:i1",
         )?.action?.kind,
-      ).toBe("acp-connect");
+      ).toBe("connect");
       expect(
         row(firstRunAgentRows(inputs({ acpAgents: [instance({ kind: "off" })] })), "acp:i1"),
       ).toBeUndefined();

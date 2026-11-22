@@ -67,7 +67,7 @@ vi.mock("./first-run-agents", () => ({
     },
     checkAgain: vi.fn(),
     run: state.run,
-    useCodexApiKey: vi.fn(),
+    useBrowserApiKey: vi.fn(),
   }),
 }));
 vi.mock("./first-run-projects", () => ({
@@ -81,8 +81,10 @@ vi.mock("./first-run-projects", () => ({
   }),
 }));
 vi.mock("./first-run-terminal", () => ({
-  claudeInstallPreview: () => "curl -fsSL https://claude.ai/install.sh | bash",
-  resolveClaudeSignInCommand: async () => "claude auth login",
+  firstRunTerminalSetup: () => ({
+    previewInstall: () => "curl -fsSL https://claude.ai/install.sh | bash",
+    signInCommand: async () => "claude auth login",
+  }),
   runSetupTerminal: () => () => undefined,
 }));
 vi.mock("@/components/board/terminal-panel", () => ({
@@ -149,7 +151,7 @@ function setup(overrides: Partial<FirstRunOverlayProps> = {}) {
 const readyAgent: FirstRunAgentRow = {
   id: "codex",
   slot: "codex",
-  mark: { kind: "codex" },
+  mark: { kind: "agent", driver: "codex" },
   label: "Codex",
   detail: "a@example.com",
   state: "ready",
@@ -187,12 +189,12 @@ describe("Connect an agent", () => {
   const unconnected: FirstRunAgentRow = {
     id: "codex",
     slot: "codex",
-    mark: { kind: "codex" },
+    mark: { kind: "agent", driver: "codex" },
     label: "Codex",
     detail: "Sign in with your ChatGPT account",
     state: "action",
     found: false,
-    action: { kind: "codex-sign-in", label: "Sign in" },
+    action: { kind: "browser-sign-in", label: "Sign in" },
   };
 
   it("never stands in the way when no Agent is ready", async () => {
@@ -201,7 +203,7 @@ describe("Connect an agent", () => {
     setup();
 
     await click(primary("Sign in"));
-    expect(state.run).toHaveBeenCalledWith({ kind: "codex-sign-in", label: "Sign in" });
+    expect(state.run).toHaveBeenCalledWith({ kind: "browser-sign-in", label: "Sign in" });
 
     await click(primary("Continue without an agent"));
     expect(state.current?.step).toBe("projects");
@@ -304,12 +306,12 @@ describe("Connect an agent", () => {
       {
         id: "claude",
         slot: "claude",
-        mark: { kind: "claude" },
+        mark: { kind: "agent", driver: "claudeAgent" },
         label: "Claude Code",
         detail: "Install Claude Code, then sign in",
         state: "action",
         found: false,
-        action: { kind: "claude-install", label: "Install" },
+        action: { kind: "terminal-install", label: "Install" },
       },
     ];
     setup();
@@ -325,12 +327,12 @@ describe("Connect an agent", () => {
       {
         id: "claude",
         slot: "claude",
-        mark: { kind: "claude" },
+        mark: { kind: "agent", driver: "claudeAgent" },
         label: "Claude Code",
         detail: "Sign in with your Claude account",
         state: "action",
         found: false,
-        action: { kind: "claude-sign-in", label: "Sign in" },
+        action: { kind: "terminal-sign-in", label: "Sign in" },
       },
     ];
     setup();

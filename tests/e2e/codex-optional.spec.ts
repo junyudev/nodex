@@ -61,15 +61,16 @@ test("opens the Workbench and runs Claude before activating Codex", async ({}, t
     await page.getByRole("button", { name: "New page", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Page title", exact: true })).toBeVisible();
 
-    await invokeIpc(page, "settings:claude-agents:update", {
+    await invokeIpc(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
-          id: "claude-default",
+          driver: "claudeAgent",
+          settings: { configDirectory: harness.profile.claudeConfigHome, customModels: [] },
+          id: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
           displayName: "Claude Code",
           binaryPath,
-          configDirectory: harness.profile.claudeConfigHome,
           enabled: true,
-          customModels: [],
           environment: [],
         },
       ],
@@ -312,7 +313,7 @@ async function choosePendingCodex(page: Page, testInfo: TestInfo) {
           picker: await picker.ariaSnapshot(),
           codex: codex && {
             installed: codex.installed,
-            requiredComponent: codex.requiredComponent,
+            installationSource: codex.installationSource,
             reason: codex.componentUnavailableReason,
             models: codex.models.map(({ slug }) => slug),
           },

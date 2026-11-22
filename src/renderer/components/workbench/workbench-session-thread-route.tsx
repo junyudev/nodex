@@ -272,7 +272,7 @@ function SharedConnectedSessionThread({
   } = executionDraft.target;
   // A worktree environment on this computer means nothing to a chat its Space host starts.
   const hosted = isHostedChat();
-  const environmentAvailable = provider?.kind !== "acp" && !hosted;
+  const environmentAvailable = provider?.kind !== "acpRegistry" && !hosted;
   const environmentConfigsQuery = useLocalEnvironmentConfigs(effectiveProjectId ?? "", {
     enabled: environmentAvailable && selectedNewThreadRunInTarget === "newWorktree",
   });
@@ -709,7 +709,7 @@ type NativeHistorySessionThreadProps = ConnectedSessionThreadProps & {
 
 /** Imported native chats stay readable history; only Runtime-bound Sessions execute. */
 function NativeHistorySessionThread(props: NativeHistorySessionThreadProps) {
-  const backend = props.thread.backendBinding.kind;
+  const backend = props.thread.backendBinding.driver;
   return backend === "codex" ? (
     <CodexHistorySessionThread {...props} />
   ) : (
@@ -739,7 +739,7 @@ function CodexHistorySessionThread(props: NativeHistorySessionThreadProps) {
 function AgentHistorySessionThread(
   props: NativeHistorySessionThreadProps & {
     readonly backend: Exclude<
-      NativeHistorySessionThreadProps["thread"]["backendBinding"]["kind"],
+      NativeHistorySessionThreadProps["thread"]["backendBinding"]["driver"],
       "codex"
     >;
   },
@@ -897,7 +897,7 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
 function ConnectedSessionThreadBody(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
   if (thread && !props.session.executionRef) {
-    if (thread.backendBinding.kind === "codex" && thread.executionHostId !== "local")
+    if (thread.backendBinding.driver === "codex" && thread.executionHostId !== "local")
       return <ConnectedRemoteSessionThread {...props} thread={thread} />;
     if (props.composerDock) return null;
     return <NativeHistorySessionThread {...props} thread={thread} />;

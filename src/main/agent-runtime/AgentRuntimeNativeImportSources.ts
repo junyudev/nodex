@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
 import type { InsightsUsageSource } from "../../shared/insights";
@@ -24,9 +25,10 @@ export function nativeImportSources(input: {
     // Managed providers do not expose user-account conversations for import.
     if (provider.source === "nodex")
       return { providerInstanceId, driver: provider.driver, homePath: null };
-    if (provider.driver === "codex")
+    const history = agentDefinition(provider.driver).capabilities.nativeHistory;
+    if (history === "codex")
       return { providerInstanceId, driver: provider.driver, homePath: input.codexHome };
-    if (provider.driver !== "claudeAgent")
+    if (history !== "claude")
       return { providerInstanceId, driver: provider.driver, homePath: null };
     const variables = Object.fromEntries(
       provider.environment?.map(({ name, value }) => [name, value]) ?? [],
@@ -83,10 +85,11 @@ export function insightsUsageSources(input: {
     );
     const configured = claudeHome.safeParse(provider.config).data?.homePath?.trim() ?? "";
     const origin = provider.source === "nodex" ? "nodex" : "external";
-    if (provider.driver === "claudeAgent") {
+    const ledger = agentDefinition(provider.driver).capabilities.insightsLedger;
+    if (ledger === "claude") {
       const value = configured || variables.CLAUDE_CONFIG_DIR;
       if (value) add({ provider: "claude", home: directory(value), origin });
-    } else if (provider.driver === "codex") {
+    } else if (ledger === "codex") {
       const value = configured || variables.CODEX_HOME;
       if (value) add({ provider: "codex", home: directory(value), origin });
     }

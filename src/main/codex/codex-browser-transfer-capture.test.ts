@@ -32,7 +32,7 @@ function makeSession(hasThread = false): ProjectSession {
           projectId: "project-source",
           threadId: "thread-source",
           threadPreview: "",
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           executionHostId: "local",
           statusType: "idle",
           statusActiveFlags: [],

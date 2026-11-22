@@ -1,3 +1,4 @@
+import { type AgentSetupTarget } from "@/lib/agent-settings-navigation";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import {
@@ -22,11 +23,7 @@ import { ProviderKeyForm } from "../provider-keys/provider-key-form";
 import { useFirstRunAgents } from "./first-run-agents";
 import type { FirstRunAgentMark, FirstRunAgentRow, FirstRunEntry } from "./first-run-model";
 import { FirstRunCard, FirstRunPrimary, FirstRunRow, FirstRunTitle } from "./first-run-frame";
-import {
-  claudeInstallPreview,
-  resolveClaudeSignInCommand,
-  runSetupTerminal,
-} from "./first-run-terminal";
+import { firstRunTerminalSetup, runSetupTerminal } from "./first-run-terminal";
 
 function AgentMark({ mark }: { readonly mark: FirstRunAgentMark }) {
   const className = "size-[18px] shrink-0";
@@ -39,15 +36,10 @@ function AgentMark({ mark }: { readonly mark: FirstRunAgentMark }) {
       ) : (
         <ProviderKeyPresetsIcon className="size-[26px] gap-[2px]" />
       );
-    case "acp":
-      return (
-        <AgentInstanceIcon
-          binding={{ kind: "acp", agentDefinitionId: mark.agentDefinitionId }}
-          className={className}
-        />
-      );
+    case "registry":
+      return <AgentInstanceIcon binding={{ driver: mark.driver }} className={className} />;
     default:
-      return <AgentProviderIcon kind={mark.kind} className={className} />;
+      return <AgentProviderIcon kind={mark.driver} className={className} />;
   }
 }
 
@@ -116,11 +108,16 @@ function SetupTerminal({
   );
 }
 
-type ClaudeSetup =
-  | { readonly kind: "preview"; readonly command: string }
-  | { readonly kind: "running"; readonly title: string; readonly command: string };
+type TerminalSetup =
+  | { readonly kind: "preview"; readonly rowId: string; readonly command: string }
+  | {
+      readonly kind: "running";
+      readonly rowId: string;
+      readonly title: string;
+      readonly command: string;
+    };
 
-function CodexApiKeyForm({ onSubmit }: { readonly onSubmit: (apiKey: string) => Promise<void> }) {
+function BrowserApiKeyForm({ onSubmit }: { readonly onSubmit: (apiKey: string) => Promise<void> }) {
   const intl = useIntl();
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -195,12 +192,12 @@ export function FirstRunAgentsStep({
 }: {
   readonly entry: FirstRunEntry;
   readonly onContinue: () => void;
-  readonly onOpenAgentSettings: () => void;
+  readonly onOpenAgentSettings: (target?: AgentSetupTarget) => void;
 }) {
   const intl = useIntl();
   const agents = useFirstRunAgents();
-  const [claudeSetup, setClaudeSetup] = useState<ClaudeSetup | null>(null);
-  const [usingApiKey, setUsingApiKey] = useState(false);
+  const [terminalSetup, setTerminalSetup] = useState<TerminalSetup | null>(null);
+  const [apiKeyRow, setApiKeyRow] = useState<string | null>(null);
   const [addingKey, setAddingKey] = useState(false);
   const [signingIn, setSigningIn] = useState<string | null>(null);
 
@@ -208,25 +205,34 @@ export function FirstRunAgentsStep({
 
   const act = (row: FirstRunAgentRow) => {
     const kind = row.action?.kind;
-    if (kind === "antigravity-settings") {
-      onOpenAgentSettings();
+    if (kind === "agent-settings") {
+      onOpenAgentSettings(row.action?.binding);
     } else if (kind === "api-key-add") {
       setAddingKey((current) => !current);
-    } else if (kind === "acp-sign-in") {
+    } else if (kind === "inline-sign-in") {
       setSigningIn((current) =>
         current === row.action?.target ? null : (row.action?.target ?? null),
       );
-    } else if (kind === "claude-install") {
-      setClaudeSetup({ kind: "preview", command: claudeInstallPreview() });
-    } else if (kind === "claude-sign-in") {
-      void resolveClaudeSignInCommand()
+    } else if (kind === "terminal-install" || kind === "terminal-sign-in") {
+      const terminal = firstRunTerminalSetup(row.action?.sourceId);
+      if (!terminal) return;
+      if (kind === "terminal-install") {
+        setTerminalSetup({ kind: "preview", command: terminal.previewInstall(), rowId: row.id });
+        return;
+      }
+      void terminal
+        .signInCommand()
         .then((command) =>
-          setClaudeSetup({
+          setTerminalSetup({
             kind: "running",
-            title: intl.formatMessage({
-              id: "firstRun.firstRunAgentsStep.signInToClaudeCode",
-              defaultMessage: "Sign in to Claude Code",
-            }),
+            rowId: row.id,
+            title: intl.formatMessage(
+              {
+                id: "agentReadiness.signInToAgent",
+                defaultMessage: "Sign in to {label}",
+              },
+              { label: row.label },
+            ),
             command,
           }),
         )
@@ -246,9 +252,9 @@ export function FirstRunAgentsStep({
   /** A row whose form or sign-in is open beneath it; its button closes it again. */
   const opened = (row: FirstRunAgentRow) =>
     (row.action?.kind === "api-key-add" && addingKey) ||
-    (row.action?.kind === "acp-sign-in" && signingIn === row.action.target);
-  const finishClaudeSetup = () => {
-    setClaudeSetup(null);
+    (row.action?.kind === "inline-sign-in" && signingIn === row.action.target);
+  const finishTerminalSetup = () => {
+    setTerminalSetup(null);
     void agents.checkAgain();
   };
 
@@ -287,11 +293,13 @@ export function FirstRunAgentsStep({
                   <ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />
                 ) : (
                   <>
-                    {row.action?.kind === "codex-sign-in" ? (
+                    {row.action?.kind === "browser-sign-in" ? (
                       <NodexButton
                         size="sm"
                         variant="ghostSecondary"
-                        onClick={() => setUsingApiKey((current) => !current)}
+                        onClick={() =>
+                          setApiKeyRow((current) => (current === row.id ? null : row.id))
+                        }
                       >
                         <FormattedMessage
                           id="firstRun.firstRunAgentsStep.useAPIKey"
@@ -338,28 +346,32 @@ export function FirstRunAgentsStep({
                 onConnected={() => setAddingKey(false)}
               />
             ) : null}
-            {row.action?.kind === "acp-sign-in" && signingIn === row.action.target ? (
+            {row.action?.kind === "inline-sign-in" && signingIn === row.action.target ? (
               <AcpSignIn instanceId={signingIn} acp={agents.acp} />
             ) : null}
-            {row.id === "codex" && usingApiKey && row.state === "action" ? (
-              <CodexApiKeyForm onSubmit={agents.useCodexApiKey} />
+            {row.id === apiKeyRow && row.state === "action" ? (
+              <BrowserApiKeyForm onSubmit={agents.useBrowserApiKey} />
             ) : null}
-            {row.id === "claude" && claudeSetup?.kind === "preview" ? (
+            {terminalSetup?.rowId === row.id && terminalSetup.kind === "preview" ? (
               <div className="flex items-center gap-2 ps-[62px] pe-3.5 pb-3.5">
                 <code className="min-w-0 flex-1 truncate rounded-md bg-token-foreground/5 px-2 py-1.5 font-mono text-xs">
-                  {claudeSetup.command}
+                  {terminalSetup.command}
                 </code>
                 <NodexButton
                   size="sm"
                   variant="secondary"
                   onClick={() =>
-                    setClaudeSetup({
+                    setTerminalSetup({
                       kind: "running",
-                      title: intl.formatMessage({
-                        id: "firstRun.firstRunAgentsStep.installClaudeCode",
-                        defaultMessage: "Install Claude Code",
-                      }),
-                      command: claudeSetup.command,
+                      rowId: row.id,
+                      title: intl.formatMessage(
+                        {
+                          id: "agentReadiness.installAgent",
+                          defaultMessage: "Install {label}",
+                        },
+                        { label: row.label },
+                      ),
+                      command: terminalSetup.command,
                     })
                   }
                 >
@@ -367,11 +379,11 @@ export function FirstRunAgentsStep({
                 </NodexButton>
               </div>
             ) : null}
-            {row.id === "claude" && claudeSetup?.kind === "running" ? (
+            {terminalSetup?.rowId === row.id && terminalSetup.kind === "running" ? (
               <SetupTerminal
-                title={claudeSetup.title}
-                command={claudeSetup.command}
-                onExit={finishClaudeSetup}
+                title={terminalSetup.title}
+                command={terminalSetup.command}
+                onExit={finishTerminalSetup}
               />
             ) : null}
           </div>

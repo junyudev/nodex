@@ -380,7 +380,7 @@ export const make = (): Effect.Effect<
             Effect.map((tasks) => ({
               items: tasks.items.flatMap((task) =>
                 task.thread &&
-                task.thread.backend_binding.kind === "codex" &&
+                task.thread.backend_binding.driver === "codex" &&
                 !task.thread.parent_thread_id
                   ? [buildCoreWorkspaceTaskThreadSummary(task.session, task.thread)]
                   : [],

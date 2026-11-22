@@ -15,7 +15,6 @@ import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplicatio
 import { loadCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { projectNativeModelOption } from "../../shared/native-model-option";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "../../shared/agent-model-catalog";
 import type {
@@ -101,7 +100,7 @@ export const make = Effect.gen(function* () {
     threadId: string,
   ) {
     const thread = yield* workspace.getThread(threadId);
-    if (!thread || thread.backendBinding.kind === "codex")
+    if (!thread || thread.backendBinding.driver === "codex")
       return yield* fail("thread.read", new Error("The native Agent descriptor is unavailable"));
     const project = thread.projectId ? yield* workspace.getProject(thread.projectId) : null;
     const workspaceRoot =
@@ -165,21 +164,21 @@ export const make = Effect.gen(function* () {
             );
           yield* backends.resolve(binding);
           let catalog: AgentModelCatalog;
-          if (binding.kind === "opencode") {
+          if (binding.driver === "opencode") {
             catalog = yield* openCodeSessions.discover({
-              instanceConfigId: binding.instanceConfigId,
+              instanceConfigId: binding.instanceId,
               workspaceRoot: root,
               workspaceEnvironment: authority
                 ? yield* worktreeEnvironment(root, authority.thread.managedWorktreePath)
                 : null,
               forceReload: input.forceReload,
             });
-          } else if (binding.kind === "claude") {
+          } else if (binding.driver === "claudeAgent") {
             const workspaceEnvironment = authority
               ? yield* worktreeEnvironment(root, authority.thread.managedWorktreePath)
               : null;
             const discovery = yield* claudeSessions.discover(
-              binding.instanceConfigId,
+              binding.instanceId,
               { workspaceRoot: root, workspaceEnvironment },
               input.forceReload,
             );
@@ -203,9 +202,7 @@ export const make = Effect.gen(function* () {
             };
           } else {
             const providers = yield* runtime.catalog({ refresh: input.forceReload === true });
-            const provider = providers.find(
-              (value) => value.instanceId === agentRuntimeProviderId(binding),
-            );
+            const provider = providers.find((value) => value.instanceId === binding.instanceId);
             if (!provider)
               return yield* fail(
                 "model-catalog.read",
@@ -273,21 +270,21 @@ export const make = Effect.gen(function* () {
           const scope = input.scope;
           if (scope.kind === "thread") {
             const authority = yield* readThreadMetadata(scope.threadId);
-            if (authority.binding.kind !== "claude")
+            if (authority.binding.driver !== "claudeAgent")
               return yield* fail("claude.discover", new Error("Thread is not owned by Claude"));
             const workspaceEnvironment = yield* worktreeEnvironment(
               authority.workspaceRoot,
               authority.thread.managedWorktreePath,
             );
             const discovery = yield* claudeSessions.discover(
-              authority.binding.instanceConfigId,
+              authority.binding.instanceId,
               { workspaceRoot: authority.workspaceRoot, workspaceEnvironment },
               input.forceReload,
             );
             const current = yield* readThreadMetadata(scope.threadId);
             if (
-              current.binding.kind !== "claude" ||
-              current.binding.instanceConfigId !== authority.binding.instanceConfigId ||
+              current.binding.driver !== "claudeAgent" ||
+              current.binding.instanceId !== authority.binding.instanceId ||
               current.workspaceRoot !== authority.workspaceRoot ||
               current.thread.managedWorktreePath !== authority.thread.managedWorktreePath ||
               current.thread.projectId !== authority.thread.projectId
@@ -314,7 +311,7 @@ export const make = Effect.gen(function* () {
               "claude.discover",
               new Error("The host configuration is unavailable"),
             );
-          yield* backends.resolve({ kind: "claude", instanceConfigId: scope.instanceConfigId });
+          yield* backends.resolve({ driver: "claudeAgent", instanceId: scope.instanceConfigId });
           return yield* claudeSessions.discover(
             scope.instanceConfigId,
             { workspaceRoot: cwd },
@@ -333,7 +330,7 @@ export const make = Effect.gen(function* () {
               "claude.models",
               new Error("Choose an active local Project to load Claude models"),
             );
-          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
+          yield* backends.resolve({ driver: "claudeAgent", instanceId: input.instanceConfigId });
           return yield* claudeSessions.models(input.instanceConfigId, root, input.forceReload);
         }),
       ),

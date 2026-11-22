@@ -1,3 +1,5 @@
+import { agentSettingsSections } from "../../../shared/agents/registry";
+import type { AgentProfileDefinition } from "../../../shared/agents/profile-definition";
 import { WINDOWS_TERMINAL_SHELL_LABEL_MESSAGES } from "../../../shared/terminal-shell-settings";
 import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
@@ -865,11 +867,6 @@ export const settingsMessages = defineMessages({
     defaultMessage:
       "Brings in instructions, skills, MCP servers and more once you review them. Only what Codex is missing is added.",
   },
-  agentsProfile: { id: "settings.agents.profile", defaultMessage: "Profile" },
-  agentsUseAProfileForEachClaude: {
-    id: "settings.agents.useAProfileForEachClaude",
-    defaultMessage: "Use a profile for each Claude setup or account.",
-  },
   agentProfilesAddProfile: {
     id: "settings.agentProfiles.addProfile",
     defaultMessage: "Add profile",
@@ -879,72 +876,11 @@ export const settingsMessages = defineMessages({
     id: "settings.agentProfiles.executable",
     defaultMessage: "Executable",
   },
-  claudeConfigDirectory: {
-    id: "settings.claude.configDirectory",
-    defaultMessage: "Config directory",
-  },
-  agentsWhereThisProfileKeepsItsSign: {
-    id: "settings.agents.whereThisProfileKeepsItsSign",
-    defaultMessage: "Where this profile keeps its sign-in and settings.",
-  },
-  agentsEnvironmentVariables: {
-    id: "settings.agents.environmentVariables",
-    defaultMessage: "Environment variables",
-  },
-  agentsPasteAEnvFileOrExport: {
-    id: "settings.agents.pasteAEnvFileOrExport",
-    defaultMessage: "Paste a .env file or export lines.",
-  },
-  agentsCustomModels: { id: "settings.agents.customModels", defaultMessage: "Custom models" },
-  agentsModelsThisProfileCanChooseBesides: {
-    id: "settings.agents.modelsThisProfileCanChooseBesides",
-    defaultMessage: "Models this profile can choose besides Claude's own.",
-  },
-  agentsUseAProfileForEachOpenCode: {
-    id: "settings.agents.useAProfileForEachOpenCode",
-    defaultMessage: "Use a profile for each OpenCode setup.",
-  },
-  opencodeProfileDirectory: {
-    id: "settings.opencode.profileDirectory",
-    defaultMessage: "Profile directory",
-  },
-  agentsOpenCodesSettingsAndDataForThis: {
-    id: "settings.agents.openCodesSettingsAndDataForThis",
-    defaultMessage: "OpenCode's settings and data for this profile.",
-  },
-  opencodeServerURL: { id: "settings.opencode.serverURL", defaultMessage: "Server URL" },
-  agentsConnectToAnOpenCodeServerThats: {
-    id: "settings.agents.connectToAnOpenCodeServerThats",
-    defaultMessage: "Connect to an OpenCode server that's already running.",
-  },
-  agentsProviderCredentialsForThisOpenCodeProfile: {
-    id: "settings.agents.providerCredentialsForThisOpenCodeProfile",
-    defaultMessage: "Provider credentials for this OpenCode profile.",
-  },
   agentsApiKeys: { id: "settings.agents.apiKeys", defaultMessage: "API keys" },
   agentsUseDeepSeekKimiGlmMiniMax: {
     id: "settings.agents.useDeepSeekKimiGlmMiniMax",
     defaultMessage:
       "Use DeepSeek, Kimi, GLM, MiniMax or any Anthropic-compatible endpoint with your own key.",
-  },
-  antigravityDescription: {
-    id: "settings.antigravity.description",
-    defaultMessage:
-      "Google's coding agent for Gemini and the other models on your plan. Use a profile for each account.",
-  },
-  antigravityRuntime: { id: "antigravityRuntime.label", defaultMessage: "Runtime" },
-  antigravityRuntimeDescription: {
-    id: "settings.antigravity.runtime.description",
-    defaultMessage: "Install, update or remove the runtime Antigravity profiles share.",
-  },
-  antigravitySignInMethod: {
-    id: "settings.antigravity.signInMethod",
-    defaultMessage: "Sign-in method",
-  },
-  antigravitySignInMethodDescription: {
-    id: "settings.antigravity.signInMethod.description",
-    defaultMessage:
-      "A Google account uses your plan. API keys and Agent Platform bill for what you use.",
   },
   agentsOtherAgents: { id: "settings.agents.otherAgents", defaultMessage: "Other agents" },
   agentsAgentClientProtocol: {
@@ -1475,6 +1411,110 @@ export const settingsMessages = defineMessages({
 
 export const APPEARANCE_ADVANCED_ANCHOR = "advanced";
 
+const otherAgentSearchGroups = {
+  codex: {
+    anchor: "codex",
+    title: "Codex",
+    entries: [
+      entry(settingsMessages.codexSpeed, settingsMessages.codexTheSpeedNewCodexChatsStart, [
+        "Service tier",
+        settingsMessages.codexStandard,
+        settingsMessages.codexFast,
+        settingsMessages.codexUltrafast,
+        "Fast mode",
+      ]),
+      entry(settingsMessages.codexExecutable, settingsMessages.codexExecutableDescription, [
+        "binary",
+        "server.codex_executable",
+      ]),
+      entry(
+        settingsMessages.codexCodexHome,
+        settingsMessages.codexSettingsSkillsAndConversationHistory,
+        ["CODEX_HOME", "~/.codex", "restart"],
+      ),
+      entry(
+        settingsMessages.codexAccountDirectory,
+        settingsMessages.agentsASeparateFolderForAnotherCodex,
+        ["account", "sign-in"],
+      ),
+      entry(
+        settingsMessages.agentsCopySetupFrom,
+        settingsMessages.agentsBringsInInstructionsSkillsMCPServers,
+        [
+          "Claude Code",
+          "Other Codex home",
+          "migrate",
+          "instructions",
+          "AGENTS.md",
+          "skills",
+          "MCP servers",
+          "hooks",
+          "plugins",
+          "subagents",
+          "commands",
+          "memory",
+        ],
+      ),
+    ],
+  },
+  keys: {
+    anchor: "keys",
+    title: settingsMessages.agentsApiKeys,
+    entries: [
+      entry(settingsMessages.agentsApiKeys, settingsMessages.agentsUseDeepSeekKimiGlmMiniMax, [
+        "Add API key",
+        "DeepSeek",
+        "Kimi",
+        "Moonshot",
+        "GLM",
+        "Zhipu",
+        "Z.ai",
+        "MiniMax",
+        "Anthropic-compatible",
+        "base URL",
+        "endpoint",
+        "gateway",
+        "relay",
+        "bring your own key",
+        "BYOK",
+        "token",
+      ]),
+    ],
+  },
+  acp: {
+    anchor: "acp",
+    title: settingsMessages.agentsOtherAgents,
+    entries: [
+      entry(
+        settingsMessages.agentsAgentClientProtocol,
+        settingsMessages.agentsInstallAgentsFromTheACPRegistry,
+        [
+          "ACP",
+          "Add agent",
+          "ACP Registry",
+          "Local command",
+          "Install",
+          "Update",
+          "Uninstall",
+          "Connect",
+          "Sign in",
+          "Sign out",
+          "Account storage",
+          "Arguments",
+          "Distribution",
+          "Executable override",
+          "System proxy",
+          "Custom models",
+          "Model services",
+          "Qoder",
+          "Copilot",
+          "Gemini",
+        ],
+      ),
+    ],
+  },
+} satisfies Record<string, SettingsSearchCatalogGroup>;
+
 export const SETTINGS_SEARCH_PANELS = {
   account: {
     title: settingsMessages.accountTitle,
@@ -1976,199 +2016,19 @@ export const SETTINGS_SEARCH_PANELS = {
           ),
         ],
       },
-      {
-        anchor: "codex",
-        title: "Codex",
-        entries: [
-          entry(settingsMessages.codexSpeed, settingsMessages.codexTheSpeedNewCodexChatsStart, [
-            "Service tier",
-            settingsMessages.codexStandard,
-            settingsMessages.codexFast,
-            settingsMessages.codexUltrafast,
-            "Fast mode",
-          ]),
-          entry(settingsMessages.codexExecutable, settingsMessages.codexExecutableDescription, [
-            "binary",
-            "server.codex_executable",
-          ]),
-          entry(
-            settingsMessages.codexCodexHome,
-            settingsMessages.codexSettingsSkillsAndConversationHistory,
-            ["CODEX_HOME", "~/.codex", "restart"],
-          ),
-          entry(
-            settingsMessages.codexAccountDirectory,
-            settingsMessages.agentsASeparateFolderForAnotherCodex,
-            ["account", "sign-in"],
-          ),
-          entry(
-            settingsMessages.agentsCopySetupFrom,
-            settingsMessages.agentsBringsInInstructionsSkillsMCPServers,
-            [
-              "Claude Code",
-              "Other Codex home",
-              "migrate",
-              "instructions",
-              "AGENTS.md",
-              "skills",
-              "MCP servers",
-              "hooks",
-              "plugins",
-              "subagents",
-              "commands",
-              "memory",
-            ],
-          ),
-        ],
-      },
-      {
-        anchor: "claude",
-        title: "Claude Code",
-        entries: [
-          entry(settingsMessages.agentsProfile, settingsMessages.agentsUseAProfileForEachClaude, [
-            settingsMessages.agentProfilesAddProfile,
-            settingsMessages.agentProfilesName,
-            settingsMessages.agentProfilesExecutable,
-            "claude",
-          ]),
-          entry(
-            settingsMessages.claudeConfigDirectory,
-            settingsMessages.agentsWhereThisProfileKeepsItsSign,
-            ["~/.claude", "CLAUDE_CONFIG_DIR", "account"],
-          ),
-          entry(
-            settingsMessages.agentsEnvironmentVariables,
-            settingsMessages.agentsPasteAEnvFileOrExport,
-            [
-              "ANTHROPIC_BASE_URL",
-              "ANTHROPIC_AUTH_TOKEN",
-              "ANTHROPIC_API_KEY",
-              "export",
-              "token",
-              "proxy",
-            ],
-          ),
-          entry(
-            settingsMessages.agentsCustomModels,
-            settingsMessages.agentsModelsThisProfileCanChooseBesides,
-          ),
-        ],
-      },
-      {
-        anchor: "antigravity",
-        title: "Antigravity",
-        entries: [
-          entry("Antigravity", settingsMessages.antigravityDescription, [
-            "agy",
-            "Gemini",
-            "Google",
-            settingsMessages.agentProfilesAddProfile,
-          ]),
-          entry(
-            settingsMessages.antigravityRuntime,
-            settingsMessages.antigravityRuntimeDescription,
-            ["Install", "Update", "Download", settingsMessages.agentProfilesExecutable],
-          ),
-          entry(
-            settingsMessages.antigravitySignInMethod,
-            settingsMessages.antigravitySignInMethodDescription,
-            [
-              "Account",
-              "Sign in",
-              "Sign out",
-              "Google account",
-              "Gemini Enterprise",
-              "Gemini API key",
-              "Agent Platform",
-              "Vertex AI",
-              "Google Cloud project",
-            ],
-          ),
-        ],
-      },
-      {
-        anchor: "keys",
-        title: settingsMessages.agentsApiKeys,
-        entries: [
-          entry(settingsMessages.agentsApiKeys, settingsMessages.agentsUseDeepSeekKimiGlmMiniMax, [
-            "Add API key",
-            "DeepSeek",
-            "Kimi",
-            "Moonshot",
-            "GLM",
-            "Zhipu",
-            "Z.ai",
-            "MiniMax",
-            "Anthropic-compatible",
-            "base URL",
-            "endpoint",
-            "gateway",
-            "relay",
-            "bring your own key",
-            "BYOK",
-            "token",
-          ]),
-        ],
-      },
-      {
-        anchor: "opencode",
-        title: "OpenCode",
-        entries: [
-          entry(settingsMessages.agentsProfile, settingsMessages.agentsUseAProfileForEachOpenCode, [
-            settingsMessages.agentProfilesAddProfile,
-            settingsMessages.agentProfilesName,
-            settingsMessages.agentProfilesExecutable,
-            "opencode",
-          ]),
-          entry(
-            settingsMessages.opencodeProfileDirectory,
-            settingsMessages.agentsOpenCodesSettingsAndDataForThis,
-            ["account"],
-          ),
-          entry(
-            settingsMessages.opencodeServerURL,
-            settingsMessages.agentsConnectToAnOpenCodeServerThats,
-            ["Local server", "OPENCODE_SERVER_PASSWORD"],
-          ),
-          entry(
-            settingsMessages.agentsEnvironmentVariables,
-            settingsMessages.agentsProviderCredentialsForThisOpenCodeProfile,
-            ["API key", "Moonshot", "Kimi", "DeepSeek", "OpenRouter", "Secret", "export"],
-          ),
-        ],
-      },
-      {
-        anchor: "acp",
-        title: settingsMessages.agentsOtherAgents,
-        entries: [
-          entry(
-            settingsMessages.agentsAgentClientProtocol,
-            settingsMessages.agentsInstallAgentsFromTheACPRegistry,
-            [
-              "ACP",
-              "Add agent",
-              "ACP Registry",
-              "Local command",
-              "Install",
-              "Update",
-              "Uninstall",
-              "Connect",
-              "Sign in",
-              "Sign out",
-              "Account storage",
-              "Arguments",
-              "Distribution",
-              "Executable override",
-              "System proxy",
-              "Custom models",
-              "Model services",
-              "Qoder",
-              "Copilot",
-              "Gemini",
-            ],
-          ),
-        ],
-      },
+      ...agentSettingsSections.map((section): SettingsSearchCatalogGroup => {
+        if ("profile" in section) {
+          const profile: AgentProfileDefinition = section.profile;
+          return {
+            anchor: section.settingsAnchor,
+            title: section.label,
+            entries: profile.search.map(({ label, description, keywords }) =>
+              entry(label, description, keywords),
+            ),
+          };
+        }
+        return otherAgentSearchGroups[section.settingsAnchor];
+      }),
     ],
   },
   "agent-import": {

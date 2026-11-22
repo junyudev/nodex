@@ -102,7 +102,7 @@ const fixture = Effect.gen(function* () {
                   ? {
                       thread_id: isCaller ? "caller-native" : "target-native",
                       execution_host_id: isCaller ? "local" : hostId,
-                      backend_binding: { kind: "codex" },
+                      backend_binding: { driver: "codex", instanceId: "codex" },
                     }
                   : null,
               },
@@ -125,7 +125,7 @@ const fixture = Effect.gen(function* () {
           thread: {
             threadId: id === "caller" ? "caller-native" : "target-native",
             executionHostId: id === "caller" ? "local" : hostId,
-            backendBinding: { kind: "codex" },
+            backendBinding: { driver: "codex", instanceId: "codex" },
           },
         })),
       setProjectSessionReminder: (input: {

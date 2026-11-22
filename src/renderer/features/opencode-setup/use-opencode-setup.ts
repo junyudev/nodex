@@ -1,16 +1,14 @@
-import { getIntl, useIntl } from "@/lib/i18n";
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
-import type { AgentModelSetupPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openCodeSetupRuntime } from "@/lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { openOpenCodeInstallDialog } from "./opencode-install-dialog";
 import {
-  OPENCODE_FREE_MODELS_LABEL,
   dependsOnHostOpenCode,
   openCodeInstallView,
-  openCodeModelSetupEntry,
+  openCodeInstallationReadiness,
   type OpenCodeSetupInstance,
 } from "./opencode-setup-model";
 import {
@@ -76,7 +74,7 @@ export function useOpenCodeSetup(
  * The model menu's OpenCode setup entry. `onReady` runs when the host executable becomes ready
  * while observed, so the caller can reload its catalog without touching the current selection.
  */
-export function useOpenCodeModelSetup({
+export function useHostOpenCodeInstallation({
   instances,
   onReady,
   owner = openCodeSetupOwner,
@@ -84,8 +82,7 @@ export function useOpenCodeModelSetup({
   readonly instances: readonly OpenCodeSetupInstance[];
   readonly onReady: () => void;
   readonly owner?: OpenCodeSetupOwner;
-}): { readonly setup: AgentModelSetupPresentation | null; readonly refresh: () => void } {
-  const intl = useIntl();
+}) {
   const relevant = dependsOnHostOpenCode(instances);
   const snapshot = useOpenCodeSetup(owner, relevant);
   const appHandle = useScopeHandle(appScope);
@@ -100,26 +97,20 @@ export function useOpenCodeModelSetup({
     observedEpoch.current = snapshot.readyEpoch;
     if (previous !== null && previous !== snapshot.readyEpoch) ready();
   }, [relevant, snapshot.readyEpoch]);
-  const entry = openCodeModelSetupEntry(snapshot, instances, intl);
+  const view = openCodeInstallView(snapshot);
   return {
+    relevant,
+    installation:
+      relevant && view.kind !== "unreadable" && (snapshot.state?.supported || !snapshot.state)
+        ? openCodeInstallationReadiness(view)
+        : undefined,
     refresh: () => {
       if (relevant) owner.refresh();
     },
-    setup: entry
-      ? {
-          kind: "opencode",
-          label: intl.formatMessage(OPENCODE_FREE_MODELS_LABEL),
-          hint: entry.hint,
-          tone: entry.tone,
-          action:
-            entry.action === "settings"
-              ? { kind: "settings" }
-              : {
-                  kind: "open",
-                  open: ({ showModels }) =>
-                    openOpenCodeInstallDialog(appHandle, { owner, onShowModels: showModels }),
-                },
-        }
-      : null,
+    open: (onShowModels?: () => void) =>
+      openOpenCodeInstallDialog(appHandle, {
+        owner,
+        ...(onShowModels ? { onShowModels } : {}),
+      }),
   };
 }

@@ -1,7 +1,7 @@
 import type { AgentSubagentOverviewItem, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { readAgentRuntimeEffort } from "./agent-runtime-provider";
 import { projectCodexSubagentPathDisplayName } from "./codex-subagent-display";
-import { agentBackendKindOfDriver, type ConversationAgent } from "./conversation-identity";
+import { type ConversationAgent } from "./conversation-identity";
 
 type SubagentDisplaySource = Pick<
   Extract<AgentTurnItem, { type: "subagent" }>,
@@ -40,7 +40,7 @@ export function agentRuntimeSubagentAgent(
   >,
 ): ConversationAgent {
   return {
-    kind: agentBackendKindOfDriver(task.driver),
+    kind: task.driver ?? null,
     providerInstanceId: task.modelSelection?.instanceId ?? task.providerInstanceId,
     model: task.modelSelection?.model ?? task.model,
     effort: readAgentRuntimeEffort(task.modelSelection?.options),

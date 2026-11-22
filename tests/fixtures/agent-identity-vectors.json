@@ -1,0 +1,51 @@
+[
+  {
+    "kind": "codex",
+    "configId": null,
+    "definitionId": null,
+    "driver": "codex",
+    "instanceId": "codex"
+  },
+  {
+    "kind": "claude",
+    "configId": "claude-default",
+    "definitionId": null,
+    "driver": "claudeAgent",
+    "instanceId": "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks"
+  },
+  {
+    "kind": "opencode",
+    "configId": "opencode-default",
+    "definitionId": null,
+    "driver": "opencode",
+    "instanceId": "opencode_c2rJrNSkj15MORZec1QoCBQISQyVH6s-6y_wSMvOUJw"
+  },
+  {
+    "kind": "antigravity",
+    "configId": "missing-profile",
+    "definitionId": null,
+    "driver": "antigravity",
+    "instanceId": "antigravity_IMWfkknQaMInK08MGy0iPUxyGllkzqoUTnxJwR9wADA"
+  },
+  {
+    "kind": "acp",
+    "configId": "配置 / 🔑 \"home\" \\",
+    "definitionId": "cursor",
+    "driver": "acpRegistry",
+    "instanceId": "acp_wWmuMQ1b9EbuuoaqQ4H5pbSTRxuMc7YCGqqzTjPfs4M"
+  },
+  {
+    "kind": "acp",
+    "configId": null,
+    "definitionId": "gemini-cli",
+    "driver": "acpRegistry",
+    "instanceId": "acp_unconfigured_7gF3MFz35WoLyFf6dNOV7296w3vtdbW6hkuWfz6v-N4"
+  },
+  {
+    "kind": "claude",
+    "configId": "profile\t\b\f\n\r\u000bend",
+    "definitionId": null,
+    "driver": "claudeAgent",
+    "instanceId": "claude_qmmIqOh7tcTyiMAFGFM6IUWtuwEx3NRrablxPfrLY6w"
+  }
+]

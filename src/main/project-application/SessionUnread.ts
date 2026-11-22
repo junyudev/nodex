@@ -28,7 +28,7 @@ export const makeSetSessionUnreadWithNative = (
       if (
         session.thread &&
         !session.executionRef &&
-        session.thread.backendBinding.kind === "codex"
+        session.thread.backendBinding.driver === "codex"
       ) {
         if (!native)
           return yield* new SessionUnreadUnavailable({

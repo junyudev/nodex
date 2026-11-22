@@ -39,7 +39,11 @@ describe("Agent handoff divider", () => {
           ],
           [
             "handoff-claude",
-            { label: "Claude Code", kind: "claude", models: new Map([["sonnet", "Sonnet 5.5"]]) },
+            {
+              label: "Claude Code",
+              kind: "claudeAgent",
+              models: new Map([["sonnet", "Sonnet 5.5"]]),
+            },
           ],
         ]),
       );
@@ -51,7 +55,7 @@ describe("Agent handoff divider", () => {
       [...divider().querySelectorAll("[data-agent-identity]")].map((agent) =>
         agent.getAttribute("data-agent-identity"),
       ),
-    ).toEqual(["codex", "claude"]);
+    ).toEqual(["codex", "claudeAgent"]);
     // Assistive text names each Agent in full.
     expect(divider().textContent).toContain("Codex · GPT-6.1 Sol");
     expect(divider().textContent).toContain("Claude Code · Sonnet 5.5");

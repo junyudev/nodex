@@ -1,6 +1,7 @@
 import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { subscriptionMeter } from "../../../shared/subscription-usage";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import {
@@ -93,7 +94,8 @@ function UsageProviderMark({
   readonly provider: UsageProvider;
   readonly className?: string;
 }) {
-  return <AgentProviderIcon kind={provider} className={className} />;
+  const driver = subscriptionMeter(provider)?.driver ?? provider;
+  return <AgentProviderIcon kind={driver} className={className} />;
 }
 
 /**

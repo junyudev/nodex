@@ -5,7 +5,7 @@ import { make } from "./ClaudeNativeCatalog";
 import { ClaudeSdk, type ClaudeSdkDiscoveryInput } from "../../platform/node/ClaudeSdk";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 import type { NativeSessionCatalogPage } from "../../../shared/native-session-catalog";
 
 vi.mock("../../platform/node/ClaudeDiscovery", async (original) => ({
@@ -22,12 +22,12 @@ it.effect(
         let token = "first";
         const acquired: ClaudeSdkDiscoveryInput[] = [];
         let released = 0;
-        const instance = defaultClaudeInstance();
+        const instance = claudeProfile();
         const catalog = yield* make.pipe(
           Effect.provide(mainConfigLayer()),
           Effect.provideService(ApplicationSettings, {
-            claudeLaunchConfiguration: () =>
-              Effect.succeed({ instance, environment: { ANTHROPIC_AUTH_TOKEN: token } }),
+            agentProfileLaunchConfiguration: () =>
+              Effect.succeed({ profile: instance, environment: { ANTHROPIC_AUTH_TOKEN: token } }),
           } as never),
           Effect.provideService(ClaudeSdk, {
             discover: (input: ClaudeSdkDiscoveryInput) =>
@@ -95,8 +95,8 @@ it.effect("reads a whole history in doubling pages so older pages stay affordabl
       const catalog = yield* make.pipe(
         Effect.provide(mainConfigLayer()),
         Effect.provideService(ApplicationSettings, {
-          claudeLaunchConfiguration: () =>
-            Effect.succeed({ instance: defaultClaudeInstance(), environment: {} }),
+          agentProfileLaunchConfiguration: () =>
+            Effect.succeed({ profile: claudeProfile(), environment: {} }),
         } as never),
         Effect.provideService(ClaudeSdk, {
           nativeHome: () => Effect.succeed("/home"),
@@ -137,8 +137,8 @@ it.effect("native catalog cursors cannot cross account or configured instance id
       const catalog = yield* make.pipe(
         Effect.provide(mainConfigLayer()),
         Effect.provideService(ApplicationSettings, {
-          claudeLaunchConfiguration: () =>
-            Effect.succeed({ instance: defaultClaudeInstance(), environment: {} }),
+          agentProfileLaunchConfiguration: () =>
+            Effect.succeed({ profile: claudeProfile(), environment: {} }),
         } as never),
         Effect.provideService(ClaudeSdk, {
           nativeHome: () => Effect.sync(() => home),

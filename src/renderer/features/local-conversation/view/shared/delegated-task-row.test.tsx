@@ -18,8 +18,8 @@ const task: CodexDelegatedTaskView = {
   ownerRunId: "parent-run",
   childThreadId: "child",
   title: "Audit auth",
-  providerInstanceId: "claude",
-  agentKind: "claude",
+  providerInstanceId: "claudeAgent",
+  agentKind: "claudeAgent",
   status: "running",
   prompt: "Audit the auth module",
   summary: null,
@@ -30,8 +30,8 @@ function setup(canStop?: (ownerRunId: string | null) => boolean) {
   agentRuntimeDelegatedTasks.publishLabels(
     new Map([
       [
-        "claude",
-        { label: "Claude", kind: "claude", models: new Map([["opus", "Claude Opus 5.5"]]) },
+        "claudeAgent",
+        { label: "Claude", kind: "claudeAgent", models: new Map([["opus", "Claude Opus 5.5"]]) },
       ],
       [
         "codex",

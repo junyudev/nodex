@@ -96,7 +96,7 @@ function renderNativeSelector(change: (patch: AgentNativeIntelligencePatch) => P
         <AgentIntelligenceDropdown
           models={MODELS}
           triggerStyle="settings"
-          selection={{ ...SELECTION, kind: "claude" }}
+          selection={{ ...SELECTION, kind: "claudeAgent" }}
           onSelectionChange={() => {}}
           provider={claudeProvider({
             selected: { thinking },
@@ -207,7 +207,7 @@ describe("Codex models from a plain list", () => {
 describe("Claude models from a plain list", () => {
   test("keeps a supported effort on a model change and resets an unsupported one", async () => {
     const onSelectionChange = vi.fn();
-    const selection = { ...SELECTION, kind: "claude" as const, reasoningEffort: "high" };
+    const selection = { ...SELECTION, kind: "claudeAgent" as const, reasoningEffort: "high" };
     const view = renderSelector({
       models: [
         projectNativeModelOption({
@@ -306,7 +306,7 @@ describe("Claude models from a plain list", () => {
   test("adaptive thinking alone does not add an Off stop", async () => {
     const change = vi.fn(async () => {});
     const view = renderSelector({
-      selection: { ...SELECTION, kind: "claude" },
+      selection: { ...SELECTION, kind: "claudeAgent" },
       provider: claudeProvider({
         selected: { thinking: true },
         capabilities: { disableThinking: false },
@@ -324,7 +324,7 @@ describe("Claude models from a plain list", () => {
     const model = projectNativeModelOption({ value: "haiku", name: "Haiku", description: null });
     const view = renderSelector({
       models: [model],
-      selection: { ...SELECTION, kind: "claude", model: model.id },
+      selection: { ...SELECTION, kind: "claudeAgent", model: model.id },
       provider: claudeProvider({
         selected: { thinking: false },
         capabilities: { disableThinking: true },
@@ -341,7 +341,7 @@ describe("Claude models from a plain list", () => {
     const change = vi.fn(async () => {});
     const onSelectionChange = vi.fn();
     const view = renderSelector({
-      selection: { ...SELECTION, kind: "claude" },
+      selection: { ...SELECTION, kind: "claudeAgent" },
       onSelectionChange,
       provider: claudeProvider({
         selected: { fast: false },

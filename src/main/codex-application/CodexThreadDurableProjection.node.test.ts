@@ -36,7 +36,7 @@ const coreThread = (overrides: Partial<CoreThread> = {}): CoreThread =>
     agent_path: null,
     thread_name: "Thread A",
     thread_preview: "",
-    backend_binding: { kind: "codex" },
+    backend_binding: { driver: "codex", instanceId: "codex" },
     model_id: "gpt-test",
     reasoning_effort: "high",
     service_tier: null,
@@ -322,7 +322,7 @@ it.effect("serially commits archive and delete observations before scheduling si
     assert.isTrue(
       yield* service.acceptsTerminalObservation({ hostId: "local", threadId: "thread-a" }),
     );
-    stored = coreThread({ backend_binding: { kind: "claude", instance_config_id: "claude-a" } });
+    stored = coreThread({ backend_binding: { driver: "claudeAgent", instanceId: "claude-a" } });
     const otherBackend = stored;
     assert.isFalse(
       yield* service.acceptsTerminalObservation({ hostId: "local", threadId: "thread-a" }),

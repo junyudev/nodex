@@ -5,7 +5,7 @@ import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
-import { SUBSCRIPTION_USAGE_PROVIDERS } from "../../../shared/subscription-usage";
+import { subscriptionMeter, subscriptionMeters } from "../../../shared/subscription-usage";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
 import { NodexCreditMeter } from "@/features/nodex-account/nodex-credit-meter";
 import { NodexButton } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useSubscriptionUsage, type SubscriptionUsage } from "@/lib/use-subscription-usage";
 import {
   subscriptionUsageAccounts,
-  claudeUsagePlaceholder,
+  subscriptionUsagePlaceholder,
   codexUsageReading,
   type SubscriptionUsageAccount,
   type UsageProvider,
@@ -277,7 +277,7 @@ function SubscriptionUsageMeter({
       reading={account.reading}
       onOpenChange={refreshOnOpen}
       action={
-        account.reading.provider === "claude" ? (
+        subscriptionMeter(account.reading.provider)?.signOut ? (
           <UsageSignOutButton
             onSignOut={() => usage.logoutClaude(account.instanceIds)}
             onErrorMessage={onErrorMessage}
@@ -331,7 +331,7 @@ export function WorkbenchRailAccountControls({
     onCancelLogin,
   );
   const subscriptionAccounts = subscriptionUsageAccounts(subscriptionUsage?.snapshot);
-  const claudePlaceholder = claudeUsagePlaceholder(subscriptionUsage?.snapshot);
+  const placeholder = subscriptionUsagePlaceholder(subscriptionUsage?.snapshot);
 
   const handleChatGptLogin = async () => {
     if (!onStartChatGptLogin) return;
@@ -418,45 +418,60 @@ export function WorkbenchRailAccountControls({
     >
       <div data-workbench-rail-account="" className="contents">
         {subscriptionUsage
-          ? SUBSCRIPTION_USAGE_PROVIDERS.flatMap((provider) =>
-              meters[provider]
-                ? subscriptionAccounts.filter(({ reading }) => reading.provider === provider)
-                : [],
-            ).map((account) => (
-              <span
-                key={account.reading.key}
-                className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none"
-              >
-                <SubscriptionUsageMeter
-                  account={account}
-                  usage={subscriptionUsage}
-                  onErrorMessage={onErrorMessage}
-                />
-              </span>
-            ))
+          ? subscriptionAccounts
+              .filter(({ reading }) => meters[reading.provider] !== false)
+              .toSorted((left, right) =>
+                left.reading.provider.localeCompare(right.reading.provider),
+              )
+              .map((account) => (
+                <span
+                  key={account.reading.key}
+                  className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none"
+                >
+                  <SubscriptionUsageMeter
+                    account={account}
+                    usage={subscriptionUsage}
+                    onErrorMessage={onErrorMessage}
+                  />
+                </span>
+              ))
           : null}
-        {meters.claude && subscriptionUsage && claudePlaceholder ? (
-          <RailUsagePlaceholder
-            provider="claude"
-            subject={intl.formatMessage({
-              id: "workbench.workbenchRailAccountControls.claudeUsage",
-              defaultMessage: "Claude usage",
-            })}
-            state={
-              claudePlaceholder.kind === "loading"
-                ? claudePlaceholder
-                : {
-                    kind: "unavailable",
-                    reason: intl.formatMessage({
-                      id: "workbench.workbenchRailAccountControls.claudeUsageUnavailable",
-                      defaultMessage: "Can't read Claude usage",
-                    }),
-                    detail: claudePlaceholder.reason,
+        {subscriptionUsage && placeholder
+          ? subscriptionMeters
+              .filter(
+                ({ preference, showPlaceholder }) =>
+                  showPlaceholder && meters[preference] !== false,
+              )
+              .map(({ preference, label }) => (
+                <RailUsagePlaceholder
+                  key={preference}
+                  provider={preference}
+                  subject={intl.formatMessage(
+                    {
+                      id: "agentReadiness.usageSubject",
+                      defaultMessage: "{label} usage",
+                    },
+                    { label },
+                  )}
+                  state={
+                    placeholder.kind === "loading"
+                      ? placeholder
+                      : {
+                          kind: "unavailable",
+                          reason: intl.formatMessage(
+                            {
+                              id: "agentReadiness.usageUnavailable",
+                              defaultMessage: "Can't read {label} usage",
+                            },
+                            { label },
+                          ),
+                          detail: placeholder.reason,
+                        }
                   }
-            }
-            onRetry={subscriptionUsage.refresh}
-          />
-        ) : null}
+                  onRetry={subscriptionUsage.refresh}
+                />
+              ))
+          : null}
         {showUsageMeter && account && onRefreshAccount && onLogout ? (
           <span className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none">
             <CodexUsageMeter

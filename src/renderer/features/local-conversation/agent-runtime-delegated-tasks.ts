@@ -57,7 +57,7 @@ export async function stopAgentRuntimeTask(
  */
 export interface AgentRuntimeProviderLabel {
   readonly label: string;
-  readonly kind: AgentBackendBinding["kind"];
+  readonly kind: AgentBackendBinding["driver"];
   /** Catalog display names by model slug. */
   readonly models: ReadonlyMap<string, string>;
 }

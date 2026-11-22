@@ -10,8 +10,8 @@ import {
   withAgentRuntimeComposerChoice,
 } from "./agent-runtime-composer-choices";
 
-const codex = { kind: "codex" as const };
-const claude = { kind: "claude" as const, instanceConfigId: "work" };
+const codex = { driver: "codex" as const, instanceId: "codex" };
+const claude = { driver: "claudeAgent" as const, instanceId: "work" };
 
 describe("Agent Runtime Composer choices", () => {
   test("keeps one choice per Composer, drops emptied ones and retains the newest", () => {
@@ -58,6 +58,27 @@ describe("Agent Runtime Composer choices", () => {
         codex: { gpt: [{ id: "reasoningEffort", value: "high" }], broken: "high" },
       }),
     ).toEqual({ codex: { gpt: [{ id: "reasoningEffort", value: "high" }] } });
+  });
+
+  test("restores a legacy hosted draft with its exact Runtime instance", () => {
+    const runtimeInstanceId = "hosted_claude";
+    expect(
+      agentRuntimeComposerChoicesAtom.decode({
+        chat: {
+          selection: {
+            binding: { kind: "claude", instanceConfigId: "original-profile", runtimeInstanceId },
+            model: "sonnet",
+          },
+        },
+      }),
+    ).toEqual({
+      chat: {
+        selection: {
+          binding: { driver: "claudeAgent", instanceId: runtimeInstanceId },
+          model: "sonnet",
+        },
+      },
+    });
   });
 
   test("each team Space remembers its own new chat choice; the personal Space keeps its own", () => {

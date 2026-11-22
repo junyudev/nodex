@@ -1,3 +1,4 @@
+import { claudeAgent } from "../../../shared/agents/claude";
 import type { SDKSessionInfo } from "@anthropic-ai/claude-agent-sdk";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
@@ -129,10 +130,10 @@ export const make = Effect.gen(function* () {
     instanceConfigId: string,
   ) {
     const launch = yield* settings
-      .claudeLaunchConfiguration(instanceConfigId)
+      .agentProfileLaunchConfiguration(claudeAgent.driver, instanceConfigId)
       .pipe(Effect.mapError((cause) => failure("settings", cause)));
     const input = {
-      instance: launch.instance,
+      instance: launch.profile,
       environment: { ...config.environment, ...launch.environment },
     };
     const nativeHome = yield* sdk.nativeHome(input);
@@ -259,8 +260,8 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const { workspaceRoot, workspaceEnvironment } = location;
-      const { instance, environment } = yield* settings
-        .claudeLaunchConfiguration(instanceConfigId)
+      const { profile: instance, environment } = yield* settings
+        .agentProfileLaunchConfiguration(claudeAgent.driver, instanceConfigId)
         .pipe(Effect.mapError((cause) => failure("settings", cause)));
       const launchEnvironment = claudeLaunchEnvironment(config, workspaceEnvironment, environment);
       const key = claudeDiscoveryFingerprint(instance, launchEnvironment, workspaceRoot);
@@ -302,7 +303,11 @@ export const make = Effect.gen(function* () {
                   workspaceRoot,
                 );
                 return {
-                  models: claudeModelOptions(session.models, undefined, instance.customModels),
+                  models: claudeModelOptions(
+                    session.models,
+                    undefined,
+                    instance.settings.customModels,
+                  ),
                   intelligence: session.intelligence,
                   commands: session.commands,
                   skills,

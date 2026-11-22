@@ -1,3 +1,4 @@
+import { claudeProfile, antigravityProfile } from "../../shared/agents/profile.test-fixtures";
 import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
@@ -20,7 +21,6 @@ import type {
   AgentRuntimeMessageInput,
 } from "../../shared/agent-runtime-api";
 import type { Automation, AutomationRun } from "../../shared/types";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
 import {
@@ -61,7 +61,7 @@ const definition: Automation = {
   model: "model",
   reasoningEffort: null,
   serviceTier: null,
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   cwds: ["/workspace"],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
@@ -78,7 +78,7 @@ const context = {
   automationRevision: 1,
 };
 const setup = (
-  binding: Automation["backendBinding"] = { kind: "codex" },
+  binding: Automation["backendBinding"] = { driver: "codex", instanceId: "codex" },
   owners?: {
     readonly automation: AutomationApplication["Service"];
     readonly workspace: ProjectWorkspace["Service"];
@@ -100,8 +100,8 @@ const setup = (
     preferReviewedDefault: false,
     instanceEnabled: true,
     instanceAvailable: true,
-    agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
-    targetProviderId: agentRuntimeProviderId(binding),
+    agentDefinitionId: binding.driver === "acpRegistry" ? "scripted-agent" : "",
+    targetProviderId: binding.instanceId,
     targetArchived: false,
     targetUpdatedAt: "1970-01-01T00:00:00Z",
     missingRunbook: false,
@@ -160,37 +160,18 @@ const setup = (
             Layer.succeed(ApplicationSettings, {
               snapshot: () =>
                 Effect.succeed({
-                  claudeAgents: {
-                    instances:
-                      binding.kind === "claude" && state.instanceAvailable
-                        ? [{ id: binding.instanceConfigId, enabled: state.instanceEnabled }]
+                  agentProfiles:
+                    binding.driver === "claudeAgent" && state.instanceAvailable
+                      ? [claudeProfile({ id: binding.instanceId, enabled: state.instanceEnabled })]
+                      : binding.driver === "antigravity"
+                        ? [antigravityProfile({ id: binding.instanceId })]
                         : [],
-                  },
-                  openCodeAgents: { instances: [] },
-                  antigravityAgents: {
-                    instances:
-                      binding.kind === "antigravity"
-                        ? [
-                            {
-                              id: binding.instanceConfigId,
-                              displayName: "Antigravity work",
-                              enabled: true,
-                              authMethod: "oauth-personal",
-                              gcpProject: "",
-                              gcpLocation: "",
-                              binaryPath: "",
-                              apiKey: null,
-                              hasApiKey: false,
-                            },
-                          ]
-                        : [],
-                  },
                   acpAgents: {
                     instances:
-                      binding.kind === "acp" && state.instanceAvailable
+                      binding.driver === "acpRegistry" && state.instanceAvailable
                         ? [
                             {
-                              id: binding.instanceConfigId,
+                              id: binding.instanceId,
                               agentDefinitionId: state.agentDefinitionId,
                               enabled: state.instanceEnabled,
                             },
@@ -307,10 +288,12 @@ const setup = (
           catalog: () =>
             Effect.succeed([
               {
-                instanceId: agentRuntimeProviderId(binding),
+                instanceId: binding.instanceId,
+                driver: binding.driver,
                 enabled: true,
                 installed: true,
                 status: "ready",
+                auth: { status: "authenticated" },
                 models: [
                   { slug: "model", capabilities: { optionDescriptors: [] } },
                   {
@@ -356,9 +339,11 @@ const setup = (
               },
               {
                 instanceId: "other",
+                driver: "codex",
                 enabled: true,
                 installed: true,
                 status: "ready",
+                auth: { status: "authenticated" },
                 models: [{ slug: "model", capabilities: { optionDescriptors: [] } }],
               },
             ]),
@@ -366,6 +351,7 @@ const setup = (
             Effect.succeed({
               thread: {
                 providerInstanceId: state.targetProviderId,
+                providerDriver: binding.driver,
                 archivedAt: null,
                 updatedAt: state.targetUpdatedAt,
                 activeRunId:
@@ -622,12 +608,12 @@ const refusal = <A, E>(effect: Effect.Effect<A, E>) =>
     Effect.map((error) => toElectronIpcRendererError(error).message),
   );
 it.effect.each([
-  { kind: "codex" as const },
-  { kind: "claude" as const, instanceConfigId: "named" },
-  { kind: "acp" as const, agentDefinitionId: "scripted-agent", instanceConfigId: "personal" },
-  { kind: "acp" as const, agentDefinitionId: "scripted-agent", instanceConfigId: "work" },
+  { driver: "codex" as const, instanceId: "codex" },
+  { driver: "claudeAgent" as const, instanceId: "named" },
+  { driver: "acpRegistry" as const, instanceId: "personal" },
+  { driver: "acpRegistry" as const, instanceId: "work" },
 ])(
-  "$kind: scheduled execution binds a product Session and observes its exact submitted message",
+  "$driver: scheduled execution binds a product Session and observes its exact submitted message",
   (binding) => {
     const fixture = setup(binding);
     return Effect.gen(function* () {
@@ -637,7 +623,7 @@ it.effect.each([
       const launch = fixture.launches[0]!;
       const run = [...fixture.runs.values()][0]!;
       assert.equal(run.sessionId, launch.sessionId);
-      assert.equal(launch.modelSelection.instanceId, agentRuntimeProviderId(binding));
+      assert.equal(launch.modelSelection.instanceId, binding.instanceId);
       assert.equal(
         launch.message.text,
         [
@@ -661,11 +647,7 @@ it.effect.each([true, false])(
   "a saved Nodex automation requires an exact person-selected model (%s)",
   (explicit) => {
     const instanceId = "nodex_claude_00000000000000000000000000000000";
-    const fixture = setup({
-      kind: "claude",
-      instanceConfigId: instanceId,
-      runtimeInstanceId: instanceId,
-    });
+    const fixture = setup({ driver: "claudeAgent", instanceId: instanceId });
     // A managed instance is not a native Claude configuration.
     fixture.state.instanceAvailable = false;
     if (!explicit) fixture.state.definition = { ...fixture.state.definition, model: null };
@@ -983,13 +965,9 @@ it.effect.each(["cron", "heartbeat"] as const)(
   },
 );
 
-const acpBinding = {
-  kind: "acp",
-  agentDefinitionId: "scripted-agent",
-  instanceConfigId: "personal",
-} as const;
+const acpBinding = { driver: "acpRegistry", instanceId: "personal" } as const;
 it.effect(
-  "ACP scheduling rejects disabled, removed and mismatched instances before a Run or Session is admitted",
+  "ACP scheduling rejects disabled and removed instances before a Run or Session is admitted",
   () => {
     const fixture = setup(acpBinding);
     return Effect.gen(function* () {
@@ -1007,13 +985,6 @@ it.effect(
       );
       fixture.state.instanceEnabled = true;
       fixture.state.instanceAvailable = false;
-      assert.equal(
-        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
-          ._tag,
-        "Failure",
-      );
-      fixture.state.instanceAvailable = true;
-      fixture.state.agentDefinitionId = "another-agent";
       assert.equal(
         (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
           ._tag,
@@ -1043,7 +1014,7 @@ it.effect("runs a Fast task on the id its model's catalog gives the tier", () =>
 });
 
 it.effect("runs an Antigravity Automation with its selected thinking level", () => {
-  const binding = { kind: "antigravity", instanceConfigId: "work" } as const;
+  const binding = { driver: "antigravity", instanceId: "work" } as const;
   const fixture = setup(binding);
   return Effect.gen(function* () {
     const execution = yield* AutomationExecution;
@@ -1054,7 +1025,7 @@ it.effect("runs an Antigravity Automation with its selected thinking level", () 
     };
     yield* execution.executeClaimed(fixture.state.definition, context);
     assert.deepEqual(fixture.launches[0]!.modelSelection, {
-      instanceId: agentRuntimeProviderId(binding)!,
+      instanceId: binding.instanceId!,
       model: "gemini",
       options: [{ id: "thinking_level", value: "high" }],
     });
@@ -1144,14 +1115,8 @@ it.effect("ACP Heartbeats use one Session and refuse a replaced instance or arch
       },
     });
     assert.equal(fixture.launches.length, 0);
-    assert.equal(
-      fixture.messages[0]?.modelSelection?.instanceId,
-      agentRuntimeProviderId(acpBinding),
-    );
-    fixture.state.targetProviderId = agentRuntimeProviderId({
-      ...acpBinding,
-      instanceConfigId: "work",
-    });
+    assert.equal(fixture.messages[0]?.modelSelection?.instanceId, acpBinding.instanceId);
+    fixture.state.targetProviderId = "acp_work";
     assert.equal(
       (yield* execution.prepareDefinition(fixture.state.definition).pipe(Effect.result))._tag,
       "Failure",
@@ -1162,7 +1127,7 @@ it.effect("ACP Heartbeats use one Session and refuse a replaced instance or arch
       ),
       "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",
     );
-    fixture.state.targetProviderId = agentRuntimeProviderId(acpBinding);
+    fixture.state.targetProviderId = acpBinding.instanceId;
     fixture.state.targetArchived = true;
     assert.equal(
       yield* refusal(
@@ -1387,7 +1352,8 @@ it.effect("a clock Run's first Turn gets Agent attribution before the Run binds 
               session_id: launch.sessionId,
               run_id: "engine-run",
               message_id: launch.message.messageId,
-              backend: "acp",
+              driver: "acpRegistry",
+              label: "Agent",
             });
             recordedRuns++;
           }),

@@ -48,15 +48,15 @@ Rows take their places once every Agent has answered, or after three seconds whe
 answer, and from then on a row never moves under the pointer. An Agent that turns up later joins the
 end of its group. A new API key appears above the way to add one without moving the existing rows.
 
-| Agent                      | Ready when                           | Otherwise offers                                                       |
-| -------------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
-| Codex                      | Its account is signed in             | `Sign in` with ChatGPT in the browser, or `Use API key`                |
-| Claude Code                | A profile is installed and signed in | `Sign in` in a Terminal under the row when found, or `Install`         |
-| Nodex credits              | Signed in with a credit to spend     | `Get started`, then top-up tiers. Absent from a build without accounts |
-| Antigravity                | A profile is installed and signed in | `Set up` or `Sign in` opens Settings → Agents → Antigravity            |
-| An Agent added in Settings | Connected, with its models known     | `Connect`, or its own `Sign in` under the row                          |
-| API key                    | One row per connected key            | `Add key`, with the form under the row                                 |
-| OpenCode                   | A model is on                        | `Install`, then `Use free models`. Absent where it can't run           |
+| Agent                      | Ready when                                          | Otherwise offers                                                       |
+| -------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
+| Codex                      | Its account is signed in                            | `Sign in` with ChatGPT in the browser, or `Use API key`                |
+| Claude Code                | A profile is installed and signed in                | `Sign in` in a Terminal under the row when found, or `Install`         |
+| Nodex credits              | Signed in with a credit to spend                    | `Get started`, then top-up tiers. Absent from a build without accounts |
+| Antigravity                | A profile is installed, signed in and offers models | `Set up` or `Sign in` opens Settings → Agents → Antigravity            |
+| An Agent added in Settings | Connected, with its models known                    | `Connect`, or its own `Sign in` under the row                          |
+| API key                    | One row per connected key                           | `Add key`, with the form under the row                                 |
+| OpenCode                   | A model is on                                       | `Install`, then `Use free models`. Absent where it can't run           |
 
 On Apple silicon, choosing the Codex sign-in or API key action installs the
 [Codex Component](components-behavior.md) on first use. The row shows progress while the chosen
@@ -67,14 +67,10 @@ including installations on the login-shell PATH. An older command stays visible 
 needed to connect. Set up and Sign in open Settings → Agents → Antigravity, where each profile
 connects its own account.
 
-An installed Agent that can't take a message says which of the things a person can act on went
-wrong, and its row always offers `Check again`:
-
-| What happened                                        | The row says                                                  |
-| ---------------------------------------------------- | ------------------------------------------------------------- |
-| Signed in on this computer, its account out of reach | `a@example.com · Can’t connect. Check your network or proxy.` |
-| Started, and didn't answer in time                   | `Didn’t respond in time`                                      |
-| Couldn't start, or failed while starting             | `Couldn’t start`, with the Agent's own words beneath the row  |
+First-run uses the [same readiness facts](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
+as the composer and picker. An installed Agent can name an unreachable account, a check that
+timed out, a needed version, or a failed start. `Check again` rechecks transient Agent failures.
+Settings takes the person to the profile or section that owns configuration.
 
 Codex's sign-in is read from this computer before anything is asked of the network, so being offline
 never hides an account that is signed in, and never offers `Sign in` to someone who already has.

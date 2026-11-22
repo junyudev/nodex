@@ -1,8 +1,5 @@
 import type { AgentBackendBinding } from "./agent-backend";
 
-/** The harness whose mark identifies an Agent. */
-export type AgentBackendKind = AgentBackendBinding["kind"];
-
 /**
  * The Agent behind a conversation's work: its harness, the configured Agent instance, and the
  * model and effort it runs. The harness, not the model's maker, decides the mark: an OpenCode
@@ -10,7 +7,7 @@ export type AgentBackendKind = AgentBackendBinding["kind"];
  */
 export interface ConversationAgent {
   /** Null when the Agent is no longer configured and nothing else names its harness. */
-  readonly kind: AgentBackendKind | null;
+  readonly kind: AgentBackendBinding["driver"] | null;
   /** The configured instance, which supplies the Agent's name and its model display names. */
   readonly providerInstanceId: string | null;
   readonly model: string | null;
@@ -36,16 +33,4 @@ export interface ConversationIdentity {
   readonly archived: boolean;
   /** Set when the conversation runs on another machine, such as an SSH execution host. */
   readonly host: { readonly id: string; readonly name: string } | null;
-}
-
-/** Runtime drivers belong to the same harness family as their configured desktop Agent. */
-export function agentBackendKindOfDriver(
-  driver: string | null | undefined,
-): AgentBackendKind | null {
-  if (!driver) return null;
-  if (driver === "codex") return "codex";
-  if (driver === "claudeAgent") return "claude";
-  if (driver === "opencode" || driver === "opencode2") return "opencode";
-  if (driver === "antigravity") return "antigravity";
-  return "acp";
 }

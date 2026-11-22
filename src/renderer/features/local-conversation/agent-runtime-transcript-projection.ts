@@ -38,7 +38,6 @@ import {
   replyPictureAttachmentId,
 } from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
-import { agentBackendKindOfDriver } from "../../../shared/conversation-identity";
 import { getDisplayCommand } from "../../../shared/codex-command-execution";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 import { providerFailureCause } from "@nodex/agent-runtime/failure-cause";
@@ -792,7 +791,7 @@ export function projectAgentRuntimeItem(
         title: display.displayName || firstLine(item.prompt) || "Subagent",
         ...(display.agentPath ? { agentPath: display.agentPath } : {}),
         providerInstanceId: item.providerInstanceId,
-        agentKind: agentBackendKindOfDriver(item.driver),
+        agentKind: item.driver ?? null,
         status:
           item.driver === "antigravity" &&
           item.origin === "provider_native" &&

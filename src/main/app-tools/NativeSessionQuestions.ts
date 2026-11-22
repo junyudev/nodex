@@ -127,7 +127,7 @@ export const makeNativeSessionQuestions = Effect.gen(function* () {
     if (!session) return yield* failure("not_found", "Session not found");
     if (session.archived)
       return yield* failure("forbidden", "Archived Sessions cannot answer questions");
-    if (session.executionRef || session.thread?.backendBinding.kind !== "codex")
+    if (session.executionRef || session.thread?.backendBinding.driver !== "codex")
       return yield* failure("unsupported", "This Session has no native Codex conversation");
     const { threadId, executionHostId: hostId } = session.thread;
     const manager = managers.current(hostId);

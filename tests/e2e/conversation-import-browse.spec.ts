@@ -48,13 +48,15 @@ test("searches a whole history and imports a selection made across searches", as
       writeFileSync(executable, `#!${process.execPath}\nimport(${JSON.stringify(peer)});\n`, {
         mode: 0o755,
       });
-      await invokeIpc(page, "settings:claude-agents:update", {
+      await invokeIpc(page, "settings:agent-profiles:update", {
+        driver: "claudeAgent",
         instances: [
           {
+            driver: "claudeAgent",
+            settings: { configDirectory: claudeHome, customModels: [] },
             id: "native-work",
             displayName: "Work",
             binaryPath: executable,
-            configDirectory: claudeHome,
             enabled: true,
             environment: [],
           },

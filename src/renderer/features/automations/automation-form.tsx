@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../../shared/agents/registry";
 import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
 import {
   DEFAULT_AUTOMATION_SOURCE_FILTER,
@@ -25,6 +26,7 @@ import {
   useAutomationAgent,
 } from "@/components/workbench/workbench-automation-intelligence";
 import {
+  defaultAutomationIntelligence,
   DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
   resolveWorkbenchAutomationDraftModelSettings,
   type WorkbenchAutomationDraft,
@@ -108,19 +110,20 @@ function withNewChatEachRun(
       localEnvironmentConfigPath: "",
     };
   }
+  const defaults = defaultAutomationIntelligence(draft.backendBinding);
+  const modelSource = agentDefinition(draft.backendBinding.driver).capabilities.automation
+    ?.modelSource;
   const next: WorkbenchAutomationDraft = {
     ...draft,
+    ...defaults,
     kind: "cron",
     targetSessionId: "",
     executionEnvironment: "local",
     localEnvironmentConfigPath: "",
-    model: draft.backendBinding.kind === "claude" ? "default" : "",
     reasoningEffort:
-      draft.backendBinding.kind === "claude"
-        ? "default"
-        : draft.backendBinding.kind === "acp"
-          ? ""
-          : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
+      modelSource === "account"
+        ? DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT
+        : defaults.reasoningEffort,
   };
   return codexModels.length > 0
     ? resolveWorkbenchAutomationDraftModelSettings({ draft: next, models: codexModels })
@@ -638,7 +641,8 @@ export function AutomationForm({
                     </AdvancedCard>
                   ) : null}
                   {isCron &&
-                  draft.backendBinding.kind === "codex" &&
+                  agentDefinition(draft.backendBinding.driver).capabilities.automation
+                    ?.modelSource === "appServer" &&
                   draft.executionEnvironment === "worktree" &&
                   draft.cwds.length === 1 ? (
                     <AdvancedCard>

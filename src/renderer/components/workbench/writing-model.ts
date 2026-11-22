@@ -1,3 +1,4 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
 import { defineMessage } from "@/lib/i18n";
 import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
@@ -10,7 +11,6 @@ import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
 import {
   agentRuntimeBinding,
   agentRuntimePickerEntries,
-  agentRuntimeProviderBackendKind,
   agentRuntimeProviderLabel,
 } from "@/lib/agent-runtime-model-selection";
 import { formatAgentModelName } from "@/lib/codex-thread-settings";
@@ -35,7 +35,7 @@ export interface WritingModelCatalog {
 export interface WritingModelPresentation {
   readonly status: "ready" | "checking" | "unavailable";
   /** The Agent's mark; automatic selection has no single Agent. */
-  readonly kind: AgentBackendBinding["kind"] | null;
+  readonly kind: AgentBackendBinding["driver"] | null;
   readonly line: string;
 }
 
@@ -72,10 +72,10 @@ export function describeWritingModel(
             { name: choice.model },
           ),
         };
-  const kind = agentRuntimeProviderBackendKind(provider);
+  const kind = provider.driver;
   const model = provider.models.find((entry) => entry.slug === choice.model);
   const name = [
-    agentRuntimeQualifier({ kind }, agentRuntimeProviderLabel(provider, catalog.instances)),
+    agentRuntimeQualifier({ driver: kind }, agentRuntimeProviderLabel(provider, catalog.instances)),
     model ? formatAgentModelName(model.name) : choice.model,
   ]
     .filter(Boolean)
@@ -121,10 +121,11 @@ export function writingModelPicker(
   catalog: WritingModelCatalog,
   choice: AgentRuntimeWritingModel | null,
 ) {
-  const binding = choice && agentRuntimeBinding(choice.instanceId, catalog.instances);
+  const provider = catalog.providers.find((entry) => entry.instanceId === choice?.instanceId);
+  const binding = provider && agentRuntimeBinding(provider);
   const selected: AgentModelSelection =
     binding && choice
       ? { binding, model: choice.model }
-      : { binding: { kind: "codex" }, model: "" };
+      : { binding: CODEX_AGENT_BACKEND_BINDING, model: "" };
   return { entries: agentRuntimePickerEntries(catalog, choice, isWritingProviderUsable), selected };
 }

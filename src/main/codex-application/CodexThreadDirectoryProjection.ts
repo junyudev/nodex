@@ -1,9 +1,6 @@
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
-import {
-  projectAgentBackendBindingFromCore,
-  type DesktopProjectWorkspaceThread,
-} from "../core-client/project-workspace-adapter";
+import { type DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
 import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceReadSnapshot,
@@ -62,7 +59,7 @@ export const projectCoreWorkspaceThread = (
         serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
-  backendBinding: projectAgentBackendBindingFromCore(thread.backend_binding),
+  backendBinding: thread.backend_binding,
   executionHostId: thread.execution_host_id,
   cwd: thread.cwd ?? null,
   managedWorktreePath: thread.managed_worktree_path ?? null,

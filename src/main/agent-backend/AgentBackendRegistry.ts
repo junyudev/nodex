@@ -1,11 +1,11 @@
-import type { AntigravityAgentInstanceConfig } from "../../shared/antigravity-agent-settings";
-import type { OpenCodeAgentInstanceConfig } from "../../shared/opencode-agent-settings";
+import type { AgentProfile } from "../../shared/agents/profiles";
+import { agentDefinition } from "../../shared/agents/registry";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
-import type { AcpAgentInstanceConfig, ClaudeAgentInstanceConfig } from "../../shared/types";
+import type { AcpAgentInstanceConfig } from "../../shared/types";
 import {
   ApplicationSettings,
   type ApplicationSettingsSnapshot,
@@ -13,45 +13,28 @@ import {
 
 export type AgentBackendResolution =
   | {
-      readonly kind: "opencode";
-      readonly binding: Extract<AgentBackendBinding, { kind: "opencode" }>;
+      readonly kind: "profile";
+      readonly binding: AgentBackendBinding;
       readonly displayName: string;
-      readonly instance: OpenCodeAgentInstanceConfig;
-    }
-  | {
-      readonly kind: "antigravity";
-      readonly binding: Extract<AgentBackendBinding, { kind: "antigravity" }>;
-      readonly displayName: string;
-      readonly instance: AntigravityAgentInstanceConfig;
-    }
-  | {
-      readonly kind: "claude";
-      readonly binding: Extract<AgentBackendBinding, { kind: "claude" }>;
-      readonly displayName: string;
-      readonly instance: ClaudeAgentInstanceConfig;
+      readonly instance: AgentProfile;
     }
   | {
       readonly kind: "codex";
-      readonly binding: Extract<AgentBackendBinding, { readonly kind: "codex" }>;
+      readonly binding: AgentBackendBinding;
       readonly displayName: "Codex";
     }
   | {
       readonly kind: "acp";
-      readonly binding: {
-        readonly kind: "acp";
-        readonly agentDefinitionId: string;
-        readonly instanceConfigId: string;
-      };
+      readonly binding: AgentBackendBinding;
       readonly displayName: string;
       readonly instance: AcpAgentInstanceConfig;
     };
 
 export const AgentBackendRegistryFailureReason = Schema.Literals([
   "settings-unavailable",
-  "instance-required",
   "instance-unavailable",
   "instance-disabled",
-  "instance-definition-mismatch",
+  "unsupported-driver",
 ]);
 
 export type AgentBackendRegistryFailureReason = typeof AgentBackendRegistryFailureReason.Type;
@@ -61,9 +44,8 @@ export class AgentBackendRegistryError extends Schema.TaggedError<AgentBackendRe
   {
     message: Schema.String,
     reason: AgentBackendRegistryFailureReason,
-    backendKind: Schema.Literals(["codex", "acp", "claude", "opencode", "antigravity"]),
-    agentDefinitionId: Schema.optionalKey(Schema.String),
-    instanceConfigId: Schema.optionalKey(Schema.String),
+    driver: Schema.String,
+    instanceId: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {}
@@ -76,66 +58,38 @@ const unavailable = (
   new AgentBackendRegistryError({
     message,
     reason,
-    backendKind: binding.kind,
-    ...(binding.kind === "acp"
-      ? {
-          agentDefinitionId: binding.agentDefinitionId,
-          ...(binding.instanceConfigId === null
-            ? {}
-            : { instanceConfigId: binding.instanceConfigId }),
-        }
-      : {}),
+    driver: binding.driver,
+    instanceId: binding.instanceId,
   });
 
 /** Resolves supported metadata and explicit Profile configuration; it never starts a process. */
 export const resolveAgentBackendBinding = (
   binding: AgentBackendBinding,
-  settings: Pick<
-    ApplicationSettingsSnapshot,
-    "acpAgents" | "claudeAgents" | "openCodeAgents" | "antigravityAgents"
-  >,
+  settings: Pick<ApplicationSettingsSnapshot, "acpAgents" | "agentProfiles">,
 ): AgentBackendResolution | AgentBackendRegistryError => {
-  if (binding.kind === "codex") {
+  const definition = agentDefinition(binding.driver);
+  const { driver } = definition;
+  if (driver === "codex") {
     return { kind: "codex", binding, displayName: "Codex" };
   }
-  if (binding.kind === "claude") {
-    const instance = settings.claudeAgents.instances.find(
-      ({ id }) => id === binding.instanceConfigId,
+  if (definition.profile) {
+    const instance = settings.agentProfiles.find(
+      (profile) => profile.driver === driver && profile.id === binding.instanceId,
     );
     if (!instance)
-      return unavailable(binding, "instance-unavailable", "Claude instance is unavailable");
+      return unavailable(
+        binding,
+        "instance-unavailable",
+        `${definition.label} instance is unavailable`,
+      );
     if (!instance.enabled)
-      return unavailable(binding, "instance-disabled", "Claude instance is disabled");
-    return { kind: "claude", binding, displayName: instance.displayName, instance };
+      return unavailable(binding, "instance-disabled", `${definition.label} instance is disabled`);
+    return { kind: "profile", binding, displayName: instance.displayName, instance };
   }
-  if (binding.kind === "opencode") {
-    const instance = settings.openCodeAgents.instances.find(
-      ({ id }) => id === binding.instanceConfigId,
-    );
-    if (!instance)
-      return unavailable(binding, "instance-unavailable", "OpenCode instance is unavailable");
-    if (!instance.enabled)
-      return unavailable(binding, "instance-disabled", "OpenCode instance is disabled");
-    return { kind: "opencode", binding, displayName: instance.displayName, instance };
+  if (driver !== "acpRegistry") {
+    return unavailable(binding, "unsupported-driver", "This Agent is unavailable.");
   }
-  if (binding.kind === "antigravity") {
-    const instance = settings.antigravityAgents.instances.find(
-      ({ id }) => id === binding.instanceConfigId,
-    );
-    if (!instance)
-      return unavailable(binding, "instance-unavailable", "Antigravity instance is unavailable");
-    if (!instance.enabled)
-      return unavailable(binding, "instance-disabled", "Antigravity instance is disabled");
-    return { kind: "antigravity", binding, displayName: instance.displayName, instance };
-  }
-  if (binding.instanceConfigId === null) {
-    return unavailable(
-      binding,
-      "instance-required",
-      "ACP backend binding requires an Agent instance configuration",
-    );
-  }
-  const instance = settings.acpAgents.instances.find(({ id }) => id === binding.instanceConfigId);
+  const instance = settings.acpAgents.instances.find(({ id }) => id === binding.instanceId);
   if (instance === undefined) {
     return unavailable(binding, "instance-unavailable", "This Agent was removed from Settings.");
   }
@@ -146,20 +100,9 @@ export const resolveAgentBackendBinding = (
       "This Agent is turned off. Turn it on in Settings.",
     );
   }
-  if (instance.agentDefinitionId !== binding.agentDefinitionId) {
-    return unavailable(
-      binding,
-      "instance-definition-mismatch",
-      "This Agent instance changed to a different Agent. Choose it again.",
-    );
-  }
   return {
     kind: "acp",
-    binding: {
-      kind: "acp",
-      agentDefinitionId: instance.agentDefinitionId,
-      instanceConfigId: instance.id,
-    },
+    binding,
     displayName: instance.displayName,
     instance,
   };
@@ -182,70 +125,32 @@ export class AgentBackendRegistry extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
-  const readSnapshot = (backendKind: AgentBackendBinding["kind"]) =>
-    settings.snapshot().pipe(
-      Effect.mapError(
-        (cause) =>
-          new AgentBackendRegistryError({
-            message: "Agent backend settings are unavailable",
-            reason: "settings-unavailable",
-            backendKind,
-            cause,
-          }),
-      ),
-    );
+  const resolve = (binding: AgentBackendBinding) =>
+    Effect.gen(function* () {
+      const snapshot = yield* settings.snapshot().pipe(
+        Effect.mapError(
+          (cause) =>
+            new AgentBackendRegistryError({
+              message: "Agent backend settings are unavailable",
+              reason: "settings-unavailable",
+              driver: binding.driver,
+              instanceId: binding.instanceId,
+              cause,
+            }),
+        ),
+      );
+      const resolution = resolveAgentBackendBinding(binding, snapshot);
+      if (resolution instanceof AgentBackendRegistryError) return yield* resolution;
+      return resolution;
+    });
   return AgentBackendRegistry.of({
-    resolve: (binding) =>
+    resolve,
+    resolveAcpInstance: (instanceId) =>
       Effect.gen(function* () {
-        const snapshot = yield* readSnapshot(binding.kind).pipe(
-          Effect.mapError((error) =>
-            binding.kind !== "acp"
-              ? error
-              : new AgentBackendRegistryError({
-                  message: error.message,
-                  reason: error.reason,
-                  backendKind: error.backendKind,
-                  ...(error.cause === undefined ? {} : { cause: error.cause }),
-                  agentDefinitionId: binding.agentDefinitionId,
-                  ...(binding.instanceConfigId === null
-                    ? {}
-                    : { instanceConfigId: binding.instanceConfigId }),
-                }),
-          ),
-        );
-        const resolution = resolveAgentBackendBinding(binding, snapshot);
-        if (resolution instanceof AgentBackendRegistryError) return yield* resolution;
-        return resolution;
-      }),
-    resolveAcpInstance: (instanceConfigId) =>
-      Effect.gen(function* () {
-        const snapshot = yield* readSnapshot("acp");
-        const instance = snapshot.acpAgents.instances.find(({ id }) => id === instanceConfigId);
-        if (instance === undefined) {
-          return yield* new AgentBackendRegistryError({
-            message: "This Agent was removed from Settings.",
-            reason: "instance-unavailable",
-            backendKind: "acp",
-            instanceConfigId,
-          });
-        }
-        const resolution = resolveAgentBackendBinding(
-          {
-            kind: "acp",
-            agentDefinitionId: instance.agentDefinitionId,
-            instanceConfigId,
-          },
-          snapshot,
-        );
-        if (resolution instanceof AgentBackendRegistryError) return yield* resolution;
-        if (resolution.kind !== "acp") {
-          return yield* new AgentBackendRegistryError({
-            message: "ACP instance resolved to the native backend",
-            reason: "instance-definition-mismatch",
-            backendKind: "acp",
-            instanceConfigId,
-          });
-        }
+        const binding = { driver: "acpRegistry", instanceId };
+        const resolution = yield* resolve(binding);
+        if (resolution.kind !== "acp")
+          return yield* unavailable(binding, "unsupported-driver", "This Agent is unavailable.");
         return resolution;
       }),
   });

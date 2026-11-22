@@ -1,6 +1,5 @@
 export {
   applyAgentImport,
-  readClaudeAgentSettings,
   readCodexHomeSettings,
   deleteBackup,
   readBackupSettings,
@@ -14,7 +13,6 @@ export {
   scanAgentImport,
   scanPickedAgentImportHome,
   updateBackupSettings,
-  updateClaudeAgentSettings,
   updateCodexHomeSettings,
   updateDiagnosticsSettings,
   updateGitSettings,

@@ -108,7 +108,7 @@ export interface ScenarioPageFileEntrySeed {
   /** Attaches as this chat's Agent, through the credential Core issues for it. */
   readonly attachedByAgent?: {
     readonly sessionId: string;
-    readonly backend: "codex" | "claude" | "opencode" | "acp";
+    readonly driver: string;
   };
 }
 

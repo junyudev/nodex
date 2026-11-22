@@ -1,8 +1,7 @@
+import { claudeAgent } from "../../shared/agents/claude";
+import { openCodeAgent } from "../../shared/agents/opencode";
+import { agentProfileEnvironment } from "../../shared/agents/profiles";
 import { describe, expect, it } from "vite-plus/test";
-import {
-  CLAUDE_ENVIRONMENT_POLICY,
-  OPENCODE_ENVIRONMENT_POLICY,
-} from "./agent-environment-policies";
 import {
   environmentDraftInput,
   environmentAssignmentPaste,
@@ -10,6 +9,8 @@ import {
   parseEnvironmentAssignments,
   validateEnvironmentDraft,
 } from "./agent-environment-editor";
+const CLAUDE_ENVIRONMENT_POLICY = agentProfileEnvironment(claudeAgent.driver)!;
+const OPENCODE_ENVIRONMENT_POLICY = agentProfileEnvironment(openCodeAgent.driver)!;
 
 describe("Claude environment assignments", () => {
   it("keeps a single pasted token containing equals signs as a value", () => {

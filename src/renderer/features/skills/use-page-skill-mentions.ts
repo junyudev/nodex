@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../../shared/agents/registry";
 import { getIntl } from "@/lib/i18n";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { useEffect, useMemo } from "react";
@@ -14,7 +15,8 @@ import {
 } from "@/lib/query-options";
 import { agentBackendRuntime } from "@/lib/agent-backend-runtime";
 import { agentRuntimeProvidersQueryOptions } from "@/lib/use-agent-runtime-providers";
-import { readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
+import { readAgentProfiles } from "@/lib/agent-profiles-runtime";
+import { claudeAgent } from "../../../shared/agents/claude";
 import { isRemoteSpace, spaceQueryKey } from "@/lib/renderer-space";
 import { resolveRendererTransport } from "@/lib/renderer-transport";
 import { humanizeComposerSkillName } from "@/lib/skill-mention-presentation";
@@ -122,14 +124,14 @@ function useLocalClaudeSkills(
   const client = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
-    return resolveRendererTransport().subscribeClaudeAgentSettingsChanges(() => {
+    return resolveRendererTransport().subscribeAgentSettingsChanges(() => {
       void client.invalidateQueries({ queryKey: settingsKey() });
       void client.invalidateQueries({ queryKey: claudeKey() });
     });
   }, [client, enabled]);
   const settings = useQuery({
     queryKey: settingsKey(),
-    queryFn: readClaudeAgentSettings,
+    queryFn: () => readAgentProfiles(claudeAgent.driver),
     staleTime: 60_000,
     enabled,
   });
@@ -212,13 +214,9 @@ export function usePageSkillMentions(
           scope: scopeLabel(undefined, skill.path, roots),
         })),
         ...(hosted.data ?? []).flatMap((agent): SkillSource[] => {
-          if (
-            !remote ||
-            !agent.enabled ||
-            (agent.driver !== "codex" && agent.driver !== "claudeAgent")
-          )
-            return [];
-          const provider = agent.driver === "codex" ? "Codex" : "Claude";
+          const skillsKind = agentDefinition(agent.driver).capabilities.skills;
+          if (!remote || !agent.enabled || !skillsKind) return [];
+          const provider = skillsKind === "codex" ? "Codex" : "Claude";
           const skills = [
             ...agent.skills.filter((skill) => skill.scope !== "repo" && skill.scope !== "project"),
             ...(agent.workspaceSnapshots ?? [])

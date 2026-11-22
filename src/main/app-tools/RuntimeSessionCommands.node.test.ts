@@ -36,7 +36,7 @@ const intakeServices = Layer.mergeAll(
         archived: false,
         thread: {
           threadId: "native-root",
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           executionHostId: "local",
         },
       }),

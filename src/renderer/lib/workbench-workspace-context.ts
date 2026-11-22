@@ -57,7 +57,7 @@ export function sessionPanelOwner(
 ) {
   return {
     kind: "session",
-    backendKind: session.thread?.backendBinding.kind ?? "codex",
+    backendKind: session.thread?.backendBinding.driver ?? "codex",
     projectId: session.projectId,
     hasAttachedThread: Boolean(session.executionRef || session.thread),
     cwd: resolveSessionWorkingFolder(session, null),

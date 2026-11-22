@@ -77,6 +77,9 @@ must finish, and any explicit executable paths into the download must be cleared
 before removal. On a computer without automatic installation support, set an
 executable path.
 
+The managed runtime publishes installation facts for [Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer).
+Setup and the composer combine those facts with the selected profile's account and model state.
+
 ## Chats
 
 Antigravity chats use the models offered to their configured account, including Gemini

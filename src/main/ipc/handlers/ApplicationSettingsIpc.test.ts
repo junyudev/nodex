@@ -29,7 +29,6 @@ import {
   onMainLocaleChange,
   resetMainLocaleForTests,
 } from "../../i18n/main-intl";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   AgentRuntimeProviderConfigurationError,
   type ProviderConfigurationResult,
@@ -188,14 +187,12 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:acp-agents:configuration-status",
       "settings:acp-agents:get",
       "settings:acp-agents:update",
+      "settings:agent-profiles:get",
+      "settings:agent-profiles:update",
       "settings:agent-runtime:get",
       "settings:agent-runtime:update",
-      "settings:antigravity-agents:get",
-      "settings:antigravity-agents:update",
       "settings:backup:get",
       "settings:backup:update",
-      "settings:claude-agents:get",
-      "settings:claude-agents:update",
       "settings:codex-developer:update",
       "settings:codex-executable:get",
       "settings:codex-executable:update",
@@ -219,8 +216,6 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:notification-authorization:open-settings",
       "settings:notification-authorization:read",
       "settings:notification-authorization:request",
-      "settings:opencode-agents:get",
-      "settings:opencode-agents:update",
       "settings:telemetry:get",
       "settings:telemetry:update",
       "settings:terminal-shell:get",
@@ -409,13 +404,24 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       [{ channel: "composer-prediction-settings-changed", value: { enabled: false } }],
     );
     assert.strictEqual(providerRefreshes, 1);
-    for (const channel of [
-      "settings:antigravity-agents:update",
-      "settings:claude-agents:update",
-      "settings:opencode-agents:update",
-      "settings:acp-agents:update",
-    ] as const)
-      yield* handlers.get(channel)!(event, { instances: [] });
+    const readProfiles = handlers.get("settings:agent-profiles:get")!;
+    const saveProfiles = handlers.get("settings:agent-profiles:update")!;
+    assert.strictEqual((yield* Effect.result(readProfiles(event, "unknown")))._tag, "Failure");
+    assert.strictEqual(
+      (yield* Effect.result(saveProfiles(untrustedEvent, { driver: "claudeAgent", instances: [] })))
+        ._tag,
+      "Failure",
+    );
+    assert.strictEqual(
+      (yield* Effect.result(saveProfiles(event, { driver: "opencode", instances: [{}] })))._tag,
+      "Failure",
+    );
+    assert.strictEqual(providerRefreshes, 1);
+    for (const driver of ["claudeAgent", "opencode", "antigravity"] as const) {
+      assert.deepEqual(yield* saveProfiles(event, { driver, instances: [] }), { instances: [] });
+      assert.deepEqual(yield* readProfiles(event, driver), { instances: [] });
+    }
+    yield* handlers.get("settings:acp-agents:update")!(event, { instances: [] });
     assert.strictEqual(providerRefreshes, 5);
     const acpInstance = {
       id: "acp-work",
@@ -430,13 +436,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     };
     providerResult = {
       applied: false,
-      deferredInstanceIds: [
-        agentRuntimeProviderId({
-          kind: "acp",
-          agentDefinitionId: "generic",
-          instanceConfigId: "acp-work",
-        })!,
-      ],
+      deferredInstanceIds: ["acp-work"!],
     };
     const deferred = yield* handlers.get("settings:acp-agents:update")!(event, {
       instances: [acpInstance],

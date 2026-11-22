@@ -13,8 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentAccountBackend } from "../../../shared/agent-accounts-api";
-import type { AntigravityAuthMethod } from "../../../shared/antigravity-agent-settings";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
+import type { AntigravityAuthMethod } from "../../../shared/agents/antigravity";
 import { agentAccountCatalog, agentAccountsRuntime } from "../../lib/agent-accounts-runtime";
 import {
   AgentAccountControls,
@@ -24,14 +23,14 @@ import {
 import { createAgentAccountOwner, type AgentAccountOwner } from "./agent-account-owner";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
-type Backend = AgentAccountBackend & { readonly kind: "antigravity" };
+type Backend = AgentAccountBackend;
 const accounts = new Map<string, AgentAccountOwner>();
 
 function accountFor(backend: Backend): AgentAccountOwner {
-  const existing = accounts.get(backend.instanceConfigId);
+  const existing = accounts.get(backend.instanceId);
   if (existing) return existing;
   const owner = createAgentAccountOwner({ runtime: agentAccountsRuntime, backend });
-  accounts.set(backend.instanceConfigId, owner);
+  accounts.set(backend.instanceId, owner);
   return owner;
 }
 
@@ -69,9 +68,7 @@ export function AntigravityAccountRow({
   /** The saved method determines whether the account opens Google or connects directly. */
   readonly authMethod: AntigravityAuthMethod;
 }) {
-  return (
-    <AntigravityAccount key={backend.instanceConfigId} backend={backend} authMethod={authMethod} />
-  );
+  return <AntigravityAccount key={backend.instanceId} backend={backend} authMethod={authMethod} />;
 }
 
 function AntigravityAccount({
@@ -85,7 +82,7 @@ function AntigravityAccount({
   const owner = accountFor(backend);
   const view = useAgentAccount(owner);
   const { accountRef, keepFocus } = useAgentAccountFocus();
-  const provider = useKnownProvider(agentRuntimeProviderId(backend));
+  const provider = useKnownProvider(backend.instanceId);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => owner.read(), [owner]);
 

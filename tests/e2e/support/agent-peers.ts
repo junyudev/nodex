@@ -9,7 +9,6 @@ import {
   readBoundedElectronRuntimeLogs,
 } from "../../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../../scripts/scenarios/runtime/agent-runtime-fixture";
-import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
 import type { IpcApi } from "../../../src/shared/ipc-api";
 import { waitForDraftScene } from "./new-chat-draft";
 
@@ -36,10 +35,7 @@ export interface NativeRecord {
   readonly items?: unknown;
 }
 
-export const CLAUDE_ID = agentRuntimeProviderId({
-  kind: "claude",
-  instanceConfigId: "claude-fixture",
-});
+export const CLAUDE_ID = "claude-fixture";
 
 /**
  * One Electron Profile whose Codex and Claude are native protocol peers recording what they
@@ -92,15 +88,16 @@ export async function withAgentPeers(
   try {
     const page = await harness.launch({ phase: "first-window" });
     await harness.waitForApplicationReady();
-    await invoke(page, "settings:claude-agents:update", {
+    await invoke(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
+          driver: "claudeAgent",
+          settings: { configDirectory: path.join(home, "claude-home"), customModels: [] },
           id: "claude-fixture",
           displayName: "Runtime Claude",
           binaryPath: claude,
-          configDirectory: path.join(home, "claude-home"),
           enabled: true,
-          customModels: [],
           environment: [{ name: "NODEX_TEST_CROSS_PROVIDER_HOME", value: home, sensitive: false }],
         },
       ],

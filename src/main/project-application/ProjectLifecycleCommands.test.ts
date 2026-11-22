@@ -37,7 +37,7 @@ const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
 });
 
 const session = (
-  _backendBinding: AgentBackendBinding = { kind: "codex" },
+  _backendBinding: AgentBackendBinding = { driver: "codex", instanceId: "codex" },
   identity: { readonly sessionId: string; readonly threadId: string } = {
     sessionId: "session-1",
     threadId: "thread-1",
@@ -228,11 +228,7 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
     [
       session(),
       session(
-        {
-          kind: "acp",
-          agentDefinitionId: "claude-agent-acp",
-          instanceConfigId: "claude-local",
-        },
+        { driver: "acpRegistry", instanceId: "claude-local" },
         { sessionId: "session-2", threadId: "thread-2" },
       ),
     ],

@@ -1,16 +1,29 @@
+import {
+  AGENT_PROFILE_LIMIT,
+  agentProfileInput,
+  createAgentProfile,
+  agentProfileEnvironment,
+  type AgentProfile,
+  type AgentProfileInput,
+} from "../../../shared/agents/profiles";
+import type { AgentProfileDefinition } from "../../../shared/agents/profile-definition";
+import type { ProfileAgentDefinition, ProfileAgentDriver } from "../../../shared/agents/registry";
+import { readAgentProfiles, updateAgentProfiles } from "../../lib/agent-profiles-runtime";
+import { AgentProviderIcon } from "../shared/icons";
+import { AgentProfileFieldRow, agentProfileInputClassName } from "./agent-profile-field";
+import {
+  agentProfileSettingsSlots,
+  type EditableAgentProfile,
+} from "./agent-profile-settings-slots";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useState, type ReactNode } from "react";
-import type {
-  AgentEnvironmentInput,
-  AgentEnvironmentVariable,
-} from "../../../shared/agent-environment";
+import { useState } from "react";
+import type { AgentEnvironmentVariable } from "../../../shared/agent-environment";
 import {
   environmentDraftInput,
   validateEnvironmentDraft,
   type AgentEnvironmentDraft,
-  type AgentEnvironmentPolicy,
 } from "../../lib/agent-environment-editor";
 import { useSettingsRead } from "../../lib/use-settings-read";
 import { AgentEnvironmentEditor } from "./agent-environment-editor";
@@ -25,33 +38,18 @@ import {
   type NodexSettingsDisclosureState,
 } from "../ui/settings";
 
-interface AgentInstanceFields {
-  readonly id: string;
-  readonly displayName: string;
-  readonly enabled: boolean;
-  readonly binaryPath: string;
-  /** Absent for an Agent whose profiles carry no environment of their own. */
-  readonly environment?: AgentEnvironmentVariable[];
+export interface AgentProfileSettingsRuntime {
+  readonly read: (driver: ProfileAgentDriver) => Promise<{ readonly instances: AgentProfile[] }>;
+  readonly update: typeof updateAgentProfiles;
 }
 
-type InstanceInput<Instance extends AgentInstanceFields> = Instance extends {
-  readonly environment: AgentEnvironmentVariable[];
-}
-  ? Omit<Instance, "environment"> & { readonly environment: AgentEnvironmentInput[] }
-  : Instance;
+const desktopProfiles: AgentProfileSettingsRuntime = {
+  read: readAgentProfiles,
+  update: updateAgentProfiles,
+};
 
-export interface AgentInstanceSettingsRuntime<Instance extends AgentInstanceFields> {
-  readonly read: () => Promise<{ readonly instances: Instance[] }>;
-  readonly update: (input: { readonly instances: InstanceInput<Instance>[] }) => Promise<{
-    readonly instances: Instance[];
-  }>;
-}
-
-const PROFILE_LIMIT = 32;
-const fieldClassName = "h-8 w-[min(28rem,45vw)] text-sm";
-
-interface ProfileDraft<Instance> {
-  readonly instance: Instance;
+interface ProfileDraft {
+  readonly instance: EditableAgentProfile;
   readonly environment: AgentEnvironmentDraft[];
 }
 
@@ -73,7 +71,7 @@ const sameEnvironment = (
       row.sensitive === right[index]?.sensitive,
   );
 
-const sameInstance = <Instance extends AgentInstanceFields>(left: Instance, right: Instance) =>
+const sameInstance = (left: EditableAgentProfile, right: EditableAgentProfile) =>
   JSON.stringify({ ...left, environment: [] }) === JSON.stringify({ ...right, environment: [] });
 
 const failureMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
@@ -101,21 +99,9 @@ function nextProfileName(label: string, names: readonly string[]) {
   return `${label} ${index}`;
 }
 
-/** A profile row's environment note; none when the profile sets no variables. */
-export const environmentVariableCount = (count: number, intl = getIntl()) =>
-  count === 0
-    ? null
-    : intl.formatMessage(
-        {
-          id: "settings.agentProfiles.environmentVariableCount",
-          defaultMessage: "{count, plural, one {# variable} other {# variables}}",
-        },
-        { count },
-      );
-
 /** What the collapsed section says about the saved profiles. */
 export function agentProfilesSummary(
-  profiles: readonly Pick<AgentInstanceFields, "enabled">[] | null,
+  profiles: readonly Pick<AgentProfile, "enabled">[] | null,
   intl = getIntl(),
 ): string | null {
   if (!profiles) return null;
@@ -140,98 +126,40 @@ export function agentProfilesSummary(
       );
 }
 
-type AgentInstanceSettingsControlProps<Instance extends AgentInstanceFields> = {
+interface AgentProfileSettingsProps {
+  readonly definition: ProfileAgentDefinition;
   readonly open: boolean;
-  /** The section's anchor. */
-  readonly id: string;
-  readonly label: string;
-  readonly icon: ReactNode;
-  readonly description: string;
-  /** Explains what a profile chooses, shown while there are none. */
-  readonly setupDescription: string;
   readonly disclosure: NodexSettingsDisclosureState;
-  /** A deep link into the section. One that names a profile opens it. */
   readonly anchor?: string | null;
-  /** A profile's anchor, for an Agent whose profiles can be linked to. */
-  readonly profileAnchor?: (profileId: string) => string;
-  readonly executablePlaceholder: string;
-  readonly executableDescription: string;
-  /** An empty executable is a choice the Agent resolves itself, such as a runtime Nodex installs. */
-  readonly executableOptional?: boolean;
-  readonly runtime: AgentInstanceSettingsRuntime<Instance>;
-  readonly createInstance: () => Instance;
-  /** The profile's own variables; omitted when the Agent's profiles carry none. */
-  readonly environment?: {
-    readonly policy: AgentEnvironmentPolicy;
-    readonly suggestions: readonly string[];
-  };
-  /** What every profile shares, shown above them. */
-  readonly shared?: (input: { readonly profileCount: number }) => ReactNode;
-  /**
-   * The profile's account, shown under its name. An account leads the editor and its executable
-   * closes it; `saved` is null until the profile is saved.
-   */
-  readonly account?: (input: { readonly saved: Instance | null }) => ReactNode;
-  /** The collapsed row's secondary line. */
-  readonly profileDetail: (instance: Instance) => string;
-  readonly fields: (input: {
-    readonly draft: Instance;
-    /** Null until the profile is saved. */
-    readonly saved: Instance | null;
-    readonly disabled: boolean;
-    readonly change: (patch: Partial<Instance>) => void;
-  }) => ReactNode;
-  /**
-   * Describes the saved executable; `saved` is null until the profile is saved. The draft's
-   * environment rows are edited apart from `draft` and arrive as `environment`.
-   */
-  readonly executableStatus?: (input: {
-    readonly saved: Instance | null;
-    readonly draft: Instance;
-    readonly environment: readonly AgentEnvironmentDraft[];
-  }) => ReactNode;
-};
-
-/**
- * Settings > Agents for an Agent run from local profiles. Each saved profile is a row with its
- * on/off switch, which applies immediately; its configuration opens in place and saves on its
- * own. Saving one profile re-sends every other saved profile unchanged, keeping their stored
- * secrets.
- */
-export function AgentInstanceSettingsControl<Instance extends AgentInstanceFields>(
-  props: AgentInstanceSettingsControlProps<Instance>,
-) {
-  return <AgentProfiles key={runtimeKey(props.runtime)} {...props} />;
+  readonly runtime?: AgentProfileSettingsRuntime;
 }
 
-function AgentProfiles<Instance extends AgentInstanceFields>({
+/** A Profile's settings open in place, while its on/off switch saves immediately. */
+export function AgentProfileSettingsSection(props: AgentProfileSettingsProps) {
+  const runtime = props.runtime ?? desktopProfiles;
+  return <AgentProfiles key={runtimeKey(runtime)} {...props} runtime={runtime} />;
+}
+
+function AgentProfiles({
+  definition,
   open,
-  id,
-  label,
-  icon,
-  description,
-  setupDescription,
   disclosure,
   anchor = null,
-  profileAnchor,
-  executablePlaceholder,
-  executableDescription,
-  executableOptional = false,
-  runtime,
-  createInstance,
-  environment,
-  shared,
-  account,
-  profileDetail,
-  fields,
-  executableStatus,
-}: AgentInstanceSettingsControlProps<Instance>) {
+  runtime = desktopProfiles,
+}: AgentProfileSettingsProps) {
   const intl = useIntl();
-  const [saved, setSaved] = useState<readonly Instance[] | null>(null);
+  const { driver, label, settingsAnchor: id } = definition;
+  const profileDefinition: AgentProfileDefinition = definition.profile;
+  const slots = agentProfileSettingsSlots[driver];
+  const profileAnchorPrefix =
+    "profileAnchorPrefix" in definition ? definition.profileAnchorPrefix : `${id}-profile-`;
+  const executablePlaceholder = profileDefinition.executable.placeholder;
+  const environment = agentProfileEnvironment(driver);
+  const [saved, setSaved] = useState<readonly AgentProfile[] | null>(null);
   const [savedEnvironments, setSavedEnvironments] = useState<
     Record<string, AgentEnvironmentDraft[]>
   >({});
-  const [drafts, setDrafts] = useState<Record<string, ProfileDraft<Instance>>>({});
+  const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [openedAnchor, setOpenedAnchor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -243,7 +171,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
-  const accept = (next: readonly Instance[]) => {
+  const accept = (next: readonly AgentProfile[]) => {
     setSaved(next);
     setSavedEnvironments(
       Object.fromEntries(next.map((entry) => [entry.id, environmentRows(entry.environment ?? [])])),
@@ -256,14 +184,16 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     serialize,
   } = useSettingsRead(
     open,
-    () => runtime.read(),
+    () => runtime.read(driver),
     (next) => accept(next.instances),
   );
 
   const savedProfiles = saved ?? [];
-  const anchorOf = (profileId: string) =>
-    profileAnchor?.(profileId) ?? `${id}-profile-${profileId}`;
-  const anchored = savedProfiles.find((profile) => anchorOf(profile.id) === anchor)?.id ?? null;
+  const anchorOf = (profileId: string) => `${profileAnchorPrefix}${profileId}`;
+  const anchored =
+    "profileAnchorPrefix" in definition && anchor
+      ? (savedProfiles.find((profile) => anchorOf(profile.id) === anchor)?.id ?? null)
+      : null;
   // A deep link opens its profile once, when that profile first becomes known.
   if (anchored && anchored !== openedAnchor) {
     setOpenedAnchor(anchored);
@@ -276,7 +206,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   const savedEntry = (profileId: string) =>
     savedProfiles.find((entry) => entry.id === profileId) ?? null;
   /** A saved profile's on/off state is never a draft edit: it is whatever Main last saved. */
-  const current = (profileId: string): ProfileDraft<Instance> | null => {
+  const current = (profileId: string): ProfileDraft | null => {
     const draft = drafts[profileId];
     const entry = savedEntry(profileId);
     if (!entry) return draft ?? null;
@@ -305,7 +235,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     );
   const dropDraft = (profileId: string) =>
     setDrafts((currentDrafts) => without(currentDrafts, profileId));
-  const edit = (profileId: string, patch: Partial<ProfileDraft<Instance>>) => {
+  const edit = (profileId: string, patch: Partial<ProfileDraft>) => {
     const base = current(profileId);
     if (!base) return;
     setError(profileId, null);
@@ -318,29 +248,30 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
    */
   const persist = async (
     profileId: string,
-    next: readonly Instance[],
-    replace?: ProfileDraft<Instance>,
+    next: readonly EditableAgentProfile[],
+    replace?: ProfileDraft,
   ): Promise<PersistOutcome> => {
     if (!editable) return "superseded";
-    const instances = next.map(
-      (entry) =>
-        (environment
+    const instances: AgentProfileInput[] = next.map((entry) =>
+      agentProfileInput(
+        environment
           ? {
               ...entry,
               environment: environmentDraftInput(
                 entry.id === replace?.instance.id
                   ? replace.environment
                   : (savedEnvironments[entry.id] ?? []),
-                environment.policy,
+                environment,
               ),
             }
-          : entry) as InstanceInput<Instance>,
+          : entry,
+      ),
     );
     setBusy(profileId);
     setError(profileId, null);
     return runWithCleanup<PersistOutcome>(
       async () => {
-        const result = await serialize(() => runtime.update({ instances }));
+        const result = await serialize(() => runtime.update({ driver, instances }));
         accept(result.instances);
         return "saved";
       },
@@ -374,7 +305,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     const draft = current(profileId);
     if (!drafts[profileId] || !draft) return;
     const validation = environment
-      ? validateEnvironmentDraft(draft.environment, environment.policy)
+      ? validateEnvironmentDraft(draft.environment, environment)
       : null;
     if (validation) {
       setError(profileId, validation);
@@ -405,9 +336,9 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   };
   const add = () => {
     const instance = {
-      ...createInstance(),
+      ...createAgentProfile(definition),
       displayName: nextProfileName(
-        label,
+        profileDefinition.defaultName,
         profiles.map((profile) => profile.displayName),
       ),
     };
@@ -426,18 +357,19 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     const isChanged = changed(profileId);
     const disabled = !editable;
     const error = errors[profileId];
-    const change = (patch: Partial<Instance>) =>
+    const change = (patch: { readonly binaryPath?: string; readonly displayName?: string }) =>
       edit(profileId, { instance: { ...instance, ...patch } });
     const executable = (
       <NodexSettingsRow
         variant="nested"
         label={intl.formatMessage(settingsMessages.agentProfilesExecutable)}
         description={
-          executableStatus?.({
+          slots?.executableStatus?.({
             saved: entry,
             draft: instance,
             environment: draft.environment,
-          }) || executableDescription
+            open,
+          }) || intl.formatMessage(profileDefinition.executable.description)
         }
       >
         <Input
@@ -445,12 +377,16 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
             { label: label },
           )}
-          className={fieldClassName}
+          className={agentProfileInputClassName}
           value={instance.binaryPath}
           disabled={disabled}
-          placeholder={executablePlaceholder}
+          placeholder={
+            typeof executablePlaceholder === "string"
+              ? executablePlaceholder
+              : intl.formatMessage(executablePlaceholder)
+          }
           spellCheck={false}
-          onChange={(event) => change({ binaryPath: event.target.value } as Partial<Instance>)}
+          onChange={(event) => change({ binaryPath: event.target.value })}
         />
       </NodexSettingsRow>
     );
@@ -465,20 +401,48 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
               { id: "settings.agentProfiles.profileName", defaultMessage: "{label} profile name" },
               { label: label },
             )}
-            className={fieldClassName}
+            className={agentProfileInputClassName}
             value={instance.displayName}
             disabled={disabled}
-            onChange={(event) => change({ displayName: event.target.value } as Partial<Instance>)}
+            onChange={(event) => change({ displayName: event.target.value })}
           />
         </NodexSettingsRow>
-        {account ? account({ saved: entry }) : executable}
-        {fields({ draft: instance, saved: entry, disabled, change })}
-        {account ? executable : null}
+        {slots?.account?.({ saved: entry })}
+        {profileDefinition.executable.position !== "afterFields" ? executable : null}
+        {Object.entries(profileDefinition.fields).map(([key, field]) => {
+          if (field.control === "custom") return null;
+          const values: Readonly<Record<string, unknown>> = instance.settings;
+          return (
+            <AgentProfileFieldRow
+              key={key}
+              field={field}
+              value={values[key]}
+              settings={values}
+              saved={instance.savedSecrets.includes(key)}
+              disabled={disabled}
+              onChange={(value) =>
+                edit(profileId, {
+                  // The field comes from the definition for this draft's driver.
+                  instance: {
+                    ...instance,
+                    settings: { ...instance.settings, [key]: value },
+                  } as EditableAgentProfile,
+                })
+              }
+            />
+          );
+        })}
+        {slots?.bespokeEditors?.({
+          draft: instance,
+          disabled,
+          change: (instance) => edit(profileId, { instance }),
+        })}
+        {profileDefinition.executable.position === "afterFields" ? executable : null}
         {environment ? (
           <AgentEnvironmentEditor
             rows={draft.environment}
             disabled={disabled}
-            policy={environment.policy}
+            policy={environment}
             suggestedNames={environment.suggestions}
             onChange={(rows) => edit(profileId, { environment: rows })}
           />
@@ -574,7 +538,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
               disabled ||
               !isChanged ||
               !instance.displayName.trim() ||
-              (!executableOptional && !instance.binaryPath.trim())
+              (!profileDefinition.executable.allowEmpty && !instance.binaryPath.trim())
             }
             onClick={() => void save(profileId)}
           >
@@ -594,8 +558,8 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
     <NodexSettingsSection
       id={id}
       title={label}
-      icon={icon}
-      description={description}
+      icon={<AgentProviderIcon kind={driver} />}
+      description={intl.formatMessage(profileDefinition.description)}
       summary={
         loadError
           ? intl.formatMessage({
@@ -633,13 +597,13 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
         </p>
       ) : profiles.length === 0 ? (
         <>
-          {shared?.({ profileCount: 0 })}
+          {slots?.sharedRuntime?.({ open: open && disclosure.open, profileCount: 0 })}
           <NodexSettingsRow
             label={intl.formatMessage(
               { id: "settings.agentProfiles.setUp", defaultMessage: "Set up {label}" },
               { label: label },
             )}
-            description={setupDescription}
+            description={intl.formatMessage(profileDefinition.setupDescription)}
           >
             <NodexButton size="sm" variant="secondary" onClick={add}>
               {intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
@@ -648,7 +612,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
         </>
       ) : (
         <>
-          {shared?.({ profileCount: profiles.length })}
+          {slots?.sharedRuntime?.({ open: open && disclosure.open, profileCount: profiles.length })}
           {profiles.map((profile) => {
             const shown = current(profile.id)?.instance ?? profile;
             const isSaved = savedEntry(profile.id) !== null;
@@ -665,7 +629,10 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
                     defaultMessage: "Untitled profile",
                   })
                 }
-                detail={profileDetail(shown)}
+                detail={profileDefinition
+                  .detail(shown, intl.formatMessage)
+                  .filter(Boolean)
+                  .join(" · ")}
                 expanded={expanded === profile.id}
                 onExpandedChange={(next) => {
                   setConfirmRemove(null);
@@ -723,7 +690,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
           })}
           <NodexSettingsAddRow
             label={intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
-            disabled={!editable || profiles.length >= PROFILE_LIMIT}
+            disabled={!editable || profiles.length >= AGENT_PROFILE_LIMIT}
             onClick={add}
           />
         </>

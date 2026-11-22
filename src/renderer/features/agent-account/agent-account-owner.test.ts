@@ -8,7 +8,7 @@ const setup = () => {
     main: { accounts },
     owner: createAgentAccountOwner({
       runtime: accounts,
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
     }),
   };
 };
@@ -43,7 +43,7 @@ describe("Agent account owner", () => {
     owner.signIn("login");
     await settleAll();
     expect(main.accounts.start).toHaveBeenCalledWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       methodId: "login",
     });
     await vi.advanceTimersByTimeAsync(300);
@@ -61,7 +61,7 @@ describe("Agent account owner", () => {
     release();
     await settleAll();
     expect(main.accounts.cancel).toHaveBeenCalledWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       flowId: "flow-1",
     });
   });
@@ -106,7 +106,7 @@ describe("Agent account owner", () => {
       cancellable: false,
     });
     expect(main.accounts.cancel).toHaveBeenCalledExactlyOnceWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       flowId: "flow-1",
     });
   });
@@ -144,7 +144,7 @@ describe("Agent account owner", () => {
     start.resolve(ok(waiting("flow-late")));
     await settleAll();
     expect(main.accounts.cancel).toHaveBeenCalledWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       flowId: "flow-late",
     });
     expect(owner.getSnapshot()).toBeNull();
@@ -172,7 +172,7 @@ describe("Agent account owner", () => {
     await settleAll();
     expect(owner.getSnapshot()?.state?.flowId).toBe("flow-b");
     expect(main.accounts.cancel).toHaveBeenCalledExactlyOnceWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       flowId: "flow-a",
     });
   });

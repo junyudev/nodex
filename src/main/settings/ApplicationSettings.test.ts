@@ -1,3 +1,5 @@
+import { agentProfileInput } from "../../shared/agents/profiles";
+import { claudeProfile, openCodeProfile } from "../../shared/agents/profile.test-fixtures";
 import { randomUUID } from "node:crypto";
 import {
   encodeState,
@@ -1251,4 +1253,29 @@ it.effect(
       assert.strictEqual(bad._tag, "Failure");
       assert.deepEqual((yield* settings.snapshot()).modelPolicy, policy);
     }),
+);
+
+it.effect("serializes different driver writes through one Profile document", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture("[unrelated]\npresent = true\n");
+    const settings = yield* makeApplicationSettings({
+      environment: {},
+      hostHomeDirectory: root,
+      settingsPath,
+    });
+    const claude = claudeProfile({ displayName: "Claude work", enabled: false });
+    const opencode = openCodeProfile({ displayName: "OpenCode work" });
+    yield* Effect.all(
+      [claude, opencode].map((profile) =>
+        settings.update({
+          type: "update-agent-profiles",
+          input: { driver: profile.driver, instances: [agentProfileInput(profile)] },
+        }),
+      ),
+      { concurrency: "unbounded" },
+    );
+    const snapshot = yield* settings.snapshot();
+    assert.deepEqual(snapshot.agentProfiles, [claude, opencode]);
+    assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).unrelated, { present: true });
+  }),
 );

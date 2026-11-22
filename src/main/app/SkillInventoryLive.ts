@@ -1,3 +1,5 @@
+import { claudeAgent } from "../../shared/agents/claude";
+import { agentProfilesFor } from "../../shared/agents/profiles";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -75,14 +77,16 @@ export const live = Layer.effect(
         .connection(input.hostId)
         .pipe(Effect.orElseSucceed(() => null));
       const profiles = yield* Effect.forEach(
-        snapshot.claudeAgents.instances.filter((instance) => instance.enabled),
+        agentProfilesFor(snapshot.agentProfiles, claudeAgent.driver).filter(
+          (instance) => instance.enabled,
+        ),
         (instance) =>
           Effect.gen(function* () {
             const launch = yield* settings
-              .claudeLaunchConfiguration(instance.id)
+              .agentProfileLaunchConfiguration(claudeAgent.driver, instance.id)
               .pipe(Effect.orElseSucceed(() => null));
             const environment = { ...config.environment, ...launch?.environment };
-            const scope = { instance: launch?.instance ?? instance, environment };
+            const scope = { instance: launch?.profile ?? instance, environment };
             const nativeHome = launch
               ? yield* claude.nativeHome(scope).pipe(
                   Effect.timeout("3 seconds"),

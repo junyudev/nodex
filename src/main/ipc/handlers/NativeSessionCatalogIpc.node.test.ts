@@ -154,7 +154,7 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
           } as unknown as AgentRuntimeApplication["Service"]),
           Layer.succeed(ElectronIpc, ipc),
           Layer.succeed(ApplicationSettings, {
-            snapshot: () => Effect.succeed({ claudeAgents: { instances: [] } }),
+            snapshot: () => Effect.succeed({ agentProfiles: [] }),
           } as unknown as ApplicationSettings["Service"]),
           Layer.succeed(
             WindowRuntime,

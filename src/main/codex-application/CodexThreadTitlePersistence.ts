@@ -123,7 +123,7 @@ export const make: Effect.Effect<
       .pipe(Effect.mapError(titleError));
     if (
       response.value.kind !== "thread" ||
-      response.value.thread.backend_binding.kind !== "codex"
+      response.value.thread.backend_binding.driver !== "codex"
     ) {
       return yield* new CodexThreadTitlePersistenceEffectError({
         cause: new Error(`Thread '${threadId}' is not owned by the native Codex backend`),

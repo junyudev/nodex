@@ -1,3 +1,5 @@
+import type { claudeAgent } from "../../../shared/agents/claude";
+import type { AgentProfile } from "../../../shared/agents/profiles";
 import { execFile } from "./child-stdio-errors";
 // @effect-diagnostics asyncFunction:off
 import { createHash } from "node:crypto";
@@ -7,11 +9,10 @@ import { load } from "js-yaml";
 import { hostEnvironmentHome } from "./HostExecutableSearch";
 import * as Effect from "effect/Effect";
 import type { ClaudeDiscoveredSkill } from "../../../shared/claude-models";
-import type { ClaudeAgentInstanceConfig } from "../../../shared/claude-agent-settings";
 
 /** Cache identity includes secret changes but never publishes their values. */
 export const claudeDiscoveryFingerprint = (
-  instance: ClaudeAgentInstanceConfig,
+  instance: AgentProfile<typeof claudeAgent.driver>,
   environment: Readonly<Record<string, string | undefined>>,
   cwd: string,
 ): string =>

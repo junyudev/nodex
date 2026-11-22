@@ -4830,7 +4830,9 @@ function HydratedThreadComposer({
         disabled={isPromptEditorDisabled}
         singleLine={singleLine}
         allowMentions={contextSupported}
-        {...(model.provider?.kind === "claude" ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS } : {})}
+        {...(model.provider?.kind === "claudeAgent"
+          ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS }
+          : {})}
         prediction={
           !isPromptEditorDisabled &&
           model.composerShell.activeRequest === null &&

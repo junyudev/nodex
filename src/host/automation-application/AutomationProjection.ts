@@ -10,7 +10,8 @@ import type {
   Priority,
 } from "../../shared/types";
 import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
-import { CODEX_AGENT_BACKEND_BINDING, type AgentBackendBinding } from "../../shared/agent-backend";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
+import { AgentBackendBindingSchema } from "../../shared/schemas/agent-backend";
 import { canonicalizePortableRichText } from "../../shared/block-documents/portable-rich-text";
 import { PRIORITY_VALUES } from "../../shared/priority";
 import { isWorkflowStatus } from "../../shared/workflow-status";
@@ -19,10 +20,6 @@ import type {
   AutomationIntent,
   AutomationReadSnapshot,
 } from "../../main/core-client/types";
-import {
-  projectAgentBackendBindingFromCore,
-  projectAgentBackendBindingToCore,
-} from "../../main/core-client/project-workspace-adapter";
 
 export type CoreAutomation = Extract<
   AutomationReadSnapshot["value"],
@@ -49,20 +46,8 @@ export type CorePageOccurrenceSchedulePatch = Extract<
   { readonly kind: "update_page_occurrence" }
 >["updates"];
 
-const requireAutomationBackendBinding = (binding: AgentBackendBinding): AgentBackendBinding => {
-  if (
-    binding.kind === "codex" ||
-    binding.kind === "claude" ||
-    binding.kind === "opencode" ||
-    binding.kind === "antigravity"
-  )
-    return binding;
-  if (binding.kind === "acp" && binding.instanceConfigId?.trim()) return binding;
-  throw new Error("Choose an available Agent for this Automation.");
-};
-
 export const projectAutomation = (definition: CoreAutomation): Automation => {
-  const backendBinding = projectAgentBackendBindingFromCore(definition.backend_binding);
+  const backendBinding = definition.backend_binding;
   return {
     id: definition.automation_id,
     scope:
@@ -239,9 +224,9 @@ export const projectPageOccurrence = (occurrence: CoreScheduledPageOccurrence): 
 };
 
 export const toCoreAutomationInput = (input: AutomationCreateInput) => {
-  const backendBinding = requireAutomationBackendBinding(
-    input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
-  );
+  const backendBinding = input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING;
+  if (!AgentBackendBindingSchema.safeParse(backendBinding).success)
+    throw new Error("Choose an available Agent for this Automation.");
   return {
     kind: input.kind,
     scope:
@@ -266,7 +251,7 @@ export const toCoreAutomationInput = (input: AutomationCreateInput) => {
     model: input.model ?? null,
     reasoning_effort: input.reasoningEffort ?? null,
     service_tier: normalizeCodexServiceTier(input.serviceTier),
-    backend_binding: projectAgentBackendBindingToCore(backendBinding),
+    backend_binding: backendBinding,
     cwds: input.cwds ?? null,
     execution_environment: input.executionEnvironment ?? null,
     local_environment_config_path: input.localEnvironmentConfigPath ?? null,

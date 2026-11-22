@@ -5,7 +5,7 @@ import type { CodexAccountSnapshot } from "./types";
 import {
   USAGE_READING_STALE_AFTER_MS,
   subscriptionUsageAccounts,
-  claudeUsagePlaceholder,
+  subscriptionUsagePlaceholder,
   codexUsageReading,
   describeUsageMeter,
   describeUsageMeterLabel,
@@ -548,6 +548,21 @@ describe("usage readings", () => {
     ).toEqual([]);
   });
 
+  test("a new Agent can report one subscription account across profiles", () => {
+    const reporter = claudeProvider({
+      driver: "other-agent",
+      instanceId: "work",
+      displayName: "Other Agent",
+    });
+    const [account] = subscriptionUsageAccounts(
+      read([reporter, { ...reporter, instanceId: "personal" }]),
+    );
+    expect(account).toMatchObject({
+      instanceIds: ["work", "personal"],
+      reading: { provider: "other-agent", title: "Other Agent", account: "dev@example.com" },
+    });
+  });
+
   test("a reading kept through a failed refresh stays dated by its own read and says so", () => {
     const kept = claudeProvider({
       usageLimits: {
@@ -566,15 +581,17 @@ describe("usage readings", () => {
   });
 
   test("only a snapshot Main has never read holds the Claude slot", () => {
-    expect(claudeUsagePlaceholder(null)).toBe(null);
-    expect(claudeUsagePlaceholder({ status: "loading", providers: null, reason: null })).toEqual({
+    expect(subscriptionUsagePlaceholder(null)).toBe(null);
+    expect(
+      subscriptionUsagePlaceholder({ status: "loading", providers: null, reason: null }),
+    ).toEqual({
       kind: "loading",
     });
     expect(
-      claudeUsagePlaceholder({ status: "unavailable", providers: null, reason: "Timed out" }),
+      subscriptionUsagePlaceholder({ status: "unavailable", providers: null, reason: "Timed out" }),
     ).toEqual({ kind: "unavailable", reason: "Timed out" });
     expect(
-      claudeUsagePlaceholder({ status: "unavailable", providers: [], reason: "Timed out" }),
+      subscriptionUsagePlaceholder({ status: "unavailable", providers: [], reason: "Timed out" }),
     ).toBe(null);
   });
 

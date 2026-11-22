@@ -100,7 +100,7 @@ describe("what the writing model picker offers", () => {
 
   test("the saved choice is selected", () => {
     expect(writingModelPicker(catalogOf([codexProvider()]), luna).selected).toEqual({
-      binding: { kind: "codex" },
+      binding: { driver: "codex", instanceId: "codex" },
       model: "gpt-6-luna",
     });
   });

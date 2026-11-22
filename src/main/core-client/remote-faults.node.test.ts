@@ -539,7 +539,8 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
       const coordinator = await host.issueAgentAttribution({
         session_id: coordinatorSession,
         run_id: coordinatorRun,
-        backend: "codex",
+        driver: "codex",
+        label: "Codex",
       });
       const privateAnswers: string[] = [];
       for (const client of [alice, bob]) {

@@ -9,7 +9,7 @@ import type { AgentModelCatalogPresentation } from "./agent-model-picker";
 
 const model = catalogModel("moonshot/kimi-k3", "Kimi K3");
 const selected = {
-  binding: { kind: "opencode", instanceConfigId: "local" },
+  binding: { driver: "opencode", instanceId: "local" },
   model: model.id,
 } as const;
 function Picker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }) {
@@ -20,7 +20,7 @@ function Picker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }
         triggerStyle="settings"
         open
         selection={{
-          kind: catalog.selected.binding.kind,
+          kind: catalog.selected.binding.driver,
           model: catalog.selected.model,
           reasoningEffort: "none",
           serviceTier: null,
@@ -67,7 +67,7 @@ test("expands OpenCode models and chooses the exact paid instance, model and adv
   const choose = vi.fn();
   const free = catalogModel("opencode/glm-5.3-flash-free", "GLM Flash Free");
   const work = {
-    binding: { kind: "opencode", instanceConfigId: "work" },
+    binding: { driver: "opencode", instanceId: "work" },
     model: model.id,
     options: [{ id: "variant", value: "deep" }],
     modeId: "build",
@@ -218,11 +218,7 @@ test("dismisses option menus before asynchronous writes and keeps them closed af
 });
 
 test("starts an ACP runtime before model negotiation without offering a fabricated model", async () => {
-  const binding = {
-    kind: "acp",
-    instanceConfigId: "local",
-    agentDefinitionId: "custom-agent",
-  } as const;
+  const binding = { driver: "acpRegistry", instanceId: "local" } as const;
   const chooseRuntime = vi.fn();
   const view = renderPicker(
     presentation({
@@ -238,7 +234,7 @@ test("starts an ACP runtime before model negotiation without offering a fabricat
 });
 
 test("keeps Codex selectable and exposes Refresh when external inventory fails", async () => {
-  const binding = { kind: "codex" } as const;
+  const binding = { driver: "codex", instanceId: "codex" } as const;
   const codex = catalogModel("gpt-codex", "Codex model");
   const choice = { binding, model: codex.id };
   const refresh = vi.fn();
@@ -269,7 +265,7 @@ function MenuPicker({ catalog }: { readonly catalog: AgentModelCatalogPresentati
         open={open}
         onOpenChange={setOpen}
         selection={{
-          kind: catalog.selected.binding.kind,
+          kind: catalog.selected.binding.driver,
           model: catalog.selected.model,
           reasoningEffort: "none",
           serviceTier: null,
@@ -289,7 +285,7 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
   const choose = vi.fn();
   const open = vi.fn<(port: { readonly showModels: () => void }) => void>();
   const work = {
-    binding: { kind: "opencode", instanceConfigId: "work" },
+    binding: { driver: "opencode", instanceId: "work" },
     model: model.id,
   } as const;
   const view = renderWithMaitai(
@@ -341,7 +337,7 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
 test("shows managed Claude models and setup while the executable is installing", async () => {
   const choose = vi.fn();
   const claude = {
-    binding: { kind: "claude", instanceConfigId: "managed" },
+    binding: { driver: "claudeAgent", instanceId: "managed" },
     model: model.id,
   } as const;
   const view = renderWithMaitai(
@@ -359,7 +355,7 @@ test("shows managed Claude models and setup while the executable is installing",
             unavailableLabel: "Installing",
           },
         ],
-        setups: [{ kind: "claude", label: "Installing Claude Code… 42%", tone: "default" }],
+        setups: [{ kind: "claudeAgent", label: "Installing Claude Code… 42%", tone: "default" }],
       })}
     />,
   );
@@ -403,7 +399,7 @@ test("reads the catalog again each time it opens without forcing providers to ch
         models={[model]}
         triggerStyle="composer"
         selection={{
-          kind: catalog.selected.binding.kind,
+          kind: catalog.selected.binding.driver,
           model: catalog.selected.model,
           reasoningEffort: "none",
           serviceTier: null,
@@ -445,7 +441,7 @@ test("sets Claude effort on one track and turns Ultracode on at that effort", as
     defaultReasoningEffort: "medium",
   };
   const claude = {
-    binding: { kind: "claude", instanceConfigId: "claude" },
+    binding: { driver: "claudeAgent", instanceId: "claude" },
     model: opus.id,
   } as const;
   const change = vi.fn(async () => {});
@@ -455,7 +451,7 @@ test("sets Claude effort on one track and turns Ultracode on at that effort", as
         models={[opus]}
         open
         selection={{
-          kind: "claude",
+          kind: "claudeAgent",
           model: opus.id,
           reasoningEffort: "default",
           serviceTier: null,
@@ -463,7 +459,7 @@ test("sets Claude effort on one track and turns Ultracode on at that effort", as
         onSelectionChange={() => {}}
         provider={{
           label: "Claude",
-          selection: "claude",
+          selection: "claudeAgent",
           nativeIntelligence: {
             selected: { fast: false, ultracode: false, thinking: true },
             capabilities: { fastMode: true, ultracode: true },
@@ -498,7 +494,7 @@ test("keeps an unavailable Ultracode visible, explains it, and never turns it on
     defaultReasoningEffort: "high",
   };
   const claude = {
-    binding: { kind: "claude", instanceConfigId: "claude" },
+    binding: { driver: "claudeAgent", instanceId: "claude" },
     model: opus.id,
   } as const;
   const change = vi.fn(async () => {});
@@ -507,11 +503,16 @@ test("keeps an unavailable Ultracode visible, explains it, and never turns it on
       <AgentIntelligenceDropdown
         models={[opus]}
         open
-        selection={{ kind: "claude", model: opus.id, reasoningEffort: "high", serviceTier: null }}
+        selection={{
+          kind: "claudeAgent",
+          model: opus.id,
+          reasoningEffort: "high",
+          serviceTier: null,
+        }}
         onSelectionChange={() => {}}
         provider={{
           label: "Claude",
-          selection: "claude",
+          selection: "claudeAgent",
           nativeIntelligence: {
             selected: { ultracode: true, thinking: true },
             capabilities: { ultracodeUnavailableReason: "Dynamic workflows are off." },
@@ -542,7 +543,7 @@ test("shows a mode change at once without dimming, and sends a second change aft
     defaultReasoningEffort: "high",
   };
   const claude = {
-    binding: { kind: "claude", instanceConfigId: "claude" },
+    binding: { driver: "claudeAgent", instanceId: "claude" },
     model: opus.id,
   } as const;
   const write = pendingWrite();
@@ -554,11 +555,16 @@ test("shows a mode change at once without dimming, and sends a second change aft
       <AgentIntelligenceDropdown
         models={[opus]}
         open
-        selection={{ kind: "claude", model: opus.id, reasoningEffort: "high", serviceTier: null }}
+        selection={{
+          kind: "claudeAgent",
+          model: opus.id,
+          reasoningEffort: "high",
+          serviceTier: null,
+        }}
         onSelectionChange={() => {}}
         provider={{
           label: "Claude",
-          selection: "claude",
+          selection: "claudeAgent",
           nativeIntelligence: {
             selected: { fast: false, ultracode: false, thinking: true },
             capabilities: { fastMode: true, ultracode: true },
@@ -593,11 +599,7 @@ test("shows a mode change at once without dimming, and sends a second change aft
 
 test("keeps an unavailable Nodex model visible and prevents choosing it", async () => {
   const choose = vi.fn();
-  const binding = {
-    kind: "claude",
-    instanceConfigId: `nodex_claude_${"a".repeat(32)}`,
-    runtimeInstanceId: `nodex_claude_${"a".repeat(32)}`,
-  } as const;
+  const binding = { driver: "claudeAgent", instanceId: `nodex_claude_${"a".repeat(32)}` } as const;
   const unavailable = catalogModel("claude-sonnet-5-5", "Claude Sonnet 5.5");
   const view = renderPicker(
     presentation({
@@ -631,7 +633,7 @@ const search = async (view: ReturnType<typeof renderPicker>, value: string) => {
 const offModels = (patch: { readonly choose?: () => Promise<void>; readonly credit?: boolean }) => {
   const paid = catalogModel("google/gemini-3.5-flash", "Gemini 3.5 Flash");
   const sol = catalogModel("gpt-6.1-sol", "GPT-6.1 Sol");
-  const nodex = { kind: "codex", runtimeInstanceId: `nodex_codex_${"a".repeat(32)}` } as const;
+  const nodex = { driver: "codex", instanceId: `nodex_codex_${"a".repeat(32)}` } as const;
   return {
     count: 7,
     choose: patch.choose ?? vi.fn(async () => {}),

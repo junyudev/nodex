@@ -1,8 +1,8 @@
 import { useIntl } from "@/lib/i18n";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastFailure } from "@/lib/failure-toast";
-import { useDefaultCodexAppServerManager } from "@/features/local-conversation/local-conversation-store";
+import { useFirstRunBrowserSignIn } from "../agent-readiness/use-browser-agent-sign-in";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { buildSettingsAnchorPath } from "@/components/workbench/workbench-settings-routes";
 import { APP_COMPONENTS_SETTINGS_ANCHOR } from "@/features/app-components/app-components-settings-section";
@@ -14,14 +14,20 @@ import {
   useNodexCreditRefreshOnFocus,
 } from "@/features/nodex-account/use-nodex-account";
 import { openOpenCodeInstallDialog } from "@/features/opencode-setup/opencode-install-dialog";
-import { openCodeInstallView } from "@/features/opencode-setup/opencode-setup-model";
+import {
+  openCodeInstallationReadiness,
+  openCodeInstallView,
+} from "@/features/opencode-setup/opencode-setup-model";
 import { openCodeSetupOwner, useOpenCodeSetup } from "@/features/opencode-setup/use-opencode-setup";
+import { antigravityAgent } from "../../../shared/agents/antigravity";
+import { openCodeAgent } from "../../../shared/agents/opencode";
+import { sameAgentDriver } from "../../../shared/agents/registry";
+import { antigravityInstallationReadiness } from "../antigravity-runtime/antigravity-runtime-model";
 import { publishAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { queryKeys } from "@/lib/query-keys";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
-import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { withFreeModelsOn } from "../../../shared/model-policy";
 import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
@@ -41,32 +47,11 @@ import {
   type FirstRunAgentRow,
 } from "./first-run-model";
 
-const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
-
 /**
  * How long the page waits for every Agent's first answer before giving rows their places. A slow
  * check, such as an Agent waiting on the network, then keeps its row without holding the others.
  */
 const PLACEMENT_GRACE_MS = 3_000;
-
-function openCodeInstallState(
-  kind: ReturnType<typeof openCodeInstallView>,
-): FirstRunAgentInputs["openCodeInstall"] {
-  switch (kind.kind) {
-    case "loading":
-      return "checking";
-    case "unreadable":
-      return "unavailable";
-    case "idle":
-      return kind.supported ? "installable" : "unavailable";
-    case "running":
-      return "installing";
-    case "ready":
-      return "installed";
-    default:
-      return "installable";
-  }
-}
 
 /** Every Agent the first step offers, read from the owners the rest of the app already uses. */
 export function useFirstRunAgents() {
@@ -79,18 +64,11 @@ export function useFirstRunAgents() {
   const policy = useModelPolicy();
   const nodexAccount = useNodexAccount(true);
   const nodexView = resolveNodexAccountView(nodexAccount, intl);
-  const codexAccounts = useDefaultCodexAppServerManager();
-  const codexActions = useCodexAccountActions();
-  const codexAccount = useSyncExternalStore(
-    (listener) => codexAccounts.subscribeAccount(listener),
-    () => codexAccounts.readAccount(),
-  );
   const openCodeSetup = useOpenCodeSetup(openCodeSetupOwner, true);
   const acp = useAcpAgents(acpAgentsOwner);
   const antigravity = useAntigravityRuntime();
   const providerKeys = useProviderKeys();
   const installView = openCodeInstallView(openCodeSetup);
-  const pendingLogin = codexAccount?.pendingLogin ?? null;
 
   const refresh = useCallback(async () => {
     // What is installed can change while the person is away, as much as who is signed in.
@@ -114,9 +92,7 @@ export function useFirstRunAgents() {
     return run;
   }, [checkingAgain, refresh]);
 
-  useEffect(() => {
-    void codexAccounts.loadAccount().catch(() => undefined);
-  }, [codexAccounts]);
+  const browserSignIn = useFirstRunBrowserSignIn(() => void refresh());
 
   // Signing in, installing and updating finish in a browser or a terminal, so coming back checks
   // again without the page showing a wait nobody asked for.
@@ -133,12 +109,11 @@ export function useFirstRunAgents() {
     if (nodexView.signedIn) refreshModels();
   }, [nodexView.signedIn, refreshModels]);
 
-  const signedInToCodex = Boolean(codexAccount?.account);
   const openCodeInstalled = installView.kind === "ready";
   const nodexSignedIn = nodexView.signedIn;
   useEffect(() => {
-    if (signedInToCodex || openCodeInstalled || nodexSignedIn) void refresh();
-  }, [refresh, nodexSignedIn, openCodeInstalled, signedInToCodex]);
+    if (openCodeInstalled || nodexSignedIn) void refresh();
+  }, [refresh, nodexSignedIn, openCodeInstalled]);
 
   useEffect(() => {
     void antigravityRuntimeOwner.run("check");
@@ -147,7 +122,7 @@ export function useFirstRunAgents() {
   const inputs: FirstRunAgentInputs = {
     providers: providers.data ?? (providers.isError ? [] : null),
     policy: policy.settings,
-    codexLoginPending: pendingLogin !== null,
+    pendingBrowserSignIn: browserSignIn.pending,
     nodex: {
       configured: nodexView.configured,
       signedIn: nodexView.signedIn,
@@ -156,11 +131,29 @@ export function useFirstRunAgents() {
       balance: nodexCreditBalance(nodexAccount.snapshot),
       notice: nodexView.notice?.message ?? null,
     },
-    openCodeInstall: openCodeInstallState(installView),
-    antigravityInspection:
-      antigravity.pending === "check" && !antigravity.state?.inspection
-        ? undefined
-        : (antigravity.state?.inspection ?? (antigravity.error ? null : undefined)),
+    installations: {
+      components: components.state?.components ?? [],
+      managed: {
+        [openCodeAgent.setup.installation.id]: () =>
+          (installView.kind === "idle" && !installView.supported) ||
+          installView.kind === "unreadable"
+            ? undefined
+            : openCodeInstallationReadiness(installView),
+        [antigravityAgent.setup.installation.id]: (provider) => {
+          if (
+            provider?.installed &&
+            provider.auth.status === "authenticated" &&
+            provider.status !== "error"
+          )
+            return undefined;
+          if (!antigravity.error && !antigravity.state?.inspection)
+            return { problem: { kind: "checking" } };
+          const installation = antigravityInstallationReadiness(antigravity, provider?.instanceId);
+          if (installation || provider) return installation;
+          return { problem: { kind: "not-connected" }, found: true };
+        },
+      },
+    },
     acpAgents: acp.settings
       ? acp.settings.instances.map((instance) => ({
           id: instance.id,
@@ -176,8 +169,6 @@ export function useFirstRunAgents() {
       : acp.loadError
         ? []
         : null,
-    codex: components.state?.components.find(({ id }) => id === "codex"),
-    claudeCode: components.state?.components.find(({ id }) => id === "claude-code"),
     providerKeys: providerKeys.settings?.connections ?? (providerKeys.loadError ? [] : null),
   };
   const rows = firstRunAgentRows(inputs, intl);
@@ -198,13 +189,11 @@ export function useFirstRunAgents() {
 
   const run = async (action: NonNullable<FirstRunAgentRow["action"]>) => {
     switch (action.kind) {
-      case "codex-sign-in": {
-        const login = await codexActions.startChatGptLogin();
-        if (login.type === "chatgpt" && login.authUrl) window.open(login.authUrl, "_blank");
+      case "browser-sign-in":
+        if (action.sourceId === browserSignIn.owner) await browserSignIn.begin();
         return;
-      }
-      case "codex-cancel-sign-in":
-        if (pendingLogin) await codexActions.cancelLogin(pendingLogin.loginId);
+      case "cancel-browser-sign-in":
+        await browserSignIn.cancel();
         return;
       case "nodex-sign-in":
         nodexAccount.act("signIn");
@@ -212,18 +201,19 @@ export function useFirstRunAgents() {
       case "nodex-cancel-sign-in":
         nodexAccount.act("cancelSignIn");
         return;
-      case "opencode-install":
-        openOpenCodeInstallDialog(appHandle, { owner: openCodeSetupOwner });
+      case "installer":
+        if (action.sourceId === openCodeAgent.setup.installation.id)
+          openOpenCodeInstallDialog(appHandle, { owner: openCodeSetupOwner });
         return;
-      case "opencode-use":
+      case "use-free-models":
         await policy.updateSettings(
           (providers.data ?? [])
-            .filter((provider) => OPENCODE_DRIVERS.includes(provider.driver))
+            .filter((provider) => sameAgentDriver(provider.driver, action.binding?.driver ?? ""))
             .reduce(withFreeModelsOn, policy.settings),
         );
         publishAgentCatalogRefresh();
         return;
-      case "acp-connect":
+      case "connect":
         if (action.target) acpAgentsOwner.connect(action.target);
         return;
       case "check-again":
@@ -238,10 +228,11 @@ export function useFirstRunAgents() {
       case "component-retry":
         if (action.componentId) await components.retry(action.componentId);
         return;
-      case "claude-sign-in":
-      case "claude-install":
-      case "acp-sign-in":
-      case "antigravity-settings":
+      case "agent-settings":
+      case "terminal-sign-in":
+      case "terminal-install":
+      case "inline-sign-in":
+
       case "api-key-add":
         return;
     }
@@ -266,9 +257,8 @@ export function useFirstRunAgents() {
           cause,
         ),
       ),
-    useCodexApiKey: async (apiKey: string) => {
-      await codexActions.startApiKeyLogin(apiKey);
-      await codexAccounts.loadAccount();
+    useBrowserApiKey: async (apiKey: string) => {
+      await browserSignIn.submitKey(apiKey);
       await refresh();
     },
   };

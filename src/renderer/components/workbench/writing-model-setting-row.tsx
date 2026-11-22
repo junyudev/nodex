@@ -1,7 +1,6 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import type { AgentRuntimeWritingModel } from "../../../shared/agent-runtime-settings";
 import { AgentModelPicker } from "@/components/shared/agent-runtime/agent-model-picker";
 import { AgentProviderIcon } from "@/components/shared/icons";
@@ -93,7 +92,7 @@ export function WritingModelSettingRow() {
           }
           models={[]}
           selection={{
-            kind: picker.selected.binding.kind,
+            kind: picker.selected.binding.driver,
             model: picker.selected.model,
             reasoningEffort: "default",
             serviceTier: null,
@@ -111,7 +110,7 @@ export function WritingModelSettingRow() {
                   })
                 : null,
             choose: async (selection) => {
-              const instanceId = agentRuntimeProviderId(selection.binding);
+              const instanceId = selection.binding.instanceId;
               if (instanceId) await save({ instanceId, model: selection.model });
             },
             refresh,

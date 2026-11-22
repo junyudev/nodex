@@ -35,3 +35,8 @@ test("device-wide queries and commands run on this desktop in every Space", () =
   ] as const)
     expect(isSpaceIpcChannel(channel), channel).toBe(true);
 });
+
+test("keeps built-in Agent profile settings on this Desktop", () => {
+  expect(isSpaceIpcChannel("settings:agent-profiles:get")).toBe(false);
+  expect(isSpaceIpcChannel("settings:agent-profiles:update")).toBe(false);
+});

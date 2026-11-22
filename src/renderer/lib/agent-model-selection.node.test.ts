@@ -27,12 +27,12 @@ const memory = {
 
 describe("runtime model choices", () => {
   test("keeps identical model IDs and ACP definition IDs distinct", () => {
-    expect(agentModelKey({ kind: "opencode", instanceConfigId: "a" }, "model")).not.toBe(
-      agentModelKey({ kind: "opencode", instanceConfigId: "b" }, "model"),
+    expect(agentModelKey({ driver: "opencode", instanceId: "a" }, "model")).not.toBe(
+      agentModelKey({ driver: "opencode", instanceId: "b" }, "model"),
     );
-    expect(
-      agentBindingKey({ kind: "acp", instanceConfigId: null, agentDefinitionId: "a" }),
-    ).not.toBe(agentBindingKey({ kind: "acp", instanceConfigId: null, agentDefinitionId: "b" }));
+    expect(agentBindingKey({ driver: "acpRegistry", instanceId: "a" })).not.toBe(
+      agentBindingKey({ driver: "acpRegistry", instanceId: "b" }),
+    );
   });
   test("uses exact-model options, retaining only supported values and native mode IDs", () => {
     const catalog = modelCatalog({
@@ -61,7 +61,7 @@ describe("runtime model choices", () => {
     });
     expect(
       selectAgentCatalogModel(catalog, "moonshot/kimi-k3", {
-        binding: { kind: "opencode", instanceConfigId: "other" },
+        binding: { driver: "opencode", instanceId: "other" },
         model: "moonshot/kimi-k3",
         options: [
           { id: "variant", value: "deep" },
@@ -82,15 +82,18 @@ describe("runtime model choices", () => {
 
 describe("runtime qualifiers", () => {
   test("branded runtimes rely on their mark unless the instance label distinguishes them", () => {
-    expect(agentRuntimeQualifier({ kind: "codex" }, "Codex")).toBeNull();
-    const claude = { kind: "claude", instanceConfigId: "claude-default" } as const;
+    expect(agentRuntimeQualifier({ driver: "codex" }, "Codex")).toBeNull();
+    const claude = {
+      driver: "claudeAgent",
+      instanceId: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
+    } as const;
     expect(agentRuntimeQualifier(claude, "Claude Code")).toBeNull();
     expect(agentRuntimeQualifier(claude, " claude ")).toBeNull();
     expect(agentRuntimeQualifier(claude, "Work")).toBe("Work");
   });
 
   test("unbranded runtimes always name their instance", () => {
-    const opencode = { kind: "opencode", instanceConfigId: "local" } as const;
+    const opencode = { driver: "opencode", instanceId: "local" } as const;
     expect(agentRuntimeQualifier(opencode, "Local · Moonshot")).toBe("Local · Moonshot");
     expect(agentRuntimeQualifier(opencode, "Codex")).toBe("Codex");
     expect(agentRuntimeQualifier(opencode, "  ")).toBeNull();

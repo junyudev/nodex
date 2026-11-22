@@ -59,12 +59,8 @@ it.effect("routes ephemeral Threads before the durable Workspace authority", () 
                   thread: {
                     backend_binding:
                       read.thread_id === "thread:acp"
-                        ? {
-                            kind: "acp",
-                            agent_definition_id: "claude-code",
-                            instance_config_id: null,
-                          }
-                        : { kind: "codex" },
+                        ? { driver: "acpRegistry", instanceId: "claude-code" }
+                        : { driver: "codex", instanceId: "codex" },
                     execution_host_id: "remote-durable",
                   },
                 },

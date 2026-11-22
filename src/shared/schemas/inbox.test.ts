@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createBoundedOperationId } from "../operation-identity";
-import { agentRuntimeProviderId } from "../agent-runtime-provider";
 import { decodeInboxAgentBinding, encodeInboxAgentBinding } from "../inbox";
 import {
   InboxEditInputSchema,
@@ -166,9 +165,9 @@ describe("Inbox boundary contracts", () => {
   });
 
   it("reads old native preferences once and stores the exact Runtime instance", () => {
-    const instanceId = agentRuntimeProviderId({ kind: "claude", instanceConfigId: "work-account" });
+    const instanceId = "claude_iJACJTZcFKaFWz0p48xwDri-6ogddDyhfxSQXY-Fn4Y";
     expect(decodeInboxAgentBinding("claude:work-account")).toEqual({ instanceId });
-    expect(encodeInboxAgentBinding({ instanceId: instanceId! })).toBe(instanceId);
+    expect(encodeInboxAgentBinding({ instanceId })).toBe(instanceId);
     expect(decodeInboxAgentBinding("codex")).toEqual({ instanceId: "codex" });
     expect(decodeInboxAgentBinding("claude:")).toBeNull();
   });

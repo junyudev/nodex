@@ -35,7 +35,7 @@ const definition = (input: {
   model: null,
   reasoning_effort: null,
   service_tier: null,
-  backend_binding: { kind: "codex" },
+  backend_binding: { driver: "codex", instanceId: "codex" },
   cwds: [],
   execution_environment: "local",
   local_environment_config_path: null,

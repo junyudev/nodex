@@ -10,7 +10,7 @@ import * as Layer from "effect/Layer";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { ClaudeSdk, live, claudeHistoryImage, claudeHistoryToolOutput } from "./ClaudeSdk";
-import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
+import { claudeProfile } from "../../../shared/agents/profile.test-fixtures";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
 const sdkLayer = live.pipe(
@@ -39,7 +39,7 @@ it.effect("native home identity survives creating its missing directory under a 
     yield* Effect.promise(() => symlink(physicalParent, alias, "dir"));
     const configDirectory = join(alias, "nested", "claude");
     const input = {
-      instance: { ...defaultClaudeInstance(), configDirectory },
+      instance: claudeProfile({ settings: { configDirectory, customModels: [] } }),
       environment: { HOME: root },
     };
     const sdk = yield* ClaudeSdk;
@@ -68,7 +68,7 @@ it.effect("native home rejects relative paths and non-directory ancestors", () =
     for (const configDirectory of [file, join(file, "claude")]) {
       const result = yield* Effect.result(
         sdk.nativeHome({
-          instance: { ...defaultClaudeInstance(), configDirectory },
+          instance: claudeProfile({ settings: { configDirectory, customModels: [] } }),
           environment: { HOME: root },
         }),
       );
@@ -76,7 +76,7 @@ it.effect("native home rejects relative paths and non-directory ancestors", () =
     }
     const relative = yield* Effect.result(
       sdk.nativeHome({
-        instance: defaultClaudeInstance(),
+        instance: claudeProfile(),
         environment: { HOME: root, CLAUDE_CONFIG_DIR: "relative/claude" },
       }),
     );
@@ -159,7 +159,7 @@ it.effect(
             ),
           );
           return {
-            instance: { ...defaultClaudeInstance(), configDirectory },
+            instance: claudeProfile({ settings: { configDirectory, customModels: [] } }),
             environment: { HOME: root },
             cwd,
             sessionId: id,
@@ -171,7 +171,7 @@ it.effect(
       const sdk = yield* ClaudeSdk;
       const ambient = ambientNativeConfiguration();
       expect(yield* sdk.nativeHome(first)).toBe(
-        yield* Effect.promise(() => realpath(first.instance.configDirectory!)),
+        yield* Effect.promise(() => realpath(first.instance.settings.configDirectory!)),
       );
       const catalogA = yield* sdk.listSessions(first, { offset: 0, limit: 51 });
       const catalogB = yield* sdk.listSessions(second, { offset: 0, limit: 51 });

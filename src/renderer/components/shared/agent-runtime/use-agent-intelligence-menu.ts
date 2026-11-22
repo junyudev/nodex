@@ -1,3 +1,4 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../../shared/agent-backend";
 import { QueryClientContext, QueryObserver } from "@tanstack/react-query";
 import {
   useContext,
@@ -33,7 +34,6 @@ import {
 } from "@/lib/intelligence-effort";
 import { listedModelCatalog } from "@/lib/listed-agent-model-catalog";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
-import { agentRuntimePolicyProvider } from "../../../../shared/agent-runtime-provider";
 import { isClaudeEffortLevel } from "../../../../shared/claude-models";
 import { codexSpeed, type CodexSpeed } from "../../../../shared/codex-service-tier";
 import { isModelOn } from "../../../../shared/model-policy";
@@ -129,7 +129,7 @@ export interface AgentIntelligenceMenu {
   readonly hasOptions: boolean;
 }
 
-const CODEX_AGENT = { binding: { kind: "codex" }, label: "Codex" } as const;
+const CODEX_AGENT = { binding: CODEX_AGENT_BACKEND_BINDING, label: "Codex" } as const;
 const subscribeToNoPolicy = () => () => {};
 const readNoPolicy = () => null;
 
@@ -164,7 +164,7 @@ export function useAgentModelCatalog(
 
   if (supplied) return supplied;
   const agent = props.agent ?? CODEX_AGENT;
-  const provider = agentRuntimePolicyProvider(agent.binding);
+  const provider = agent.binding;
   const models =
     snapshot && provider
       ? props.models.filter(
@@ -306,7 +306,7 @@ function modelChoice(
             defaultMessage: "Turn on and use",
           })
       : (unavailableReason ?? (model.description || model.id)),
-    searchText: `${model.displayName} ${model.id} ${label} ${binding.kind}`,
+    searchText: `${model.displayName} ${model.id} ${label} ${binding.driver}`,
     current: key === selectedKey,
     disabled: !off && unavailableReason !== undefined,
     off,
@@ -402,7 +402,7 @@ export function useAgentIntelligenceMenu(
   const intl = useIntl();
   const { catalog, selection, models, provider, onSelectionChange } = props;
   const isCodex = selection.kind === "codex";
-  const hasNativeEffort = isCodex || selection.kind === "claude";
+  const hasNativeEffort = isCodex || selection.kind === "claudeAgent";
   const native = provider?.nativeIntelligence;
   const { overlay, changeNative } = useNativeIntelligenceWrites(native);
   const currentKey = agentModelKey(catalog.selected.binding, catalog.selected.model);

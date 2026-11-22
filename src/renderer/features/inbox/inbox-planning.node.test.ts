@@ -119,7 +119,7 @@ describe("what suggestions choose a new chat's model among", () => {
       // Free models spend no budget, whatever OpenCode reports.
       { title: "OpenCode free models", summary: expect.any(String), budget: { kind: "free" } },
     ]);
-    expect(models.map((entry) => entry.kind)).toEqual(["codex", "claude", "opencode"]);
+    expect(models.map((entry) => entry.kind)).toEqual(["codex", "claudeAgent", "opencode"]);
   });
 
   test("without the guide, each Agent once with only its budget", () => {

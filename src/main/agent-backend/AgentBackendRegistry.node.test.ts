@@ -1,3 +1,4 @@
+import { antigravityProfile } from "../../shared/agents/profile.test-fixtures";
 import { describe, expect, it } from "vite-plus/test";
 import type { AcpAgentInstanceConfig } from "../../shared/types";
 import { AgentBackendRegistryError, resolveAgentBackendBinding } from "./AgentBackendRegistry";
@@ -23,67 +24,47 @@ describe("AgentBackendRegistry", () => {
   it("resolves the explicit native Codex binding without ACP configuration", () => {
     expect(
       resolveAgentBackendBinding(
-        { kind: "codex" },
+        { driver: "codex", instanceId: "codex" },
         {
-          antigravityAgents: { instances: [] },
-          openCodeAgents: { instances: [] },
-          claudeAgents: { instances: [] },
+          agentProfiles: [],
           acpAgents: { instances: [] },
         },
       ),
     ).toEqual({
       kind: "codex",
-      binding: { kind: "codex" },
+      binding: { driver: "codex", instanceId: "codex" },
       displayName: "Codex",
     });
   });
 
   it("resolves Antigravity only through its own enabled profile", () => {
-    const binding = { kind: "antigravity" as const, instanceConfigId: "work" };
-    const profile = {
-      id: "work",
-      displayName: "Work account",
-      enabled: true,
-      authMethod: "oauth-personal" as const,
-      apiKey: null,
-      hasApiKey: false,
-      binaryPath: "",
-      gcpProject: "",
-      gcpLocation: "",
-    };
+    const binding = { driver: "antigravity" as const, instanceId: "work" };
+    const profile = antigravityProfile({ id: binding.instanceId, displayName: "Work account" });
     const settings = {
-      antigravityAgents: { instances: [profile] },
-      claudeAgents: { instances: [] },
-      openCodeAgents: { instances: [] },
+      agentProfiles: [profile],
       acpAgents: { instances: [] },
     };
     expect(resolveAgentBackendBinding(binding, settings)).toMatchObject({
-      kind: "antigravity",
+      kind: "profile",
       displayName: "Work account",
       binding,
     });
     expect(
       resolveAgentBackendBinding(binding, {
         ...settings,
-        antigravityAgents: { instances: [{ ...profile, enabled: false }] },
+        agentProfiles: [{ ...profile, enabled: false }],
       }),
     ).toMatchObject({ reason: "instance-disabled" });
     expect(
-      resolveAgentBackendBinding({ ...binding, instanceConfigId: "missing" }, settings),
+      resolveAgentBackendBinding({ ...binding, instanceId: "missing" }, settings),
     ).toMatchObject({ reason: "instance-unavailable" });
   });
 
   it("resolves a supported ACP definition only through its enabled matching instance", () => {
     const resolved = resolveAgentBackendBinding(
+      { driver: "acpRegistry", instanceId: "claude-work" },
       {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-work",
-      },
-      {
-        antigravityAgents: { instances: [] },
-        openCodeAgents: { instances: [] },
-        claudeAgents: { instances: [] },
+        agentProfiles: [],
         acpAgents: { instances: [instance()] },
       },
     );
@@ -91,19 +72,14 @@ describe("AgentBackendRegistry", () => {
     expect(resolved).toMatchObject({
       kind: "acp",
       displayName: "Claude Agent",
-      binding: {
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-work",
-      },
-      instance: { id: "claude-work", enabled: true },
+      binding: { driver: "acpRegistry", instanceId: "claude-work" },
+      instance: { id: "claude-work", agentDefinitionId: "claude-agent-acp", enabled: true },
     });
   });
 
   it("accepts arbitrary ACP Agents and keeps instances with identical model names distinct", () => {
     const settings = {
-      antigravityAgents: { instances: [] },
-      openCodeAgents: { instances: [] },
-      claudeAgents: { instances: [] },
+      agentProfiles: [],
       acpAgents: {
         instances: [
           instance({ id: "qoder-personal", agentDefinitionId: "qoder", displayName: "Personal" }),
@@ -113,12 +89,12 @@ describe("AgentBackendRegistry", () => {
     };
     for (const id of ["qoder-personal", "qoder-work"]) {
       const result = resolveAgentBackendBinding(
-        { kind: "acp", agentDefinitionId: "qoder", instanceConfigId: id },
+        { driver: "acpRegistry", instanceId: id },
         settings,
       );
       expect(result).toMatchObject({
         kind: "acp",
-        binding: { instanceConfigId: id },
+        binding: { instanceId: id },
         instance: { id },
       });
     }
@@ -126,46 +102,26 @@ describe("AgentBackendRegistry", () => {
 
   it.each([
     {
-      label: "different definition",
-      binding: { kind: "acp", agentDefinitionId: "unknown", instanceConfigId: "claude-work" },
+      label: "unknown driver with an ACP profile's ID",
+      binding: { driver: "futureAgent", instanceId: "claude-work" },
       instances: [instance()],
-      reason: "instance-definition-mismatch",
+      reason: "unsupported-driver",
     },
     {
-      label: "missing instance identity",
-      binding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: null,
-      },
+      label: "removed instance",
+      binding: { driver: "acpRegistry", instanceId: "missing" },
       instances: [instance()],
-      reason: "instance-required",
+      reason: "instance-unavailable",
     },
     {
       label: "disabled instance",
-      binding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-work",
-      },
+      binding: { driver: "acpRegistry", instanceId: "claude-work" },
       instances: [instance({ enabled: false })],
       reason: "instance-disabled",
     },
-    {
-      label: "mismatched instance definition",
-      binding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: "claude-work",
-      },
-      instances: [instance({ agentDefinitionId: "another-agent" })],
-      reason: "instance-definition-mismatch",
-    },
   ] as const)("fails closed for $label", ({ binding, instances, reason }) => {
     const result = resolveAgentBackendBinding(binding, {
-      antigravityAgents: { instances: [] },
-      openCodeAgents: { instances: [] },
-      claudeAgents: { instances: [] },
+      agentProfiles: [],
       acpAgents: { instances: [...instances] },
     });
 

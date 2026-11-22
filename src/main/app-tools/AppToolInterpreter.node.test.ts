@@ -224,7 +224,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const execute = yield* interpreter();
-      for (const backend of ["claude", "opencode"] as const) {
+      for (const backend of ["claudeAgent", "opencode"] as const) {
         let active = true;
         const authority = {
           threadId: "thread",

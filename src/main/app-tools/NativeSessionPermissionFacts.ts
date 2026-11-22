@@ -22,7 +22,7 @@ export const make = Effect.gen(function* () {
       !session ||
       session.archived ||
       session.executionRef ||
-      session.thread?.backendBinding.kind !== "codex"
+      session.thread?.backendBinding.driver !== "codex"
     )
       return yield* new SessionMessageIntakeError({ message: "Native Session is unavailable" });
     const threadId = session.thread.threadId;

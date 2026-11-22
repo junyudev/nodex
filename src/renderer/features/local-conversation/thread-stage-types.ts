@@ -382,7 +382,7 @@ export interface ConversationProviderPresentation {
   readonly skillsLoading?: boolean;
   readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;
-  readonly kind: "codex" | "claude" | "acp" | "opencode" | "antigravity";
+  readonly kind: string;
   /** The conversation's own speed tier, when it owns one instead of the saved default. */
   readonly serviceTier?: CodexServiceTier;
   readonly label: string;

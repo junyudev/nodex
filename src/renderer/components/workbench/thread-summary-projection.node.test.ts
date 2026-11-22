@@ -14,7 +14,7 @@ describe("projectSessionThreadLinkToSummary", () => {
       projectId: "project_1",
       threadId: "thread_1",
       threadPreview: "Keep the thread-owned profile.",
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       executionHostId: "ssh:builder",
       executionProfile,
       statusType: "idle",

@@ -748,26 +748,29 @@ Antigravity lists models offered by the selected account. The session default re
 available model, and each model shows the thinking levels it has reported. Changing Agents
 and returning restores the model's saved options. See [Antigravity chats](antigravity-agent-behavior.md#chats).
 
+Saved composer choices carry the runtime driver and instance ID alongside their model
+and options. The instance ID is the catalog coordinate even if another Agent advertises
+the same model ID.
+
 ### Agent readiness and failures around the composer
 
-The composer's text field never carries status or error text. What keeps a chat from
-sending is a standing condition, shown as one notice attached above the composer (inset at
-the top of a floating composer): what is wrong in product words, then the Agent's own
-explanation when it names a fix Nodex cannot offer, then the fixes Nodex can, such as
-`Sign in`, `Check again`, `Settings`, `Retry` or `Work locally`. The notice leaves on its
-own once the condition clears. When several hold, the most specific shows: the chat's
-worktree could not be prepared, then the chat could not connect, then the Agents could not
-be listed, then the selected Agent is turned off, signed out, missing or not ready. Sign-in,
-missing and not-ready states come from the Agent's checked state, not from the wording of
-its message, and only signed-out Codex signs in from the notice; completing that sign-in
-checks the Agents again.
+The composer's text field never carries status or error text. The attached notice states the most
+specific standing condition, from worktree preparation or chat connection through loading Agents
+and the readiness of the selected Agent. It leaves when the condition clears.
 
-Only the Agent a chat runs on, or one the person chose, raises a readiness notice. While no
-Agent is usable, the stand-in the composer offers stays quiet: the model picker asks for a
-model and lists turned-on Agents that offer setup there, including Codex, Claude and
-Antigravity. An Antigravity chat reports a missing installation, a checked sign-in failure,
-an empty model catalog or a withdrawn model, with a Settings action for its profile.
-An unchecked sign-in alone leaves sending available.
+The composer, model picker, first-run rows and Settings summaries share an Agent readiness
+model. It reads the Agent's checked account and model state alongside the installer that supplies
+its executable. An Agent can be checking, installing, missing, turned off, too old, signed out,
+unable to reach an account, unresponsive, waiting for a usable model or unable to start. When
+the Agent supplies a useful explanation, the notice can show it below the diagnosis.
+Each problem offers at most one next step for that surface, such as `Sign in`, `Check again`,
+`Settings` or `Try again`. The Agent's definition determines where setup and sign-in happen.
+
+Only the Agent a chat runs on, or one the person chose, raises a standing readiness notice.
+A new chat without a choice asks the person to connect an Agent when nothing can run. The picker
+keeps setup available for turned-on Agents and describes the install state of any models they
+already offered. A Component in progress can hold a selected send while leaving the choice in
+place. An unchecked sign-in alone leaves sending available.
 
 A started chat always shows its composer; only a request that needs an answer takes its
 place. What keeps the chat itself from taking a message holds sending instead: the draft

@@ -59,7 +59,6 @@ import type {
   AgentRuntimeSessionTarget,
   AgentRuntimeTaskCancelInput,
 } from "../../shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
 import {
   agentRuntimeProviderFixture,
@@ -1928,11 +1927,7 @@ it.effect.each(["native-session", " x ", "x", "n".repeat(1024)])(
   "connects an ACP native session after Core admission and returns the existing product Session on repeated import",
   (nativeSessionId) =>
     Effect.gen(function* () {
-      const instanceId = agentRuntimeProviderId({
-        kind: "acp",
-        agentDefinitionId: "qoder",
-        instanceConfigId: "personal",
-      })!;
+      const instanceId = "personal"!;
       const fixture = setup({}, [
         {
           instanceId,
@@ -2001,11 +1996,7 @@ it.effect.each(["", "n".repeat(1025)])(
 );
 it.effect("refuses an ACP import request reused after its native source identity changes", () =>
   Effect.gen(function* () {
-    const instanceId = agentRuntimeProviderId({
-      kind: "acp",
-      agentDefinitionId: "qoder",
-      instanceConfigId: "personal",
-    })!;
+    const instanceId = "personal"!;
     const fixture = setup({}, [
       {
         instanceId,
@@ -2037,7 +2028,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const instanceConfigId = "personal";
-      const instanceId = agentRuntimeProviderId({ kind: "claude", instanceConfigId })!;
+      const instanceId = instanceConfigId!;
       const fixture = setup({}, [
         {
           instanceId,
@@ -6686,7 +6677,7 @@ it.effect(
         thread: {
           threadId: codexImport.nativeSessionId,
           executionHostId: "local",
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           cwd: "/native/work",
           statusType: "idle",
         },
@@ -6744,7 +6735,7 @@ it.effect("refuses an active Native adoption without changing its binding", () =
       thread: {
         threadId: codexImport.nativeSessionId,
         executionHostId: "local",
-        backendBinding: { kind: "codex" },
+        backendBinding: { driver: "codex", instanceId: "codex" },
         cwd: "/native/work",
         statusType: "active",
       },
@@ -7534,7 +7525,7 @@ it.effect.each(["stored", "live", "standard"] as const)(
         thread: {
           threadId: codexImport.nativeSessionId,
           executionHostId: "local",
-          backendBinding: { kind: "codex" },
+          backendBinding: { driver: "codex", instanceId: "codex" },
           cwd: "/native/work",
           statusType: "active",
           executionProfile: { modelId: "model-b", reasoningEffort: "low", serviceTier: "fast" },
@@ -7580,15 +7571,15 @@ it.effect.each(["current", "missing", "account", "home"] as const)(
   "captures passive Claude history with its native identity and choices only from the current profile (%s)",
   (profile) =>
     Effect.gen(function* () {
-      const backendBinding = { kind: "claude" as const, instanceConfigId: "personal" };
-      const instanceId = agentRuntimeProviderId(backendBinding)!;
+      const backendBinding = { driver: "claudeAgent" as const, instanceId: "personal" };
+      const instanceId = backendBinding.instanceId!;
       const f = setup({}, [
         {
           instanceId,
           driver: "claudeAgent",
           enabled: true,
           models: [
-            { slug: "claude-default", isDefault: true },
+            { slug: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks", isDefault: true },
             {
               slug: "claude-current",
               capabilities: {
@@ -7620,7 +7611,7 @@ it.effect.each(["current", "missing", "account", "home"] as const)(
       f.state.nativeBackendSession = {
         threadId: "claude-product-thread",
         backendBinding:
-          profile === "account" ? { ...backendBinding, instanceConfigId: "other" } : backendBinding,
+          profile === "account" ? { ...backendBinding, instanceId: "other" } : backendBinding,
         backendSessionId: codexImport.nativeSessionId,
         nativeHome: profile === "home" ? "/different/claude" : "/native/claude",
         updatedAt: 0,

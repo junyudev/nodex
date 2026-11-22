@@ -38,7 +38,7 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
               if (result.value.kind !== "agent_session") return null;
               const { session, thread } = result.value;
               if (!session.execution_ref)
-                return thread?.backend_binding.kind === "codex" ? thread.thread_id : null;
+                return thread?.backend_binding.driver === "codex" ? thread.thread_id : null;
               if (Option.isNone(application)) return null;
               const target = yield* application.value
                 .inspect({ sessionId })

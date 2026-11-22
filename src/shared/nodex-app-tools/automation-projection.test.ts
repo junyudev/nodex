@@ -65,7 +65,7 @@ describe("native Automation result projection", () => {
   test("keeps an OpenCode Owner-review proposal resolved by the Host", () => {
     const resolved = {
       ...proposal,
-      backendBinding: { kind: "opencode", instanceConfigId: "personal" },
+      backendBinding: { driver: "opencode", instanceId: "personal" },
     };
     const projected = projectNativeAutomationUpdate(
       item({

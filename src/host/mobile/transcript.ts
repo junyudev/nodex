@@ -127,7 +127,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
 
   const nativeWindow = (row: ProjectSession, cursor?: string) =>
     Effect.gen(function* () {
-      if (!row.thread || row.thread.backendBinding.kind !== "codex")
+      if (!row.thread || row.thread.backendBinding.driver !== "codex")
         return { items: [], historyCursor: null };
       if (!resolveNative)
         return yield* Effect.fail(
@@ -348,7 +348,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           !runId ||
           !row.thread ||
           row.thread.threadId !== sourceThreadId ||
-          row.thread.backendBinding.kind !== "codex"
+          row.thread.backendBinding.driver !== "codex"
         )
           return yield* Effect.fail(itemMissing());
         if (!resolveNative)

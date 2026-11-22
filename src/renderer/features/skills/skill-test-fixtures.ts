@@ -40,7 +40,7 @@ export const personalSkills: SkillLocation = {
   scope: "user",
   writable: true,
   exists: false,
-  readers: [{ agent: "claude", instanceId: "claude-default" }],
+  readers: [{ agent: "claude", instanceId: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks" }],
   skills: [],
 };
 export const skillInventory: SkillInventorySnapshot = {

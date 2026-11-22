@@ -1,3 +1,5 @@
+import type { AgentProfile, AgentProfilesUpdate } from "../../shared/agents/profiles";
+import type { ProfileAgentDriver } from "../../shared/agents/registry";
 import type { CodexExecutablePreference } from "../../shared/codex-executable-settings";
 import type { AppComponentId, SetAppComponentEnabledInput } from "../../shared/app-components";
 import * as Redacted from "effect/Redacted";
@@ -28,14 +30,6 @@ import {
 } from "../../shared/usage-meter-settings";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ComposerPredictionSettings } from "../../shared/composer-prediction-settings";
-import type {
-  OpenCodeAgentSettings,
-  UpdateOpenCodeAgentSettingsInput,
-} from "../../shared/opencode-agent-settings";
-import type {
-  AntigravityAgentSettings,
-  UpdateAntigravityAgentSettingsInput,
-} from "../../shared/antigravity-agent-settings";
 import type { InboxSettings, UpdateInboxSettingsInput } from "../../shared/inbox";
 import { createHash } from "node:crypto";
 import * as Context from "effect/Context";
@@ -55,7 +49,6 @@ import {
 } from "../../shared/command-keybindings";
 import type {
   AcpAgentSettings,
-  ClaudeAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -70,7 +63,6 @@ import type {
   ThreadNotificationSettings,
   UpdateAppUpdateSettingsInput,
   UpdateAcpAgentSettingsInput,
-  UpdateClaudeAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexExecutionHostSettingsInput,
@@ -86,19 +78,15 @@ import type {
 import { MainConfig } from "../app/MainConfig";
 import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
-  getOpenCodeAgentSettings,
-  getAntigravityAgentSettings,
-  getAntigravityLaunchConfiguration,
-  updateAntigravityAgentSettings,
-  getOpenCodeLaunchConfiguration,
-  updateOpenCodeAgentSettings,
+  migrateProfileAgentProfiles,
+  getAgentProfiles,
+  getAgentProfileLaunchConfiguration,
+  updateAgentProfiles,
   getAcpAgentSettings,
   getAcpLaunchConfiguration,
-  getClaudeAgentSettings,
   getProviderKeySettings,
   getProviderKeySecret,
   updateProviderKeySettings,
-  getClaudeLaunchConfiguration,
   getAppUpdateSettings,
   getDisabledAppComponents,
   preserveLegacyNightlyChannel,
@@ -130,7 +118,6 @@ import {
   updateAppUpdateSettings,
   updateAppComponentPreference,
   updateAcpAgentSettings,
-  updateClaudeAgentSettings,
   updateBackupSettings,
   updateCodexDeveloperInstructionSettings,
   updateCodexExecutionHostSettings,
@@ -165,10 +152,8 @@ export interface ApplicationSettingsSnapshot {
   readonly managedWorktrees: ManagedWorktreeSettings;
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
-  readonly claudeAgents: ClaudeAgentSettings;
+  readonly agentProfiles: AgentProfile[];
   readonly providerKeys: ProviderKeySettings;
-  readonly openCodeAgents: OpenCodeAgentSettings;
-  readonly antigravityAgents: AntigravityAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly disabledAppComponents: readonly AppComponentId[];
@@ -213,13 +198,8 @@ export type ApplicationSettingsCommand =
       readonly input: UpdateCodexExecutionHostSettingsInput;
     }
   | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
-  | { readonly type: "update-opencode-agents"; readonly input: UpdateOpenCodeAgentSettingsInput }
-  | {
-      readonly type: "update-antigravity-agents";
-      readonly input: UpdateAntigravityAgentSettingsInput;
-    }
+  | { readonly type: "update-agent-profiles"; readonly input: AgentProfilesUpdate }
   | { readonly type: "update-provider-keys"; readonly input: ProviderKeySettingsMutation }
-  | { readonly type: "update-claude-agents"; readonly input: UpdateClaudeAgentSettingsInput }
   | {
       readonly type: "update-command-keybinding";
       readonly commandId: string;
@@ -264,21 +244,16 @@ export class ApplicationSettings extends Context.Service<
     readonly acpLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getAcpLaunchConfiguration>, ApplicationSettingsError>;
-    readonly openCodeLaunchConfiguration: (
-      instanceId: string,
-    ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
-    readonly antigravityLaunchConfiguration: (
+    readonly agentProfileLaunchConfiguration: <Driver extends ProfileAgentDriver>(
+      driver: Driver,
       instanceId: string,
     ) => Effect.Effect<
-      ReturnType<typeof getAntigravityLaunchConfiguration>,
+      ReturnType<typeof getAgentProfileLaunchConfiguration<Driver>>,
       ApplicationSettingsError
     >;
     readonly providerKeySecret: (
       id: string,
     ) => Effect.Effect<Redacted.Redacted, ApplicationSettingsError>;
-    readonly claudeLaunchConfiguration: (
-      instanceId: string,
-    ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
     readonly pluginScopes?: Effect.Effect<
       Readonly<Record<string, PluginProjectScope>>,
       ApplicationSettingsError
@@ -340,6 +315,7 @@ export function prepareCommandKeymapMutation(
 }
 
 function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSettingsSnapshot {
+  migrateProfileAgentProfiles(source);
   const document = readSettingsTomlDocumentSnapshot(source.settingsPath);
   const snapshotSource: ApplicationSettingsDocumentSource = {
     ...source,
@@ -347,6 +323,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
   };
   const codexHome = getCodexHomeSettings(snapshotSource);
   const executable = getCodexExecutable(snapshotSource);
+  const agentProfiles = getAgentProfiles(snapshotSource);
   return {
     revision: document.bytes
       ? createHash("sha256").update(document.bytes).digest("hex")
@@ -368,10 +345,8 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     managedWorktrees: getManagedWorktreeSettings(snapshotSource),
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
-    claudeAgents: getClaudeAgentSettings(snapshotSource),
+    agentProfiles,
     providerKeys: getProviderKeySettings(snapshotSource),
-    openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
-    antigravityAgents: getAntigravityAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource),
     disabledAppComponents: getDisabledAppComponents(snapshotSource),
@@ -425,11 +400,8 @@ function applyCommand(
     case "update-execution-hosts":
       updateCodexExecutionHostSettings(command.input, source);
       return;
-    case "update-antigravity-agents":
-      updateAntigravityAgentSettings(command.input, source);
-      return;
-    case "update-opencode-agents":
-      updateOpenCodeAgentSettings(command.input, source);
+    case "update-agent-profiles":
+      updateAgentProfiles(command.input, source);
       return;
     case "update-provider-keys":
       updateProviderKeySettings(
@@ -441,9 +413,6 @@ function applyCommand(
             },
         source,
       );
-      return;
-    case "update-claude-agents":
-      updateClaudeAgentSettings(command.input, source);
       return;
     case "update-acp-agents":
       updateAcpAgentSettings(command.input, source);
@@ -592,27 +561,15 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       writes.withPermits(1)(
         attempt("acp-launch-configuration", () => getAcpLaunchConfiguration(source, instanceId)),
       ),
-    openCodeLaunchConfiguration: (instanceId) =>
-      writes.withPermits(1)(
-        attempt("opencode-launch-configuration", () =>
-          getOpenCodeLaunchConfiguration(source, instanceId),
-        ),
-      ),
-    antigravityLaunchConfiguration: (instanceId) =>
-      writes.withPermits(1)(
-        attempt("antigravity-launch-configuration", () =>
-          getAntigravityLaunchConfiguration(source, instanceId),
+    agentProfileLaunchConfiguration: (driver, instanceId) =>
+      writes.withPermit(
+        attempt("agent-profile-launch-configuration", () =>
+          getAgentProfileLaunchConfiguration(source, driver, instanceId),
         ),
       ),
     providerKeySecret: (id) =>
       writes.withPermit(
         attempt("provider-key-secret", () => Redacted.make(getProviderKeySecret(source, id))),
-      ),
-    claudeLaunchConfiguration: (instanceId) =>
-      writes.withPermits(1)(
-        attempt("claude-launch-configuration", () =>
-          getClaudeLaunchConfiguration(source, instanceId),
-        ),
       ),
     pluginScopes: writes.withPermits(1)(
       attempt("read-plugin-scopes", () => readPluginScopes(source)),

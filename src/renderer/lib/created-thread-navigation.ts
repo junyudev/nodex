@@ -66,7 +66,7 @@ function isConfirmedRoot(
 ): session is ProjectSession {
   return (
     session !== null &&
-    session.thread?.backendBinding.kind === "codex" &&
+    session.thread?.backendBinding.driver === "codex" &&
     session.thread.threadId === threadId &&
     session.thread.executionHostId === hostId &&
     !session.thread.parentThreadId

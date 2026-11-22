@@ -66,7 +66,7 @@ function ConversationReference({
   const agent = useAgentIdentity(identity.agent);
   const reference = (
     <>
-      {agent?.kind ? <AgentProviderIcon kind={agent.kind} className="size-3 shrink-0" /> : null}
+      {agent?.driver ? <AgentProviderIcon kind={agent.driver} className="size-3 shrink-0" /> : null}
       <span className="min-w-0 truncate">{identity.title}</span>
     </>
   );

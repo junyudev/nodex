@@ -1,37 +1,14 @@
-import type { AgentBackendKind, ConversationAgent } from "../../../shared/conversation-identity";
+import { agentDefinition } from "../../../shared/agents/registry";
+import type { ConversationAgent } from "../../../shared/conversation-identity";
 import { formatAgentModelName, formatCodexModelLabel } from "../../lib/codex-thread-settings";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { agentEffortLabel } from "../../lib/agent-runtime-model-selection";
 import type { AgentRuntimeProviderLabel } from "./agent-runtime-delegated-tasks";
 
-/** Each harness's own name, for an Agent whose configured name is not loaded. */
-const HARNESS_NAMES: Record<AgentBackendKind, string | null> = {
-  codex: "Codex",
-  claude: "Claude Code",
-  opencode: "OpenCode",
-  antigravity: "Antigravity",
-  acp: null,
-};
-
-/**
- * Each harness's accent, for marks that tell Agents apart where their glyphs cannot reach, such as
- * the edges of a diagram. An Agent without a harness of its own stays neutral.
- */
-const HARNESS_ACCENTS: Record<AgentBackendKind, string | null> = {
-  codex: "#8e9bff",
-  claude: "#d97757",
-  opencode: "#e7b549",
-  antigravity: "#4fbf8b",
-  acp: null,
-};
-
-export function agentHarnessAccent(kind: AgentBackendKind | null): string | null {
-  return kind ? HARNESS_ACCENTS[kind] : null;
-}
-
 /** An Agent as people read it: its mark, its configured name, the model and the effort. */
 export interface AgentIdentityPresentation {
-  readonly kind: AgentBackendKind | null;
+  readonly driver: string | null;
+  readonly accent: string | null;
   readonly agentName: string | null;
   readonly modelName: string | null;
   readonly effortName: string | null;
@@ -43,17 +20,23 @@ export function presentAgentIdentity(
   intl: IntlShape = getIntl(),
 ): AgentIdentityPresentation {
   const configured = agent.providerInstanceId ? labels.get(agent.providerInstanceId) : undefined;
-  const kind = agent.kind ?? configured?.kind ?? null;
+  const driver = agent.kind ?? configured?.kind ?? null;
+  const definition = driver ? agentDefinition(driver) : null;
+  const label =
+    definition?.conversationLabel === undefined
+      ? (definition?.label ?? null)
+      : definition.conversationLabel;
   const catalogName = agent.model ? configured?.models.get(agent.model) : undefined;
   return {
-    kind,
-    agentName: configured?.label ?? (kind ? HARNESS_NAMES[kind] : null),
+    driver,
+    accent: definition?.accent ?? null,
+    agentName: configured?.label ?? label,
     modelName: agent.model
       ? catalogName
         ? formatAgentModelName(catalogName)
         : formatCodexModelLabel(agent.model, [])
       : null,
-    effortName: agent.effort ? agentEffortLabel(kind ?? "codex", agent.effort, intl) : null,
+    effortName: agent.effort ? agentEffortLabel(driver ?? "codex", agent.effort, intl) : null,
   };
 }
 

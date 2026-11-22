@@ -151,6 +151,10 @@ model state.
 
 ## Settings and Composer
 
+The model picker and first-run use [Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
+to distinguish installing, connecting and signing in. The Registry owns the setup dialog and keeps
+connection discovery independent of installation.
+
 Settings > Agents > Other agents lists ACP Agents one row per instance: name, its command or
 Registry source, one status with the next step (Install, Connect, Sign in or Cancel), and an on/off
 switch that saves immediately. Statuses follow the instance's discovery state: Ready with the model

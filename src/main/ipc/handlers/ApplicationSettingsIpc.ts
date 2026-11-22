@@ -1,3 +1,8 @@
+import {
+  agentProfilesFor,
+  parseAgentProfileDriver,
+  parseAgentProfilesUpdate,
+} from "../../../shared/agents/profiles";
 import release from "../../../../resources/agent-runtime/codex-app-server.lock.json";
 import type { CodexExecutablePreference } from "../../../shared/codex-executable-settings";
 import { CodexExecutableUpdateSchema } from "../../../shared/codex-executable-settings";
@@ -23,8 +28,6 @@ import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
 } from "../../../shared/composer-prediction-settings";
-import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
-import { AntigravityAgentSettingsUpdateSchema } from "../../../shared/antigravity-agent-settings";
 import { APP_LOCALES } from "../../../shared/i18n/locales";
 import {
   activateElectronLanguagePreference,
@@ -39,7 +42,6 @@ import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcApi } from "../../../shared/ipc-api";
-import { ClaudeAgentSettingsUpdateSchema } from "../../../shared/claude-agent-settings";
 import { CodexHomeSettingsUpdateSchema } from "../../../shared/codex-home-settings";
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
@@ -97,9 +99,6 @@ export class ApplicationSettingsIpcError extends Schema.TaggedError<ApplicationS
 type SettingsReadChannel =
   | "codex-command-keymap-state"
   | "settings:acp-agents:get"
-  | "settings:claude-agents:get"
-  | "settings:opencode-agents:get"
-  | "settings:antigravity-agents:get"
   | "settings:codex-home:get"
   | "settings:backup:get"
   | "settings:diagnostics:get"
@@ -293,9 +292,7 @@ export const live: Layer.Layer<
     ) =>
       applicationSettings.update(command).pipe(
         Effect.tap(() =>
-          command.type === "update-claude-agents" ||
-          command.type === "update-opencode-agents" ||
-          command.type === "update-antigravity-agents"
+          command.type === "update-agent-profiles"
             ? runtimeProviders.refresh.pipe(
                 Effect.catch(() =>
                   Effect.logWarning(
@@ -416,84 +413,27 @@ export const live: Layer.Layer<
         Effect.tap((value) => schedulers.configureBackup(value)),
       ),
     );
-    yield* handleRead(
-      "settings:opencode-agents:get",
-      "OpenCode settings",
-      (value) => value.openCodeAgents,
-    );
-    yield* ipc.handlePlainCommand("settings:opencode-agents:update", (event, input: unknown) =>
-      authorize(event, "OpenCode settings").pipe(
-        Effect.andThen(
-          parse("parse-opencode-agent-settings", () =>
-            OpenCodeAgentSettingsUpdateSchema.parse(input),
-          ),
+    yield* ipc.handleQuery("settings:agent-profiles:get", (event, driver: unknown) =>
+      authorize(event, "Agent profiles").pipe(
+        Effect.andThen(parse("parse-agent-profile-driver", () => parseAgentProfileDriver(driver))),
+        Effect.flatMap((driver) =>
+          read("read-agent-profiles", (value) => ({
+            instances: agentProfilesFor(value.agentProfiles, driver),
+          })),
         ),
-        Effect.flatMap((parsed) =>
-          update(
-            "update-opencode-agent-settings",
-            { type: "update-opencode-agents", input: parsed },
-            (value) => value.openCodeAgents,
-          ),
+      ),
+    );
+    yield* ipc.handlePlainCommand("settings:agent-profiles:update", (event, input: unknown) =>
+      authorize(event, "Agent profiles").pipe(
+        Effect.andThen(parse("parse-agent-profiles", () => parseAgentProfilesUpdate(input))),
+        Effect.flatMap((input) =>
+          update("update-agent-profiles", { type: "update-agent-profiles", input }, (value) => ({
+            instances: agentProfilesFor(value.agentProfiles, input.driver),
+          })),
         ),
         Effect.tap(() =>
           Effect.sync(() =>
             safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
-          ),
-        ),
-      ),
-    );
-    yield* handleRead(
-      "settings:antigravity-agents:get",
-      "Antigravity settings",
-      (value) => value.antigravityAgents,
-    );
-    yield* ipc.handlePlainCommand("settings:antigravity-agents:update", (event, input: unknown) =>
-      authorize(event, "Antigravity settings").pipe(
-        Effect.andThen(
-          parse("parse-antigravity-agent-settings", () =>
-            AntigravityAgentSettingsUpdateSchema.parse(input),
-          ),
-        ),
-        Effect.flatMap((parsed) =>
-          update(
-            "update-antigravity-agent-settings",
-            { type: "update-antigravity-agents", input: parsed },
-            (value) => value.antigravityAgents,
-          ),
-        ),
-        Effect.tap(() =>
-          Effect.sync(() =>
-            safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
-          ),
-        ),
-      ),
-    );
-    yield* handleRead(
-      "settings:claude-agents:get",
-      "Claude Code settings",
-      (value) => value.claudeAgents,
-    );
-    yield* ipc.handlePlainCommand("settings:claude-agents:update", (event, input: unknown) =>
-      authorize(event, "Claude Code settings").pipe(
-        Effect.andThen(
-          parse("parse-claude-agent-settings", () => {
-            const parsed = ClaudeAgentSettingsUpdateSchema.safeParse(input);
-            if (!parsed.success) throw new Error("Invalid Claude Code settings.");
-            return parsed.data;
-          }),
-        ),
-        Effect.flatMap((parsed) =>
-          update(
-            "update-claude-agent-settings",
-            { type: "update-claude-agents", input: parsed },
-            (value) => value.claudeAgents,
-          ).pipe(
-            Effect.tap(() =>
-              Effect.sync(() => {
-                safeBroadcastToWindows(windows.all(), "claude-agent-settings-changed", [undefined]);
-                safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]);
-              }),
-            ),
           ),
         ),
       ),

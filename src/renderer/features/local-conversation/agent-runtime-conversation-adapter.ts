@@ -1,16 +1,14 @@
+import { componentReadinessLabel } from "../app-components/provider-component-setup";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
+import { agentDefinition } from "../../../shared/agents/registry";
 import { NEW_CHAT_TITLE } from "../../../shared/session-title";
 import { formatComposerSkillDisplayName } from "../../../shared/composer-skill-display";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { agentRuntimeImageInputUnavailableMessage } from "../../../shared/agent-runtime-image-input";
-import type { AppComponentId } from "../../../shared/app-components";
 import { useModelPolicy } from "../model-policy/model-policy";
-import { APP_COMPONENTS_SETTINGS_ANCHOR } from "../app-components/app-components-settings-section";
-import { providerComponentSetup } from "../app-components/provider-component-setup";
-import {
-  runAppComponentChange,
-  subscribeProviderComponentReadiness,
-  useAppComponents,
-} from "../app-components/use-app-components";
+import { subscribeProviderComponentReadiness } from "../app-components/use-app-components";
+import { useComposerAgentSetup } from "../agent-readiness/use-composer-agent-setup";
+import { agentReadinessView } from "@/lib/agent-readiness-view";
 import {
   buildSettingsAnchorPath,
   buildSettingsPath,
@@ -78,8 +76,6 @@ import type {
 import {
   agentRuntimeModelSelection,
   agentRuntimeModelSelectionsEqual,
-  agentRuntimePolicyProvider,
-  agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   fitAgentRuntimeServiceTier,
   isAgentRuntimeEffortOption,
@@ -135,46 +131,28 @@ import type {
   ThreadStageActions,
   ConversationProviderPresentation,
 } from "./thread-stage-types";
-import type {
-  AgentModelPickerEntry,
-  AgentModelSetupPresentation,
-} from "../../components/shared/agent-runtime/agent-model-picker";
+import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
-import {
-  setLocalConversationThreadPresented,
-  useDefaultCodexAppServerManager,
-} from "./local-conversation-store";
+import { setLocalConversationThreadPresented } from "./local-conversation-store";
 import { resolveComposerInventoryIconUrl } from "../../../shared/codex-composer-inventory-icon";
 import { spaceQueryKey } from "@/lib/renderer-space";
 import { subscribeComposerSkillInvalidation } from "@/lib/skill-inventory-adapter";
 import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
 import { useFirstRunEntry, useNotificationOffer } from "@/features/first-run/first-run-state";
-import {
-  agentReadinessNotice,
-  agentReadinessProblem,
-  agentReadinessSetupHint,
-  antigravityReadinessMessage,
-  antigravityReadinessNotice,
-  isAgentUnchecked,
-  connectAgentNotice,
-} from "./agent-readiness-notice";
+import { agentReadinessNotice, connectAgentNotice } from "./agent-readiness-notice";
 import { useWindowsSandboxSetup } from "./use-windows-sandbox-setup";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
-import { toastFailure } from "../../lib/failure-toast";
-import { useCodexAccountActions } from "../../lib/use-codex-account-actions";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
   agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
 } from "./agent-runtime-delegated-tasks";
 import { useAgentRuntimeBackgroundTasks } from "./agent-runtime-background-tasks";
-import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
-import { useAcpComposerSetup } from "../acp-agents/use-acp-composer-setup";
 import {
   acpImportedHistoryEmptyState,
   acpPendingImportedHistory,
 } from "../acp-agents/acp-agent-model";
-import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeActivityStore,
@@ -267,7 +245,7 @@ export interface AgentRuntimeRunStops {
 
 /** A product view over the engine read owner. Session identity remains the command boundary. */
 export function createAgentRuntimeConversationRuntime(
-  kind: AgentBackendBinding["kind"],
+  kind: AgentBackendBinding["driver"],
   target: AgentRuntimeSessionTarget | null,
   owner: AgentRuntimeConversationOwner | null,
   /** Absent for a chat on this computer, whose only Member stops all of its work. */
@@ -1116,22 +1094,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   const queryClient = useQueryClient();
   const nodexAccount = useNodexAccount(true);
   const modelPolicyState = useModelPolicy();
-  const components = useAppComponents();
   const hosted = isHostedChat();
-  const componentFor = (provider: AgentRuntimeProvider | undefined) => {
-    if (hosted || !provider || provider.componentUnavailableReason === "external-unusable")
-      return undefined;
-    const id = provider.requiredComponent ?? (provider.driver === "codex" ? "codex" : undefined);
-    return components.state?.components.find((entry) => entry.id === id);
-  };
-  const codexOnDemand = (provider: AgentRuntimeProvider | undefined) => {
-    const component = componentFor(provider);
-    return (
-      provider?.requiredComponent === "codex" &&
-      component?.enabled &&
-      component.installation.status === "on-demand"
-    );
-  };
   const [catalogState, setCatalogState] = useState<{
     providers: readonly AgentRuntimeProvider[];
     loading: boolean;
@@ -1150,10 +1113,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     });
   const reloadCatalog = () =>
     setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
-  // A newly usable host OpenCode reloads the catalog; the chosen model is never replaced.
-  const openCodeSetup = useOpenCodeModelSetup({
+  const agentSetup = useComposerAgentSetup({
+    hosted,
     instances: input.instances,
-    onReady: refreshCatalog,
+    refreshCatalog,
+    checkCatalogAgain,
   });
   useEffect(() => {
     if (hosted) return;
@@ -1188,23 +1152,6 @@ export function useAgentRuntimeConversationAdapter(input: {
     [queryClient],
   );
   const { connectAgent } = useFirstRunEntry();
-  // Signing in to Codex from the composer finishes in the browser; the new account checks the
-  // Agents again so the composer can send without a manual refresh.
-  const codexAccounts = useDefaultCodexAppServerManager();
-  const codexAccountActions = useCodexAccountActions();
-  useEffect(() => {
-    let signedIn = Boolean(codexAccounts.readAccount()?.account);
-    return codexAccounts.subscribeAccount(() => {
-      const nowSignedIn = Boolean(codexAccounts.readAccount()?.account);
-      if (nowSignedIn && !signedIn)
-        setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
-      signedIn = nowSignedIn;
-    });
-  }, [codexAccounts]);
-  const signInToCodex = async () => {
-    const login = await codexAccountActions.startChatGptLogin();
-    if (login.type === "chatgpt" && login.authUrl) window.open(login.authUrl, "_blank");
-  };
   useEffect(() => {
     let active = true;
     const load = agentRuntimeRuntime
@@ -1213,10 +1160,8 @@ export function useAgentRuntimeConversationAdapter(input: {
         projectModelPolicyCatalog(providers, modelPolicyState.settings).filter(
           (provider) =>
             isManagedRuntimeInstanceId(provider.instanceId) ||
-            provider.instanceId === "codex" ||
-            input.instances.some(
-              (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
-            ),
+            !agentDefinition(provider.driver).profileBased ||
+            input.instances.some((instance) => instance.binding.instanceId === provider.instanceId),
         ),
       );
     catalogLoad.current = load;
@@ -1239,20 +1184,24 @@ export function useAgentRuntimeConversationAdapter(input: {
       active = false;
     };
   }, [catalogRequest, input.instances, catalogLoad, catalogWaiters, modelPolicyState.settings]);
-  const bindingFor = (instanceId: string) => agentRuntimeBinding(instanceId, input.instances);
+  const bindingFor = (instanceId: string) => {
+    const provider = catalogState.providers.find((entry) => entry.instanceId === instanceId);
+    if (provider) return agentRuntimeBinding(provider);
+    if (instanceId === CODEX_AGENT_BACKEND_BINDING.instanceId) return CODEX_AGENT_BACKEND_BINDING;
+    return input.instances.find((entry) => entry.binding.instanceId === instanceId)?.binding;
+  };
   const openAgentSettings = useAgentSettingsNavigation();
   useEffect(() => {
     agentRuntimeDelegatedTasks.publishLabels(
       new Map(
         catalogState.providers.flatMap((provider) => {
-          const binding = agentRuntimeBinding(provider.instanceId, input.instances);
-          if (!binding) return [];
+          const binding = agentRuntimeBinding(provider);
           return [
             [
               provider.instanceId,
               {
                 label: agentRuntimeProviderLabel(provider, input.instances),
-                kind: binding.kind,
+                kind: binding.driver,
                 models: new Map(
                   provider.models.map((model) => [model.slug, formatAgentModelName(model.name)]),
                 ),
@@ -1355,20 +1304,30 @@ export function useAgentRuntimeConversationAdapter(input: {
     providers: readonly AgentRuntimeProvider[],
   ): readonly AgentModelPickerEntry[] =>
     providers.flatMap((provider) => {
-      const binding = bindingFor(provider.instanceId);
-      const setup = providerComponentSetup(provider, componentFor(provider), intl);
-      const signedOutCodex =
-        provider.instanceId === "codex" &&
+      const binding = agentRuntimeBinding(provider);
+      const readiness = agentSetup.read(binding, provider);
+      const onDemand = readiness?.problem.kind === "not-installed" && readiness.problem.onDemand;
+      const componentBlocked =
+        provider.installationSource?.kind === "component" && readiness?.blocksSend;
+      const signedOutWithDirectSignIn =
         provider.installed &&
-        agentReadinessProblem(provider) === "signed-out";
+        readiness?.action?.kind === "sign-in" &&
+        readiness.action.via === "browser";
       if (
-        !binding ||
-        (!isAgentRuntimeProviderAvailable(provider) &&
-          !setup &&
-          !codexOnDemand(provider) &&
-          !signedOutCodex)
+        !isAgentRuntimeProviderAvailable(provider) &&
+        !componentBlocked &&
+        !onDemand &&
+        !signedOutWithDirectSignIn
       )
         return [];
+      const setup =
+        componentBlocked && readiness
+          ? agentReadinessView(
+              agentRuntimeProviderLabel(provider, input.instances),
+              readiness,
+              intl,
+            )
+          : null;
       return provider.models.map((model) => ({
         binding,
         spendsCredit: spendsNodexCredit(provider),
@@ -1379,23 +1338,21 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
         model: projectAgentRuntimeModel(provider, model),
         selection: { binding, model: model.slug },
-        ...(setup ? { unavailableReason: setup.title, unavailableLabel: setup.modelHint } : {}),
+        ...(setup ? { unavailableReason: setup.title, unavailableLabel: setup.hint } : {}),
       }));
     });
   const draftSelectionFor = (providers: readonly AgentRuntimeProvider[]): AgentModelSelection => {
     if (draft.selection) return draft.selection;
-    const selected = defaultAgentRuntimeModelSelection(
-      providers.filter((entry) => bindingFor(entry.instanceId) !== undefined),
-      {
-        remembered: newChatChoice,
-        codexServiceTier: savedServiceTier.serviceTier,
-        attended: true,
-      },
-    );
-    const binding = selected ? bindingFor(selected.instanceId) : undefined;
+    const selected = defaultAgentRuntimeModelSelection(providers, {
+      remembered: newChatChoice,
+      codexServiceTier: savedServiceTier.serviceTier,
+      attended: true,
+    });
+    const provider = providers.find((entry) => entry.instanceId === selected?.instanceId);
+    const binding = provider ? agentRuntimeBinding(provider) : undefined;
     return selected && binding
       ? { binding, model: selected.model, options: selected.options }
-      : { binding: { kind: "codex" }, model: "" };
+      : { binding: CODEX_AGENT_BACKEND_BINDING, model: "" };
   };
   /** The default Agent's model, read alone first; the whole catalog only when it has none. */
   const resolveDefaultSelection = async () => {
@@ -1403,9 +1360,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     const preferred = draftSelectionFor(
       await agentRuntimeRuntime
         .catalog({
-          instanceIds: [
-            (newChatChoice && agentRuntimeProviderId(newChatChoice.binding)) ?? "codex",
-          ],
+          instanceIds: [(newChatChoice && newChatChoice.binding.instanceId) ?? "codex"],
         })
         .catch((): readonly AgentRuntimeProvider[] => []),
     );
@@ -1423,23 +1378,16 @@ export function useAgentRuntimeConversationAdapter(input: {
   const modelOf = (candidate: AgentModelSelection) =>
     agentRuntimeModelSelection(candidate.binding, candidate.model, candidate.options);
   const providerOf = (candidate: AgentModelSelection) =>
-    catalogState.providers.find(
-      (entry) => entry.instanceId === agentRuntimeProviderId(candidate.binding),
-    );
+    catalogState.providers.find((entry) => entry.instanceId === candidate.binding.instanceId);
   // A started chat's choice for its next message; the chat keeps its own until a message uses it.
   const choiceKey = targetThreadId ? agentRuntimeChoiceKey.chat(targetThreadId) : null;
   const choice = choiceKey ? choices[choiceKey]?.selection : undefined;
   const observedSelection: AgentModelSelection | undefined = observed
     ? {
-        binding:
-          bindingFor(observed.modelSelection.instanceId) ??
-          (observed.modelSelection.instanceId.startsWith("antigravity_")
-            ? {
-                kind: "antigravity",
-                instanceConfigId: "",
-                runtimeInstanceId: observed.modelSelection.instanceId,
-              }
-            : { kind: "codex" }),
+        binding: bindingFor(observed.modelSelection.instanceId) ?? {
+          driver: "unknown",
+          instanceId: observed.modelSelection.instanceId,
+        },
         model: observed.modelSelection.model,
         options: observed.modelSelection.options,
       }
@@ -1490,27 +1438,17 @@ export function useAgentRuntimeConversationAdapter(input: {
     draftSelectionFor(catalogState.providers);
   const provider = providerOf(rawSelection);
   const chatModel = resolveAgentRuntimeChatModel(
-    rawSelection.binding.kind,
+    rawSelection.binding.driver,
     rawSelection.model,
     provider,
   );
   const selection =
     chatModel === rawSelection.model ? rawSelection : { ...rawSelection, model: chatModel };
   const showInteractionMode = provider?.showInteractionModeToggle !== false;
-  const openSettingsFor = (binding: AgentBackendBinding) => {
-    const target = agentSettingsTarget(binding);
-    if (target.instanceId === undefined) openAgentSettings?.(target.kind);
-    else openAgentSettings?.(target.kind, target.instanceId);
-  };
-  const acpSetup = useAcpComposerSetup({
-    providers: catalogState.providers,
-    instances: input.instances,
-    selected: selection.binding,
-    openSettings: (instanceId) => openAgentSettings?.("acp", instanceId),
-  });
+  const openSettingsFor = agentSetup.openSettings;
   const windowsSandboxNotice = useWindowsSandboxSetup(
     !isHostedChat() &&
-      selection.binding.kind === "codex" &&
+      selection.binding.driver === "codex" &&
       provider?.enabled &&
       provider.installed &&
       provider.auth.status !== "unauthenticated" &&
@@ -1542,8 +1480,8 @@ export function useAgentRuntimeConversationAdapter(input: {
   const allEntries = entriesFor(catalogState.providers).map((entry) => {
     const candidate = modelOf(entry.selection);
     const nodexUnavailable =
-      entry.binding.runtimeInstanceId &&
-      isNodexProviderId(entry.binding.runtimeInstanceId) &&
+      entry.binding.instanceId &&
+      isNodexProviderId(entry.binding.instanceId) &&
       !nodexAccount.snapshot?.modelStatus?.models.some(
         (model) => model.id === entry.model.id && model.available,
       );
@@ -1560,9 +1498,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     return unavailableReason ? { ...entry, unavailableReason } : entry;
   });
   const policyForEntry = (entry: AgentModelPickerEntry) =>
-    catalogState.providers.find(
-      (provider) => provider.instanceId === agentRuntimeProviderId(entry.binding),
-    );
+    catalogState.providers.find((provider) => provider.instanceId === entry.binding.instanceId);
   const entryIsOn = (entry: AgentModelPickerEntry) => {
     const provider = policyForEntry(entry);
     return provider !== undefined && isModelOn(modelPolicyState.settings, provider, entry.model.id);
@@ -1579,7 +1515,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       !isCurrentEntry(entry)
     );
   });
-  const policyProvider = provider ?? agentRuntimePolicyProvider(selection.binding) ?? undefined;
+  const policyProvider = provider ?? selection.binding ?? undefined;
   const currentModelLabel =
     provider?.models.find((model) => model.slug === selection.model)?.name ??
     NODEX_MODELS.find((model) => model.id === selection.model)?.label ??
@@ -1625,9 +1561,9 @@ export function useAgentRuntimeConversationAdapter(input: {
     true;
   // A hosted chat's history belongs to its Space host, which forks it for any Member who reads it
   // and rewinds it only to a message its reader sent, until Core has said which those are.
-  const skillInstance = agentRuntimeProviderId(selection.binding);
+  const skillInstance = selection.binding.instanceId;
   const skillCwd = observed?.executionLocation?.cwd ?? input.workspaceRoot ?? null;
-  const localSkills = !hosted && selection.binding.kind !== "codex" && skillInstance !== null;
+  const localSkills = !hosted && selection.binding.driver !== "codex" && skillInstance !== null;
   const composerSkills = useQuery({
     queryKey: spaceQueryKey([
       "agent-runtime",
@@ -1655,8 +1591,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     });
   }, [owner, canRollback, hosted, memberEdits]);
   const intentKey =
-    targetThreadId ??
-    JSON.stringify(["draft", draftKey, agentRuntimeProviderId(selection.binding)]);
+    targetThreadId ?? JSON.stringify(["draft", draftKey, selection.binding.instanceId]);
   const storedIntent = useSyncExternalStore(
     (listener) => nativeIntelligenceIntentOwner.subscribe(intentKey, listener),
     () => nativeIntelligenceIntentOwner.read(intentKey),
@@ -1669,14 +1604,13 @@ export function useAgentRuntimeConversationAdapter(input: {
   ) => {
     const unavailable = entries.find(
       (entry) =>
-        agentRuntimeProviderId(entry.binding) === agentRuntimeProviderId(requested.binding) &&
+        entry.binding.instanceId === requested.binding.instanceId &&
         entry.model.id === requested.model,
     )?.unavailableReason;
     if (unavailable) throw new Error(unavailable);
     const chosenProvider = providerOf(requested);
     const chosenModel = chosenProvider?.models.find((model) => model.slug === requested.model);
-    const sameProvider =
-      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(requested.binding);
+    const sameProvider = selection.binding.instanceId === requested.binding.instanceId;
     // Another Agent's model starts from the options last chosen for it, otherwise its defaults.
     const chosen =
       sameProvider || requested.options !== undefined
@@ -1684,9 +1618,9 @@ export function useAgentRuntimeConversationAdapter(input: {
         : { ...requested, options: rememberedAgentModelOptions(modelOptionMemory, requested) };
     const nextIntent =
       explicitIntent ??
-      (selection.binding.kind === "claude" &&
-      chosen.binding.kind === "claude" &&
-      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(chosen.binding) &&
+      (selection.binding.driver === "claudeAgent" &&
+      chosen.binding.driver === "claudeAgent" &&
+      selection.binding.instanceId === chosen.binding.instanceId &&
       chosen.model !== selection.model
         ? { ...claudeIntent, model: chosen.model }
         : readRuntimeClaudeSelection(chosen));
@@ -1694,7 +1628,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     const options = chosen.options ?? (sameProvider ? selection.options : undefined);
     const chosenTier = options?.find((option) => option.id === "serviceTier")?.value;
     const tierIntent =
-      chosen.binding.kind !== "codex"
+      chosen.binding.driver !== "codex"
         ? undefined
         : typeof chosenTier === "string"
           ? chosenTier
@@ -1702,7 +1636,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             ? selectedServiceTier
             : undefined;
     const fitted =
-      chosen.binding.kind === "claude"
+      chosen.binding.driver === "claudeAgent"
         ? applyRuntimeClaudeIntent(chosen, nextIntent, chosenModel)
         : {
             ...chosen,
@@ -1720,15 +1654,21 @@ export function useAgentRuntimeConversationAdapter(input: {
       );
     const refusal = displayRefusalFor(modelSelection, getIntl());
     if (refusal) throw new Error(refusal);
-    if (codexOnDemand(chosenProvider)) await components.request("codex");
-    if (chosen.binding.kind === "claude")
+    const readiness = agentSetup.read(chosen.binding, chosenProvider);
+    const source = chosenProvider?.installationSource;
+    if (
+      readiness?.problem.kind === "not-installed" &&
+      readiness.problem.onDemand &&
+      source?.kind === "component"
+    )
+      await agentSetup.run(chosen.binding, { kind: "install", sourceId: source.id });
+    if (chosen.binding.driver === "claudeAgent")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
     // An unstarted chat's choice is where later new chats start; a started chat's stays its own.
     if (
       !target &&
       sameProvider &&
-      fitted.binding.kind === "codex" &&
-      !fitted.binding.runtimeInstanceId
+      fitted.binding.instanceId === CODEX_AGENT_BACKEND_BINDING.instanceId
     ) {
       const tier = readAgentRuntimeServiceTier(fitted.options);
       const carriedTier = normalizeCodexServiceTier(
@@ -1757,34 +1697,38 @@ export function useAgentRuntimeConversationAdapter(input: {
       let provider = knownProvider ?? providerOf(candidate);
       // A first send can outrun the render that receives its catalog. Read its chosen Agent
       // so document preferences and visual input are checked before any history mutation.
-      const pendingAntigravity =
-        candidate.binding.kind === "antigravity" && isAgentUnchecked(provider);
-      if (!provider || pendingAntigravity) {
-        const instanceId = agentRuntimeProviderId(candidate.binding);
+      const checkSelectedModel =
+        agentDefinition(candidate.binding.driver).setup?.models === "choose" &&
+        provider?.checkPending;
+      if (!provider || checkSelectedModel) {
+        const instanceId = candidate.binding.instanceId;
         const providers = instanceId
           ? await agentRuntimeRuntime.catalog({
               instanceIds: [instanceId],
-              ...(pendingAntigravity ? { refresh: true } : {}),
+              ...(checkSelectedModel ? { refresh: true } : {}),
             })
           : [];
         provider = providers.find((entry) => entry.instanceId === instanceId);
       }
-      const setup = providerComponentSetup(provider, componentFor(provider), getIntl());
-      if (setup) throw new Error(setup.title);
       const modelId = resolveAgentRuntimeChatModel(
-        candidate.binding.kind,
+        candidate.binding.driver,
         candidate.model,
         provider,
       );
-      if (candidate.binding.kind === "antigravity") {
-        const problem = antigravityReadinessMessage(provider, modelId);
-        if (problem) throw new Error(getIntl().formatMessage(problem));
+      const readiness = agentSetup.read(candidate.binding, provider, modelId);
+      if (readiness?.blocksSend) {
+        const label = provider
+          ? agentRuntimeProviderLabel(provider, input.instances)
+          : agentDefinition(candidate.binding.driver).label;
+        throw new Error(
+          agentReadinessView(componentReadinessLabel(provider, label, getIntl()), readiness).title,
+        );
       }
       const model = provider?.models.find((entry) => entry.slug === modelId);
       // A hosted chat's sandbox belongs to its Space host, not this computer.
       if (
         !hosted &&
-        candidate.binding.kind === "codex" &&
+        candidate.binding.driver === "codex" &&
         resolveCodexRendererOs() === "win32" &&
         (observed?.runtimeMode ?? draftRuntimeMode) !== "full-access" &&
         provider
@@ -1806,7 +1750,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         : {
             promptInput,
             uploads:
-              candidate.binding.kind === "antigravity"
+              candidate.binding.driver === "antigravity"
                 ? [
                     ...(promptInput?.fileAttachments ?? []),
                     ...(promptInput?.addedFiles ?? []),
@@ -1825,11 +1769,9 @@ export function useAgentRuntimeConversationAdapter(input: {
           model,
           provider,
           modelSelection: modelOf({ ...candidate, model: modelId }) ?? undefined,
-          kind: candidate.binding.kind,
+          kind: candidate.binding.driver,
           desktopSkills:
-            !hosted && agentRuntimeProviderId(candidate.binding) === skillInstance
-              ? desktopSkills
-              : undefined,
+            !hosted && candidate.binding.instanceId === skillInstance ? desktopSkills : undefined,
           cwd: skillCwd ?? undefined,
           text,
           promptInput: portable,
@@ -1859,10 +1801,10 @@ export function useAgentRuntimeConversationAdapter(input: {
   const failedProvider =
     latestRun?.status === "failed" ? bindingFor(latestRun.modelSelection.instanceId) : undefined;
   const manageProvider =
-    openAgentSettings && failedProvider && failedProvider.kind !== "codex"
+    openAgentSettings && failedProvider && agentDefinition(failedProvider.driver).profileBased
       ? (instanceId: string) => {
           const binding = bindingFor(instanceId);
-          if (!binding || binding.kind === "codex")
+          if (!binding || !agentDefinition(binding.driver).profileBased)
             throw new Error("This Agent's settings are unavailable");
           openSettingsFor(binding);
         }
@@ -1917,7 +1859,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       // Its failure is reported where the launch awaits it.
       pendingSelection?.catch(() => {});
       const submission = sessionFirstSubmissionOwner.begin({
-        backend: selection.binding.kind,
+        backend: selection.binding.driver,
         originProjectId: request.projectId,
         originSessionId: request.sessionId,
         prompt: request.prompt,
@@ -1962,9 +1904,9 @@ export function useAgentRuntimeConversationAdapter(input: {
             ? await agentRuntimeRuntime.catalog({ instanceIds: [modelSelection.instanceId] })
             : catalogState.providers;
           const resolved = requireAgentRuntimeModelSelection(launchProviders, modelSelection);
-          if (launchSelection.binding.kind !== selection.binding.kind)
+          if (launchSelection.binding.driver !== selection.binding.driver)
             sessionFirstSubmissionOwner.update(submission.launchId, {
-              backend: launchSelection.binding.kind,
+              backend: launchSelection.binding.driver,
             });
           const presentationTicket =
             request.presentationTicket ??
@@ -2044,7 +1986,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     },
     onModelChange: (model) => chooseModel({ ...selection, model }),
     onReasoningEffortChange: (effort) =>
-      selection.binding.kind === "claude" && isClaudeEffortLevel(effort)
+      selection.binding.driver === "claudeAgent" && isClaudeEffortLevel(effort)
         ? chooseModel(selection, { ...claudeIntent, effort, thinking: true })
         : chooseModel({
             ...selection,
@@ -2055,7 +1997,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     // Model, effort and speed land in one selection change so none overwrites another.
     onIntelligenceSelectionChange: async (candidate) => {
       const model = candidate.model || selection.model;
-      if (selection.binding.kind === "claude") {
+      if (selection.binding.driver === "claudeAgent") {
         const effortChanged = candidate.reasoningEffort !== resolvedEffort;
         await chooseModel(
           { ...selection, model },
@@ -2074,7 +2016,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           selection.options,
           {
             reasoningEffort: candidate.reasoningEffort,
-            ...(selection.binding.kind === "codex" ? { serviceTier: candidate.serviceTier } : {}),
+            ...(selection.binding.driver === "codex" ? { serviceTier: candidate.serviceTier } : {}),
           },
         ),
       });
@@ -2133,7 +2075,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       await input.onRefresh(input.projectId);
     },
   };
-  const kind = selection.binding.kind;
+  const kind = selection.binding.driver;
   const runtime = createAgentRuntimeConversationRuntime(
     kind,
     targetSessionId
@@ -2212,7 +2154,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         description: option.description ?? null,
         category:
           isAgentRuntimeEffortOption(option) ||
-          (selection.binding.kind === "opencode" && option.id === "variant")
+          (selection.binding.driver === "opencode" && option.id === "variant")
             ? "thought_level"
             : null,
       };
@@ -2283,84 +2225,6 @@ export function useAgentRuntimeConversationAdapter(input: {
   };
   // An imported native conversation stays empty until its Agent restores it on the next message.
   const pendingImport = acpPendingImportedHistory(projection);
-  // A turned-on built-in Agent that cannot run yet explains its missing models in the picker;
-  // OpenCode and ACP Agents bring their own setup rows.
-  // A hosted chat's Agents are its host's: this Device can neither sign in to nor set them up.
-  const openComponentSettings = () => {
-    void workbenchOwner.openRoute({
-      kind: "settings",
-      path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
-    });
-  };
-  const componentAction = (setup: NonNullable<ReturnType<typeof providerComponentSetup>>) => {
-    if (hosted) return null;
-    if (setup.action === "settings") return openComponentSettings;
-    if (setup.action === "retry")
-      return () => runAppComponentChange(setup.id, undefined, () => components.retry(setup.id));
-    return null;
-  };
-  const selectedComponentSetup = providerComponentSetup(provider, componentFor(provider), intl);
-  const selectedComponentAction = selectedComponentSetup
-    ? componentAction(selectedComponentSetup)
-    : null;
-  const shownComponents = new Set<AppComponentId>();
-  const componentSetups = (hosted ? [] : catalogState.providers).flatMap(
-    (entry): AgentModelSetupPresentation[] => {
-      const setup = providerComponentSetup(entry, componentFor(entry), intl);
-      if (!setup || shownComponents.has(setup.id)) return [];
-      shownComponents.add(setup.id);
-      const action = componentAction(setup);
-      return [
-        {
-          key: setup.id,
-          kind: setup.id === "codex" ? "codex" : "claude",
-          label: setup.title,
-          hint: setup.actionLabel,
-          tone: setup.action === "retry" ? "danger" : "default",
-          ...(action ? { action: { kind: "open", open: () => void action() } } : {}),
-        },
-      ];
-    },
-  );
-  const builtInSetups = (hosted ? [] : catalogState.providers).flatMap(
-    (entry): AgentModelSetupPresentation[] => {
-      const binding = isManagedRuntimeInstanceId(entry.instanceId)
-        ? undefined
-        : bindingFor(entry.instanceId);
-      if (codexOnDemand(entry) || providerComponentSetup(entry, componentFor(entry), intl))
-        return [];
-      const hint = agentReadinessSetupHint(entry, intl);
-      if (
-        !hint ||
-        (binding?.kind !== "codex" && binding?.kind !== "claude" && binding?.kind !== "antigravity")
-      )
-        return [];
-      const signIn = entry.instanceId === "codex" && agentReadinessProblem(entry) === "signed-out";
-      return [
-        {
-          kind: binding.kind,
-          instanceId: entry.instanceId,
-          label: agentRuntimeProviderLabel(entry, input.instances),
-          ...hint,
-          action: {
-            kind: "open",
-            open: signIn
-              ? () =>
-                  void signInToCodex().catch((cause: unknown) =>
-                    toastFailure(
-                      getIntl().formatMessage({
-                        id: "conversation.agentRuntimeConversationAdapter.signInFailed",
-                        defaultMessage: "Couldn’t start signing in to Codex",
-                      }),
-                      cause,
-                    ),
-                  )
-              : () => openSettingsFor(binding),
-          },
-        },
-      ];
-    },
-  );
   // Only the Agent this chat runs on, or one the person chose, raises a readiness notice. A new chat
   // with nothing it could run asks for an Agent instead. Credits are never chosen automatically, so
   // an account that could spend them leaves a model to choose rather than an Agent to connect.
@@ -2372,54 +2236,42 @@ export function useAgentRuntimeConversationAdapter(input: {
       return (
         entryProvider !== undefined &&
         spendsNodexCredit(entryProvider) &&
-        !agentReadinessProblem(entryProvider) &&
+        !agentSetup.read(entry.binding, entryProvider) &&
         entryIsOn(entry) &&
         !entry.unavailableReason
       );
     });
   const noUsableAgent =
     !observed && !selection.model && !catalogState.loading && !catalogState.error && !creditsCanRun;
-  const antigravityNotice =
-    selection.binding.kind === "antigravity" && !catalogState.loading && !currentModelOff
-      ? antigravityReadinessNotice(
-          agentRuntimeProviderId(selection.binding) ?? "antigravity",
+  const selectedReadiness =
+    !provider && catalogState.loading
+      ? null
+      : agentSetup.read(selection.binding, provider, selection.model);
+  const selectedNotice = selectedReadiness
+    ? agentReadinessNotice(
+        selection.binding.instanceId ?? selection.binding.driver,
+        componentReadinessLabel(
           provider,
-          selection.model,
-          {
-            checkAgain: checkCatalogAgain,
-            ...(openAgentSettings && !hosted
-              ? { openSettings: () => openSettingsFor(selection.binding) }
-              : {}),
-          },
+          provider
+            ? agentRuntimeProviderLabel(provider, input.instances)
+            : agentDefinition(selection.binding.driver).label,
           intl,
-        )
-      : null;
+        ),
+        selectedReadiness,
+        !hosted || selectedReadiness.action?.kind === "check-again"
+          ? () => agentSetup.run(selection.binding, selectedReadiness.action)
+          : undefined,
+        intl,
+      )
+    : null;
   const agentNotice =
-    acpSetup.notice ??
-    antigravityNotice ??
-    (noUsableAgent
+    noUsableAgent && !selectedReadiness?.blocksSend
       ? hosted
         ? hostedAgentUnavailableNotice(intl)
         : connectAgentNotice(() => void connectAgent(), intl)
-      : (observed || selection.model) && !currentModelOff
-        ? agentReadinessNotice(
-            provider
-              ? agentRuntimeProviderLabel(provider, input.instances)
-              : intl.formatMessage({
-                  id: "conversation.agentRuntimeConversationAdapter.theAgentTitle",
-                  defaultMessage: "The Agent",
-                }),
-            provider,
-            {
-              ...(provider?.instanceId === "codex" && !hosted ? { signIn: signInToCodex } : {}),
-              ...(openAgentSettings && !hosted
-                ? { openSettings: () => openSettingsFor(selection.binding) }
-                : {}),
-              checkAgain: checkCatalogAgain,
-            },
-            intl,
-          )
-        : null);
+      : (observed || selection.model || selectedReadiness?.blocksSend) && !currentModelOff
+        ? selectedNotice
+        : null;
   // One standing condition at a time, the most specific first: this chat's own Run, then its
   // connection, then the Agents it can use.
   const notificationOffer = useNotificationOffer(
@@ -2548,7 +2400,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       return "dataUrl" in result ? result.dataUrl : result.path;
     },
     nativeIntelligence:
-      selection.binding.kind === "claude"
+      selection.binding.driver === "claudeAgent"
         ? {
             selected: {
               fast: readRuntimeClaudeSelection(selection).fast ?? false,
@@ -2573,13 +2425,12 @@ export function useAgentRuntimeConversationAdapter(input: {
             },
           }
         : undefined,
-    kind: selection.binding.kind,
-    ...(selection.binding.kind === "codex" ? { serviceTier: selectedServiceTier } : {}),
+    kind: selection.binding.driver,
+    ...(selection.binding.driver === "codex" ? { serviceTier: selectedServiceTier } : {}),
     label:
       (provider ? agentRuntimeProviderLabel(provider, input.instances) : undefined) ??
-      (selection.binding.kind === "antigravity" ? "Antigravity" : undefined) ??
-      (selection.binding.kind === "codex"
-        ? "Codex"
+      (agentDefinition(selection.binding.driver).driver
+        ? agentDefinition(selection.binding.driver).label
         : intl.formatMessage({
             id: "conversation.agentRuntimeConversationAdapter.agent",
             defaultMessage: "Agent",
@@ -2594,7 +2445,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           pendingImport,
         )
       : null,
-    selection: agentRuntimeProviderId(selection.binding) ?? "",
+    selection: selection.binding.instanceId ?? "",
     modelCatalog: {
       entries,
       currentModelOff: currentModelOff
@@ -2641,7 +2492,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
         choose: async (requested) => {
           const provider = catalogState.providers.find(
-            (provider) => provider.instanceId === agentRuntimeProviderId(requested.binding),
+            (provider) => provider.instanceId === requested.binding.instanceId,
           );
           if (
             !provider ||
@@ -2666,7 +2517,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       choose: chooseModel,
       refresh: () => {
         refreshCatalog();
-        openCodeSetup.refresh();
+        agentSetup.refreshInstallation();
       },
       reload: () => {
         nodexAccount.act("refreshModels");
@@ -2677,12 +2528,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       runtimeOptions: [],
       chooseRuntime: () => {},
       manage: () => openSettingsFor(selection.binding),
-      setups: [
-        ...componentSetups,
-        ...builtInSetups,
-        ...(openCodeSetup.setup ? [openCodeSetup.setup] : []),
-        ...acpSetup.setups,
-      ],
+      setups: agentSetup.setupRows(catalogState.providers),
     },
     commands:
       provider?.slashCommands.map((command) => ({
@@ -2731,20 +2577,12 @@ export function useAgentRuntimeConversationAdapter(input: {
       else refreshCatalog();
     },
     notice: composerNotice,
-    sendGate: selectedComponentSetup
-      ? {
-          unsentReason: selectedComponentSetup.title,
-          notice: {
-            key: selectedComponentSetup.id,
-            title: selectedComponentSetup.title,
-            tone: selectedComponentSetup.tone,
-            actions:
-              selectedComponentAction && selectedComponentSetup.actionLabel
-                ? [{ label: selectedComponentSetup.actionLabel, run: selectedComponentAction }]
-                : [],
-          },
-        }
-      : null,
+    sendGate:
+      provider?.installationSource?.kind === "component" &&
+      selectedReadiness?.blocksSend &&
+      selectedNotice
+        ? { unsentReason: selectedNotice.title, notice: selectedNotice }
+        : null,
     backgroundTasks,
   };
   return {

@@ -5,10 +5,7 @@ import {
   defaultAgentRuntimeModelSelection,
   requireAgentRuntimeModelSelection,
 } from "./agent-runtime-model-selection";
-import {
-  agentRuntimeModelSelection,
-  agentRuntimeProviderId,
-} from "../../shared/agent-runtime-provider";
+import { agentRuntimeModelSelection } from "../../shared/agent-runtime-provider";
 import { agentBindingKey, agentModelKey } from "./agent-model-selection";
 import { AgentBackendBindingSchema } from "../../shared/schemas/agent-backend";
 
@@ -25,12 +22,14 @@ const providers = [
   },
 ] as unknown as AgentRuntimeOperations["providers.read"]["output"];
 it("retains a managed Codex instance across picker keys, persistence and launch", () => {
-  const binding = agentRuntimeBinding(id, [])!;
+  const binding = agentRuntimeBinding(providers[0]!);
   expect(AgentBackendBindingSchema.parse(binding)).toEqual(binding);
-  expect(agentRuntimeProviderId(binding)).toBe(id);
-  expect(agentBindingKey(binding)).not.toBe(agentBindingKey({ kind: "codex" }));
+  expect(binding.instanceId).toBe(id);
+  expect(agentBindingKey(binding)).not.toBe(
+    agentBindingKey({ driver: "codex", instanceId: "codex" }),
+  );
   expect(agentModelKey(binding, "gpt-6.1-sol")).not.toBe(
-    agentModelKey({ kind: "codex" }, "gpt-6.1-sol"),
+    agentModelKey({ driver: "codex", instanceId: "codex" }, "gpt-6.1-sol"),
   );
   expect(agentRuntimeModelSelection(binding, "gpt-6.1-sol")).toEqual({
     instanceId: id,
@@ -39,10 +38,10 @@ it("retains a managed Codex instance across picker keys, persistence and launch"
 });
 it("retains a managed Claude instance while native configurations keep their own keys", () => {
   const instance = `nodex_claude_${"b".repeat(32)}`;
-  const binding = agentRuntimeBinding(instance, [])!;
-  expect(binding.kind).toBe("claude");
-  expect(agentRuntimeProviderId(binding)).toBe(instance);
-  expect(agentRuntimeProviderId({ kind: "claude", instanceConfigId: "local" })).not.toBe(instance);
+  const binding = agentRuntimeBinding({ driver: "claudeAgent", instanceId: instance });
+  expect(binding.driver).toBe("claudeAgent");
+  expect(binding.instanceId).toBe(instance);
+  expect("local").not.toBe(instance);
 });
 it("never automatically selects prepaid models", () => {
   expect(defaultAgentRuntimeModelSelection(providers)).toBeNull();

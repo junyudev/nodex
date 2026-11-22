@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
-import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
+import vectors from "../../tests/fixtures/agent-identity-vectors.json";
+import { decodeLegacyAgentBinding } from "./agents/legacy-identity";
 import { AgentBackendBindingSchema } from "./schemas/agent-backend";
 import { describe, expect, it } from "vite-plus/test";
 import {
   agentRuntimeModelSelection,
-  agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeServiceTier,
   readAgentRuntimeEffort,
@@ -12,60 +11,28 @@ import {
 } from "./agent-runtime-provider";
 
 describe("Agent Runtime provider identity", () => {
-  it("encodes the complete configured identity as one bounded provider slug", () => {
-    const id = "配置 / 🔑 ".repeat(10).trim();
-    const binding = { kind: "claude" as const, instanceConfigId: id };
-    const expected = createHash("sha256")
-      .update(JSON.stringify([binding.kind, id]))
-      .digest("base64url");
-    const actual = agentRuntimeProviderId(binding)!;
-    expect(actual).toBe(`claude_${expected}`);
-    expect(actual).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/u);
-    expect(agentRuntimeProviderId({ kind: "opencode", instanceConfigId: id })).not.toBe(actual);
-    expect(agentRuntimeProviderId({ ...binding, instanceConfigId: `${id}!` })).not.toBe(actual);
+  it.each(vectors)("preserves the instance ID for $kind $configId", (vector) => {
+    const binding = decodeLegacyAgentBinding({
+      kind: vector.kind,
+      instanceConfigId: vector.configId,
+      agentDefinitionId: vector.definitionId,
+    });
+    expect(binding).toEqual({ driver: vector.driver, instanceId: vector.instanceId });
+    expect(AgentBackendBindingSchema.safeParse(binding).success).toBe(true);
   });
 
-  it.each(["antigravity", "claude", "opencode"] as const)(
-    "routes a hosted %s profile using the host-generated instance ID",
-    (kind) => {
-      const runtimeInstanceId = agentRuntimeProviderId({ kind, instanceConfigId: "google-work" })!;
-      expect(runtimeInstanceId).toMatch(/[A-Z]/u);
-      expect(isProviderInstanceId(runtimeInstanceId)).toBe(true);
-      const binding = AgentBackendBindingSchema.parse({
-        kind,
-        instanceConfigId: runtimeInstanceId,
-        runtimeInstanceId,
-      });
-      expect(agentRuntimeModelSelection(binding, "host-model")?.instanceId).toBe(runtimeInstanceId);
-      for (const invalid of ["", "A".repeat(65), "1-agent"]) {
-        expect(
-          AgentBackendBindingSchema.safeParse({ ...binding, runtimeInstanceId: invalid }).success,
-        ).toBe(false);
-        expect(agentRuntimeProviderId({ ...binding, runtimeInstanceId: invalid })).toBeNull();
-      }
-    },
-  );
-
-  it("requires an explicit configured native instance while retaining the canonical Codex instance", () => {
-    expect(agentRuntimeProviderId({ kind: "codex" })).toBe("codex");
-    const google = { kind: "antigravity" as const, instanceConfigId: "work" };
-    expect(agentRuntimeProviderId(google)).toMatch(/^antigravity_/u);
-    expect(agentRuntimeProviderId(google)).not.toBe(
-      agentRuntimeProviderId({ ...google, kind: "opencode" }),
-    );
-    expect(
-      agentRuntimeProviderId({ kind: "acp", agentDefinitionId: "agent", instanceConfigId: null }),
-    ).toBeNull();
-    expect(agentRuntimeProviderId({ kind: "claude", instanceConfigId: " padded" })).toBeNull();
-    expect(
-      agentRuntimeModelSelection({ kind: "claude", instanceConfigId: "instance" }, " model ", [
-        { id: "effort", value: "high" },
-      ]),
-    ).toEqual({
-      instanceId: agentRuntimeProviderId({ kind: "claude", instanceConfigId: "instance" }),
-      model: "model",
-      options: [{ id: "effort", value: "high" }],
+  it("routes an unfamiliar driver with its exact instance ID", () => {
+    const binding = AgentBackendBindingSchema.parse({
+      driver: "futureAgent",
+      instanceId: "future_work",
     });
+    expect(agentRuntimeModelSelection(binding, " model ")).toEqual({
+      instanceId: "future_work",
+      model: "model",
+    });
+    expect(AgentBackendBindingSchema.safeParse({ ...binding, instanceId: " padded" }).success).toBe(
+      false,
+    );
   });
 });
 

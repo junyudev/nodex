@@ -1,7 +1,17 @@
 import type { AgentSessionConfigSelectOption } from "./agent-conversation";
 
-export const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
-export type ClaudeEffortLevel = (typeof CLAUDE_EFFORT_LEVELS)[number];
+import {
+  CLAUDE_EFFORT_LEVELS,
+  type ClaudeEffortLevel,
+  type ClaudeModelTraits,
+} from "./agents/claude-model-types.ts";
+export {
+  CLAUDE_EFFORT_LEVELS,
+  type ClaudeEffortLevel,
+  type ClaudeModelTraits,
+  type ClaudeCustomModel,
+} from "./agents/claude-model-types.ts";
+
 export type ClaudeEffortSelection = ClaudeEffortLevel | "default";
 export const isClaudeEffortLevel = (value: unknown): value is ClaudeEffortLevel =>
   CLAUDE_EFFORT_LEVELS.some((level) => level === value);
@@ -27,15 +37,6 @@ export interface ClaudeResolvedIntelligence {
 /** Native context is a decoration of a concrete model identity, never of `default`. */
 export const claudeModelContext = (model: string | null | undefined): string | undefined =>
   /\[(\d+[km])\]$/iu.exec(model ?? "")?.[1]?.toLowerCase();
-export interface ClaudeModelTraits {
-  readonly effortLevels?: ClaudeEffortLevel[];
-  readonly fastMode?: boolean;
-  readonly adaptiveThinking?: boolean;
-  readonly disableThinking?: boolean;
-  readonly disabledThinkingEfforts?: ClaudeEffortLevel[];
-  readonly contextWindows?: string[];
-}
-
 // Exact canonical identities verified against the installed native capability predicate.
 // Adaptive thinking does not imply that a model accepts disabled thinking.
 const THINKING_OFF_MODELS = new Set([
@@ -70,11 +71,6 @@ export function claudeKnownThinkingTraits(modelId: string): ClaudeModelTraits {
     disableThinking: true,
     ...(identity === "claude-opus-5" ? { disabledThinkingEfforts: ["low", "medium", "high"] } : {}),
   };
-}
-export interface ClaudeCustomModel {
-  readonly id: string;
-  readonly displayName: string;
-  readonly traits: ClaudeModelTraits;
 }
 export interface ClaudeDiscoveredSkill {
   readonly name: string;

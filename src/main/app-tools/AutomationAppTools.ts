@@ -1,5 +1,6 @@
+import { agentReadinessGuidance } from "../agent-runtime/AgentReadinessGuidance";
+import { agentDefinition, sameAgentDriver } from "../../shared/agents/registry";
 import { readModelPolicyFailure } from "../../shared/model-policy";
-import { managedRuntimeBinding } from "../../shared/managed-runtime-instances";
 import {
   captureAppToolAuthority,
   readHostedAppToolSessionContext,
@@ -27,8 +28,6 @@ import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
-import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 import {
   AgentBackendRegistryError,
@@ -38,6 +37,8 @@ import {
 const AGENT_UNAVAILABLE = "automation_backend_unavailable";
 const AGENT_UNAVAILABLE_MESSAGE =
   "The selected Agent is off, removed or not ready. Ask the user to check it in Settings, or choose another Agent.";
+const TARGET_SESSION_AGENT_UNAVAILABLE_MESSAGE =
+  "The target Session is unavailable or its Agent is off or removed. Ask the user to check that Agent in Settings, or target another Session.";
 
 const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
   if (request.operation === "update" || request.operation === "suggested_update") {
@@ -73,41 +74,9 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
               (cause) => new AutomationApplicationError({ operation: "runtime-target", cause }),
             ),
           );
-        if (loaded.thread.providerInstanceId === "codex") return { kind: "codex" } as const;
-        const instanceId = loaded.thread.providerInstanceId;
-        const managed = managedRuntimeBinding(instanceId);
-        if (managed) return managed;
-        if (Option.isNone(settings)) return null;
-        const configured = yield* settings.value
-          .snapshot()
-          .pipe(
-            Effect.mapError(
-              (cause) => new AutomationApplicationError({ operation: "runtime-target", cause }),
-            ),
-          );
-        const candidates: AgentBackendBinding[] = [
-          ...configured.claudeAgents.instances
-            .filter((instance) => instance.enabled)
-            .map((instance) => ({ kind: "claude" as const, instanceConfigId: instance.id })),
-          ...configured.openCodeAgents.instances
-            .filter((instance) => instance.enabled)
-            .map((instance) => ({ kind: "opencode" as const, instanceConfigId: instance.id })),
-          ...configured.antigravityAgents.instances
-            .filter((instance) => instance.enabled)
-            .map((instance) => ({ kind: "antigravity" as const, instanceConfigId: instance.id })),
-          ...configured.acpAgents.instances
-            .filter((instance) => instance.enabled)
-            .map((instance) => ({
-              kind: "acp" as const,
-              instanceConfigId: instance.id,
-              agentDefinitionId: instance.agentDefinitionId,
-            })),
-        ];
-        return (
-          candidates.find(
-            (binding) => agentRuntimeProviderId(binding) === loaded.thread.providerInstanceId,
-          ) ?? null
-        );
+        return loaded.thread.providerDriver
+          ? { driver: loaded.thread.providerDriver, instanceId: loaded.thread.providerInstanceId }
+          : null;
       });
 
     const dispatch = Effect.fn("AutomationAppTools.dispatch")(function* (
@@ -172,12 +141,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       if (request.kind === "heartbeat") {
         const sessionBinding = runtimeBinding ?? target?.backendBinding;
         if (!sessionBinding)
-          return toolFailure(
-            AGENT_UNAVAILABLE,
-            "The target Session is unavailable or its Agent is off or removed. Ask the user to check that Agent in Settings, or target another Session.",
-          );
+          return toolFailure(AGENT_UNAVAILABLE, TARGET_SESSION_AGENT_UNAVAILABLE_MESSAGE);
         // Update resolves an omitted backendBinding from the task, not from a new target Session.
-        if (agentRuntimeProviderId(sessionBinding) !== agentRuntimeProviderId(backendBinding))
+        if (
+          sessionBinding.instanceId !== backendBinding.instanceId ||
+          !sameAgentDriver(sessionBinding.driver, backendBinding.driver)
+        )
           return toolFailure(
             AGENT_UNAVAILABLE,
             request.operation === "update" || request.operation === "suggested_update"
@@ -186,9 +155,15 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             { backendBinding: sessionBinding },
           );
       }
-      if (backendBinding.kind === "acp") {
+      const requiresDiscovery =
+        agentDefinition(backendBinding.driver).capabilities.automation?.modelSource === "discovery";
+      if (requiresDiscovery) {
+        const unavailableMessage =
+          hosted && request.kind === "heartbeat"
+            ? TARGET_SESSION_AGENT_UNAVAILABLE_MESSAGE
+            : AGENT_UNAVAILABLE_MESSAGE;
         if (Option.isNone(settings) || Option.isNone(runtime))
-          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
+          return toolFailure(AGENT_UNAVAILABLE, unavailableMessage);
         const configured = yield* settings.value
           .snapshot()
           .pipe(
@@ -200,13 +175,13 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           resolveAgentBackendBinding(backendBinding, configured) instanceof
           AgentBackendRegistryError
         )
-          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
+          return toolFailure(AGENT_UNAVAILABLE, unavailableMessage);
       }
       const definition =
         request.kind === "heartbeat"
           ? { ...fields, backendBinding, targetSessionId }
           : { ...fields, backendBinding };
-      if (hosted || backendBinding.kind === "acp") {
+      if (hosted || requiresDiscovery) {
         if (Option.isNone(runtime))
           return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
         const providers = yield* runtime.value
@@ -217,7 +192,9 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             ),
           );
         const provider = providers.find(
-          (provider) => provider.instanceId === agentRuntimeProviderId(backendBinding),
+          (provider) =>
+            provider.instanceId === backendBinding.instanceId &&
+            sameAgentDriver(provider.driver, backendBinding.driver),
         );
         if (
           !provider?.enabled ||
@@ -225,7 +202,10 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           provider.status === "error" ||
           provider.availability === "unavailable"
         )
-          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
+          return toolFailure(
+            AGENT_UNAVAILABLE,
+            agentReadinessGuidance(provider) ?? AGENT_UNAVAILABLE_MESSAGE,
+          );
         const model = "model" in fields ? fields.model : null;
         if (model && !provider.models.some((candidate) => candidate.slug === model))
           return toolFailure(
@@ -233,7 +213,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             "The selected Agent doesn't offer this model. Omit model to use its first available model.",
           );
       }
-      const policyInstanceId = agentRuntimeProviderId(backendBinding);
+      const policyInstanceId = backendBinding.instanceId;
       const policyModel = ("model" in fields ? fields.model : null) ?? current?.model;
       if (
         policyInstanceId &&

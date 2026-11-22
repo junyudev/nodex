@@ -1,4 +1,3 @@
-import { agentBackendKindOfRuntimeDriver } from "../../shared/agent-backend";
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
 import { historyResultBytes, HISTORY_READ_MAX_BYTES } from "@nodex/agent-runtime/history-read";
 import { createHash } from "node:crypto";
@@ -49,7 +48,7 @@ export interface SessionObservationResult {
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
-  readonly backend: "codex" | "acp" | "claude" | "opencode" | "antigravity" | null;
+  readonly backend: string | null;
   readonly agent: SessionAgent | null;
   readonly archived: boolean;
   readonly pinned: boolean;
@@ -128,10 +127,6 @@ const bindingOf = ({ session, thread }: AuthorizedSession) => ({
     ? { id: thread.thread_id, backend: thread.backend_binding, hostId: thread.execution_host_id }
     : null,
 });
-const backendOf = (driver: string | null): SessionObservationResult["backend"] =>
-  driver === "claude" || driver === "acp"
-    ? driver
-    : agentBackendKindOfRuntimeDriver(driver ?? undefined);
 const dispositionOf = (
   status: string,
   flags: readonly string[],
@@ -240,7 +235,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
           : [];
         return {
           source: runtimeSessionHistory(application, before.session.id, undefined, execution),
-          backend: backendOf(loaded.thread.providerDriver),
+          backend: loaded.thread.providerDriver,
           agent: {
             providerInstanceId: loaded.thread.modelSelection.instanceId,
             model: loaded.thread.modelSelection.model,
@@ -256,7 +251,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
           },
         };
       }
-      if (before.thread?.backend_binding.kind === "codex") {
+      if (before.thread?.backend_binding.driver === "codex") {
         if (!nativePort)
           return yield* new SessionObservationError({
             reason: "history_unavailable",
@@ -328,7 +323,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
       }
       return {
         source: null,
-        backend: before.thread?.backend_binding.kind ?? null,
+        backend: before.thread?.backend_binding.driver ?? null,
         agent: null,
         threadId: before.thread?.thread_id ?? null,
         status: before.thread ? "notLoaded" : "idle",
@@ -370,7 +365,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
                       new SessionObservationError({ reason: "history_unavailable", cause }),
                   ),
                 )
-            : before.thread?.backend_binding.kind === "codex" && nativePort
+            : before.thread?.backend_binding.driver === "codex" && nativePort
               ? yield* nativePort
                   .execution({
                     threadId: before.thread.thread_id,
@@ -524,7 +519,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
                   ...(input.runCursor === undefined ? {} : { runCursor: input.runCursor }),
                   base,
                 }).pipe(Effect.mapError(mapReadError))
-              : before.thread?.backend_binding.kind === "codex" && nativePort
+              : before.thread?.backend_binding.driver === "codex" && nativePort
                 ? yield* nativePort
                     .details({
                       sessionId: input.sessionId,
@@ -590,7 +585,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
                 ? null
                 : before.session.execution_ref
                   ? runtimeSessionHistory(application, sessionId, runId, executionTarget)
-                  : before.thread?.backend_binding.kind === "codex" && nativePort
+                  : before.thread?.backend_binding.driver === "codex" && nativePort
                     ? (yield* nativePort
                         .history(
                           before.thread.thread_id,

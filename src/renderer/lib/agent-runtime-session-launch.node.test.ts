@@ -2,39 +2,39 @@ import { expect, it, vi } from "vite-plus/test";
 import type { AgentRuntimeRendererTransport } from "./agent-runtime-runtime";
 import { launchAgentRuntimeSession } from "./agent-runtime-session-launch";
 
-it.each([
-  { driver: "claudeAgent", kind: "claude" },
-  { driver: "opencode", kind: "opencode" },
-])("launches with $kind when Codex is unavailable", async ({ driver, kind }) => {
-  const launch = vi
-    .fn()
-    .mockResolvedValue({ sessionId: "draft", projectId: null, threadId: "root" });
-  const transport = {
-    launch,
-    catalog: vi.fn().mockResolvedValue([
-      { instanceId: "codex", enabled: true, installed: false, status: "error", models: [] },
-      {
-        instanceId: `${driver}:configured`,
-        driver,
-        enabled: true,
-        installed: true,
-        status: "ready",
-        models: [{ slug: "first-model" }, { slug: "available-model", isDefault: true }],
-      },
-    ]),
-  } as unknown as AgentRuntimeRendererTransport;
-  const onSelectionResolved = vi.fn();
-  await launchAgentRuntimeSession(
-    { sessionId: "draft", projectId: null, prompt: "Task", onSelectionResolved },
-    transport,
-  );
-  expect(launch).toHaveBeenCalledWith(
-    expect.objectContaining({
-      modelSelection: { instanceId: `${driver}:configured`, model: "available-model" },
-    }),
-  );
-  expect(onSelectionResolved).toHaveBeenCalledWith(kind);
-});
+it.each(["claudeAgent", "opencode"])(
+  "launches with %s when Codex is unavailable",
+  async (driver) => {
+    const launch = vi
+      .fn()
+      .mockResolvedValue({ sessionId: "draft", projectId: null, threadId: "root" });
+    const transport = {
+      launch,
+      catalog: vi.fn().mockResolvedValue([
+        { instanceId: "codex", enabled: true, installed: false, status: "error", models: [] },
+        {
+          instanceId: `${driver}_configured`,
+          driver,
+          enabled: true,
+          installed: true,
+          status: "ready",
+          models: [{ slug: "first-model" }, { slug: "available-model", isDefault: true }],
+        },
+      ]),
+    } as unknown as AgentRuntimeRendererTransport;
+    const onSelectionResolved = vi.fn();
+    await launchAgentRuntimeSession(
+      { sessionId: "draft", projectId: null, prompt: "Task", onSelectionResolved },
+      transport,
+    );
+    expect(launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelSelection: { instanceId: `${driver}_configured`, model: "available-model" },
+      }),
+    );
+    expect(onSelectionResolved).toHaveBeenCalledWith(driver);
+  },
+);
 
 it("keeps an explicit Agent instance, model and options even when Codex offers the same model", async () => {
   const launch = vi
@@ -79,6 +79,8 @@ it.each(["missing-instance", "disabled-instance", "missing-model"])(
         },
         {
           instanceId: "opencode:work",
+          driver: "opencode",
+          displayName: "Work Agent",
           enabled: caseName !== "disabled-instance",
           installed: true,
           status: "ready",
@@ -96,7 +98,9 @@ it.each(["missing-instance", "disabled-instance", "missing-model"])(
       },
     };
     await expect(launchAgentRuntimeSession(input, transport)).rejects.toThrow(
-      /selected Agent.*unavailable/i,
+      caseName === "disabled-instance"
+        ? /Work Agent is turned off/
+        : /selected Agent.*unavailable/i,
     );
     expect(launch).not.toHaveBeenCalled();
   },
@@ -261,7 +265,7 @@ it("submits the selected model, effort, speed, planning mode and workspace throu
       title: "Page section",
       newChatDefaults: {
         remembered: {
-          binding: { kind: "codex" },
+          binding: { driver: "codex", instanceId: "codex" },
           model: "selected",
           options: [{ id: "reasoningEffort", value: "high" }],
         },

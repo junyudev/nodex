@@ -79,7 +79,7 @@ const coreThread = (threadId: string, parentThreadId: string | null): CoreThread
     agent_path: null,
     thread_name: null,
     thread_preview: "",
-    backend_binding: { kind: "codex" },
+    backend_binding: { driver: "codex", instanceId: "codex" },
     model_id: null,
     reasoning_effort: null,
     service_tier: null,

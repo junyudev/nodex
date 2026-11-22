@@ -43,7 +43,8 @@ test("the Agent CLI retains live Run attribution across Core restarts and wrappe
     });
     const attribution = {
       session_id: sessionId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
       run_id: "run:one",
     } as const;
     let active = true;

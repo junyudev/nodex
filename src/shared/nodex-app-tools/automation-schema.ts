@@ -1,3 +1,4 @@
+import { AgentBackendBindingSchema } from "../schemas/agent-backend";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
@@ -75,18 +76,9 @@ const definitionFields = {
     .describe(
       "Page whose current content every run follows as standing instructions. Runs may update it for future runs. Null or omitted removes the runbook.",
     ),
-  backendBinding: z
-    .discriminatedUnion("kind", [
-      z.strictObject({ kind: z.literal("codex") }),
-      z.strictObject({ kind: z.literal("claude"), instanceConfigId: id }),
-      z.strictObject({ kind: z.literal("opencode"), instanceConfigId: id }),
-      z.strictObject({ kind: z.literal("antigravity"), instanceConfigId: id }),
-      z.strictObject({ kind: z.literal("acp"), agentDefinitionId: id, instanceConfigId: id }),
-    ])
-    .optional()
-    .describe(
-      "Agent and exact configured instance that runs the task. Omit on create to use the calling Session's Agent, or on update to keep the current one; a Heartbeat always uses its target Session's Agent. To choose another Agent, copy backendBinding from a task returned by view.",
-    ),
+  backendBinding: AgentBackendBindingSchema.optional().describe(
+    "Agent and exact configured instance that runs the task. Omit on create to use the calling Session's Agent, or on update to keep the current one; a Heartbeat always uses its target Session's Agent. To choose another Agent, copy backendBinding from a task returned by view.",
+  ),
   name: z
     .string()
     .regex(/\S/, "Must contain a non-whitespace character")

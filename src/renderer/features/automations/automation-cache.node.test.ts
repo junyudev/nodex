@@ -28,7 +28,7 @@ const task: Automation = {
   model: "gpt-6.1-sol",
   reasoningEffort: "high",
   serviceTier: null,
-  backendBinding: { kind: "codex" },
+  backendBinding: { driver: "codex", instanceId: "codex" },
   cwds: ["/repo"],
   executionEnvironment: "worktree",
   localEnvironmentConfigPath: null,

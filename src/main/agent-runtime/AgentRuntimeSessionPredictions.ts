@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as Stream from "effect/Stream";
@@ -39,7 +40,7 @@ export const run = Effect.fn("AgentRuntimeSessionPredictions.run")(function* (
       authority.rootThreadId !== rootThreadId ||
       authority.threadId !== rootThreadId ||
       authority.runtimeGeneration !== connection.identity.runtimeGeneration ||
-      authority.nativeThreadRef?.driver !== "codex"
+      !agentDefinition(authority.nativeThreadRef?.driver).capabilities.predictions
     )
       return;
     // The Runtime owns deduplication, the source fence and the actual prediction fork.

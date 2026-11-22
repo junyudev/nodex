@@ -27,7 +27,11 @@ vi.mock("../../agent-backend/AgentBackendApplication", async () => {
 type Handler = (event: IpcMainInvokeEvent, input: unknown) => Effect.Effect<unknown, object>;
 const requestId = "01991e60-b800-7000-8000-000000000012";
 const input = {
-  scope: { kind: "project", instanceConfigId: "claude-default", projectId: "project" },
+  scope: {
+    kind: "project",
+    instanceConfigId: "claude_DwwtN-gWKTuDgY0CipiA2mDkEAwUiZeUsBeQSfYr0Ks",
+    projectId: "project",
+  },
   requestId,
 };
 const makeEvent = (id: number) => {

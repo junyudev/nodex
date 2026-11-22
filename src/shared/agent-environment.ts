@@ -1,4 +1,4 @@
-import { defineMessages, type MessageDescriptor } from "./i18n/messages";
+import { defineMessages, type MessageDescriptor } from "./i18n/messages.ts";
 import { z } from "zod";
 
 export type FormatEnvironmentValidation = (
@@ -46,14 +46,18 @@ export const AgentEnvironmentValueSchema = z
   .max(ENVIRONMENT_VALUE_LIMIT)
   .refine((value) => !value.includes("\0"), "Environment values cannot contain a null character.");
 
-export function createAgentEnvironmentInputSchema(nameError: (name: string) => string | null) {
-  const name = z
+export function createAgentEnvironmentNameSchema(nameError: (name: string) => string | null) {
+  return z
     .string()
     .trim()
     .superRefine((value, context) => {
       const message = nameError(value);
       if (message) context.addIssue({ code: "custom", message });
     });
+}
+
+export function createAgentEnvironmentInputSchema(nameError: (name: string) => string | null) {
+  const name = createAgentEnvironmentNameSchema(nameError);
   return z.discriminatedUnion("sensitive", [
     z.object({ name, sensitive: z.literal(false), value: AgentEnvironmentValueSchema }).strict(),
     z

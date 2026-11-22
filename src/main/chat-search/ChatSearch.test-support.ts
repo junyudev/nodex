@@ -47,7 +47,7 @@ export const row = (
               project_id: "project",
               session_id: id,
               parent_thread_id: null,
-              backend_binding: { kind: "codex" },
+              backend_binding: { driver: "codex", instanceId: "codex" },
               execution_host_id: "local",
               thread_preview: "Opening prompt",
               status: { status_type: "idle", active_flags: [] },

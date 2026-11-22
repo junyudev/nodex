@@ -90,13 +90,15 @@ test("moves a Claude Code chat with its uncommitted files and native history acr
       worktreeRoot: managedRoot,
       autoDeleteEnabled: false,
     });
-    await invokeIpc(page, "settings:claude-agents:update", {
+    await invokeIpc(page, "settings:agent-profiles:update", {
+      driver: "claudeAgent",
       instances: [
         {
+          driver: "claudeAgent",
+          settings: { configDirectory: nativeHome, customModels: [] },
           id: "claude-handoff",
           displayName: "Claude Code",
           binaryPath: executable,
-          configDirectory: nativeHome,
           enabled: true,
           environment: [],
         },

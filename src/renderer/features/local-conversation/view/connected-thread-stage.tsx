@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../../../shared/agents/registry";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { toastFailure } from "@/lib/failure-toast";
@@ -772,7 +773,8 @@ export function ConnectedThreadStageFooter({
   const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
   const queryClient = useQueryClient();
   // The composer's catalogs come from this desktop's own Codex; a hosted chat's are its host's.
-  const desktopCatalogs = runtime.kind === "codex" && !hostedChat;
+  const desktopCatalogs =
+    agentDefinition(runtime.kind).capabilities.desktopCatalogs === true && !hostedChat;
   const composerPluginsQuery = useQuery({
     ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
     enabled: desktopCatalogs && workspaceSearchContext !== null,
@@ -796,17 +798,17 @@ export function ConnectedThreadStageFooter({
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
   const claudeSkillsReload =
-    input.provider?.kind === "claude" ? input.provider.refreshSkills : null;
+    input.provider?.kind === "claudeAgent" ? input.provider.refreshSkills : null;
   // A hosted chat's skills are its host's: reloading asks the host's catalog again.
   const hostedSkillsReload = hostedChat ? (input.provider?.refreshSkills ?? null) : null;
   const skillsReloadControl = useMemo<ConversationSkillsReloadControl | null>(() => {
     if (hostedSkillsReload)
       return {
-        provider: runtime.kind === "claude" ? "claude" : "codex",
+        provider: runtime.kind === "claudeAgent" ? "claude" : "codex",
         reload: hostedSkillsReload,
       };
     if (runtime.kind !== "codex") {
-      return runtime.kind === "claude" && claudeSkillsReload
+      return runtime.kind === "claudeAgent" && claudeSkillsReload
         ? { provider: "claude", reload: claudeSkillsReload }
         : null;
     }
@@ -1084,7 +1086,7 @@ export function ConnectedThreadStageFooter({
       composerChatKey,
       composerScopeIdentity,
       dictation,
-      composerPlugins: runtime.kind === "codex" ? (composerPluginsQuery.data ?? []) : [],
+      composerPlugins: desktopCatalogs ? (composerPluginsQuery.data ?? []) : [],
       composerPluginsLoading: desktopCatalogs && composerPluginsQuery.isPending,
       // A hosted chat offers the skills its Space host's Agents report, read through the host.
       composerSkills: desktopCatalogs
@@ -1096,18 +1098,17 @@ export function ConnectedThreadStageFooter({
       composerSkillsLoading: desktopCatalogs
         ? composerSkillsQuery.isPending
         : input.provider?.skillsLoading,
-      composerApps: runtime.kind === "codex" ? (composerAppsQuery.data ?? []) : [],
+      composerApps: desktopCatalogs ? (composerAppsQuery.data ?? []) : [],
       composerAppsLoading: desktopCatalogs && composerAppsQuery.isPending,
-      composerSites: runtime.kind === "codex" ? (composerSitesQuery.data?.sites ?? []) : [],
-      composerSitesAvailable:
-        runtime.kind === "codex" && composerSitesQuery.data?.available === true,
+      composerSites: desktopCatalogs ? (composerSitesQuery.data?.sites ?? []) : [],
+      composerSitesAvailable: desktopCatalogs && composerSitesQuery.data?.available === true,
       composerSitesLoading: desktopCatalogs && composerSitesQuery.isPending,
       composerChatGptConversations:
         runtime.kind === "codex"
           ? (composerChatGptConversationsQuery.data?.conversations ?? [])
           : [],
       composerChatGptConversationsAvailable:
-        runtime.kind === "codex" && composerChatGptConversationsQuery.data?.available === true,
+        desktopCatalogs && composerChatGptConversationsQuery.data?.available === true,
       composerChatGptConversationsLoading:
         desktopCatalogs && composerChatGptConversationsQuery.isPending,
     }),
@@ -1624,7 +1625,7 @@ function ConnectedThreadStageContent({
               canMove:
                 executionAvailable &&
                 !activeThreadProjectless &&
-                (runtimeSession || runtime.kind !== "acp") &&
+                (runtimeSession || runtime.kind !== "acpRegistry") &&
                 runtime.hostId === "local",
             }
           : null,

@@ -50,7 +50,7 @@ describe("listedModelCatalog", () => {
       { ...catalogModel("hidden"), hidden: true },
     ];
     const catalog = listedModelCatalog({
-      binding: { kind: "codex" },
+      binding: { driver: "codex", instanceId: "codex" },
       label: "Codex",
       models,
       selection: { ...codex, model: "gpt-5.3-codex-mini" },
@@ -59,7 +59,10 @@ describe("listedModelCatalog", () => {
     expect(catalog.entries.map((entry) => [entry.model.id, entry.model.displayName])).toEqual([
       ["gpt-5.3-codex-mini", "GPT-5.3 Codex Mini"],
     ]);
-    expect(catalog.selected).toEqual({ binding: { kind: "codex" }, model: "gpt-5.3-codex-mini" });
+    expect(catalog.selected).toEqual({
+      binding: { driver: "codex", instanceId: "codex" },
+      model: "gpt-5.3-codex-mini",
+    });
     expect(catalog.refresh).toBeUndefined();
     expect(catalog.manage).toBeUndefined();
     expect(catalog.configOptions).toBeUndefined();
@@ -82,13 +85,13 @@ describe("listedModelCatalog", () => {
         },
       ];
       const catalog = listedModelCatalog({
-        binding: { kind: "codex" },
+        binding: { driver: "codex", instanceId: "codex" },
         label: "Codex",
         models,
         selection: { ...codex, serviceTier: "ultrafast" },
         onSelectionChange,
       });
-      await catalog.choose({ binding: { kind: "codex" }, model: "b" });
+      await catalog.choose({ binding: { driver: "codex", instanceId: "codex" }, model: "b" });
       expect(onSelectionChange).toHaveBeenCalledWith(
         { ...codex, model: "b", reasoningEffort: "low", serviceTier: expected },
         "model",
@@ -98,12 +101,12 @@ describe("listedModelCatalog", () => {
 
   it("keeps a supported Claude effort and otherwise starts the next model at its default", async () => {
     const onSelectionChange = vi.fn();
-    const binding = { kind: "claude", instanceConfigId: "work" } as const;
+    const binding = { driver: "claudeAgent", instanceId: "work" } as const;
     const catalog = listedModelCatalog({
       binding,
       label: "Work",
       models: [withEfforts("opus", ["high", "max"], "high"), withEfforts("haiku", [], "default")],
-      selection: { kind: "claude", model: "opus", reasoningEffort: "max", serviceTier: null },
+      selection: { kind: "claudeAgent", model: "opus", reasoningEffort: "max", serviceTier: null },
       onSelectionChange,
     });
     expect(catalog.configOptions).toBeUndefined();
@@ -121,11 +124,7 @@ describe("listedModelCatalog", () => {
 
   it("offers another Agent's advertised effort levels as its Effort option", async () => {
     const onSelectionChange = vi.fn();
-    const binding = {
-      kind: "acp",
-      agentDefinitionId: "scripted-agent",
-      instanceConfigId: "work",
-    } as const;
+    const binding = { driver: "acpRegistry", instanceId: "work" } as const;
     const selection = {
       kind: "acp",
       model: "deep",

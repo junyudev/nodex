@@ -8,7 +8,6 @@ import {
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { invokeIpc } from "./support/editor-scenario";
 import { chooseComposerModel } from "./support/composer-model-picker";
 import { openNewChatDraft } from "./support/new-chat-draft";
@@ -129,15 +128,16 @@ for (const kind of ["codex", "claude"] as const) {
             mode: 0o755,
           },
         );
-        await invokeIpc(page, "settings:claude-agents:update", {
+        await invokeIpc(page, "settings:agent-profiles:update", {
+          driver: "claudeAgent",
           instances: [
             {
+              driver: "claudeAgent",
+              settings: { configDirectory: claudeHome, customModels: [] },
               id: "side-chat-fixture",
               displayName: "Claude Code",
               binaryPath,
-              configDirectory: claudeHome,
               enabled: true,
-              customModels: [],
               environment: [],
             },
           ],
@@ -214,11 +214,7 @@ for (const kind of ["codex", "claude"] as const) {
       expect(
         (await invokeIpc(page, "agent-runtime:session:inspect", { sessionId: sideId })).thread
           .modelSelection.instanceId,
-      ).toBe(
-        kind === "codex"
-          ? "codex"
-          : agentRuntimeProviderId({ kind, instanceConfigId: "side-chat-fixture" }),
-      );
+      ).toBe(kind === "codex" ? "codex" : "side-chat-fixture");
       expect(
         (await invokeIpc(page, "agent-runtime:session:read", { sessionId: sideId })).snapshot
           .projection.runs,

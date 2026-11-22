@@ -10,7 +10,6 @@ import {
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import type {
   ProjectSession,
   Automation,
@@ -217,11 +216,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
       };
     };
     await expect.poll(protocolSession).toEqual({
-      provider: agentRuntimeProviderId({
-        kind: "acp",
-        agentDefinitionId,
-        instanceConfigId,
-      }),
+      provider: instanceConfigId,
       nativeId: protocolSessionId,
     });
     await expect(page.getByText(liveMessage, { exact: true }).first()).toBeVisible();
@@ -282,11 +277,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
         },
       },
     });
-    const secondProviderId = agentRuntimeProviderId({
-      kind: "acp",
-      agentDefinitionId,
-      instanceConfigId: secondInstanceId,
-    })!;
+    const secondProviderId = secondInstanceId!;
     await invoke(page, "agent-runtime:session:launch", {
       launchId: createUuidV7(),
       acceptedAt: Date.now(),
@@ -311,7 +302,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
     expect(second.snapshot.projection.thread.providerInstanceId).toBe(secondProviderId);
     expect(second.threadId).not.toBe(target.threadId);
     expect(await protocolSession()).toEqual({
-      provider: agentRuntimeProviderId({ kind: "acp", agentDefinitionId, instanceConfigId }),
+      provider: instanceConfigId,
       nativeId: protocolSessionId,
     });
     expect(
@@ -329,7 +320,7 @@ test("ACP clock Automations preserve their instance through new chats, Page-link
       if (!manifest) throw new Error("Automation scenario requires its authoritative seed");
       const instanceId = "acp-automation-e2e";
       const observationPath = path.join(profile.runRoot, "automation-acp-observations.json");
-      const binding = { kind: "acp", agentDefinitionId, instanceConfigId: instanceId } as const;
+      const binding = { driver: "acpRegistry", instanceId: instanceId } as const;
       const instance = {
         id: instanceId,
         agentDefinitionId,
@@ -402,9 +393,7 @@ test("ACP clock Automations preserve their instance through new chats, Page-link
           sessionId: run.sessionId,
         });
       const first = await readSession();
-      expect(first.snapshot.projection.thread.providerInstanceId).toBe(
-        agentRuntimeProviderId(binding),
-      );
+      expect(first.snapshot.projection.thread.providerInstanceId).toBe(binding.instanceId);
       expect(readObservations(observationPath)).toEqual(
         expect.arrayContaining([
           { method: "session/set_config_option", configId: "model", value: "scripted-model" },
@@ -433,9 +422,7 @@ test("ACP clock Automations preserve their instance through new chats, Page-link
         .toBe("PENDING_REVIEW");
       const continued = await readSession();
       expect(continued.threadId).toBe(first.threadId);
-      expect(continued.snapshot.projection.thread.providerInstanceId).toBe(
-        agentRuntimeProviderId(binding),
-      );
+      expect(continued.snapshot.projection.thread.providerInstanceId).toBe(binding.instanceId);
       expect(
         readObservations(observationPath).filter((item) => item.method === "session/prompt"),
       ).toHaveLength(2);

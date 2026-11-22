@@ -1,55 +1,52 @@
+import {
+  agentDefinition,
+  agentSettingsSections,
+  type AgentSettingsAnchor,
+} from "../../shared/agents/registry";
 import { createContext, useContext, type ReactNode } from "react";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { providerKeyConnectionIdOfInstanceId } from "../../shared/provider-keys";
-import { acpAgentAnchor, isAcpAgentsAnchor } from "@/features/acp-agents/acp-agent-model";
+import { isAcpAgentsAnchor } from "@/features/acp-agents/acp-agent-model";
 import {
   isProviderKeyAnchor,
   providerKeyAnchor,
 } from "@/features/provider-keys/provider-key-anchor";
 
-/** A section of Settings > Agents: one per backend, and API keys. */
-export type AgentSettingsKind = AgentBackendBinding["kind"] | "keys";
-/** Opens Settings > Agents at a section or one item in it; no section opens the page. */
+export type AgentSettingsKind = AgentSettingsAnchor;
+
+/** Opens Settings > Agents at a section or one item in it. */
 type OpenAgentSettings = (kind?: AgentSettingsKind, instanceId?: string) => void;
 
-/** The Agents page sections in page order; each one's anchor is its kind. */
-export const AGENT_SETTINGS_KINDS = [
-  "codex",
-  "claude",
-  "antigravity",
-  "keys",
-  "opencode",
-  "acp",
-] as const satisfies readonly AgentSettingsKind[];
-
-export const antigravityAgentAnchor = (instanceId: string) => `antigravity-agent-${instanceId}`;
-
-/** The Settings > Agents anchor for a section or one of its configured profiles. */
-export const agentSettingsAnchor = (kind: AgentSettingsKind, instanceId?: string) =>
-  kind === "acp" && instanceId
-    ? acpAgentAnchor(instanceId)
-    : kind === "keys" && instanceId
-      ? providerKeyAnchor(instanceId)
-      : kind === "antigravity" && instanceId
-        ? antigravityAgentAnchor(instanceId)
-        : kind;
-
-/** Where an Agent's settings live: an API key's connection, an ACP instance or its backend. */
-export function agentSettingsTarget(binding: AgentBackendBinding): {
-  readonly kind: AgentSettingsKind;
-  readonly instanceId?: string;
-} {
-  const connectionId = binding.runtimeInstanceId
-    ? providerKeyConnectionIdOfInstanceId(binding.runtimeInstanceId)
-    : null;
-  if (connectionId) return { kind: "keys", instanceId: connectionId };
-  if (binding.kind === "acp" && binding.instanceConfigId)
-    return { kind: "acp", instanceId: binding.instanceConfigId };
-  if (binding.kind === "antigravity" && !binding.runtimeInstanceId && binding.instanceConfigId)
-    return { kind: "antigravity", instanceId: binding.instanceConfigId };
-  return { kind: binding.kind };
+export function agentSettingsAnchor(kind: AgentSettingsKind, instanceId?: string) {
+  if (!instanceId) return kind;
+  if (kind === "keys") return providerKeyAnchor(instanceId);
+  const section = agentSettingsSections.find((section) => section.settingsAnchor === kind);
+  return section && "profileAnchorPrefix" in section
+    ? `${section.profileAnchorPrefix}${instanceId}`
+    : kind;
 }
 
+/** A setup entry may precede the creation of a configured instance. */
+export type AgentSetupTarget = Pick<AgentBackendBinding, "driver"> &
+  Partial<Pick<AgentBackendBinding, "instanceId">>;
+
+/** Where an Agent's settings live: an API key's connection, an ACP instance or its backend. */
+export function agentSettingsTarget(binding: AgentSetupTarget): {
+  readonly kind: AgentSettingsKind | undefined;
+  readonly instanceId?: string;
+} {
+  const connectionId =
+    binding.instanceId && providerKeyConnectionIdOfInstanceId(binding.instanceId);
+  if (connectionId) return { kind: "keys", instanceId: connectionId };
+  const definition = agentDefinition(binding.driver);
+  const kind = agentSettingsSections.find(
+    (section) => section.settingsAnchor === definition.settingsAnchor,
+  )?.settingsAnchor;
+  return {
+    kind,
+    ...(definition.profileAnchorPrefix ? { instanceId: binding.instanceId } : {}),
+  };
+}
 /** The section a deep link or search result opens: the one it names or the one containing it. */
 export function agentSettingsKindForAnchor(
   anchor: string | null | undefined,
@@ -57,8 +54,13 @@ export function agentSettingsKindForAnchor(
   if (!anchor) return null;
   if (isAcpAgentsAnchor(anchor)) return "acp";
   if (isProviderKeyAnchor(anchor)) return "keys";
-  if (anchor.startsWith(antigravityAgentAnchor(""))) return "antigravity";
-  return AGENT_SETTINGS_KINDS.find((kind) => kind === anchor) ?? null;
+  return (
+    agentSettingsSections.find(
+      (section) =>
+        section.settingsAnchor === anchor ||
+        ("profileAnchorPrefix" in section && anchor.startsWith(section.profileAnchorPrefix)),
+    )?.settingsAnchor ?? null
+  );
 }
 
 const AgentSettingsNavigationContext = createContext<OpenAgentSettings | null>(null);

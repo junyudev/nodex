@@ -16,7 +16,7 @@ export const catalogModel = (id: string, displayName = id): AgentModelOption => 
   isDefault: false,
 });
 export const modelCatalog = (overrides: Partial<AgentModelCatalog> = {}): AgentModelCatalog => ({
-  binding: { kind: "opencode", instanceConfigId: "local" },
+  binding: { driver: "opencode", instanceId: "local" },
   models: [catalogModel("moonshot/kimi-k3", "Kimi K3"), catalogModel("local/small", "Small")],
   configOptions: [],
   modes: null,

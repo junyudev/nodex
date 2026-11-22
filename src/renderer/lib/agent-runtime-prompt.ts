@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import { getIntl } from "@/lib/i18n";
 import type { CodexPromptInput } from "../../shared/types";
 import { prepareAgentAppContext, prepareAgentMessage } from "../../shared/agent-prompt";
@@ -30,7 +31,7 @@ export async function prepareAgentRuntimeMessage(
     readonly model: RuntimeModel | undefined;
     readonly provider?: RuntimeProvider;
     readonly modelSelection?: AgentRuntimeMessage["modelSelection"];
-    readonly kind: AgentBackendBinding["kind"];
+    readonly kind: AgentBackendBinding["driver"];
     readonly desktopSkills?: readonly { readonly name: string; readonly path: string }[];
     readonly cwd?: string;
     readonly text: string;
@@ -44,7 +45,7 @@ export async function prepareAgentRuntimeMessage(
   const prepared = await prepareAgentMessage(input.text, input.promptInput, readPastedText, {
     images: true,
     agentConfigs: true,
-    nativeSkills: input.kind === "claude",
+    nativeSkills: agentDefinition(input.kind).capabilities.nativeSkillPrompts === true,
     desktopSkills: input.desktopSkills,
     untrustedAppMessage: input.untrustedAppMessage,
   });

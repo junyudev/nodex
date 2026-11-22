@@ -1706,23 +1706,6 @@ export interface UpdateCodexExecutionHostSettingsInput {
 }
 
 export type {
-  OpenCodeAgentInstanceConfig,
-  OpenCodeAgentSettings,
-  UpdateOpenCodeAgentSettingsInput,
-} from "./opencode-agent-settings";
-export type {
-  AntigravityAgentInstanceConfig,
-  AntigravityAgentSettings,
-  UpdateAntigravityAgentSettingsInput,
-} from "./antigravity-agent-settings";
-
-export type {
-  ClaudeAgentInstanceConfig,
-  ClaudeAgentSettings,
-  UpdateClaudeAgentSettingsInput,
-} from "./claude-agent-settings";
-
-export type {
   CodexHomeSettings,
   CodexHomeSettingsSnapshot,
   CodexHomeSettingsUpdateInput,

@@ -6,7 +6,7 @@ export function createTestIntelligenceMenu(
   return {
     catalog: {
       entries: [],
-      selected: { binding: { kind: "codex" }, model: "test-model" },
+      selected: { binding: { driver: "codex", instanceId: "codex" }, model: "test-model" },
       loading: false,
       choose: () => {},
     },

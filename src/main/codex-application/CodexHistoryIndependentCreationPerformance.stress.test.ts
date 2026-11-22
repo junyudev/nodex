@@ -202,7 +202,7 @@ const sourceEntry = (
       agentPath: null,
       threadName: summary.threadName,
       threadPreview: summary.threadPreview,
-      backendBinding: { kind: "codex" },
+      backendBinding: { driver: "codex", instanceId: "codex" },
       executionHostId: HOST_ID,
       cwd: "/workspace",
       executionProfile: summary.executionProfile,

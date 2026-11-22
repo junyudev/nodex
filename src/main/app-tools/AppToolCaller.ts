@@ -4,7 +4,7 @@ import type { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 
 export interface AppToolCaller {
-  readonly backend?: AgentBackendBinding["kind"];
+  readonly backend?: AgentBackendBinding["driver"];
   readonly threadId: string;
   readonly turnId: string;
   readonly callId: string;

@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
-import { defaultClaudeInstance } from "../../../src/shared/claude-agent-settings";
+import { claudeAgent } from "../../../src/shared/agents/claude";
 import {
   parseDataSourceOptionId,
   type DataSourceId,
@@ -19,10 +18,7 @@ import {
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
 export const INBOX_TRIAGE_SCENARIO_REVISION = 11 as const;
 /** The Claude Code account every Profile starts with. */
-const DEFAULT_CLAUDE_INSTANCE_ID = agentRuntimeProviderId({
-  kind: "claude",
-  instanceConfigId: defaultClaudeInstance().id,
-})!;
+const DEFAULT_CLAUDE_INSTANCE_ID = claudeAgent.profile.initialId;
 
 const inboxTriageSkills = [
   { name: "positioning-review", reason: "Compare how the homepage speaks to each audience." },
@@ -302,7 +298,7 @@ const materializeInboxTriage = async (
       prompt:
         "Compare positioning the homepage as a developer tool versus a personal assistant. Use $positioning-context to read the current homepage and notes, then deliver a short comparison and the decisions I need to make. Do not change code.",
       agent: {
-        instanceId: agentRuntimeProviderId({ kind: "codex" })!,
+        instanceId: "codex"!,
         model: null,
         reasoningEffort: null,
         serviceTier: null,

@@ -83,7 +83,7 @@ function mount(
 const requests = () =>
   mocks.operation.mock.calls.filter(([channel]) => channel === "codex:composer-prediction:request");
 
-it.each(["codex", "claude"] as const)(
+it.each(["codex", "claudeAgent", "futureAgent"] as const)(
   "routes %s Runtime prediction eligibility through its actual driver",
   async (kind) => {
     mocks.available = true;

@@ -143,7 +143,7 @@ describe("ACP Agents settings", () => {
     await press(await view.findByRole("button", { name: "Sign in" }));
     const terminal = await view.findByRole("button", { name: "Open Qoder login" });
     expect(main.accounts.read).toHaveBeenCalledWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
     });
 
     await press(view.getByRole("button", { name: "Set QODER_PERSONAL_ACCESS_TOKEN" }));
@@ -166,7 +166,7 @@ describe("ACP Agents settings", () => {
     main.accounts.read.mockResolvedValue(ok(waiting));
     await press(terminal);
     expect(main.accounts.start).toHaveBeenCalledWith({
-      backend: { kind: "acp", instanceConfigId: "qoder-main" },
+      backend: { driver: "acpRegistry", instanceId: "qoder-main" },
       methodId: "login",
     });
     await view.findByText("Sign in using the terminal below.");
@@ -233,7 +233,7 @@ describe("ACP Agents settings", () => {
     await press(view.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(main.accounts.cancel).toHaveBeenCalledExactlyOnceWith({
-        backend: { kind: "acp", instanceConfigId: "qoder-main" },
+        backend: { driver: "acpRegistry", instanceId: "qoder-main" },
         flowId: "flow",
       }),
     );

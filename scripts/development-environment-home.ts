@@ -21,10 +21,16 @@ import path from "node:path";
 
 import { readIsolatedRunLeaseOwner } from "../src/main/core-client/isolated-run-ownership";
 import {
-  getClaudeAgentSettings,
-  updateClaudeAgentSettings,
+  getAgentProfiles,
+  updateAgentProfiles,
 } from "../src/main/settings/application-settings-persistence";
-import { defaultClaudeInstance } from "../src/shared/claude-agent-settings";
+import { claudeAgent } from "../src/shared/agents/claude";
+import {
+  agentProfileInput,
+  agentProfilesFor,
+  createAgentProfile,
+} from "../src/shared/agents/profiles";
+import { migrateProfileAgentProfiles } from "../src/main/settings/application-settings-persistence";
 import { copyIsolatedCodexConfig } from "./copy-isolated-codex-config";
 import { installPrivateFile, resolveRegularPrivateFileSource } from "./private-file";
 
@@ -418,18 +424,21 @@ const useClaudeConfigDirectory = async (
     hostHomeDirectory: homedir(),
     settingsPath: path.join(home.nodexHome, "config.toml"),
   };
-  const { instances } = getClaudeAgentSettings(source);
-  const id = defaultClaudeInstance().id;
+  migrateProfileAgentProfiles(source);
+  const instances = agentProfilesFor(getAgentProfiles(source), claudeAgent.driver);
+  const id = claudeAgent.profile.initialId;
   const configure = (instance: (typeof instances)[number]) => ({
     ...instance,
-    configDirectory: directory,
+    settings: { ...instance.settings, configDirectory: directory },
     enabled: true,
   });
-  updateClaudeAgentSettings(
+  updateAgentProfiles(
     {
-      instances: instances.some((instance) => instance.id === id)
+      driver: claudeAgent.driver,
+      instances: (instances.some((instance) => instance.id === id)
         ? instances.map((instance) => (instance.id === id ? configure(instance) : instance))
-        : [configure(defaultClaudeInstance()), ...instances],
+        : [configure(createAgentProfile(claudeAgent, id)), ...instances]
+      ).map(agentProfileInput),
     },
     source,
   );

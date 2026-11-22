@@ -1,6 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   antigravityInspection,
   antigravityOperation,
@@ -20,7 +19,7 @@ test("routes shared runtime actions through the owner and confirms removal", asy
     instances: [
       {
         ...managedAntigravityExecutable,
-        instanceId: agentRuntimeProviderId({ kind: "antigravity", instanceConfigId: profileId })!,
+        instanceId: profileId!,
         configuredBinaryPath: null,
         issue: null,
       },

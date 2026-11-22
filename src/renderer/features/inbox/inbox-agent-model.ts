@@ -1,3 +1,4 @@
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
@@ -5,7 +6,6 @@ import type { AgentSessionConfigOption } from "../../../shared/agent-conversatio
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import type { AgentRuntimeLaunch } from "../../../shared/agent-runtime-api";
 import {
-  agentRuntimeProviderId,
   isAgentRuntimeEffortOption,
   fitAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
@@ -27,7 +27,6 @@ import {
   agentEffortLabel,
   agentRuntimeBinding,
   agentRuntimePickerEntries,
-  agentRuntimeProviderBackendKind,
   agentRuntimeProviderLabel,
   isAgentRuntimeProviderAvailable,
   projectAgentRuntimeModel,
@@ -51,7 +50,7 @@ export interface InboxAgentCatalog {
 /** What an Inbox Agent will run on, as the Inbox says it before anything runs. */
 export interface InboxAgentPresentation {
   readonly status: "ready" | "checking" | "unavailable";
-  readonly kind: AgentBackendBinding["kind"] | null;
+  readonly kind: AgentBackendBinding["driver"] | null;
   /** The Agent's name, such as `Codex` or a Claude account's name. */
   readonly agent: string;
   /** Whether the name says more than the Agent's mark, as a second account's name does. */
@@ -67,8 +66,8 @@ const agentName = (catalog: InboxAgentCatalog, instanceId: string) => {
   const provider = catalog.providers.find((candidate) => candidate.instanceId === instanceId);
   return provider
     ? agentRuntimeProviderLabel(provider, catalog.instances)
-    : (catalog.instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)
-        ?.label ?? (instanceId === "codex" ? "Codex" : instanceId));
+    : (catalog.instances.find((entry) => entry.binding.instanceId === instanceId)?.label ??
+        (instanceId === "codex" ? "Codex" : instanceId));
 };
 
 /** How the Inbox names an Agent: its name, its mark, and whether the name says more than the mark. */
@@ -78,8 +77,8 @@ export function inboxAgentIdentity(
 ): Pick<InboxAgentPresentation, "agent" | "kind" | "named"> {
   const agent = agentName(catalog, instanceId);
   const provider = catalog.providers.find((candidate) => candidate.instanceId === instanceId);
-  const kind = provider ? agentRuntimeProviderBackendKind(provider) : null;
-  return { agent, kind, named: !kind || agentRuntimeQualifier({ kind }, agent) !== null };
+  const kind = provider ? provider.driver : null;
+  return { agent, kind, named: !kind || agentRuntimeQualifier({ driver: kind }, agent) !== null };
 }
 
 const effortDescriptor = (model: ProviderModel | undefined) =>
@@ -224,7 +223,7 @@ export interface InboxAgentPickerModel {
     readonly selection: AgentModelSelection;
   }[];
   readonly selected: AgentModelSelection;
-  readonly kind: AgentBackendBinding["kind"];
+  readonly kind: AgentBackendBinding["driver"];
   /** The chosen Agent's models, which carry its effort levels. */
   readonly models: readonly AgentModelOption[];
   readonly reasoningEffort: string;
@@ -249,8 +248,8 @@ export function inboxAgentPickerModel(
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
   );
-  const kind = provider ? agentRuntimeProviderBackendKind(provider) : "codex";
-  const binding = agentRuntimeBinding(choice.instanceId, catalog.instances);
+  const kind = provider ? provider.driver : "codex";
+  const binding = provider ? agentRuntimeBinding(provider) : undefined;
   const model = provider
     ? choice.model
       ? provider.models.find((candidate) => candidate.slug === choice.model)
@@ -269,7 +268,7 @@ export function inboxAgentPickerModel(
     // An Agent the configured instances cannot name yet matches no listed model.
     selected: binding
       ? { binding, model: model?.slug ?? choice.model ?? "" }
-      : { binding: { kind: "codex" }, model: "" },
+      : { binding: CODEX_AGENT_BACKEND_BINDING, model: "" },
     kind,
     models: provider
       ? provider.models.map((entry) => projectAgentRuntimeModel(provider, entry))
@@ -277,7 +276,7 @@ export function inboxAgentPickerModel(
     reasoningEffort: effort ?? "default",
     ...speed,
     configOptions:
-      kind !== "codex" && kind !== "claude" && descriptor?.type === "select" && effort
+      kind !== "codex" && kind !== "claudeAgent" && descriptor?.type === "select" && effort
         ? [
             {
               id: descriptor.id,
@@ -305,7 +304,7 @@ export function chooseInboxModel(
   choice: InboxAgentChoice,
   next: AgentModelSelection,
 ): InboxAgentChoice {
-  const instanceId = agentRuntimeProviderId(next.binding);
+  const instanceId = next.binding.instanceId;
   if (!instanceId) return choice;
   const model = catalog.providers
     .find((candidate) => candidate.instanceId === instanceId)

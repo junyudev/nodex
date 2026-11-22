@@ -42,7 +42,7 @@ import { MainConfig } from "../app/MainConfig";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
-import { agentBackendKindOfRuntimeDriver } from "../../shared/agent-backend";
+import { agentAttributionLabel, agentDefinition } from "../../shared/agents/registry";
 import { buildNodexCliBootstrap, nodexCliShellBinding } from "../platform/node/NodexCliBootstrap";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import { make as makeRuntimeAuthority } from "./AgentRuntimeAuthority";
@@ -316,8 +316,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     // Record the verified opening input before the provider can act or request approval.
-    const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
-    if (!backend) return yield* unavailable("turn.actor");
+    const driver = driverOf(proof.providerInstanceId);
+    if (!driver) return yield* unavailable("turn.actor");
     const inputMessage = yield* connection.request("thread.run-message", {
       threadId: proof.threadId,
       runId: proof.runId,
@@ -328,9 +328,9 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       ...(inputMessage?.id === proof.userMessageId && inputMessage.createdBy === "user"
         ? { message_id: proof.userMessageId }
         : {}),
-      backend,
+      driver,
+      label: agentAttributionLabel(driver),
     });
-    const driver = driverOf(proof.providerInstanceId);
     const nativeId =
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
     const taskId = nativeId ?? shellTaskId(proof.threadId);
@@ -338,9 +338,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     const externalOpenCode = hasExternalProviderServer(providerConfig);
     const supportsCli =
       nativeId !== null ||
-      driver === "claudeAgent" ||
-      driver === "antigravity" ||
-      (driver === "opencode" && !externalOpenCode);
+      (agentDefinition(driver).capabilities.cliBootstrap === true && !externalOpenCode);
     const scopedConnection =
       scopedCore && supportsCli
         ? yield* scopedCore.issue({
@@ -350,7 +348,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             attribution: {
               session_id: sessionId,
               run_id: proof.runId,
-              backend,
+              driver,
+              label: agentAttributionLabel(driver),
             },
             authorize: Effect.gen(function* () {
               const current = yield* readProof(identity).pipe(Effect.orElseSucceed(() => null));
@@ -469,7 +468,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             projectIdOf(thread.projectId) !== projectIdOf(request.request.projectId))
         )
           return yield* unavailable(request.operation);
-        const backend = agentBackendKindOfRuntimeDriver(thread.providerDriver ?? undefined);
+        const backend = agentDefinition(thread.providerDriver).capabilities.pluginDelivery;
         if (backend !== request.request.backend) return yield* unavailable(request.operation);
         if (backend === "codex") {
           const provider = options.providers[thread.providerInstanceId]?.config;
@@ -621,7 +620,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
       const { proof, sessionId, context } = yield* capture;
       if (request.tool === "hand_back_message") yield* bindInbound(proof, sessionId);
-      const backend = agentBackendKindOfRuntimeDriver(driverOf(proof.providerInstanceId));
+      const backend = driverOf(proof.providerInstanceId);
       if (
         !backend ||
         request.input === null ||

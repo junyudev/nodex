@@ -117,7 +117,7 @@ const harness = (
 
 it.effect("preserves native Codex handoff routing and execution location", () =>
   Effect.gen(function* () {
-    const f = yield* harness({ kind: "codex" });
+    const f = yield* harness({ driver: "codex", instanceId: "codex" });
     assert.deepEqual(yield* f.execution.read("thread", "remote"), source);
     assert.strictEqual(yield* f.execution.withHandoff("thread", Effect.succeed("owned")), "owned");
     yield* f.execution.stop("thread");
@@ -143,7 +143,7 @@ it.effect("preserves native Codex handoff routing and execution location", () =>
 
 it.effect("only the bound native Codex owner admits legacy handoff operations", () =>
   Effect.gen(function* () {
-    const f = yield* harness({ kind: "claude", instanceConfigId: "work" });
+    const f = yield* harness({ driver: "claudeAgent", instanceId: "work" });
     for (const operation of [
       f.execution.read("thread", "local"),
       f.execution.stop("thread"),
@@ -161,11 +161,7 @@ it.effect("only the bound native Codex owner admits legacy handoff operations", 
 
 it.effect("ACP never acquires Codex or Claude execution capabilities", () =>
   Effect.gen(function* () {
-    const f = yield* harness({
-      kind: "acp",
-      agentDefinitionId: "external",
-      instanceConfigId: null,
-    });
+    const f = yield* harness({ driver: "acpRegistry", instanceId: "external" });
     for (const operation of [
       f.execution.read("thread"),
       f.execution.stop("thread"),
@@ -183,11 +179,7 @@ it.effect("ACP never acquires Codex or Claude execution capabilities", () =>
 
 it.effect("recovery seals admission without asking Core to route or starting execution", () =>
   Effect.gen(function* () {
-    const f = yield* harness({
-      kind: "acp",
-      agentDefinitionId: "external",
-      instanceConfigId: null,
-    });
+    const f = yield* harness({ driver: "acpRegistry", instanceId: "external" });
     yield* f.execution.setRecoveryRequired("thread", true);
     yield* f.execution.setRecoveryRequired("thread", false);
     assert.deepEqual(f.safety, [
@@ -234,7 +226,7 @@ it.effect(
           record("follow-up", operationId).pipe(Effect.as(undefined)),
         reconcileRecovery: () => record("reconcile").pipe(Effect.as(undefined)),
       });
-      const f = yield* harness({ kind: "claude", instanceConfigId: "work" }, port);
+      const f = yield* harness({ driver: "claudeAgent", instanceId: "work" }, port);
       assert.deepEqual(yield* f.execution.read("thread"), source);
       yield* f.execution.withHandoff("thread", Effect.void, "move");
       yield* f.execution.setRecoveryRequired("thread", true, "move");

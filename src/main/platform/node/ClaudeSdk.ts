@@ -1,3 +1,5 @@
+import type { claudeAgent } from "../../../shared/agents/claude";
+import type { AgentProfile } from "../../../shared/agents/profiles";
 import { readClaudeHistoryRecords, readClaudeHistoryRecord } from "./ClaudeHistoryRecords";
 // @effect-diagnostics asyncFunction:off
 import { isAbsolute, join } from "node:path";
@@ -22,7 +24,6 @@ import {
   boundAgentToolOutput,
   type AgentToolOutput,
 } from "../../../shared/agent-tool-output";
-import type { ClaudeAgentInstanceConfig } from "../../../shared/types";
 import type {
   ClaudeRuntimeDiagnostics,
   ClaudeResolvedIntelligence,
@@ -48,7 +49,7 @@ export interface ClaudeSdkDiscovery {
   readonly intelligence: ClaudeResolvedIntelligence;
 }
 export interface ClaudeSdkDiscoveryInput {
-  readonly instance: ClaudeAgentInstanceConfig;
+  readonly instance: AgentProfile<typeof claudeAgent.driver>;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly allowPathDiscovery?: boolean;
   readonly cwd: string;
@@ -131,15 +132,15 @@ const failure = (operation: string, cause: unknown) =>
 /** Only an explicit instance directory overrides native account selection; it never changes HOME. */
 export const claudeEnvironment = (
   environment: Readonly<Record<string, string | undefined>>,
-  instance: ClaudeAgentInstanceConfig,
+  instance: AgentProfile<typeof claudeAgent.driver>,
 ): Record<string, string | undefined> => {
   const result = { ...environment };
   delete result.CLAUDECODE;
   delete result.CLAUDE_CODE_ENTRYPOINT;
-  if (!instance.configDirectory) return result;
-  const directory = instance.configDirectory.startsWith("~/")
-    ? join(hostEnvironmentHome(environment) ?? "", instance.configDirectory.slice(2))
-    : instance.configDirectory;
+  if (!instance.settings.configDirectory) return result;
+  const directory = instance.settings.configDirectory.startsWith("~/")
+    ? join(hostEnvironmentHome(environment) ?? "", instance.settings.configDirectory.slice(2))
+    : instance.settings.configDirectory;
   if (
     !isAbsolute(directory) &&
     !/^[A-Za-z]:[\\/]/u.test(directory) &&
@@ -214,7 +215,7 @@ const discover = Effect.fn("ClaudeSdk.discover")(function* (
     intelligence: resolveClaudeIntelligence({
       settings,
       models: initialized.models ?? [],
-      customModels: input.instance.customModels,
+      customModels: input.instance.settings.customModels,
       environment: claudeEnvironment(input.environment, input.instance),
       acknowledged: {},
       ...(initialized.fast_mode_state ? { fastState: initialized.fast_mode_state } : {}),
@@ -527,7 +528,7 @@ export const live = Layer.effect(
     const discoverMetadata = Effect.fn("ClaudeSdk.discoverMetadata")(function* (
       input: ClaudeSdkDiscoveryInput,
     ) {
-      const explicitPath = input.instance.environment.some(({ name }) =>
+      const explicitPath = input.instance.environment?.some(({ name }) =>
         config.platform === "win32" ? name.toUpperCase() === "PATH" : name === "PATH",
       );
       const launch = yield* resolveClaudeLaunch(

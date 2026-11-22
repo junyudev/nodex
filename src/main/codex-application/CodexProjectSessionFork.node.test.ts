@@ -15,7 +15,7 @@ const sourceThreadId = "thread-source";
 const childThreadId = "thread-child";
 
 const makeHarness = (
-  backendBinding: AgentBackendBinding = { kind: "codex" },
+  backendBinding: AgentBackendBinding = { driver: "codex", instanceId: "codex" },
   hostId = "remote-a",
 ) => {
   const order: string[] = [];
@@ -130,9 +130,8 @@ const makeHarness = (
 it.effect("rejects an ACP Project Session before any Codex fork side effect", () =>
   Effect.gen(function* () {
     const { capability, directForks, order } = makeHarness({
-      kind: "acp",
-      agentDefinitionId: "claude-agent-acp",
-      instanceConfigId: "claude-local",
+      driver: "acpRegistry",
+      instanceId: "claude-local",
     });
     const forks = yield* capability;
     yield* forks
@@ -181,7 +180,7 @@ it.effect(
   "leaves a local imported history passive before any native fork or worktree publication",
   () =>
     Effect.gen(function* () {
-      const fixture = makeHarness({ kind: "codex" }, "local");
+      const fixture = makeHarness({ driver: "codex", instanceId: "codex" }, "local");
       const forks = yield* fixture.capability;
       for (const target of ["local", "newWorktree"] as const) {
         const failure = yield* forks.fork({ sessionId, input: { target } }).pipe(Effect.flip);

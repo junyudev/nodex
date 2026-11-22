@@ -577,7 +577,7 @@ export const make: Effect.Effect<
                 owner: input.threadId,
                 identity: coreAuthority.identity,
                 projectId,
-                attribution: { session_id: linkedSession.id, backend: "codex" },
+                attribution: { session_id: linkedSession.id, driver: "codex", label: "Codex" },
                 authorize: Effect.gen(function* () {
                   const currentConnection = yield* gateway.connection(executionHostId);
                   if (

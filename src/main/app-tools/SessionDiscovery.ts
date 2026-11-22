@@ -1,4 +1,3 @@
-import { agentBackendKindOfDriver } from "../../shared/conversation-identity";
 import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope";
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
@@ -50,7 +49,7 @@ export interface SessionListingSummary {
   readonly threadId: string | null;
   readonly title: string;
   readonly preview: string;
-  readonly backend: "codex" | "acp" | "claude" | "opencode" | "antigravity" | null;
+  readonly backend: string | null;
   readonly status: {
     readonly status_type: string;
     readonly active_flags: readonly ThreadActiveFlag[];
@@ -133,7 +132,6 @@ const decodePosition = Schema.decodeEffect(Schema.fromJsonString(Cursor));
 const encodePosition = Schema.encodeSync(Schema.fromJsonString(Cursor));
 const encode = (position: Position) =>
   `nxd1.${Buffer.from(encodePosition(position)).toString("base64url")}`;
-const backendOf = agentBackendKindOfDriver;
 
 const placementOf = (item: ListingItem): SessionListingSummary["placement"] => {
   if (item.task.session.pinned) return { kind: "pinned", source: "session" };
@@ -171,9 +169,7 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
   threadId: runtime?.threadId ?? item.task.thread?.thread_id ?? null,
   title: item.task.session.display_title,
   preview: runtime?.preview ?? item.task.thread?.thread_preview ?? "",
-  backend: runtime
-    ? backendOf(runtime.providerDriver)
-    : (item.task.thread?.backend_binding.kind ?? null),
+  backend: runtime ? runtime.providerDriver : (item.task.thread?.backend_binding.driver ?? null),
   status: runtime
     ? { status_type: runtime.status, active_flags: runtime.activeFlags }
     : (item.task.thread?.status ?? { status_type: "idle", active_flags: [] }),
@@ -202,7 +198,7 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
     ? { providerInstanceId: runtime.providerInstanceId, model: runtime.model }
     : item.task.thread?.model_id
       ? {
-          providerInstanceId: item.task.thread.backend_binding.kind,
+          providerInstanceId: item.task.thread.backend_binding.instanceId,
           model: item.task.thread.model_id,
         }
       : null,
@@ -237,7 +233,7 @@ export const withSessionMetadata = (
   ...session,
   threadId: details.threadId,
   preview: details.preview,
-  backend: backendOf(details.providerDriver),
+  backend: details.providerDriver,
   recencyAt: details.recencyAt === null ? null : Date.parse(details.recencyAt),
   status: { status_type: statusOf(details), active_flags: details.activeFlags },
   createdBy: details.createdBy,

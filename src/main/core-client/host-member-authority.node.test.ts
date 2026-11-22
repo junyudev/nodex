@@ -174,12 +174,14 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       session_id: sessionId,
       run_id: runId,
       message_id: workMessageId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const attribution = await host.issueAgentAttribution({
       session_id: sessionId,
       run_id: runId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const laterMessage = createUuidV7();
     await relay(
@@ -249,18 +251,21 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
     await host.recordAgentRun({
       session_id: sessionId,
       run_id: queuedRun,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     await host.recordAgentRun({
       session_id: sessionId,
       run_id: queuedRun,
       message_id: workMessageId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const queuedAttribution = await host.issueAgentAttribution({
       session_id: sessionId,
       run_id: queuedRun,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const queuedOperation = operation();
     await host.libraryApply(
@@ -297,12 +302,14 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
     await host.recordAgentRun({
       session_id: coordinatorSessionId,
       run_id: coordinatorRunId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const coordinatorAttribution = await host.issueAgentAttribution({
       session_id: coordinatorSessionId,
       run_id: coordinatorRunId,
-      backend: "codex",
+      driver: "codex",
+      label: "Codex",
     });
     const coordinatorAgentOperation = operation();
     await host.libraryApply(
@@ -508,7 +515,8 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       host.issueAgentAttribution({
         session_id: sessionId,
         run_id: runId,
-        backend: "codex",
+        driver: "codex",
+        label: "Codex",
       }),
     ).rejects.toMatchObject(failure);
     await expect(

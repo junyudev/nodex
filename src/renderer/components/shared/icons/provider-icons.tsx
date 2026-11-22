@@ -1,3 +1,4 @@
+import { agentDefinition } from "../../../../shared/agents/registry";
 import type { ComponentType } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import { isNodexProviderId } from "../../../../shared/nodex-models";
@@ -72,16 +73,25 @@ export function OpenCodeIcon({ className }: ProviderIconProps) {
   );
 }
 
+const AGENT_MARKS = {
+  openai: OpenAIIcon,
+  claude: ClaudeIcon,
+  antigravity: AntigravityIcon,
+  opencode: OpenCodeIcon,
+};
+
 /** Brand mark for a runtime; runtimes without a first-party mark share the generic Agent glyph. */
 export function AgentProviderIcon({
   kind,
   className,
-}: ProviderIconProps & { readonly kind: AgentBackendBinding["kind"] }) {
-  if (kind === "codex") return <OpenAIIcon className={className} />;
-  if (kind === "claude") return <ClaudeIcon className={className} />;
-  if (kind === "antigravity") return <AntigravityIcon className={className} />;
-  if (kind === "opencode") return <OpenCodeIcon className={className} />;
-  return <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />;
+}: ProviderIconProps & { readonly kind: AgentBackendBinding["driver"] }) {
+  const icon = agentDefinition(kind).icon;
+  const Mark = icon && AGENT_MARKS[icon];
+  return Mark ? (
+    <Mark className={className} />
+  ) : (
+    <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />
+  );
 }
 
 const PROVIDER_KEY_MARKS: Readonly<Record<ProviderKeyPresetId, ComponentType<ProviderIconProps>>> =
@@ -124,14 +134,14 @@ export function AgentInstanceIcon({
   binding,
   className,
 }: ProviderIconProps & {
-  readonly binding: Pick<AgentBackendBinding, "kind" | "runtimeInstanceId"> & {
-    readonly agentDefinitionId?: string;
+  readonly binding: Pick<AgentBackendBinding, "driver"> & {
+    readonly instanceId?: string | undefined;
   };
 }) {
-  const instanceId = binding.runtimeInstanceId;
+  const instanceId = binding.instanceId;
   if (instanceId && isNodexProviderId(instanceId))
     return <NodexLogoMarkIcon monochrome className={cn("size-4 shrink-0", className)} />;
   const preset = instanceId ? providerKeyPresetOfInstanceId(instanceId) : null;
   if (preset) return <ProviderKeyIcon preset={preset} className={className} />;
-  return <AgentProviderIcon kind={binding.kind} className={className} />;
+  return <AgentProviderIcon kind={binding.driver} className={className} />;
 }

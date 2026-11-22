@@ -1,3 +1,4 @@
+import { claudeAgent } from "../../shared/agents/claude";
 import { isManagedRuntimeInstanceId } from "../../shared/managed-runtime-instances";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import * as Clock from "effect/Clock";
@@ -21,20 +22,32 @@ import {
   SUBSCRIPTION_USAGE_PROVIDERS,
   subscriptionUsageProvider,
   subscriptionUsageReadAt,
-  type SubscriptionUsageProvider,
+  subscriptionMeter,
+  subscriptionMeters,
 } from "../../shared/subscription-usage";
 import { AgentRuntimeApplicationError, agentRuntimeFailureReason } from "./AgentRuntimeApplication";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
-type MeterPreferences = Readonly<Record<SubscriptionUsageProvider, boolean>>;
-type DeclaredAgents = Readonly<Record<SubscriptionUsageProvider, readonly string[]>>;
+type MeterPreferences = Readonly<Record<string, boolean>>;
+type DeclaredAgents = Readonly<Record<string, readonly string[]>>;
 
-// Antigravity publishes quotas after its health check returns. Reconcile its async result
-// without starting execution or asking it to check the account again.
-const ANTIGRAVITY_QUOTA_RECONCILE_DELAY = Duration.seconds(32);
+const meterEnabled = (meters: MeterPreferences, key: string) => meters[key] !== false;
 
-const anyMeterEnabled = (meters: MeterPreferences) =>
-  SUBSCRIPTION_USAGE_PROVIDERS.some((provider) => meters[provider]);
+const deferredMeters = subscriptionMeters.filter(
+  ({ deferredReadingMs }) => deferredReadingMs !== undefined,
+);
+
+const anyMeterEnabled = (meters: MeterPreferences, providers: Providers | null = null) =>
+  SUBSCRIPTION_USAGE_PROVIDERS.some((key) => meterEnabled(meters, key)) ||
+  (providers ?? []).some((provider) => {
+    const key = subscriptionUsageProvider(provider);
+    return key !== null && meterEnabled(meters, key);
+  });
+
+const reportedOutsideSettings = (provider: Providers[number]) => {
+  const key = subscriptionUsageProvider(provider);
+  return key !== null && !subscriptionMeter(key)?.trackedBySettings;
+};
 
 /** Subscription usage is read again once the reading is this old. */
 export const SUBSCRIPTION_USAGE_POLL_INTERVAL = Duration.minutes(5);
@@ -150,7 +163,7 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
   const reads = yield* Semaphore.make(1);
   const meters = yield* Ref.make(options.meters);
   const reconcileAt = yield* Ref.make<number | null>(null);
-  const antigravityDeclared = yield* Ref.make(false);
+  const deferredDeclarations = yield* Ref.make<DeclaredAgents>({});
   // Each wakes its loop to reconsider; sliding so a burst of requests asks once.
   const schedule = yield* Queue.sliding<void>(1);
   const rereads = yield* Queue.sliding<void>(1);
@@ -175,34 +188,37 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
    */
   const readKnown = reads.withPermits(1)(
     Effect.gen(function* () {
-      if (!anyMeterEnabled(yield* Ref.get(meters))) return;
+      const current = yield* SubscriptionRef.get(snapshot);
+      if (!anyMeterEnabled(yield* Ref.get(meters), current.providers)) return;
       const result = yield* Effect.result(
         options.declared.pipe(
-          Effect.tap((declared) => Ref.set(antigravityDeclared, declared.antigravity.length > 0)),
-          Effect.map((declared) => Object.values(declared).flat()),
-          Effect.flatMap((instanceIds) =>
-            instanceIds.length === 0
-              ? Effect.succeed([instanceIds, [] as Providers] as const)
-              : options.known.pipe(Effect.map((known) => [instanceIds, known] as const)),
-          ),
+          Effect.tap((declared) => Ref.set(deferredDeclarations, declared)),
+          Effect.flatMap((declared) => {
+            const instanceIds = Object.values(declared).flat();
+            // Self-reporting Agents first join through a catalog that execution served.
+            if (!instanceIds.length && !current.providers?.some(reportedOutsideSettings))
+              return Effect.succeed([instanceIds, [] as Providers] as const);
+            return options.known.pipe(Effect.map((known) => [instanceIds, known] as const));
+          }),
         ),
       );
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
       const [instanceIds, known] = result.success;
       const declared = new Set(instanceIds);
-      const current = yield* SubscriptionRef.get(snapshot);
       if (known !== null)
         return yield* publish({
           status: "ready",
-          providers: adoptSubscriptionRows(current.providers, known).filter((row) =>
-            declared.has(row.instanceId),
+          providers: adoptSubscriptionRows(current.providers, known).filter(
+            (row) => declared.has(row.instanceId) || reportedOutsideSettings(row),
           ),
           reason: null,
         });
       yield* publish({
         status: current.status === "loading" ? "ready" : current.status,
         providers:
-          current.providers?.filter((row) => declared.has(row.instanceId)) ?? current.providers,
+          current.providers?.filter(
+            (row) => declared.has(row.instanceId) || reportedOutsideSettings(row),
+          ) ?? current.providers,
         reason: current.reason,
       });
     }),
@@ -214,17 +230,24 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
    */
   const readNow = (start: boolean) =>
     Effect.gen(function* () {
-      if (!anyMeterEnabled(yield* Ref.get(meters))) return;
+      const current = yield* SubscriptionRef.get(snapshot);
+      if (!anyMeterEnabled(yield* Ref.get(meters), current.providers)) return;
       const now = yield* Clock.currentTimeMillis;
       yield* Ref.set(lastAttemptAt, now);
       const result = yield* Effect.result(
         Effect.gen(function* () {
           const declared = yield* options.declared;
           const enabled = yield* Ref.get(meters);
-          if (!anyMeterEnabled(enabled)) return null;
-          const instanceIds = SUBSCRIPTION_USAGE_PROVIDERS.flatMap((provider) =>
-            enabled[provider] ? declared[provider] : [],
-          );
+          const request = Object.keys(declared)
+            .sort()
+            .flatMap((key) => (meterEnabled(enabled, key) ? declared[key] : []));
+          const reported = (current.providers ?? []).flatMap((row) => {
+            const key = subscriptionUsageProvider(row);
+            return key !== null && reportedOutsideSettings(row) && meterEnabled(enabled, key)
+              ? [row.instanceId]
+              : [];
+          });
+          const instanceIds = [...new Set([...request, ...reported])];
           const providers =
             instanceIds.length === 0
               ? []
@@ -237,22 +260,28 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
       if (result.success === null) return;
       const { declared, instanceIds, providers } = result.success;
-      yield* Ref.set(antigravityDeclared, declared.antigravity.length > 0);
-      const refreshedAntigravity = declared.antigravity.some((id) => instanceIds.includes(id));
-      if (refreshedAntigravity)
-        yield* Ref.set(
-          reconcileAt,
-          (yield* Clock.currentTimeMillis) + Duration.toMillis(ANTIGRAVITY_QUOTA_RECONCILE_DELAY),
-        );
+      yield* Ref.set(deferredDeclarations, declared);
+      // Some Agents publish usage after their health check returns.
+      const delay = Math.min(
+        ...deferredMeters.flatMap(({ preference, deferredReadingMs }) =>
+          declared[preference]?.some((id) => instanceIds.includes(id)) &&
+          deferredReadingMs !== undefined
+            ? [deferredReadingMs]
+            : [],
+        ),
+      );
+      if (Number.isFinite(delay))
+        yield* Ref.set(reconcileAt, (yield* Clock.currentTimeMillis) + delay);
       const all = new Set(Object.values(declared).flat());
       const refreshed = new Set(instanceIds);
-      const current = yield* SubscriptionRef.get(snapshot);
       yield* Ref.set(lastFreshReadAt, now);
       yield* publish({
         status: "ready",
         providers: [
           ...(current.providers ?? []).filter(
-            (row) => all.has(row.instanceId) && !refreshed.has(row.instanceId),
+            (row) =>
+              (all.has(row.instanceId) || reportedOutsideSettings(row)) &&
+              !refreshed.has(row.instanceId),
           ),
           ...subscriptionRows(providers).filter((row) => refreshed.has(row.instanceId)),
         ],
@@ -314,11 +343,11 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
   // failed with nothing to show is retried at the same pace. Neither starts execution.
   const nextRead = Effect.gen(function* () {
     const enabled = yield* Ref.get(meters);
-    if (!anyMeterEnabled(enabled)) return null;
     const current = yield* SubscriptionRef.get(snapshot);
+    if (!anyMeterEnabled(enabled, current.providers)) return null;
     const metered = meteredSubscriptionProviders(current.providers).filter((row) => {
       const provider = subscriptionUsageProvider(row);
-      return provider !== null && enabled[provider];
+      return provider !== null && meterEnabled(enabled, provider);
     });
     if (metered.length > 0)
       return nextSubscriptionUsageReadAt({
@@ -326,9 +355,13 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
         lastAttemptAt: yield* Ref.get(lastAttemptAt),
         intervalMs,
       });
+    const declarations = yield* Ref.get(deferredDeclarations);
     if (
       (current.status === "unavailable" && current.providers === null) ||
-      (enabled.antigravity && (yield* Ref.get(antigravityDeclared)))
+      deferredMeters.some(
+        ({ preference }) =>
+          meterEnabled(enabled, preference) && (declarations[preference]?.length ?? 0) > 0,
+      )
     )
       return (yield* Ref.get(lastAttemptAt)) + intervalMs;
     return null;
@@ -337,7 +370,11 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
     Effect.gen(function* () {
       const refreshAt = yield* nextRead;
       const enabled = yield* Ref.get(meters);
-      const pendingReconcile = enabled.antigravity ? yield* Ref.get(reconcileAt) : null;
+      const pendingReconcile = deferredMeters.some(({ preference }) =>
+        meterEnabled(enabled, preference),
+      )
+        ? yield* Ref.get(reconcileAt)
+        : null;
       const at =
         refreshAt === null ? pendingReconcile : Math.min(refreshAt, pendingReconcile ?? refreshAt);
       if (at === null) return yield* Queue.take(schedule);
@@ -418,12 +455,12 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
       Stream.runForEach((enabled) =>
         Effect.gen(function* () {
           const previous = yield* Ref.getAndSet(meters, enabled);
-          const changed = SUBSCRIPTION_USAGE_PROVIDERS.filter(
-            (provider) => previous[provider] !== enabled[provider],
+          const changed = [...new Set([...Object.keys(previous), ...Object.keys(enabled)])].filter(
+            (provider) => meterEnabled(previous, provider) !== meterEnabled(enabled, provider),
           );
           if (changed.length === 0) return;
           yield* Queue.offer(schedule, undefined);
-          if (changed.some((provider) => enabled[provider]))
+          if (changed.some((provider) => meterEnabled(enabled, provider)))
             yield* reads.withPermits(1)(readNow(true)).pipe(Effect.forkIn(scope));
         }),
       ),
@@ -435,7 +472,7 @@ export const make = Effect.fn("AgentRuntimeSubscriptionUsage.make")(function* (
     reads
       .withPermits(1)(
         Effect.gen(function* () {
-          const declared = new Set((yield* options.declared).claude);
+          const declared = new Set((yield* options.declared)[claudeAgent.usageMeter.preference]);
           if (instanceIds.some((id) => !declared.has(id)))
             return yield* Effect.fail(new Error("Choose a configured Claude Agent to sign out."));
           const signedOut = yield* options.logout(instanceIds);

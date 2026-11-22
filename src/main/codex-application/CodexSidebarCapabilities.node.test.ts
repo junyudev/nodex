@@ -64,7 +64,7 @@ const thread = (projectId: string): CoreThread => ({
   agent_role: null,
   agent_path: null,
   thread_preview: "Move me",
-  backend_binding: { kind: "codex" as const },
+  backend_binding: { driver: "codex", instanceId: "codex" },
   model_id: "gpt-test",
   reasoning_effort: "high",
   service_tier: "flex",

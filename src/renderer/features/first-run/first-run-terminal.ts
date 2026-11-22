@@ -1,21 +1,28 @@
-import { readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
+import { claudeAgent } from "../../../shared/agents/claude";
+import { readAgentProfiles } from "@/lib/agent-profiles-runtime";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
 import { terminalSessionStore } from "@/lib/terminal-session-store";
 import { claudeInstallCommand, claudeSignInCommand } from "./agent-sign-in-commands";
 
 const isWindows = () => resolveCodexRendererOs() === "win32";
 
-export const claudeInstallPreview = (): string => claudeInstallCommand(isWindows());
+const claudeInstallPreview = (): string => claudeInstallCommand(isWindows());
 
 /** Signs in the first enabled profile, in the directory and with the executable it uses. */
-export async function resolveClaudeSignInCommand(): Promise<string> {
-  const settings = await readClaudeAgentSettings();
-  const profile = settings.instances.find((instance) => instance.enabled) ?? settings.instances[0];
+async function resolveClaudeSignInCommand(): Promise<string> {
+  const { instances } = await readAgentProfiles(claudeAgent.driver);
+  const profile = instances.find((instance) => instance.enabled) ?? instances[0];
   return claudeSignInCommand({
     binaryPath: profile?.binaryPath ?? "claude",
-    configDirectory: profile?.configDirectory ?? "",
+    configDirectory: profile?.settings.configDirectory ?? "",
     windows: isWindows(),
   });
+}
+
+/** Terminal commands stay with the owner that knows the Agent's executable and profile. */
+export function firstRunTerminalSetup(owner: string | undefined) {
+  if (owner !== claudeAgent.setup.signIn.owner) return undefined;
+  return { previewInstall: claudeInstallPreview, signInCommand: resolveClaudeSignInCommand };
 }
 
 /**

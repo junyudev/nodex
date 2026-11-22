@@ -257,7 +257,7 @@ export const make: Effect.Effect<
     if (snapshot.value.kind !== "thread") {
       return yield* toolError(`Thread '${normalized}' was not found`);
     }
-    if (snapshot.value.thread.backend_binding.kind !== "codex") {
+    if (snapshot.value.thread.backend_binding.driver !== "codex") {
       return yield* toolError(`Thread '${normalized}' is not owned by the Codex Agent Backend`);
     }
     return normalized;

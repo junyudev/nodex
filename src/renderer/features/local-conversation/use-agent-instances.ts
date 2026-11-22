@@ -2,75 +2,47 @@ import { getIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { isRemoteSpace } from "../../lib/renderer-space";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
-import { agentBackendKindOfRuntimeDriver } from "../../../shared/agent-backend";
-import {
-  readAcpAgentSettings,
-  readClaudeAgentSettings,
-} from "../../lib/workbench-settings-runtime";
-import { readAntigravityAgentSettings } from "../../lib/antigravity-agent-settings-runtime";
-import { readOpenCodeAgentSettings } from "../../lib/opencode-agent-settings-runtime";
+import { CODEX_BINDING } from "../../../shared/agents/codex";
+import { agentDefinition, profileAgentDefinitions } from "../../../shared/agents/registry";
+import { readAcpAgentSettings } from "../../lib/workbench-settings-runtime";
+import { readAgentProfiles } from "../../lib/agent-profiles-runtime";
+import type { AgentProfileDefinition } from "../../../shared/agents/profile-definition";
+import { acpRegistryAgent } from "../../../shared/agents/acp-registry";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
 import type { AgentCatalogInstance } from "./use-agent-model-catalog";
-import { usesHostOpenCodeExecutable } from "../opencode-setup/opencode-setup-model";
 
 /** Team inventory comes from its execution owner; personal inventory uses this Desktop's settings. */
 const readInstances = async (): Promise<readonly AgentCatalogInstance[]> => {
   if (isRemoteSpace()) {
     const providers = await agentRuntimeRuntime.catalog();
-    return providers.flatMap((provider): AgentCatalogInstance[] => {
-      const kind = agentBackendKindOfRuntimeDriver(provider.driver);
-      if (!kind || kind === "codex") return [];
-      return [
-        {
-          binding:
-            kind === "acp"
-              ? {
-                  kind,
-                  instanceConfigId: provider.instanceId,
-                  runtimeInstanceId: provider.instanceId,
-                  agentDefinitionId: provider.instanceId,
-                }
-              : {
-                  kind,
-                  instanceConfigId: provider.instanceId,
-                  runtimeInstanceId: provider.instanceId,
-                },
-          label: provider.displayName ?? "Agent",
-          enabled: provider.enabled,
-          usesHostExecutable: false,
-        },
-      ];
-    });
+    return providers
+      .filter((provider) => provider.instanceId !== CODEX_BINDING.instanceId)
+      .map((provider) => ({
+        binding: { driver: provider.driver, instanceId: provider.instanceId },
+        label: provider.displayName ?? agentDefinition(provider.driver).label,
+        enabled: provider.enabled,
+        usesHostExecutable: false,
+      }));
   }
-  const [claude, opencode, antigravity, acp] = await Promise.all([
-    readClaudeAgentSettings(),
-    readOpenCodeAgentSettings(),
-    readAntigravityAgentSettings(),
+  const [profiles, acp] = await Promise.all([
+    Promise.all(
+      profileAgentDefinitions.map(async (definition) => {
+        const { instances } = await readAgentProfiles(definition.driver);
+        const profile: AgentProfileDefinition = definition.profile;
+        return instances.map((instance) => ({
+          binding: { driver: instance.driver, instanceId: instance.id },
+          label: instance.displayName,
+          enabled: instance.enabled,
+          usesHostExecutable: profile.usesHostExecutable?.(instance),
+        }));
+      }),
+    ),
     readAcpAgentSettings(),
   ]);
   return [
-    ...claude.instances.map((instance) => ({
-      binding: { kind: "claude" as const, instanceConfigId: instance.id },
-      label: instance.displayName,
-      enabled: instance.enabled,
-    })),
-    ...opencode.instances.map((instance) => ({
-      binding: { kind: "opencode" as const, instanceConfigId: instance.id },
-      label: instance.displayName,
-      enabled: instance.enabled,
-      usesHostExecutable: usesHostOpenCodeExecutable(instance),
-    })),
-    ...antigravity.instances.map((instance) => ({
-      binding: { kind: "antigravity" as const, instanceConfigId: instance.id },
-      label: instance.displayName,
-      enabled: instance.enabled,
-    })),
+    ...profiles.flat(),
     ...acp.instances.map((instance) => ({
-      binding: {
-        kind: "acp" as const,
-        instanceConfigId: instance.id,
-        agentDefinitionId: instance.agentDefinitionId,
-      },
+      binding: { driver: acpRegistryAgent.driver, instanceId: instance.id },
       label: instance.displayName,
       enabled: instance.enabled,
     })),

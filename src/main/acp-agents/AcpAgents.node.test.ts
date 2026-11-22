@@ -5,20 +5,18 @@ import * as TestClock from "effect/testing/TestClock";
 import { AcpInputSchemas } from "../../shared/schemas/acp-api";
 import { setupAgentManagement as setup } from "./agent-management.test-support";
 
-it.effect(
-  "resolves public instance and Project identities before sending management requests",
-  () =>
-    Effect.gen(function* () {
-      const { agents, calls } = yield* setup;
-      yield* agents["acp.sessions.list"]("window", { instanceId: "personal", projectId: "active" });
-      assert.equal(calls[0]?.input.cwd, "/canonical/project");
-      assert.notEqual(calls[0]?.input.instanceId, "personal");
-      const result = yield* Effect.result(
-        agents["acp.sessions.list"]("window", { instanceId: "personal", projectId: "missing" }),
-      );
-      assert.equal(result._tag, "Failure");
-      assert.equal(calls.length, 1);
-    }),
+it.effect("keeps the exact Agent instance and resolves its Project for management requests", () =>
+  Effect.gen(function* () {
+    const { agents, calls } = yield* setup;
+    yield* agents["acp.sessions.list"]("window", { instanceId: "personal", projectId: "active" });
+    assert.equal(calls[0]?.input.cwd, "/canonical/project");
+    assert.equal(calls[0]?.input.instanceId, "personal");
+    const result = yield* Effect.result(
+      agents["acp.sessions.list"]("window", { instanceId: "personal", projectId: "missing" }),
+    );
+    assert.equal(result._tag, "Failure");
+    assert.equal(calls.length, 1);
+  }),
 );
 it.effect("reads and cancels a coalesced installation through each window's operation", () =>
   Effect.gen(function* () {

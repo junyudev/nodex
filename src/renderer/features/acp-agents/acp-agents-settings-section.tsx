@@ -99,7 +99,7 @@ function AgentRow({
       label={
         <span className="flex min-w-0 items-center gap-2">
           <AgentInstanceIcon
-            binding={{ kind: "acp", agentDefinitionId: instance.agentDefinitionId }}
+            binding={{ driver: "acpRegistry", instanceId: instance.id }}
             className="size-3.5"
           />
           <span className="truncate">{instance.displayName}</span>

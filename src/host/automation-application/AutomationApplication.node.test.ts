@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import { legacyAgentInstanceId } from "../../shared/agents/legacy-identity";
 import * as Effect from "effect/Effect";
 import type {
   AutomationApplyInput,
@@ -33,7 +34,7 @@ const definition = (overrides: Partial<CoreAutomation> = {}): CoreAutomation => 
   model: "gpt-5",
   reasoning_effort: "medium",
   service_tier: null,
-  backend_binding: { kind: "codex" },
+  backend_binding: { driver: "codex", instanceId: "codex" },
   cwds: ["/workspace"],
   execution_environment: "worktree",
   local_environment_config_path: null,
@@ -511,7 +512,7 @@ it.effect("replays complete Definition replacements with the original revision a
             model: null,
             reasoning_effort: null,
             service_tier: null,
-            backend_binding: { kind: "codex" },
+            backend_binding: { driver: "codex", instanceId: "codex" },
             cwds: null,
             execution_environment: null,
             local_environment_config_path: null,
@@ -692,21 +693,11 @@ it.effect("commits Definition and Run routing before mutations return", () =>
 );
 
 it.effect.each([
-  {
-    binding: { kind: "acp", agentDefinitionId: "scripted-agent", instanceConfigId: "personal" },
-    coreBinding: {
-      kind: "acp",
-      agent_definition_id: "scripted-agent",
-      instance_config_id: "personal",
-    },
-  },
-  {
-    binding: { kind: "opencode", instanceConfigId: "personal" },
-    coreBinding: { kind: "opencode", instance_config_id: "personal" },
-  },
+  { binding: { driver: "acpRegistry", instanceId: "personal" } },
+  { binding: { driver: "opencode", instanceId: "personal" } },
 ] as const)(
-  "creates, updates and lists the exact $binding.kind Automation instance without changing its backend",
-  ({ binding, coreBinding }) =>
+  "creates, updates and lists the exact $binding.driver Automation instance",
+  ({ binding }) =>
     Effect.gen(function* () {
       const requests: AutomationApplyInput[] = [];
       let stored = definition({ kind: "cron", target_session_id: null });
@@ -762,7 +753,7 @@ it.effect.each([
           request.intent.kind !== "update_automation"
         )
           throw new Error("Unexpected intent");
-        assert.deepStrictEqual(request.intent.automation.backend_binding, coreBinding);
+        assert.deepStrictEqual(request.intent.automation.backend_binding, binding);
       }
     }),
 );
@@ -772,9 +763,8 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const binding = {
-        kind: "acp",
-        agent_definition_id: "scripted-agent",
-        instance_config_id: null,
+        driver: "acpRegistry",
+        instanceId: legacyAgentInstanceId("acp_unconfigured", "scripted-agent"),
       } as const;
       const application = yield* make.pipe(
         Effect.provideService(
@@ -792,21 +782,13 @@ it.effect(
         ),
         Effect.provideService(AutomationRoutingIndex, routingIndex()),
       );
-      assert.deepStrictEqual((yield* application.automations.list())[0]?.backendBinding, {
-        kind: "acp",
-        agentDefinitionId: "scripted-agent",
-        instanceConfigId: null,
-      });
+      assert.deepStrictEqual((yield* application.automations.list())[0]?.backendBinding, binding);
       const rejected = yield* Effect.flip(
         application.automations.create(
           {
             kind: "cron",
             name: "Missing instance",
-            backendBinding: {
-              kind: "acp",
-              agentDefinitionId: "scripted-agent",
-              instanceConfigId: null,
-            },
+            backendBinding: { driver: "acpRegistry", instanceId: "" },
           },
           { operationId: "acp:missing" },
         ),

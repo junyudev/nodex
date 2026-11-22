@@ -20,9 +20,13 @@ import {
   type AgentEnvironmentVariable,
 } from "../../shared/agent-environment";
 import type { SecretEncryptionAdapter } from "../platform/SecretEncryption";
-export type StoredAgentEnvironment =
-  | { name: string; sensitive: false; value: string }
-  | { name: string; sensitive: true; secretRef: string };
+export const storedAgentEnvironmentSchema = (name: z.ZodType<string>) =>
+  z.discriminatedUnion("sensitive", [
+    z.strictObject({ name, sensitive: z.literal(false), value: AgentEnvironmentValueSchema }),
+    z.strictObject({ name, sensitive: z.literal(true), secretRef: z.uuid() }),
+  ]);
+export type StoredAgentEnvironment = z.output<ReturnType<typeof storedAgentEnvironmentSchema>>;
+
 interface EnvironmentInstance<E> {
   readonly id: string;
   readonly environment: readonly E[];
@@ -32,7 +36,7 @@ const SecretPayloadSchema = z
   .strict();
 
 export interface AgentEnvironmentStorage {
-  readonly backend: "claude" | "opencode" | "antigravity" | "acp" | "provider-keys";
+  readonly backend: string;
   readonly settingsPath: string;
   readonly hostHomeDirectory?: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
@@ -136,7 +140,38 @@ const references = (instances: readonly EnvironmentInstance<StoredAgentEnvironme
       environment.flatMap((variable) => (variable.sensitive ? [variable.secretRef] : [])),
     ),
   );
-/** Stage encrypted values before publishing their durable settings references. */
+export interface AgentSecretChanges {
+  readonly stage: (
+    source: AgentEnvironmentStorage,
+    id: string,
+    name: string,
+    value: string,
+  ) => string;
+  readonly retire: (source: AgentEnvironmentStorage, ref: string) => void;
+}
+
+/** A settings write owns both the staged references and when old references can be retired. */
+export function withAgentSecretChanges<T>(publish: (changes: AgentSecretChanges) => T): T {
+  const staged: (() => void)[] = [];
+  const retired: (() => void)[] = [];
+  let result: T;
+  try {
+    result = publish({
+      stage: (source, id, name, value) => {
+        const ref = saveSecret(source, id, name, value);
+        staged.push(() => removeSecret(source, ref));
+        return ref;
+      },
+      retire: (source, ref) => retired.push(() => removeSecret(source, ref)),
+    });
+  } catch (cause) {
+    staged.forEach((discard) => discard());
+    throw cause;
+  }
+  retired.forEach((discard) => discard());
+  return result;
+}
+
 export function writeAgentEnvironments<T extends EnvironmentInstance<AgentEnvironmentInput>>(
   source: AgentEnvironmentStorage,
   instances: readonly T[],
@@ -145,32 +180,29 @@ export function writeAgentEnvironments<T extends EnvironmentInstance<AgentEnviro
     next: Array<Omit<T, "environment"> & { environment: StoredAgentEnvironment[] }>,
   ) => void,
 ): void {
-  const staged: string[] = [];
-  let next: Array<Omit<T, "environment"> & { environment: StoredAgentEnvironment[] }>;
-  try {
-    next = instances.map((instance) => ({
+  withAgentSecretChanges(({ stage, retire }) => {
+    const next = instances.map((instance) => ({
       ...instance,
       environment: instance.environment.map((variable) => {
         if (!variable.sensitive) return variable;
+        if (variable.value !== null) {
+          return {
+            name: variable.name,
+            sensitive: true as const,
+            secretRef: stage(source, instance.id, variable.name, variable.value),
+          };
+        }
         const old = previous
           .find(({ id }) => id === instance.id)
           ?.environment.find(({ name }) => name === variable.name);
-        if (variable.value === null) {
-          if (!old?.sensitive) throw new Error("Enter a value for the new secret.");
-          return old;
-        }
-        const secretRef = saveSecret(source, instance.id, variable.name, variable.value);
-        staged.push(secretRef);
-        return { name: variable.name, sensitive: true as const, secretRef };
+        if (!old?.sensitive) throw new Error("Enter a value for the new secret.");
+        return old;
       }),
     }));
+    const retained = references(next);
+    for (const ref of references(previous)) if (!retained.has(ref)) retire(source, ref);
     publish(next);
-  } catch (cause) {
-    for (const ref of staged) removeSecret(source, ref);
-    throw cause;
-  }
-  const retained = references(next);
-  for (const ref of references(previous)) if (!retained.has(ref)) removeSecret(source, ref);
+  });
 }
 
 export function presentAgentEnvironment(
@@ -192,4 +224,23 @@ export function resolveAgentEnvironment(
         : variable.value,
     ]),
   );
+}
+
+/** Rebind ciphertext to the migrated Profile identity and namespace. */
+export function migrateAgentSecret(
+  changes: AgentSecretChanges,
+  previous: { source: AgentEnvironmentStorage; id: string; name: string; ref: string },
+  next: { source: AgentEnvironmentStorage; id: string; name: string } | null,
+): string | undefined {
+  if (
+    next &&
+    previous.source.backend === next.source.backend &&
+    previous.id === next.id &&
+    previous.name === next.name
+  )
+    return previous.ref;
+  changes.retire(previous.source, previous.ref);
+  if (!next) return undefined;
+  const value = readSecret(previous.source, previous.id, previous.name, previous.ref);
+  return changes.stage(next.source, next.id, next.name, value);
 }

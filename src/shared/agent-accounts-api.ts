@@ -1,10 +1,8 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { AgentBackendBinding } from "./agent-backend";
 import type { AgentManagementResult } from "./agent-management-result";
 
-export interface AgentAccountBackend {
-  readonly kind: "acp" | "antigravity";
-  readonly instanceConfigId: string;
-}
+export type AgentAccountBackend = AgentBackendBinding;
 
 type ProviderMethod = Extract<keyof AgentRuntimeOperations, `providers.auth.${string}`>;
 export type AgentAccountOperations = {

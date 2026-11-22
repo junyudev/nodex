@@ -5,10 +5,9 @@ import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { setupAgentManagement as setup } from "../acp-agents/agent-management.test-support";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 
-const personal = { kind: "acp", instanceConfigId: "personal" } as const;
-const antigravity = { kind: "antigravity", instanceConfigId: "personal" } as const;
+const personal = { driver: "acpRegistry", instanceId: "personal" } as const;
+const antigravity = { driver: "antigravity", instanceId: "personal" } as const;
 
 it.effect(
   "rejects another window's credentials and stale flow input after configuration changes",
@@ -221,7 +220,9 @@ it.effect("does not retain completed sign-ins after repeatedly removing their in
       state.instanceIds = [instanceId];
       state.flowId = `flow-${index}`;
       state.authenticationPhase = index % 2 === 0 ? "succeeded" : "failed";
-      yield* accounts.start("window", { backend: { kind: "acp", instanceConfigId: instanceId } });
+      yield* accounts.start("window", {
+        backend: { driver: "acpRegistry", instanceId: instanceId },
+      });
       state.instanceIds = [];
     }
     yield* accounts.releaseOwner("window");
@@ -285,7 +286,7 @@ it.effect("Antigravity reads stay passive and sign-out refreshes only the saved 
     assert.isNull(yield* accounts.read("window", { backend: antigravity }));
     assert.equal(state.starts, 0);
     assert.deepEqual(calls, []);
-    const providerId = agentRuntimeProviderId(antigravity);
+    const providerId = antigravity.instanceId;
     state.authenticationPhase = "idle";
     yield* accounts.logout("window", { backend: antigravity });
     assert.deepEqual(calls, [
@@ -299,7 +300,7 @@ it.effect("Antigravity credentials cannot cross a Runtime replacement", () =>
   Effect.gen(function* () {
     const { accounts, calls, state } = yield* setup;
     yield* accounts.start("window", { backend: antigravity });
-    assert.equal(calls[0]?.input.instanceId, agentRuntimeProviderId(antigravity));
+    assert.equal(calls[0]?.input.instanceId, antigravity.instanceId);
     state.generation = "replacement";
     assert.isTrue(
       yield* accounts
@@ -322,7 +323,7 @@ it.effect("Antigravity credentials cannot cross a Runtime replacement", () =>
 it.effect("refreshes missing Antigravity models after verification, not on passive reads", () =>
   Effect.gen(function* () {
     const { accounts, calls, state } = yield* setup;
-    const instanceId = agentRuntimeProviderId(antigravity);
+    const instanceId = antigravity.instanceId;
     state.providers = [{ instanceId, auth: { status: "authenticated" }, models: [] }];
     yield* accounts.start("window", { backend: antigravity });
     state.authenticationPhase = "succeeded";

@@ -10,7 +10,7 @@ const defaultOptions: readonly AgentSessionConfigSelectOption[] = [];
 const freshnessMs = 60_000;
 const failureDelaysMs = [1_000, 4_000, 15_000] as const;
 const subscribeSettings = (listener: () => void) =>
-  resolveRendererTransport().subscribeClaudeAgentSettingsChanges(listener);
+  resolveRendererTransport().subscribeAgentSettingsChanges(listener);
 
 /** Main resolves attached execution locations; late replies cannot cross scopes or handoffs. */
 export function useClaudeModelCatalog(

@@ -1,3 +1,4 @@
+import { antigravityProfile } from "../../shared/agents/profile.test-fixtures";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
@@ -142,13 +143,12 @@ export const setupAgentManagement = Effect.gen(function* () {
           },
           environment: { API_KEY: state.secret },
         } as never),
-      antigravityLaunchConfiguration: () => Effect.succeed({ apiKey: state.secret } as never),
+      agentProfileLaunchConfiguration: () =>
+        Effect.succeed({ secrets: { apiKey: state.secret } } as never),
       snapshot: () =>
         Effect.succeed({
           revision: state.revision,
-          antigravityAgents: {
-            instances: [{ id: "personal", enabled: state.enabled }],
-          },
+          agentProfiles: [antigravityProfile({ id: "personal", enabled: state.enabled })],
           acpAgents: {
             instances: state.instanceIds.map((id) => ({
               id,

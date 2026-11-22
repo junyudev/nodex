@@ -1,3 +1,4 @@
+import { AgentBackendBindingSchema } from "../../../shared/schemas/agent-backend";
 import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -45,18 +46,7 @@ const CatalogInput = z
         .object({
           kind: z.literal("project"),
           projectId: id.nullable(),
-          binding: z.discriminatedUnion("kind", [
-            z.object({ kind: z.literal("claude"), instanceConfigId: id }).strict(),
-            z.object({ kind: z.literal("opencode"), instanceConfigId: id }).strict(),
-            z.object({ kind: z.literal("antigravity"), instanceConfigId: id }).strict(),
-            z
-              .object({
-                kind: z.literal("acp"),
-                agentDefinitionId: id,
-                instanceConfigId: id.nullable(),
-              })
-              .strict(),
-          ]),
+          binding: AgentBackendBindingSchema,
         })
         .strict(),
       z.object({ kind: z.literal("thread"), threadId: id }).strict(),

@@ -1,3 +1,6 @@
+import type { AgentAnalyticsFamily } from "../agents/definition";
+import { agentDefinition } from "../agents/registry";
+
 /**
  * Model identifiers that name public models. A private deployment or custom alias is reported as
  * `other`, so a user's model configuration can never leave the machine through analytics.
@@ -10,17 +13,10 @@ export const analyticsModelName = (model: string | null | undefined): string => 
   return name && PUBLIC_MODEL_NAME.test(name) ? name.toLowerCase() : "other";
 };
 
-/** Runtime driver identifiers are not product vocabulary; analytics reports the Agent family. */
+/** Analytics publishes the bounded family vocabulary and excludes custom driver names. */
 export const analyticsProviderName = (
   driver: string | null | undefined,
-): "codex" | "claude" | "opencode" | "antigravity" | "acp" | "other" => {
-  if (driver === "codex") return "codex";
-  if (driver === "claudeAgent") return "claude";
-  if (driver === "opencode" || driver === "opencode2") return "opencode";
-  if (driver === "antigravity") return "antigravity";
-  if (driver === "acpRegistry") return "acp";
-  return "other";
-};
+): AgentAnalyticsFamily | "other" => agentDefinition(driver).analyticsFamily ?? "other";
 
 /** A reporting day is UTC so one installation counts once however it crosses time zones. */
 export const analyticsDay = (epochMs: number): string =>

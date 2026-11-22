@@ -72,7 +72,7 @@ export const make = Effect.gen(function* () {
       .getThread(threadId)
       .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
     if (!thread) return yield* error("read", threadId, new Error("Chat was not found"));
-    if (thread.backendBinding.kind !== "codex")
+    if (thread.backendBinding.driver !== "codex")
       return yield* error(
         "read",
         threadId,

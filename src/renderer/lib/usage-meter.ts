@@ -1,21 +1,23 @@
+import { agentDefinition } from "../../shared/agents/registry";
 import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PlanType } from "@nodex/codex-app-server-protocol";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { SubscriptionUsageSnapshot } from "../../shared/agent-runtime-api";
 import {
-  hasClaudeSubscriptionLimits,
+  hasSubscriptionLimits,
   meteredSubscriptionProviders,
+  subscriptionMeter,
+  subscriptionUsageProvider,
 } from "../../shared/subscription-usage";
 import type { CodexAccountSnapshot, CodexRateLimitsSnapshot } from "./types";
-import { agentRuntimeProviderBackendKind } from "./agent-runtime-model-selection";
 
 /**
  * One account's subscription usage, normalized across Agent backends for one shared meter.
  * A reading only ever states what a provider reported: windows whose reset has passed since
  * the reading are unknown, never assumed to be full.
  */
-export type UsageProvider = AgentBackendBinding["kind"];
+export type UsageProvider = AgentBackendBinding["driver"];
 
 export interface UsageWindowReading {
   readonly id: string;
@@ -545,9 +547,6 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
 
 type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 
-/** Claude's account-wide windows; every other window it reports belongs to one model. */
-const CLAUDE_ACCOUNT_WINDOWS = new Set(["five_hour", "seven_day"]);
-
 function epochMs(iso: string | undefined): number | null {
   if (!iso) return null;
   const parsed = Date.parse(iso);
@@ -556,15 +555,18 @@ function epochMs(iso: string | undefined): number | null {
 
 /** A runtime Agent's catalog usage, retaining only the limits and account identity it reports. */
 export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boolean): UsageReading {
-  const kind = agentRuntimeProviderBackendKind(provider);
+  const definition = agentDefinition(provider.driver);
+  const meter = definition.usageMeter;
+  const kind = subscriptionUsageProvider(provider) ?? (definition.driver || provider.driver);
   const limits = provider.usageLimits;
   const auth = provider.auth;
   const windows = (limits?.windows ?? []).map((window): UsageWindowReading => {
-    const scope = kind !== "claude" || CLAUDE_ACCOUNT_WINDOWS.has(window.id) ? "account" : "model";
+    const scope =
+      !meter?.accountWindows || meter.accountWindows.includes(window.id) ? "account" : "model";
     return {
       id: window.id,
       label:
-        kind !== "antigravity" && scope === "account"
+        !meter?.keepWindowLabels && scope === "account"
           ? (formatRateLimitWindowLabel(window.windowDurationMins) ?? window.label)
           : window.label,
       usedPercent: window.usedPercent,
@@ -575,23 +577,21 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
   });
   const accountIdentity =
     auth.email || auth.workspaceId ? `${auth.email ?? ""}|${auth.workspaceId ?? ""}` : null;
-  const configuredIdentity =
-    kind === "antigravity"
-      ? (limits?.credentialFingerprint ?? accountIdentity)
-      : (accountIdentity ?? limits?.credentialFingerprint);
+  const configuredIdentity = meter?.preferCredentialIdentity
+    ? (limits?.credentialFingerprint ?? accountIdentity)
+    : (accountIdentity ?? limits?.credentialFingerprint);
   const identity = configuredIdentity ?? `instance:${provider.instanceId}`;
   return {
     provider: kind,
     key: `${kind}:${identity}`,
     title:
-      kind === "antigravity"
-        ? "Antigravity"
-        : (provider.displayName ?? (kind === "claude" ? "Claude" : provider.instanceId)),
+      (meter?.keepProfileLabel ? provider.displayName : undefined) ??
+      meter?.label ??
+      provider.displayName ??
+      definition.label,
     account: auth.email ?? null,
     plan: auth.label ?? null,
-    // Only Claude says when an account has no subscription limits. Another Agent that reports
-    // none, such as an OpenCode server whose credentials Nodex cannot see, is unread, not unmetered.
-    metered: kind !== "claude" || hasClaudeSubscriptionLimits(provider),
+    metered: meter ? hasSubscriptionLimits(provider) : true,
     windows,
     observedAt: windows.length > 0 ? epochMs(limits?.checkedAt) : null,
     readFailed: readFailed || limits?.unavailable?.reason === "probeFailed",
@@ -625,21 +625,21 @@ export function subscriptionUsageAccounts(
     const fresher =
       (reading.observedAt ?? -1) > (existing.reading.observedAt ?? -1) ? reading : existing.reading;
     byAccount.set(reading.key, {
-      reading: { ...fresher, title: fresher.provider === "claude" ? "Claude" : fresher.title },
+      reading: { ...fresher, title: subscriptionMeter(fresher.provider)?.label ?? fresher.title },
       instanceIds: [...existing.instanceIds, provider.instanceId],
     });
   }
   return [...byAccount.values()];
 }
 
-/** What holds the Claude slot before anything is known: a read in progress, or why it failed. */
-export type ClaudeUsagePlaceholder =
+/** What holds a subscription slot before anything is known: a read in progress, or why it failed. */
+export type SubscriptionUsagePlaceholder =
   | { readonly kind: "loading" }
   | { readonly kind: "unavailable"; readonly reason: string | null };
 
-export function claudeUsagePlaceholder(
+export function subscriptionUsagePlaceholder(
   snapshot: SubscriptionUsageSnapshot | null | undefined,
-): ClaudeUsagePlaceholder | null {
+): SubscriptionUsagePlaceholder | null {
   if (!snapshot || snapshot.providers !== null) return null;
   if (snapshot.status === "loading") return { kind: "loading" };
   if (snapshot.status === "unavailable") return { kind: "unavailable", reason: snapshot.reason };

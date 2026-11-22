@@ -46,7 +46,7 @@ function chat(
   return {
     key: threadId,
     kind: "local",
-    backendBinding: { kind: "codex" },
+    backendBinding: { driver: "codex", instanceId: "codex" },
     runLocation: { kind: "local-checkout" },
     hostId: "local",
     threadId,
@@ -180,11 +180,7 @@ describe("Archived chats settings", () => {
 
   test("routes ACP archive lifecycle through the durable Session authority", async () => {
     const acp = chat("acp-thread", {
-      backendBinding: {
-        kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
-        instanceConfigId: null,
-      },
+      backendBinding: { driver: "acpRegistry", instanceId: "claude-agent-acp" },
       sessionId: "session-acp",
       title: "ACP task",
     });
