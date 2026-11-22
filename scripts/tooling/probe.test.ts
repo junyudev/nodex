@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vite-plus/test";
-import { runToolingProbe } from "./probe";
+import { ciBound, runToolingProbe } from "./probe";
 
 const nodeProbe = (source: string, timeoutMs = 10_000) => ({
   command: process.execPath,
@@ -109,4 +109,11 @@ test("attributes a signal exit with its diagnostic tail", async () => {
   `),
     ),
   ).rejects.toThrow(/terminated lint: probe failed:[\s\S]*SIGKILL[\s\S]*lint diagnostic/u);
+});
+
+test("bounds probes on CI runners and leaves shared local computers unbounded", () => {
+  expect(ciBound(120_000, { CI: "true" })).toBe(120_000);
+  expect(ciBound(120_000, { CI: "1" })).toBe(120_000);
+  expect(ciBound(120_000, {})).toBeNull();
+  expect(ciBound(120_000, { CI: "false" })).toBeNull();
 });

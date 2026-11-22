@@ -1,5 +1,5 @@
 import { vitePlusCommand } from "../vite-plus-command";
-import { runToolingProbe } from "../tooling/probe";
+import { ciBound, runToolingProbe } from "../tooling/probe";
 import path from "node:path";
 
 import { STATIC_GROUPS, type StaticGroup } from "./ci-gate-plan";
@@ -222,7 +222,7 @@ export const runStaticChecks = async (
       ...invocation,
       cwd: process.cwd(),
       // Normal groups finish in 3–5 minutes; leave time for diagnostics before CI's 20-minute limit.
-      timeoutMs: 10 * 60_000,
+      timeoutMs: ciBound(10 * 60_000),
       streamOutput: true,
     });
     if (result.status !== 0)

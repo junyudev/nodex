@@ -1,7 +1,15 @@
 import { runCommand, type Command } from "./process";
 
+/**
+ * A probe's time bound exists to fail with evidence before a CI job's own limit cancels it. On a
+ * shared local computer, load from other checkouts can slow a healthy probe past any fixed bound,
+ * so probes run unbounded there.
+ */
+export const ciBound = (ms: number, env: NodeJS.ProcessEnv = process.env): number | null =>
+  env.CI === "true" || env.CI === "1" ? ms : null;
+
 // Individual fixture commands normally take seconds. Leave headroom for busy CI runners.
-const commandTimeoutMs = 120_000;
+const commandTimeoutMs = ciBound(120_000);
 const outputLimit = 16 * 1024 * 1024;
 const tailLimit = 8 * 1024;
 
@@ -21,12 +29,13 @@ export async function measureToolingProbe<T>(name: string, run: () => T | Promis
 export async function runToolingProbe(
   name: string,
   options: Pick<Command, "command" | "args" | "cwd" | "env"> & {
-    readonly timeoutMs?: number;
+    /** Null runs the probe unbounded; see `ciBound`. */
+    readonly timeoutMs?: number | null;
     readonly streamOutput?: boolean;
   },
 ): Promise<{ readonly status: number; readonly stdout: string; readonly stderr: string }> {
-  const timeoutMs = options.timeoutMs ?? commandTimeoutMs;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+  const timeoutMs = options.timeoutMs === undefined ? commandTimeoutMs : options.timeoutMs;
+  if (timeoutMs !== null && (!Number.isFinite(timeoutMs) || timeoutMs <= 0))
     throw new Error(`Invalid probe timeout: ${timeoutMs}`);
   return measureToolingProbe(name, async () => {
     const controller = new AbortController();
@@ -34,10 +43,13 @@ export async function runToolingProbe(
     let overflow = false;
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
+    const timer =
+      timeoutMs === null
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, timeoutMs);
     const capture = (stream: "stdout" | "stderr", chunk: string) => {
       // Keep draining after the cap so cleanup cannot block on a full pipe.
       if ((stream === "stdout" ? stdout.length : stderr.length) + chunk.length > outputLimit) {

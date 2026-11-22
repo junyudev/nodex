@@ -945,8 +945,10 @@ CI's typed static matrix runs `vp run check` in the `types` lane and routes the
 remaining selected lanes through `verify-static.ts`. `vp run verify:static` is
 the local composition of the same integrated check and repository contracts.
 
-Tooling contract probes report each command's name and elapsed time. Each fixture child
-has a two-minute deadline; the static runner gives each complete check ten minutes.
+Tooling contract probes report each command's name and elapsed time. On a CI runner, each
+fixture child has a two-minute deadline and the static runner gives each complete check ten
+minutes. Local runs are unbounded, because load from other checkouts on the same computer can
+slow a healthy probe past any fixed deadline.
 On timeout, the runner stops the command's process tree (including detached child groups),
 escalates from SIGTERM to SIGKILL when needed, and reports the command, working directory,
 and the last 8,192 characters from each output stream. Static checks stream output while they run;
