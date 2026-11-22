@@ -116,6 +116,10 @@ Windows storage and loader evidence are specified in the
   in the build.
 - The same check reports, without a budget yet, the Main application code evaluated before the
   first window: the bootstrap entry and every application chunk it requires while loading.
+- The application origin takes part in V8's code cache. A renderer script that has run before is
+  compiled from the Profile's on-disk cache in later windows and launches instead of from source;
+  the cache costs disk space about the size of the renderer's JavaScript, and an updated script
+  compiles from source once before it is cached again.
 
 Runtime ownership is documented in [Architecture](../ARCHITECTURE.md), shutdown and failure
 semantics in [Reliability](../RELIABILITY.md), and the early authority boundary in

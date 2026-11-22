@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
@@ -82,6 +82,35 @@ async function readLoadedImageDimensions(page: Page, ids: readonly string[]) {
   }, ids);
 }
 
+/** Builds the protocol fixture's Main into a fresh directory with an empty renderer root. */
+async function buildProtocolFixture(prefix: string) {
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), prefix));
+  temporaryDirectories.push(outputDirectory);
+  await build({
+    bundle: true,
+    entryPoints: {
+      main: path.resolve("tests/fixtures/app-renderer-protocol/electron-main.ts"),
+    },
+    external: ["electron"],
+    format: "cjs",
+    outdir: outputDirectory,
+    platform: "node",
+    target: "node24",
+  });
+  const rendererDirectory = path.join(outputDirectory, "renderer");
+  mkdirSync(rendererDirectory);
+  return { outputDirectory, rendererDirectory };
+}
+
+function electronEnvironment(overrides: Record<string, string> = {}): Record<string, string> {
+  const environment: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined) environment[name] = value;
+  }
+  delete environment.ELECTRON_RUN_AS_NODE;
+  return { ...environment, ...overrides };
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -90,21 +119,9 @@ afterEach(() => {
 
 describe("production app renderer origin", () => {
   test("loads a secure renderer with local image, symlink, and media resources", async () => {
-    const outputDirectory = mkdtempSync(path.join(tmpdir(), "nodex-app-origin-integration-"));
-    temporaryDirectories.push(outputDirectory);
-    await build({
-      bundle: true,
-      entryPoints: {
-        main: path.resolve("tests/fixtures/app-renderer-protocol/electron-main.ts"),
-      },
-      external: ["electron"],
-      format: "cjs",
-      outdir: outputDirectory,
-      platform: "node",
-      target: "node24",
-    });
-    const rendererDirectory = path.join(outputDirectory, "renderer");
-    mkdirSync(rendererDirectory);
+    const { outputDirectory, rendererDirectory } = await buildProtocolFixture(
+      "nodex-app-origin-integration-",
+    );
     const imagePath = path.join(
       outputDirectory,
       process.platform === "win32" ? "image 空格 #%.png" : "image 空格 #?.png",
@@ -122,11 +139,7 @@ describe("production app renderer origin", () => {
       `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "production" })}"><title>Nodex secure origin</title></head><body><img id="local-image" src="${imageUrl}" alt="local"><img id="static-symlink" src="app://-/outside.png" alt="symlink"><audio id="local-audio" src="${audioUrl}" preload="metadata"></audio></body></html>`,
     );
 
-    const childEnvironment: Record<string, string> = {};
-    for (const [name, value] of Object.entries(process.env)) {
-      if (value !== undefined) childEnvironment[name] = value;
-    }
-    delete childEnvironment.ELECTRON_RUN_AS_NODE;
+    const childEnvironment = electronEnvironment();
     let application: ElectronApplication | null = null;
     try {
       application = await launchTestElectron({
@@ -188,26 +201,56 @@ describe("production app renderer origin", () => {
     }
   }, 30_000);
 
+  test("compiles the renderer's scripts from V8's code cache once they have run", async () => {
+    const { outputDirectory, rendererDirectory } = await buildProtocolFixture(
+      "nodex-app-code-cache-integration-",
+    );
+    const functions = Array.from(
+      { length: 2_000 },
+      (_, index) => `export function f${index}(value) { return value * ${index} + ${index % 7}; }`,
+    );
+    writeFileSync(
+      path.join(rendererDirectory, "app.js"),
+      `${functions.join("\n")}\ndocument.body.dataset.ran = String(f1999(2));\n`,
+    );
+    writeFileSync(
+      path.join(rendererDirectory, "index.html"),
+      `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "production" })}"><script type="module" src="app://-/app.js"></script></head><body></body></html>`,
+    );
+    let application: ElectronApplication | null = null;
+    try {
+      application = await launchTestElectron({
+        args: [path.join(outputDirectory, "main.js")],
+        env: electronEnvironment(),
+      });
+      const page = await application.firstWindow();
+      // V8 caches a script's compilation once it has run before, so the third load consumes it.
+      for (let load = 1; load <= 3; load += 1) {
+        await expect.poll(() => page.evaluate(() => document.body.dataset.ran)).toBe("4002");
+        if (load < 3) await page.reload();
+      }
+      const userData = await application.evaluate(({ app }) => app.getPath("userData"));
+      const cacheEntries = () => {
+        try {
+          return readdirSync(path.join(userData, "Code Cache", "js")).filter((name) =>
+            name.endsWith("_0"),
+          ).length;
+        } catch {
+          return 0;
+        }
+      };
+      await expect.poll(cacheEntries).toBeGreaterThan(0);
+    } finally {
+      if (application) await application.close();
+    }
+  }, 30_000);
+
   test.runIf(process.platform === "win32")(
     "serves static and filesystem images from native Windows paths",
     async () => {
-      const outputDirectory = mkdtempSync(
-        path.join(tmpdir(), "nodex-app-windows-origin-integration-"),
+      const { outputDirectory, rendererDirectory } = await buildProtocolFixture(
+        "nodex-app-windows-origin-integration-",
       );
-      temporaryDirectories.push(outputDirectory);
-      await build({
-        bundle: true,
-        entryPoints: {
-          main: path.resolve("tests/fixtures/app-renderer-protocol/electron-main.ts"),
-        },
-        external: ["electron"],
-        format: "cjs",
-        outdir: outputDirectory,
-        platform: "node",
-        target: "node24",
-      });
-      const rendererDirectory = path.join(outputDirectory, "renderer");
-      mkdirSync(rendererDirectory);
       const localImagePath = path.join(outputDirectory, "Windows image 空格 #%.png");
       writeFileSync(localImagePath, IMAGE_BYTES);
       writeFileSync(path.join(rendererDirectory, "static.png"), IMAGE_BYTES);
@@ -216,11 +259,7 @@ describe("production app renderer origin", () => {
         `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "production" })}"></head><body><img id="filesystem-image" src="${buildAppFilesystemUrl(localImagePath)}" alt="filesystem"><img id="static-image" src="app://-/static.png" alt="static"></body></html>`,
       );
 
-      const childEnvironment: Record<string, string> = {};
-      for (const [name, value] of Object.entries(process.env)) {
-        if (value !== undefined) childEnvironment[name] = value;
-      }
-      delete childEnvironment.ELECTRON_RUN_AS_NODE;
+      const childEnvironment = electronEnvironment();
       let application: ElectronApplication | null = null;
       try {
         application = await launchTestElectron({
@@ -241,21 +280,9 @@ describe("production app renderer origin", () => {
 
 describe("development HTTP renderer origin", () => {
   test("loads local media through both app://fs and Vite /@fs", async () => {
-    const outputDirectory = mkdtempSync(path.join(tmpdir(), "nodex-app-dev-origin-integration-"));
-    temporaryDirectories.push(outputDirectory);
-    await build({
-      bundle: true,
-      entryPoints: {
-        main: path.resolve("tests/fixtures/app-renderer-protocol/electron-main.ts"),
-      },
-      external: ["electron"],
-      format: "cjs",
-      outdir: outputDirectory,
-      platform: "node",
-      target: "node24",
-    });
-    const rendererDirectory = path.join(outputDirectory, "renderer");
-    mkdirSync(rendererDirectory);
+    const { outputDirectory, rendererDirectory } = await buildProtocolFixture(
+      "nodex-app-dev-origin-integration-",
+    );
     const imagePath = path.join(outputDirectory, "development image.png");
     writeFileSync(imagePath, IMAGE_BYTES);
     // Vite serves /@fs on its process drive; native Windows resources use app://fs across drives.
@@ -291,11 +318,7 @@ describe("development HTTP renderer origin", () => {
       const address = developmentServer.httpServer?.address();
       if (!address || typeof address === "string") throw new Error("Vite did not bind a port");
       const developmentRendererUrl = `http://127.0.0.1:${address.port}/`;
-      const childEnvironment: Record<string, string> = {};
-      for (const [name, value] of Object.entries(process.env)) {
-        if (value !== undefined) childEnvironment[name] = value;
-      }
-      delete childEnvironment.ELECTRON_RUN_AS_NODE;
+      const childEnvironment = electronEnvironment();
       childEnvironment.NODEX_TEST_RENDERER_URL = developmentRendererUrl;
       childEnvironment.NODEX_TEST_HOLD_PROTOCOL_IMAGES = "1";
       application = await launchTestElectron({

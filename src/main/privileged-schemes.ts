@@ -18,7 +18,9 @@ export function registerNodexPrivilegedSchemes(
     },
     {
       scheme: APP_PROTOCOL_SCHEME,
+      // The renderer's scripts compile from V8's on-disk cache once they have run before.
       privileges: {
+        codeCache: true,
         corsEnabled: true,
         secure: true,
         standard: true,
