@@ -218,11 +218,11 @@ it.effect(
         const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
         const [absent] = yield* instances.listUnavailable;
         assert.strictEqual(created, 0);
-        assert.include(absent, {
+        assert.deepInclude(absent, {
           enabled: true,
           installed: false,
           availability: "unavailable",
-          requiredComponent: "codex",
+          installationSource: { kind: "component", id: "codex" },
           componentUnavailableReason: "not-installed",
           message: "Codex is not installed.",
         });
@@ -242,7 +242,7 @@ it.effect(
               [checked.instanceId]: {
                 ...installed,
                 componentUnavailable: {
-                  requiredComponent: "codex",
+                  installationSource: { kind: "component", id: "codex" },
                   reason: "not-installed",
                   message: "Codex is not installed.",
                 },

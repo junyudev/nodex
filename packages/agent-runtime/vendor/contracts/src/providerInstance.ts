@@ -37,7 +37,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-const PROVIDER_SLUG_MAX_CHARS = 64;
+export const PROVIDER_SLUG_MAX_CHARS = 64;
 /**
  * Slug pattern shared by driver kinds and instance ids — letters, digits,
  * dashes, underscores. The first character must be a letter so slugs remain
@@ -46,7 +46,7 @@ const PROVIDER_SLUG_MAX_CHARS = 64;
  * `claudeAgent`) can be used verbatim during the migration and so external
  * fork authors retain reasonable freedom.
  */
-const PROVIDER_SLUG_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+export const PROVIDER_SLUG_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 const ENVIRONMENT_VARIABLE_NAME_MAX_CHARS = 128;
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -125,6 +125,14 @@ export type ProviderInstanceEnvironment = typeof ProviderInstanceEnvironment.Typ
 export const CodexPackageUnavailableReason = Schema.Literals(["not-installed", "invalid", "installing", "turned-off", "external-unusable"]);
 export type CodexPackageUnavailableReason = typeof CodexPackageUnavailableReason.Type;
 
+/** The owner of this instance's executable lifecycle. */
+export const ProviderInstallationSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("component"), id: TrimmedNonEmptyString }),
+  Schema.Struct({ kind: Schema.Literal("managed"), id: TrimmedNonEmptyString }),
+  Schema.Struct({ kind: Schema.Literal("external") }),
+]);
+export type ProviderInstallationSource = typeof ProviderInstallationSource.Type;
+
 export const ProviderInstanceConfig = Schema.Struct({
   driver: ProviderDriverKind,
   displayName: Schema.optional(TrimmedNonEmptyString),
@@ -135,7 +143,7 @@ export const ProviderInstanceConfig = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),
   componentUnavailable: Schema.optionalKey(Schema.Struct({
-    requiredComponent: Schema.optionalKey(Schema.Literal("codex")),
+    installationSource: Schema.optionalKey(ProviderInstallationSource),
     reason: CodexPackageUnavailableReason,
     message: TrimmedNonEmptyString,
   })),

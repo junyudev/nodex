@@ -59,5 +59,11 @@ export {
   type DesktopToolActivity,
 } from "@nodex/provider-core/server/desktopToolActivity";
 
-export { isProviderInstanceId } from "@nodex/runtime-contracts";
+export {
+  isProviderDriverKind,
+  isProviderInstanceId,
+  PROVIDER_SLUG_MAX_CHARS,
+  PROVIDER_SLUG_PATTERN,
+  type ProviderInstanceRef,
+} from "@nodex/runtime-contracts";
 export { isolatedClaudeProbe, type ClaudeCodeReadiness } from "./ClaudeCodeReadiness.ts";

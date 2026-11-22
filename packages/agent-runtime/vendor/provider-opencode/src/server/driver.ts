@@ -217,7 +217,7 @@ export const OpenCodeDriver: ProviderDriver<
         driverKind: DRIVER_KIND,
         instanceId,
       });
-      const stampIdentity = withInstanceIdentity({
+      const stamp = withInstanceIdentity({
         instanceId,
         driverKind: DRIVER_KIND,
         displayName,
@@ -225,6 +225,14 @@ export const OpenCodeDriver: ProviderDriver<
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
+      const installationSource =
+        !effectiveConfig.serverUrl.trim() &&
+        effectiveConfig.binaryPath.trim() === decodeOpenCodeSettings({}).binaryPath &&
+        !environment?.some(({ name }) => name.trim() === "PATH")
+          ? { kind: "managed", id: "opencode" } as const
+          : { kind: "external" } as const;
+      const stampIdentity = (draft: Parameters<typeof stamp>[0]) =>
+        stamp({ ...draft, installationSource });
       const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
         probeOpenCodeRuntime(effectiveConfig, processEnv).pipe(
           Effect.provideService(HttpClient.HttpClient, httpClient),

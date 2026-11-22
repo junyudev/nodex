@@ -220,6 +220,9 @@ function baseSnapshot(
     supportedRuntimeModes: ["approval-required", "full-access"],
     enabled: input.settings.enabled,
     installed: input.installed,
+    installationSource: input.settings.source === "local"
+      ? { kind: "external" }
+      : { kind: "managed", id: DRIVER_KIND },
     version: input.version,
     status: input.settings.enabled ? input.status : "disabled",
     auth: { ...input.auth, canLogout: input.auth.canLogout ?? false },

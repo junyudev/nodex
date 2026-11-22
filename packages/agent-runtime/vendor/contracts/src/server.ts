@@ -25,7 +25,7 @@ import {
 import { EditorId, FileManagerRevealKind, RemoteOpenTarget } from "./editor.ts";
 import { ModelCapabilities } from "./model.ts";
 import { RuntimeMode } from "./providerPolicy.ts";
-import { CodexPackageUnavailableReason, ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { CodexPackageUnavailableReason, ProviderDriverKind, ProviderInstallationSource, ProviderInstanceId } from "./providerInstance.ts";
 import { ServerProviderUsageLimits, UsageLimitSourceSnapshots } from "./providerUsageLimits.ts";
 import { ServerSettings } from "./settings.ts";
 
@@ -314,8 +314,8 @@ export const ServerProvider = Schema.Struct({
   ),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
-  /** A Nodex-managed executable whose installation is independent of authentication. */
-  requiredComponent: Schema.optionalKey(Schema.Literals(["claude-code", "codex"])),
+  /** Omitted for executables resolved from the person’s environment. */
+  installationSource: Schema.optionalKey(ProviderInstallationSource),
   componentUnavailableReason: Schema.optionalKey(CodexPackageUnavailableReason),
   version: Schema.NullOr(TrimmedNonEmptyString),
   status: ServerProviderState,

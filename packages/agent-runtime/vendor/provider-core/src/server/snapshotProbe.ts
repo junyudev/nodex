@@ -90,7 +90,8 @@ const isProviderCommandNotFoundError = Schema.is(ProviderCommandNotFoundError);
 
 export interface ProviderProbeResult {
   readonly installed: boolean;
-  readonly requiredComponent?: ServerProvider["requiredComponent"];
+  readonly installationSource?: ServerProvider["installationSource"];
+  readonly componentUnavailableReason?: ServerProvider["componentUnavailableReason"];
   readonly version: string | null;
   readonly status: Exclude<ServerProviderState, "disabled">;
   readonly auth: ServerProviderAuth;
@@ -271,7 +272,10 @@ export function buildServerProvider(input: {
       : {}),
     enabled: input.enabled,
     installed: input.probe.installed,
-    ...(input.probe.requiredComponent ? { requiredComponent: input.probe.requiredComponent } : {}),
+    ...(input.probe.installationSource ? { installationSource: input.probe.installationSource } : {}),
+    ...(input.probe.componentUnavailableReason
+      ? { componentUnavailableReason: input.probe.componentUnavailableReason }
+      : {}),
     version: input.probe.version,
     status: input.enabled ? input.probe.status : "disabled",
     ...(input.enabled && input.probe.status === "error" && input.probe.installed && input.probe.issue

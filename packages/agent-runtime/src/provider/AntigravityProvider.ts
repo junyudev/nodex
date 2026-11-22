@@ -220,6 +220,9 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           : "Antigravity is disabled in Nodex settings.",
       },
     }),
+    installationSource: settings.binaryPath
+      ? { kind: "external" }
+      : { kind: "managed", id: "antigravity" },
     setup: { canAuthenticate: true, canInstall: true },
     supportsConversationRollback: true,
     supportsTextGeneration: false,

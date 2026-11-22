@@ -206,7 +206,7 @@ const buildEntry = <R>(input: {
   Effect.gen(function* () {
     const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
     const unavailable = entry.componentUnavailable;
-    const pendingModels = unavailable?.requiredComponent
+    const pendingModels = unavailable?.installationSource
       ? input.pendingModels?.(rawInstanceId)
       : undefined;
     if (unavailable) {
@@ -223,8 +223,8 @@ const buildEntry = <R>(input: {
           ...snapshot,
           ...(pendingModels ? { models: pendingModels } : {}),
           enabled: entry.enabled !== false,
-          ...(unavailable.requiredComponent
-            ? { requiredComponent: unavailable.requiredComponent }
+          ...(unavailable.installationSource
+            ? { installationSource: unavailable.installationSource }
             : {}),
           componentUnavailableReason: unavailable.reason,
         },
