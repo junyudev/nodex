@@ -900,7 +900,9 @@ display state model. Fixture classes and runtime commands are detailed below.
 
 ### Choosing checks
 
-Run `vp run check:changed` before handing off a branch. It compares HEAD with
+Run `vp run check:changed` before handing off a branch. Like every CI job, it first
+installs dependencies from `pnpm-lock.yaml`, a no-op when they are current, so a lockfile
+another checkout pulled in cannot fail checks for unrelated reasons. It compares HEAD with
 its merge base with `origin/main` (local `main` only when the remote-tracking ref
 is absent), and includes staged, unstaged, and untracked files. Keep `origin/main`
 current before checking. It runs changed-file format and lint, the semantic gate,

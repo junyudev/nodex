@@ -105,6 +105,13 @@ async function runGate(name: string, run: () => Promise<number>): Promise<void> 
 }
 
 async function checkChanged(root: string, signal: AbortSignal): Promise<number> {
+  // Like every CI job, start from the lockfile. Another checkout's pull can change it under this
+  // install, and checks against stale dependencies fail for reasons unrelated to the change.
+  // An install that is already current returns in under a second.
+  await runGate("install dependencies", async () => {
+    const install = vitePlusCommand(["install", "--frozen-lockfile"]);
+    return (await runCommand({ ...install, cwd: root, signal })).exitCode;
+  });
   const { base, ref, files } = readChangedPaths(root);
   process.stdout.write(
     `[check:changed] ${files.length} changed paths since ${base.slice(0, 12)} (${ref})\n`,
