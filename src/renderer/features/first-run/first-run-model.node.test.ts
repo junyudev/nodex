@@ -278,6 +278,12 @@ describe("first-run Agents", () => {
       expect(row(firstRunAgentRows(inputs()), "nodex")).toBeUndefined();
     });
 
+    it("closes the list, after everything a person may already have", () => {
+      const rows = firstRunAgentRows(inputs({ nodex }));
+      expect(rows.length).toBeGreaterThan(1);
+      expect(rows.at(-1)?.id).toBe("nodex");
+    });
+
     it("offers a start that covers a new account and an existing one", () => {
       expect(nodexRowFor({})).toMatchObject({
         state: "action",

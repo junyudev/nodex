@@ -59,11 +59,11 @@ existing rows.
 | -------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
 | Codex                      | Its account is signed in                            | `Sign in` with ChatGPT in the browser, or `Use API key`                |
 | Claude Code                | A profile is installed and signed in                | `Sign in` in a Terminal under the row when found, or `Install`         |
-| Nodex credits              | Signed in with a credit to spend                    | `Get started`, then top-up tiers. Absent from a build without accounts |
 | Antigravity                | A profile is installed, signed in and offers models | `Set up` or `Sign in` opens Settings → Agents → Antigravity            |
 | An Agent added in Settings | Connected, with its models known                    | `Connect`, or its own `Sign in` under the row                          |
 | API key                    | One row per connected key                           | `Add key`, with the form under the row                                 |
 | OpenCode                   | A model is on                                       | `Install`, then `Use free models`. Absent where it can't run           |
+| Nodex credits              | Signed in with a credit to spend                    | `Get started`, then top-up tiers. Absent from a build without accounts |
 
 On Apple silicon, choosing the Codex sign-in or API key action installs the
 [Codex Component](components-behavior.md) on first use. The row shows progress while the chosen
@@ -95,10 +95,11 @@ keep what is sent, and those models stay off until the person chooses them. Comi
 checks again, both who is signed in and what is installed, so a sign-in, an install or an update
 finished in a browser or a Terminal shows up by itself.
 
-Nodex credits are one way to start, and never a condition of starting. `Get started` opens the hosted
-page, which covers a new account and an existing one alike. Once signed in with no credits, the
-server's tiers sit under the row and one click pays in the browser; the row turns ready by itself when
-the balance arrives. Credits are never chosen automatically, even for someone who just bought them, so
+Nodex credits are one way to start, and never a condition of starting. Their row closes the list,
+after everything a person may already have, and like any row it joins the ready ones once it is
+ready. `Get started` opens the hosted page, which covers a new account and an existing one alike.
+Once signed in with no credits, the server's tiers sit under the row and one click pays in the
+browser; the row turns ready by itself when the balance arrives. Credits are never chosen automatically, even for someone who just bought them, so
 that person lands on a Composer asking them to choose a model rather than to connect an Agent.
 
 One quiet line under the list says where the person stands. With no Agent ready it reads

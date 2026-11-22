@@ -772,7 +772,9 @@ function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly 
 
 /**
  * The Agents the first step offers, in the order a person is most likely to want them: the
- * subscriptions they may already have, configured Agents, an API key, then free models.
+ * subscriptions they may already have, configured Agents, an API key, then free models. Nodex's
+ * own credits close the list: they are a way to start for someone with none of the above, and
+ * never stand ahead of what a person already has.
  * {@link placeFirstRunAgents} then lifts the usable and the found ones above the rest.
  */
 export function firstRunAgentRows(
@@ -784,14 +786,14 @@ export function firstRunAgentRows(
     const row = builtInRow(definition, input, intl);
     return row ? [{ order: definition.setup.firstRun.order, row }] : [];
   });
-  return [
+  const agents = [
     ...builtIns,
-    { order: 2, row: nodexRow(input, intl) },
     ...(input.acpAgents ?? []).map((agent) => ({ order: 3, row: acpAgentRow(agent, intl) })),
     ...providerKeyRows(input, intl).map((row) => ({ order: 5, row })),
   ]
     .toSorted((left, right) => left.order - right.order)
-    .flatMap(({ row }) => (row ? [row] : []));
+    .map(({ row }) => row);
+  return [...agents, nodexRow(input, intl)].flatMap((row) => (row ? [row] : []));
 }
 
 /** Whether every row has its first answer. */
