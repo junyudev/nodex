@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { waitFor } from "@testing-library/react";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import "@/globals.css";
 
 vi.mock("@/lib/use-theme", () => ({
@@ -14,7 +14,7 @@ describe("page stage raw content", () => {
     const content = "# Heading\n\n- item 1\n- item 2\n\n![Demo](nodex://assets/demo.png)";
     const view = render(<PageStageRawContent content={content} />);
 
-    await settleLazyRender();
+    await settleAsyncRender();
     expect(view.getByText("Read-only")).not.toBeNull();
     const source = await view.findByRole("region", { name: "Raw page source" });
     await waitFor(() => {

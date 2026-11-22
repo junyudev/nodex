@@ -28,19 +28,16 @@ export function textContentIncludingShadowRoots(node: ParentNode): string {
 }
 
 /**
- * Flush React work queued within one timer tick. A query result notifies on its own timer, which
- * can land on the next tick; await what it renders with `findBy*` or `waitFor` instead.
+ * Flush React work queued within one timer tick, then let any lazy surface that render presented
+ * finish loading and commit. The render must commit before its children start their imports, so
+ * the wait follows it. A query result notifies on its own timer, which can land on the next tick;
+ * await what it renders with `findBy*` or `waitFor` instead.
  */
 export async function settleAsyncRender() {
   await act(async () => {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
-}
-
-/** Commit the trigger before waiting for imports started by its lazy children. */
-export async function settleLazyRender() {
-  await settleAsyncRender();
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -61,7 +58,7 @@ export async function openNodexMenu(trigger: HTMLElement) {
 }
 
 export async function waitForCodeHighlight(node: ParentNode, options?: { timeout?: number }) {
-  await settleLazyRender();
+  await settleAsyncRender();
   await waitFor(() => {
     const highlightedCode = Array.from(
       node.querySelectorAll<HTMLElement>("[data-readonly-code-block] code span"),

@@ -5,7 +5,7 @@ import "@/globals.css";
 import { ConversationTokenRenderer } from "@/lib/markdown/conversation-token-renderer";
 import { streamdownComponents } from "@/lib/streamdown";
 import { installWindowApi } from "@/test/browser-globals";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import { TestQueryProvider, createTestQueryClient } from "@/test/query";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -184,7 +184,7 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(image.getBoundingClientRect().height).toBeLessThanOrEqual(160.5);
     expect(view.container.querySelectorAll('[data-markdown-image-grid="true"]')).toHaveLength(1);
     const streamingAudio = await view.findByLabelText("Silent");
-    await settleLazyRender();
+    await settleAsyncRender();
     await waitFor(() => expect(view.getByLabelText("Synthetic video").tagName).toBe("VIDEO"));
     const streamingVideo = view.getByLabelText("Synthetic video");
     const button = view.getByRole("button", { name: "One" });

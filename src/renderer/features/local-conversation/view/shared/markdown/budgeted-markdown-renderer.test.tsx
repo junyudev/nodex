@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 
 const richRenderCalls = vi.hoisted(() => vi.fn());
 
@@ -52,7 +52,7 @@ describe("BudgetedMarkdownRenderer", () => {
         sourceAriaLabel="Large line source"
       />,
     );
-    await settleLazyRender();
+    await settleAsyncRender();
 
     expect(richRenderCalls).not.toHaveBeenCalled();
     expect(bytes.container.textContent).toContain("Rich preview is unavailable for large content.");

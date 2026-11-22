@@ -1,7 +1,7 @@
 import { fireEvent, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import { parseDataSourceId, parseDataSourcePropertyId } from "../../../shared/database-identities";
 import { testPropertySemantics } from "../../../shared/testing/database-property-record";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
@@ -64,7 +64,7 @@ describe("DataSourcePropertyValueEditor", () => {
       const props = emptyEditorProps(valueType, id);
       const view = render(<DataSourcePropertyValueEditor {...props} openOnMount />);
       const trigger = view.getByRole("button", { name: /^Edit Workflow/ });
-      await settleLazyRender();
+      await settleAsyncRender();
       const input = await view.findByRole(role, { name });
       await waitFor(() => expect(document.activeElement).toBe(input));
       await act(async () => {

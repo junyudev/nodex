@@ -1,4 +1,4 @@
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import "./workbench-testkit/workbench-shell-harness";
 import { expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
@@ -32,7 +32,7 @@ test("Windows mounts one navigation group in the application row above workspace
       fireEvent.click(settings);
       await Promise.resolve();
     });
-    await settleLazyRender();
+    await settleAsyncRender();
     await view.findByRole("button", { name: "Back to app" });
     expect(header.hidden).toBe(true);
     // Computer Use is a Windows capability too, so its settings are listed here.

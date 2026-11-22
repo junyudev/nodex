@@ -96,7 +96,7 @@ import type {
   SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
 } from "@/lib/use-workbench-profile-preferences";
-import { render, settleAsyncRender, settleLazyRender } from "../../../test/dom";
+import { render, settleAsyncRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
 import { useThreadStageHeaderSlot } from "@/features/local-conversation/view/thread-stage-header-slot";
@@ -4979,7 +4979,7 @@ export async function executeCommandPaletteCommand(
     fireEvent.click(within(paletteSurface).getByRole("button", { name: label }));
     await Promise.resolve();
   });
-  await settleLazyRender();
+  await settleAsyncRender();
   await settleAsyncRender();
 }
 
@@ -5059,7 +5059,7 @@ export async function findFilesPreviewInteractionTarget(
   screen: ReturnType<typeof renderWorkbench>,
 ): Promise<HTMLElement> {
   // A durable tab can exist while its first Files surface import is still pending.
-  await settleLazyRender();
+  await settleAsyncRender();
   return waitFor(
     () =>
       screen.container.querySelector<HTMLElement>("[data-workspace-files-session-id]") ??

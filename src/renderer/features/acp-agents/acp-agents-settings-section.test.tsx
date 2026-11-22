@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { renderWithAppMaitai } from "@/test/app-maitai";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
 import type AgentAuthTerminal from "../agent-account/agent-auth-terminal";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
@@ -170,7 +170,7 @@ describe("ACP Agents settings", () => {
       methodId: "login",
     });
     await view.findByText("Sign in using the terminal below.");
-    await settleLazyRender();
+    await settleAsyncRender();
     expect(view.getByRole("group", { name: "Sign-in terminal" }).textContent).toBe(output);
 
     // Finishing the sign-in closes the terminal and ends the owner's polling with it.
@@ -226,7 +226,7 @@ describe("ACP Agents settings", () => {
     main.accounts.read.mockResolvedValue(ok(own));
     await press(await view.findByRole("button", { name: "Open Qoder login" }));
     await view.findByText("Sign in using the terminal below.");
-    await settleLazyRender();
+    await settleAsyncRender();
     expect(view.getByRole("group", { name: "Sign-in terminal" })).toBeTruthy();
     expect(main.accounts.cancel).not.toHaveBeenCalled();
 

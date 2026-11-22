@@ -6,7 +6,7 @@ import type { CodexConversationItem, CodexConversationTurn } from "@/lib/types";
 import { buildTurnRenderModel } from "../../projection/build-turn-render-model";
 import type { ThreadTranscriptBlockModel } from "../../thread-stage-types";
 import { StrictMode } from "react";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
 
 vi.mock("../local-conversation-inline-visualization", async () => {
@@ -77,7 +77,7 @@ describe("assistant document lifecycle", () => {
       <Assistant block={assistantDocument("completed", source)} live={false} />,
     );
     try {
-      await settleLazyRender();
+      await settleAsyncRender();
       const codeButton = mounted.container.querySelector<HTMLButtonElement>(
         '[data-code-block-action="copy"]',
       )!;
@@ -140,7 +140,7 @@ ${payload}
         </StrictMode>,
       );
       try {
-        await settleLazyRender();
+        await settleAsyncRender();
         const button = mounted.container.querySelector<HTMLButtonElement>(
           '[data-code-block-action="copy"]',
         )!;
@@ -155,7 +155,7 @@ ${payload}
             <Assistant block={assistantDocument("completed", source)} live={false} />
           </StrictMode>,
         );
-        await settleLazyRender();
+        await settleAsyncRender();
         expect(mounted.container.querySelector('[data-code-block-action="copy"]')).toBe(button);
         expect(document.activeElement).toBe(button);
         await act(async () => {

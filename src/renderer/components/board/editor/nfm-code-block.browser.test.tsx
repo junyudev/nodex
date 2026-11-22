@@ -11,7 +11,7 @@ import {
   installRendererThemeFixture,
   readRendererThemeColor,
 } from "@/test/renderer-theme";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import {
   contrastRatio,
   getPaintedBackground,
@@ -350,7 +350,7 @@ describe("NFM Code Block surface in Chromium", () => {
     expect(surface.dataset.mermaidPreviewMode).toBe("split");
     const preview = surface.querySelector<HTMLElement>("[data-nfm-mermaid-preview]")!;
     await waitFor(() => expect(preview.dataset.nfmMermaidStatus).not.toBe("empty"));
-    await settleLazyRender();
+    await settleAsyncRender();
     expect(
       await screen.findByRole("button", { name: "Click diagram to expand in fullscreen" }),
     ).not.toBeNull();
@@ -564,7 +564,7 @@ describe("NFM Code Block surface in Chromium", () => {
       fireEvent.click(formatAction);
       await Promise.resolve();
     });
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await waitFor(() => {
       expect(editor.getBlock("code-format-action")?.content).toEqual([

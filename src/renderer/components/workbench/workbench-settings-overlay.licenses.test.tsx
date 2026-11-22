@@ -6,7 +6,7 @@ import { getIntl } from "@/lib/i18n";
 import { __resetThreadNotificationSettingsForTests } from "@/lib/use-thread-notification-settings";
 import { __resetWindowRestoreSettingsForTests } from "@/lib/use-window-restore-settings";
 import { installWindowApi } from "@/test/browser-globals";
-import { render, settleLazyRender } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import { SettingsRouteShell } from "./workbench-settings-route-shell";
 import { buildSettingsPath, OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
 import {
@@ -124,14 +124,14 @@ describe("SettingsRouteShell open source licenses", () => {
     const view = render(
       <SettingsLicensesHarness initialPath={buildSettingsPath("general-settings")} />,
     );
-    await settleLazyRender();
+    await settleAsyncRender();
     const openLicenses = await view.findByRole("button", { name: "View" });
 
     await act(async () => {
       fireEvent.click(openLicenses);
       await Promise.resolve();
     });
-    await settleLazyRender();
+    await settleAsyncRender();
 
     view.getByText("Open source licenses");
     const notices = await view.findByRole("document");
@@ -142,7 +142,7 @@ describe("SettingsRouteShell open source licenses", () => {
       fireEvent.click(view.getByRole("button", { name: "Back to General" }));
       await Promise.resolve();
     });
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByRole("button", { name: "View" });
   });
@@ -153,7 +153,7 @@ describe("SettingsRouteShell open source licenses", () => {
     const view = render(
       <SettingsLicensesHarness initialPath={buildSettingsPath("general-settings")} />,
     );
-    await settleLazyRender();
+    await settleAsyncRender();
     await view.findByRole("button", { name: "View" });
 
     const groups = visibleSettingsSearchGroups(SETTINGS_SEARCH_PANELS["general-settings"]);
@@ -173,7 +173,7 @@ describe("SettingsRouteShell open source licenses", () => {
     const view = render(
       <SettingsLicensesHarness initialPath={OPEN_SOURCE_LICENSES_SETTINGS_PATH} />,
     );
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByText("No third-party notices were found.");
   });

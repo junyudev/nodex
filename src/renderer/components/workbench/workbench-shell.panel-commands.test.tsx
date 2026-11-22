@@ -1,11 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
-import {
-  settleAsyncRender,
-  settleLazyRender,
-  textContent,
-  textContentIncludingShadowRoots,
-} from "../../test/dom";
+import { settleAsyncRender, textContent, textContentIncludingShadowRoots } from "../../test/dom";
 import { fireEvent, within, act, waitFor } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { primaryCanvasBlockId } from "../../../shared/block-documents/canvas-document-identity";
@@ -43,7 +38,7 @@ describe("workbench session shell / panel-commands", () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [makeAttachedSession()] },
     });
-    await settleLazyRender();
+    await settleAsyncRender();
     await settleAsyncRender();
 
     const newTabButton = await screen.findByRole("button", { name: "New tab" });
@@ -52,7 +47,7 @@ describe("workbench session shell / panel-commands", () => {
       await Promise.resolve();
     });
     // The New tab page loads on demand.
-    await settleLazyRender();
+    await settleAsyncRender();
 
     const newTab = await screen.findByRole("tab", { name: "New tab" });
     expect(newTab.getAttribute("aria-selected")).toBe("true");
@@ -87,7 +82,7 @@ describe("workbench session shell / panel-commands", () => {
       expect(screen.queryByRole("tab", { name: "New tab" })).toBe(null);
     });
     // The surface replacing the New tab loads on demand; let it finish inside the test.
-    await settleLazyRender();
+    await settleAsyncRender();
     const filesTab = screen.getByRole("tab", { name: "Files" });
     expect(filesTab.getAttribute("aria-selected")).toBe("true");
     expect(tabOrder().indexOf("Files")).toBe(newTabIndex);
@@ -128,7 +123,7 @@ describe("workbench session shell / panel-commands", () => {
       rightCollapsed: true,
     });
     const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
-    await settleLazyRender();
+    await settleAsyncRender();
     await settleAsyncRender();
 
     const newTabButton = await screen.findByRole("button", { name: "New tab" });
@@ -137,7 +132,7 @@ describe("workbench session shell / panel-commands", () => {
       await Promise.resolve();
     });
     // The New tab page loads on demand.
-    await settleLazyRender();
+    await settleAsyncRender();
 
     expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
     expect(
@@ -432,7 +427,7 @@ describe("workbench session shell / panel-commands", () => {
     });
     await settleAsyncRender();
 
-    await settleLazyRender();
+    await settleAsyncRender();
     expect(await screen.findByTestId("settings-route-shell")).not.toBeNull();
   });
 

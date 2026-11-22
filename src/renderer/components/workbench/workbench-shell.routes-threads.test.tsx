@@ -1,6 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
-import { openNodexMenu, settleAsyncRender, settleLazyRender, textContent } from "../../test/dom";
+import { openNodexMenu, settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
@@ -129,7 +129,7 @@ describe("workbench session shell / routes-threads", () => {
         });
         await Promise.resolve();
       });
-      await settleLazyRender();
+      await settleAsyncRender();
       const chat = await screen.findByRole("button", { name: "Chat" });
       expect(chat.textContent).toContain("Selected chat");
       await act(async () => {
@@ -172,7 +172,7 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
 
     expect(screen.queryByRole("dialog", { name: "Settings" })).toBe(null);
-    await settleLazyRender();
+    await settleAsyncRender();
     await screen.findByTestId("settings-route-shell");
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
 
@@ -205,7 +205,7 @@ describe("workbench session shell / routes-threads", () => {
     });
     await settleAsyncRender();
 
-    await settleLazyRender();
+    await settleAsyncRender();
     const route = await screen.findByTestId("automations-route");
     const globalHeader = screen.getByTestId("workbench-global-header");
     const leftSlot = getHeaderShellSlot(screen, "left");

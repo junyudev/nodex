@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { render, settleLazyRender } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
 const moduleInitialization = vi.hoisted(() => ({
@@ -67,7 +67,7 @@ describe("Settings page module loading", () => {
         <General {...PAGE_PROPS} />
       </Suspense>,
     );
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByRole("heading", { name: "General content" });
     expect(moduleInitialization.general).toHaveBeenCalledOnce();

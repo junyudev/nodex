@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
-import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import { __resetWindowRestoreSettingsForTests } from "@/lib/use-window-restore-settings";
 import { __resetThreadNotificationSettingsForTests } from "@/lib/use-thread-notification-settings";
@@ -145,7 +145,7 @@ describe("SettingsRouteShell Escape", () => {
         backCalls += 1;
       },
     });
-    await settleLazyRender();
+    await settleAsyncRender();
 
     const autoBranchPrefixInput = await view.findByLabelText("Branch prefix");
     await act(async () => {

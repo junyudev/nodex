@@ -3,7 +3,7 @@ import { render, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
 import { installWindowApi } from "@/test/browser-globals";
-import { settleLazyRender } from "@/test/dom";
+import { settleAsyncRender } from "@/test/dom";
 import "../../globals.css";
 import { OpenSourceLicensesSettingsPage } from "./open-source-licenses-settings-page";
 
@@ -28,7 +28,7 @@ describe("OpenSourceLicensesSettingsPage browser layout", () => {
     });
     expect(accessibleDocument.getAttribute("aria-label")).toBe("dependency notices\n");
     expect(accessibleDocument.querySelector("pre")).toBeNull();
-    await settleLazyRender();
+    await settleAsyncRender();
     const source = await view.findByLabelText("Open source license text");
     expect(source.getAttribute("data-source-viewer")).toBe("true");
     await waitFor(() => {

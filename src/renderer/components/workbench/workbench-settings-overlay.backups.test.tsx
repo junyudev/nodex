@@ -2,7 +2,7 @@ import { describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
 import { installWindowApi } from "@/test/browser-globals";
-import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
+import { render, settleAsyncRender } from "@/test/dom";
 import type {
   BackupRecord,
   DiagnosticsSettings,
@@ -230,7 +230,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByText("Session replays require crash reports.");
     const toggle = view.getByRole("switch", { name: "Share crash reports" });
@@ -329,7 +329,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByText("Managed by NODEX_SENTRY_ENABLED.");
     const toggle = view.getByRole("switch", { name: "Share crash reports" });
@@ -395,7 +395,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleLazyRender();
+    await settleAsyncRender();
 
     const toggle = await view.findByRole("switch", { name: "Share usage analytics" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
@@ -463,7 +463,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByText("Managed by NODEX_TELEMETRY_ENABLED.");
     const toggle = view.getByRole("switch", { name: "Share usage analytics" });
@@ -526,7 +526,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleLazyRender();
+    await settleAsyncRender();
 
     await view.findByText("No snapshots yet.");
     view.getByText("Optimizing snapshot storage");
@@ -658,7 +658,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleLazyRender();
+    await settleAsyncRender();
     const labelInput = await view.findByPlaceholderText("Optional snapshot label");
     await act(async () => {
       fireEvent.change(labelInput, { target: { value: "Before migration" } });
@@ -741,7 +741,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleLazyRender();
+    await settleAsyncRender();
 
     const deleteSnapshot = await view.findByRole("button", {
       name: "Delete snapshot Before risky change",
@@ -809,7 +809,7 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleLazyRender();
+    await settleAsyncRender();
     const scope =
       "Pages, Databases, Files and Projects return to this snapshot. Chats keep their latest messages; running replies stop and Nodex restarts.";
 
