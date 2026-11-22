@@ -13,6 +13,11 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { HostInvocation } from "../../host/HostInvocation";
 import { make } from "./ChatSearch";
+import {
+  ChatSearchEngine,
+  ChatSearchEngineUnavailable,
+  makeChatSearchEngine,
+} from "./ChatSearchEngine";
 import type { ChatListingItem, ChatRuntimeMetadata } from "./ChatCatalogProjection";
 
 export const at = "2026-10-01T00:00:00.000Z";
@@ -191,6 +196,19 @@ export const fixture = (options: Options = {}) => {
     },
   } as CoreModules["Service"];
   const service = make.pipe(
+    // The desktop ranks in its worker; tests run the same engine on their own thread.
+    Effect.provideServiceEffect(
+      ChatSearchEngine,
+      makeChatSearchEngine((request) =>
+        runtime.sessionSearch(request).pipe(
+          Effect.provideService(CoreApplicationAgent, null),
+          Effect.mapError(
+            (cause) =>
+              new ChatSearchEngineUnavailable({ message: "History is unavailable", cause }),
+          ),
+        ),
+      ),
+    ),
     Effect.provideService(CoreModules, core),
     Effect.provideService(AgentRuntimeApplication, runtime),
     Effect.provideService(DatabaseNotifierRuntime, {

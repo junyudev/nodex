@@ -237,7 +237,9 @@ export const live = (input: {
   );
   const runtime = AgentRuntime.runtime.pipe(Layer.provideMerge(presence));
   // Members search the chats they may read here, as a desktop searches its own.
-  const chats = chatSearch.pipe(Layer.provideMerge(runtime));
+  const chats = chatSearch({ workerPath: `${input.workerDirectory}/chat-search-worker.js` }).pipe(
+    Layer.provideMerge(runtime),
+  );
   const work = Kernel.workApplication.pipe(Layer.provideMerge(chats));
   const applications = Kernel.applications.pipe(
     Layer.provideMerge(backendRegistry.pipe(Layer.provideMerge(work))),

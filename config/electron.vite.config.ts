@@ -129,6 +129,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
             bootstrap: resolve(repositoryRoot, "src/main/bootstrap.ts"),
             "main-process": resolve(repositoryRoot, "src/main/main-process.ts"),
             serve: resolve(repositoryRoot, "src/host/serve-entry.ts"),
+            "chat-search-worker": resolve(repositoryRoot, "src/main/chat-search-worker/entry.ts"),
             "file-index-worker": resolve(repositoryRoot, "src/main/file-index-worker/entry.ts"),
             "git-worker": resolve(repositoryRoot, "src/main/git-worker/entry.ts"),
             "process-telemetry-worker": resolve(

@@ -153,9 +153,12 @@ const gitActions = gitActionsLive.pipe(
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(
-    Layer.mergeAll(chatSearchLive, nativeChatSearchIndex, runtimeHealthMonitor, gitActions).pipe(
-      Layer.provideMerge(executionGraph),
-    ),
+    Layer.mergeAll(
+      chatSearchLive({ workerPath: `${__dirname}/chat-search-worker.js` }),
+      nativeChatSearchIndex,
+      runtimeHealthMonitor,
+      gitActions,
+    ).pipe(Layer.provideMerge(executionGraph)),
   ),
   Layer.provideMerge(insightsLive.pipe(Layer.provideMerge(executionGraph))),
 );
