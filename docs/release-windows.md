@@ -87,11 +87,17 @@ step runs on install-over, including a change in the closure location or removal
 of Desktop Tools. Profile files are retained. A Profile can register again when
 the new Desktop opens, subject to the normal ownership check and takeover consent.
 
+Uninstall and install-over move the old installation out of its registered path
+with one same-volume directory rename. Maintenance uses Windows paths that support
+deep runtime trees, then removes the retired payload. If the rename fails, the
+old payload stays in place. If cleanup fails after the rename, the maintenance log
+records the retired directory and replacement can continue.
+
 Silent maintenance retains its latest stage and timed maintenance diagnostics in
 `%LOCALAPPDATA%\Nodex\installer-maintenance.log`, outside the Profile and installed
 payload. It records shutdown errors, the maintenance-uninstaller refresh, nested
-uninstaller failures, payload extraction failures, and update relaunch failures before returning a failed
-installer status. The installer
+uninstaller failures, payload extraction failures, and update relaunch failures
+before returning a failed installer status. The installer
 probe preserves this log for each operation and includes its failure reason in
 the probe result before cleanup can replace it. Probe results also record the
 installer's byte size and initial installation time.

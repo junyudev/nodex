@@ -1,11 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, Write},
     mem::{size_of, zeroed},
     os::windows::{
         ffi::{OsStrExt, OsStringExt},
+        fs::MetadataExt,
         process::CommandExt,
     },
     path::{Path, PathBuf},
@@ -22,8 +23,8 @@ use windows_sys::Win32::{
     },
     Globalization::{CSTR_EQUAL, CompareStringOrdinal},
     Storage::FileSystem::{
-        CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, GetFinalPathNameByHandleW, OPEN_EXISTING,
+        CreateFileW, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, GetFinalPathNameByHandleW, OPEN_EXISTING,
     },
     System::{
         Diagnostics::ToolHelp::{
@@ -68,6 +69,15 @@ struct Log {
     step: &'static str,
 }
 impl Log {
+    fn open(path: Option<&Path>, step: &'static str) -> Self {
+        Self {
+            file: path
+                .and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok()),
+            started: Instant::now(),
+            step,
+        }
+    }
+
     // Diagnostics explain a failure; they never decide whether an update proceeds.
     fn write(&mut self, message: &str) {
         if let Some(file) = &mut self.file {
@@ -590,20 +600,93 @@ fn maintain(args: &Arguments, log: &mut Log) -> Result<()> {
     log.write(&format!("restored={restored}"));
     Ok(())
 }
+fn remove_installation(installation: &Path, log: &mut Log) -> Result<()> {
+    if !installation.is_absolute() {
+        return Err("Installation directory must be absolute".into());
+    }
+    let metadata = match fs::symlink_metadata(installation) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("Inspect installation directory: {error}")),
+    };
+    if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(
+            "Refusing to remove a non-directory or reparse point as an installation".into(),
+        );
+    }
+    let installation = fs::canonicalize(installation)
+        .map_err(|error| format!("Resolve installation directory: {error}"))?;
+    let parent = installation
+        .parent()
+        .ok_or("Refusing to remove a drive root")?;
+    let marker = fs::symlink_metadata(installation.join("Uninstall Nodex.exe"))
+        .map_err(|error| format!("Verify Nodex uninstaller in installation directory: {error}"))?;
+    if !marker.is_file() || marker.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err("Installation directory has no regular Nodex uninstaller".into());
+    }
+
+    // Retire the root in one rename on its own volume. A blocked rename leaves
+    // the entire installation in place, independent of its descendants' lengths.
+    let mut nonce = [0; 8];
+    getrandom::fill(&mut nonce).map_err(|error| format!("Name retired installation: {error}"))?;
+    let retirement = parent.join(format!(".nodex-removal-{}", hex::encode(nonce)));
+    fs::create_dir(&retirement)
+        .map_err(|error| format!("Prepare installation removal: {error}"))?;
+    if let Err(error) = fs::rename(&installation, retirement.join("app")) {
+        let _ = fs::remove_dir(&retirement);
+        return Err(format!("Retire installation directory: {error}"));
+    }
+    // The previous installation is no longer launchable at its registered path.
+    // A cleanup error must not prevent the incoming installer from replacing it.
+    if let Err(error) = fs::remove_dir_all(&retirement) {
+        log.write(&format!(
+            "cleanup pending path={}: {error}",
+            retirement.display()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn removes_a_deep_installation_and_preserves_its_sibling_profile() {
+    let directory = tempfile::tempdir().unwrap();
+    let installation = directory.path().join("Nodex");
+    let profile = directory.path().join("profile");
+    let deep = installation.join("runtime-component/".repeat(20));
+    fs::create_dir_all(&deep).unwrap();
+    fs::write(deep.join("payload"), b"runtime").unwrap();
+    fs::write(installation.join("Uninstall Nodex.exe"), b"uninstaller").unwrap();
+    fs::create_dir(&profile).unwrap();
+    fs::write(profile.join("data"), b"profile").unwrap();
+
+    let mut log = Log::open(None, "remove-installation");
+    assert!(remove_installation(&profile, &mut log).is_err());
+    remove_installation(&installation, &mut log).unwrap();
+
+    assert_eq!(fs::read(profile.join("data")).unwrap(), b"profile");
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
 pub fn run() -> Result<()> {
     let values: Vec<_> = std::env::args_os().skip(1).collect();
-    if values.len() == 2 && values[0] == "--inspect" {
-        return inspection(Path::new(&values[1]));
+    if let [action, path] = values.as_slice()
+        && action == "--inspect"
+    {
+        return inspection(Path::new(path));
+    }
+    if let [action, installation, path] = values.as_slice()
+        && action == "--remove-installation"
+    {
+        let mut log = Log::open(Some(Path::new(path)), "remove-installation");
+        let result = remove_installation(Path::new(installation), &mut log);
+        if let Err(error) = &result {
+            log.write(&format!("failed: {error}"));
+        }
+        return result;
     }
     let args = arguments()?;
-    let mut log = Log {
-        file: args
-            .log
-            .as_ref()
-            .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok()),
-        started: Instant::now(),
-        step: "initialize",
-    };
+    let mut log = Log::open(args.log.as_deref(), "initialize");
     log.write(&format!("started uptimeMs={}", unsafe { GetTickCount() }));
     let result = maintain(&args, &mut log);
     if let Err(error) = &result {

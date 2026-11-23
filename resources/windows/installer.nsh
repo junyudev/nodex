@@ -128,7 +128,7 @@
   ${EndIf}
 !macroend
 
-!macro customUnInstall
+!macro nodexRemoveRegistrations
   ; Install-over preserves both registration and Windows' approval decision.
   ${IfNot} ${isUpdated}
     ReadRegStr $R0 HKCU "${NODEX_RUN_KEY}" "Nodex"
@@ -142,4 +142,18 @@
   ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
     DeleteRegKey HKCU "${NODEX_PROTOCOL_KEY}"
   ${EndIf}
+!macroend
+
+!macro customRemoveFiles
+  SetOutPath "$TEMP"
+  !insertmacro nodexMaintenanceLog "step=remove-installation started"
+  nsExec::ExecToLog '"$PLUGINSDIR\nodex-maintenance.exe" --remove-installation "$INSTDIR" "${NODEX_MAINTENANCE_LOG}"'
+  Pop $R0
+  ${If} $R0 != 0
+    !insertmacro nodexMaintenanceLog "step=remove-installation failed exit=$R0"
+    SetErrorLevel 2
+    Abort "Nodex could not remove its installed files. Close any programs using them and try again."
+  ${EndIf}
+  !insertmacro nodexMaintenanceLog "step=remove-installation completed"
+  !insertmacro nodexRemoveRegistrations
 !macroend
