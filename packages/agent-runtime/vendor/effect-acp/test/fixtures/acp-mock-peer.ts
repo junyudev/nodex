@@ -22,7 +22,6 @@ if (process.env.ACP_MOCK_EXIT_IMMEDIATELY_CODE !== undefined) {
 const sessionId = "mock-session-1";
 const v2Management = process.env.ACP_MOCK_V2_MANAGEMENT === "1";
 const unknownVariants = process.env.ACP_MOCK_UNKNOWN_VARIANTS === "1";
-const mcpOverAcp = process.env.ACP_MOCK_MCP_OVER_ACP === "1";
 
 const program = Effect.gen(function* () {
   const agent = yield* AcpAgent.AcpAgent;
@@ -33,7 +32,6 @@ const program = Effect.gen(function* () {
       capabilities: {
         session: {
           ...(v2Management ? { delete: {} } : {}),
-          ...(mcpOverAcp ? { mcp: { acp: {} } } : {}),
         },
         ...(v2Management ? { providers: {} } : {}),
       },
@@ -96,19 +94,6 @@ const program = Effect.gen(function* () {
 
   yield* agent.handlePrompt(() =>
     Effect.gen(function* () {
-      if (mcpOverAcp) {
-        const connected = yield* agent.client.connectMcp({ serverId: "nodex_app" });
-        yield* agent.client.messageMcp({
-          connectionId: connected.connectionId,
-          method: "tools/list",
-        });
-        yield* agent.client.notifyMcp({
-          connectionId: connected.connectionId,
-          method: "notifications/initialized",
-        });
-        yield* agent.client.disconnectMcp({ connectionId: connected.connectionId });
-      }
-
       if (unknownVariants) {
         yield* agent.client.sessionUpdate({
           sessionId,

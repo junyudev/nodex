@@ -78,8 +78,9 @@ that capability. Saved metadata excludes login URLs and masks echoed environment
 
 The client negotiates stable ACP v1 and the pinned v2 schema. Wire shape participates in generation
 selection because numeric version alone can be misleading. Methods are gated by actual capabilities.
-Files and terminal callbacks use the applicable generation's transport; v2 MCP uses its negotiated
-tunnel rather than advertising removed v1 callbacks.
+File and terminal callbacks use v1's transport and are never advertised over v2. Nodex's tools reach
+every Agent as stdio MCP servers, also when an Agent offers ACP's own MCP transport: that transport
+carries only stateless MCP requests, which Nodex's tool endpoint does not serve.
 
 The model menu preserves exact native IDs. Model config options take priority; legacy session models
 use the native model method when config options are absent. Literal auto/default IDs are ordinary

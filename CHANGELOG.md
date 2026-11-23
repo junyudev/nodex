@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Claude Agent can use Nodex's tools again. Its current releases ask for them in a form Nodex did not answer, so Nodex's own tools, such as Pages and Desktop Tools, were missing from its chats. Nodex now hands its tools to Claude Agent the way it does to every other ACP Agent.
 - Drafting a commit message or pull request description works again. The draft buttons in **Commit or push** and **Create pull request** failed on every attempt.
 - A chat waiting on a long delegated task no longer shows as stalled in the Inbox. Nodex used to count only the chat's own messages as progress, so a chat that handed work to another Agent for more than twenty minutes was marked "Stalled · needs you" while that Agent was still working. Progress anywhere in the delegated work now counts.
 - A signed-in Codex no longer shows as "Isn't ready" with nothing to do. Setup, the Composer and the model menu now say what happened: signed in but unable to connect, not answering in time, or unable to start, each with Check again. Nodex reads Codex's sign-in from your computer before it asks the network, so being offline never hides your account. Codex is ready in about a second instead of about nine, and turns ready by itself when the connection returns.

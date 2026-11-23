@@ -82,18 +82,6 @@ export class AcpAgent extends Context.Service<
       readonly elicitationComplete: (
         payload: AcpSchema.CompleteElicitationNotification,
       ) => Effect.Effect<void, AcpError.AcpError>;
-      readonly connectMcp: (
-        payload: AcpSchema.ConnectMcpRequest,
-      ) => Effect.Effect<AcpSchema.ConnectMcpResponse, AcpError.AcpError>;
-      readonly messageMcp: (
-        payload: AcpSchema.MessageMcpRequest,
-      ) => Effect.Effect<AcpSchema.MessageMcpResponse, AcpError.AcpError>;
-      readonly disconnectMcp: (
-        payload: AcpSchema.DisconnectMcpRequest,
-      ) => Effect.Effect<AcpSchema.DisconnectMcpResponse, AcpError.AcpError>;
-      readonly notifyMcp: (
-        payload: AcpSchema.MessageMcpNotification,
-      ) => Effect.Effect<void, AcpError.AcpError>;
       /**
        * Sends an ACP extension request to the client.
        * @see https://agentclientprotocol.com/protocol/extensibility
@@ -458,13 +446,6 @@ export const make = Effect.fn("effect-acp/AcpAgent.make")(function* (
       sessionUpdate: (payload) => transport.notify(CLIENT_METHODS.session_update, payload),
       elicitationComplete: (payload) =>
         transport.notify(CLIENT_METHODS.elicitation_complete, payload),
-      connectMcp: (payload) =>
-        callRpc(CLIENT_METHODS.mcp_connect, rpc[CLIENT_METHODS.mcp_connect](payload)),
-      messageMcp: (payload) =>
-        callRpc(CLIENT_METHODS.mcp_message, rpc[CLIENT_METHODS.mcp_message](payload)),
-      disconnectMcp: (payload) =>
-        callRpc(CLIENT_METHODS.mcp_disconnect, rpc[CLIENT_METHODS.mcp_disconnect](payload)),
-      notifyMcp: (payload) => transport.notify(CLIENT_METHODS.mcp_message, payload),
       extRequest: transport.request,
       extNotification: transport.notify,
     },

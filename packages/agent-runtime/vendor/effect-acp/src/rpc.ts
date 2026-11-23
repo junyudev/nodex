@@ -328,31 +328,7 @@ const legacyElicitationRpc = <const Method extends string>(method: Method) =>
     error: AcpSchema.Error,
   });
 
-const ConnectMcpRpc = Rpc.make(CLIENT_METHODS.mcp_connect, {
-  payload: AcpSchema.ConnectMcpRequest,
-  success: AcpSchema.ConnectMcpResponse,
-  error: AcpSchema.Error,
-});
-
-const MessageMcpRpc = Rpc.make(CLIENT_METHODS.mcp_message, {
-  payload: AcpSchema.MessageMcpRequest,
-  success: AcpSchema.MessageMcpResponse,
-  error: AcpSchema.Error,
-});
-
-const DisconnectMcpRpc = Rpc.make(CLIENT_METHODS.mcp_disconnect, {
-  payload: AcpSchema.DisconnectMcpRequest,
-  success: AcpSchema.DisconnectMcpResponse,
-  error: AcpSchema.Error,
-});
-
-export const ClientRpcs = RpcGroup.make(
-  RequestPermissionRpc,
-  ElicitationRpc,
-  ConnectMcpRpc,
-  MessageMcpRpc,
-  DisconnectMcpRpc,
-);
+export const ClientRpcs = RpcGroup.make(RequestPermissionRpc, ElicitationRpc);
 
 const ReadTextFileV1Rpc = Rpc.make(V1_CLIENT_METHODS.fs_read_text_file, {
   payload: AcpSchemaV1.ReadTextFileRequest,
@@ -401,9 +377,6 @@ export const CompatClientRpcs = RpcGroup.make(
   CompatElicitationRpc,
   legacyElicitationRpc(V1_CLIENT_METHODS.session_elicitation),
   legacyElicitationRpc(V1_CLIENT_METHODS.unstable_session_elicitation),
-  ConnectMcpRpc,
-  MessageMcpRpc,
-  DisconnectMcpRpc,
   ReadTextFileV1Rpc,
   WriteTextFileV1Rpc,
   CreateTerminalV1Rpc,

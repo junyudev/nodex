@@ -167,7 +167,6 @@ export interface AcpSessionRuntimeOptions {
   readonly onInitialized?: (
     result: EffectAcpSchema.InitializeResponse,
   ) => Effect.Effect<void, never>;
-  readonly acpMcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly requestLogger?: (event: AcpSessionRequestLogEvent) => Effect.Effect<void, never>;
   readonly protocolLogging?: {
     readonly logIncoming?: boolean;
@@ -1156,7 +1155,6 @@ export interface AcpSessionRuntimeStartResult {
 export interface AcpSessionActivationOptions {
   readonly plugins?: NonNullable<Parameters<typeof acpSessionMcpServers>[0]["plugins"]>;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
-  readonly acpMcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
 }
 
 export class AcpSessionRuntime extends Context.Service<
@@ -1172,10 +1170,6 @@ export class AcpSessionRuntime extends Context.Service<
      * @see https://agentclientprotocol.com/protocol/schema#session/elicitation
      */
     readonly handleElicitation: EffectAcpClient.AcpClient["Service"]["handleElicitation"];
-    readonly handleMcpConnect: EffectAcpClient.AcpClient["Service"]["handleMcpConnect"];
-    readonly handleMcpMessage: EffectAcpClient.AcpClient["Service"]["handleMcpMessage"];
-    readonly handleMcpDisconnect: EffectAcpClient.AcpClient["Service"]["handleMcpDisconnect"];
-    readonly handleMcpNotification: EffectAcpClient.AcpClient["Service"]["handleMcpNotification"];
     /**
      * Registers a handler for `fs/read_text_file`.
      * @see https://agentclientprotocol.com/protocol/schema#fs/read_text_file
@@ -2314,7 +2308,6 @@ export const make = (
       acpSessionMcpServers({
         capabilities: initializeResult.agentCapabilities,
         servers: activationOptions?.mcpServers ?? options.mcpServers ?? [],
-        acpServers: activationOptions?.acpMcpServers ?? options.acpMcpServers ?? [],
         ...(activationOptions?.plugins ? { plugins: activationOptions.plugins } : {}),
       });
 
@@ -2668,10 +2661,6 @@ export const make = (
               : "none",
       handleRequestPermission: acp.handleRequestPermission,
       handleElicitation: acp.handleElicitation,
-      handleMcpConnect: acp.handleMcpConnect,
-      handleMcpMessage: acp.handleMcpMessage,
-      handleMcpDisconnect: acp.handleMcpDisconnect,
-      handleMcpNotification: acp.handleMcpNotification,
       handleReadTextFile: acp.handleReadTextFile,
       handleWriteTextFile: acp.handleWriteTextFile,
       handleCreateTerminal: acp.handleCreateTerminal,

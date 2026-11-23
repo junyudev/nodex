@@ -1277,7 +1277,8 @@ describe("AcpAdapterV2", () => {
     { method: "session/load", transport: "stdio", desktop: true },
     { method: "session/resume", transport: "stdio", desktop: true },
   ] as const)(
-    "advertises $transport MCP servers for $method (Desktop Tools: $desktop)",
+    // An Agent's ACP MCP transport takes stateless MCP requests, so it still gets stdio servers.
+    "advertises stdio MCP servers for $method to an Agent with $transport MCP (Desktop Tools: $desktop)",
     (fixture) =>
       Effect.gen(function* () {
         const { method, transport, desktop } = fixture;
@@ -1401,12 +1402,8 @@ describe("AcpAdapterV2", () => {
           servers.map((server) => server.name),
           expectedNames,
         );
-        if (transport === "acp") {
-          assert.deepEqual(
-            servers.slice(0, baseNames.length),
-            baseNames.map((name) => ({ type: "acp", name, serverId: name })),
-          );
-        } else if (desktop) {
+        assert.isTrue(servers.slice(0, baseNames.length).every((server) => server.type !== "acp"));
+        if (desktop) {
           assert.deepEqual(servers[1], {
             ...(method === "session/new" ? { type: "stdio" } : {}),
             name: "node_repl",

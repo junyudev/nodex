@@ -207,20 +207,6 @@ export class AcpClient extends Context.Service<
         AcpSchema.CreateElicitationResponse
       >,
     ) => Effect.Effect<void>;
-    readonly handleMcpConnect: (
-      handler: AcpRequestHandler<AcpSchema.ConnectMcpRequest, AcpSchema.ConnectMcpResponse>,
-    ) => Effect.Effect<void>;
-    readonly handleMcpMessage: (
-      handler: AcpRequestHandler<AcpSchema.MessageMcpRequest, AcpSchema.MessageMcpResponse>,
-    ) => Effect.Effect<void>;
-    readonly handleMcpDisconnect: (
-      handler: AcpRequestHandler<AcpSchema.DisconnectMcpRequest, AcpSchema.DisconnectMcpResponse>,
-    ) => Effect.Effect<void>;
-    readonly handleMcpNotification: (
-      handler: (
-        notification: AcpSchema.MessageMcpNotification,
-      ) => Effect.Effect<void, AcpError.AcpError>,
-    ) => Effect.Effect<void>;
     /** Legacy ACP v1 hooks retained for policy compatibility; ACP v2 never advertises them. */
     readonly handleReadTextFile: (
       handler: AcpRequestHandler<AcpSchema.ReadTextFileRequest, AcpSchema.ReadTextFileResponse>,
@@ -320,12 +306,6 @@ interface AcpCoreRequestHandlers {
   elicitation?: AcpRequestHandler<
     AcpSchema.CreateElicitationRequest,
     AcpSchema.CreateElicitationResponse
-  >;
-  mcpConnect?: AcpRequestHandler<AcpSchema.ConnectMcpRequest, AcpSchema.ConnectMcpResponse>;
-  mcpMessage?: AcpRequestHandler<AcpSchema.MessageMcpRequest, AcpSchema.MessageMcpResponse>;
-  mcpDisconnect?: AcpRequestHandler<
-    AcpSchema.DisconnectMcpRequest,
-    AcpSchema.DisconnectMcpResponse
   >;
   readTextFile?: AcpRequestHandler<AcpSchema.ReadTextFileRequest, AcpSchema.ReadTextFileResponse>;
   writeTextFile?: AcpRequestHandler<
@@ -1076,27 +1056,6 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
             ),
           ),
         ),
-      [CLIENT_METHODS.mcp_connect]: (payload, { requestId }) =>
-        runHandler(
-          coreHandlers.mcpConnect,
-          payload,
-          CLIENT_METHODS.mcp_connect,
-          requestContext(requestId, CLIENT_METHODS.mcp_connect),
-        ),
-      [CLIENT_METHODS.mcp_message]: (payload, { requestId }) =>
-        runHandler(
-          coreHandlers.mcpMessage,
-          payload,
-          CLIENT_METHODS.mcp_message,
-          requestContext(requestId, CLIENT_METHODS.mcp_message),
-        ),
-      [CLIENT_METHODS.mcp_disconnect]: (payload, { requestId }) =>
-        runHandler(
-          coreHandlers.mcpDisconnect,
-          payload,
-          CLIENT_METHODS.mcp_disconnect,
-          requestContext(requestId, CLIENT_METHODS.mcp_disconnect),
-        ),
       [AcpRpcs.V1_CLIENT_METHODS.fs_read_text_file]: (payload, { requestId }) =>
         runHandler(
           coreHandlers.readTextFile,
@@ -1380,27 +1339,6 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
       Effect.suspend(() => {
         coreHandlers.elicitation = handler;
         return Effect.void;
-      }),
-    handleMcpConnect: (handler) =>
-      Effect.sync(() => {
-        coreHandlers.mcpConnect = handler;
-      }),
-    handleMcpMessage: (handler) =>
-      Effect.sync(() => {
-        coreHandlers.mcpMessage = handler;
-      }),
-    handleMcpDisconnect: (handler) =>
-      Effect.sync(() => {
-        coreHandlers.mcpDisconnect = handler;
-      }),
-    handleMcpNotification: (handler) =>
-      Effect.sync(() => {
-        extNotificationHandlers.set(CLIENT_METHODS.mcp_message, (params) =>
-          Schema.decodeUnknownEffect(AcpSchemaV2.MessageMcpNotification)(params).pipe(
-            Effect.mapError(() => AcpError.AcpRequestError.invalidParams()),
-            Effect.flatMap(handler),
-          ),
-        );
       }),
     handleReadTextFile: (handler) =>
       Effect.sync(() => {

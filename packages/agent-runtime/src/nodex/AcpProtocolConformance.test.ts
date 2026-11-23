@@ -3,4 +3,3 @@
 import "../../vendor/effect-acp/src/client.test.ts";
 import "../../vendor/effect-acp/src/protocol.test.ts";
 import "../../vendor/provider-acp/src/server/clientTerminals.test.ts";
-import "../../vendor/provider-acp/src/server/mcpOverAcpBridge.test.ts";

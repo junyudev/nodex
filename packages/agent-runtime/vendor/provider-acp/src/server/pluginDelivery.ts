@@ -14,17 +14,12 @@ type PluginServer = NonNullable<SessionPlugins["skillCatalog"]>;
 export function acpSessionMcpServers(input: {
   readonly capabilities: EffectAcpSchema.InitializeResponse["agentCapabilities"];
   readonly servers: readonly EffectAcpSchema.McpServer[];
-  readonly acpServers: readonly EffectAcpSchema.McpServer[];
   readonly plugins?: {
     readonly delivery: SessionPlugins;
     readonly stdio: (server: PluginServer) => EffectAcpSchema.McpServer;
   };
 }): readonly EffectAcpSchema.McpServer[] {
-  const { capabilities, acpServers, plugins } = input;
-  const base =
-    capabilities?.mcpCapabilities?.acp === true && acpServers.length > 0
-      ? acpServers
-      : input.servers;
+  const { capabilities, servers: base, plugins } = input;
   if (!plugins) return base;
   if (acpPluginTransport(capabilities) !== "http")
     return plugins.delivery.skillCatalog ? [...base, plugins.stdio(plugins.delivery.skillCatalog)] : base;
