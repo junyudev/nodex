@@ -1,6 +1,6 @@
 import { asciiSlug } from "./ascii-name";
 
-export const DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX = "codex/";
+export const DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX = "nodex/";
 export const DEFAULT_WORKTREE_THREAD_SLUG = "thread";
 const MAX_WORKTREE_SLUG_WORDS = 5;
 

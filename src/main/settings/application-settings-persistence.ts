@@ -98,6 +98,7 @@ import { CodexHomeSettingsUpdateSchema } from "../../shared/codex-home-settings"
 import { resolveCodexHome } from "../codex/codex-home";
 import { stringify as stringifyToml } from "smol-toml";
 import { z } from "zod";
+import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../shared/worktree-auto-branch";
 import {
   applyCommandKeybindingUpdate,
   createCommandKeymapState,
@@ -270,7 +271,7 @@ const DIAGNOSTICS_REPLAYS_SESSION_SAMPLE_RATE_DEFAULT = 0.1;
 const DIAGNOSTICS_REPLAYS_ON_ERROR_SAMPLE_RATE_DEFAULT = 1;
 const CODEX_THREAD_DETAIL_LEVEL_DEFAULT: CodexThreadDetailLevel = "STEPS_COMMANDS";
 const CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_ENABLED_DEFAULT = true;
-const CODEX_GIT_BRANCH_PREFIX_DEFAULT = "codex/";
+const CODEX_GIT_BRANCH_PREFIX_DEFAULT = DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX;
 const WORKTREE_AUTO_DELETE_LIMIT_DEFAULT = 15;
 const EXECUTION_HOST_LIMIT = 32;
 

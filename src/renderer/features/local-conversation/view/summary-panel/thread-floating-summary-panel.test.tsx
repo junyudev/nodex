@@ -916,7 +916,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     const readStatus = (): GitActionStatusResult => ({
       cwd: "/repo/project",
       isGitRepository: true,
-      currentBranch: branchCreated ? "codex/detached-fix" : null,
+      currentBranch: branchCreated ? "nodex/detached-fix" : null,
       defaultBranch: "main",
       upstreamBranch: null,
       remotes: ["origin"],
@@ -935,9 +935,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       if (channel === "branch-metadata") {
         return {
           cwd: "/repo/project",
-          currentBranch: branchCreated ? "codex/detached-fix" : null,
+          currentBranch: branchCreated ? "nodex/detached-fix" : null,
           defaultBranch: "main",
-          branches: branchCreated ? ["codex/detached-fix", "main"] : ["main"],
+          branches: branchCreated ? ["nodex/detached-fix", "main"] : ["main"],
           errorMessage: null,
         };
       }
@@ -948,9 +948,9 @@ describe("ThreadFloatingSummaryPanel", () => {
         branchCreated = true;
         return {
           cwd: "/repo/project",
-          currentBranch: "codex/detached-fix",
+          currentBranch: "nodex/detached-fix",
           defaultBranch: "main",
-          branches: ["codex/detached-fix", "main"],
+          branches: ["nodex/detached-fix", "main"],
           errorMessage: null,
         };
       }
@@ -992,7 +992,7 @@ describe("ThreadFloatingSummaryPanel", () => {
 
     const branchNameInput = await waitFor(() => getBranchSetupInput("detached-fix"));
     await act(async () => {
-      branchNameInput.value = "codex/detached-fix";
+      branchNameInput.value = "nodex/detached-fix";
       fireEvent.input(branchNameInput);
     });
 
@@ -1016,7 +1016,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(JSON.stringify(branchCreateInputs[0])).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        branch: "codex/detached-fix",
+        branch: "nodex/detached-fix",
       }),
     );
 
@@ -1111,7 +1111,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     const readStatus = (): GitActionStatusResult => ({
       cwd: "/repo/project",
       isGitRepository: true,
-      currentBranch: branchCreated ? "codex/default-worktree" : "main",
+      currentBranch: branchCreated ? "nodex/default-worktree" : "main",
       defaultBranch: "main",
       upstreamBranch: branchCreated ? null : "origin/main",
       remotes: ["origin"],
@@ -1130,9 +1130,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       if (channel === "branch-metadata") {
         return {
           cwd: "/repo/project",
-          currentBranch: branchCreated ? "codex/default-worktree" : "main",
+          currentBranch: branchCreated ? "nodex/default-worktree" : "main",
           defaultBranch: "main",
-          branches: branchCreated ? ["main", "codex/default-worktree"] : ["main"],
+          branches: branchCreated ? ["main", "nodex/default-worktree"] : ["main"],
           errorMessage: null,
         };
       }
@@ -1142,9 +1142,9 @@ describe("ThreadFloatingSummaryPanel", () => {
         branchCreated = true;
         return {
           cwd: "/repo/project",
-          currentBranch: "codex/default-worktree",
+          currentBranch: "nodex/default-worktree",
           defaultBranch: "main",
-          branches: ["main", "codex/default-worktree"],
+          branches: ["main", "nodex/default-worktree"],
           errorMessage: null,
         };
       }
@@ -1188,7 +1188,7 @@ describe("ThreadFloatingSummaryPanel", () => {
 
     const branchNameInput = await waitFor(() => getBranchSetupInput("default-worktree"));
     await act(async () => {
-      branchNameInput.value = "codex/default-worktree";
+      branchNameInput.value = "nodex/default-worktree";
       fireEvent.input(branchNameInput);
     });
 
@@ -1205,13 +1205,13 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(JSON.stringify(branchCreateInputs[0])).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        branch: "codex/default-worktree",
+        branch: "nodex/default-worktree",
       }),
     );
 
     await waitFor(() => {
       if (
-        !textContent(view.baseElement).includes("Push codex/default-worktree and set upstream.")
+        !textContent(view.baseElement).includes("Push nodex/default-worktree and set upstream.")
       ) {
         throw new Error("Expected push workflow dialog after branch setup.");
       }
@@ -1999,7 +1999,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     const readStatus = (): GitActionStatusResult => ({
       cwd: "/repo/project",
       isGitRepository: true,
-      currentBranch: branchCreated ? "codex/default-pr-worktree" : "main",
+      currentBranch: branchCreated ? "nodex/default-pr-worktree" : "main",
       defaultBranch: "main",
       upstreamBranch: branchCreated ? null : "origin/main",
       remotes: ["origin"],
@@ -2018,9 +2018,9 @@ describe("ThreadFloatingSummaryPanel", () => {
       if (channel === "branch-metadata") {
         return {
           cwd: "/repo/project",
-          currentBranch: branchCreated ? "codex/default-pr-worktree" : "main",
+          currentBranch: branchCreated ? "nodex/default-pr-worktree" : "main",
           defaultBranch: "main",
-          branches: branchCreated ? ["main", "codex/default-pr-worktree"] : ["main"],
+          branches: branchCreated ? ["main", "nodex/default-pr-worktree"] : ["main"],
           errorMessage: null,
         };
       }
@@ -2030,9 +2030,9 @@ describe("ThreadFloatingSummaryPanel", () => {
         branchCreated = true;
         return {
           cwd: "/repo/project",
-          currentBranch: "codex/default-pr-worktree",
+          currentBranch: "nodex/default-pr-worktree",
           defaultBranch: "main",
-          branches: ["main", "codex/default-pr-worktree"],
+          branches: ["main", "nodex/default-pr-worktree"],
           errorMessage: null,
         };
       }
@@ -2085,7 +2085,7 @@ describe("ThreadFloatingSummaryPanel", () => {
 
     const branchNameInput = await waitFor(() => getBranchSetupInput("default-pr-worktree"));
     await act(async () => {
-      branchNameInput.value = "codex/default-pr-worktree";
+      branchNameInput.value = "nodex/default-pr-worktree";
       fireEvent.input(branchNameInput);
     });
 
@@ -2105,7 +2105,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(JSON.stringify(branchCreateInputs[0])).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        branch: "codex/default-pr-worktree",
+        branch: "nodex/default-pr-worktree",
       }),
     );
   });
