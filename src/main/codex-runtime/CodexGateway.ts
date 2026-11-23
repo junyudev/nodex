@@ -147,7 +147,8 @@ export class CodexGateway extends Context.Service<
 const timeoutFor = (options: CodexGatewayOptions, method: ClientRequestMethod): Duration.Input =>
   typeof options.requestTimeout === "function"
     ? options.requestTimeout(method)
-    : (options.requestTimeout ?? (method === "plugin/list" ? 30_000 : 0));
+    : (options.requestTimeout ??
+      (method === "plugin/list" || method === "plugin/installed" ? 30_000 : 0));
 
 const OUTCOME_UNKNOWN_ON_TIMEOUT = new Set<string>([
   "thread/fork",

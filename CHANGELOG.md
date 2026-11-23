@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Plugins no longer stop you from sending messages to Claude Code or ACP Agents. When Codex was slow to list your installed plugins, replies failed with "Timed out preparing the Session's plugins" until you refreshed the Plugins page. Nodex now keeps the plugins it last read and rereads them in the background, so a reply waits at most a few seconds and starts with the plugins it has, or none yet, picking up the rest at a later reply. A plugin that cannot be prepared is left out without holding up the others.
 - Menus keep up with the pointer. Moving across the rows of a menu opened from a Page, Inbox item or other panel tab used to stall each highlight for a moment, because every row the pointer crossed made the whole window redraw. Rows now highlight as soon as the pointer reaches them, and hovering a menu no longer adds Back steps or clears Forward.
 - Clicking the group beside a Project's or Inbox's Home tab makes that group active. It used to switch straight back to Home's group.
 - Claude Agent can use Nodex's tools again. Its current releases ask for them in a form Nodex did not answer, so Nodex's own tools, such as Pages and Desktop Tools, were missing from its chats. Nodex now hands its tools to Claude Agent the way it does to every other ACP Agent.

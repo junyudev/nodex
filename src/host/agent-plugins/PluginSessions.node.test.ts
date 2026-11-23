@@ -1,11 +1,14 @@
 import { it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect } from "vitest";
-import type { PluginMcpBrokerService } from "./broker/contract";
+import { PluginMcpFailure, type PluginMcpBrokerService } from "./broker/contract";
 import { makeFolderMarketplace } from "./FolderMarketplace";
 import {
   ALL_PROJECTS,
@@ -13,8 +16,10 @@ import {
   pluginCatalogSnapshot,
   pluginReader,
   resolvePluginCache,
+  type PluginCatalogSnapshot,
 } from "./PluginCatalog";
 import { makePluginSessions } from "./PluginSessions";
+import type { PluginCatalogCache } from "./PluginCatalogCache";
 
 const withHome = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-plugins-"))),
@@ -141,17 +146,24 @@ it.effect(
       const sessions = yield* makePluginSessions({
         home,
         spaceId: "space",
-        changes: Stream.empty,
         broker,
-        catalog: () =>
-          Effect.sync(() =>
-            codexAvailable
-              ? pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }])
-              : null,
-          ),
+        catalog: {
+          published: Stream.empty,
+          read: () =>
+            Effect.sync(() =>
+              codexAvailable
+                ? pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }])
+                : null,
+            ),
+        },
       });
       const request = { threadId: "thread", projectId: null, backend: "claude" } as const;
       expect(yield* sessions.open("projectless", request)).toBeNull();
+      const unavailableCodex = yield* sessions
+        .open("codex", { ...request, backend: "codex" })
+        .pipe(Effect.flip);
+      expect(unavailableCodex._tag).toBe("PluginSessionPreparationError");
+      expect(yield* sessions.revision("codex")).toBeNull();
       expect(opened).toHaveLength(0);
       codexAvailable = true;
       expect((yield* sessions.open("projectless", request))?.pluginIds).toEqual([]);
@@ -178,3 +190,161 @@ it.effect(
       expect(revoked).toHaveLength(4);
     }),
 );
+
+const claude = { threadId: "thread", projectId: "project-a", backend: "claude" } as const;
+const unusedBroker = {
+  openLease: () => Effect.die("Unexpected MCP attachment"),
+  openSkillCatalog: () => Effect.die("Unexpected ACP attachment"),
+  revokeLease: () => Effect.die("Unexpected MCP revocation"),
+} satisfies Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
+
+it.effect("retains degraded attachments and revokes delivered leases on publication", () =>
+  Effect.gen(function* () {
+    const home = yield* withHome;
+    const root = join(home, "source");
+    yield* Effect.promise(() => fixture(root));
+    const result = yield* pluginReader.read(root);
+    if (result.status !== "loaded") throw new Error("Fixture did not load.");
+    const first = pluginCatalogSnapshot([
+      { id: "example@local", root, scope: ALL_PROJECTS, package: result.package },
+    ]);
+    const second = pluginCatalogSnapshot([]);
+    let snapshot: PluginCatalogSnapshot | null = null;
+    const revoked = yield* Deferred.make<void>();
+    const revokedServers: string[] = [];
+    const published = yield* PubSub.unbounded<Stream.Success<PluginCatalogCache["published"]>>();
+    const sessions = yield* makePluginSessions({
+      home,
+      spaceId: "space",
+      catalog: { read: () => Effect.sync(() => snapshot), published: Stream.fromPubSub(published) },
+      broker: {
+        ...unusedBroker,
+        openLease: ({ serverKey }) =>
+          Effect.succeed({ id: serverKey, url: "http://localhost/lease", bearerToken: "token" }),
+        revokeLease: (id) =>
+          Effect.gen(function* () {
+            revokedServers.push(id);
+            if (revokedServers.length === 2) yield* Deferred.succeed(revoked, undefined);
+          }),
+      },
+    });
+
+    expect(yield* sessions.open("degraded", claude)).toBeNull();
+    snapshot = first;
+    const delivered = yield* sessions.open("delivered", claude);
+    expect(delivered?.revision).toBe(first.revision);
+    expect(yield* sessions.revision("degraded")).toBe(first.revision);
+
+    snapshot = null;
+    yield* PubSub.publish(published, { projectId: claude.projectId, revision: null });
+    expect(yield* sessions.revision("delivered")).toBe(first.revision);
+    expect(revokedServers).toEqual([]);
+
+    snapshot = second;
+    yield* PubSub.publish(published, { projectId: claude.projectId, revision: second.revision });
+    yield* Deferred.await(revoked);
+    expect(revokedServers.toSorted()).toEqual(["gauge", "public"]);
+    expect(yield* sessions.revision("delivered")).toBeNull();
+    expect(yield* sessions.revision("degraded")).toBe(second.revision);
+  }),
+);
+
+it.effect("opens and closes another attachment while a Session's catalog read is pending", () =>
+  Effect.gen(function* () {
+    const home = yield* withHome;
+    const reading = yield* Deferred.make<void>();
+    const slow = yield* Deferred.make<PluginCatalogSnapshot>();
+    const ready = pluginCatalogSnapshot([]);
+    const sessions = yield* makePluginSessions({
+      home,
+      spaceId: "space",
+      catalog: {
+        published: Stream.empty,
+        read: (projectId) =>
+          projectId === claude.projectId
+            ? Deferred.succeed(reading, undefined).pipe(Effect.andThen(Deferred.await(slow)))
+            : Effect.succeed(ready),
+      },
+      broker: unusedBroker,
+    });
+
+    const opening = yield* sessions.open("slow", claude).pipe(Effect.forkScoped);
+    yield* Deferred.await(reading);
+    const other = yield* sessions.open("other", { ...claude, projectId: "project-b" });
+    expect(other?.revision).toBe(ready.revision);
+    yield* sessions.close("other");
+    expect(yield* sessions.revision("other")).toBeNull();
+    expect(opening.pollUnsafe()).toBeUndefined();
+    yield* Deferred.succeed(slow, ready);
+    expect((yield* Fiber.join(opening))?.revision).toBe(ready.revision);
+  }),
+);
+
+for (const failure of ["skills", "MCP"] as const) {
+  it.effect(
+    `skips the plugin whose ${failure} preparation fails and cleans up its partial output`,
+    () =>
+      Effect.gen(function* () {
+        const home = yield* withHome;
+        const broken = join(home, "broken");
+        const healthy = join(home, "healthy");
+        const brokenSkill = join(broken, "skills/z-other/SKILL.md");
+        yield* Effect.promise(async () => {
+          await fixture(broken);
+          await fixture(healthy);
+          await put(
+            brokenSkill,
+            "---\nname: z-other\ndescription: Another skill.\n---\nRead it.\n",
+          );
+        });
+        const brokenResult = yield* pluginReader.read(broken);
+        const healthyResult = yield* pluginReader.read(healthy);
+        if (brokenResult.status !== "loaded" || healthyResult.status !== "loaded")
+          throw new Error("Fixtures did not load.");
+        if (failure === "skills") yield* Effect.promise(() => rm(brokenSkill));
+
+        const snapshot = pluginCatalogSnapshot([
+          { id: "broken@local", root: broken, scope: ALL_PROJECTS, package: brokenResult.package },
+          {
+            id: "healthy@local",
+            root: healthy,
+            scope: ALL_PROJECTS,
+            package: healthyResult.package,
+          },
+        ]);
+        const revoked: string[] = [];
+        const sessions = yield* makePluginSessions({
+          home,
+          spaceId: "space",
+          catalog: { read: () => Effect.succeed(snapshot), published: Stream.empty },
+          broker: {
+            ...unusedBroker,
+            openLease: ({ pluginId, serverKey }) =>
+              failure === "MCP" && pluginId === "broken@local" && serverKey === "public"
+                ? Effect.fail(new PluginMcpFailure("server_inactive"))
+                : Effect.succeed({
+                    id: pluginId + "/" + serverKey,
+                    url: "http://localhost/lease",
+                    bearerToken: "token",
+                  }),
+            revokeLease: (id) =>
+              Effect.sync(() => {
+                revoked.push(id);
+              }),
+          },
+        });
+
+        const attached = yield* sessions.open("attachment", claude);
+        expect(attached?.pluginIds).toEqual(["healthy@local"]);
+        expect(attached?.skills.map(({ alias }) => alias)).toEqual(["gauge"]);
+        expect(attached?.mcpServers.map(({ pluginId }) => pluginId)).toEqual([
+          "healthy@local",
+          "healthy@local",
+        ]);
+        expect(yield* Effect.promise(() => readdir(join(attached!.skillsRoot!, "skills")))).toEqual(
+          ["gauge"],
+        );
+        expect(revoked).toEqual(failure === "MCP" ? ["broken@local/gauge"] : []);
+      }),
+  );
+}
