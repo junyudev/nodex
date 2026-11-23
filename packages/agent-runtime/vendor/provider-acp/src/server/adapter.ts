@@ -5,7 +5,7 @@ import {
   unifiedHunksText,
 } from "@nodex/runtime-shared/fileChanges";
 import { ExecutionHost } from "@nodex/provider-core/server/ExecutionHost";
-import { acpPluginSkillInstructions, acpPluginTransport } from "./pluginDelivery.ts";
+import { acpPluginSkillInstructions } from "./pluginDelivery.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import { NODEX_APP_MCP_SERVER, resolveNodexAppTool } from "@nodex/runtime-shared/nodexAppMcp";
 import {
@@ -2986,7 +2986,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         >();
         const openPlugins = Effect.fnUntraced(function* (
           threadId: ThreadId | null,
-          initialized: EffectAcpSchema.InitializeResponse,
           owner: Scope.Scope,
           sourceThreadId?: ThreadId,
         ) {
@@ -2998,7 +2997,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               projectId: null,
               backend: "acp",
               ...(sourceThreadId ? { sourceThreadId } : {}),
-              acpHttp: acpPluginTransport(initialized.agentCapabilities) === "http",
             })
             .pipe(
               Scope.provide(scope),
@@ -3037,7 +3035,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             );
           }
         });
-        let initializeResult: EffectAcpSchema.InitializeResponse;
         const makeRuntimeWithPlugins = (
           threadId: ThreadId | null,
           runtimeInput: AcpAdapterV2RuntimeInput,
@@ -3047,8 +3044,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             let attachment: Effect.Success<ReturnType<typeof openPlugins>>;
             const nativeRuntime = yield* flavor.makeRuntime({
               ...runtimeInput,
-              preparePlugins: Effect.fnUntraced(function* (initialized) {
-                attachment = yield* openPlugins(threadId, initialized, owner);
+              preparePlugins: Effect.fnUntraced(function* () {
+                attachment = yield* openPlugins(threadId, owner);
                 return attachment?.plugins;
               }),
             });
@@ -8114,7 +8111,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             yield* wireAcpRuntimeHandlers(runtime, yield* Ref.get(runtimeCallbackGeneration));
             const started = yield* runtime.start();
             yield* commitPlugins(started.sessionId);
-            initializeResult = started.initializeResult;
             return started;
           });
           return yield* (flavor.withRuntimeStartup?.(startup) ?? startup).pipe(
@@ -8229,7 +8225,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   }
                   yield* quarantineNativeTransportAtGeneration(previousGeneration);
                   runtime = replacementExit.value.replacementRuntime;
-                  initializeResult = replacementExit.value.started.initializeResult;
                   yield* replacementExit.value.commitPlugins(replacementExit.value.started.sessionId);
                   clientPolicyGrants = makeAcpClientPolicyGrants();
                   runtimeScope = replacementScope;
@@ -8369,7 +8364,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           // Each activation can establish fresh MCP connections.
           const attachment = yield* openPlugins(
             threadId,
-            (yield* Ref.get(activeSessionSetup))?.initializeResult ?? initializeResult,
             runtimeScope ?? sessionScope,
             sourceThreadId,
           );

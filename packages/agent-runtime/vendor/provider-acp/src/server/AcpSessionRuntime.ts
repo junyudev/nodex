@@ -139,9 +139,8 @@ export interface AcpSessionRuntimeOptions {
    * account vs API key) from the method, so the session must not open first.
    */
   readonly authenticateEagerly?: boolean;
-  readonly preparePlugins?: (
-    initialized: EffectAcpSchema.InitializeResponse,
-  ) => Effect.Effect<
+  /** Opens the Session's plugins once the agent has initialized and before a session opens. */
+  readonly preparePlugins?: () => Effect.Effect<
     Parameters<typeof acpSessionMcpServers>[0]["plugins"],
     EffectAcpErrors.AcpError
   >;
@@ -2332,7 +2331,7 @@ export const make = (
     const startOnce = Effect.gen(function* () {
       const initializeResult = yield* initialize;
       const plugins = yield* (
-        options.preparePlugins?.(initializeResult) ?? Effect.succeed(undefined)
+        options.preparePlugins?.() ?? Effect.succeed(undefined)
       );
       const initialMcpServers = sessionMcpServers(
         initializeResult,

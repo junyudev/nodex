@@ -1,12 +1,11 @@
 import type { SessionPlugins } from "../../../../../../src/shared/agent-plugins/session-plugins.ts";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
+/** Agents that advertise HTTP MCP connect to plugin servers directly; others go through the stdio bridge. */
 export function acpPluginTransport(
   capabilities: EffectAcpSchema.InitializeResponse["agentCapabilities"],
 ) {
-  const http = capabilities?.mcpCapabilities?.http;
-  if (http === true) return "http";
-  return http === false ? "stdio" : "unverified";
+  return capabilities?.mcpCapabilities?.http === true ? "http" : "stdio";
 }
 
 type PluginServer = NonNullable<SessionPlugins["skillCatalog"]>;
@@ -21,19 +20,17 @@ export function acpSessionMcpServers(input: {
 }): readonly EffectAcpSchema.McpServer[] {
   const { capabilities, servers: base, plugins } = input;
   if (!plugins) return base;
-  if (acpPluginTransport(capabilities) !== "http")
-    return plugins.delivery.skillCatalog ? [...base, plugins.stdio(plugins.delivery.skillCatalog)] : base;
-
+  const { skillCatalog, mcpServers } = plugins.delivery;
+  const servers = [...(skillCatalog ? [skillCatalog] : []), ...mcpServers];
+  if (acpPluginTransport(capabilities) === "stdio") return [...base, ...servers.map(plugins.stdio)];
   return [
     ...base,
-    ...[...(plugins.delivery.skillCatalog ? [plugins.delivery.skillCatalog] : []), ...plugins.delivery.mcpServers].map(
-      ({ name, url, bearerToken }) => ({
-        type: "http" as const,
-        name,
-        url,
-        headers: [{ name: "Authorization", value: "Bearer " + bearerToken }],
-      }),
-    ),
+    ...servers.map(({ name, url, bearerToken }) => ({
+      type: "http" as const,
+      name,
+      url,
+      headers: [{ name: "Authorization", value: "Bearer " + bearerToken }],
+    })),
   ];
 }
 

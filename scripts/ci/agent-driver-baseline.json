@@ -35,7 +35,7 @@
   "src/host/agent-plugins/PluginSessions.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
-      "acp": 2,
+      "acp": 1,
       "codex": 1
     }
   },

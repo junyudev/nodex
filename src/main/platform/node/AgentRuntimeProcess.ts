@@ -145,7 +145,6 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
       threadId: z.string().min(1),
       projectId: z.string().min(1).nullable(),
       backend: z.enum(["codex", "claude", "acp", "opencode", "antigravity"]),
-      acpHttp: z.boolean().optional(),
       sourceThreadId: z.string().min(1).optional(),
     }),
   }),

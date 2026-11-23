@@ -70,8 +70,8 @@ showing per-Agent delivery status.
 Every Agent built on the ACP adapter, Antigravity included, receives the same ACP
 delivery: the adapter names the shape it consumes, and the Host decides only which
 plugins the Session's Project may use. ACP harnesses that advertise HTTP MCP receive
-plugin servers and the skill catalog through `mcpServers`. Others receive the skill
-catalog over the existing stdio bridge. Nodex makes no assumption about native skill discovery in ACP harnesses.
+plugin servers and the skill catalog through `mcpServers`; others receive the same
+servers through the stdio bridge that already carries Nodex's own tools. Nodex makes no assumption about native skill discovery in ACP harnesses.
 OpenCode delivery waits until native discovery and Session refresh are verified.
 
 ### Views

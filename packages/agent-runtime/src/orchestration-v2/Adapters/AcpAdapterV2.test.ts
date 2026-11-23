@@ -1392,8 +1392,7 @@ describe("AcpAdapterV2", () => {
         const baseNames = desktop ? ["nodex_app", "node_repl"] : ["nodex_app"];
         const expectedNames = [
           ...baseNames,
-          ...(plugins === undefined ? [] : [catalog.name]),
-          ...(plugins === "http" ? [plugin.name] : []),
+          ...(plugins === undefined ? [] : [catalog.name, plugin.name]),
         ];
         const servers = rawProtocolRequestParam(setup, "mcpServers");
         if (!Array.isArray(servers)) return yield* Effect.die("Missing ACP MCP servers");
@@ -1429,11 +1428,15 @@ describe("AcpAdapterV2", () => {
             })),
           );
         } else if (plugins === "stdio") {
-          assert.equal(servers.at(-1)?.command, process.execPath);
-          assert.deepEqual(servers.at(-1)?.env?.slice(1), [
-            { name: "NODEX_ACP_MCP_ENDPOINT", value: catalog.url },
-            { name: "NODEX_ACP_MCP_AUTHORIZATION", value: "Bearer " + catalog.bearerToken },
-          ]);
+          // Agents without HTTP MCP reach the skill catalog and plugin servers through the bridge.
+          for (const [index, { url, bearerToken }] of [catalog, plugin].entries()) {
+            const bridged = servers[baseNames.length + index];
+            assert.equal(bridged?.command, process.execPath);
+            assert.deepEqual(bridged?.env?.slice(1), [
+              { name: "NODEX_ACP_MCP_ENDPOINT", value: url },
+              { name: "NODEX_ACP_MCP_AUTHORIZATION", value: "Bearer " + bearerToken },
+            ]);
+          }
         }
         assert.equal(
           runtimeInput?.processEnvironment?.NODEX_ACP_DESKTOP_MCP_ENDPOINT,
@@ -1452,9 +1455,8 @@ describe("AcpAdapterV2", () => {
           prepareTurn: () => Effect.succeed({}),
           ...("plugins" in fixture
             ? {
-                openPlugins: ({ acpHttp: http }) => {
-                  assert.equal(http, fixture.plugins === "http");
-                  return Effect.succeed({
+                openPlugins: () =>
+                  Effect.succeed({
                     revision: Effect.succeed("1"),
                     plugins: {
                       revision: "1",
@@ -1477,8 +1479,7 @@ describe("AcpAdapterV2", () => {
                         },
                       ],
                     },
-                  });
-                },
+                  }),
               }
             : {}),
         }),

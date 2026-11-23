@@ -106,8 +106,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
     request: SessionPluginsRequest,
     plugin: CatalogPlugin,
   ) {
-    if (!plugin.root || !plugin.package || (request.backend === "acp" && !request.acpHttp))
-      return [];
+    if (!plugin.root || !plugin.package) return [];
     const installation = {
       packageRoot: plugin.root,
       dataRoot: join(input.home, "plugin-data", pluginRevision(plugin.id)),

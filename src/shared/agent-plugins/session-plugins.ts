@@ -18,8 +18,6 @@ export interface SessionPluginsRequest {
   /** The Session's Project, or null for a chat without a Project. */
   readonly projectId: string | null;
   readonly backend: SessionPluginBackend;
-  /** ACP only: whether the running harness advertised HTTP MCP. */
-  readonly acpHttp?: boolean;
 }
 
 export interface SessionPluginSkill {
