@@ -68,6 +68,8 @@ export default defineConfig(async () => ({
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
     setupFiles: [
+      // First, so modules that capture the frame function when they load see the real-time one.
+      "./src/renderer/test/setup-animation-frames.ts",
       "./config/setup-markdown.ts",
       "./config/setup-search-kernel.ts",
       "./config/setup-test-timeouts.ts",
