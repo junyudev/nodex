@@ -1,3 +1,7 @@
+import {
+  codexAnswerModerationNotice,
+  codexAnswerModerationWithholdsText,
+} from "./codex-answer-moderation";
 import type { CodexUserMessageOrigin } from "./codex-conversation-state/codex-conversation-state";
 import {
   isHistoricalAutomationPrompt,
@@ -1020,7 +1024,10 @@ function projectCanonicalItemViews(
       const status = resolveCanonicalItemStatus(item, context);
       const streaming =
         status === "inProgress" || (status === undefined && context.turnStatus === "inProgress");
-      const { markdownText, heartbeat } = projectAssistantReply(item.text, streaming);
+      const answerModeration = codexAnswerModerationNotice(item.moderation);
+      const { markdownText, heartbeat } = codexAnswerModerationWithholdsText(answerModeration)
+        ? { markdownText: "", heartbeat: null }
+        : projectAssistantReply(item.text, streaming);
       if (markdownText === null) return [];
       return [
         {
@@ -1031,6 +1038,7 @@ function projectCanonicalItemViews(
           assistantPhase: item.phase ?? undefined,
           markdownText,
           ...(heartbeat ? { heartbeatReply: heartbeat } : {}),
+          ...(answerModeration ? { answerModeration } : {}),
           ...(item.importedImages?.length ? { importedImages: item.importedImages } : {}),
           status,
         },

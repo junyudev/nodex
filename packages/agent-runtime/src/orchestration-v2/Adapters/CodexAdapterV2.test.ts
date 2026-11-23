@@ -5099,271 +5099,287 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         : [],
     );
 
-  it.effect("keeps hooks, automatic reviews, memory and command reads as Turn metadata", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const nativeThreadId = "turn-metadata-thread";
-        const nativeTurnId = "turn-metadata-turn";
-        const run = {
-          id: "hook-run",
-          eventName: "sessionStart",
-          handlerType: "command",
-          executionMode: "sync",
-          scope: "turn",
-          sourcePath: "/workspace/.codex/hooks.json",
-          source: "project",
-          displayOrder: 0,
-          status: "running",
-          statusMessage: null,
-          startedAt: 1,
-          completedAt: null,
-          durationMs: null,
-          entries: [{ kind: "context", text: "Injected for the model" }],
-        };
-        const quietRun = { ...run, id: "quiet-hook-run" };
-        const review = {
-          threadId: nativeThreadId,
-          turnId: nativeTurnId,
-          reviewId: "review",
-          targetItemId: "read-skill",
-          startedAtMs: 1,
-          action: {
-            type: "execve",
-            source: "unifiedExec",
-            program: "touch",
-            argv: ["protected file.txt"],
-            cwd: "/workspace",
-          },
-        };
-        const transcript = makeCodexReplayTranscript({
-          scenario: "turn-metadata",
-          entries: [
-            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Review it." }),
-            {
-              type: "emit_inbound",
-              label: "hook/started",
-              frame: {
-                method: "hook/started",
-                params: { threadId: nativeThreadId, turnId: nativeTurnId, run },
-              },
+  it.effect(
+    "keeps hooks, automatic reviews, memory, moderation and command reads as Turn metadata",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const nativeThreadId = "turn-metadata-thread";
+          const nativeTurnId = "turn-metadata-turn";
+          const run = {
+            id: "hook-run",
+            eventName: "sessionStart",
+            handlerType: "command",
+            executionMode: "sync",
+            scope: "turn",
+            sourcePath: "/workspace/.codex/hooks.json",
+            source: "project",
+            displayOrder: 0,
+            status: "running",
+            statusMessage: null,
+            startedAt: 1,
+            completedAt: null,
+            durationMs: null,
+            entries: [{ kind: "context", text: "Injected for the model" }],
+          };
+          const quietRun = { ...run, id: "quiet-hook-run" };
+          const review = {
+            threadId: nativeThreadId,
+            turnId: nativeTurnId,
+            reviewId: "review",
+            targetItemId: "read-skill",
+            startedAtMs: 1,
+            action: {
+              type: "execve",
+              source: "unifiedExec",
+              program: "touch",
+              argv: ["protected file.txt"],
+              cwd: "/workspace",
             },
-            {
-              type: "emit_inbound",
-              label: "hook/completed",
-              frame: {
-                method: "hook/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turnId: nativeTurnId,
-                  run: {
-                    ...run,
-                    status: "completed",
-                    completedAt: 2,
-                    durationMs: 1,
-                    entries: [...run.entries, { kind: "warning", text: "Check the config" }],
-                  },
+          };
+          const transcript = makeCodexReplayTranscript({
+            scenario: "turn-metadata",
+            entries: [
+              ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Review it." }),
+              {
+                type: "emit_inbound",
+                label: "hook/started",
+                frame: {
+                  method: "hook/started",
+                  params: { threadId: nativeThreadId, turnId: nativeTurnId, run },
                 },
               },
-            },
-            {
-              type: "emit_inbound",
-              label: "quiet hook/completed",
-              frame: {
-                method: "hook/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turnId: nativeTurnId,
-                  run: { ...quietRun, status: "completed", completedAt: 2, durationMs: 1 },
-                },
-              },
-            },
-            {
-              type: "emit_inbound",
-              label: "read-skill",
-              frame: {
-                method: "item/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turnId: nativeTurnId,
-                  item: {
-                    type: "commandExecution",
-                    id: "read-skill",
-                    command: "cat SKILL.md",
-                    cwd: "/workspace",
-                    processId: null,
-                    source: "agent",
-                    status: "completed",
-                    commandActions: [
-                      {
-                        type: "read",
-                        command: "cat SKILL.md",
-                        name: "SKILL.md",
-                        path: "/workspace/SKILL.md",
-                      },
-                    ],
-                    aggregatedOutput: "Read it.",
-                    exitCode: 0,
-                    durationMs: 1,
-                  },
-                },
-              },
-            },
-            {
-              type: "emit_inbound",
-              label: "review",
-              frame: {
-                method: "item/autoApprovalReview/completed",
-                params: {
-                  ...review,
-                  completedAtMs: 2,
-                  decisionSource: "agent",
-                  review: {
-                    status: "denied",
-                    riskLevel: "low",
-                    userAuthorization: "low",
-                    rationale: "Not requested.",
-                  },
-                },
-              },
-            },
-            {
-              type: "emit_inbound",
-              label: "reply",
-              frame: {
-                method: "item/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turnId: nativeTurnId,
-                  item: {
-                    type: "agentMessage",
-                    id: "reply",
-                    text: "Reviewed.",
-                    phase: "final_answer",
-                    delivery: null,
-                    questions: null,
-                    memoryCitation: {
-                      entries: [
-                        { path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." },
-                      ],
-                      threadIds: [],
+              {
+                type: "emit_inbound",
+                label: "hook/completed",
+                frame: {
+                  method: "hook/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId: nativeTurnId,
+                    run: {
+                      ...run,
+                      status: "completed",
+                      completedAt: 2,
+                      durationMs: 1,
+                      entries: [...run.entries, { kind: "warning", text: "Check the config" }],
                     },
                   },
                 },
               },
-            },
-            {
-              type: "emit_inbound",
-              label: "complete",
-              frame: {
-                method: "turn/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+              {
+                type: "emit_inbound",
+                label: "quiet hook/completed",
+                frame: {
+                  method: "hook/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId: nativeTurnId,
+                    run: { ...quietRun, status: "completed", completedAt: 2, durationMs: 1 },
+                  },
                 },
               },
+              {
+                type: "emit_inbound",
+                label: "read-skill",
+                frame: {
+                  method: "item/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId: nativeTurnId,
+                    item: {
+                      type: "commandExecution",
+                      id: "read-skill",
+                      command: "cat SKILL.md",
+                      cwd: "/workspace",
+                      processId: null,
+                      source: "agent",
+                      status: "completed",
+                      commandActions: [
+                        {
+                          type: "read",
+                          command: "cat SKILL.md",
+                          name: "SKILL.md",
+                          path: "/workspace/SKILL.md",
+                        },
+                      ],
+                      aggregatedOutput: "Read it.",
+                      exitCode: 0,
+                      durationMs: 1,
+                    },
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                label: "review",
+                frame: {
+                  method: "item/autoApprovalReview/completed",
+                  params: {
+                    ...review,
+                    completedAtMs: 2,
+                    decisionSource: "agent",
+                    review: {
+                      status: "denied",
+                      riskLevel: "low",
+                      userAuthorization: "low",
+                      rationale: "Not requested.",
+                    },
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                label: "reply",
+                frame: {
+                  method: "item/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId: nativeTurnId,
+                    item: {
+                      type: "agentMessage",
+                      id: "reply",
+                      text: "Reviewed.",
+                      phase: "final_answer",
+                      delivery: null,
+                      questions: null,
+                      memoryCitation: {
+                        entries: [
+                          { path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." },
+                        ],
+                        threadIds: [],
+                      },
+                      moderation: {
+                        moderated: true,
+                        display: { mode: "block", version: 1, reason: { kind: "cyber" } },
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                label: "complete",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                  },
+                },
+              },
+            ],
+          });
+          const harness = yield* makeCodexReplayHarness(transcript);
+          const turnInput = makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("turn-metadata-attempt"),
+            text: "Review it.",
+          });
+          yield* harness.runtime.startTurn(turnInput);
+          yield* harness.firstTerminal;
+          const latest = new Map<string, OrchestrationV2TurnItem>();
+          for (const event of harness.events)
+            if (event.type === "turn_item.updated") latest.set(event.turnItem.id, event.turnItem);
+          const items = [...latest.values()];
+          // A hook that only injected context for the model has nothing to show.
+          const hooks = items.filter((item) => item.type === "hook_run");
+          assert.lengthOf(hooks, 1);
+          assert.deepInclude(hooks[0], {
+            eventName: "sessionStart",
+            source: "project",
+            hookStatus: "completed",
+            entries: [
+              { kind: "context", text: "Injected for the model" },
+              { kind: "warning", text: "Check the config" },
+            ],
+          });
+          const reviewItem = items.find((item) => item.type === "approval_review");
+          const command = items.find((item) => item.type === "command_execution");
+          assert.deepInclude(reviewItem, {
+            actionKind: "command",
+            actionSummary: "touch 'protected file.txt'",
+            decision: "denied",
+            rationale: "Not requested.",
+            targetItemId: command?.id ?? null,
+          });
+          assert.deepEqual(command?.type === "command_execution" ? command.commandActions : null, [
+            {
+              type: "read",
+              command: "cat SKILL.md",
+              name: "SKILL.md",
+              path: "/workspace/SKILL.md",
             },
-          ],
-        });
-        const harness = yield* makeCodexReplayHarness(transcript);
-        const turnInput = makeCodexTestTurnInput({
-          threadId: harness.threadId,
-          providerThread: harness.providerThread,
-          now: yield* DateTime.now,
-          attemptId: RunAttemptId.make("turn-metadata-attempt"),
-          text: "Review it.",
-        });
-        yield* harness.runtime.startTurn(turnInput);
-        yield* harness.firstTerminal;
-        const latest = new Map<string, OrchestrationV2TurnItem>();
-        for (const event of harness.events)
-          if (event.type === "turn_item.updated") latest.set(event.turnItem.id, event.turnItem);
-        const items = [...latest.values()];
-        // A hook that only injected context for the model has nothing to show.
-        const hooks = items.filter((item) => item.type === "hook_run");
-        assert.lengthOf(hooks, 1);
-        assert.deepInclude(hooks[0], {
-          eventName: "sessionStart",
-          source: "project",
-          hookStatus: "completed",
-          entries: [
-            { kind: "context", text: "Injected for the model" },
-            { kind: "warning", text: "Check the config" },
-          ],
-        });
-        const reviewItem = items.find((item) => item.type === "approval_review");
-        const command = items.find((item) => item.type === "command_execution");
-        assert.deepInclude(reviewItem, {
-          actionKind: "command",
-          actionSummary: "touch 'protected file.txt'",
-          decision: "denied",
-          rationale: "Not requested.",
-          targetItemId: command?.id ?? null,
-        });
-        assert.deepEqual(command?.type === "command_execution" ? command.commandActions : null, [
-          { type: "read", command: "cat SKILL.md", name: "SKILL.md", path: "/workspace/SKILL.md" },
-        ]);
-        const reply = items.find((item) => item.type === "assistant_message");
-        assert.deepEqual(reply?.type === "assistant_message" ? reply.memoryCitation : null, {
-          entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
-          threadIds: [],
-        });
-        // Feed actual Adapter output to the outcome reader: assistant item identity is not root identity.
-        const store = yield* ProjectionStore.ProjectionStoreV2;
-        const now = yield* DateTime.now;
-        const common = { threadId: turnInput.threadId, occurredAt: now };
-        yield* store.apply({
-          ...common,
-          id: EventId.make("outcome:thread"),
-          type: "thread.created",
-          payload: turnInput.appThread,
-        });
-        yield* store.apply({
-          ...common,
-          id: EventId.make("outcome:run"),
-          type: "run.created",
-          payload: {
-            id: turnInput.runId,
+          ]);
+          const reply = items.find((item) => item.type === "assistant_message");
+          assert.deepEqual(reply?.type === "assistant_message" ? reply.memoryCitation : null, {
+            entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
+            threadIds: [],
+          });
+          // The provider's verdict travels with the reply so every surface can honor it.
+          assert.deepEqual(reply?.type === "assistant_message" ? reply.moderation : null, {
+            moderated: true,
+            display: { mode: "block", version: 1, reason: { kind: "cyber" } },
+          });
+          // Feed actual Adapter output to the outcome reader: assistant item identity is not root identity.
+          const store = yield* ProjectionStore.ProjectionStoreV2;
+          const now = yield* DateTime.now;
+          const common = { threadId: turnInput.threadId, occurredAt: now };
+          yield* store.apply({
+            ...common,
+            id: EventId.make("outcome:thread"),
+            type: "thread.created",
+            payload: turnInput.appThread,
+          });
+          yield* store.apply({
+            ...common,
+            id: EventId.make("outcome:run"),
+            type: "run.created",
+            payload: {
+              id: turnInput.runId,
+              threadId: turnInput.threadId,
+              ordinal: turnInput.runOrdinal,
+              providerInstanceId: turnInput.providerThread.providerInstanceId,
+              modelSelection: turnInput.modelSelection,
+              providerThreadId: turnInput.providerThread.id,
+              userMessageId: turnInput.message.messageId,
+              rootNodeId: turnInput.rootNodeId,
+              activeAttemptId: turnInput.attemptId,
+              status: "completed",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: now,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          });
+          for (const [index, event] of harness.events.entries()) {
+            const base = { ...common, id: EventId.make(`outcome:item:${index}`) };
+            if (event.type === "node.updated")
+              yield* store.apply({ ...base, type: "node.updated", payload: event.node });
+            if (event.type === "turn_item.updated")
+              yield* store.apply({ ...base, type: "turn-item.updated", payload: event.turnItem });
+          }
+          const outcome = yield* store.getRunOutcome({
             threadId: turnInput.threadId,
-            ordinal: turnInput.runOrdinal,
-            providerInstanceId: turnInput.providerThread.providerInstanceId,
-            modelSelection: turnInput.modelSelection,
-            providerThreadId: turnInput.providerThread.id,
-            userMessageId: turnInput.message.messageId,
-            rootNodeId: turnInput.rootNodeId,
-            activeAttemptId: turnInput.attemptId,
-            status: "completed",
-            requestedAt: now,
-            startedAt: now,
-            completedAt: now,
-            checkpointId: null,
-            contextHandoffId: null,
-          },
-        });
-        for (const [index, event] of harness.events.entries()) {
-          const base = { ...common, id: EventId.make(`outcome:item:${index}`) };
-          if (event.type === "node.updated")
-            yield* store.apply({ ...base, type: "node.updated", payload: event.node });
-          if (event.type === "turn_item.updated")
-            yield* store.apply({ ...base, type: "turn-item.updated", payload: event.turnItem });
-        }
-        const outcome = yield* store.getRunOutcome({
-          threadId: turnInput.threadId,
-          runId: turnInput.runId,
-        });
-        assert.isDefined(reply);
-        assert.notStrictEqual(reply?.nodeId, turnInput.rootNodeId);
-        assert.strictEqual(outcome?.finalAssistantItemId, reply?.id);
-      }),
-    ).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          IdAllocator.layer,
-          McpProviderSessions.layer,
-          NodeServices.layer,
-          ProjectionStore.layerMemory,
+            runId: turnInput.runId,
+          });
+          assert.isDefined(reply);
+          assert.notStrictEqual(reply?.nodeId, turnInput.rootNodeId);
+          assert.strictEqual(outcome?.finalAssistantItemId, reply?.id);
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            ProjectionStore.layerMemory,
+          ),
         ),
       ),
-    ),
   );
 
   it.effect("keeps the pictures Codex viewed and generated with the chat", () =>

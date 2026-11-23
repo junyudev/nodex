@@ -53,6 +53,17 @@ const isFinalAnswer = (
   typeof item.text === "string" &&
   typeof item.memoryCitation === "object";
 
+type FinalAnswer = Extract<CodexCanonicalItem, { type: "agentMessage" }>;
+
+/** A refreshed final answer keeps the citation and moderation an earlier copy already carried. */
+function withResidentAnswerFacts(item: FinalAnswer, resident: FinalAnswer): FinalAnswer {
+  const memoryCitation = item.memoryCitation ?? resident.memoryCitation;
+  const moderation = item.moderation ?? resident.moderation;
+  return memoryCitation === item.memoryCitation && moderation === item.moderation
+    ? item
+    : { ...item, memoryCitation, moderation };
+}
+
 /** A second history merge must not roll an already reconciled steer back to its pending row. */
 function mergeSteeringAcceptance(
   resident: CodexCanonicalItem,
@@ -100,21 +111,16 @@ export function mergeCodexCanonicalHistoryItems(
     const resident = byId.get(item.id);
     if (resident) {
       anchors.set(item.id, resident.id);
-      const preserveCitation =
-        preferIncomingItems &&
-        isFinalAnswer(item) &&
-        isFinalAnswer(resident) &&
-        item.memoryCitation == null &&
-        resident.memoryCitation != null;
+      const refreshedAnswer =
+        preferIncomingItems && isFinalAnswer(item) && isFinalAnswer(resident)
+          ? withResidentAnswerFacts(item, resident)
+          : null;
       const acceptedSteer = mergeSteeringAcceptance(resident, item);
       updates.set(
         resident.id,
         acceptedSteer ??
-          (preserveCitation
-            ? { ...item, memoryCitation: resident.memoryCitation }
-            : preferIncomingItems || (snapshot && item.type === "agentMessage")
-              ? item
-              : resident),
+          refreshedAnswer ??
+          (preferIncomingItems || (snapshot && item.type === "agentMessage") ? item : resident),
       );
       continue;
     }
@@ -131,6 +137,7 @@ export function mergeCodexCanonicalHistoryItems(
       ...item,
       id: preferIncomingItems ? item.id : match.id,
       memoryCitation: item.memoryCitation ?? match.memoryCitation,
+      moderation: item.moderation ?? match.moderation,
     });
   }
   let result = existing.map((item) => updates.get(item.id) ?? item);

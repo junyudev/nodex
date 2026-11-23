@@ -1,7 +1,10 @@
 import { OrchestrationMessageContext } from "./messageContext.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { V2ItemCompletedNotification__ThreadItem } from "@nodex/effect-codex-app-server/schema";
+import {
+  V2ItemCompletedNotification__AgentMessageModeration,
+  V2ItemCompletedNotification__ThreadItem,
+} from "@nodex/effect-codex-app-server/schema";
 import * as SchemaAST from "effect/SchemaAST";
 import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -1790,6 +1793,10 @@ export const OrchestrationV2MemoryCitation = Schema.Struct({
 });
 export type OrchestrationV2MemoryCitation = typeof OrchestrationV2MemoryCitation.Type;
 
+/** The provider's verdict on a streamed final answer, which decides how every surface shows it. */
+export const OrchestrationV2AnswerModeration = V2ItemCompletedNotification__AgentMessageModeration;
+export type OrchestrationV2AnswerModeration = typeof OrchestrationV2AnswerModeration.Type;
+
 /** What a shell command did as the provider understood it, such as reading one file. */
 export const OrchestrationV2CommandAction = Schema.Union([
   Schema.Struct({
@@ -1911,6 +1918,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     importedImageLinks: Schema.optional(Schema.Array(OrchestrationV2ImportedImageLink)),
     streaming: Schema.Boolean,
     memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
+    moderation: Schema.optional(OrchestrationV2AnswerModeration),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2776,6 +2784,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     importedImageLinks: Schema.optional(Schema.Array(OrchestrationV2ImportedImageLink)),
     streaming: Schema.Boolean,
     memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
+    moderation: Schema.optional(OrchestrationV2AnswerModeration),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,

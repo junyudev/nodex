@@ -257,7 +257,7 @@ function hasNonUserItemBefore(items: ThreadRendererItemModel[], boundaryIndex: n
 function hasRenderableFinalAssistantContent(item: ThreadRendererItemModel | undefined): boolean {
   if (!item || !isTranscriptItem(item) || item.type !== "assistantMessage") return false;
   if (item.entry.assistantPhase !== "final_answer") return false;
-  if ((item.entry.markdownText?.trim().length ?? 0) > 0) return true;
+  if ((item.entry.markdownText?.trim().length ?? 0) > 0 || item.entry.answerModeration) return true;
   return item.status === "completed";
 }
 

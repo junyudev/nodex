@@ -25,6 +25,12 @@ import type {
 } from "@nodex/mobile-protocol";
 import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 import { attachmentRef } from "./files";
+import {
+  codexAnswerModerationNotice,
+  codexAnswerModerationText,
+  codexAnswerModerationWithholdsText,
+  type CodexAnswerModerationNotice,
+} from "../../shared/codex-answer-moderation";
 
 const TEXT_BYTES = 64 * 1024;
 const OUTPUT_BYTES = 4 * 1024;
@@ -122,6 +128,21 @@ const nativePictures = (
     unavailableImages: unavailableImages.slice(0, STEP_IMAGES),
   };
 };
+
+/** A withheld answer reads as its notice, in the tone of what withheld it. */
+const moderatedAnswerNotice = (moderation: CodexAnswerModerationNotice) =>
+  ({
+    kind: "notice",
+    tone: moderation.kind === "blocked" ? "warning" : "info",
+    text: codexAnswerModerationText(moderation),
+  }) as const;
+
+/** A helpline follows the answer it annotates. */
+const withAnswerModerationNote = (
+  text: string,
+  moderation: CodexAnswerModerationNotice | null,
+): string =>
+  moderation?.kind === "helpline" ? `${text}\n\n_${codexAnswerModerationText(moderation)}_` : text;
 
 const activityStatus = (status: string): Activity["status"] => {
   if (["running", "waiting", "pending", "inProgress", "in_progress"].includes(status))
@@ -286,7 +307,13 @@ export const runtimeItemProjector =
           const picture = replyPictureAttachmentId(address);
           destinations.set(address, picture === null ? null : ref(picture));
         }
-        const reply = rebindMarkdownImages(item.text, destinations);
+        const moderation = codexAnswerModerationNotice(item.moderation);
+        if (moderation && codexAnswerModerationWithholdsText(moderation))
+          return { ...base, ...moderatedAnswerNotice(moderation) };
+        const reply = withAnswerModerationNote(
+          rebindMarkdownImages(item.text, destinations),
+          moderation,
+        );
         const images = files((item.attachments ?? []).filter(({ id }) => !linked.has(id))).filter(
           (file) => file.mimeType.startsWith("image/"),
         );
@@ -422,15 +449,19 @@ export const projectNativeItem = (
         files: pictures.images,
         unavailableImages: pictures.unavailableImages,
       };
-    case "agentMessage":
+    case "agentMessage": {
+      const moderation = codexAnswerModerationNotice(item.moderation);
+      if (moderation && codexAnswerModerationWithholdsText(moderation))
+        return { ...base, ...moderatedAnswerNotice(moderation) };
       return {
         ...base,
         kind: "assistant",
-        text: item.text,
+        text: withAnswerModerationNote(item.text, moderation),
         streaming: false,
         truncated: false,
         unavailableImages: [],
       };
+    }
     case "reasoning":
       return {
         ...base,

@@ -12,6 +12,7 @@ import {
   CODEX_APP_READ_THREAD_MAX_OUTPUT_CHARS,
   CODEX_APP_READ_THREAD_MAX_TURN_LIMIT,
 } from "../codex/codex-app-meta-thread-tools";
+import { codexReadableAnswerText } from "../../shared/codex-answer-moderation";
 
 export interface CodexReadThreadHistoryInput {
   readonly threadId: string;
@@ -94,7 +95,7 @@ export function serializeCodexReadThreadProtocolItem(
     case "userMessage":
       return { ...identity, content: item.content.map(userInput) };
     case "agentMessage":
-      return { ...identity, text: item.text, phase: item.phase };
+      return { ...identity, text: codexReadableAnswerText(item), phase: item.phase };
     case "plan":
       return { ...identity, text: item.text };
     case "reasoning":

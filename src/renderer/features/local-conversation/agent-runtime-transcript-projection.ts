@@ -9,6 +9,7 @@ import {
 } from "../../../shared/thread-text-selection";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type {
+  AgentMessageModeration,
   CommandAction,
   DynamicToolCallOutputContentItem,
   UserInput,
@@ -221,6 +222,56 @@ function dynamicToolOutputContent(
     { type: "inputText", text },
     ...content.filter((block) => block.type !== "inputText" || block.text !== text),
   ];
+}
+
+type RuntimeAnswerModeration = NonNullable<
+  Extract<AgentTurnItem, { type: "assistant_message" }>["moderation"]
+>;
+
+/** The Runtime keeps Codex's open verdict; the transcript keeps its exact protocol shape. */
+function protocolAnswerModeration(moderation: RuntimeAnswerModeration): AgentMessageModeration {
+  const display = moderation.display;
+  if (!display) return { moderated: moderation.moderated, display: null };
+  switch (display.mode) {
+    case "show":
+      return {
+        moderated: moderation.moderated,
+        display: {
+          mode: "show",
+          version: display.version,
+          trustedContacts: display.trustedContacts,
+          ...(display.annotation
+            ? { annotation: { kind: display.annotation.kind, subject: display.annotation.subject } }
+            : {}),
+        },
+      };
+    case "hide":
+      return {
+        moderated: moderation.moderated,
+        display: {
+          mode: "hide",
+          version: display.version,
+          replacement: { kind: display.replacement.kind },
+        },
+      };
+    case "block":
+      return {
+        moderated: moderation.moderated,
+        display: {
+          mode: "block",
+          version: display.version,
+          reason:
+            display.reason.kind === "cyber"
+              ? {
+                  kind: "cyber",
+                  ...(display.reason.trustedAccess == null
+                    ? {}
+                    : { trustedAccess: display.reason.trustedAccess }),
+                }
+              : { kind: "protection", protectionType: display.reason.protectionType },
+        },
+      };
+  }
 }
 
 /** Runtime keeps native MCP identity and content; row identity belongs to the runtime item. */
@@ -674,7 +725,7 @@ export function projectAgentRuntimeItem(
       const importedImages = replyMarkdownImages(item);
       return {
         type: "agentMessage",
-        moderation: null,
+        moderation: item.moderation ? protocolAnswerModeration(item.moderation) : null,
         id,
         text: item.text,
         startedAtMs: agentRuntimeTime(item.startedAt),

@@ -3456,6 +3456,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
   heartbeatPrompt?: true;
   heartbeatReply?: import("./automation-heartbeat").AutomationHeartbeatReply;
+  /** The provider moderated this final answer; it decides what replaces or follows the text. */
+  answerModeration?: import("./codex-answer-moderation").CodexAnswerModerationNotice;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   thought?: CodexThoughtView;
@@ -3526,6 +3528,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
   heartbeatPrompt?: true;
   heartbeatReply?: import("./automation-heartbeat").AutomationHeartbeatReply;
+  /** The provider moderated this final answer; it decides what replaces or follows the text. */
+  answerModeration?: import("./codex-answer-moderation").CodexAnswerModerationNotice;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   thought?: CodexThoughtView;

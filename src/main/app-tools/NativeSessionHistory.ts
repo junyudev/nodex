@@ -16,6 +16,7 @@ import {
   type SessionItemLocator,
   type SessionSourceContent,
 } from "./SessionHistoryRead";
+import { codexReadableAnswerText } from "../../shared/codex-answer-moderation";
 
 const failure = (cause: unknown) =>
   new SessionHistoryReadError({ reason: "history_unavailable", cause });
@@ -69,7 +70,8 @@ const textOf = (item: ThreadItem): string => {
     return item.content
       .map((part) => (part.type === "text" ? part.text : JSON.stringify(part)))
       .join("\n");
-  if (item.type === "agentMessage" || item.type === "plan") return item.text;
+  if (item.type === "agentMessage") return codexReadableAnswerText(item);
+  if (item.type === "plan") return item.text;
   return JSON.stringify(item);
 };
 const sliceOf = (

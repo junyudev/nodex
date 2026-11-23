@@ -22,6 +22,8 @@ import { useConversationVisualizationContext } from "../inline-visualization-con
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
 import { DelegatedTaskGroup, RuntimeNoticeRow } from "../shared/delegated-task-row";
+import { AnswerModerationNotice } from "../shared/answer-moderation-notice";
+import { codexAnswerModerationWithholdsText } from "../../../../../shared/codex-answer-moderation";
 import {
   AgentHandoffDivider,
   ContextClearedDivider,
@@ -1540,6 +1542,7 @@ export function ThreadAssistantBodyBlock({
   const block = useCodexTranscriptBlock(inputBlock);
   const entityKey = useContext(CodexTranscriptTurnEntityContext);
   const markdownText = block.entry.markdownText ?? "";
+  const answerWithheld = codexAnswerModerationWithholdsText(block.entry.answerModeration ?? null);
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
   const aeon = useCreatedThreadSourceAeon(hostId ?? null, block.entry.threadId);
   const createdThreads = readAssistantCreatedThreadResults({
@@ -1606,36 +1609,43 @@ export function ThreadAssistantBodyBlock({
           data-response-annotation-target={block.entry.rawItemId ?? block.entry.itemId}
           data-response-annotation-thread={block.entry.threadId}
         >
-          <ResponseAnnotationContext
-            value={block.entry.textSelections?.responseTextAnnotations ?? []}
-          >
-            <ImportedMarkdownImagesProvider images={block.entry.importedImages}>
-              <MarkdownRenderer
-                content={markdownText}
-                dialect="conversation"
-                nativeSource={
-                  entityKey
-                    ? {
-                        kind: "item",
-                        entityKey,
-                        itemId: block.entry.rawItemId ?? block.entry.itemId,
-                      }
-                    : undefined
-                }
-                preserveLineBreaks
-                parseIncompleteMarkdown={isAssistantItemStreaming}
-                animateStreamingText={isAssistantItemStreaming}
-                adaptiveBuffering={{
-                  streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
-                  // Commentary stays unbuffered; a reply whose phase settles keeps its renderer.
-                  enabled: block.entry.assistantPhase !== "commentary",
-                }}
-                cwd={threadCwd}
-                projectWorkspacePath={projectWorkspacePath}
-                visualizationContext={visualizationContext}
-              />
-            </ImportedMarkdownImagesProvider>
-          </ResponseAnnotationContext>
+          {answerWithheld ? null : (
+            <ResponseAnnotationContext
+              value={block.entry.textSelections?.responseTextAnnotations ?? []}
+            >
+              <ImportedMarkdownImagesProvider images={block.entry.importedImages}>
+                <MarkdownRenderer
+                  content={markdownText}
+                  dialect="conversation"
+                  nativeSource={
+                    entityKey
+                      ? {
+                          kind: "item",
+                          entityKey,
+                          itemId: block.entry.rawItemId ?? block.entry.itemId,
+                        }
+                      : undefined
+                  }
+                  preserveLineBreaks
+                  parseIncompleteMarkdown={isAssistantItemStreaming}
+                  animateStreamingText={isAssistantItemStreaming}
+                  adaptiveBuffering={{
+                    streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
+                    // Commentary stays unbuffered; a reply whose phase settles keeps its renderer.
+                    enabled: block.entry.assistantPhase !== "commentary",
+                  }}
+                  cwd={threadCwd}
+                  projectWorkspacePath={projectWorkspacePath}
+                  visualizationContext={visualizationContext}
+                />
+              </ImportedMarkdownImagesProvider>
+            </ResponseAnnotationContext>
+          )}
+          {block.entry.answerModeration ? (
+            <div className={answerWithheld ? undefined : "mt-3"}>
+              <AnswerModerationNotice notice={block.entry.answerModeration} />
+            </div>
+          ) : null}
         </div>
         {createdThreads.length > 0 ? (
           <div className="mt-3">

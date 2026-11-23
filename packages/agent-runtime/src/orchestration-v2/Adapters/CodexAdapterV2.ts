@@ -59,6 +59,7 @@ import type {
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionNode,
+  OrchestrationV2AnswerModeration,
   OrchestrationV2MemoryCitation,
   OrchestrationV2CommandAction,
   ModelSelection,
@@ -4301,6 +4302,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             readonly id: string;
             readonly text: string;
             readonly memoryCitation?: OrchestrationV2MemoryCitation;
+            readonly moderation?: OrchestrationV2AnswerModeration;
           },
           completed: boolean,
         ) =>
@@ -4371,6 +4373,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               text: item.text,
               streaming: !completed,
               ...(item.memoryCitation ? { memoryCitation: item.memoryCitation } : {}),
+              ...(item.moderation ? { moderation: item.moderation } : {}),
             };
             return { node, message, turnItem };
           });
@@ -4468,6 +4471,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
 
         /** Memory a completed reply cited, attached when the coalescer emits its final text. */
         const memoryCitationsByItem = new Map<string, OrchestrationV2MemoryCitation>();
+        /** The provider's moderation of a completed reply, attached with its final text. */
+        const moderationsByItem = new Map<string, OrchestrationV2AnswerModeration>();
         const agentMessageDeltas = yield* makeProviderTextDeltaCoalescer({
           flushIntervalMs: CODEX_ASSISTANT_DELTA_FLUSH_INTERVAL_MS,
           emit: (update) =>
@@ -4505,13 +4510,20 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               const memoryCitation = update.completed
                 ? memoryCitationsByItem.get(update.itemId)
                 : undefined;
-              if (update.completed) memoryCitationsByItem.delete(update.itemId);
+              const moderation = update.completed
+                ? moderationsByItem.get(update.itemId)
+                : undefined;
+              if (update.completed) {
+                memoryCitationsByItem.delete(update.itemId);
+                moderationsByItem.delete(update.itemId);
+              }
               const artifacts = yield* buildAgentMessageArtifacts(
                 context,
                 {
                   id: update.itemId,
                   text: update.text,
                   ...(memoryCitation ? { memoryCitation } : {}),
+                  ...(moderation ? { moderation } : {}),
                 },
                 update.completed,
               );
@@ -6654,6 +6666,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 entries: payload.item.memoryCitation.entries.map((entry) => ({ ...entry })),
                 threadIds: [...payload.item.memoryCitation.threadIds],
               });
+            if (payload.item.moderation)
+              moderationsByItem.set(payload.item.id, payload.item.moderation);
             const text = yield* agentMessageDeltas.complete({
               turnId: payload.turnId,
               itemId: payload.item.id,

@@ -65,7 +65,7 @@ function isPendingApproval(item: ThreadTranscriptBlockModel): boolean {
 
 function hasRenderableAssistantContent(item: ThreadTranscriptBlockModel | null): boolean {
   if (!item || item.type !== "assistantMessage") return false;
-  return (item.entry.markdownText?.trim().length ?? 0) > 0;
+  return (item.entry.markdownText?.trim().length ?? 0) > 0 || item.entry.answerModeration != null;
 }
 
 function isTrailingAutomaticApprovalReview(item: ThreadTranscriptBlockModel): boolean {

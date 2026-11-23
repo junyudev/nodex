@@ -246,6 +246,46 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     });
   });
 
+  test.each([
+    {
+      display: { mode: "hide", version: 1, replacement: { kind: "wellbeingPromptHelpline" } },
+      markdownText: "",
+      answerModeration: { kind: "withheld" },
+    },
+    {
+      display: { mode: "block", version: 1, reason: { kind: "cyber" } },
+      markdownText: "",
+      answerModeration: { kind: "blocked", reason: "cyber" },
+    },
+    {
+      display: {
+        mode: "show",
+        version: 1,
+        trustedContacts: "check",
+        annotation: { kind: "wellbeingHelpline", subject: "answer" },
+      },
+      markdownText: "The answer.",
+      answerModeration: { kind: "helpline" },
+    },
+  ] as const)(
+    "presents a $display.mode moderated final answer by its verdict",
+    ({ display, markdownText, answerModeration }) => {
+      const answer = materializeCodexCanonicalProtocolItem({
+        type: "agentMessage",
+        moderation: { moderated: true, display },
+        id: "moderated",
+        text: "The answer.",
+        phase: "final_answer",
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      });
+      expect(project([answer], { turnStatus: "completed" })).toMatchObject([
+        { normalizedKind: "assistantMessage", markdownText, answerModeration },
+      ]);
+    },
+  );
+
   test("uses explicit lifecycle status for statusless items regardless of sibling order", () => {
     const assistant = materializeCodexCanonicalProtocolItem({
       questions: null,

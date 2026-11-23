@@ -110,6 +110,26 @@ describe("history item merge", () => {
     expect(result.aliases.get("persisted")).toBe("local");
   });
 
+  it("keeps a final answer's citation and moderation when a refreshed copy omits them", () => {
+    const resident = {
+      ...answer("answer"),
+      memoryCitation: { entries: [], threadIds: ["rollout"] },
+      moderation: {
+        moderated: true,
+        display: { mode: "block", version: 1, reason: { kind: "cyber" } },
+      },
+    } as CodexCanonicalItem;
+    const refreshed = answer("answer");
+    const result = mergeCodexCanonicalHistoryItems([resident], [refreshed], "prepend", {
+      preferIncomingItems: true,
+    });
+    expect(result.items).toEqual([resident]);
+    const unchanged = mergeCodexCanonicalHistoryItems([refreshed], [refreshed], "prepend", {
+      preferIncomingItems: true,
+    });
+    expect(unchanged.items[0]).toBe(refreshed);
+  });
+
   it("applies a final-answer alias to every incoming occurrence", () => {
     const resident = answer("local", "same");
     const result = mergeCodexCanonicalHistoryItems(

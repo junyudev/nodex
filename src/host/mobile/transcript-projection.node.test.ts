@@ -513,6 +513,41 @@ describe("an imported conversation's pictures", () => {
     ]);
   });
 
+  test("a moderated reply reads as the provider's verdict on the phone", () => {
+    const reply = (moderation: unknown) =>
+      projectRuntimeItem(
+        "chat",
+        {
+          ...base,
+          id: "reply",
+          type: "assistant_message",
+          messageId: "reply",
+          streaming: false,
+          text: "The answer.",
+          moderation,
+        } as unknown as AgentTurnItem,
+        "source-thread",
+        "source-item",
+      );
+    const blocked = reply({
+      moderated: true,
+      display: { mode: "block", version: 1, reason: { kind: "cyber" } },
+    });
+    expect(blocked).toMatchObject({ kind: "notice", tone: "warning" });
+    expect(blocked?.kind === "notice" && blocked.text).not.toContain("The answer.");
+    const helpline = reply({
+      moderated: true,
+      display: {
+        mode: "show",
+        version: 1,
+        trustedContacts: "check",
+        annotation: { kind: "wellbeingHelpline", subject: "answer" },
+      },
+    });
+    if (helpline?.kind !== "assistant") throw new Error("A shown reply stays a reply");
+    expect(helpline.text.startsWith("The answer.\n\n_")).toBe(true);
+  });
+
   test("a reply's own pictures from this host's files are read from the host", () => {
     const reply = projectRuntimeItem(
       "chat",

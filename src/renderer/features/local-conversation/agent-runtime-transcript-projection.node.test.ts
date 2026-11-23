@@ -1129,6 +1129,10 @@ describe("Runtime Turn metadata", () => {
       entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
       threadIds: [],
     };
+    const moderation = {
+      moderated: true,
+      display: { mode: "hide", version: 1, replacement: { kind: "wellbeingPromptHelpline" } },
+    } as const;
     expect(
       projectAgentRuntimeItem({
         ...base,
@@ -1137,8 +1141,9 @@ describe("Runtime Turn metadata", () => {
         text: "Done.",
         streaming: false,
         memoryCitation: citation,
+        moderation,
       }),
-    ).toMatchObject({ type: "agentMessage", memoryCitation: citation });
+    ).toMatchObject({ type: "agentMessage", memoryCitation: citation, moderation });
     const read = {
       type: "read",
       command: "cat SKILL.md",

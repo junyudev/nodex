@@ -34,6 +34,7 @@ export function projectCodexItemViewToTranscriptEntry(
     userMessageOrigin: item.userMessageOrigin,
     ...(item.heartbeatPrompt ? { heartbeatPrompt: true } : {}),
     ...(item.heartbeatReply ? { heartbeatReply: item.heartbeatReply } : {}),
+    ...(item.answerModeration ? { answerModeration: item.answerModeration } : {}),
     userInputIntent: item.userInputIntent,
     contextCompaction: item.contextCompaction,
     thought: item.thought,

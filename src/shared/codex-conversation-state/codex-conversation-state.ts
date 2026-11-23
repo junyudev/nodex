@@ -1450,6 +1450,7 @@ function mergeCodexCanonicalHydratedItems(
           ...incoming,
           id: existing.id,
           memoryCitation: incoming.memoryCitation ?? existing.memoryCitation,
+          moderation: incoming.moderation ?? existing.moderation,
           delivery: incoming.delivery ?? existing.delivery,
           questions: incoming.questions ?? existing.questions,
         } satisfies Extract<
