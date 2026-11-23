@@ -5,7 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { fixtureWindowsPe } from "../src/main/codex/browser-runtime-windows-test-fixture";
-import { vendorWindowsBrowserRuntime } from "./vendor-windows-browser-runtime";
+import {
+  isOpenAIDesktopToolPublisher,
+  vendorWindowsBrowserRuntime,
+} from "./vendor-windows-browser-runtime";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -203,3 +206,19 @@ describe.skipIf(process.platform !== "darwin")("vendoring an extracted Windows p
     expect(() => vendorWindowsBrowserRuntime({ ...options, targetArch: "x64" })).toThrow(error);
   });
 });
+
+const OPENAI_SUBJECT =
+  "CN=OpenAI OpCo\\, LLC,O=OpenAI OpCo\\, LLC,L=San Francisco,ST=California,C=US";
+
+test.each([
+  { issuer: "CN=Microsoft ID Verified CS AOC CA 04,O=Microsoft Corporation,C=US", accepted: true },
+  { issuer: "CN=Microsoft ID Verified CS EOC CA 04,O=Microsoft Corporation,C=US", accepted: true },
+  { issuer: "CN=Microsoft ID Verified CS XOC CA 04,O=Microsoft Corporation,C=US", accepted: false },
+  { issuer: "CN=Microsoft ID Verified CS EOC CA 04,O=Example,C=US", accepted: false },
+])(
+  "admits only OpenAI images issued by an ID Verified CS intermediate: $issuer",
+  ({ issuer, accepted }) => {
+    expect(isOpenAIDesktopToolPublisher({ subject: OPENAI_SUBJECT, issuer })).toBe(accepted);
+    expect(isOpenAIDesktopToolPublisher({ subject: "CN=Example,C=US", issuer })).toBe(false);
+  },
+);

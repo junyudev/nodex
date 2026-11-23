@@ -1,0 +1,24 @@
+{
+  "candidatePair": {
+    "appServer": {
+      "entrypointSha256": "33a3248aa0f0b31b69a987658915517b0faed6498956ad823396353845033730",
+      "protocolSchemaFingerprint": "638e48fb7211e9391e375c357671ac4ded4b11735d584a3b1e1252852978771a",
+      "runtimeVersion": "0.171.0",
+      "sourceCommit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e",
+      "targetArch": "arm64",
+      "targetPlatform": "win32"
+    },
+    "browser": {
+      "browserPluginVersion": "26.1117.41037",
+      "manifestSha256": "a8134a9f87bc9c4e0862df17a3596e1e1b2b4aba59998d4a3fcb4726a3e30e3d",
+      "peerCliVersion": "0.171.0-alpha.13",
+      "targetArch": "arm64",
+      "targetPlatform": "win32"
+    }
+  },
+  "report": {
+    "status": "passed",
+    "signedImages": 23,
+    "evidence": "https://github.com/junyudev/nodex/actions/runs/45100552782 (app integration arm64: staged vendor Windows REPL over MCP stdio)"
+  }
+}

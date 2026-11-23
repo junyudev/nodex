@@ -134,6 +134,18 @@ function assertMappedBytes(relative: string, bytes: Buffer, entry: BlockMapFile 
   }
 }
 
+/**
+ * OpenAI signs its Windows desktop images through Microsoft Artifact Signing, whose
+ * short-lived leaves rotate across the ID Verified CS AOC and EOC intermediates.
+ */
+export function isOpenAIDesktopToolPublisher(policy: WindowsAuthenticodePublisherPolicy): boolean {
+  return (
+    policy.subject ===
+      "CN=OpenAI OpCo\\, LLC,O=OpenAI OpCo\\, LLC,L=San Francisco,ST=California,C=US" &&
+    /^CN=Microsoft ID Verified CS [AE]OC CA \d+,O=Microsoft Corporation,C=US$/u.test(policy.issuer)
+  );
+}
+
 /** PKCS#7 signer extraction only. Windows verifies the image digest and signer chain. */
 function inspectEmbeddedPublisher(certificate: Buffer): WindowsAuthenticodePublisherPolicy {
   const pem = execFileSync(
@@ -166,10 +178,7 @@ function inspectEmbeddedPublisher(certificate: Buffer): WindowsAuthenticodePubli
   ) {
     throw new Error("Could not identify the embedded Authenticode signer");
   }
-  if (
-    subject !== "CN=OpenAI OpCo\\, LLC,O=OpenAI OpCo\\, LLC,L=San Francisco,ST=California,C=US" ||
-    !/^CN=Microsoft ID Verified CS AOC CA \d+,O=Microsoft Corporation,C=US$/u.test(issuer)
-  ) {
+  if (!isOpenAIDesktopToolPublisher({ subject, issuer })) {
     throw new Error(`Unexpected Desktop Tool publisher: ${subject} / ${issuer}`);
   }
   return { subject, issuer };
