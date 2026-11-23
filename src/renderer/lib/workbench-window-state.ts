@@ -15,6 +15,7 @@ import {
   getWorkbenchSceneReturnLocation,
 } from "../../shared/workbench-layout";
 import {
+  areWorkbenchScenesEquivalent,
   makeWorkbenchSceneKey,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
@@ -278,6 +279,18 @@ export function setWorkbenchDatabaseSearch(
   };
 }
 
+/**
+ * The Scene a window keeps when `next` is written over `previous`. A write that changes nothing
+ * the Scene presents keeps the stored snapshot, so it publishes no state, records no history and
+ * schedules no persistence. Focus and hover routinely ask for the state a Scene is already in.
+ */
+function settleWorkbenchScene(
+  previous: WorkbenchSceneSnapshot | undefined,
+  next: WorkbenchSceneSnapshot,
+): WorkbenchSceneSnapshot {
+  return previous && areWorkbenchScenesEquivalent(previous, next) ? previous : next;
+}
+
 export function updateWorkbenchScene(
   state: WorkbenchWindowState,
   owner: WorkbenchSceneOwner,
@@ -288,7 +301,10 @@ export function updateWorkbenchScene(
 ): WorkbenchWindowState {
   const sceneKey = makeWorkbenchSceneKey(owner);
   const previous = state.scenesByOwnerKey[sceneKey];
-  const next = typeof update === "function" ? update(previous) : update;
+  const next = settleWorkbenchScene(
+    previous,
+    typeof update === "function" ? update(previous) : update,
+  );
   if (makeWorkbenchSceneKey(next.owner) !== sceneKey || previous === next) {
     return state;
   }
@@ -312,23 +328,19 @@ export function updateWorkbenchSceneAndNavigate(
   location: WorkbenchSceneLocation,
 ): WorkbenchWindowState {
   const sceneKey = makeWorkbenchSceneKey(owner);
-  const nextScene = update(state.scenesByOwnerKey[sceneKey]);
+  const previous = state.scenesByOwnerKey[sceneKey];
+  const nextScene = settleWorkbenchScene(previous, update(previous));
   if (makeWorkbenchSceneKey(nextScene.owner) !== sceneKey) return state;
-  const next = {
+  const sceneChanged = previous !== nextScene;
+  if (!sceneChanged && areWorkbenchLocationsEqual(state.location, location)) return state;
+  return recordWorkbenchNavigationTransition(state, {
     ...state,
     location,
     homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
-    scenesByOwnerKey: {
-      ...state.scenesByOwnerKey,
-      [sceneKey]: nextScene,
-    },
-  };
-  if (
-    state.scenesByOwnerKey[sceneKey] === nextScene &&
-    areWorkbenchLocationsEqual(state.location, location)
-  )
-    return state;
-  return recordWorkbenchNavigationTransition(state, next);
+    scenesByOwnerKey: sceneChanged
+      ? { ...state.scenesByOwnerKey, [sceneKey]: nextScene }
+      : state.scenesByOwnerKey,
+  });
 }
 
 function repairLocationForMissingOwner(

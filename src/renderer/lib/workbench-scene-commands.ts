@@ -965,21 +965,14 @@ export function createWorkbenchSceneCommands(
         const before = owner.read();
         const priorScene =
           before.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(input.sceneOwner)];
-        const durableChange =
-          JSON.stringify(priorScene ? { ...priorScene, touchedAt: null } : null) !==
-            JSON.stringify({ ...prepared.scene, touchedAt: null }) ||
-          (executionOptions.location !== undefined &&
-            JSON.stringify(before.windowState.location) !==
-              JSON.stringify(executionOptions.location));
         const current = owner.updateScenePresentation(
           input.sceneOwner,
-          () => ({
-            scene: durableChange ? prepared.scene : priorScene!,
-            ephemeralPanels: prepared.ephemeralPanels,
-          }),
+          () => ({ scene: prepared.scene, ephemeralPanels: prepared.ephemeralPanels }),
           input.expectedPresentationRevision,
           { initialScene: executionOptions.preparedScene, location: executionOptions.location },
         );
+        // The window keeps an equivalent Scene, so only a real Scene or location change is durable.
+        const durableChange = current.windowState !== before.windowState;
         // Capture/queue before any runtime cleanup await, so this ack can only describe this apply.
         const persisted = owner.commitCurrent();
         lifecycle.didApply?.(

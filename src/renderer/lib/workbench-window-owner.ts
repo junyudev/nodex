@@ -362,10 +362,7 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
               () => next.scene,
               options.location,
             )
-          : next.scene === scene &&
-              current.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(sceneOwner)]
-            ? current.windowState
-            : updateWorkbenchScene(current.windowState, sceneOwner, next.scene);
+          : updateWorkbenchScene(current.windowState, sceneOwner, next.scene);
         if (windowState === current.windowState && next.ephemeralPanels === current.ephemeralPanels)
           return current;
         return {

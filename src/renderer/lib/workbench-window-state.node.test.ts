@@ -4,8 +4,10 @@ import {
   getWorkbenchPrimaryDestination,
   getWorkbenchSceneReturnLocation,
   type WorkbenchHomeLocation,
+  type WorkbenchSceneLocation,
 } from "../../shared/workbench-layout";
 import {
+  activateWorkbenchSceneSurface,
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
@@ -470,6 +472,51 @@ describe("WorkbenchWindowState", () => {
     expect(back.scenesByOwnerKey[sceneKey]?.panels.right.collapsed).toBe(false);
     const forward = navigateForwardInWorkbenchWindow(back);
     expect(forward.scenesByOwnerKey[sceneKey]?.panels.right.collapsed).toBe(true);
+  });
+
+  test("asking for the state a Scene is already in changes nothing, including Forward", () => {
+    const owner = { kind: "project", projectId: "alpha" } as const;
+    const sceneKey = makeWorkbenchSceneKey(owner);
+    const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+      panelId: "right",
+      surface: {
+        id: "page:one",
+        kind: "page_stage",
+        titleSnapshot: "Page One",
+        config: { routingContext: { kind: "project", projectId: "alpha" }, pageId: "page:one" },
+        stateKey: 0,
+        state: null,
+      },
+    });
+    const leafId = scene.panels.right.layout.activeLeafId;
+    const focus = (state: ReturnType<typeof createWorkbenchWindowState>) =>
+      updateWorkbenchScene(state, owner, (current) =>
+        activateWorkbenchSceneSurface(current!, "right", leafId),
+      );
+    const focused = focus(
+      createWorkbenchWindowState({
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "project", projectId: "alpha" },
+        scenesByOwnerKey: { [sceneKey]: scene },
+      }),
+    );
+
+    expect(focus(focused)).toBe(focused);
+    expect(
+      updateWorkbenchSceneAndNavigate(
+        focused,
+        owner,
+        (current) => activateWorkbenchSceneSurface(current!, "right", leafId),
+        focused.location as WorkbenchSceneLocation,
+      ),
+    ).toBe(focused);
+
+    const collapsed = updateWorkbenchScene(focused, owner, (current) =>
+      patchWorkbenchScenePanel(current!, "right", { collapsed: true }),
+    );
+    const back = navigateBackInWorkbenchWindow(collapsed);
+    expect(back.history.forwardStack).toHaveLength(1);
+    expect(focus(back)).toBe(back);
   });
 
   test("updates composer overlay state without recording navigation history", () => {

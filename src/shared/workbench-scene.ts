@@ -5,6 +5,7 @@ import { workbenchFilesResourceKey } from "./workbench-resource-identity";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type { CodexForkBrowserSidePanelSnapshot } from "./codex-fork-browser-transfer";
 import { createSecureRuntimeId } from "./secure-runtime-id";
+import { areStructurallyEqual } from "./structural-equality";
 import { contentRoutingContextKey, type ContentRoutingContext } from "./content-routing-context";
 import type { DatabaseId } from "./database-identities";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
@@ -763,6 +764,20 @@ function fromLegacyPanelView(
     lastFocusedPanelId: view.lastFocusedPanelId,
     touchedAt: view.touchedAt,
   });
+}
+
+/**
+ * Whether two Scenes present the same content. `touchedAt` stamps a write rather than
+ * describing the Scene, so a transition that only re-stamps it leaves the Scene unchanged.
+ */
+export function areWorkbenchScenesEquivalent(
+  left: WorkbenchSceneSnapshot,
+  right: WorkbenchSceneSnapshot,
+): boolean {
+  return (
+    left === right ||
+    areStructurallyEqual({ ...left, touchedAt: null }, { ...right, touchedAt: null })
+  );
 }
 
 export function resolveWorkbenchSceneSurface(
