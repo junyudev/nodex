@@ -22,6 +22,7 @@ if (process.env.ACP_MOCK_EXIT_IMMEDIATELY_CODE !== undefined) {
 const sessionId = "mock-session-1";
 const v2Management = process.env.ACP_MOCK_V2_MANAGEMENT === "1";
 const unknownVariants = process.env.ACP_MOCK_UNKNOWN_VARIANTS === "1";
+const childSessions = process.env.ACP_MOCK_CHILD_SESSIONS === "1";
 
 const program = Effect.gen(function* () {
   const agent = yield* AcpAgent.AcpAgent;
@@ -63,6 +64,15 @@ const program = Effect.gen(function* () {
   yield* agent.handleCreateSession(() =>
     Effect.succeed({
       sessionId,
+      availableCommands: [
+        {
+          type: "command",
+          name: "review",
+          description: "Review the change",
+          input: { type: "text", hint: "What to focus on" },
+        },
+        { type: "skill", name: "release-notes", description: "Draft release notes" },
+      ],
     }),
   );
   yield* agent.handleLoadSession(() => Effect.succeed({}));
@@ -106,6 +116,50 @@ const program = Effect.gen(function* () {
         yield* agent.client.sessionUpdate({
           sessionId,
           update: { sessionUpdate: "timeline_update", entries: [] },
+        });
+      }
+
+      if (childSessions) {
+        for (const state of [
+          { state: "running" },
+          {
+            state: "idle",
+            stopReason: "error",
+            error: { code: -32603, message: "Child failed" },
+          },
+          { state: "dormant" },
+        ] as const) {
+          yield* agent.client.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "subagent_update",
+              sessionId: "child-1",
+              title: "Research",
+              state,
+            },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: "child-1",
+          update: {
+            sessionUpdate: "session_message",
+            messageId: "delegation-1",
+            senderSessionId: sessionId,
+            content: [{ type: "text", text: "Find the failing test" }],
+          },
+        });
+        yield* agent.client.sessionUpdate({
+          sessionId,
+          update: { sessionUpdate: "replay_complete" },
+        });
+        yield* agent.client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "cursor_update",
+            cursorId: "before:user-message-1",
+            capabilities: { fork: {} },
+            anchor: { type: "user_message", messageId: "user-message-1", position: "before" },
+          },
         });
       }
 
@@ -207,7 +261,7 @@ const program = Effect.gen(function* () {
         sessionId,
         update: { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" },
       });
-      return {};
+      return { messageId: "user-message-1" };
     }),
   );
 

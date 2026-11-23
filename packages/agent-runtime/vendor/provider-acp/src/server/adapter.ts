@@ -2439,6 +2439,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           agentRequests.clear();
           nativeChildren.clear();
           yield* Ref.set(activeSessionSetup, setup);
+          yield* publishSetupCommands(setup);
         });
         const activeSelection = yield* Ref.make<ModelSelection | null>(null);
         const activeInteractionMode = yield* Ref.make<ProviderInteractionMode | null>(null);
@@ -2474,6 +2475,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           );
         });
         const advertisedCommandNames = yield* Ref.make(new Map<string, ReadonlySet<string>>());
+        // Each advertisement, in a setup response or a later update, replaces the session's list.
+        const publishAvailableCommands = Effect.fnUntraced(function* (
+          sessionId: string,
+          commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+        ) {
+          yield* Ref.update(advertisedCommandNames, (current) =>
+            new Map(current).set(
+              sessionId,
+              new Set(commands.map((command) => command.name.trim().toLowerCase())),
+            ),
+          );
+          yield* flavor.onAvailableCommandsUpdate?.(commands) ?? Effect.void;
+        });
+        const publishSetupCommands = (setup: AcpSessionRuntime.AcpSessionRuntimeStartResult) =>
+          setup.sessionSetupResult.availableCommands === undefined
+            ? Effect.void
+            : publishAvailableCommands(setup.sessionId, setup.sessionSetupResult.availableCommands);
         const compactsContext =
           flavor.supportsCompaction === true ||
           flavor.compactSession !== undefined ||
@@ -5307,9 +5325,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             const markdown =
               update.kind === "markdown"
                 ? update.markdown
-                : update.kind === "file"
-                  ? `Plan file: ${update.uri}`
-                  : `[Unsupported ACP plan content: ${update.contentType}]`;
+                : `[Unsupported ACP plan content: ${update.contentType}]`;
             plan = {
               ...base,
               status: "active",
@@ -7357,17 +7373,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       clientTerminals.readOutputSnapshot,
                     );
               if (notification.update.sessionUpdate === "available_commands_update") {
-                const sessionId = rawNotification.sessionId;
-                const advertisedCommands = notification.update.availableCommands;
-                yield* Ref.update(advertisedCommandNames, (current) => {
-                  const updated = new Map(current);
-                  updated.set(
-                    sessionId,
-                    new Set(advertisedCommands.map((command) => command.name.trim().toLowerCase())),
-                  );
-                  return updated;
-                });
-                yield* flavor.onAvailableCommandsUpdate?.(advertisedCommands) ?? Effect.void;
+                yield* publishAvailableCommands(
+                  rawNotification.sessionId,
+                  notification.update.availableCommands,
+                );
               }
               if (
                 notification.update.sessionUpdate === "config_option_update" ||
@@ -7475,6 +7484,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             return;
           }
           yield* Ref.set(activeSessionSetup, result);
+          yield* publishSetupCommands(result);
           // The selection was configured against the provisional setup's
           // options, so the next turn re-applies it against the real ones.
           yield* Ref.set(activeSelection, null);

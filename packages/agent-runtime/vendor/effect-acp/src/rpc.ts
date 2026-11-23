@@ -165,24 +165,39 @@ const CompatLogoutV1Rpc = Rpc.make(V1_AGENT_METHODS.logout, {
   error: AcpSchemaV1.Error,
 });
 
+// Older v1 agents still return the session model state of a removed unstable API.
+const LegacyModels = { models: Schema.optionalKey(Schema.NullOr(AcpCompat.SessionModelState)) };
+export const V1NewSessionResponse = Schema.Struct({
+  ...AcpSchemaV1.NewSessionResponse.fields,
+  ...LegacyModels,
+});
+export const V1LoadSessionResponse = Schema.Struct({
+  ...AcpSchemaV1.LoadSessionResponse.fields,
+  ...LegacyModels,
+});
+export const V1ForkSessionResponse = Schema.Struct({
+  ...AcpSchemaV1.ForkSessionResponse.fields,
+  ...LegacyModels,
+});
+export const V1ResumeSessionResponse = Schema.Struct({
+  ...AcpSchemaV1.ResumeSessionResponse.fields,
+  ...LegacyModels,
+});
+
+// Session setup responses carry no generation discriminator: a v2 response
+// also satisfies v1's shape once v2-only fields are dropped. The client decodes
+// each with the negotiated generation's schema and skips malformed list entries.
+const SetupResponse = Schema.Unknown;
+
 const CompatNewSessionRpc = Rpc.make(AGENT_METHODS.session_new, {
   payload: Schema.Union([AcpSchema.NewSessionRequest, AcpSchemaV1.NewSessionRequest]),
-  success: Schema.Union([
-    Schema.Struct({
-      ...AcpSchemaV1.NewSessionResponse.fields,
-      models: Schema.optionalKey(Schema.NullOr(AcpCompat.SessionModelState)),
-    }),
-    AcpSchema.NewSessionResponse,
-  ]),
+  success: SetupResponse,
   error: AcpSchema.Error,
 });
 
 const CompatLoadSessionV1Rpc = Rpc.make(V1_AGENT_METHODS.session_load, {
   payload: AcpSchemaV1.LoadSessionRequest,
-  success: Schema.Struct({
-    ...AcpSchemaV1.LoadSessionResponse.fields,
-    models: Schema.optionalKey(Schema.NullOr(AcpCompat.SessionModelState)),
-  }),
+  success: SetupResponse,
   error: AcpSchemaV1.Error,
 });
 
@@ -194,25 +209,13 @@ const CompatListSessionsRpc = Rpc.make(AGENT_METHODS.session_list, {
 
 const CompatForkSessionRpc = Rpc.make(AGENT_METHODS.session_fork, {
   payload: Schema.Union([AcpSchema.ForkSessionRequest, AcpSchemaV1.ForkSessionRequest]),
-  success: Schema.Union([
-    Schema.Struct({
-      ...AcpSchemaV1.ForkSessionResponse.fields,
-      models: Schema.optionalKey(Schema.NullOr(AcpCompat.SessionModelState)),
-    }),
-    AcpSchema.ForkSessionResponse,
-  ]),
+  success: SetupResponse,
   error: AcpSchema.Error,
 });
 
 const CompatResumeSessionRpc = Rpc.make(AGENT_METHODS.session_resume, {
   payload: Schema.Union([AcpSchema.ResumeSessionRequest, AcpSchemaV1.ResumeSessionRequest]),
-  success: Schema.Union([
-    Schema.Struct({
-      ...AcpSchemaV1.ResumeSessionResponse.fields,
-      models: Schema.optionalKey(Schema.NullOr(AcpCompat.SessionModelState)),
-    }),
-    AcpSchema.ResumeSessionResponse,
-  ]),
+  success: SetupResponse,
   error: AcpSchema.Error,
 });
 

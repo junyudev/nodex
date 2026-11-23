@@ -122,6 +122,8 @@ const advertisedAuthMethodId = process.env.NODEX_ACP_AUTH_METHOD_ID?.trim();
 const initializeAuthMethodId =
   advertisedAuthMethodId ?? (supportsSessionLifecycle ? "test" : undefined);
 const requiresAuthentication = process.env.NODEX_ACP_REQUIRE_AUTH === "1";
+// v2 setup responses list the session's commands; skills are not prompt commands.
+const setupCommands = process.env.NODEX_ACP_SETUP_COMMANDS === "1";
 const commandAdvertisementDelayMs = Number(
   process.env.NODEX_ACP_COMMAND_ADVERTISEMENT_DELAY_MS ?? "-1",
 );
@@ -478,7 +480,7 @@ const program = Effect.gen(function* () {
 
   const finishPrompt = (
     targetSessionId: string,
-    stopReason: AcpSchema.StopReason,
+    stopReason: "end_turn" | "cancelled",
     _meta?: NonNullable<AcpSchema.PromptResponse["_meta"]>,
   ) =>
     agent.client
@@ -491,7 +493,12 @@ const program = Effect.gen(function* () {
           ...(_meta === undefined ? {} : { _meta }),
         },
       })
-      .pipe(Effect.as(_meta === undefined ? {} : { _meta }));
+      .pipe(
+        Effect.as({
+          messageId: `mock-user-message-${promptCount}`,
+          ...(_meta === undefined ? {} : { _meta }),
+        }),
+      );
 
   yield* agent.handleInitialize((request) =>
     Effect.gen(function* () {
@@ -588,6 +595,20 @@ const program = Effect.gen(function* () {
       if (antigravityProfile) {
         yield* publishAntigravityCommands(sessionId);
       }
+      const advertisedCommands = [
+        {
+          type: "command",
+          name: "review",
+          description: "Review the current changes",
+          input: { type: "text", hint: "focus" },
+        },
+        {
+          type: "command",
+          name: "$workspace-skill",
+          description: "Run the workspace skill",
+          input: null,
+        },
+      ] as const;
       if (commandAdvertisementDelayMs >= 0) {
         yield* Effect.sleep(`${commandAdvertisementDelayMs} millis`).pipe(
           Effect.andThen(
@@ -595,18 +616,7 @@ const program = Effect.gen(function* () {
               sessionId,
               update: {
                 sessionUpdate: "available_commands_update",
-                availableCommands: [
-                  {
-                    name: "review",
-                    description: "Review the current changes",
-                    input: { type: "text", hint: "focus" },
-                  },
-                  {
-                    name: "$workspace-skill",
-                    description: "Run the workspace skill",
-                    input: null,
-                  },
-                ],
+                availableCommands: advertisedCommands,
               },
             }),
           ),
@@ -616,6 +626,14 @@ const program = Effect.gen(function* () {
       return {
         sessionId,
         configOptions: configOptions(),
+        ...(setupCommands
+          ? {
+              availableCommands: [
+                ...advertisedCommands,
+                { type: "skill", name: "native-skill", description: "A native skill" },
+              ],
+            }
+          : {}),
       };
     }),
   );

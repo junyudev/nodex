@@ -839,7 +839,6 @@ describe("AcpAdapterV2", () => {
   it("maps complete Droid choice forms and preserves custom answers", () => {
     const request = {
       sessionId: "droid-session",
-      requestId: "droid-question",
       mode: "form" as const,
       message: "Choose a storage mode",
       requestedSchema: {
@@ -1064,11 +1063,11 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
   );
 
+  // A v2 select option must offer a value, so only v1 can advertise an empty model catalog.
   it.live.each([
     { api: "none", protocol: "v1" },
     { api: "none", protocol: "v2" },
     { api: "config", protocol: "v1" },
-    { api: "config", protocol: "v2" },
     { api: "legacy", protocol: "v1" },
   ])(
     "distinguishes a startup model from an empty advertised $protocol $api catalog",
@@ -14142,25 +14141,20 @@ const makeClaudeWorkHarness = (generation: 1 | 2 = 2) =>
       send({
         sessionId: child,
         update: {
-          sessionUpdate: "_unknown",
-          originalSessionUpdate: "session_message",
-          raw: {
-            messageId: delegation,
-            senderSessionId: parent,
-            content: [{ type: "text", text: prompt }],
-          },
+          sessionUpdate: "session_message",
+          messageId: delegation,
+          senderSessionId: parent,
+          content: [{ type: "text", text: prompt }],
         },
       });
     const childState = (child: string, state: "running" | "idle", parent = root) =>
       send({
         sessionId: parent,
         update: {
-          sessionUpdate: "_unknown",
-          originalSessionUpdate: "subagent_update",
-          raw: {
-            sessionId: child,
-            state: { state, ...(state === "idle" ? { stopReason: "end_turn" } : {}) },
-          },
+          sessionUpdate: "subagent_update",
+          sessionId: child,
+          state:
+            state === "idle" ? { state, stopReason: "end_turn" } : { state: "running" as const },
         },
       });
     const agentTool = (id: string) =>

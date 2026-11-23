@@ -165,7 +165,7 @@ input.on("line", (line) => {
           },
         },
       });
-      result(protocol === "v2" ? {} : { stopReason: "end_turn" });
+      result(protocol === "v2" ? { messageId: "model-user-message" } : { stopReason: "end_turn" });
       if (protocol === "v2") {
         send({
           jsonrpc: "2.0",

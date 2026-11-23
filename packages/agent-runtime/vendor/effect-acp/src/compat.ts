@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import type * as V1 from "./_generated/schema-v1.gen.ts";
 import type * as V2 from "./_generated/schema.gen.ts";
 
 type Meta = AcpMeta | null;
@@ -22,9 +23,13 @@ export type ContentBlock =
     };
 
 export type AbsolutePath = V2.AbsolutePath;
-export type AvailableCommand = Omit<V2.AvailableCommand, "input"> & {
+/** A slash command the Agent accepts as prompt text; skills and future kinds are not commands. */
+export interface AvailableCommand {
+  readonly name: string;
+  readonly description: string;
   readonly input?: Extract<V2.AvailableCommandInput, { readonly type: "text" }> | null;
-};
+  readonly _meta?: Meta;
+}
 export type CloseSessionRequest = V2.CloseSessionRequest;
 export type CloseSessionResponse = V2.CloseSessionResponse;
 export type DeleteSessionRequest = V2.DeleteSessionRequest;
@@ -46,7 +51,8 @@ export type ListSessionsRequest = V2.ListSessionsRequest;
 export type ListSessionsResponse = V2.ListSessionsResponse;
 export type LogoutResponse = V2.LogoutAuthResponse;
 export type LogoutRequest = V2.LogoutAuthRequest;
-export type StopReason = V2.StopReason;
+/** v1's closed stop reasons, plus v2's failure and reasons from newer Agents. */
+export type StopReason = V1.StopReason | "error" | (string & {});
 export type Usage = V2.Usage;
 export type TerminalExitStatus = V2.TerminalExitStatus;
 export type ToolCallLocation = V2.ToolCallLocation;
@@ -163,19 +169,17 @@ export interface SessionModeState {
   readonly _meta?: Meta;
 }
 
-export interface NewSessionResponse {
-  readonly models?: SessionModelState | null;
-  readonly sessionId: string;
-  readonly modes?: SessionModeState | null;
-  readonly configOptions?: ReadonlyArray<SessionConfigOption> | null;
-  readonly _meta?: Meta;
-}
-
 export interface LoadSessionResponse {
   readonly models?: SessionModelState | null;
   readonly modes?: SessionModeState | null;
   readonly configOptions?: ReadonlyArray<SessionConfigOption> | null;
+  /** Present when a v2 setup response lists the session's commands; it replaces the earlier list. */
+  readonly availableCommands?: ReadonlyArray<AvailableCommand>;
   readonly _meta?: Meta;
+}
+
+export interface NewSessionResponse extends LoadSessionResponse {
+  readonly sessionId: string;
 }
 
 export type ResumeSessionResponse = LoadSessionResponse;
@@ -291,6 +295,34 @@ type MessageUpdate = {
   readonly _meta?: Meta;
 };
 
+/** A child session's foreground state as its parent reports it. */
+export type SubagentState =
+  | { readonly state: "running" | "requires_action" | "unknown"; readonly _meta?: Meta }
+  | {
+      readonly state: "idle";
+      readonly stopReason?: StopReason | null;
+      readonly error?: V2.Error | null;
+      readonly _meta?: Meta;
+    };
+
+/** The parent announced or updated a child session it owns. */
+export interface SubagentUpdate {
+  readonly sessionId: string;
+  readonly title?: string | null;
+  readonly description?: string | null;
+  readonly state?: SubagentState | null;
+  readonly _meta?: Meta;
+}
+
+/** A message one session sent another, viewed from the enclosing session. */
+export interface SessionMessage {
+  readonly messageId: string;
+  readonly senderSessionId?: string | null;
+  readonly recipientSessionId?: string | null;
+  readonly content?: ReadonlyArray<ContentBlock> | null;
+  readonly _meta?: Meta;
+}
+
 export type SessionUpdate =
   | (MessageChunkUpdate & { readonly sessionUpdate: "user_message_chunk" })
   | (MessageChunkUpdate & { readonly sessionUpdate: "agent_message_chunk" })
@@ -321,7 +353,7 @@ export type SessionUpdate =
     }
   | {
       readonly sessionUpdate: "state_update";
-      readonly state: "requires_action";
+      readonly state: "requires_action" | "unknown";
       readonly _meta?: Meta;
     }
   | Extract<V2.SessionUpdate, { readonly sessionUpdate: "terminal_update" }>
@@ -338,7 +370,8 @@ export type SessionUpdate =
   | {
       readonly sessionUpdate: "compaction_update";
       readonly compactionId: string;
-      readonly status: string;
+      /** Omitted keeps the compaction's previous status. */
+      readonly status?: string | null;
       readonly summary?: ReadonlyArray<ContentBlock> | null;
       readonly error?: string | null;
       readonly _meta?: Meta;
@@ -363,6 +396,17 @@ export type SessionUpdate =
       readonly description?: string | null;
       readonly _meta?: Meta;
     }
+  | (SubagentUpdate & { readonly sessionUpdate: "subagent_update" })
+  | (SessionMessage & { readonly sessionUpdate: "session_message" })
+  | (MessageChunkUpdate & {
+      readonly sessionUpdate: "session_message_chunk";
+      readonly messageId: string;
+    })
+  /** ACP v2 marks the end of a requested history replay. */
+  | { readonly sessionUpdate: "replay_complete"; readonly _meta?: Meta }
+  // Known updates Nodex does not present: fork cursors and prompt suggestions.
+  | Extract<V2.SessionUpdate, { readonly sessionUpdate: "cursor_update" }>
+  | Extract<V2.SessionUpdate, { readonly sessionUpdate: "prompt_suggestions_update" }>
   | {
       readonly sessionUpdate: "_unknown";
       readonly originalSessionUpdate: string;

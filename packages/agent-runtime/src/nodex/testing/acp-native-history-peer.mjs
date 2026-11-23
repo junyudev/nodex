@@ -30,7 +30,10 @@ for await (const line of createInterface({ input: process.stdin })) {
   const { id, method, params } = JSON.parse(line);
   if (method === "session/cancel" && pendingPrompt) {
     appendFileSync(process.env.ACP_HISTORY_LOG, `${method}\n`);
-    send({ id: pendingPrompt.id, result: v2 ? {} : { stopReason: "cancelled" } });
+    send({
+      id: pendingPrompt.id,
+      result: v2 ? { messageId: "native-user-message" } : { stopReason: "cancelled" },
+    });
     if (v2)
       send({
         method: "session/update",
@@ -99,7 +102,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
       continue;
     }
-    send({ id, result: v2 ? {} : { stopReason: "end_turn" } });
+    send({ id, result: v2 ? { messageId: "native-user-message" } : { stopReason: "end_turn" } });
     if (v2)
       send({
         method: "session/update",

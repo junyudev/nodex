@@ -485,9 +485,15 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
       }
       const started = startResult.success;
       yield* Effect.addFinalizer(() => closeAcpRegistryProbeSession(runtime, started));
-      yield* Deferred.await(commandsAdvertised).pipe(
-        Effect.timeoutOption(COMMAND_ADVERTISEMENT_GRACE),
-      );
+      const setupCommands = started.sessionSetupResult.availableCommands;
+      if (setupCommands === undefined) {
+        yield* Deferred.await(commandsAdvertised).pipe(
+          Effect.timeoutOption(COMMAND_ADVERTISEMENT_GRACE),
+        );
+      } else {
+        // The setup response is the authoritative list and replaces earlier updates.
+        yield* Ref.set(commandsRef, normalizeAcpRegistryCommands(setupCommands));
+      }
       return { resolved, started, commands: yield* Ref.get(commandsRef) };
     }).pipe(
       Effect.scoped,

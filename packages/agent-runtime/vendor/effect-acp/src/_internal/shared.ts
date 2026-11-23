@@ -130,3 +130,20 @@ export const encodeJsonl = <A, I>(schema: Schema.Codec<A, I>, value: A) =>
   Effect.map(Schema.encodeEffect(Schema.fromJsonString(schema))(value), (encoded) =>
     encoder.encode(`${encoded}\n`),
   );
+
+/**
+ * Drops malformed entries of a message's lists. ACP receivers skip such an
+ * entry rather than reject the message, the session or the update carrying it.
+ */
+export function withoutMalformedItems(
+  value: unknown,
+  lists: Readonly<Record<string, (item: unknown) => boolean>>,
+): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const record = value as Readonly<Record<string, unknown>>;
+  const pruned = Object.entries(lists).flatMap(([key, isValid]) => {
+    const items = record[key];
+    return Array.isArray(items) ? [[key, items.filter(isValid)] as const] : [];
+  });
+  return pruned.length === 0 ? value : { ...record, ...Object.fromEntries(pruned) };
+}

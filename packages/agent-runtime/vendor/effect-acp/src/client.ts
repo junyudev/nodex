@@ -1,5 +1,5 @@
-import * as Option from "effect/Option";
 import * as Context from "effect/Context";
+import * as Option from "effect/Option";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as ErrorReporter from "effect/ErrorReporter";
@@ -26,23 +26,25 @@ import {
   decodeExtRequestRegistration,
   isolateNotificationHandler,
   runHandler,
+  withoutMalformedItems,
 } from "./_internal/shared.ts";
 import { makeChildStdio, makeTerminationError } from "./_internal/stdio.ts";
 
-const decodeElicitationRequest = Schema.decodeUnknownEffect(
+const decodeElicitationRequestShape = Schema.decodeUnknownEffect(
   Schema.Union([AcpSchemaV2.CreateElicitationRequest, AcpSchemaV1.CreateElicitationRequest]),
 );
-
-// ACP session notices postdate the pinned v1.21 and v2 alpha.3 schemas, so they arrive as unknown updates.
-const decodeNoticeUpdate = Schema.decodeUnknownOption(
-  Schema.Struct({
-    sessionUpdate: Schema.Literal("notice"),
-    severity: Schema.String,
-    title: Schema.NonEmptyString,
-    description: Schema.optionalKey(Schema.NullOr(Schema.String)),
-    _meta: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Json))),
-  }),
-);
+// v1 admits a null JSON-RPC id, which cannot name the request an elicitation is scoped to.
+const decodeElicitationRequest = (payload: unknown) =>
+  decodeElicitationRequestShape(payload).pipe(
+    Effect.mapError((cause) =>
+      AcpError.AcpRequestError.invalidExtensionPayload(CLIENT_METHODS.elicitation_create, cause),
+    ),
+    Effect.flatMap((request) =>
+      "requestId" in request && request.requestId === null
+        ? Effect.fail(AcpError.AcpRequestError.invalidParams())
+        : Effect.succeed(request as AcpSchema.CreateElicitationRequest),
+    ),
+  );
 
 export interface AcpClientOptions {
   readonly logIncoming?: boolean;
@@ -435,27 +437,179 @@ function normalizeConfigOptions(
   });
 }
 
+type V2Update<T extends AcpSchemaV2.SessionUpdate["sessionUpdate"]> = Extract<
+  AcpSchemaV2.SessionUpdate,
+  { readonly sessionUpdate: T }
+>;
+type ChildUpdate = V2Update<"subagent_update"> | AcpSchemaV1.SubagentUpdate;
+type ChildMessage = V2Update<"session_message"> | AcpSchemaV1.SessionMessage;
+
+type Meta = NonNullable<AcpSchema.SessionNotification["_meta"]> | null;
+
+// Open variants type `_meta` as any JSON; only an object or null is metadata.
+const withMeta = (meta: unknown): { readonly _meta?: Meta } =>
+  typeof meta === "object" && !Array.isArray(meta) ? { _meta: meta as Meta } : {};
+
+const decodeTextCommandInput = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.optionalKey(Schema.Literal("text")),
+    hint: Schema.String,
+  }),
+);
+
+function normalizeCommand(
+  command: AcpSchemaV2.AvailableCommand | AcpSchemaV1.AvailableCommand,
+): ReadonlyArray<AcpSchema.AvailableCommand> {
+  // v2 also lists skills and future entry kinds; only commands are prompt text.
+  if ("type" in command && command.type !== "command") return [];
+  const input = command.input;
+  // v1 text input has no discriminator; an input kind Nodex cannot offer is no input.
+  const text = input == null ? undefined : Option.getOrUndefined(decodeTextCommandInput(input));
+  return [
+    {
+      name: command.name,
+      description: command.description,
+      ...(input == null
+        ? {}
+        : {
+            input:
+              text === undefined
+                ? null
+                : {
+                    type: "text" as const,
+                    hint: text.hint,
+                    ...withMeta((input as { readonly _meta?: unknown })._meta),
+                  },
+          }),
+      ...withMeta(command._meta),
+    },
+  ];
+}
+
+function normalizeCommands(
+  commands: ReadonlyArray<AcpSchemaV2.AvailableCommand | AcpSchemaV1.AvailableCommand>,
+): ReadonlyArray<AcpSchema.AvailableCommand> {
+  return commands.flatMap(normalizeCommand);
+}
+
+function normalizeSubagentState(state: NonNullable<ChildUpdate["state"]>): AcpSchema.SubagentState {
+  switch (state.state) {
+    case "idle": {
+      const idle = state as V2Update<"state_update"> & { readonly state: "idle" };
+      return {
+        state: "idle",
+        ...(typeof idle.stopReason === "string" || idle.stopReason === null
+          ? { stopReason: idle.stopReason }
+          : {}),
+        ...("error" in idle && idle.error != null
+          ? { error: idle.error as AcpSchemaV2.Error }
+          : {}),
+        ...withMeta(idle._meta),
+      };
+    }
+    case "running":
+    case "requires_action":
+    case "unknown":
+      return { state: state.state, ...withMeta(state._meta) };
+    default:
+      // ACP requires a generic busy state, never idle, for a state the Client does not know.
+      return { state: "running" };
+  }
+}
+
+function normalizeSubagentUpdate(update: ChildUpdate): AcpSchema.SessionUpdate {
+  return {
+    sessionUpdate: "subagent_update",
+    sessionId: update.sessionId,
+    ...(update.title === undefined ? {} : { title: update.title }),
+    ...(update.description === undefined ? {} : { description: update.description }),
+    ...(update.state === undefined
+      ? {}
+      : { state: update.state === null ? null : normalizeSubagentState(update.state) }),
+    ...withMeta(update._meta),
+  };
+}
+
+function normalizeSessionMessage(update: ChildMessage): AcpSchema.SessionUpdate {
+  return {
+    sessionUpdate: "session_message",
+    messageId: update.messageId,
+    ...(update.senderSessionId === undefined ? {} : { senderSessionId: update.senderSessionId }),
+    ...(update.recipientSessionId === undefined
+      ? {}
+      : { recipientSessionId: update.recipientSessionId }),
+    ...(update.content === undefined
+      ? {}
+      : {
+          content:
+            update.content === null
+              ? null
+              : (update.content as ReadonlyArray<AcpSchemaV2.ContentBlock>).map(
+                  normalizeContentBlock,
+                ),
+        }),
+    ...withMeta(update._meta),
+  };
+}
+
+/** Updates both generations share once decoded, in the shape Nodex consumes. */
+function normalizeSharedSessionUpdate(
+  update: AcpSchemaV2.SessionUpdate | AcpSchemaV1.SessionUpdate,
+): AcpSchema.SessionUpdate | undefined {
+  switch (update.sessionUpdate) {
+    case "notice":
+      return update as AcpSchema.SessionUpdate;
+    case "subagent_update":
+      return normalizeSubagentUpdate(update as ChildUpdate);
+    case "session_message":
+      return normalizeSessionMessage(update as ChildMessage);
+    case "session_message_chunk": {
+      const chunk = update as V2Update<"session_message_chunk">;
+      return {
+        sessionUpdate: "session_message_chunk",
+        messageId: chunk.messageId,
+        content: normalizeContentBlock(chunk.content),
+        ...withMeta(chunk._meta),
+      };
+    }
+    case "available_commands_update":
+      return {
+        sessionUpdate: "available_commands_update",
+        availableCommands: normalizeCommands(
+          (update as V2Update<"available_commands_update">).availableCommands,
+        ),
+        ...withMeta(update._meta),
+      };
+    default:
+      return undefined;
+  }
+}
+
+const unknownSessionUpdate = (update: {
+  readonly sessionUpdate: string;
+}): AcpSchema.SessionUpdate => ({
+  sessionUpdate: "_unknown",
+  originalSessionUpdate: update.sessionUpdate,
+  raw: update,
+});
+
 function normalizeSessionUpdate(
   notification: AcpSchemaV2.UpdateSessionNotification,
 ): AcpSchema.SessionNotification {
   const update = notification.update;
   const base = {
     sessionId: notification.sessionId,
-    ...(notification._meta === undefined ? {} : { _meta: notification._meta }),
+    ...withMeta(notification._meta),
   };
+  const shared = normalizeSharedSessionUpdate(update);
+  if (shared !== undefined) return { ...base, update: shared };
 
   switch (update.sessionUpdate) {
     case "user_message_chunk":
     case "agent_message_chunk":
     case "agent_thought_chunk": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        {
-          readonly sessionUpdate:
-            | "user_message_chunk"
-            | "agent_message_chunk"
-            | "agent_thought_chunk";
-        }
+      const known = update as V2Update<
+        "user_message_chunk" | "agent_message_chunk" | "agent_thought_chunk"
       >;
       const content = normalizeContentBlock(known.content);
       return { ...base, update: { ...known, content } };
@@ -463,10 +617,7 @@ function normalizeSessionUpdate(
     case "user_message":
     case "agent_message":
     case "agent_thought": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        { readonly sessionUpdate: "user_message" | "agent_message" | "agent_thought" }
-      >;
+      const known = update as V2Update<"user_message" | "agent_message" | "agent_thought">;
       const content = known.content;
       return {
         ...base,
@@ -486,48 +637,48 @@ function normalizeSessionUpdate(
       } as AcpSchema.SessionNotification;
     }
     case "tool_call_update": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        { readonly sessionUpdate: "tool_call_update" }
-      >;
+      const known = update as V2Update<"tool_call_update">;
       return {
         ...base,
         update: { sessionUpdate: "tool_call_update", ...normalizeToolCallUpdate(known) },
       };
     }
     case "tool_call_content_chunk": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        { readonly sessionUpdate: "tool_call_content_chunk" }
-      >;
+      const known = update as V2Update<"tool_call_content_chunk">;
       return {
         ...base,
         update: {
           sessionUpdate: "tool_call_content_chunk",
           toolCallId: known.toolCallId,
           content: normalizeToolCallContent(known.content),
-          ...(known._meta === undefined ? {} : { _meta: known._meta }),
+          ...withMeta(known._meta),
         },
       };
     }
     case "config_option_update": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        { readonly sessionUpdate: "config_option_update" }
-      >;
+      const known = update as V2Update<"config_option_update">;
       return {
         ...base,
         update: {
           sessionUpdate: "config_option_update",
-          configOptions: known.configOptions.flatMap((option) => {
-            const normalized = normalizeConfigOption(option);
-            return normalized === undefined ? [] : [normalized];
-          }),
-          ...(known._meta === undefined ? {} : { _meta: known._meta }),
+          configOptions: normalizeConfigOptions(known.configOptions) ?? [],
+          ...withMeta(known._meta),
         },
       };
     }
-    case "state_update":
+    case "state_update": {
+      const known = update as V2Update<"state_update">;
+      switch (known.state) {
+        case "running":
+        case "idle":
+        case "requires_action":
+        case "unknown":
+          return { ...base, update: known } as AcpSchema.SessionNotification;
+        default:
+          // ACP requires a generic busy state, never idle, for a state the Client does not know.
+          return { ...base, update: { sessionUpdate: "state_update", state: "running" } };
+      }
+    }
     case "terminal_update":
     case "terminal_output_chunk":
     case "plan_update":
@@ -536,87 +687,42 @@ function normalizeSessionUpdate(
     case "usage_update":
     case "compaction_update":
     case "compaction_summary_chunk":
+    case "replay_complete":
+    case "cursor_update":
+    case "prompt_suggestions_update":
       return { ...base, update } as AcpSchema.SessionNotification;
-    case "available_commands_update": {
-      const known = update as Extract<
-        AcpSchemaV2.SessionUpdate,
-        { readonly sessionUpdate: "available_commands_update" }
-      >;
-      return {
-        ...base,
-        update: {
-          ...known,
-          availableCommands: known.availableCommands.map((command) => ({
-            ...command,
-            ...(command.input?.type === "text"
-              ? {
-                  input: command.input as Extract<
-                    AcpSchemaV2.AvailableCommandInput,
-                    { readonly type: "text" }
-                  >,
-                }
-              : { input: null }),
-          })),
-        },
-      };
-    }
-    default: {
-      const notice = decodeNoticeUpdate(update);
-      if (Option.isSome(notice)) return { ...base, update: notice.value };
-      return {
-        ...base,
-        update: {
-          sessionUpdate: "_unknown",
-          originalSessionUpdate: update.sessionUpdate,
-          raw: update,
-        },
-      };
-    }
+    default:
+      return { ...base, update: unknownSessionUpdate(update) };
   }
+}
+
+function normalizeV1ToolCallContent(
+  content: ReadonlyArray<AcpSchemaV1.ToolCallContent> | null | undefined,
+) {
+  return content == null
+    ? content
+    : content.map((entry) => normalizeToolCallContent(entry as AcpSchemaV2.ToolCallContent));
 }
 
 function normalizeV1SessionUpdate(
   notification: AcpSchemaV1.SessionNotification,
 ): AcpSchema.SessionNotification {
-  // v1 passes unknown updates through raw, so a malformed notice must not reach consumers as one.
-  if ((notification.update.sessionUpdate as string) === "notice") {
-    const notice = decodeNoticeUpdate(notification.update);
+  const shared = normalizeSharedSessionUpdate(notification.update);
+  if (shared !== undefined) return { ...notification, update: shared };
+  const update = notification.update;
+  if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
+    // v1 defines a null tool name as unchanged; v2 consumers read null as a clear.
+    const { name, content, ...rest } = update;
     return {
       ...notification,
-      update: Option.isSome(notice)
-        ? notice.value
-        : {
-            sessionUpdate: "_unknown",
-            originalSessionUpdate: "notice",
-            raw: notification.update,
-          },
-    };
+      update: {
+        ...rest,
+        ...(name === null || name === undefined ? {} : { name }),
+        ...(content === undefined ? {} : { content: normalizeV1ToolCallContent(content) }),
+      },
+    } as unknown as AcpSchema.SessionNotification;
   }
-  const update = notification.update;
-  // v1 defines a null tool name as unchanged; v2 consumers read null as a clear.
-  if (
-    (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") &&
-    update.name === null
-  ) {
-    const { name: _name, ...rest } = update;
-    return { ...notification, update: rest } as unknown as AcpSchema.SessionNotification;
-  }
-  if (notification.update.sessionUpdate !== "available_commands_update") {
-    return notification as unknown as AcpSchema.SessionNotification;
-  }
-  return {
-    ...notification,
-    update: {
-      ...notification.update,
-      availableCommands: notification.update.availableCommands.map((command) => {
-        const { input, ...rest } = command;
-        return {
-          ...rest,
-          ...(input == null ? {} : { input: { type: "text" as const, hint: input.hint } }),
-        };
-      }),
-    },
-  };
+  return notification as unknown as AcpSchema.SessionNotification;
 }
 
 function toV2McpServer(server: AcpSchema.McpServer): AcpSchemaV2.McpServer {
@@ -699,8 +805,10 @@ function normalizeInitializeResponse(
               const base = {
                 id: record.methodId,
                 name: record.name,
-                ...(record.description === undefined ? {} : { description: record.description }),
-                ...(record._meta === undefined ? {} : { _meta: record._meta }),
+                ...(typeof record.description === "string" || record.description === null
+                  ? { description: record.description }
+                  : {}),
+                ...withMeta(record._meta),
               };
               if (
                 record.type === "env_var" &&
@@ -787,6 +895,28 @@ function isV2InitializeResponse(
   return "info" in response;
 }
 
+const decodeResponse =
+  <A, I>(method: string, schema: Schema.Codec<A, I>) =>
+  (response: unknown) =>
+    Schema.decodeUnknownEffect(schema)(response).pipe(
+      Effect.mapError((cause) =>
+        AcpError.AcpProtocolParseError.fromSchemaError("decode-response-payload", method, cause),
+      ),
+    );
+
+const setupResponseDecoder =
+  (lists: Parameters<typeof withoutMalformedItems>[1]) =>
+  <A, I>(method: string, schema: Schema.Codec<A, I>) =>
+  (response: unknown) =>
+    decodeResponse(method, schema)(withoutMalformedItems(response, lists));
+const decodeV1SetupResponse = setupResponseDecoder({
+  configOptions: Schema.is(AcpSchemaV1.SessionConfigOption),
+});
+const decodeV2SetupResponse = setupResponseDecoder({
+  configOptions: Schema.is(AcpSchemaV2.SessionConfigOption),
+  availableCommands: Schema.is(AcpSchemaV2.AvailableCommand),
+});
+
 function normalizeV2SessionSetupResponse(
   response:
     | AcpSchemaV2.NewSessionResponse
@@ -797,7 +927,10 @@ function normalizeV2SessionSetupResponse(
   return {
     ...("sessionId" in response ? { sessionId: response.sessionId } : {}),
     ...(configOptions === undefined ? {} : { configOptions }),
-    ...(response._meta === undefined ? {} : { _meta: response._meta }),
+    ...(response.availableCommands === undefined
+      ? {}
+      : { availableCommands: normalizeCommands(response.availableCommands) }),
+    ...withMeta(response._meta),
   };
 }
 
@@ -905,7 +1038,8 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
                 return Deferred.succeed(completion, {
                   stopReason: idle.stopReason ?? "end_turn",
                   ...(idle.usage === undefined ? {} : { usage: idle.usage }),
-                  ...(idle._meta === undefined ? {} : { _meta: idle._meta }),
+                  ...(idle.error === undefined ? {} : { error: idle.error }),
+                  ...withMeta(idle._meta),
                 }).pipe(Effect.asVoid);
               })
             : Effect.void;
@@ -1041,12 +1175,7 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
         ),
       [CLIENT_METHODS.elicitation_create]: (payload, { requestId }) =>
         decodeElicitationRequest(payload).pipe(
-          Effect.mapError((cause) =>
-            AcpError.AcpRequestError.invalidExtensionPayload(
-              CLIENT_METHODS.elicitation_create,
-              cause,
-            ).toProtocolError(),
-          ),
+          Effect.mapError((error) => error.toProtocolError()),
           Effect.flatMap((request) =>
             runHandler(
               coreHandlers.elicitation,
@@ -1164,7 +1293,12 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
           ? callRpc(
               AGENT_METHODS.session_new,
               rpc[AGENT_METHODS.session_new](payload as AcpSchemaV1.NewSessionRequest),
-            ).pipe(Effect.map((response) => response as AcpSchema.NewSessionResponse))
+            ).pipe(
+              Effect.flatMap(
+                decodeV1SetupResponse(AGENT_METHODS.session_new, AcpRpcs.V1NewSessionResponse),
+              ),
+              Effect.map((response) => response as AcpSchema.NewSessionResponse),
+            )
           : callRpc(
               AGENT_METHODS.session_new,
               rpc[AGENT_METHODS.session_new]({
@@ -1172,11 +1306,12 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
                 mcpServers: payload.mcpServers.map(toV2McpServer),
               }),
             ).pipe(
+              Effect.flatMap(
+                decodeV2SetupResponse(AGENT_METHODS.session_new, AcpSchemaV2.NewSessionResponse),
+              ),
               Effect.map(
                 (response) =>
-                  normalizeV2SessionSetupResponse(
-                    response as AcpSchemaV2.NewSessionResponse,
-                  ) as AcpSchema.NewSessionResponse,
+                  normalizeV2SessionSetupResponse(response) as AcpSchema.NewSessionResponse,
               ),
             ),
       loadSession: (payload) =>
@@ -1184,16 +1319,28 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
           ? callRpc(
               AcpRpcs.V1_AGENT_METHODS.session_load,
               rpc[AcpRpcs.V1_AGENT_METHODS.session_load](payload as AcpSchemaV1.LoadSessionRequest),
-            ).pipe(Effect.map((response) => response as AcpSchema.LoadSessionResponse))
+            ).pipe(
+              Effect.flatMap(
+                decodeV1SetupResponse(
+                  AcpRpcs.V1_AGENT_METHODS.session_load,
+                  AcpRpcs.V1LoadSessionResponse,
+                ),
+              ),
+              Effect.map((response) => response as AcpSchema.LoadSessionResponse),
+            )
           : callRpc(
               AGENT_METHODS.session_resume,
               rpc[AGENT_METHODS.session_resume](toV2ResumeRequest(payload, { type: "start" })),
             ).pipe(
+              Effect.flatMap(
+                decodeV2SetupResponse(
+                  AGENT_METHODS.session_resume,
+                  AcpSchemaV2.ResumeSessionResponse,
+                ),
+              ),
               Effect.map(
                 (response) =>
-                  normalizeV2SessionSetupResponse(
-                    response as AcpSchemaV2.ResumeSessionResponse,
-                  ) as AcpSchema.LoadSessionResponse,
+                  normalizeV2SessionSetupResponse(response) as AcpSchema.LoadSessionResponse,
               ),
             ),
       listSessions: (payload) =>
@@ -1205,16 +1352,22 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
           ? callRpc(
               AGENT_METHODS.session_fork,
               rpc[AGENT_METHODS.session_fork](payload as AcpSchemaV1.ForkSessionRequest),
-            ).pipe(Effect.map((response) => response as AcpSchema.ForkSessionResponse))
+            ).pipe(
+              Effect.flatMap(
+                decodeV1SetupResponse(AGENT_METHODS.session_fork, AcpRpcs.V1ForkSessionResponse),
+              ),
+              Effect.map((response) => response as AcpSchema.ForkSessionResponse),
+            )
           : callRpc(
               AGENT_METHODS.session_fork,
               rpc[AGENT_METHODS.session_fork](toV2ForkRequest(payload)),
             ).pipe(
+              Effect.flatMap(
+                decodeV2SetupResponse(AGENT_METHODS.session_fork, AcpSchemaV2.ForkSessionResponse),
+              ),
               Effect.map(
                 (response) =>
-                  normalizeV2SessionSetupResponse(
-                    response as AcpSchemaV2.ForkSessionResponse,
-                  ) as AcpSchema.ForkSessionResponse,
+                  normalizeV2SessionSetupResponse(response) as AcpSchema.ForkSessionResponse,
               ),
             ),
       resumeSession: (payload) =>
@@ -1222,18 +1375,30 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
           ? callRpc(
               AGENT_METHODS.session_resume,
               rpc[AGENT_METHODS.session_resume](payload as AcpSchemaV1.ResumeSessionRequest),
-            ).pipe(Effect.map((response) => response as AcpSchema.ResumeSessionResponse))
+            ).pipe(
+              Effect.flatMap(
+                decodeV1SetupResponse(
+                  AGENT_METHODS.session_resume,
+                  AcpRpcs.V1ResumeSessionResponse,
+                ),
+              ),
+              Effect.map((response) => response as AcpSchema.ResumeSessionResponse),
+            )
           : callRpc(
               AGENT_METHODS.session_resume,
               rpc[AGENT_METHODS.session_resume](
                 toV2ResumeRequest(payload, payload.replayFrom ?? undefined),
               ),
             ).pipe(
+              Effect.flatMap(
+                decodeV2SetupResponse(
+                  AGENT_METHODS.session_resume,
+                  AcpSchemaV2.ResumeSessionResponse,
+                ),
+              ),
               Effect.map(
                 (response) =>
-                  normalizeV2SessionSetupResponse(
-                    response as AcpSchemaV2.ResumeSessionResponse,
-                  ) as AcpSchema.ResumeSessionResponse,
+                  normalizeV2SessionSetupResponse(response) as AcpSchema.ResumeSessionResponse,
               ),
             ),
       closeSession: (payload) =>

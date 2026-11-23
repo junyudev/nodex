@@ -30,8 +30,28 @@ describe("pinned ACP wire schemas", () => {
   it("keeps v1 command inputs compatible with native agents", () => {
     const command = { name: "plan", description: "Make a plan", input: { hint: "Task" } };
     expect(Schema.is(V1.AvailableCommand)(command)).toBe(true);
-    expect(
-      Schema.is(V2.AvailableCommand)({ ...command, input: { type: "text", hint: "Task" } }),
-    ).toBe(true);
+    const v2Command = { ...command, input: { type: "text", hint: "Task" } };
+    expect(Schema.is(V2.AvailableCommand)({ type: "command", ...v2Command })).toBe(true);
+    expect(Schema.is(V2.AvailableCommand)(v2Command)).toBe(false);
+  });
+
+  it("rejects a notice without a title in either generation", () => {
+    const notice = {
+      sessionId: "session-1",
+      update: { sessionUpdate: "notice", severity: "info" },
+    };
+    expect(Schema.is(V1.SessionNotification)(notice)).toBe(false);
+    expect(Schema.is(V2.UpdateSessionNotification)(notice)).toBe(false);
+  });
+
+  it("keeps an elicitation to exactly one scope", () => {
+    const form = {
+      mode: "form",
+      message: "Choose a branch",
+      requestedSchema: { type: "object", properties: {} },
+    };
+    const accepts = Schema.is(V2.CreateElicitationRequest);
+    expect(accepts({ ...form, requestId: 7 })).toBe(true);
+    expect(accepts({ ...form, requestId: 7, sessionId: "session-1" })).toBe(false);
   });
 });

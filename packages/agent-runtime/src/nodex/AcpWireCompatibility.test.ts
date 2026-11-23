@@ -71,7 +71,7 @@ it.effect(
   "filters malformed known v2 configuration without crashing model selection or losing valid options",
   () =>
     Effect.gen(function* () {
-      const { client, respond } = yield* peer;
+      const { client, respond, notify } = yield* peer;
       const initialized = yield* client.agent
         .initialize({ protocolVersion: 2 })
         .pipe(Effect.forkScoped);
@@ -112,8 +112,8 @@ it.effect(
         }),
         [{ id: "auto", label: "Auto", type: "boolean", currentValue: true }],
       );
-      // A whole legacy-shaped response can pass the negotiated RPC's open union.
-      // It must not become a v2 option with an undefined id.
+      // A legacy-shaped option on a v2 session is malformed: it is skipped, and
+      // never becomes a v2 option with an undefined id.
       const malformed = yield* client.agent
         .createSession({ cwd: process.cwd(), mcpServers: [] })
         .pipe(Effect.forkScoped);
@@ -128,9 +128,13 @@ it.effect(
             currentValue: "a",
             options: [],
           },
+          { configId: "auto", name: "Auto", type: "boolean", currentValue: true },
         ],
       });
-      assert.deepEqual((yield* Fiber.join(malformed)).configOptions, []);
+      assert.deepEqual(
+        (yield* Fiber.join(malformed)).configOptions?.map((option) => option.id),
+        ["auto"],
+      );
       const configured = yield* client.agent
         .setSessionConfigOption({
           sessionId: session.sessionId,
@@ -141,6 +145,28 @@ it.effect(
         .pipe(Effect.forkScoped);
       assert.equal(yield* respond({ configOptions: [] }), "session/set_config_option");
       yield* Fiber.join(configured);
+      // A later update skips its malformed entry, here a select with no values, too.
+      const updated = yield* Deferred.make<Compat.SessionNotification>();
+      yield* client.handleSessionUpdate((notification) =>
+        Deferred.succeed(updated, notification).pipe(Effect.asVoid),
+      );
+      yield* notify({
+        sessionId: session.sessionId,
+        update: {
+          sessionUpdate: "config_option_update",
+          configOptions: [
+            { configId: "model", name: "Model", type: "select", currentValue: "x", options: [] },
+            { configId: "auto", name: "Auto", type: "boolean", currentValue: false },
+          ],
+        },
+      });
+      const update = (yield* Deferred.await(updated)).update;
+      assert.deepEqual(
+        update.sessionUpdate === "config_option_update"
+          ? update.configOptions.map((option) => option.id)
+          : [],
+        ["auto"],
+      );
     }).pipe(Effect.scoped),
 );
 

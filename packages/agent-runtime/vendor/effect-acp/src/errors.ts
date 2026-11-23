@@ -112,6 +112,7 @@ export const AcpProtocolParseOperation = Schema.Literals([
   "encode-message",
   "decode-wire-message",
   "decode-notification-payload",
+  "decode-response-payload",
 ]);
 export type AcpProtocolParseOperation = typeof AcpProtocolParseOperation.Type;
 

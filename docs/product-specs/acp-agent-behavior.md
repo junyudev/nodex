@@ -77,10 +77,11 @@ that capability. Saved metadata excludes login URLs and masks echoed environment
 ## Models and execution
 
 The client negotiates stable ACP v1 and the pinned v2 schema. Wire shape participates in generation
-selection because numeric version alone can be misleading. Methods are gated by actual capabilities.
-File and terminal callbacks use v1's transport and are never advertised over v2. Nodex's tools reach
-every Agent as stdio MCP servers, also when an Agent offers ACP's own MCP transport: that transport
-carries only stateless MCP requests, which Nodex's tool endpoint does not serve.
+selection because numeric version alone can be misleading, and session setup responses are read in
+the negotiated generation's shape. Methods are gated by actual capabilities. File and terminal
+callbacks use v1's transport and are never advertised over v2. Nodex's tools reach every Agent as
+stdio MCP servers, also when an Agent offers ACP's own MCP transport: that transport carries only
+stateless MCP requests, which Nodex's tool endpoint does not serve.
 
 The model menu preserves exact native IDs. Model config options take priority; legacy session models
 use the native model method when config options are absent. Literal auto/default IDs are ordinary
@@ -90,9 +91,11 @@ Agents without a model API use their configured startup model and cannot promise
 Their catalog exposes only the startup selection; an explicit unsupported model fails before a prompt.
 
 Boolean, select and grouped configuration choices, modes and live command updates use the existing
-Composer. Empty protocol values remain selectable through reversible presentation keys. Model
-changes and partial configuration failures preserve the actual applied state. Run admission captures
-its own model selection, so editing the current Composer cannot rewrite queued work.
+Composer. Commands a v2 session lists in its setup response appear at once, and each later update
+replaces them; skill entries are not offered as commands. Empty protocol values remain selectable
+through reversible presentation keys. Model changes and partial configuration failures preserve the
+actual applied state. Run admission captures its own model selection, so editing the current
+Composer cannot rewrite queued work.
 
 Conversation events retain text, thought, tools, plans, files, usage, supported images and native
 extensions through the existing normalized Runtime history. ACP Agents offer Ask for approval

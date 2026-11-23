@@ -1163,7 +1163,7 @@ describe("AcpRuntimeModel", () => {
     });
   });
 
-  it("preserves markdown, file, and future ACP plan variants by plan ID", () => {
+  it("preserves markdown and future ACP plan variants by plan ID", () => {
     const updates = [
       {
         sessionId: "session-1",
@@ -1176,7 +1176,12 @@ describe("AcpRuntimeModel", () => {
         sessionId: "session-1",
         update: {
           sessionUpdate: "plan_update",
-          plan: { type: "file", planId: "plan-file", uri: "file:///workspace/PLAN.md" },
+          plan: {
+            type: "markdown",
+            planId: "plan-file",
+            content: "# Saved plan",
+            path: "/workspace/PLAN.md",
+          },
         },
       },
       {
@@ -1195,11 +1200,7 @@ describe("AcpRuntimeModel", () => {
       },
       {
         _tag: "PlanUpdated",
-        payload: {
-          nativePlanId: "plan-file",
-          kind: "file",
-          uri: "file:///workspace/PLAN.md",
-        },
+        payload: { nativePlanId: "plan-file", kind: "markdown", markdown: "# Saved plan" },
       },
       {
         _tag: "PlanUpdated",

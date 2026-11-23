@@ -355,7 +355,8 @@ export function normalizeAntigravitySessionUpdate(
     const decoded = Option.getOrUndefined(
       decodeToolCallContent(sanitizeToolValue(entry, contentBudget, 0)),
     );
-    return decoded === undefined ? [] : [decoded];
+    // A session reference is display-only and names a child Nodex does not track here.
+    return decoded === undefined || decoded.type === "session" ? [] : [decoded];
   });
   const meta = sanitizeAntigravityToolPayload(update._meta);
   return {

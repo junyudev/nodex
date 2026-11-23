@@ -13,8 +13,8 @@ import { Command, Flag } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-const V2_SCHEMA_RELEASE = "schema-v2.0.0-alpha.3";
-const V1_SCHEMA_RELEASE = "schema-v1.21.0";
+const V2_SCHEMA_RELEASE = "schema-v2.0.0-beta.3";
+const V1_SCHEMA_RELEASE = "schema-v1.34.1";
 
 interface GenerateCommandError {
   readonly _tag: "GenerateCommandError";
@@ -166,6 +166,86 @@ function isJsonArray(value: Schema.Json | undefined): value is ReadonlyArray<Sch
   return Array.isArray(value);
 }
 
+// Keywords whose value maps names to subschemas, so a property named `anyOf` or
+// `type` is never read as a keyword of the map itself.
+const SCHEMA_MAP_KEYWORDS = new Set([
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+]);
+const DATA_KEYWORDS = new Set(["const", "enum", "required"]);
+
+function mapSubschemas(
+  value: Readonly<Record<string, Schema.Json>>,
+  transform: (schema: Schema.Json) => Schema.Json,
+): Record<string, Schema.Json> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => {
+      if (DATA_KEYWORDS.has(key) || isAnnotationKeyword(key)) return [key, child];
+      if (
+        SCHEMA_MAP_KEYWORDS.has(key) &&
+        child !== null &&
+        typeof child === "object" &&
+        !isJsonArray(child)
+      ) {
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(child).map(([name, schema]) => [name, transform(schema)]),
+          ),
+        ];
+      }
+      return [key, transform(child)];
+    }),
+  );
+}
+
+// ACP forbids the keys of a sibling variant, such as an elicitation scope that
+// names both a session and a request, with `propertyNames: { not: ... }`.
+// Express each forbidden key as an optional property that admits no value.
+function withForbiddenPropertyNames(
+  value: Readonly<Record<string, Schema.Json>>,
+): Readonly<Record<string, Schema.Json>> {
+  const propertyNames = value.propertyNames;
+  if (propertyNames === undefined) return value;
+  const exclusion =
+    propertyNames !== null && typeof propertyNames === "object" && !isJsonArray(propertyNames)
+      ? propertyNames.not
+      : undefined;
+  if (
+    exclusion === null ||
+    typeof exclusion !== "object" ||
+    isJsonArray(exclusion) ||
+    Object.keys(propertyNames as object).length !== 1
+  )
+    throw new Error("Unsupported ACP property name constraint");
+  const forbidden =
+    typeof exclusion.const === "string"
+      ? [exclusion.const]
+      : isJsonArray(exclusion.enum) && exclusion.enum.every((name) => typeof name === "string")
+        ? (exclusion.enum as ReadonlyArray<string>)
+        : undefined;
+  const properties = value.properties ?? {};
+  if (
+    forbidden === undefined ||
+    properties === null ||
+    typeof properties !== "object" ||
+    isJsonArray(properties) ||
+    forbidden.some((name) => Object.hasOwn(properties, name))
+  )
+    throw new Error("Unsupported ACP property name exclusion");
+  const { propertyNames: _propertyNames, ...rest } = value;
+  return {
+    ...rest,
+    properties: {
+      ...properties,
+      ...Object.fromEntries(forbidden.map((name) => [name, { not: {} }])),
+    },
+  };
+}
+
 function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
   if (isJsonArray(value)) {
     return value.map(normalizeSchemaKeywords);
@@ -174,15 +254,17 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
     return value;
   }
 
-  const normalizedEntries = Object.entries(value).map(([key, child]) => [
-    key,
-    normalizeSchemaKeywords(child),
-  ]);
-  const normalizedObject = Object.fromEntries(normalizedEntries) as Record<string, Schema.Json>;
+  const normalizedObject = mapSubschemas(
+    withForbiddenPropertyNames(value),
+    normalizeSchemaKeywords,
+  );
   // ACP's forward-compatible variants exclude known discriminator values.
   // The Effect generator does not support `not`; express this exact exclusion
   // as a string pattern while preserving validation of the known variants.
-  if (normalizedObject.not !== undefined) {
+  // `{ not: {} }` admits no value, which Effect imports as `Never`.
+  const isEmptyExclusion =
+    Object.keys(normalizedObject).length === 1 && JSON.stringify(normalizedObject.not) === "{}";
+  if (normalizedObject.not !== undefined && !isEmptyExclusion) {
     const exclusion = normalizedObject.not;
     if (
       exclusion === null ||
@@ -232,6 +314,26 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
       },
     };
     delete normalizedObject.not;
+  }
+  // ACP narrows an error's `data` for particular codes with `if`/`then`. Effect
+  // has no conditional schema; the open `ErrorData` variant still admits that
+  // data, so dropping the condition only stops requiring it.
+  if (normalizedObject.if !== undefined || normalizedObject.then !== undefined) {
+    const condition = normalizedObject.if;
+    const code =
+      condition !== null && typeof condition === "object" && !isJsonArray(condition)
+        ? condition.properties
+        : undefined;
+    if (
+      code === null ||
+      typeof code !== "object" ||
+      isJsonArray(code) ||
+      Object.keys(code).join() !== "code" ||
+      normalizedObject.else !== undefined
+    )
+      throw new Error("Unsupported ACP conditional schema");
+    delete normalizedObject.if;
+    delete normalizedObject.then;
   }
   if (normalizedObject.unevaluatedProperties !== undefined) {
     if (normalizedObject.unevaluatedProperties !== true)
@@ -304,6 +406,34 @@ function normalizeSchemaKeywords(value: Schema.Json): Schema.Json {
   };
 }
 
+// The JSON types a property schema admits, when it is a plain type, a string
+// constant or a union of those.
+function propertyTypes(schema: Schema.Json): ReadonlySet<string> | undefined {
+  if (schema === null || typeof schema !== "object" || isJsonArray(schema)) return undefined;
+  if (typeof schema.const === "string") return new Set(["string"]);
+  if (typeof schema.type === "string") return new Set([schema.type]);
+  if (!isJsonArray(schema.anyOf)) return undefined;
+  const types = new Set<string>();
+  for (const member of schema.anyOf) {
+    const memberTypes = propertyTypes(member);
+    if (memberTypes === undefined) return undefined;
+    for (const type of memberTypes) types.add(type);
+  }
+  return types;
+}
+
+// A variant may narrow a property its base declares, as an idle state's
+// `stopReason` is a nullable string narrowed to each known reason.
+function isPropertyRefinement(declared: Schema.Json, refined: Schema.Json): boolean {
+  const declaredTypes = propertyTypes(declared);
+  const refinedTypes = propertyTypes(refined);
+  return (
+    declaredTypes !== undefined &&
+    refinedTypes !== undefined &&
+    [...refinedTypes].every((type) => declaredTypes.has(type))
+  );
+}
+
 const isAnnotationKeyword = (key: string): boolean =>
   ["description", "title", "$comment", "default", "examples", "discriminator"].includes(key) ||
   key.startsWith("x-");
@@ -316,10 +446,13 @@ function flattenCompositions(
 ): Schema.Json {
   if (isJsonArray(value)) return value.map((child) => flattenCompositions(child, definitions));
   if (value === null || typeof value !== "object") return value;
-  const normalized = Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, flattenCompositions(child, definitions)]),
-  );
-  const { allOf, anyOf, ...base } = normalized;
+  const normalized = mapSubschemas(value, (child) => flattenCompositions(child, definitions));
+  const { allOf, anyOf, oneOf, ...rest } = normalized;
+  // Exclusive alternatives, such as an elicitation's session or request scope,
+  // accept the same values as a union, which Effect can intersect.
+  const exclusiveOneOf =
+    isJsonArray(oneOf) && hasExclusiveBranches(oneOf, definitions) ? oneOf : undefined;
+  const base = oneOf !== undefined && exclusiveOneOf === undefined ? { ...rest, oneOf } : rest;
   const merge = (left: Schema.Json, right: Schema.Json): Schema.Json => {
     if (
       left === null ||
@@ -357,9 +490,13 @@ function flattenCompositions(
       !isJsonArray(right.properties)
     ) {
       for (const key of Object.keys(left.properties)) {
+        const declared = left.properties[key];
+        const refined = right.properties[key];
         if (
-          right.properties[key] !== undefined &&
-          JSON.stringify(left.properties[key]) !== JSON.stringify(right.properties[key])
+          declared !== undefined &&
+          refined !== undefined &&
+          JSON.stringify(declared) !== JSON.stringify(refined) &&
+          !isPropertyRefinement(declared, refined)
         ) {
           throw new Error(`Unsupported overlapping ACP schema property: ${key}`);
         }
@@ -378,10 +515,82 @@ function flattenCompositions(
   };
   let combined: Schema.Json = base;
   if (isJsonArray(allOf)) for (const part of allOf) combined = merge(combined, part);
-  if (isJsonArray(anyOf) && !isJsonArray(allOf) && Object.keys(base).every(isAnnotationKeyword)) {
-    return { ...base, anyOf };
+  const alternatives = [anyOf, exclusiveOneOf].filter(isJsonArray);
+  if (
+    alternatives.length === 1 &&
+    !isJsonArray(allOf) &&
+    Object.keys(base).every(isAnnotationKeyword)
+  ) {
+    return { ...base, anyOf: alternatives[0]! };
   }
-  return isJsonArray(anyOf) ? merge(combined, { anyOf }) : combined;
+  for (const branches of alternatives) combined = merge(combined, { anyOf: branches });
+  return combined;
+}
+
+// Two alternatives are exclusive when one requires a key the other forbids.
+function hasExclusiveBranches(
+  branches: ReadonlyArray<Schema.Json>,
+  definitions: Readonly<Record<string, Schema.Json>>,
+): boolean {
+  const keys = branches.map((branch) => {
+    let resolved = branch;
+    while (
+      resolved !== null &&
+      typeof resolved === "object" &&
+      !isJsonArray(resolved) &&
+      typeof resolved.$ref === "string"
+    ) {
+      const target = definitions[resolved.$ref.replace("#/$defs/", "")];
+      if (target === undefined) throw new Error(`Missing ACP definition ${resolved.$ref}`);
+      resolved = flattenCompositions(normalizeSchemaKeywords(target), definitions);
+    }
+    if (resolved === null || typeof resolved !== "object" || isJsonArray(resolved))
+      return undefined;
+    const properties = resolved.properties;
+    return {
+      required: new Set(
+        isJsonArray(resolved.required)
+          ? resolved.required.filter((key) => typeof key === "string")
+          : [],
+      ),
+      forbidden: new Set(
+        properties !== null && typeof properties === "object" && !isJsonArray(properties)
+          ? Object.entries(properties)
+              .filter(([, schema]) => JSON.stringify(schema) === '{"not":{}}')
+              .map(([key]) => key)
+          : [],
+      ),
+    };
+  });
+  return keys.every(
+    (left, index) =>
+      left !== undefined &&
+      keys
+        .slice(index + 1)
+        .every(
+          (right) =>
+            right !== undefined &&
+            ([...left.required].some((key) => right.forbidden.has(key)) ||
+              [...right.required].some((key) => left.forbidden.has(key))),
+        ),
+  );
+}
+
+// Effect keeps undeclared fields of an object that does not mention
+// `additionalProperties`. ACP receivers ignore unknown fields, so decoded
+// protocol values keep only declared fields unless a schema opts into more.
+function closeDeclaredObjects(value: Schema.Json): Schema.Json {
+  if (isJsonArray(value)) return value.map(closeDeclaredObjects);
+  if (value === null || typeof value !== "object") return value;
+  const closed = mapSubschemas(value, closeDeclaredObjects);
+  const properties = closed.properties;
+  return properties !== null &&
+    typeof properties === "object" &&
+    !isJsonArray(properties) &&
+    Object.keys(properties).length > 0 &&
+    closed.additionalProperties === undefined
+    ? { ...closed, additionalProperties: false }
+    : closed;
 }
 
 function generateSchemaOutput(
@@ -391,7 +600,9 @@ function generateSchemaOutput(
   const normalizedDefinitions = Object.fromEntries(
     Object.entries(upstreamSchema.$defs).map(([name, schema]) => [
       name,
-      flattenCompositions(normalizeSchemaKeywords(schema), upstreamSchema.$defs),
+      closeDeclaredObjects(
+        flattenCompositions(normalizeSchemaKeywords(schema), upstreamSchema.$defs),
+      ),
     ]),
   );
   const sortedEntries = Object.entries(normalizedDefinitions).toSorted(([left], [right]) =>
@@ -484,10 +695,15 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
   );
 
   const { generatedDir } = yield* getGeneratedPaths();
+  // The workspace formatter ignores vendored packages, so format the generated
+  // files with the formatter's defaults instead of the repository config.
+  const fs = yield* FileSystem.FileSystem;
+  const formatterConfig = yield* fs.makeTempFileScoped({ suffix: ".json" });
+  yield* fs.writeFileString(formatterConfig, "{}\n");
   yield* Effect.service(ChildProcessSpawner.ChildProcessSpawner).pipe(
     Effect.flatMap((spawner) =>
       spawner.spawn(
-        ChildProcess.make("pnpm", ["exec", "vp", "fmt", generatedDir], {
+        ChildProcess.make("vp", ["fmt", "--config", formatterConfig, generatedDir, "--write"], {
           stdin: "ignore",
           stdout: "inherit",
           stderr: "inherit",
@@ -500,7 +716,7 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
         ? Effect.void
         : Effect.fail<GenerateCommandError>({
             _tag: "GenerateCommandError",
-            message: `oxfmt failed with exit code ${code}`,
+            message: `vp fmt failed with exit code ${code}`,
           }),
     ),
   );

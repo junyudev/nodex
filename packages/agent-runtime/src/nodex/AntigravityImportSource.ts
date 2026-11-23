@@ -297,9 +297,7 @@ export function foldAntigravityImportReplay(input: ReplayInput): ThreadItemEntry
                 .join("\n")
             : plan.kind === "markdown"
               ? plan.markdown
-              : plan.kind === "file"
-                ? plan.uri
-                : null;
+              : null;
         if (text === null) continue;
         const previous = plans.get(id);
         if (previous) previous.text = text;

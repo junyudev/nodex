@@ -223,7 +223,6 @@ export type AcpPlanUpdate =
       }>;
     }
   | { readonly nativePlanId: string; readonly kind: "markdown"; readonly markdown: string }
-  | { readonly nativePlanId: string; readonly kind: "file"; readonly uri: string }
   | { readonly nativePlanId: string; readonly kind: "unknown"; readonly contentType: string }
   | { readonly nativePlanId: string; readonly kind: "removed" };
 
@@ -512,6 +511,8 @@ function normalizeToolCallStatus(
 ): "pending" | "inProgress" | "completed" | "failed" | undefined {
   switch (raw) {
     case "pending":
+    // Paused work has started but waits, like work that has not begun yet.
+    case "paused":
       return "pending";
     case "in_progress":
     case "inProgress":
@@ -1620,16 +1621,6 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
           payload: { nativePlanId, kind: "markdown", markdown: upd.plan.content },
           rawPayload: params,
         });
-      } else if (
-        upd.plan.type === "file" &&
-        "uri" in upd.plan &&
-        typeof upd.plan.uri === "string"
-      ) {
-        events.push({
-          _tag: "PlanUpdated",
-          payload: { nativePlanId, kind: "file", uri: upd.plan.uri },
-          rawPayload: params,
-        });
       } else {
         events.push({
           _tag: "PlanUpdated",
@@ -1703,17 +1694,20 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
           return text === undefined || text.length === 0 ? [] : [text];
         })
         .join("\n");
+      // An omitted status keeps the compaction's previous one.
       const status =
-        upd.status === "completed"
-          ? ("completed" as const)
-          : upd.status === "failed" || upd.status === "cancelled"
-            ? ("failed" as const)
-            : ("inProgress" as const);
+        upd.status === undefined
+          ? undefined
+          : upd.status === "completed"
+            ? ("completed" as const)
+            : upd.status === "failed" || upd.status === "cancelled"
+              ? ("failed" as const)
+              : ("inProgress" as const);
       const toolCall = makeToolCallState({
         toolCallId: `acp-compaction:${upd.compactionId}`,
         title: "Compact context",
         kind: "think",
-        status,
+        ...(status === undefined ? {} : { status }),
         rawOutput: (upd.error ?? summary) || undefined,
         _meta: upd._meta,
       });

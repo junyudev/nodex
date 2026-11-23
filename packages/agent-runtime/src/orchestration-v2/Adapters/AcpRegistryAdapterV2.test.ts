@@ -334,147 +334,149 @@ describe("AcpRegistryAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.live("opens a real ACP child process resolved from registry configuration", () =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const host = yield* ProviderHost.ProviderHost;
-      const mockAgentPath = yield* path.fromFileUrl(
-        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-      );
-      const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
-        cacheDir: host.paths.providerStatusCacheDir,
-        toolsDir: host.paths.baseDir + "/tools",
-        registryUrl,
-      });
-      const settings = yield* decodeAcpRegistryAdapterSettings({
-        agentId: "fixture-agent",
-        commandPath: process.execPath,
-        authMethodId: "test",
-      });
-      let startupActive = false;
-      let startupCount = 0;
-      const instanceId = ProviderInstanceId.make("acp-registry-fixture");
-      const commandsPublished = yield* Deferred.make<{
-        readonly instanceId: ProviderInstanceId;
-        readonly commands: AcpRegistryAvailableCommands;
-      }>();
-      const configurationPublished = yield* Deferred.make<AcpRegistryLiveConfiguration>();
-      const adapter = yield* makeAcpRegistryAdapterV2({
-        selfInvocation: yield* resolveSelfInvocation(),
-        instanceId,
-        settings,
-        environment: {
-          NODEX_ACP_SESSION_LIFECYCLE: "1",
-          NODEX_ACP_COMMAND_ADVERTISEMENT_DELAY_MS: "750",
-        },
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            Layer.mock(AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator)({
-              withForegroundStartup: (agentId, effect) =>
-                Effect.acquireUseRelease(
-                  Effect.sync(() => {
-                    assert.equal(agentId, "fixture-agent");
-                    startupActive = true;
-                    startupCount += 1;
-                  }),
-                  () => effect,
-                  () =>
+  it.live.each([
+    { advertisement: "update", environment: { NODEX_ACP_COMMAND_ADVERTISEMENT_DELAY_MS: "750" } },
+    { advertisement: "setup", environment: { NODEX_ACP_SETUP_COMMANDS: "1" } },
+  ])(
+    "opens a real ACP child process resolved from registry configuration (commands by $advertisement)",
+    ({ environment }) =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const host = yield* ProviderHost.ProviderHost;
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
+          cacheDir: host.paths.providerStatusCacheDir,
+          toolsDir: host.paths.baseDir + "/tools",
+          registryUrl,
+        });
+        const settings = yield* decodeAcpRegistryAdapterSettings({
+          agentId: "fixture-agent",
+          commandPath: process.execPath,
+          authMethodId: "test",
+        });
+        let startupActive = false;
+        let startupCount = 0;
+        const instanceId = ProviderInstanceId.make("acp-registry-fixture");
+        const commandsPublished = yield* Deferred.make<{
+          readonly instanceId: ProviderInstanceId;
+          readonly commands: AcpRegistryAvailableCommands;
+        }>();
+        const configurationPublished = yield* Deferred.make<AcpRegistryLiveConfiguration>();
+        const adapter = yield* makeAcpRegistryAdapterV2({
+          selfInvocation: yield* resolveSelfInvocation(),
+          instanceId,
+          settings,
+          environment: { NODEX_ACP_SESSION_LIFECYCLE: "1", ...environment },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.mock(AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator)({
+                withForegroundStartup: (agentId, effect) =>
+                  Effect.acquireUseRelease(
                     Effect.sync(() => {
-                      startupActive = false;
+                      assert.equal(agentId, "fixture-agent");
+                      startupActive = true;
+                      startupCount += 1;
                     }),
-                ),
-              runBackgroundProbe: (_agentId, effect) => effect.pipe(Effect.map(Option.some)),
-              withSessionMutation: (effect) => effect,
-              clearAvailableCommands: () => Effect.void,
-              publishAvailableCommands: (publishedInstanceId, commands) =>
-                Deferred.succeed(commandsPublished, {
-                  instanceId: publishedInstanceId,
-                  commands,
-                }).pipe(Effect.asVoid),
-              getAvailableCommands: () => Effect.succeed(Option.none()),
-              watchAvailableCommands: () => Effect.never,
-              clearLiveConfiguration: () => Effect.void,
-              publishLiveConfiguration: (_publishedInstanceId, configuration) =>
-                Deferred.succeed(configurationPublished, configuration).pipe(Effect.asVoid),
-              getLiveConfiguration: () => Effect.succeed(Option.none()),
-              watchLiveConfiguration: () => Effect.never,
-              requestUrlAuthentication: () => Effect.succeed(false),
-              acceptUrlAuthentication: () => Effect.succeed(false),
-              getUrlAuthAction: () => Effect.succeed(Option.none()),
-              watchUrlAuthAction: () => Effect.never,
-            }),
-            Layer.mock(AcpRegistrySupport.AcpRegistryCatalog)({
-              resolve: (configuredSettings, cwd, environment) =>
-                Effect.sync(() => assert.isTrue(startupActive)).pipe(
-                  Effect.andThen(resolver.resolve(configuredSettings, cwd, environment)),
-                  Effect.map((resolved) => ({
-                    ...resolved,
-                    spawn: {
-                      ...resolved.spawn,
-                      args: [mockAgentPath],
-                    },
-                  })),
-                ),
-            }),
+                    () => effect,
+                    () =>
+                      Effect.sync(() => {
+                        startupActive = false;
+                      }),
+                  ),
+                runBackgroundProbe: (_agentId, effect) => effect.pipe(Effect.map(Option.some)),
+                withSessionMutation: (effect) => effect,
+                clearAvailableCommands: () => Effect.void,
+                publishAvailableCommands: (publishedInstanceId, commands) =>
+                  Deferred.succeed(commandsPublished, {
+                    instanceId: publishedInstanceId,
+                    commands,
+                  }).pipe(Effect.asVoid),
+                getAvailableCommands: () => Effect.succeed(Option.none()),
+                watchAvailableCommands: () => Effect.never,
+                clearLiveConfiguration: () => Effect.void,
+                publishLiveConfiguration: (_publishedInstanceId, configuration) =>
+                  Deferred.succeed(configurationPublished, configuration).pipe(Effect.asVoid),
+                getLiveConfiguration: () => Effect.succeed(Option.none()),
+                watchLiveConfiguration: () => Effect.never,
+                requestUrlAuthentication: () => Effect.succeed(false),
+                acceptUrlAuthentication: () => Effect.succeed(false),
+                getUrlAuthAction: () => Effect.succeed(Option.none()),
+                watchUrlAuthAction: () => Effect.never,
+              }),
+              Layer.mock(AcpRegistrySupport.AcpRegistryCatalog)({
+                resolve: (configuredSettings, cwd, environment) =>
+                  Effect.sync(() => assert.isTrue(startupActive)).pipe(
+                    Effect.andThen(resolver.resolve(configuredSettings, cwd, environment)),
+                    Effect.map((resolved) => ({
+                      ...resolved,
+                      spawn: {
+                        ...resolved.spawn,
+                        args: [mockAgentPath],
+                      },
+                    })),
+                  ),
+              }),
+            ),
           ),
-        ),
-      );
-      const threadId = ThreadId.make("thread-acp-registry-fixture");
-      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        cwd: process.cwd(),
-      });
-      const modelSelection = { instanceId, model: "default" } as const;
-      const runtime = yield* adapter.openSession({
-        threadId,
-        providerSessionId: ProviderSessionId.make("provider-session-acp-registry-fixture"),
-        modelSelection,
-        runtimePolicy,
-      });
-      const providerThread = yield* runtime.ensureThread({
-        threadId,
-        modelSelection,
-        runtimePolicy,
-      });
+        );
+        const threadId = ThreadId.make("thread-acp-registry-fixture");
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "default" } as const;
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-acp-registry-fixture"),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
 
-      assert.equal(runtime.providerSession.driver, "acpRegistry");
-      assert.equal(startupCount, 1);
-      assert.isFalse(startupActive);
-      assert.equal(providerThread.nativeThreadRef?.nativeId, "mock-session-1");
-      assert.equal(providerThread.nativeMetadata?.itemIdentityVersion, 2);
-      assert.isTrue(runtime.providerSession.capabilities.threads.canReadThreadSnapshot);
-      assert.isTrue(runtime.providerSession.capabilities.threads.canForkThread);
-      assert.deepEqual(yield* Deferred.await(commandsPublished), {
-        instanceId,
-        commands: {
-          slashCommands: [
-            {
-              name: "review",
-              description: "Review the current changes",
-              input: { hint: "focus" },
-            },
-          ],
-          skills: [
-            {
-              name: "workspace-skill",
-              description: "Run the workspace skill",
-              path: "acp://skill/workspace-skill",
-              scope: "agent",
-              enabled: true,
-            },
-          ],
-        },
-      });
-      const configuration = yield* Deferred.await(configurationPublished);
-      assert.deepEqual(configuration.inputModalities, ["text"]);
-      assert.equal(configuration.currentModelId, "default");
-      assert.deepInclude(configuration.models[0], {
-        id: "default",
-        name: "Auto",
-        description: null,
-      });
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
+        assert.equal(runtime.providerSession.driver, "acpRegistry");
+        assert.equal(startupCount, 1);
+        assert.isFalse(startupActive);
+        assert.equal(providerThread.nativeThreadRef?.nativeId, "mock-session-1");
+        assert.equal(providerThread.nativeMetadata?.itemIdentityVersion, 2);
+        assert.isTrue(runtime.providerSession.capabilities.threads.canReadThreadSnapshot);
+        assert.isTrue(runtime.providerSession.capabilities.threads.canForkThread);
+        assert.deepEqual(yield* Deferred.await(commandsPublished), {
+          instanceId,
+          commands: {
+            slashCommands: [
+              {
+                name: "review",
+                description: "Review the current changes",
+                input: { hint: "focus" },
+              },
+            ],
+            skills: [
+              {
+                name: "workspace-skill",
+                description: "Run the workspace skill",
+                path: "acp://skill/workspace-skill",
+                scope: "agent",
+                enabled: true,
+              },
+            ],
+          },
+        });
+        const configuration = yield* Deferred.await(configurationPublished);
+        assert.deepEqual(configuration.inputModalities, ["text"]);
+        assert.equal(configuration.currentModelId, "default");
+        assert.deepInclude(configuration.models[0], {
+          id: "default",
+          name: "Auto",
+          description: null,
+        });
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 });

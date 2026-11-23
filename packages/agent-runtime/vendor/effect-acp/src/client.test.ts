@@ -1360,7 +1360,7 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
             encodeJsonl(PromptResponse, {
               jsonrpc: "2.0",
               id: decodedPrompt.id,
-              result: {},
+              result: { messageId: "grok-user-message-1" },
             }),
             encodeJsonl(SessionUpdateNotification, {
               jsonrpc: "2.0",
@@ -1491,6 +1491,82 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
         originalSessionUpdate: "timeline_update",
         raw: { sessionUpdate: "timeline_update", entries: [] },
       });
+    }),
+  );
+
+  it.effect("normalizes v2 child sessions and setup commands", () =>
+    Effect.gen(function* () {
+      const handle = yield* makeHandle({ ACP_MOCK_CHILD_SESSIONS: "1" });
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(AcpClient.layerChildProcess(handle), scope);
+      const updates = yield* Ref.make<Array<AcpCompat.SessionNotification>>([]);
+
+      const session = yield* Effect.gen(function* () {
+        const acp = yield* AcpClient.AcpClient;
+        yield* acp.handleRequestPermission(() =>
+          Effect.succeed({ outcome: { outcome: "selected", optionId: "allow" } }),
+        );
+        yield* acp.handleElicitation(() => Effect.succeed({ action: "decline" }));
+        yield* acp.handleUnknownExtRequest(() => Effect.succeed({}));
+        yield* acp.handleSessionUpdate((update) =>
+          Ref.update(updates, (current) => [...current, update]),
+        );
+        yield* acp.agent.initialize({
+          protocolVersion: 2,
+          clientCapabilities: {},
+          clientInfo: { name: "effect-acp-test", version: "0.0.0" },
+        });
+        const session = yield* acp.agent.createSession({ cwd: process.cwd(), mcpServers: [] });
+        yield* acp.agent.prompt({
+          sessionId: session.sessionId,
+          prompt: [{ type: "text", text: "delegate" }],
+        });
+        return session;
+      }).pipe(Effect.provide(context), Effect.ensuring(Scope.close(scope, Exit.void)));
+
+      // Skills are invoked as content, not typed as a command.
+      assert.deepEqual(session.availableCommands, [
+        {
+          name: "review",
+          description: "Review the change",
+          input: { type: "text", hint: "What to focus on" },
+        },
+      ]);
+      const received = (yield* Ref.get(updates)).map(({ update }) => update);
+      assert.deepEqual(received.slice(0, 5), [
+        {
+          sessionUpdate: "subagent_update",
+          sessionId: "child-1",
+          title: "Research",
+          state: { state: "running" },
+        },
+        {
+          sessionUpdate: "subagent_update",
+          sessionId: "child-1",
+          title: "Research",
+          state: {
+            state: "idle",
+            stopReason: "error",
+            error: { code: -32603, message: "Child failed" },
+          },
+        },
+        // A state Nodex does not know is shown as busy, never as idle.
+        {
+          sessionUpdate: "subagent_update",
+          sessionId: "child-1",
+          title: "Research",
+          state: { state: "running" },
+        },
+        {
+          sessionUpdate: "session_message",
+          messageId: "delegation-1",
+          senderSessionId: "mock-session-1",
+          content: [{ type: "text", text: "Find the failing test" }],
+        },
+        { sessionUpdate: "replay_complete" },
+      ]);
+      // A known update Nodex does not present is not mistaken for a future one.
+      assert.equal(received[5]?.sessionUpdate, "cursor_update");
     }),
   );
 });
@@ -1670,13 +1746,12 @@ it.effect("normalizes ACP v1 session notices and null tool names to v2 semantics
       title: "MCP server unavailable",
       description: "Continuing without it.",
     } as const;
-    const untitled = { sessionUpdate: "notice", severity: "info" } as const;
     const toolUpdate = {
       sessionUpdate: "tool_call_update",
       toolCallId: "c",
       status: "completed",
     };
-    for (const update of [notice, untitled, { ...toolUpdate, name: null }]) {
+    for (const update of [notice, { ...toolUpdate, name: null }]) {
       yield* Queue.offer(
         input,
         yield* encodeJsonl(SessionUpdateNotification, {
@@ -1686,16 +1761,12 @@ it.effect("normalizes ACP v1 session notices and null tool names to v2 semantics
         }),
       );
     }
-    const received = yield* acp.raw.notifications.pipe(Stream.take(3), Stream.runCollect);
+    const received = yield* acp.raw.notifications.pipe(Stream.take(2), Stream.runCollect);
     assert.deepEqual(
       Array.from(received, (event) =>
         event._tag === "SessionUpdate" ? event.params.update : undefined,
       ),
-      [
-        notice,
-        { sessionUpdate: "_unknown", originalSessionUpdate: "notice", raw: untitled },
-        toolUpdate,
-      ],
+      [notice, toolUpdate],
     );
     yield* Scope.close(scope, Exit.void);
   }),

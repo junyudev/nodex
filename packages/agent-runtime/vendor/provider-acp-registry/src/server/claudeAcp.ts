@@ -56,61 +56,39 @@ export function extractClaudeSubagentUpdate(
   };
 }
 
-const decodeChildState = Schema.decodeUnknownOption(
-  Schema.Struct({
-    sessionId: Schema.String,
-    state: Schema.Struct({
-      state: Schema.String,
-      stopReason: Schema.optionalKey(Schema.NullOr(Schema.String)),
-      error: Schema.optionalKey(Schema.NullOr(Schema.Struct({ message: Schema.String }))),
-    }),
-  }),
-);
-const decodeDelegation = Schema.decodeUnknownOption(
-  Schema.Struct({
-    messageId: Schema.String,
-    senderSessionId: Schema.optionalKey(Schema.String),
-    content: Schema.Array(
-      Schema.Struct({ type: Schema.String, text: Schema.optionalKey(Schema.String) }),
-    ),
-  }),
-);
-
 // Claude's session_message id is the Agent/Task or SendMessage tool-use id.
 export function extractClaudeSubagentSessionEvent(
   notification: AcpSchema.SessionNotification,
 ): AcpSubagentSessionEvent | undefined {
   const update = notification.update;
-  if (update.sessionUpdate !== "_unknown") return;
-  if (update.originalSessionUpdate === "subagent_update") {
-    const child = decodeChildState(update.raw);
-    if (Option.isNone(child)) return;
-    const { sessionId, state } = child.value;
+  if (update.sessionUpdate === "subagent_update") {
+    const state = update.state;
+    if (state == null) return;
     return {
       type: "state",
-      childSessionId: sessionId,
+      childSessionId: update.sessionId,
       parentSessionId: notification.sessionId,
       status:
-        state.state === "running" || state.state === "requires_action"
-          ? "running"
-          : state.stopReason === "error"
+        state.state === "idle"
+          ? state.stopReason === "error"
             ? "failed"
-            : state.stopReason === "cancelled" || state.state === "unknown"
+            : state.stopReason === "cancelled"
               ? "cancelled"
-              : "completed",
-      result: state.error?.message ?? null,
+              : "completed"
+          : state.state === "unknown"
+            ? "cancelled"
+            : "running",
+      result: state.state === "idle" ? (state.error?.message ?? null) : null,
     };
   }
-  if (update.originalSessionUpdate === "session_message") {
-    const delegation = decodeDelegation(update.raw);
-    if (Option.isNone(delegation)) return;
+  if (update.sessionUpdate === "session_message") {
     return {
       type: "delegation",
       childSessionId: notification.sessionId,
-      parentSessionId: delegation.value.senderSessionId ?? null,
-      delegationId: delegation.value.messageId,
-      prompt: delegation.value.content
-        .flatMap((block) => (block.type === "text" && block.text !== undefined ? [block.text] : []))
+      parentSessionId: update.senderSessionId ?? null,
+      delegationId: update.messageId,
+      prompt: (update.content ?? [])
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
         .join("\n"),
     };
   }
