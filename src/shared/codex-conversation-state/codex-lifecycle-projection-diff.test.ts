@@ -519,6 +519,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     const started = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant-alias",
       text: "",
       phase: null,
@@ -603,6 +604,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     const assistant = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant-1",
       text: "",
       phase: null,
@@ -701,6 +703,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     const command = buildCommand("running-command");
     const mcp = {
       type: "mcpToolCall",
+      environmentId: null,
       id: "running-mcp",
       server: "fixture",
       tool: "lookup",
@@ -741,6 +744,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     const assistant = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "last-assistant",
       text: "Done",
       phase: "final_answer",

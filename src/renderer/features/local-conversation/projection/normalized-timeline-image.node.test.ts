@@ -15,6 +15,7 @@ import { resolveTimelineWholeItemPresentation } from "./timeline-whole-item-pres
 
 const agent = (id: string): ThreadItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text: id,
   phase: "commentary",

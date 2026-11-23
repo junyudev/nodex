@@ -360,6 +360,7 @@ function resolveResponseTypeName(
     "account/gatewayOAuth/cancel": "GatewayOAuthCancelResponse",
     "account/logout": "LogoutAccountResponse",
     "account/rateLimits/read": "GetAccountRateLimitsResponse",
+    "account/securitySetup/read": "GetAccountSecuritySetupResponse",
     "account/usage/read": "GetAccountTokenUsageResponse",
     "account/workspaceMessages/read": "GetWorkspaceMessagesResponse",
     "config/batchWrite": "ConfigWriteResponse",
@@ -367,6 +368,7 @@ function resolveResponseTypeName(
     "config/value/write": "ConfigWriteResponse",
     "configRequirements/read": "ConfigRequirementsReadResponse",
     "externalAgentConfig/import/readHistories": "ExternalAgentConfigImportHistoriesReadResponse",
+    "modelProvider/default/set": "ConfigWriteResponse",
   };
 
   const override = overrides[method];

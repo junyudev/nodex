@@ -37,6 +37,8 @@ describe("providerFailureCause", () => {
     ["status 401 behind a connection wrapper", { code: "httpConnectionFailed", httpStatusCode: 401 }, "authentication"],
     ["typed context budget", { code: "context_budget_exhausted" }, "context_budget"],
     ["policy refusal", { code: "cyberPolicy" }, "refused"],
+    ["biology policy refusal", { code: "bioPolicy" }, "refused"],
+    ["inference hook denial", { code: "inferenceHookDenied" }, "refused"],
     ["invalid request status", { class: "transport_error", httpStatusCode: 400 }, "refused"],
     ["validation class beats a 503", { class: "validation_error", httpStatusCode: 503 }, "refused"],
     ["permission class beats overload", { class: "permission_error", code: "serverOverloaded" }, "refused"],

@@ -59,6 +59,7 @@ const turnParams = (threadId: string): CodexCanonicalTurnParams => ({
   input: [],
   approvalPolicy: "on-request",
   approvalsReviewer: "user",
+  environments: null,
   sandboxPolicy: {
     type: "workspaceWrite",
     writableRoots: [],

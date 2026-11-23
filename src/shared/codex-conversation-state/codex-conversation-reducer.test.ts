@@ -41,6 +41,7 @@ function buildTurnParams(threadId = THREAD_ID): CodexCanonicalTurnParams {
     input: [],
     approvalPolicy: "on-request",
     approvalsReviewer: "user",
+    environments: null,
     sandboxPolicy: {
       type: "workspaceWrite",
       writableRoots: [],
@@ -68,6 +69,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     extra: null,
     sessionId: "session_c03",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "C-03 lifecycle fixture",
     ephemeral: false,
@@ -232,6 +234,7 @@ describe("provider recovery lifecycle", () => {
 
   const message: Extract<ThreadItem, { type: "agentMessage" }> = {
     type: "agentMessage",
+    moderation: null,
     id: "answer",
     text: "",
     phase: "commentary",
@@ -446,6 +449,7 @@ describe("canonical item lifecycle reducer", () => {
   test("async question delivery never starts final-answer timing while the Agent continues", () => {
     const item = {
       type: "agentMessage",
+      moderation: null,
       id: "question",
       text: "Which scope?",
       phase: "final_answer",
@@ -703,6 +707,7 @@ describe("canonical item lifecycle reducer", () => {
     const agentMessage = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "shared-id",
       text: "final",
       phase: "final_answer",
@@ -851,6 +856,7 @@ describe("canonical item lifecycle reducer", () => {
     const started = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "agent-message",
       text: "",
       phase: null,
@@ -970,6 +976,7 @@ describe("canonical item lifecycle reducer", () => {
     const assistant = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant-before-turn-started",
       text: "",
       phase: null,
@@ -1395,7 +1402,12 @@ describe("canonical item lifecycle reducer", () => {
           text_elements: [],
         },
       ];
-      const raw = { id: "native-row", clientUserMessageId: "native-client", input };
+      const raw = {
+        id: "native-row",
+        clientUserMessageId: "native-client",
+        input,
+        responsesapiClientMetadata: null,
+      };
       const pending: CodexCanonicalSteeringUserMessageItem = {
         type: "steeringUserMessage",
         id: "handoff-steer",
@@ -1714,6 +1726,7 @@ describe("canonical item lifecycle reducer", () => {
     const agent = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "terminal-turn-agent",
       text: "",
       phase: null,
@@ -1835,6 +1848,7 @@ test("records resident item mutations without changing the canonical overlay", (
 test("retains independent assistant start timestamps across repeats and terminal notifications", () => {
   const message = (id: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
     type: "agentMessage",
+    moderation: null,
     id,
     text: "",
     phase: "commentary",
@@ -1884,6 +1898,7 @@ test("native response timing and work duration survive reload independently of o
   };
   const response: ThreadItem = {
     type: "agentMessage",
+    moderation: null,
     id: "response",
     text: "Done",
     phase: "final_answer",

@@ -563,7 +563,6 @@ export const make: Effect.Effect<
         );
       }
     }
-    if (request.method === "currentTime/read") return ProtocolRequestPending;
     if (isCodexOneShotServerRequest(request)) return yield* oneShot.handle(request);
     if (request.method === "inbox-items-create") return { items: [] };
     const threadId = threadIdForRequest(request);

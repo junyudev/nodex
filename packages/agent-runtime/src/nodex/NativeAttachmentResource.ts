@@ -87,7 +87,7 @@ export function nativeSessionMediaResources(item: ThreadItem): readonly NativeMe
           {
             id: `content:${index}`,
             media: "audio",
-            resource: { name: "Tool audio", source: part.audio_url },
+            resource: "audio_url" in part ? { name: "Tool audio", source: part.audio_url } : null,
           },
         ];
       return [];

@@ -43,6 +43,7 @@ const completedTurn = (id: string): Turn => ({
 const agentItem = (id: string): ThreadItem => ({
   questions: null,
   type: "agentMessage",
+  moderation: null,
   id,
   text: id,
   phase: null,

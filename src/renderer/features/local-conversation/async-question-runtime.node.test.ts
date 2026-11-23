@@ -15,6 +15,7 @@ import type {
 
 const question: CodexCanonicalItem = {
   type: "agentMessage",
+  moderation: null,
   id: "ask",
   text: "Choose",
   delivery: "async",

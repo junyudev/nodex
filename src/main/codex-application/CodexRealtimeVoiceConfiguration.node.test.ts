@@ -115,6 +115,7 @@ test("uses the native supported V1 voice catalog and maps account-only aliases",
 
 const assistant = (text: string): CodexCanonicalItem => ({
   type: "agentMessage",
+  moderation: null,
   id: text,
   text,
   phase: null,

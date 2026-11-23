@@ -216,6 +216,7 @@ describe("native realtime history in the production virtualizer", () => {
   test("keeps native messages on either side of a voice item in rollout order", async () => {
     const before = {
       type: "agentMessage",
+      moderation: null,
       id: "before",
       text: "Before voice",
       phase: "final_answer",
@@ -267,6 +268,7 @@ describe("native realtime history in the production virtualizer", () => {
     async (type) => {
       const before = {
         type: "agentMessage",
+        moderation: null,
         id: "before",
         text: "Before artifact",
         phase: "final_answer",
@@ -393,6 +395,7 @@ describe("native realtime history in the production virtualizer", () => {
   test("renders two indexed promotions of one native assistant at their separate timeline positions", async () => {
     const artifact = {
       type: "agentMessage",
+      moderation: null,
       id: "artifact",
       text: '::codex-inline-vis{file="chart.html"}\n::codex-inline-vis{file="table.html"}',
       phase: "final_answer",

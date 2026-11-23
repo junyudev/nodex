@@ -29,6 +29,7 @@ function nativeResult(value: Record<string, unknown>): McpItem["result"] {
 function item(overrides: Partial<McpItem> = {}): McpItem {
   return {
     type: "mcpToolCall",
+    environmentId: null,
     id: "call-1",
     server: "nodex_app",
     tool: "automations_update",

@@ -129,7 +129,7 @@ it("preserves an explicit request trace without creating another interaction", a
   expect(spans.map(({ name }) => name)).toEqual(["app_server.renderer_queue_wait"]);
 });
 
-it("classifies server responses as tool or approval traces and skips current time", () => {
+it("classifies server responses as tool or approval traces", () => {
   const tool = startCodexServerResponseInteractionTrace("item/tool/requestOptionPicker");
   expect(tool?.trace).toEqual({
     traceparent: `00-${"1".repeat(32)}-0000000000000002-01`,
@@ -144,7 +144,6 @@ it("classifies server responses as tool or approval traces and skips current tim
   });
   approval?.finish();
 
-  expect(startCodexServerResponseInteractionTrace("currentTime/read")).toBeNull();
   expect(spans.map(({ name }) => name)).toEqual([
     "desktop.tool_response",
     "tool.response",

@@ -77,6 +77,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     extra: null,
     sessionId: "session_c05",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "C-05 command stream fixture",
     ephemeral: false,
@@ -136,6 +137,7 @@ describe("canonical command-execution stream reduction", () => {
     const wrongTypeAfterTarget = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "shared",
       text: "must not mask the command",
       phase: null,

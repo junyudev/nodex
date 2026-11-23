@@ -19,7 +19,6 @@ export type AgentActivityV2RequestIngressEffect =
   | "stored"
   | "stored-with-synthetic-item"
   | "dispatched"
-  | "auto-responded"
   | "ignored";
 
 export type AgentActivityV2RequestSyntheticItem =
@@ -182,7 +181,7 @@ export const agentActivityV2McpElicitationRequest = {
   params: {
     threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
     turnId: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
-    serverName: "fixture_server",
+    serverName: "fixture_server", environmentId: null,
     mode: "openai/form",
     _meta: {
       fixture: true,
@@ -241,14 +240,6 @@ export const agentActivityV2DynamicOptionPickerRequest = {
       submitLabel: "Continue",
       skipLabel: "Skip",
     },
-  },
-} satisfies ServerRequest;
-
-export const agentActivityV2CurrentTimeRequest = {
-  id: 209,
-  method: "currentTime/read",
-  params: {
-    threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
   },
 } satisfies ServerRequest;
 
@@ -562,23 +553,6 @@ export const agentActivityV2OneShotRequestCases = [
     ],
   ),
   buildOneShotRequestCase(
-    "current-time-auto-responded",
-    [requestEvent(agentActivityV2CurrentTimeRequest)],
-    [{
-      requestId: agentActivityV2CurrentTimeRequest.id,
-      method: agentActivityV2CurrentTimeRequest.method,
-      ingress: "auto-responded",
-      syntheticItem: "none",
-      requestProjection: "ignore",
-      resolution: "none",
-    }],
-    [
-      ...REQUEST_INGRESS_EVIDENCE,
-      ...REQUEST_PROJECTION_EVIDENCE,
-      "h59fr3q5.pretty.js:91976-91985 (current-time immediate response)",
-    ],
-  ),
-  buildOneShotRequestCase(
     "auth-refresh-state-ignored",
     [requestEvent(agentActivityV2AuthRefreshRequest)],
     [{
@@ -756,14 +730,6 @@ function expectedEffectForRepresentativeRequest(
         requestProjection: "ignore",
         resolution: "none",
       };
-    case "currentTime/read":
-      return {
-        ...base,
-        ingress: "auto-responded",
-        syntheticItem: "none",
-        requestProjection: "ignore",
-        resolution: "none",
-      };
   }
 }
 
@@ -789,8 +755,6 @@ function requestMatchesCorpusScope(request: ServerRequest): boolean {
     case "applyPatchApproval":
     case "execCommandApproval":
       return request.params.conversationId === AGENT_ACTIVITY_V2_CORPUS_THREAD_ID;
-    case "currentTime/read":
-      return request.params.threadId === AGENT_ACTIVITY_V2_CORPUS_THREAD_ID;
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
       return true;

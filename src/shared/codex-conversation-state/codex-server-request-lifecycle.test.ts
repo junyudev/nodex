@@ -204,8 +204,8 @@ describe("Codex 30751 server-request lifecycle", () => {
     }
   });
 
-  test("executes the seven one-shot corpus rows through the shared reducer", () => {
-    expect(agentActivityV2OneShotRequestCases.length).toBe(7);
+  test("executes the six one-shot corpus rows through the shared reducer", () => {
+    expect(agentActivityV2OneShotRequestCases.length).toBe(6);
     for (const requestCase of agentActivityV2OneShotRequestCases) {
       const requests = requestCase.fixture.events.flatMap((event) =>
         event.type === "request" ? [event.request] : [],
@@ -215,13 +215,11 @@ describe("Codex 30751 server-request lifecycle", () => {
         const result = reduceCodexConversationServerRequest(buildState(), request, context());
         const expected = requestCase.effects[index];
         const expectedDisposition =
-          expected?.ingress === "auto-responded"
-            ? "responded"
-            : expected?.ingress === "dispatched"
-              ? "dispatched"
-              : expected?.ingress === "ignored"
-                ? "ignored"
-                : "stored";
+          expected?.ingress === "dispatched"
+            ? "dispatched"
+            : expected?.ingress === "ignored"
+              ? "ignored"
+              : "stored";
         expect(result.disposition).toBe(expectedDisposition);
       });
     }
@@ -356,6 +354,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "url",
       _meta: { riskLevel: "high", subtitle: "Review" },
       message: "Open",
@@ -366,6 +365,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "codex_apps",
+      environmentId: null,
       mode: "url",
       _meta: {
         _codex_apps: {
@@ -386,6 +386,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "form",
       _meta: {
         codex_approval_kind: "tool_suggestion",
@@ -403,6 +404,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "form",
       _meta: {
         codex_approval_kind: "mcp_tool_call",
@@ -417,6 +419,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "computer-use",
+      environmentId: null,
       mode: "form",
       _meta: { persist: ["session", "always"] },
       message: "Allow Codex to use Safari?",
@@ -426,6 +429,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "browser",
+      environmentId: null,
       mode: "form",
       _meta: { persist: "always", origin: "https://example.invalid" },
       message: "Allow",
@@ -435,6 +439,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "form",
       _meta: null,
       message: "Input",
@@ -470,6 +475,7 @@ describe("Codex 30751 server-request lifecycle", () => {
         threadId: THREAD_ID,
         turnId: TURN_ID,
         serverName: "fixture",
+        environmentId: null,
         mode: "url",
         _meta: null,
         message: "Open",
@@ -482,6 +488,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "future/form",
       _meta: null,
       message: "Unknown form mode",
@@ -520,6 +527,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "url",
       _meta: { riskLevel: null, subtitle: "Review details" },
       message: "Open",
@@ -530,6 +538,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "url",
       _meta: { riskLevel: "medium", subtitle: "Must also be discarded" },
       message: "Open",
@@ -540,6 +549,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "codex_apps",
+      environmentId: null,
       mode: "url",
       _meta: {
         _codex_apps: {
@@ -560,6 +570,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "form",
       _meta: {
         codex_approval_kind: "tool_suggestion",
@@ -577,6 +588,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "form",
       _meta: {
         codex_approval_kind: "mcp_tool_call",
@@ -638,6 +650,7 @@ describe("Codex 30751 server-request lifecycle", () => {
         threadId: THREAD_ID,
         turnId: TURN_ID,
         serverName: "browser-use",
+        environmentId: null,
         mode: "form",
         _meta: {
           codex_approval_kind: "mcp_tool_call",
@@ -656,6 +669,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       buildAgentActivityV2CorpusThread([
         {
           type: "mcpToolCall",
+          environmentId: null,
           id: "messages-send",
           server: "messages",
           tool: "send_message",
@@ -682,6 +696,7 @@ describe("Codex 30751 server-request lifecycle", () => {
         threadId: THREAD_ID,
         turnId: TURN_ID,
         serverName: "messages",
+        environmentId: null,
         mode: "form",
         _meta: { codex_approval_kind: "mcp_tool_call" },
         message: "Allow send",
@@ -705,6 +720,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "openai/form",
       _meta: null,
       message: "Input",
@@ -735,6 +751,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "openai/form",
       _meta: null,
       message: "Pick",
@@ -755,6 +772,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       threadId: THREAD_ID,
       turnId: TURN_ID,
       serverName: "fixture",
+      environmentId: null,
       mode: "openai/form",
       _meta: null,
       message: "Pick",
@@ -865,20 +883,11 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(ordinary.effects[0]?.type).toBe("dispatchDynamicToolCall");
   });
 
-  test("handles one-shot responses, missing turns, private plan replacement, and classification", () => {
+  test("handles missing turns, private plan replacement, and classification", () => {
     const noTurns: CodexCanonicalConversationState = { ...buildState(), turns: [] };
     const permission = reduceCodexConversationServerRequest(
       noTurns,
       agentActivityV2PermissionRequest,
-      context(),
-    );
-    const currentTime = reduceCodexConversationServerRequest(
-      buildState(),
-      {
-        id: 909,
-        method: "currentTime/read",
-        params: { threadId: THREAD_ID },
-      },
       context(),
     );
     const planOne = createCodexCanonicalPlanImplementationRequest(
@@ -903,13 +912,6 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(permission.state.requests.length).toBe(1);
     expect(permission.state.turns.length).toBe(0);
     expect(permission.state.hasUnreadTurn).toBe(true);
-    expect(
-      currentTime.effects[0]?.type === "respond"
-        ? "currentTimeAt" in currentTime.effects[0].response
-          ? currentTime.effects[0].response.currentTimeAt
-          : null
-        : null,
-    ).toBe(1234);
     expect(secondPlan.state.requests.length).toBe(1);
     expect(secondPlan.state.requests[0] === planTwo).toBe(true);
     expect(completedPlan.requests.length).toBe(0);
@@ -1208,6 +1210,7 @@ describe("Codex 30751 server-request lifecycle", () => {
           threadId: THREAD_ID,
           turnId: TURN_ID,
           serverName: "codex_apps",
+          environmentId: null,
           mode: "url",
           message: "Connect",
           url: "https://chatgpt.com/connect",

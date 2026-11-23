@@ -65,6 +65,9 @@ export const CLIENT_REQUEST_METHODS = {
   "threadSection/update": "threadSection/update",
   "threadSection/delete": "threadSection/delete",
   "thread/search": "thread/search",
+  "thread/search/stream": "thread/search/stream",
+  "thread/search/cancel": "thread/search/cancel",
+  "thread/search/stream/cancel": "thread/search/stream/cancel",
   "thread/searchOccurrences": "thread/searchOccurrences",
   "thread/loaded/list": "thread/loaded/list",
   "thread/read": "thread/read",
@@ -74,6 +77,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/items/read": "thread/items/read",
   "thread/guardianReview": "thread/guardianReview",
   "thread/inject_items": "thread/inject_items",
+  "thread/prepareApprovedPlan": "thread/prepareApprovedPlan",
   "skills/list": "skills/list",
   "skills/extraRoots/set": "skills/extraRoots/set",
   "hooks/list": "hooks/list",
@@ -116,12 +120,16 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/realtime/appendSpeech": "thread/realtime/appendSpeech",
   "thread/realtime/stop": "thread/realtime/stop",
   "thread/timeline/list": "thread/timeline/list",
+  "thread/realtime/list": "thread/realtime/list",
   "thread/realtime/listVoices": "thread/realtime/listVoices",
   "review/start": "review/start",
   "model/list": "model/list",
   "account/gatewayOAuth/read": "account/gatewayOAuth/read",
   "account/gatewayOAuth/login": "account/gatewayOAuth/login",
   "account/gatewayOAuth/cancel": "account/gatewayOAuth/cancel",
+  "modelProvider/list": "modelProvider/list",
+  "modelProvider/config/write": "modelProvider/config/write",
+  "modelProvider/default/set": "modelProvider/default/set",
   "modelProvider/capabilities/read": "modelProvider/capabilities/read",
   "experimentalFeature/list": "experimentalFeature/list",
   "permissionProfile/list": "permissionProfile/list",
@@ -156,6 +164,7 @@ export const CLIENT_REQUEST_METHODS = {
   "accountSession/list": "accountSession/list",
   "accountSession/switch": "accountSession/switch",
   "account/logout": "account/logout",
+  "account/securitySetup/read": "account/securitySetup/read",
   "account/rateLimits/read": "account/rateLimits/read",
   "account/rateLimitResetCredit/consume": "account/rateLimitResetCredit/consume",
   "account/usage/read": "account/usage/read",
@@ -202,7 +211,6 @@ export const SERVER_REQUEST_METHODS = {
   "item/tool/call": "item/tool/call",
   "account/chatgptAuthTokens/refresh": "account/chatgptAuthTokens/refresh",
   "attestation/generate": "attestation/generate",
-  "currentTime/read": "currentTime/read",
   applyPatchApproval: "applyPatchApproval",
   execCommandApproval: "execCommandApproval",
 } as const;
@@ -248,6 +256,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "item/plan/delta": "item/plan/delta",
   "command/exec/outputDelta": "command/exec/outputDelta",
   "process/outputDelta": "process/outputDelta",
+  "thread/search/partial": "thread/search/partial",
   "process/exited": "process/exited",
   "item/commandExecution/outputDelta": "item/commandExecution/outputDelta",
   "item/commandExecution/terminalInteraction": "item/commandExecution/terminalInteraction",
@@ -365,6 +374,9 @@ export interface ClientRequestParamsByMethod {
   readonly "threadSection/update": CodexSchema.V2ThreadSectionUpdateParams;
   readonly "threadSection/delete": CodexSchema.V2ThreadSectionDeleteParams;
   readonly "thread/search": CodexSchema.V2ThreadSearchParams;
+  readonly "thread/search/stream": CodexSchema.V2ThreadSearchParams;
+  readonly "thread/search/cancel": CodexSchema.V2ThreadSearchCancelParams;
+  readonly "thread/search/stream/cancel": CodexSchema.V2ThreadSearchCancelParams;
   readonly "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesParams;
   readonly "thread/loaded/list": CodexSchema.V2ThreadLoadedListParams;
   readonly "thread/read": CodexSchema.V2ThreadReadParams;
@@ -374,6 +386,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/items/read": CodexSchema.V2ThreadItemsReadParams;
   readonly "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewParams;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams;
+  readonly "thread/prepareApprovedPlan": CodexSchema.V2ThreadPrepareApprovedPlanParams;
   readonly "skills/list": CodexSchema.V2SkillsListParams;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams;
   readonly "hooks/list": CodexSchema.V2HooksListParams;
@@ -416,12 +429,22 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechParams;
   readonly "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopParams;
   readonly "thread/timeline/list": CodexSchema.V2ThreadTimelineListParams;
+  readonly "thread/realtime/list": CodexSchema.V2ThreadRealtimeListParams;
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams;
   readonly "review/start": CodexSchema.V2ReviewStartParams;
   readonly "model/list": CodexSchema.V2ModelListParams;
-  readonly "account/gatewayOAuth/read": undefined;
-  readonly "account/gatewayOAuth/login": undefined;
+  readonly "account/gatewayOAuth/read":
+    | CodexSchema.V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams
+    | null
+    | undefined;
+  readonly "account/gatewayOAuth/login":
+    | CodexSchema.V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams
+    | null
+    | undefined;
   readonly "account/gatewayOAuth/cancel": undefined;
+  readonly "modelProvider/list": CodexSchema.V2ModelProviderListParams;
+  readonly "modelProvider/config/write": CodexSchema.V2ModelProviderConfigWriteParams;
+  readonly "modelProvider/default/set": CodexSchema.V2ModelProviderDefaultSetParams;
   readonly "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadParams;
   readonly "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListParams;
   readonly "permissionProfile/list": CodexSchema.V2PermissionProfileListParams;
@@ -456,6 +479,7 @@ export interface ClientRequestParamsByMethod {
   readonly "accountSession/list": CodexSchema.V2AccountSessionsListParams;
   readonly "accountSession/switch": CodexSchema.V2AccountSessionsSwitchParams;
   readonly "account/logout": undefined;
+  readonly "account/securitySetup/read": undefined;
   readonly "account/rateLimits/read":
     | CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams
     | undefined;
@@ -555,6 +579,9 @@ export interface ClientRequestResponsesByMethod {
   readonly "threadSection/update": CodexSchema.V2ThreadSectionUpdateResponse;
   readonly "threadSection/delete": CodexSchema.V2ThreadSectionDeleteResponse;
   readonly "thread/search": CodexSchema.V2ThreadSearchResponse;
+  readonly "thread/search/stream": CodexSchema.V2ThreadSearchResponse;
+  readonly "thread/search/cancel": CodexSchema.V2ThreadSearchCancelResponse;
+  readonly "thread/search/stream/cancel": CodexSchema.V2ThreadSearchCancelResponse;
   readonly "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesResponse;
   readonly "thread/loaded/list": CodexSchema.V2ThreadLoadedListResponse;
   readonly "thread/read": CodexSchema.V2ThreadReadResponse;
@@ -564,6 +591,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/items/read": CodexSchema.V2ThreadItemsReadResponse;
   readonly "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewResponse;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse;
+  readonly "thread/prepareApprovedPlan": CodexSchema.V2ThreadPrepareApprovedPlanResponse;
   readonly "skills/list": CodexSchema.V2SkillsListResponse;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse;
   readonly "hooks/list": CodexSchema.V2HooksListResponse;
@@ -606,12 +634,16 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechResponse;
   readonly "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopResponse;
   readonly "thread/timeline/list": CodexSchema.V2ThreadTimelineListResponse;
+  readonly "thread/realtime/list": CodexSchema.V2ThreadRealtimeListResponse;
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse;
   readonly "review/start": CodexSchema.V2ReviewStartResponse;
   readonly "model/list": CodexSchema.V2ModelListResponse;
   readonly "account/gatewayOAuth/read": CodexSchema.V2GatewayOAuthReadResponse;
   readonly "account/gatewayOAuth/login": CodexSchema.V2GatewayOAuthLoginResponse;
   readonly "account/gatewayOAuth/cancel": CodexSchema.V2GatewayOAuthCancelResponse;
+  readonly "modelProvider/list": CodexSchema.V2ModelProviderListResponse;
+  readonly "modelProvider/config/write": CodexSchema.V2ModelProviderConfigWriteResponse;
+  readonly "modelProvider/default/set": CodexSchema.V2ConfigWriteResponse;
   readonly "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadResponse;
   readonly "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListResponse;
   readonly "permissionProfile/list": CodexSchema.V2PermissionProfileListResponse;
@@ -646,6 +678,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "accountSession/list": CodexSchema.V2AccountSessionsResponse;
   readonly "accountSession/switch": CodexSchema.V2AccountSessionsSwitchResponse;
   readonly "account/logout": CodexSchema.V2LogoutAccountResponse;
+  readonly "account/securitySetup/read": CodexSchema.V2GetAccountSecuritySetupResponse;
   readonly "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse;
   readonly "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditResponse;
   readonly "account/usage/read": CodexSchema.V2GetAccountTokenUsageResponse;
@@ -692,7 +725,6 @@ export interface ServerRequestParamsByMethod {
   readonly "item/tool/call": CodexSchema.DynamicToolCallParams;
   readonly "account/chatgptAuthTokens/refresh": CodexSchema.ChatgptAuthTokensRefreshParams;
   readonly "attestation/generate": CodexSchema.AttestationGenerateParams;
-  readonly "currentTime/read": CodexSchema.CurrentTimeReadParams;
   readonly applyPatchApproval: CodexSchema.ApplyPatchApprovalParams;
   readonly execCommandApproval: CodexSchema.ExecCommandApprovalParams;
 }
@@ -706,7 +738,6 @@ export interface ServerRequestResponsesByMethod {
   readonly "item/tool/call": CodexSchema.DynamicToolCallResponse;
   readonly "account/chatgptAuthTokens/refresh": CodexSchema.ChatgptAuthTokensRefreshResponse;
   readonly "attestation/generate": CodexSchema.AttestationGenerateResponse;
-  readonly "currentTime/read": CodexSchema.CurrentTimeReadResponse;
   readonly applyPatchApproval: CodexSchema.ApplyPatchApprovalResponse;
   readonly execCommandApproval: CodexSchema.ExecCommandApprovalResponse;
 }
@@ -752,6 +783,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "item/plan/delta": CodexSchema.V2PlanDeltaNotification;
   readonly "command/exec/outputDelta": CodexSchema.V2CommandExecOutputDeltaNotification;
   readonly "process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification;
+  readonly "thread/search/partial": CodexSchema.V2ThreadSearchPartialNotification;
   readonly "process/exited": CodexSchema.V2ProcessExitedNotification;
   readonly "item/commandExecution/outputDelta": CodexSchema.V2CommandExecutionOutputDeltaNotification;
   readonly "item/commandExecution/terminalInteraction": CodexSchema.V2TerminalInteractionNotification;
@@ -864,6 +896,9 @@ export const CLIENT_REQUEST_PARAMS = {
   "threadSection/update": CodexSchema.V2ThreadSectionUpdateParams,
   "threadSection/delete": CodexSchema.V2ThreadSectionDeleteParams,
   "thread/search": CodexSchema.V2ThreadSearchParams,
+  "thread/search/stream": CodexSchema.V2ThreadSearchParams,
+  "thread/search/cancel": CodexSchema.V2ThreadSearchCancelParams,
+  "thread/search/stream/cancel": CodexSchema.V2ThreadSearchCancelParams,
   "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesParams,
   "thread/loaded/list": CodexSchema.V2ThreadLoadedListParams,
   "thread/read": CodexSchema.V2ThreadReadParams,
@@ -873,6 +908,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/items/read": CodexSchema.V2ThreadItemsReadParams,
   "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewParams,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams,
+  "thread/prepareApprovedPlan": CodexSchema.V2ThreadPrepareApprovedPlanParams,
   "skills/list": CodexSchema.V2SkillsListParams,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams,
   "hooks/list": CodexSchema.V2HooksListParams,
@@ -915,12 +951,20 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechParams,
   "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopParams,
   "thread/timeline/list": CodexSchema.V2ThreadTimelineListParams,
+  "thread/realtime/list": CodexSchema.V2ThreadRealtimeListParams,
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams,
   "review/start": CodexSchema.V2ReviewStartParams,
   "model/list": CodexSchema.V2ModelListParams,
-  "account/gatewayOAuth/read": undefined,
-  "account/gatewayOAuth/login": undefined,
+  "account/gatewayOAuth/read": Schema.UndefinedOr(
+    Schema.NullOr(CodexSchema.V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams),
+  ),
+  "account/gatewayOAuth/login": Schema.UndefinedOr(
+    Schema.NullOr(CodexSchema.V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams),
+  ),
   "account/gatewayOAuth/cancel": undefined,
+  "modelProvider/list": CodexSchema.V2ModelProviderListParams,
+  "modelProvider/config/write": CodexSchema.V2ModelProviderConfigWriteParams,
+  "modelProvider/default/set": CodexSchema.V2ModelProviderDefaultSetParams,
   "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadParams,
   "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListParams,
   "permissionProfile/list": CodexSchema.V2PermissionProfileListParams,
@@ -959,6 +1003,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "accountSession/list": CodexSchema.V2AccountSessionsListParams,
   "accountSession/switch": CodexSchema.V2AccountSessionsSwitchParams,
   "account/logout": undefined,
+  "account/securitySetup/read": undefined,
   "account/rateLimits/read": Schema.UndefinedOr(
     CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams,
   ),
@@ -1059,6 +1104,9 @@ export const CLIENT_REQUEST_RESPONSES = {
   "threadSection/update": CodexSchema.V2ThreadSectionUpdateResponse,
   "threadSection/delete": CodexSchema.V2ThreadSectionDeleteResponse,
   "thread/search": CodexSchema.V2ThreadSearchResponse,
+  "thread/search/stream": CodexSchema.V2ThreadSearchResponse,
+  "thread/search/cancel": CodexSchema.V2ThreadSearchCancelResponse,
+  "thread/search/stream/cancel": CodexSchema.V2ThreadSearchCancelResponse,
   "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesResponse,
   "thread/loaded/list": CodexSchema.V2ThreadLoadedListResponse,
   "thread/read": CodexSchema.V2ThreadReadResponse,
@@ -1068,6 +1116,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/items/read": CodexSchema.V2ThreadItemsReadResponse,
   "thread/guardianReview": CodexSchema.V2ThreadGuardianReviewResponse,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse,
+  "thread/prepareApprovedPlan": CodexSchema.V2ThreadPrepareApprovedPlanResponse,
   "skills/list": CodexSchema.V2SkillsListResponse,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse,
   "hooks/list": CodexSchema.V2HooksListResponse,
@@ -1110,12 +1159,16 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechResponse,
   "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopResponse,
   "thread/timeline/list": CodexSchema.V2ThreadTimelineListResponse,
+  "thread/realtime/list": CodexSchema.V2ThreadRealtimeListResponse,
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse,
   "review/start": CodexSchema.V2ReviewStartResponse,
   "model/list": CodexSchema.V2ModelListResponse,
   "account/gatewayOAuth/read": CodexSchema.V2GatewayOAuthReadResponse,
   "account/gatewayOAuth/login": CodexSchema.V2GatewayOAuthLoginResponse,
   "account/gatewayOAuth/cancel": CodexSchema.V2GatewayOAuthCancelResponse,
+  "modelProvider/list": CodexSchema.V2ModelProviderListResponse,
+  "modelProvider/config/write": CodexSchema.V2ModelProviderConfigWriteResponse,
+  "modelProvider/default/set": CodexSchema.V2ConfigWriteResponse,
   "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadResponse,
   "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListResponse,
   "permissionProfile/list": CodexSchema.V2PermissionProfileListResponse,
@@ -1151,6 +1204,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "accountSession/list": CodexSchema.V2AccountSessionsResponse,
   "accountSession/switch": CodexSchema.V2AccountSessionsSwitchResponse,
   "account/logout": CodexSchema.V2LogoutAccountResponse,
+  "account/securitySetup/read": CodexSchema.V2GetAccountSecuritySetupResponse,
   "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse,
   "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditResponse,
   "account/usage/read": CodexSchema.V2GetAccountTokenUsageResponse,
@@ -1199,7 +1253,6 @@ export const SERVER_REQUEST_PARAMS = {
   "item/tool/call": CodexSchema.DynamicToolCallParams,
   "account/chatgptAuthTokens/refresh": CodexSchema.ChatgptAuthTokensRefreshParams,
   "attestation/generate": CodexSchema.AttestationGenerateParams,
-  "currentTime/read": CodexSchema.CurrentTimeReadParams,
   applyPatchApproval: CodexSchema.ApplyPatchApprovalParams,
   execCommandApproval: CodexSchema.ExecCommandApprovalParams,
 } as const;
@@ -1213,7 +1266,6 @@ export const SERVER_REQUEST_RESPONSES = {
   "item/tool/call": CodexSchema.DynamicToolCallResponse,
   "account/chatgptAuthTokens/refresh": CodexSchema.ChatgptAuthTokensRefreshResponse,
   "attestation/generate": CodexSchema.AttestationGenerateResponse,
-  "currentTime/read": CodexSchema.CurrentTimeReadResponse,
   applyPatchApproval: CodexSchema.ApplyPatchApprovalResponse,
   execCommandApproval: CodexSchema.ExecCommandApprovalResponse,
 } as const;
@@ -1260,6 +1312,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "item/plan/delta": CodexSchema.V2PlanDeltaNotification,
   "command/exec/outputDelta": CodexSchema.V2CommandExecOutputDeltaNotification,
   "process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification,
+  "thread/search/partial": CodexSchema.V2ThreadSearchPartialNotification,
   "process/exited": CodexSchema.V2ProcessExitedNotification,
   "item/commandExecution/outputDelta": CodexSchema.V2CommandExecutionOutputDeltaNotification,
   "item/commandExecution/terminalInteraction": CodexSchema.V2TerminalInteractionNotification,

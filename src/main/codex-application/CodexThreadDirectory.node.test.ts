@@ -97,6 +97,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "Hydrated transcript",
   ephemeral: false,
@@ -540,6 +541,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
         items: Array.from({ length: 1000 }, (_, index) => ({
           questions: null,
           type: "agentMessage",
+          moderation: null,
           id: `poison-${index}`,
           text: "must not become resident",
           phase: null,
@@ -739,6 +741,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
                   item: {
                     questions: null,
                     type: "agentMessage",
+                    moderation: null,
                     id: "item-tail",
                     text: "bounded tail",
                     phase: null,
@@ -1849,6 +1852,7 @@ it.effect.each([false, true])(
         });
         const item = (id: string) => ({
           type: "agentMessage" as const,
+          moderation: null,
           id,
           text: id,
           phase: null,
@@ -2246,6 +2250,7 @@ it.effect.each([false, true])(
         const queueReceipt = {
           id: "native-row",
           clientUserMessageId: "queued-client",
+          responsesapiClientMetadata: null,
           input: queuedInput,
         };
         conversations.entity("thread-a").mutateCanonicalState((draft) => {
@@ -2296,6 +2301,7 @@ it.effect.each([false, true])(
         const ackReceipt = {
           id: "native-ack-row",
           clientUserMessageId: "ack-client",
+          responsesapiClientMetadata: null,
           input: ackInput,
         };
         conversations.entity("thread-a").mutateCanonicalState((draft) => {

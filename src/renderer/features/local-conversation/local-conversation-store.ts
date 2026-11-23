@@ -2996,18 +2996,6 @@ export class CodexAppServerManager {
         : this.nativeHostContextRevision > 0
     )
       return;
-    if (event.request.method === "currentTime/read") {
-      void sendCodexAppServerResponse({
-        ...event,
-        effect: {
-          type: "respond",
-          method: "currentTime/read",
-          requestId: event.request.id,
-          response: { currentTimeAt: Math.floor(Date.now() / 1_000) },
-        },
-      } satisfies CodexNativeAutoResponseInput);
-      return;
-    }
     const threadId = "threadId" in event.request.params ? event.request.params.threadId : null;
     if (typeof threadId !== "string") return;
     const key = JSON.stringify([threadId, event.request.id]);

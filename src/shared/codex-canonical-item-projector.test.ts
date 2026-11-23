@@ -68,6 +68,7 @@ function generatedItems(): readonly CodexCanonicalItem[] {
     {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant",
       text: "Answer",
       phase: "final_answer",
@@ -219,6 +220,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
   test("preserves structured async questions and renders their replyable message during a turn", () => {
     const message = {
       type: "agentMessage",
+      moderation: null,
       id: "async-question",
       text: "Which scope?\n- Project\n- Library",
       phase: "final_answer",
@@ -248,6 +250,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     const assistant = materializeCodexCanonicalProtocolItem({
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant-live",
       text: "partial",
       phase: "commentary",
@@ -592,6 +595,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(
       isCodexCanonicalProtocolItem({
         type: "agentMessage",
+        moderation: null,
         id: "missing-required-text",
       }),
     ).toBe(false);
@@ -620,6 +624,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(
       isCodexCanonicalProtocolItem({
         type: "mcpToolCall",
+        environmentId: null,
         id: "incomplete-mcp",
         server: "docs",
         tool: "search",
@@ -794,6 +799,7 @@ describe("projectCodexCanonicalTurnViews", () => {
       {
         id: "reply",
         type: "agentMessage",
+        moderation: null,
         phase: "final_answer",
         delivery: null,
         questions: null,
@@ -889,6 +895,7 @@ describe("projectCodexCanonicalTurnViews", () => {
     const assistant = materializeCodexCanonicalProtocolItem({
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "assistant",
       text: "Answer",
       phase: "final_answer",
@@ -1229,6 +1236,7 @@ test("selection-only input remains a user row and scopes inline response referen
       items: [
         {
           type: "agentMessage",
+          moderation: null,
           id: "reply",
           text: 'Explained :codex-annotation{index="1"}',
           phase: "final_answer",

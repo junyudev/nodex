@@ -18,6 +18,7 @@ import { timelineOwnerFixture } from "./normalized-timeline.test-fixtures";
 
 const agent = (id: string, text: string): ThreadItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: "final_answer",

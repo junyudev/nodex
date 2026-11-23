@@ -43,6 +43,7 @@ const pressures = [
 ] as const;
 const agent = (text: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
   type: "agentMessage",
+  moderation: null,
   id: "answer",
   text,
   phase: "final_answer",

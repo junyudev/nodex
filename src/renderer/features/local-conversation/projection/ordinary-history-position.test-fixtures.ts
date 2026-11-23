@@ -54,6 +54,7 @@ function nativeTurn(index: number) {
       },
       {
         type: "agentMessage",
+        moderation: null,
         id: `assistant-${index}`,
         text:
           `Answer ${index}.\n\n` + "Resident paragraph with actual Markdown layout.\n\n".repeat(4),

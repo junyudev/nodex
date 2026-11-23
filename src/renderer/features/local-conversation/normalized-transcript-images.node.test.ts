@@ -13,6 +13,7 @@ function fixture() {
     nativeGeneratedImage("first", "completed", src),
     {
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: "Answer",
       phase: "commentary",

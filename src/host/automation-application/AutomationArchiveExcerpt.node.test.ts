@@ -41,6 +41,7 @@ const userItem = (id: string, text: string): ThreadItem => ({
 const assistantItem = (id: string, text: string): ThreadItem => ({
   questions: null,
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: null,

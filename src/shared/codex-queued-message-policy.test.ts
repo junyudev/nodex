@@ -53,6 +53,7 @@ const turn = (patch: Partial<CodexCanonicalTurnState> = {}): CodexCanonicalTurnS
 });
 const assistant: CodexCanonicalItem = {
   type: "agentMessage",
+  moderation: null,
   id: "answer",
   text: "done",
   phase: "final_answer",

@@ -6,10 +6,13 @@ import type { ThreadSource } from "./ThreadSource";
 
 export type ThreadSampleParams = { threadId: string,
 /**
- * The loaded source's latest completed, failed, or interrupted turn.
- * Stale or active sources are rejected.
+ * The loaded source's latest turn, which must be finished (completed, failed, or interrupted) unless `allowInProgressTurn` is true.
  */
-expectedTurnId: string, prompt: string,
+expectedTurnId: string,
+/**
+ * Allow sampling the latest turn before it finishes.
+ */
+allowInProgressTurn?: boolean, prompt: string,
 /**
  * Applied only when the provider and model support cache-preserving reasoning-effort updates.
  */

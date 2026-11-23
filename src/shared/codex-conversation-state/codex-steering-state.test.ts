@@ -22,6 +22,7 @@ function buildState(): CodexCanonicalConversationState {
       extra: null,
       sessionId: "session-a",
       forkedFromId: null,
+      attachedToThreadId: null,
       parentThreadId: null,
       preview: "",
       ephemeral: false,
@@ -105,6 +106,7 @@ describe("hydrated steering reconciliation", () => {
     const base = buildState().turns[0]!;
     const answer = {
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: "old",
       phase: "final_answer",
@@ -217,6 +219,7 @@ describe("hydrated steering reconciliation", () => {
       items: [
         {
           type: "agentMessage",
+          moderation: null,
           id: "decision",
           text: "<heartbeat><decision>DONT_NOTIFY</decision></heartbeat>",
           phase: "final_answer",

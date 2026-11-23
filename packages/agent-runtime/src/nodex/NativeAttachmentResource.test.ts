@@ -62,3 +62,24 @@ it("keeps hosted audio visible to import admission without treating its file ID 
     },
   ]);
 });
+
+it("keeps hosted tool audio visible without treating its file ID as a URL", () => {
+  const item = {
+    type: "functionCallOutput",
+    id: "output",
+    name: "speak",
+    namespace: null,
+    output: [
+      { type: "input_audio", file_id: "opaque-audio" },
+      { type: "input_audio", audio_url: "https://example.invalid/tool.wav" },
+    ],
+  } satisfies ThreadItem;
+  assert.deepEqual(nativeSessionMediaResources(item), [
+    { id: "content:0", media: "audio", resource: null },
+    {
+      id: "content:1",
+      media: "audio",
+      resource: { name: "Tool audio", source: "https://example.invalid/tool.wav" },
+    },
+  ]);
+});

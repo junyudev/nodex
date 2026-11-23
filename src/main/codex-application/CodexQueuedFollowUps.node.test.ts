@@ -240,6 +240,7 @@ const nativeSubmission = (id: string): QueuedSubmission => ({
   id,
   input: [{ type: "text", text: `native ${id}`, text_elements: [] }],
   clientUserMessageId: `client-${id}`,
+  responsesapiClientMetadata: null,
 });
 
 it.effect(

@@ -34,6 +34,7 @@ const assistantMessage = (
   phase: "commentary" | "final_answer" | null,
 ): ThreadItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase,

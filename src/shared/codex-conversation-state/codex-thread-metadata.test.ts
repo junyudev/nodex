@@ -57,6 +57,7 @@ function buildThread(name: string | null): Omit<Thread, "turns"> {
     extra: null,
     sessionId: "session-1",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "Old preview",
     ephemeral: false,
@@ -89,6 +90,7 @@ const settings: ThreadSettings = {
   cwd: "/new",
   approvalPolicy: "on-request",
   approvalsReviewer: "user",
+  environments: null,
   sandboxPolicy: {
     type: "workspaceWrite",
     writableRoots: ["/new"],
@@ -314,6 +316,7 @@ describe("Codex 30751 thread metadata", () => {
     const raw = {
       id: "native",
       clientUserMessageId: "client",
+      responsesapiClientMetadata: null,
       input: [{ type: "text" as const, text: "Accepted input", text_elements: [] }],
     };
     const existing = { ...buildState(), unconfirmedServerQueueMessages: [raw] };
@@ -332,6 +335,7 @@ describe("Codex 30751 thread metadata", () => {
       const raw = {
         id: "native",
         clientUserMessageId: "client",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "Accepted input", text_elements: [] }],
       };
       const turn = createCodexCanonicalTurnState(
@@ -351,6 +355,7 @@ describe("Codex 30751 thread metadata", () => {
           input: [],
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
+          environments: null,
           sandboxPolicy: { type: "readOnly", networkAccess: false },
           model: "test",
           cwd: "/work",
@@ -478,6 +483,7 @@ describe("Codex 30751 thread metadata", () => {
           input: [],
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
+          environments: null,
           sandboxPolicy: { type: "readOnly", networkAccess: false },
           model: "test",
           cwd: "/work",

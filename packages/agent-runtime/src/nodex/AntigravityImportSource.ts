@@ -88,6 +88,7 @@ function toolItem(entry: Extract<ReplayItem, { kind: "tool" }>, cwd: string): Th
       id,
       status: mcpStatus,
       server: mcp.server,
+      environmentId: null,
       tool: mcp.tool,
       arguments: json(acpMcpToolCallInput(mcp, input)),
       appContext: null,
@@ -194,6 +195,7 @@ function projectItem(entry: ReplayItem, cwd: string): ThreadItem {
     return { type: "reasoning", id: entry.id, summary: [], content: [text] };
   return {
     type: "agentMessage",
+    moderation: null,
     id: entry.id,
     text,
     phase: null,

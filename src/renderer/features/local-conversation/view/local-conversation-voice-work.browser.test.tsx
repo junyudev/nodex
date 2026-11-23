@@ -63,6 +63,7 @@ function fixture(prefix: boolean, includeResources = false) {
   if (includeResources)
     raw.push({
       type: "agentMessage",
+      moderation: null,
       id: "outputs",
       phase: "final_answer",
       memoryCitation: null,

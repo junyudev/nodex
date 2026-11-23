@@ -62,6 +62,7 @@ const metadata: Thread = {
   environments: null,
   extra: null,
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "",
   ephemeral: false,

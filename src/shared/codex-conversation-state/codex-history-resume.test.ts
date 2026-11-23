@@ -8,6 +8,7 @@ import type { CodexCanonicalItem } from "./codex-conversation-state";
 import type { CodexHistoryTurnItemsPagination } from "./codex-history-topology";
 const item = (id: string, text = id): CodexCanonicalItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: "final_answer",

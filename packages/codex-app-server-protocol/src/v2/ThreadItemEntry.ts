@@ -9,6 +9,10 @@ export type ThreadItemEntry = {
  */
 turnId: string, item: ThreadItem,
 /**
+ * The saved output was omitted. Fetch the complete item with `thread/items/read`.
+ */
+outputDeferred?: boolean,
+/**
  * Unix timestamp (milliseconds) when the item started, if recorded by the producer.
  */
 startedAtMs: number | null,

@@ -114,6 +114,7 @@ function history(index: number): Turn {
       },
       {
         type: "agentMessage",
+        moderation: null,
         id: `history-answer-${index}`,
         text:
           `Synthetic answer ${index}. ` +

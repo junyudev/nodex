@@ -8,6 +8,7 @@ const event = (id = "call-1"): ItemStartedNotification => ({
   startedAtMs: 1,
   item: {
     type: "mcpToolCall",
+    environmentId: null,
     id,
     server: "nodex_app",
     tool: "read_page",

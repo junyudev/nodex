@@ -8,6 +8,7 @@ const thread: Thread = {
   extra: null,
   sessionId: "session-canonical-projection",
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "Canonical projection fixture",
   ephemeral: false,

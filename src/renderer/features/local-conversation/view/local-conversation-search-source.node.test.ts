@@ -63,6 +63,7 @@ describe("resident transcript search cache", () => {
   test("does not index or materialize a voice completion resource row as duplicate Turn text", () => {
     const item = {
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: 'needle\n:codex-file-citation{path="deck.pptx" purpose="output"}',
       phase: "final_answer",
@@ -257,6 +258,7 @@ describe("resident transcript search cache", () => {
     const current = entry("one", ["**Visible** [label](https://hidden.example)"]);
     current.turn.items[0]!.rawItem = {
       type: "agentMessage",
+      moderation: null,
       id: "hidden-identity",
       text: "Visible label",
       privateMetadata: "secret",
@@ -373,6 +375,7 @@ describe("resident transcript search cache", () => {
   test("indexes inline Markdown presentation text but not HTML visualization declarations", () => {
     const item = {
       type: "agentMessage",
+      moderation: null,
       id: "inline",
       text: "[FINAL]\n::codex-realtime-inline{}\n**Needle** [visible](https://hidden.example)",
       phase: "final_answer",

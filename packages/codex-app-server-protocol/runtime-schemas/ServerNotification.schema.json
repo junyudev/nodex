@@ -161,10 +161,28 @@
               "type": "null"
             }
           ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__AccountUpdateReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when initial routing discovery completes for the same authenticated owner."
         }
       },
       "title": "AccountUpdatedNotification",
       "type": "object"
+    },
+    "definitions__v2__AccountUpdateReason": {
+      "enum": [
+        "workspaceRoutingReady",
+        "unknown"
+      ],
+      "type": "string"
     },
     "definitions__v2__ActivePermissionProfile": {
       "properties": {
@@ -270,8 +288,166 @@
       "title": "AgentMessageDeltaNotification",
       "type": "object"
     },
+    "definitions__v2__AgentMessageDisplay": {
+      "description": "How Chat should present a recovered answer.",
+      "oneOf": [
+        {
+          "properties": {
+            "annotation": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/definitions__v2__AnswerAnnotation"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mode": {
+              "enum": [
+                "show"
+              ],
+              "type": "string"
+            },
+            "trustedContacts": {
+              "$ref": "#/definitions/definitions__v2__TrustedContacts"
+            },
+            "version": {
+              "enum": [
+                1
+              ],
+              "format": "uint8",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "mode",
+            "trustedContacts",
+            "version"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "mode": {
+              "enum": [
+                "hide"
+              ],
+              "type": "string"
+            },
+            "replacement": {
+              "$ref": "#/definitions/definitions__v2__AnswerReplacement"
+            },
+            "version": {
+              "enum": [
+                1
+              ],
+              "format": "uint8",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "mode",
+            "replacement",
+            "version"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "mode": {
+              "enum": [
+                "block"
+              ],
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/definitions__v2__BlockReason"
+            },
+            "version": {
+              "enum": [
+                1
+              ],
+              "format": "uint8",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "mode",
+            "reason",
+            "version"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "definitions__v2__AgentMessageModeration": {
+      "properties": {
+        "display": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__AgentMessageDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moderated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "moderated"
+      ],
+      "type": "object"
+    },
     "definitions__v2__AgentPath": {
       "type": "string"
+    },
+    "definitions__v2__AnswerAnnotation": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "wellbeingHelpline"
+              ],
+              "type": "string"
+            },
+            "subject": {
+              "$ref": "#/definitions/definitions__v2__HelplineSubject"
+            }
+          },
+          "required": [
+            "kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "definitions__v2__AnswerReplacement": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "wellbeingPromptHelpline"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "WellbeingPromptHelplineAnswerReplacement",
+          "type": "object"
+        }
+      ]
     },
     "definitions__v2__AppBranding": {
       "description": "EXPERIMENTAL - app metadata returned by app-list APIs.",
@@ -731,6 +907,50 @@
       ],
       "type": "string"
     },
+    "definitions__v2__BlockReason": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "protection"
+              ],
+              "type": "string"
+            },
+            "protectionType": {
+              "description": "Identifies the same moderation row that Chat writes on the live path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "protectionType"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "cyber"
+              ],
+              "type": "string"
+            },
+            "trustedAccess": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "KindBlockReason",
+          "type": "object"
+        }
+      ]
+    },
     "definitions__v2__ByteRange": {
       "properties": {
         "end": {
@@ -763,6 +983,7 @@
             "modelNotFound",
             "policyCapacityUnavailable",
             "cyberPolicy",
+            "bioPolicy",
             "misalignmentPolicyViolation",
             "tooManyDenials",
             "internalServerError",
@@ -771,6 +992,13 @@
             "threadRollbackFailed",
             "sandboxError",
             "other"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The workspace's inference hook explicitly denied this request.",
+          "enum": [
+            "inferenceHookDenied"
           ],
           "type": "string"
         },
@@ -1942,10 +2170,34 @@
           "type": "object"
         },
         {
-          "properties": {
-            "audio_url": {
-              "type": "string"
+          "anyOf": [
+            {
+              "properties": {
+                "audio_url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "audio_url"
+              ],
+              "title": "AudioUrlFunctionCallOutputContentItem",
+              "type": "object"
             },
+            {
+              "properties": {
+                "file_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id"
+              ],
+              "title": "FileIdFunctionCallOutputContentItem",
+              "type": "object"
+            }
+          ],
+          "description": "Inline audio data or an uploaded file loaded by the Responses API.",
+          "properties": {
             "type": {
               "enum": [
                 "input_audio"
@@ -1955,7 +2207,6 @@
             }
           },
           "required": [
-            "audio_url",
             "type"
           ],
           "title": "InputAudioFunctionCallOutputContentItem",
@@ -1994,6 +2245,13 @@
           ]
         },
         "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loginId": {
+          "description": "Identifies the completed device login attempt.",
           "type": [
             "string",
             "null"
@@ -2369,6 +2627,13 @@
       "title": "GuardianWarningNotification",
       "type": "object"
     },
+    "definitions__v2__HelplineSubject": {
+      "enum": [
+        "answer",
+        "prompt"
+      ],
+      "type": "string"
+    },
     "definitions__v2__HookCompletedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -2668,6 +2933,16 @@
           "format": "int64",
           "type": "integer"
         },
+        "contentTokenCount": {
+          "default": null,
+          "description": "Native content tokens for the completed assistant message, including a sampled footer. Null when unavailable. Completion telemetry is not part of the stored thread item.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "item": {
           "$ref": "#/definitions/definitions__v2__ThreadItem"
         },
@@ -2922,6 +3197,13 @@
     "definitions__v2__McpServerStatusUpdatedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "environmentId": {
+          "description": "Registration scope, not necessarily the server's execution environment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "error": {
           "type": [
             "string",
@@ -4339,6 +4621,13 @@
             "null"
           ]
         },
+        "attachedToThreadId": {
+          "description": "Parent that owns this persisted attached thread, independent of fork or spawn lineage.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "canAcceptDirectInput": {
           "description": "Whether the app server accepts direct turn input for this loaded thread. `None` means the capability is unavailable, such as for an unloaded stored thread.",
           "type": [
@@ -4882,6 +5171,17 @@
               ],
               "default": null
             },
+            "moderation": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/definitions__v2__AgentMessageModeration"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "phase": {
               "anyOf": [
                 {
@@ -5164,6 +5464,13 @@
               "format": "int64",
               "type": [
                 "integer",
+                "null"
+              ]
+            },
+            "environmentId": {
+              "description": "Registration scope, not necessarily the server's execution environment.",
+              "type": [
+                "string",
                 "null"
               ]
             },
@@ -6016,6 +6323,25 @@
       "title": "ThreadRealtimeErrorNotification",
       "type": "object"
     },
+    "definitions__v2__ThreadRealtimeFrameChannels": {
+      "description": "A frame holds one or more payloads, at most one per channel. They share one ID, observation time, and seal. V1 requires its only channel, `voice_transcript`.",
+      "properties": {
+        "voice_transcript": {
+          "$ref": "#/definitions/definitions__v2__ThreadRealtimeVoiceTranscript"
+        }
+      },
+      "required": [
+        "voice_transcript"
+      ],
+      "type": "object"
+    },
+    "definitions__v2__ThreadRealtimeHandoffMode": {
+      "enum": [
+        "start",
+        "steer"
+      ],
+      "type": "string"
+    },
     "definitions__v2__ThreadRealtimeItem": {
       "description": "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
       "oneOf": [
@@ -6033,6 +6359,26 @@
             "type"
           ],
           "title": "RealtimeSessionStartedThreadRealtimeItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "channels": {
+              "$ref": "#/definitions/definitions__v2__ThreadRealtimeFrameChannels"
+            },
+            "type": {
+              "enum": [
+                "frame"
+              ],
+              "title": "FrameThreadRealtimeItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "channels",
+            "type"
+          ],
+          "title": "FrameThreadRealtimeItem",
           "type": "object"
         },
         {
@@ -6106,11 +6452,93 @@
           ],
           "title": "RealtimeSessionClosedThreadRealtimeItem",
           "type": "object"
+        },
+        {
+          "properties": {
+            "handoff_id": {
+              "type": "string"
+            },
+            "input": {
+              "type": "string"
+            },
+            "input_item_id": {
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/definitions/definitions__v2__ThreadRealtimeHandoffMode"
+            },
+            "source_event_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "turnInputAccepted"
+              ],
+              "title": "TurnInputAcceptedThreadRealtimeItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "handoff_id",
+            "input",
+            "input_item_id",
+            "mode",
+            "source_event_ids",
+            "turn_id",
+            "type"
+          ],
+          "title": "TurnInputAcceptedThreadRealtimeItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "input": {
+              "type": "string"
+            },
+            "input_item_id": {
+              "type": "string"
+            },
+            "source_event_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "sessionEndInputSaved"
+              ],
+              "title": "SessionEndInputSavedThreadRealtimeItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "input",
+            "input_item_id",
+            "source_event_ids",
+            "type"
+          ],
+          "title": "SessionEndInputSavedThreadRealtimeItem",
+          "type": "object"
         }
       ],
       "properties": {
         "id": {
           "type": "string"
+        },
+        "observedAtMs": {
+          "description": "Canonical observation time in Unix milliseconds for eligible voice calls.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "realtimeSessionId": {
           "type": "string"
@@ -6316,6 +6744,21 @@
       ],
       "type": "string"
     },
+    "definitions__v2__ThreadRealtimeVoiceTranscript": {
+      "properties": {
+        "role": {
+          "$ref": "#/definitions/definitions__v2__ThreadRealtimeTranscriptRole"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "type": "object"
+    },
     "definitions__v2__ThreadRevertedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -6327,6 +6770,42 @@
         "threadId"
       ],
       "title": "ThreadRevertedNotification",
+      "type": "object"
+    },
+    "definitions__v2__ThreadSearchPartialNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "A best-effort incremental batch for `thread/search/stream`. Match `requestId` to the request on this connection. Only a small subset of verified matches may be emitted; rows are unique and arrive in discovery order, but may be dropped under load or fall outside the final sorted page. Thread fields use stored metadata and the current watched status; live thread settings are enriched in the final response. Replace provisional rows with the authoritative final response. No partials follow it or an error.",
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ThreadSearchResult"
+          },
+          "type": "array"
+        },
+        "requestId": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        }
+      },
+      "required": [
+        "data",
+        "requestId"
+      ],
+      "title": "ThreadSearchPartialNotification",
+      "type": "object"
+    },
+    "definitions__v2__ThreadSearchResult": {
+      "properties": {
+        "snippet": {
+          "type": "string"
+        },
+        "thread": {
+          "$ref": "#/definitions/definitions__v2__Thread"
+        }
+      },
+      "required": [
+        "snippet",
+        "thread"
+      ],
       "type": "object"
     },
     "definitions__v2__ThreadSection": {
@@ -6439,6 +6918,17 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "environments": {
+          "default": null,
+          "description": "Environments configured for future turns, in priority order, primary first. `null` means the server does not expose the selection; [] means none are selected.",
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ThreadEnvironment"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "model": {
@@ -6757,6 +7247,13 @@
         "totalTokens"
       ],
       "type": "object"
+    },
+    "definitions__v2__TrustedContacts": {
+      "enum": [
+        "check",
+        "skip"
+      ],
+      "type": "string"
     },
     "definitions__v2__Turn": {
       "properties": {
@@ -8204,6 +8701,26 @@
         "params"
       ],
       "title": "Process/outputDeltaNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "thread/search/partial"
+          ],
+          "title": "Thread/search/partialNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSearchPartialNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Thread/search/partialNotification",
       "type": "object"
     },
     {

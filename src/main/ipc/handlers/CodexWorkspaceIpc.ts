@@ -1532,12 +1532,7 @@ export const live = Layer.effectDiscard(
           return yield* serverRequestResponses.native(input);
         }
         const method = input.effect.method;
-        if (
-          method !== "currentTime/read" &&
-          method !== "mcpServer/elicitation/request" &&
-          method !== "item/tool/call"
-        )
-          return false;
+        if (method !== "mcpServer/elicitation/request" && method !== "item/tool/call") return false;
         const occurrence = yield* requestInbox.resolveOccurrence({
           ...input,
           requestId: input.effect.requestId,

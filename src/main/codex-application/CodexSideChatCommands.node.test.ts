@@ -55,6 +55,7 @@ const protocolThread = (threadId: string): Thread => ({
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "",
   ephemeral: false,

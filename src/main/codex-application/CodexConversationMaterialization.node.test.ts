@@ -17,6 +17,7 @@ const thread: Thread = {
   extra: null,
   sessionId: "session-materialization",
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "",
   ephemeral: false,

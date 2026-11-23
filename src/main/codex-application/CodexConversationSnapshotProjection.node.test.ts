@@ -20,6 +20,7 @@ test("projects actual assistant start independently of hydration and projection 
           startedAtMs: 2500,
           item: {
             type: "agentMessage",
+            moderation: null,
             id: "answer",
             text: "",
             phase: "final_answer",

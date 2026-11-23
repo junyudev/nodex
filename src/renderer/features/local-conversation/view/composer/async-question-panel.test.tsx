@@ -23,6 +23,7 @@ function setup(
   const runtime = createAsyncQuestionRuntime();
   const item: CodexCanonicalItem = {
     type: "agentMessage",
+    moderation: null,
     id: "ask",
     delivery: "async",
     text: "Questions",

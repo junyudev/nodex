@@ -462,6 +462,7 @@ describe("LocalConversationThreadBody", () => {
     async ({ family, content, occurrences, literal }) => {
       const item = {
         type: "agentMessage",
+        moderation: null,
         id: "answer",
         text: family === "inlineMarkdown" ? `::codex-realtime-inline{}\n${content}` : content,
         phase: "final_answer",

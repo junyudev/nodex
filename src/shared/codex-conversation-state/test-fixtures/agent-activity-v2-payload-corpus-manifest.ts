@@ -21,7 +21,6 @@ export const AGENT_ACTIVITY_V2_GENERATED_AUTHORITIES = [
   "v2/AttestationGenerateParams.ts",
   "v2/ChatgptAuthTokensRefreshParams.ts",
   "v2/CommandExecutionRequestApprovalParams.ts",
-  "v2/CurrentTimeReadParams.ts",
   "v2/DynamicToolCallParams.ts",
   "v2/FileChangeRequestApprovalParams.ts",
   "v2/McpServerElicitationRequestParams.ts",

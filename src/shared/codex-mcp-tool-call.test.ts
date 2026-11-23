@@ -22,6 +22,7 @@ import {
 function buildMcpItem(overrides: Partial<ProtocolMcpToolCallItem> = {}): ProtocolMcpToolCallItem {
   return {
     type: "mcpToolCall",
+    environmentId: null,
     id: "call-1",
     server: "docs",
     tool: "search",

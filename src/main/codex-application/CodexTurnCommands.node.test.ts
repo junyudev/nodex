@@ -806,6 +806,7 @@ for (const hadPermissions of [true, false])
                     const turn = draft.turns[0]!;
                     turn.items.push({
                       type: "agentMessage",
+                      moderation: null,
                       id: "partial",
                       text: "Observed content",
                       phase: "commentary",
@@ -1337,6 +1338,7 @@ function terminalQuestionFixture(status: "completed" | "interrupted", running = 
   const source = turnFixture("source-question-turn", status);
   source.items.push({
     type: "agentMessage",
+    moderation: null,
     id: "source-question",
     text: "Which scope?",
     phase: "final_answer",
@@ -2195,7 +2197,14 @@ it.effect("failed-turn continuation refuses pending native queue messages", () =
       appServerVersion: "0.162.0-alpha.17.2",
       queueList: () =>
         Effect.succeed({
-          data: [{ id: "queued", clientUserMessageId: "queued-client", input: [] }],
+          data: [
+            {
+              id: "queued",
+              clientUserMessageId: "queued-client",
+              responsesapiClientMetadata: null,
+              input: [],
+            },
+          ],
           nextCursor: null,
         }),
       request: () => Effect.succeed(response()),
@@ -2534,6 +2543,7 @@ const queuedPreparationContext = {
 const nativeQueueReceipt = (): QueuedSubmission => ({
   id: "native-row",
   clientUserMessageId: "native-client",
+  responsesapiClientMetadata: null,
   input: [{ type: "text", text: "captured generated input", text_elements: [] }],
 });
 const nativeQueueMessage = {

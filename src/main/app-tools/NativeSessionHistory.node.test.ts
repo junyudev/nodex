@@ -18,6 +18,7 @@ import { makeNativeSessionHistory } from "./NativeSessionHistory";
 
 const assistant = (id: string, text = id): ThreadItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: null,

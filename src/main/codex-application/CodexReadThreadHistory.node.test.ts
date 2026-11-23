@@ -149,6 +149,7 @@ test("output budget does not truncate user/assistant input and structured output
     serializeCodexReadThreadProtocolItem(
       {
         type: "agentMessage",
+        moderation: null,
         id: "answer",
         text: "complete answer",
         phase: "final_answer",

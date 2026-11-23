@@ -237,6 +237,7 @@ function projectRuntimeMcpToolCall(
     nativeCallId: call.id,
     outputVersion: agentRuntimeItemVersion(item),
     server: call.server,
+    environmentId: call.environmentId ?? null,
     tool: call.tool,
     status,
     arguments: jsonValue(call.arguments),
@@ -373,6 +374,7 @@ export function projectAgentRuntimeAsyncQuestionMessage(
 ): Extract<CodexCanonicalItem, { type: "agentMessage" }> {
   return {
     type: "agentMessage",
+    moderation: null,
     id: item.id,
     text: item.questions.map((question) => question.question).join("\n"),
     phase: null,
@@ -672,6 +674,7 @@ export function projectAgentRuntimeItem(
       const importedImages = replyMarkdownImages(item);
       return {
         type: "agentMessage",
+        moderation: null,
         id,
         text: item.text,
         startedAtMs: agentRuntimeTime(item.startedAt),

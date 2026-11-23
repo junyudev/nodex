@@ -34,6 +34,7 @@ function buildItem(server = "node_repl"): ProtocolMcpToolCallItem {
     type: "mcpToolCall",
     id: "call-1",
     server,
+    environmentId: null,
     tool: "js",
     arguments: {},
     status: "completed",

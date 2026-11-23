@@ -85,6 +85,7 @@ test("a collapsed Turn's denied-action count opens and centers its first refusal
         type: "item",
         item: {
           type: "agentMessage",
+          moderation: null,
           id: `review-progress-${index}`,
           phase: "commentary",
           text: `Review step ${index + 1} is complete.`,

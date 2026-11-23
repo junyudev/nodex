@@ -159,6 +159,7 @@ describe("connected review diff panel", () => {
             items: [
               {
                 type: "agentMessage",
+                moderation: null,
                 id: "prose",
                 text: "Unrelated prose".repeat(4096),
                 phase: "final_answer",

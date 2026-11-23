@@ -38,6 +38,7 @@ export const nativeQuestionFixture = () => {
   const threadId = "native-root";
   const ask = {
     type: "agentMessage" as const,
+    moderation: null,
     id: "async-ask",
     text: "Scope?",
     phase: "commentary" as const,

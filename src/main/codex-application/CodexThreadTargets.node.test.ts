@@ -37,6 +37,7 @@ const item = (
   completedAtMs: 2,
   item: {
     type: "agentMessage",
+    moderation: null,
     id: text,
     text,
     phase,

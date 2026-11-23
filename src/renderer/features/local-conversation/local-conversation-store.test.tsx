@@ -528,6 +528,7 @@ vi.mock("./local-conversation-deps", () => ({
             cwd: "/repo",
             approvalPolicy: "on-request",
             approvalsReviewer: "user",
+            environments: null,
             sandboxPolicy: { type: "readOnly", networkAccess: false },
             activePermissionProfile: null,
             runtimeWorkspaceRoots: ["/repo"],
@@ -1352,6 +1353,7 @@ function buildFreshLaunchCanonicalParams(input: {
     cwd: canonical.cwd,
     approvalPolicy: permissions.approvalPolicy,
     approvalsReviewer: permissions.approvalsReviewer,
+    environments: null,
     sandboxPolicy: permissions.sandboxPolicy,
     permissions: permissions.activePermissionProfile?.id ?? null,
     runtimeWorkspaceRoots: permissions.runtimeWorkspaceRoots
@@ -1393,6 +1395,7 @@ function buildAssistantMessage(
       questions: null,
       id: itemId,
       type: "agentMessage",
+      moderation: null,
       text: markdownText,
       phase: null,
       memoryCitation: null,
@@ -1524,6 +1527,7 @@ function buildMcpToolCallItem(
     },
     rawItem: {
       type: "mcpToolCall",
+      environmentId: null,
       id: itemId,
       server: "docs",
       tool: "search",
@@ -1969,6 +1973,7 @@ describe("local-conversation-store", () => {
         expect(restored).toBeDefined();
         expect(residentConversationTurns(restored)[0]?.items[0]).toMatchObject({
           type: "agentMessage",
+          moderation: null,
           text: "After restore",
         });
         await flushAsyncWork();
@@ -1998,54 +2003,6 @@ describe("local-conversation-store", () => {
       view.unmount();
       resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
       vi.unstubAllGlobals();
-    }
-  });
-
-  test("answers current-time server requests through the renderer without response tracing", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: 1,
-        occurrenceId: "current-time:1",
-        occurrenceToken: 1,
-        hostId: "local",
-        request: {
-          id: "time-1",
-          method: "currentTime/read",
-          params: { threadId: "thread-ignored" },
-        },
-      });
-      await flushAsyncWork();
-
-      const responseCall = invokeRecords.find(
-        (record) => record.channel === "codex:app-server:respond",
-      );
-      expect(responseCall?.args[0]).toMatchObject({
-        hostId: "local",
-        generation: 1,
-        occurrenceId: "current-time:1",
-        occurrenceToken: 1,
-        effect: {
-          type: "respond",
-          method: "currentTime/read",
-          requestId: "time-1",
-          response: { currentTimeAt: expect.any(Number) },
-        },
-      });
-      expect(responseCall?.args[0]).not.toHaveProperty("requestMethod");
-      expect(responseCall?.args[0]).not.toHaveProperty("trace");
-    } finally {
-      manager.destroy();
-      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     }
   });
 
@@ -3694,6 +3651,7 @@ describe("local-conversation-store", () => {
                 item: {
                   id: "assistant-1",
                   type: "agentMessage",
+                  moderation: null,
                   text: "",
                   phase: null,
                   memoryCitation: null,
@@ -3741,6 +3699,7 @@ describe("local-conversation-store", () => {
                   item: {
                     id: "assistant-1",
                     type: "agentMessage",
+                    moderation: null,
                     text: "hello",
                     phase: null,
                     memoryCitation: null,
@@ -3835,6 +3794,7 @@ describe("local-conversation-store", () => {
               items: [
                 {
                   type: "agentMessage" as const,
+                  moderation: null,
                   id,
                   delivery: "async" as const,
                   phase: "final_answer" as const,
@@ -4372,6 +4332,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-replacement",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -4473,6 +4434,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-replacement",
               type: "agentMessage",
+              moderation: null,
               text: "partial final",
               phase: null,
               memoryCitation: null,
@@ -5972,6 +5934,7 @@ describe("local-conversation-store", () => {
               startedAtMs: 1000,
               item: {
                 type: "agentMessage",
+                moderation: null,
                 id: "answer",
                 text: "Ready",
                 phase: null,
@@ -6601,6 +6564,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -6636,6 +6600,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: "done",
               phase: null,
               memoryCitation: null,
@@ -7056,6 +7021,7 @@ describe("local-conversation-store", () => {
                 startedAtMs: 200,
                 item: {
                   type: "agentMessage",
+                  moderation: null,
                   id: "answer",
                   text: "New response",
                   phase: null,
@@ -7246,6 +7212,7 @@ describe("local-conversation-store", () => {
               item: {
                 id: "assistant-1",
                 type: "agentMessage",
+                moderation: null,
                 text: "",
                 phase: null,
                 memoryCitation: null,
@@ -7291,6 +7258,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: delta,
               phase: null,
               memoryCitation: null,
@@ -7699,6 +7667,7 @@ describe("local-conversation-store", () => {
               cwd: "/repo-next",
               approvalPolicy: "on-request",
               approvalsReviewer: "user",
+              environments: null,
               sandboxPolicy: {
                 type: "workspaceWrite",
                 writableRoots: ["/repo-next"],
@@ -7997,6 +7966,7 @@ describe("local-conversation-store", () => {
               extra: null,
               sessionId: "incoming-session",
               forkedFromId: "fork-origin",
+              attachedToThreadId: null,
               parentThreadId: null,
               preview: "Started preview",
               ephemeral: false,
@@ -8571,6 +8541,7 @@ describe("local-conversation-store", () => {
             turnId: "turn-1",
             mode: "openai/form",
             serverName: "Context7",
+            environmentId: null,
             message: "Allow this call?",
             requestedSchema: { type: "object", properties: {} },
             _meta: null,
@@ -10213,6 +10184,7 @@ describe("local-conversation-store", () => {
             item: {
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -10867,6 +10839,7 @@ describe("local-conversation-store", () => {
               item: {
                 id: "assistant-1",
                 type: "agentMessage",
+                moderation: null,
                 text: "",
                 phase: null,
                 memoryCitation: null,
@@ -10913,6 +10886,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: delta,
               phase: null,
               memoryCitation: null,
@@ -11381,6 +11355,7 @@ describe("local-conversation-store", () => {
               item: {
                 id: "assistant-1",
                 type: "agentMessage",
+                moderation: null,
                 text: "",
                 phase: null,
                 memoryCitation: null,
@@ -11431,6 +11406,7 @@ describe("local-conversation-store", () => {
                 questions: null,
                 id: "assistant-1",
                 type: "agentMessage",
+                moderation: null,
                 text: delta,
                 phase: null,
                 memoryCitation: null,
@@ -12505,6 +12481,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -12564,6 +12541,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-1",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -14388,6 +14366,7 @@ describe("local-conversation-store", () => {
               {
                 id: "pending",
                 clientUserMessageId: "pending-client",
+                responsesapiClientMetadata: null,
                 input: [{ type: "text", text: "Queued task", text_elements: [] }],
               },
             ],
@@ -15156,6 +15135,7 @@ describe("local-conversation-store", () => {
               questions: null,
               id: "assistant-streaming",
               type: "agentMessage",
+              moderation: null,
               text: "",
               phase: null,
               memoryCitation: null,
@@ -15247,6 +15227,7 @@ describe("local-conversation-store", () => {
                 questions: null,
                 id: "assistant-streaming",
                 type: "agentMessage",
+                moderation: null,
                 text: "",
                 phase: null,
                 memoryCitation: null,
@@ -15980,6 +15961,7 @@ describe("local-conversation-store", () => {
         const item = {
           id: `native-${++serial}`,
           clientUserMessageId: input.clientUserMessageId!,
+          responsesapiClientMetadata: null,
           input: input.input!,
         };
         serverItems.push(item);
@@ -16069,6 +16051,7 @@ describe("local-conversation-store", () => {
       {
         id: "native-before",
         clientUserMessageId: "native-client",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "Native first", text_elements: [] }],
       },
     ];
@@ -16182,6 +16165,7 @@ describe("local-conversation-store", () => {
             {
               id: "native-receipt",
               clientUserMessageId: "correlated-client",
+              responsesapiClientMetadata: null,
               input: [{ type: "text", text: "Native row", text_elements: [] }],
             },
           ],
@@ -16269,6 +16253,7 @@ describe("local-conversation-store", () => {
           nativeReceipt = {
             id: "native-receipt",
             clientUserMessageId: input.clientUserMessageId!,
+            responsesapiClientMetadata: null,
             input: input.input,
           };
           throw new CodexTurnDeliveryError("Native add delivery unknown", {
@@ -16608,6 +16593,7 @@ describe("local-conversation-store", () => {
         const queuedSubmission = {
           id: "server-queued-1",
           clientUserMessageId: input.clientUserMessageId,
+          responsesapiClientMetadata: null,
           input: input.input.map((entry) => ({
             ...entry,
             text_elements: entry.text_elements ?? [],
@@ -16706,6 +16692,7 @@ describe("local-conversation-store", () => {
       {
         id: "server-first",
         clientUserMessageId: "client-first",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "first server item", text_elements: [] }],
       },
     ];
@@ -16726,6 +16713,7 @@ describe("local-conversation-store", () => {
         {
           id: "server-second",
           clientUserMessageId: "client-second",
+          responsesapiClientMetadata: null,
           input: [{ type: "text", text: "second server item", text_elements: [] }],
         },
       ];
@@ -16782,6 +16770,7 @@ describe("local-conversation-store", () => {
       {
         id: "server-paused",
         clientUserMessageId: "server-paused-client",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "resume after interruption", text_elements: [] }],
       },
     ];
@@ -16842,6 +16831,7 @@ describe("local-conversation-store", () => {
       id,
       clientUserMessageId: `client-${id}`,
       input: [{ type: "text", text: id, text_elements: [] }],
+      responsesapiClientMetadata: null,
     }));
     const mutations: string[] = [];
     serverQueueRequestHandler = async (method, params) => {
@@ -16934,6 +16924,7 @@ describe("local-conversation-store", () => {
       {
         id: "server-queued",
         clientUserMessageId: "server-client-user-message",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "steer from server queue", text_elements: [] }],
       },
     ];
@@ -17010,6 +17001,7 @@ describe("local-conversation-store", () => {
     const raw = {
       id: "server-queued",
       clientUserMessageId: "server-client",
+      responsesapiClientMetadata: null,
       input: [
         {
           type: "text" as const,
@@ -17079,6 +17071,7 @@ describe("local-conversation-store", () => {
       {
         id: "server-idle",
         clientUserMessageId: "server-idle-client",
+        responsesapiClientMetadata: null,
         input: [{ type: "text" as const, text: "start from server queue", text_elements: [] }],
       },
     ];
@@ -17936,6 +17929,7 @@ describe("local-conversation-store", () => {
                   threadId: "thread-1",
                   turnId: "turn-1",
                   serverName: "server",
+                  environmentId: null,
                   mode: "form",
                   _meta: null,
                   message: "Confirm",
@@ -18186,6 +18180,7 @@ describe("local-conversation-store", () => {
                   threadId: "thread-1",
                   turnId: "turn-1",
                   serverName: "server",
+                  environmentId: null,
                   mode: "form",
                   message: "Confirm",
                   requestedSchema: { type: "object", properties: {} },
@@ -18307,6 +18302,7 @@ describe("local-conversation-store", () => {
             turnId: "turn-1",
             mode: "openai/form",
             serverName: "Context7",
+            environmentId: null,
             message: "Allow this call?",
             requestedSchema: { type: "object", properties: {} },
             _meta: null,
@@ -18377,6 +18373,7 @@ describe("local-conversation-store", () => {
             turnId: "turn-1",
             mode: "form",
             serverName: "node_repl",
+            environmentId: null,
             message: "Allow Browser use to access https://example.com?",
             requestedSchema: { type: "object", properties: {} },
             _meta: null,
@@ -19453,6 +19450,7 @@ describe("local-conversation-store", () => {
             turnId: "turn-1",
             mode: "openai/form",
             serverName: "Context7",
+            environmentId: null,
             message: "Allow this call?",
             requestedSchema: { type: "object", properties: {} },
             _meta: null,
@@ -20093,6 +20091,7 @@ describe("local-conversation-store", () => {
               {
                 id: "item-selected",
                 type: "agentMessage",
+                moderation: null,
                 text: "needle",
                 phase: null,
                 memoryCitation: null,
@@ -20208,6 +20207,7 @@ describe("local-conversation-store", () => {
             {
               id: "item-selected",
               type: "agentMessage",
+              moderation: null,
               text: "needle",
               phase: null,
               memoryCitation: null,

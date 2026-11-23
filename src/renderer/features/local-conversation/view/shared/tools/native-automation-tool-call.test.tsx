@@ -34,6 +34,7 @@ describe("native Automation proposal card", () => {
         items: [
           {
             type: "mcpToolCall",
+            environmentId: null,
             id: "proposal-1",
             server: "nodex_app",
             tool: "automations_update",
@@ -132,6 +133,7 @@ describe("native Automation proposal card", () => {
         items: [
           {
             type: "mcpToolCall",
+            environmentId: null,
             id: "proposal-1",
             server: "nodex_app",
             tool: "automations_update",

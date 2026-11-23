@@ -22,6 +22,7 @@ function document(id: string): CodexCanonicalConversationState {
   const thread = buildAgentActivityV2CorpusThread([
     {
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: "Retained history",
       phase: "final_answer",

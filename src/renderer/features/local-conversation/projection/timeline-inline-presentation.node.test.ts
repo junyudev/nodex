@@ -4,6 +4,7 @@ import { resolveTimelineInlinePresentation } from "./timeline-inline-presentatio
 
 const agent = (text: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
   type: "agentMessage",
+  moderation: null,
   id: "artifact",
   text,
   phase: "final_answer",

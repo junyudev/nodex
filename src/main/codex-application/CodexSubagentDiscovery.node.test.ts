@@ -18,6 +18,7 @@ const child = (id: string, parentThreadId = "root") =>
     extra: null,
     sessionId: id,
     forkedFromId: null,
+    attachedToThreadId: null,
     preview: id,
     ephemeral: false,
     section: null,

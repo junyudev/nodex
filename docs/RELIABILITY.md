@@ -668,8 +668,8 @@ but does not introduce a separate drain queue or change request delivery.
 Responses to app-server initiated requests preserve renderer interaction trace context through the
 Main settlement queue and emit that context on the physical JSON-RPC response. Tool calls and option
 pickers use the tool-response interaction; other user-facing server requests use the approval-response
-interaction. Current-time reads remain an untraced fast path. A semantic no-response completion is an
-explicit abandonment and never reaches the transport as a response value.
+interaction. A semantic no-response completion is an explicit abandonment and never reaches the
+transport as a response value.
 Transport-owned internal requests bypass the application settlement queue and remain untraced. Their
 handler lifetime is the stable Endpoint, so completion may cross a physical reconnect; success waits
 for the currently ready session, while failure attempts the fixed internal-error response immediately

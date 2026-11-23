@@ -46,6 +46,7 @@ const thread = (turns: Turn[]): Thread => ({
   extra: null,
   sessionId: "session-export",
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "",
   ephemeral: false,
@@ -79,6 +80,7 @@ const hydration = {
   cwd: "/workspace",
   approvalPolicy: "on-request" as const,
   approvalsReviewer: "user" as const,
+  environments: null,
   sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
   activePermissionProfile: null,
   runtimeWorkspaceRoots: ["/workspace"],
@@ -209,6 +211,7 @@ it.effect.each([false, true])(
               turn("exported-page", [
                 {
                   type: "agentMessage",
+                  moderation: null,
                   id: "exported-answer",
                   text: "Exported answer",
                   questions: null,
@@ -306,6 +309,7 @@ it.effect("exports resident history with updated and newly appended live Turns",
         turn("resident-tail", [
           {
             type: "agentMessage",
+            moderation: null,
             id: "updated-answer",
             text: "Updated live answer",
             questions: null,
@@ -317,6 +321,7 @@ it.effect("exports resident history with updated and newly appended live Turns",
         turn("live-follow-up", [
           {
             type: "agentMessage",
+            moderation: null,
             id: "follow-up-answer",
             text: "Follow-up answer",
             questions: null,
@@ -408,6 +413,7 @@ it.effect("streams complete Turns oldest-first without installing them in reside
     const answer = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: "answer",
       phase: "final_answer",
@@ -508,6 +514,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
     const middle = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "middle",
       text: "middle",
       phase: null,
@@ -517,6 +524,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
     const newest = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "newest",
       text: "newest",
       phase: null,
@@ -605,6 +613,7 @@ it.effect("requests at most one physical item page and rejects oversized respons
           items: Array.from({ length: 101 }, (_, index) => ({
             questions: null,
             type: "agentMessage" as const,
+            moderation: null,
             id: `item-${index}`,
             text: `item-${index}`,
             phase: null,
@@ -639,6 +648,7 @@ it.effect("rejects an advancing duplicate-only item cursor chain", () =>
     const newest = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "newest",
       text: "newest",
       phase: null,

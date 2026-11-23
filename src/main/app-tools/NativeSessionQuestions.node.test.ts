@@ -41,6 +41,7 @@ const responder = {
 const syncRequestId = 'native:sync:"live"';
 const ask = {
   type: "agentMessage" as const,
+  moderation: null,
   id: "ask",
   text: "Fallback",
   phase: "commentary" as const,

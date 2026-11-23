@@ -14,6 +14,7 @@ const turn = (status: Turn["status"] = "completed", text = "final"): Turn => ({
   items: [
     {
       type: "agentMessage",
+      moderation: null,
       id: "message",
       text,
       phase: "final_answer",

@@ -189,6 +189,7 @@ describe("codex conversation replay", () => {
             item: {
               questions: null,
               type: "agentMessage",
+              moderation: null,
               id: "item_fixture_agent",
               text: "authoritative fixture text",
               phase: "final_answer",

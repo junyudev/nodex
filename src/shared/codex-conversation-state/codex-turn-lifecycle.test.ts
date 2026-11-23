@@ -22,6 +22,7 @@ function buildState() {
       extra: null,
       sessionId: "session-turn-lifecycle",
       forkedFromId: null,
+      attachedToThreadId: null,
       parentThreadId: null,
       preview: "",
       ephemeral: false,

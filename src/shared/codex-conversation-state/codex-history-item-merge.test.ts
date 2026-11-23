@@ -7,6 +7,7 @@ import type { CodexCanonicalItem } from "./codex-conversation-state";
 
 const answer = (id: string, text = id): Extract<CodexCanonicalItem, { type: "agentMessage" }> => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: "final_answer",

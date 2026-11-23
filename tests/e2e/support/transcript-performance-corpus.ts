@@ -26,6 +26,7 @@ export const buildTranscriptPerformanceCorpus = (turnCount: number): Turn[] =>
       },
       {
         type: "agentMessage",
+        moderation: null,
         id: `history-answer-${index}`,
         text: `Synthetic answer ${index.toString().padStart(4, "0")}. ${"The reproducible transcript contains plain text for bounded history measurement. ".repeat(8)}`,
         phase: "final_answer",

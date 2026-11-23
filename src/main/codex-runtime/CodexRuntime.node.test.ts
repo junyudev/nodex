@@ -874,6 +874,7 @@ it.effect(
         extra: null,
         sessionId: "session-raw",
         forkedFromId: null,
+        attachedToThreadId: null,
         parentThreadId: null,
         preview: "raw",
         ephemeral: false,
@@ -913,6 +914,7 @@ it.effect(
             items: [
               {
                 type: "agentMessage",
+                moderation: null,
                 id: "item-raw",
                 text,
                 phase: "final_answer",

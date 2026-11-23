@@ -11,6 +11,7 @@ import {
 const key = { hostId: "local", threadId: "thread", entityKey: "turn:one" };
 const agent: Extract<ThreadItem, { type: "agentMessage" }> = {
   type: "agentMessage",
+  moderation: null,
   id: "answer",
   text: "Working",
   phase: "commentary",

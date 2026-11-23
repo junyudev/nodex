@@ -123,6 +123,7 @@ describe("typed Markdown committed rendering in Chromium", () => {
       const voice = family === "voice";
       const item: Extract<ThreadItem, { type: "agentMessage" }> = {
         type: "agentMessage",
+        moderation: null,
         id: "native-answer",
         text: `::codex-realtime-inline{}\n${text}`,
         phase: "final_answer",

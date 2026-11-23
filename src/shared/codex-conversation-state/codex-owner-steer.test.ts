@@ -24,6 +24,7 @@ function buildState(): CodexCanonicalConversationState {
       extra: null,
       sessionId: "session-a",
       forkedFromId: null,
+      attachedToThreadId: null,
       parentThreadId: null,
       preview: "",
       ephemeral: false,

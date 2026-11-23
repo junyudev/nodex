@@ -204,7 +204,7 @@ const FULL_MCP_APP_CONTEXT = {
 } as const;
 
 export const agentActivityV2McpAppContextPrecedenceItem = {
-  type: "mcpToolCall",
+  type: "mcpToolCall", environmentId: null,
   id: "mcp-app-context",
   server: "fixture_app",
   tool: "lookup",
@@ -237,7 +237,7 @@ export const agentActivityV2McpAppContextPrecedenceItem = {
 } satisfies McpToolCallItem;
 
 export const agentActivityV2McpBrowserSourceItem = {
-  type: "mcpToolCall",
+  type: "mcpToolCall", environmentId: null,
   id: "mcp-browser-source",
   server: "node_repl",
   tool: "run",
@@ -273,7 +273,7 @@ export const agentActivityV2McpBrowserSourceItem = {
 } satisfies McpToolCallItem;
 
 export const agentActivityV2McpComputerUseItem = {
-  type: "mcpToolCall",
+  type: "mcpToolCall", environmentId: null,
   id: "mcp-computer-active",
   server: "computer-use",
   tool: "computer",
@@ -291,7 +291,7 @@ export const agentActivityV2McpComputerUseItem = {
 } satisfies McpToolCallItem;
 
 export const agentActivityV2McpErrorItem = {
-  type: "mcpToolCall",
+  type: "mcpToolCall", environmentId: null,
   id: "mcp-protocol-error",
   server: "fixture_server",
   tool: "fail",
@@ -322,7 +322,7 @@ export const agentActivityV2McpErrorItem = {
 } satisfies McpToolCallItem;
 
 export const agentActivityV2McpStatusResolvedAppItem = {
-  type: "mcpToolCall",
+  type: "mcpToolCall", environmentId: null,
   id: "mcp-status-app",
   server: "status_server",
   tool: "status_tool",

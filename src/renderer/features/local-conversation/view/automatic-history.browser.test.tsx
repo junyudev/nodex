@@ -599,6 +599,7 @@ describe("automatic thread history in Chromium", () => {
       }
       items.push({
         type: "agentMessage",
+        moderation: null,
         id: "native-reply",
         text: reply,
         phase: "final_answer",

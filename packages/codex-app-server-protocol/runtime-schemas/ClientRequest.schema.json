@@ -435,6 +435,13 @@
       "title": "BedrockDiscoverParams",
       "type": "object"
     },
+    "definitions__v2__BedrockProviderId": {
+      "enum": [
+        "amazon-bedrock",
+        "amazon-bedrock-runtime"
+      ],
+      "type": "string"
+    },
     "definitions__v2__BedrockSetupParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "oneOf": [
@@ -1992,10 +1999,34 @@
           "type": "object"
         },
         {
-          "properties": {
-            "audio_url": {
-              "type": "string"
+          "anyOf": [
+            {
+              "properties": {
+                "audio_url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "audio_url"
+              ],
+              "title": "AudioUrlFunctionCallOutputContentItem",
+              "type": "object"
             },
+            {
+              "properties": {
+                "file_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id"
+              ],
+              "title": "FileIdFunctionCallOutputContentItem",
+              "type": "object"
+            }
+          ],
+          "description": "Inline audio data or an uploaded file loaded by the Responses API.",
+          "properties": {
             "type": {
               "enum": [
                 "input_audio"
@@ -2005,7 +2036,6 @@
             }
           },
           "required": [
-            "audio_url",
             "type"
           ],
           "title": "InputAudioFunctionCallOutputContentItem",
@@ -2032,6 +2062,42 @@
           "type": "object"
         }
       ]
+    },
+    "definitions__v2__GatewayOAuthLoginParams": {
+      "description": "Authorize a configured provider without changing the default or any thread's provider.",
+      "properties": {
+        "deviceAuth": {
+          "description": "Select device authorization when the server advertises support for it.",
+          "type": "boolean"
+        },
+        "modelProvider": {
+          "description": "Defaults to the current provider when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "definitions__v2__GatewayOAuthReadParams": {
+      "description": "Read credential readiness for a configured provider without starting browser login.",
+      "properties": {
+        "modelProvider": {
+          "description": "Defaults to the current provider when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "definitions__v2__GcpProviderId": {
+      "enum": [
+        "gcp"
+      ],
+      "type": "string"
     },
     "definitions__v2__GcpSetupParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2173,6 +2239,13 @@
             }
           ],
           "description": "Controls how much MCP inventory data to fetch for each server. Defaults to `Full` when omitted."
+        },
+        "environmentId": {
+          "description": "Select this environment's registration. Requires `serverName` and `threadId`. When omitted, a named request uses the same server as older clients.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "limit": {
           "description": "Optional page size; defaults to a server-defined value.",
@@ -2497,7 +2570,22 @@
     "definitions__v2__McpResourceReadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "Additional MCP request metadata. Account and turn routing keys are reserved.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "connectorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environmentId": {
+          "description": "Exact registration scope; omission preserves legacy name-only selection.",
           "type": [
             "string",
             "null"
@@ -2634,6 +2722,13 @@
           ],
           "description": "Registration strategy for this login only; omission selects automatic discovery."
         },
+        "environmentId": {
+          "description": "Exact registration scope; omission preserves legacy name-only selection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "name": {
           "type": "string"
         },
@@ -2678,6 +2773,13 @@
       "properties": {
         "_meta": true,
         "arguments": true,
+        "environmentId": {
+          "description": "Exact registration scope; omission preserves legacy name-only selection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "server": {
           "type": "string"
         },
@@ -2852,6 +2954,13 @@
             "integer",
             "null"
           ]
+        },
+        "modelProvider": {
+          "description": "List models for this configured provider instead of the app-server default.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "title": "ModelListParams",
@@ -2860,6 +2969,39 @@
     "definitions__v2__ModelProviderCapabilitiesReadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ModelProviderCapabilitiesReadParams",
+      "type": "object"
+    },
+    "definitions__v2__ModelProviderConfigWriteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "settings": {
+          "$ref": "#/definitions/definitions__v2__ProviderSettingsPatch"
+        }
+      },
+      "required": [
+        "settings"
+      ],
+      "title": "ModelProviderConfigWriteParams",
+      "type": "object"
+    },
+    "definitions__v2__ModelProviderDefaultSetParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "providerId": {
+          "description": "Configured provider to use by default for new threads and unscoped model lists.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "title": "ModelProviderDefaultSetParams",
+      "type": "object"
+    },
+    "definitions__v2__ModelProviderListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ModelProviderListParams",
       "type": "object"
     },
     "definitions__v2__MultiAgentMode": {
@@ -3626,7 +3768,7 @@
               "type": "null"
             }
           ],
-          "description": "Defaults to position. Recency sorting always places empty projects last."
+          "description": "Defaults to position. Recency sorting always places empty projects last. Use the returned order; numeric positions are not exposed in project responses."
         }
       },
       "title": "ProjectListParams",
@@ -3636,6 +3778,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "beforeProjectId": {
+          "description": "Place the project before this ID, or append it when omitted or null.",
           "type": [
             "string",
             "null"
@@ -3718,6 +3861,124 @@
       ],
       "title": "ProjectUpdateParams",
       "type": "object"
+    },
+    "definitions__v2__ProviderSettingsPatch": {
+      "description": "Omitted patch fields preserve their values. Explicit null clears a nullable field.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "baseUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "envKey": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "providerId": {
+              "description": "Omit or pass null to allocate a new custom provider ID.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "customGateway"
+              ],
+              "title": "CustomGatewayProviderSettingsPatchType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "CustomGatewayProviderSettingsPatch",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "AWS configuration fields for built-in Bedrock providers.",
+          "properties": {
+            "profile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "providerId": {
+              "$ref": "#/definitions/definitions__v2__BedrockProviderId"
+            },
+            "region": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "bedrock"
+              ],
+              "title": "BedrockProviderSettingsPatchType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "type"
+          ],
+          "title": "BedrockProviderSettingsPatch",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "GCP configuration fields. Credential-file paths refer to the app-server host.",
+          "properties": {
+            "credentialFile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "location": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "projectId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "providerId": {
+              "$ref": "#/definitions/definitions__v2__GcpProviderId"
+            },
+            "type": {
+              "enum": [
+                "gcp"
+              ],
+              "title": "GcpProviderSettingsPatchType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerId",
+            "type"
+          ],
+          "title": "GcpProviderSettingsPatch",
+          "type": "object"
+        }
+      ]
     },
     "definitions__v2__RealtimeConversationVersion": {
       "enum": [
@@ -5863,7 +6124,7 @@
     },
     "definitions__v2__ThreadGuardianReviewParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "description": "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects.",
+      "description": "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects. Sequential calls on the same loaded thread can reuse Guardian history across direct reviews and live approvals. The reviewer keeps a separate conversation from the actor and follows the parent thread's normal persistence settings. A retry evaluates the final call again under the current policy.",
       "properties": {
         "threadId": {
           "type": "string"
@@ -5916,6 +6177,19 @@
       "title": "ThreadInjectItemsParams",
       "type": "object"
     },
+    "definitions__v2__ThreadItemOutputDeferral": {
+      "properties": {
+        "commandExecution": {
+          "description": "Defer nonempty output from successful commands.",
+          "type": "boolean"
+        },
+        "mcpToolCall": {
+          "description": "Defer nonempty plain-text results from successful MCP tool calls.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "definitions__v2__ThreadItemsListAnchor": {
       "description": "An exclusive item position within the requested visible turn.",
       "oneOf": [
@@ -5965,6 +6239,17 @@
             }
           ],
           "description": "Opaque continuation cursor or an exclusive item anchor in the requested visible turn. An item anchor requires a non-empty `turnId`; ascending (the default) returns items after it, and descending returns items before it. Continue with the returned string cursor."
+        },
+        "deferOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ThreadItemOutputDeferral"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a single turn, choose which saved outputs to fetch separately by item ID."
         },
         "limit": {
           "description": "Optional item page size.",
@@ -6066,6 +6351,10 @@
             "null"
           ]
         },
+        "currentAccountOnly": {
+          "description": "Show local history visible to the current ChatGPT account. Defaults to false.",
+          "type": "boolean"
+        },
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
           "type": [
@@ -6086,6 +6375,20 @@
         },
         "excludedThreadIds": {
           "description": "Thread IDs to exclude before applying the result limit. Up to 100 entries; invalid IDs or a larger list are rejected, never truncated. Send the same exclusions on each page. Omitted, null, or empty means no exclusions.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "includeAttachedThreads": {
+          "description": "Include persistent threads attached to a parent when searching by title.",
+          "type": "boolean"
+        },
+        "includedThreadIds": {
+          "description": "Restrict results to up to 100 thread IDs before pagination. Omit or send null for unrestricted results. An empty list matches nothing. Exclusions still apply. Repeat the same IDs on each page. The local store uses indexed metadata for this filter.",
           "items": {
             "type": "string"
           },
@@ -6184,7 +6487,7 @@
           ]
         },
         "useStateDbOnly": {
-          "description": "If true, return from the state DB without scanning JSONL rollouts to repair thread metadata. Omitted or false preserves scan-and-repair behavior.",
+          "description": "If true, the local store returns indexed metadata without scanning JSONL rollouts for repairs. Requests with `includedThreadIds` always use indexed metadata.",
           "type": "boolean"
         }
       },
@@ -6333,6 +6636,31 @@
       "title": "ThreadPredictionRequestParams",
       "type": "object"
     },
+    "definitions__v2__ThreadPrepareApprovedPlanParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Prepare an approved plan for the first turn of a fresh thread.",
+      "properties": {
+        "attachmentPath": {
+          "description": "Absolute path to the optional app-server copy of the plan.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "markdown": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "markdown",
+        "threadId"
+      ],
+      "title": "ThreadPrepareApprovedPlanParams",
+      "type": "object"
+    },
     "definitions__v2__ThreadQueueAddParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -6344,6 +6672,16 @@
             "$ref": "#/definitions/definitions__v2__UserInput"
           },
           "type": "array"
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "ResponsesAPI metadata captured from the client submitting this input.",
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "threadId": {
           "type": "string"
@@ -6453,6 +6791,16 @@
         },
         "queuedSubmissionId": {
           "type": "string"
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Non-empty metadata replaces the input's metadata; omission or an empty map preserves it.",
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "threadId": {
           "type": "string"
@@ -6657,11 +7005,122 @@
       ],
       "type": "object"
     },
+    "definitions__v2__ThreadRealtimeListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "afterPosition": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventId": {
+          "description": "A required exact event ID, such as a completed item's acknowledgement. Returns pending until projected. Explicit filters can exclude a known event.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromObservedAtMs": {
+          "description": "Inclusive canonical observation time lower bound.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "order": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ThreadRealtimeOrder"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Defaults to canonical observation time."
+        },
+        "requiredThroughPosition": {
+          "description": "Return pending until the projection includes this committed position.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snapshotEnd": {
+          "description": "Exclusive committed position delimiting an immutable snapshot.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "toObservedAtMs": {
+          "description": "Exclusive canonical observation time upper bound.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRealtimeListParams",
+      "type": "object"
+    },
     "definitions__v2__ThreadRealtimeListVoicesParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "EXPERIMENTAL - list voices supported by thread realtime.",
       "title": "ThreadRealtimeListVoicesParams",
       "type": "object"
+    },
+    "definitions__v2__ThreadRealtimeOrder": {
+      "oneOf": [
+        {
+          "description": "Sort by canonical observation time, then committed position.",
+          "enum": [
+            "observedAt"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Sort by committed position, including events sealed after older snapshots.",
+          "enum": [
+            "position"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "definitions__v2__ThreadRealtimeStartParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -7136,6 +7595,10 @@
     "definitions__v2__ThreadSampleParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "allowInProgressTurn": {
+          "description": "Allow sampling the latest turn before it finishes.",
+          "type": "boolean"
+        },
         "disableMcp": {
           "description": "Disable MCP servers when the inherited window uses incremental tools on Responses Lite.",
           "type": "boolean"
@@ -7152,7 +7615,7 @@
           "description": "Applied only when the provider and model support cache-preserving reasoning-effort updates."
         },
         "expectedTurnId": {
-          "description": "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+          "description": "The loaded source's latest turn, which must be finished (completed, failed, or interrupted) unless `allowInProgressTurn` is true.",
           "type": "string"
         },
         "interruptOnCancel": {
@@ -7203,6 +7666,20 @@
       "title": "ThreadSampleParams",
       "type": "object"
     },
+    "definitions__v2__ThreadSearchCancelParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Request cancellation on the same connection. `thread/search/cancel` targets only `thread/search`; `thread/search/stream/cancel` targets only `thread/search/stream`. Cancellation is idempotent: the cancel response acknowledges the request, and an interrupted search completes with an error after its subprocess is stopped and reaped. If completion races cancellation, the original search may still succeed. An already-completed search is unaffected.",
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "title": "ThreadSearchCancelParams",
+      "type": "object"
+    },
     "definitions__v2__ThreadSearchOccurrencesParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "Parameters for searching visible message occurrences within one paginated thread.",
@@ -7248,12 +7725,20 @@
             "null"
           ]
         },
+        "currentAccountOnly": {
+          "description": "Show local history visible to the current ChatGPT account. Defaults to false.",
+          "type": "boolean"
+        },
         "cursor": {
           "description": "Opaque pagination cursor returned by a previous call.",
           "type": [
             "string",
             "null"
           ]
+        },
+        "includeAttachedThreads": {
+          "description": "Include persistent threads attached to a parent in search results.",
+          "type": "boolean"
         },
         "limit": {
           "description": "Optional page size; defaults to a reasonable server-side value.",
@@ -7265,7 +7750,7 @@
           ]
         },
         "searchTerm": {
-          "description": "Required substring/full-text query for thread search.",
+          "description": "Required substring/full-text query. `thread/search/stream` limits this to 65,536 UTF-8 bytes after trimming surrounding whitespace.",
           "type": "string"
         },
         "sortDirection": {
@@ -7539,6 +8024,16 @@
             }
           ],
           "description": "Override the reasoning effort for subsequent turns."
+        },
+        "environments": {
+          "description": "Replace the environments for future turns without changing the running turn. Omitted/null preserves the selection unless `cwd` is also provided, which selects the default environments for that directory. [] clears the selection.",
+          "items": {
+            "$ref": "#/definitions/definitions__v2__TurnEnvironmentParams"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "model": {
           "description": "Override the model for subsequent turns.",
@@ -8096,6 +8591,16 @@
             }
           ],
           "description": "Omission or `null` leaves the effort unchanged."
+        },
+        "environments": {
+          "description": "Replace the environments for subsequent steps of this turn, not future turns. Omitted/null preserves the selection; [] clears it. An already-started step is unchanged.",
+          "items": {
+            "$ref": "#/definitions/definitions__v2__TurnEnvironmentParams"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "model": {
           "description": "Omission or `null` leaves the model unchanged.",
@@ -10262,6 +10767,80 @@
       "type": "object"
     },
     {
+      "description": "Search with best-effort incremental `thread/search/partial` notifications. The final response is authoritative for results, ordering, and cursors.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/search/stream"
+          ],
+          "title": "Thread/search/streamRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSearchParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/search/streamRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/search/cancel"
+          ],
+          "title": "Thread/search/cancelRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSearchCancelParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/search/cancelRequest",
+      "type": "object"
+    },
+    {
+      "description": "Cancel a `thread/search/stream` request on this connection.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/search/stream/cancel"
+          ],
+          "title": "Thread/search/stream/cancelRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadSearchCancelParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/search/stream/cancelRequest",
+      "type": "object"
+    },
+    {
       "properties": {
         "id": {
           "$ref": "#/definitions/definitions__v2__RequestId"
@@ -10477,6 +11056,30 @@
         "params"
       ],
       "title": "Thread/injectItemsRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/prepareApprovedPlan"
+          ],
+          "title": "Thread/prepareApprovedPlanRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadPrepareApprovedPlanParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/prepareApprovedPlanRequest",
       "type": "object"
     },
     {
@@ -11494,6 +12097,30 @@
         },
         "method": {
           "enum": [
+            "thread/realtime/list"
+          ],
+          "title": "Thread/realtime/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadRealtimeListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/realtime/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "thread/realtime/listVoices"
           ],
           "title": "Thread/realtime/listVoicesRequestMethod",
@@ -11572,7 +12199,14 @@
           "type": "string"
         },
         "params": {
-          "type": "null"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__GatewayOAuthReadParams"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -11595,7 +12229,14 @@
           "type": "string"
         },
         "params": {
-          "type": "null"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__GatewayOAuthLoginParams"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -11626,6 +12267,78 @@
         "method"
       ],
       "title": "Account/gatewayOAuth/cancelRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/list"
+          ],
+          "title": "ModelProvider/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ModelProviderListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/config/write"
+          ],
+          "title": "ModelProvider/config/writeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ModelProviderConfigWriteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/config/writeRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/default/set"
+          ],
+          "title": "ModelProvider/default/setRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ModelProviderDefaultSetParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/default/setRequest",
       "type": "object"
     },
     {
@@ -12455,6 +13168,29 @@
         "method"
       ],
       "title": "Account/logoutRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "account/securitySetup/read"
+          ],
+          "title": "Account/securitySetup/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "id",
+        "method"
+      ],
+      "title": "Account/securitySetup/readRequest",
       "type": "object"
     },
     {

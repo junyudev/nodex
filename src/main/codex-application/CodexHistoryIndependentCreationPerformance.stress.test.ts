@@ -87,6 +87,7 @@ const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thre
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "",
   ephemeral: false,

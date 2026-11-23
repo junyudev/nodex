@@ -72,6 +72,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     extra: null,
     sessionId: "session_c06",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "C-06 file stream fixture",
     ephemeral: false,
@@ -185,6 +186,7 @@ function fileChange(
 function mcpToolCall(id: string): McpToolCallItem {
   return {
     type: "mcpToolCall",
+    environmentId: null,
     id,
     server: "fixture-server",
     tool: "fixture-tool",
@@ -414,6 +416,7 @@ describe("Codex canonical file-change stream", () => {
     const wrongType: ThreadItem = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "shared",
       text: "must not mask the exact item",
       phase: null,
@@ -462,6 +465,7 @@ describe("Codex canonical file-change stream", () => {
     const firstWrongType: ThreadItem = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "shared",
       text: "replace this slot",
       phase: null,
@@ -530,6 +534,7 @@ describe("Codex canonical file-change stream", () => {
     const wrongType: ThreadItem = {
       questions: null,
       type: "agentMessage",
+      moderation: null,
       id: "mcp-item",
       text: "does not mask MCP",
       phase: null,

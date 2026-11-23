@@ -28,6 +28,7 @@ function buildState(): CodexCanonicalConversationState {
       extra: null,
       sessionId: "session-turn-metadata",
       forkedFromId: null,
+      attachedToThreadId: null,
       parentThreadId: null,
       preview: "",
       ephemeral: false,

@@ -21,6 +21,7 @@ export const targetThread = (id: string): Thread => ({
   extra: null,
   sessionId: `native-${id}`,
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "Created response",
   ephemeral: false,

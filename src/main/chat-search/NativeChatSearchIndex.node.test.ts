@@ -24,6 +24,7 @@ const message = (id: string, text: string, completed = true): ThreadItemEntry =>
   turnId: `turn:${id}`,
   item: {
     type: "agentMessage",
+    moderation: null,
     id,
     text,
     phase: null,

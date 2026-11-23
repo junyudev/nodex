@@ -41,7 +41,7 @@ export const sanitizedCommandLifecycleFixture = {
     environments: null,
     extra: null,
     sessionId: "session_fixture",
-    forkedFromId: null,
+    forkedFromId: null, attachedToThreadId: null,
     parentThreadId: null,
     preview: "Sanitized replay fixture",
     ephemeral: false,

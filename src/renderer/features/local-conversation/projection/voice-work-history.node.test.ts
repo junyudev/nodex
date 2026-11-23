@@ -14,6 +14,7 @@ import { timelineOwnerFixture } from "./normalized-timeline.test-fixtures";
 type Receipt = ThreadTimelineListResponse["data"][number];
 const assistant = (id: string, text = id): ThreadItem => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: "final_answer",

@@ -56,6 +56,7 @@ function buildState(
     extra: null,
     sessionId: "session_c04",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "C-04 delta fixture",
     ephemeral: false,
@@ -166,6 +167,7 @@ describe("canonical frame-text delta reduction", () => {
       {
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: "shared-item",
         text: "first",
         phase: null,
@@ -176,6 +178,7 @@ describe("canonical frame-text delta reduction", () => {
       {
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: "shared-item",
         text: "last",
         phase: null,
@@ -390,6 +393,7 @@ describe("canonical frame-text delta reduction", () => {
       {
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: "agent",
         text: "",
         phase: null,

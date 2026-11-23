@@ -212,6 +212,7 @@ test("a rail preview keeps its ordinary cursor and 30-item budget while timeline
           turnId: "target",
           item: {
             type: "agentMessage",
+            moderation: null,
             id: "answer",
             text: "answer",
             phase: "final_answer",
@@ -268,6 +269,7 @@ test("preview carries an opening prompt omitted from partial items and pairs its
       items: [
         {
           type: "agentMessage",
+          moderation: null,
           id: "response",
           text: "answer",
           phase: "final_answer",

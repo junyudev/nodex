@@ -141,6 +141,7 @@ describe("native created/subagent presentation identity", () => {
       done = activity("done", "completed");
     const text: ThreadItem = {
       type: "agentMessage",
+      moderation: null,
       id: "text",
       text: "unchanged",
       phase: null,
@@ -193,6 +194,7 @@ describe("native created/subagent presentation identity", () => {
   test("10,000 ordinary items plus a dedicated child stay linear and never materialize a whole Turn", () => {
     const items: ThreadItem[] = Array.from({ length: 10_000 }, (_, index) => ({
       type: "agentMessage",
+      moderation: null,
       id: `text:${index}`,
       text: "text",
       phase: null,

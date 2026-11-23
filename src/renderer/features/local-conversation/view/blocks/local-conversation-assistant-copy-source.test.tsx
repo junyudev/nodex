@@ -17,6 +17,7 @@ const key = { hostId: "local", threadId: "thread", entityKey: "turn:one", itemId
 function nativeAssistant(source: string, deferred: boolean) {
   const answer: ThreadItem = {
     type: "agentMessage",
+    moderation: null,
     id: key.itemId,
     text: source,
     phase: deferred ? null : "final_answer",

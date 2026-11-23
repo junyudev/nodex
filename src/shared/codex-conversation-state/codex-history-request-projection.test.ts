@@ -6,7 +6,6 @@ import {
 } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 import {
   agentActivityV2CommandApprovalRequest,
-  agentActivityV2CurrentTimeRequest,
   agentActivityV2FileApprovalRequest,
   agentActivityV2PermissionRequest,
   agentActivityV2UserInputRequest,
@@ -40,7 +39,6 @@ test("projects and attaches exact history request families", () => {
       agentActivityV2FileApprovalRequest,
       agentActivityV2UserInputRequest,
       agentActivityV2PermissionRequest,
-      agentActivityV2CurrentTimeRequest,
     ],
     observedAtMs: 5_000,
   });

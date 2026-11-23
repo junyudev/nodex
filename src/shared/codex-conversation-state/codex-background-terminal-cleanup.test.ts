@@ -63,6 +63,7 @@ const state = (turns: readonly Turn[]) => {
     extra: null,
     sessionId: "session-background",
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     preview: "background terminals",
     ephemeral: false,

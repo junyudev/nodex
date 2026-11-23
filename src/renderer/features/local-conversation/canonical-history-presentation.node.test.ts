@@ -20,6 +20,7 @@ function fixture() {
     buildAgentActivityV2CorpusThread([
       {
         type: "agentMessage",
+        moderation: null,
         id: "retained",
         text: "answer",
         phase: null,

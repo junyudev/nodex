@@ -93,7 +93,6 @@ export function startCodexRequestInteractionTrace(input: {
 export function startCodexServerResponseInteractionTrace(
   method: string,
 ): CodexRequestInteractionTrace | null {
-  if (method === "currentTime/read") return null;
   const isToolResponse = method === "item/tool/call" || method === "item/tool/requestOptionPicker";
   return startCodexRequestInteractionTrace({
     attributes: { "app_server.method": method },

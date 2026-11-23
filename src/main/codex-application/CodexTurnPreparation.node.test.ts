@@ -118,6 +118,7 @@ for (const status of ["inProgress", "completed"] as const) {
       turn.items.push({
         id: "question",
         type: "agentMessage",
+        moderation: null,
         text: "Which scope?",
         phase: "final_answer",
         delivery: "async",
@@ -142,6 +143,7 @@ it.effect(
       source.items.push({
         id: "old-question",
         type: "agentMessage",
+        moderation: null,
         text: "Which scope?",
         phase: "final_answer",
         delivery: "async",

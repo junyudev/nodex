@@ -346,6 +346,7 @@ it.effect("only current-generation retention notifications release passive canon
           items: [
             {
               type: "agentMessage",
+              moderation: null,
               id: "answer",
               text: "kept",
               phase: null,

@@ -34,6 +34,7 @@ const command: ThreadItem = {
 };
 const answer: ThreadItem = {
   type: "agentMessage",
+  moderation: null,
   id: "answer",
   text: "Native terminal answer",
   phase: "final_answer",

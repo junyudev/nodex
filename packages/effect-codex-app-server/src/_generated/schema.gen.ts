@@ -1231,7 +1231,14 @@ export type ClientRequest__ProjectMoveParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ProjectMoveParams = Schema.StructWithRest(
   Schema.Struct({
-    beforeProjectId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    beforeProjectId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Place the project before this ID, or append it when omitted or null.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     projectId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -1450,6 +1457,24 @@ export const ClientRequest__ThreadItemsListAnchor = Schema.Union(
   identifier: "ClientRequest__ThreadItemsListAnchor",
 });
 
+export type ClientRequest__ThreadItemOutputDeferral = {
+  readonly commandExecution?: boolean;
+  readonly mcpToolCall?: boolean;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadItemOutputDeferral = Schema.StructWithRest(
+  Schema.Struct({
+    commandExecution: Schema.optionalKey(
+      Schema.Boolean.annotate({ description: "Defer nonempty output from successful commands." }),
+    ),
+    mcpToolCall: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Defer nonempty plain-text results from successful MCP tool calls.",
+      }),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadItemOutputDeferral" });
+
 export type ClientRequest__ThreadItemsReadParams = {
   readonly itemIds: ReadonlyArray<string>;
   readonly threadId: string;
@@ -1477,7 +1502,7 @@ export const ClientRequest__ThreadGuardianReviewParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({
   description:
-    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects.",
+    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects. Sequential calls on the same loaded thread can reuse Guardian history across direct reviews and live approvals. The reviewer keeps a separate conversation from the actor and follows the parent thread's normal persistence settings. A retry evaluates the final call again under the current policy.",
   identifier: "ClientRequest__ThreadGuardianReviewParams",
 });
 
@@ -1494,6 +1519,30 @@ export const ClientRequest__ThreadInjectItemsParams = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadInjectItemsParams" });
+
+export type ClientRequest__ThreadPrepareApprovedPlanParams = {
+  readonly attachmentPath?: string | null;
+  readonly markdown: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadPrepareApprovedPlanParams = Schema.StructWithRest(
+  Schema.Struct({
+    attachmentPath: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Absolute path to the optional app-server copy of the plan.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    markdown: Schema.String,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "Prepare an approved plan for the first turn of a fresh thread.",
+  identifier: "ClientRequest__ThreadPrepareApprovedPlanParams",
+});
 
 export type ClientRequest__SkillsListParams = {
   readonly cwds?: ReadonlyArray<string>;
@@ -2076,6 +2125,19 @@ export const ClientRequest__ThreadTimelineListParams = Schema.StructWithRest(
   identifier: "ClientRequest__ThreadTimelineListParams",
 });
 
+export type ClientRequest__ThreadRealtimeOrder = "observedAt" | "position";
+export const ClientRequest__ThreadRealtimeOrder = Schema.Union(
+  [
+    Schema.Literal("observedAt").annotate({
+      description: "Sort by canonical observation time, then committed position.",
+    }),
+    Schema.Literal("position").annotate({
+      description: "Sort by committed position, including events sealed after older snapshots.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ClientRequest__ThreadRealtimeOrder" });
+
 export type ClientRequest__ThreadRealtimeListVoicesParams = { readonly [x: string]: Schema.Json };
 export const ClientRequest__ThreadRealtimeListVoicesParams = Schema.Record(
   Schema.String,
@@ -2160,6 +2222,7 @@ export type ClientRequest__ModelListParams = {
   readonly cursor?: string | null;
   readonly includeHidden?: boolean | null;
   readonly limit?: number | null;
+  readonly modelProvider?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ModelListParams = Schema.StructWithRest(
   Schema.Struct({
@@ -2194,9 +2257,92 @@ export const ClientRequest__ModelListParams = Schema.StructWithRest(
         Schema.Null,
       ]),
     ),
+    modelProvider: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "List models for this configured provider instead of the app-server default.",
+        }),
+        Schema.Null,
+      ]),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ModelListParams" });
+
+export type ClientRequest__GatewayOAuthReadParams = { readonly modelProvider?: string | null } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const ClientRequest__GatewayOAuthReadParams = Schema.StructWithRest(
+  Schema.Struct({
+    modelProvider: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Defaults to the current provider when omitted." }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Read credential readiness for a configured provider without starting browser login.",
+  identifier: "ClientRequest__GatewayOAuthReadParams",
+});
+
+export type ClientRequest__GatewayOAuthLoginParams = {
+  readonly deviceAuth?: boolean;
+  readonly modelProvider?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__GatewayOAuthLoginParams = Schema.StructWithRest(
+  Schema.Struct({
+    deviceAuth: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Select device authorization when the server advertises support for it.",
+      }),
+    ),
+    modelProvider: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Defaults to the current provider when omitted." }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Authorize a configured provider without changing the default or any thread's provider.",
+  identifier: "ClientRequest__GatewayOAuthLoginParams",
+});
+
+export type ClientRequest__ModelProviderListParams = { readonly [x: string]: Schema.Json };
+export const ClientRequest__ModelProviderListParams = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ identifier: "ClientRequest__ModelProviderListParams" });
+
+export type ClientRequest__BedrockProviderId = "amazon-bedrock" | "amazon-bedrock-runtime";
+export const ClientRequest__BedrockProviderId = Schema.Literals([
+  "amazon-bedrock",
+  "amazon-bedrock-runtime",
+]).annotate({ identifier: "ClientRequest__BedrockProviderId" });
+
+export type ClientRequest__GcpProviderId = "gcp";
+export const ClientRequest__GcpProviderId = Schema.Literal("gcp").annotate({
+  identifier: "ClientRequest__GcpProviderId",
+});
+
+export type ClientRequest__ModelProviderDefaultSetParams = { readonly providerId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const ClientRequest__ModelProviderDefaultSetParams = Schema.StructWithRest(
+  Schema.Struct({
+    providerId: Schema.String.annotate({
+      description:
+        "Configured provider to use by default for new threads and unscoped model lists.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ModelProviderDefaultSetParams" });
 
 export type ClientRequest__ModelProviderCapabilitiesReadParams = {
   readonly [x: string]: Schema.Json;
@@ -2479,6 +2625,7 @@ export const ClientRequest__McpServerEventStreamStopParams = Schema.StructWithRe
 export type ClientRequest__McpServerToolCallParams = {
   readonly _meta?: Schema.Json;
   readonly arguments?: Schema.Json;
+  readonly environmentId?: string | null;
   readonly server: string;
   readonly threadId: string;
   readonly tool: string;
@@ -2487,6 +2634,14 @@ export const ClientRequest__McpServerToolCallParams = Schema.StructWithRest(
   Schema.Struct({
     _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
     arguments: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     server: Schema.String,
     threadId: Schema.String,
     tool: Schema.String,
@@ -3587,6 +3742,57 @@ export const ServerNotification__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__MemoryCitationEntry" });
 
+export type ServerNotification__HelplineSubject = "answer" | "prompt";
+export const ServerNotification__HelplineSubject = Schema.Literals(["answer", "prompt"]).annotate({
+  identifier: "ServerNotification__HelplineSubject",
+});
+
+export type ServerNotification__TrustedContacts = "check" | "skip";
+export const ServerNotification__TrustedContacts = Schema.Literals(["check", "skip"]).annotate({
+  identifier: "ServerNotification__TrustedContacts",
+});
+
+export type ServerNotification__AnswerReplacement = { readonly kind: "wellbeingPromptHelpline" } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const ServerNotification__AnswerReplacement = Schema.Union(
+  [
+    Schema.StructWithRest(Schema.Struct({ kind: Schema.Literal("wellbeingPromptHelpline") }), [
+      Schema.Record(Schema.String, CodexJsonExtension),
+    ]).annotate({ title: "WellbeingPromptHelplineAnswerReplacement" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__AnswerReplacement" });
+
+export type ServerNotification__BlockReason =
+  | ({ readonly kind: "protection"; readonly protectionType: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly kind: "cyber"; readonly trustedAccess?: boolean | null } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const ServerNotification__BlockReason = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        kind: Schema.Literal("protection"),
+        protectionType: Schema.String.annotate({
+          description: "Identifies the same moderation row that Chat writes on the live path.",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+    Schema.StructWithRest(
+      Schema.Struct({
+        kind: Schema.Literal("cyber"),
+        trustedAccess: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "KindBlockReason" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__BlockReason" });
+
 export type ServerNotification__MessagePhase = ClientRequest__MessagePhase;
 export const ServerNotification__MessagePhase = ClientRequest__MessagePhase;
 
@@ -4428,6 +4634,9 @@ export const ServerNotification__ProcessOutputStream = Schema.Union(
   identifier: "ServerNotification__ProcessOutputStream",
 });
 
+export type ServerNotification__RequestId = ClientRequest__RequestId;
+export const ServerNotification__RequestId = ClientRequest__RequestId;
+
 export type ServerNotification__ProcessExitedNotification = {
   readonly exitCode: number;
   readonly outputDrainTimedOut?: boolean | null;
@@ -4530,9 +4739,6 @@ export const ServerNotification__FileChangeOutputDeltaNotification = Schema.Stru
     "Deprecated legacy notification for `apply_patch` textual output.\n\nThe server no longer emits this notification.",
   identifier: "ServerNotification__FileChangeOutputDeltaNotification",
 });
-
-export type ServerNotification__RequestId = ClientRequest__RequestId;
-export const ServerNotification__RequestId = ClientRequest__RequestId;
 
 export type ServerNotification__McpToolCallProgressNotification = {
   readonly itemId: string;
@@ -4690,6 +4896,12 @@ export const ServerNotification__PlanType = Schema.Literals([
   "sci_plus",
   "unknown",
 ]).annotate({ identifier: "ServerNotification__PlanType" });
+
+export type ServerNotification__AccountUpdateReason = "workspaceRoutingReady" | "unknown";
+export const ServerNotification__AccountUpdateReason = Schema.Literals([
+  "workspaceRoutingReady",
+  "unknown",
+]).annotate({ identifier: "ServerNotification__AccountUpdateReason" });
 
 export type ServerNotification__GatewayOAuthStatus =
   | "notReady"
@@ -5145,6 +5357,12 @@ export const ServerNotification__ThreadRealtimeSessionOutcome = Schema.Literals(
   "failed",
 ]).annotate({ identifier: "ServerNotification__ThreadRealtimeSessionOutcome" });
 
+export type ServerNotification__ThreadRealtimeHandoffMode = "start" | "steer";
+export const ServerNotification__ThreadRealtimeHandoffMode = Schema.Literals([
+  "start",
+  "steer",
+]).annotate({ identifier: "ServerNotification__ThreadRealtimeHandoffMode" });
+
 export type ServerNotification__ThreadRealtimeItemTranscriptDeltaNotification = {
   readonly delta: string;
   readonly itemId: string;
@@ -5414,14 +5632,6 @@ export const ServerRequest__AttestationGenerateParams = Schema.Record(
   Schema.Json.annotate({ expected: "JSON value" }),
 ).annotate({ identifier: "ServerRequest__AttestationGenerateParams" });
 
-export type ServerRequest__CurrentTimeReadParams = { readonly threadId: string } & {
-  readonly [x: string]: CodexJsonExtension;
-};
-export const ServerRequest__CurrentTimeReadParams = Schema.StructWithRest(
-  Schema.Struct({ threadId: Schema.String }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerRequest__CurrentTimeReadParams" });
-
 export type ServerRequest__ThreadId = ApplyPatchApprovalParams__ThreadId;
 export const ServerRequest__ThreadId = ApplyPatchApprovalParams__ThreadId;
 
@@ -5500,6 +5710,11 @@ export const V2AccountUpdatedNotification__AuthMode = ServerNotification__AuthMo
 
 export type V2AccountUpdatedNotification__PlanType = ServerNotification__PlanType;
 export const V2AccountUpdatedNotification__PlanType = ServerNotification__PlanType;
+
+export type V2AccountUpdatedNotification__AccountUpdateReason =
+  ServerNotification__AccountUpdateReason;
+export const V2AccountUpdatedNotification__AccountUpdateReason =
+  ServerNotification__AccountUpdateReason;
 
 export type V2AppListUpdatedNotification__AppReview = ServerNotification__AppReview;
 export const V2AppListUpdatedNotification__AppReview = ServerNotification__AppReview;
@@ -5654,6 +5869,15 @@ export const V2ConfigReadResponse__AllowDenyRequirement = Schema.Literals([
   "allow",
   "deny",
 ]).annotate({ identifier: "V2ConfigReadResponse__AllowDenyRequirement" });
+
+export type V2ConfigReadResponse__WebSearchProvider = "standalone" | "search_mcp";
+export const V2ConfigReadResponse__WebSearchProvider = Schema.Literals([
+  "standalone",
+  "search_mcp",
+]).annotate({
+  description: "Provider preference selected by the resolved model catalog entry.",
+  identifier: "V2ConfigReadResponse__WebSearchProvider",
+});
 
 export type V2ConfigReadResponse__ForcedChatgptWorkspaceIds = string | ReadonlyArray<string>;
 export const V2ConfigReadResponse__ForcedChatgptWorkspaceIds = Schema.Union([
@@ -6331,6 +6555,20 @@ export type V2GatewayOAuthChangedNotification__GatewayOAuthStatus =
 export const V2GatewayOAuthChangedNotification__GatewayOAuthStatus =
   ServerNotification__GatewayOAuthStatus;
 
+export type V2GatewayOAuthLoginResponse__GatewayOAuthPrompt = {
+  readonly loginId: string;
+  readonly userCode: string;
+  readonly verificationUrl: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GatewayOAuthLoginResponse__GatewayOAuthPrompt = Schema.StructWithRest(
+  Schema.Struct({
+    loginId: Schema.String,
+    userCode: Schema.String,
+    verificationUrl: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2GatewayOAuthLoginResponse__GatewayOAuthPrompt" });
+
 export type V2GatewayOAuthReadResponse__GatewayOAuthStatus = ServerNotification__GatewayOAuthStatus;
 export const V2GatewayOAuthReadResponse__GatewayOAuthStatus =
   ServerNotification__GatewayOAuthStatus;
@@ -6384,6 +6622,15 @@ export const V2GetAccountResponse__AccountRoutingOverride = Schema.Literals([
   description: "Backend routing policy. Wire values match the accounts/check contract.",
   identifier: "V2GetAccountResponse__AccountRoutingOverride",
 });
+
+export type V2GetAccountSecuritySetupResponse__AccountSecuritySetupAction = {
+  readonly label: string;
+  readonly url: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GetAccountSecuritySetupResponse__AccountSecuritySetupAction = Schema.StructWithRest(
+  Schema.Struct({ label: Schema.String, url: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2GetAccountSecuritySetupResponse__AccountSecuritySetupAction" });
 
 export type V2GetAccountTokenUsageResponse__AccountTokenUsageDailyBucket = {
   readonly startDate: string;
@@ -6624,6 +6871,18 @@ export type V2ItemCompletedNotification__MemoryCitationEntry =
 export const V2ItemCompletedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 
+export type V2ItemCompletedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ItemCompletedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ItemCompletedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ItemCompletedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ItemCompletedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ItemCompletedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ItemCompletedNotification__BlockReason = ServerNotification__BlockReason;
+export const V2ItemCompletedNotification__BlockReason = ServerNotification__BlockReason;
+
 export type V2ItemCompletedNotification__MessagePhase = ClientRequest__MessagePhase;
 export const V2ItemCompletedNotification__MessagePhase = ClientRequest__MessagePhase;
 
@@ -6821,6 +7080,18 @@ export type V2ItemStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ItemStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ItemStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ItemStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ItemStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ItemStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ItemStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ItemStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ItemStartedNotification__BlockReason = ServerNotification__BlockReason;
+export const V2ItemStartedNotification__BlockReason = ServerNotification__BlockReason;
 
 export type V2ItemStartedNotification__MessagePhase = ClientRequest__MessagePhase;
 export const V2ItemStartedNotification__MessagePhase = ClientRequest__MessagePhase;
@@ -7213,6 +7484,49 @@ export const V2ModelListResponse__ModelUpgradeInfo = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ModelListResponse__ModelUpgradeInfo" });
 
+export type V2ModelProviderConfigWriteParams__BedrockProviderId = ClientRequest__BedrockProviderId;
+export const V2ModelProviderConfigWriteParams__BedrockProviderId = ClientRequest__BedrockProviderId;
+
+export type V2ModelProviderConfigWriteParams__GcpProviderId = ClientRequest__GcpProviderId;
+export const V2ModelProviderConfigWriteParams__GcpProviderId = ClientRequest__GcpProviderId;
+
+export type V2ModelProviderConfigWriteResponse__GatewayAuth =
+  | ({ readonly mode: "none" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly envKey: string; readonly mode: "environmentVariable" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly envKey?: string | null; readonly mode: "externallyConfigured" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ModelProviderConfigWriteResponse__GatewayAuth = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({ mode: Schema.Literal("none").annotate({ title: "NoneGatewayAuthMode" }) }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "NoneGatewayAuth" }),
+    Schema.StructWithRest(
+      Schema.Struct({ envKey: Schema.String, mode: Schema.Literal("environmentVariable") }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+    Schema.StructWithRest(
+      Schema.Struct({
+        envKey: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        mode: Schema.Literal("externallyConfigured").annotate({ title: "ModeGatewayAuthMode" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ModeGatewayAuth",
+      description: "Authentication is configured outside the gateway form. Preserve it on edits.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ModelProviderConfigWriteResponse__GatewayAuth" });
+
+export type V2ModelProviderListResponse__GatewayAuth =
+  V2ModelProviderConfigWriteResponse__GatewayAuth;
+export const V2ModelProviderListResponse__GatewayAuth =
+  V2ModelProviderConfigWriteResponse__GatewayAuth;
+
 export type V2ModelReroutedNotification__ModelRerouteReason =
   ServerNotification__ModelRerouteReason;
 export const V2ModelReroutedNotification__ModelRerouteReason =
@@ -7222,6 +7536,16 @@ export type V2ModelVerificationNotification__ModelVerification =
   ServerNotification__ModelVerification;
 export const V2ModelVerificationNotification__ModelVerification =
   ServerNotification__ModelVerification;
+
+export type V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams =
+  ClientRequest__GatewayOAuthLoginParams;
+export const V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams =
+  ClientRequest__GatewayOAuthLoginParams;
+
+export type V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams =
+  ClientRequest__GatewayOAuthReadParams;
+export const V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams =
+  ClientRequest__GatewayOAuthReadParams;
 
 export type V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams =
   ClientRequest__GetAccountRateLimitsParams;
@@ -7869,6 +8193,18 @@ export const V2ReviewStartResponse__AgentMessageDelivery = ServerNotification__A
 export type V2ReviewStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ReviewStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2ReviewStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ReviewStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ReviewStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ReviewStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ReviewStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ReviewStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ReviewStartResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ReviewStartResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ReviewStartResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ReviewStartResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -8233,6 +8569,18 @@ export const V2ThreadForkResponse__AgentMessageDelivery = ServerNotification__Ag
 export type V2ThreadForkResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadForkResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadForkResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadForkResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadForkResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadForkResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadForkResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadForkResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadForkResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadForkResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadForkResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadForkResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -8354,6 +8702,11 @@ export const V2ThreadGuardianReviewResponse__GuardianUserAuthorization =
 export type V2ThreadItemsListParams__ThreadItemsListAnchor = ClientRequest__ThreadItemsListAnchor;
 export const V2ThreadItemsListParams__ThreadItemsListAnchor = ClientRequest__ThreadItemsListAnchor;
 
+export type V2ThreadItemsListParams__ThreadItemOutputDeferral =
+  ClientRequest__ThreadItemOutputDeferral;
+export const V2ThreadItemsListParams__ThreadItemOutputDeferral =
+  ClientRequest__ThreadItemOutputDeferral;
+
 export type V2ThreadItemsListParams__SortDirection = ClientRequest__SortDirection;
 export const V2ThreadItemsListParams__SortDirection = ClientRequest__SortDirection;
 
@@ -8375,6 +8728,18 @@ export type V2ThreadItemsListResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ThreadItemsListResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadItemsListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadItemsListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadItemsListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadItemsListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadItemsListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadItemsListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadItemsListResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadItemsListResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadItemsListResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadItemsListResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -8478,6 +8843,18 @@ export type V2ThreadItemsReadResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ThreadItemsReadResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadItemsReadResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadItemsReadResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadItemsReadResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadItemsReadResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadItemsReadResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadItemsReadResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadItemsReadResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadItemsReadResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadItemsReadResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadItemsReadResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -8628,6 +9005,18 @@ export const V2ThreadListResponse__AgentMessageDelivery = ServerNotification__Ag
 
 export type V2ThreadListResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadListResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadListResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadListResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadListResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadListResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -8786,6 +9175,20 @@ export type V2ThreadMetadataUpdateResponse__MemoryCitationEntry =
 export const V2ThreadMetadataUpdateResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadMetadataUpdateResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadMetadataUpdateResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadMetadataUpdateResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadMetadataUpdateResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadMetadataUpdateResponse__AnswerReplacement =
+  ServerNotification__AnswerReplacement;
+export const V2ThreadMetadataUpdateResponse__AnswerReplacement =
+  ServerNotification__AnswerReplacement;
+
+export type V2ThreadMetadataUpdateResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadMetadataUpdateResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadMetadataUpdateResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadMetadataUpdateResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -8927,6 +9330,18 @@ export type V2ThreadQueueStartResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ThreadQueueStartResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadQueueStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadQueueStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadQueueStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadQueueStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadQueueStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadQueueStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadQueueStartResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadQueueStartResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadQueueStartResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadQueueStartResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -9087,6 +9502,18 @@ export const V2ThreadReadResponse__AgentMessageDelivery = ServerNotification__Ag
 export type V2ThreadReadResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadReadResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadReadResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadReadResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadReadResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadReadResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadReadResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadReadResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadReadResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadReadResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadReadResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadReadResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -9204,6 +9631,11 @@ export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeSessionOutc
 export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeSessionOutcome =
   ServerNotification__ThreadRealtimeSessionOutcome;
 
+export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+
 export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeTranscriptRole =
   ServerNotification__ThreadRealtimeTranscriptRole;
 export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeTranscriptRole =
@@ -9218,6 +9650,44 @@ export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeSessionOutcom
   ServerNotification__ThreadRealtimeSessionOutcome;
 export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeSessionOutcome =
   ServerNotification__ThreadRealtimeSessionOutcome;
+
+export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+
+export type V2ThreadRealtimeListParams__ThreadRealtimeOrder = ClientRequest__ThreadRealtimeOrder;
+export const V2ThreadRealtimeListParams__ThreadRealtimeOrder = ClientRequest__ThreadRealtimeOrder;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeCoverage =
+  | "unsupported"
+  | "pending"
+  | "ready";
+export const V2ThreadRealtimeListResponse__ThreadRealtimeCoverage = Schema.Literals([
+  "unsupported",
+  "pending",
+  "ready",
+]).annotate({ identifier: "V2ThreadRealtimeListResponse__ThreadRealtimeCoverage" });
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeTranscriptRole =
+  ServerNotification__ThreadRealtimeTranscriptRole;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeTranscriptRole =
+  ServerNotification__ThreadRealtimeTranscriptRole;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeBemItemPresentation =
+  ServerNotification__ThreadRealtimeBemItemPresentation;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeBemItemPresentation =
+  ServerNotification__ThreadRealtimeBemItemPresentation;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeSessionOutcome =
+  ServerNotification__ThreadRealtimeSessionOutcome;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeSessionOutcome =
+  ServerNotification__ThreadRealtimeSessionOutcome;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
 
 export type V2ThreadRealtimeListVoicesResponse__RealtimeVoice = ClientRequest__RealtimeVoice;
 export const V2ThreadRealtimeListVoicesResponse__RealtimeVoice = ClientRequest__RealtimeVoice;
@@ -9360,6 +9830,18 @@ export const V2ThreadResumeResponse__AgentMessageDelivery =
 
 export type V2ThreadResumeResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadResumeResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadResumeResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadResumeResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadResumeResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadResumeResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadResumeResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadResumeResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadResumeResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadResumeResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadResumeResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadResumeResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -9534,6 +10016,18 @@ export const V2ThreadRevertResponse__AgentMessageDelivery =
 export type V2ThreadRevertResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadRevertResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadRevertResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadRevertResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadRevertResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadRevertResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadRevertResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadRevertResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadRevertResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadRevertResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadRevertResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadRevertResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -9623,6 +10117,9 @@ export const V2ThreadSampleParams__ReasoningEffort = ClientRequest__ReasoningEff
 export type V2ThreadSampleParams__ThreadSource = ClientRequest__ThreadSource;
 export const V2ThreadSampleParams__ThreadSource = ClientRequest__ThreadSource;
 
+export type V2ThreadSearchCancelParams__RequestId = ClientRequest__RequestId;
+export const V2ThreadSearchCancelParams__RequestId = ClientRequest__RequestId;
+
 export type V2ThreadSearchOccurrencesResponse__ThreadSearchTextRange = {
   readonly end: number;
   readonly start: number;
@@ -9664,6 +10161,197 @@ export const V2ThreadSearchParams__ThreadSearchSortKey = ClientRequest__ThreadSe
 
 export type V2ThreadSearchParams__ThreadSourceKind = ClientRequest__ThreadSourceKind;
 export const V2ThreadSearchParams__ThreadSourceKind = ClientRequest__ThreadSourceKind;
+
+export type V2ThreadSearchPartialNotification__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
+export const V2ThreadSearchPartialNotification__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
+
+export type V2ThreadSearchPartialNotification__LegacyAppPathString =
+  ClientRequest__LegacyAppPathString;
+export const V2ThreadSearchPartialNotification__LegacyAppPathString =
+  ClientRequest__LegacyAppPathString;
+
+export type V2ThreadSearchPartialNotification__ThreadExtra = ServerNotification__ThreadExtra;
+export const V2ThreadSearchPartialNotification__ThreadExtra = ServerNotification__ThreadExtra;
+
+export type V2ThreadSearchPartialNotification__GitInfo = ServerNotification__GitInfo;
+export const V2ThreadSearchPartialNotification__GitInfo = ServerNotification__GitInfo;
+
+export type V2ThreadSearchPartialNotification__ThreadHistoryMode = ClientRequest__ThreadHistoryMode;
+export const V2ThreadSearchPartialNotification__ThreadHistoryMode =
+  ClientRequest__ThreadHistoryMode;
+
+export type V2ThreadSearchPartialNotification__ReasoningEffort = ClientRequest__ReasoningEffort;
+export const V2ThreadSearchPartialNotification__ReasoningEffort = ClientRequest__ReasoningEffort;
+
+export type V2ThreadSearchPartialNotification__ThreadSectionAppearance =
+  ClientRequest__ThreadSectionAppearance;
+export const V2ThreadSearchPartialNotification__ThreadSectionAppearance =
+  ClientRequest__ThreadSectionAppearance;
+
+export type V2ThreadSearchPartialNotification__AgentPath = ServerNotification__AgentPath;
+export const V2ThreadSearchPartialNotification__AgentPath = ServerNotification__AgentPath;
+
+export type V2ThreadSearchPartialNotification__ThreadId = ApplyPatchApprovalParams__ThreadId;
+export const V2ThreadSearchPartialNotification__ThreadId = ApplyPatchApprovalParams__ThreadId;
+
+export type V2ThreadSearchPartialNotification__ThreadActiveFlag =
+  ServerNotification__ThreadActiveFlag;
+export const V2ThreadSearchPartialNotification__ThreadActiveFlag =
+  ServerNotification__ThreadActiveFlag;
+
+export type V2ThreadSearchPartialNotification__ThreadSource = ClientRequest__ThreadSource;
+export const V2ThreadSearchPartialNotification__ThreadSource = ClientRequest__ThreadSource;
+
+export type V2ThreadSearchPartialNotification__NonSteerableTurnKind =
+  ServerNotification__NonSteerableTurnKind;
+export const V2ThreadSearchPartialNotification__NonSteerableTurnKind =
+  ServerNotification__NonSteerableTurnKind;
+
+export type V2ThreadSearchPartialNotification__MisalignmentSteer =
+  ServerNotification__MisalignmentSteer;
+export const V2ThreadSearchPartialNotification__MisalignmentSteer =
+  ServerNotification__MisalignmentSteer;
+
+export type V2ThreadSearchPartialNotification__ByteRange = ClientRequest__ByteRange;
+export const V2ThreadSearchPartialNotification__ByteRange = ClientRequest__ByteRange;
+
+export type V2ThreadSearchPartialNotification__ImageDetail = ClientRequest__ImageDetail;
+export const V2ThreadSearchPartialNotification__ImageDetail = ClientRequest__ImageDetail;
+
+export type V2ThreadSearchPartialNotification__HookPromptFragment =
+  ServerNotification__HookPromptFragment;
+export const V2ThreadSearchPartialNotification__HookPromptFragment =
+  ServerNotification__HookPromptFragment;
+
+export type V2ThreadSearchPartialNotification__AgentMessageDelivery =
+  ServerNotification__AgentMessageDelivery;
+export const V2ThreadSearchPartialNotification__AgentMessageDelivery =
+  ServerNotification__AgentMessageDelivery;
+
+export type V2ThreadSearchPartialNotification__MemoryCitationEntry =
+  ServerNotification__MemoryCitationEntry;
+export const V2ThreadSearchPartialNotification__MemoryCitationEntry =
+  ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadSearchPartialNotification__HelplineSubject =
+  ServerNotification__HelplineSubject;
+export const V2ThreadSearchPartialNotification__HelplineSubject =
+  ServerNotification__HelplineSubject;
+
+export type V2ThreadSearchPartialNotification__TrustedContacts =
+  ServerNotification__TrustedContacts;
+export const V2ThreadSearchPartialNotification__TrustedContacts =
+  ServerNotification__TrustedContacts;
+
+export type V2ThreadSearchPartialNotification__AnswerReplacement =
+  ServerNotification__AnswerReplacement;
+export const V2ThreadSearchPartialNotification__AnswerReplacement =
+  ServerNotification__AnswerReplacement;
+
+export type V2ThreadSearchPartialNotification__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadSearchPartialNotification__BlockReason = ServerNotification__BlockReason;
+
+export type V2ThreadSearchPartialNotification__MessagePhase = ClientRequest__MessagePhase;
+export const V2ThreadSearchPartialNotification__MessagePhase = ClientRequest__MessagePhase;
+
+export type V2ThreadSearchPartialNotification__AsyncUserInputQuestion =
+  ServerNotification__AsyncUserInputQuestion;
+export const V2ThreadSearchPartialNotification__AsyncUserInputQuestion =
+  ServerNotification__AsyncUserInputQuestion;
+
+export type V2ThreadSearchPartialNotification__CommandExecutionSource =
+  ServerNotification__CommandExecutionSource;
+export const V2ThreadSearchPartialNotification__CommandExecutionSource =
+  ServerNotification__CommandExecutionSource;
+
+export type V2ThreadSearchPartialNotification__CommandExecutionStatus =
+  ServerNotification__CommandExecutionStatus;
+export const V2ThreadSearchPartialNotification__CommandExecutionStatus =
+  ServerNotification__CommandExecutionStatus;
+
+export type V2ThreadSearchPartialNotification__PatchChangeKind =
+  ServerNotification__PatchChangeKind;
+export const V2ThreadSearchPartialNotification__PatchChangeKind =
+  ServerNotification__PatchChangeKind;
+
+export type V2ThreadSearchPartialNotification__PatchApplyStatus =
+  ServerNotification__PatchApplyStatus;
+export const V2ThreadSearchPartialNotification__PatchApplyStatus =
+  ServerNotification__PatchApplyStatus;
+
+export type V2ThreadSearchPartialNotification__McpToolCallAppContext =
+  ServerNotification__McpToolCallAppContext;
+export const V2ThreadSearchPartialNotification__McpToolCallAppContext =
+  ServerNotification__McpToolCallAppContext;
+
+export type V2ThreadSearchPartialNotification__McpToolCallError =
+  ServerNotification__McpToolCallError;
+export const V2ThreadSearchPartialNotification__McpToolCallError =
+  ServerNotification__McpToolCallError;
+
+export type V2ThreadSearchPartialNotification__McpAppDisplayMode =
+  ServerNotification__McpAppDisplayMode;
+export const V2ThreadSearchPartialNotification__McpAppDisplayMode =
+  ServerNotification__McpAppDisplayMode;
+
+export type V2ThreadSearchPartialNotification__McpToolCallResult =
+  ServerNotification__McpToolCallResult;
+export const V2ThreadSearchPartialNotification__McpToolCallResult =
+  ServerNotification__McpToolCallResult;
+
+export type V2ThreadSearchPartialNotification__McpToolCallStatus =
+  ServerNotification__McpToolCallStatus;
+export const V2ThreadSearchPartialNotification__McpToolCallStatus =
+  ServerNotification__McpToolCallStatus;
+
+export type V2ThreadSearchPartialNotification__DynamicToolCallOutputContentItem =
+  DynamicToolCallResponse__DynamicToolCallOutputContentItem;
+export const V2ThreadSearchPartialNotification__DynamicToolCallOutputContentItem =
+  DynamicToolCallResponse__DynamicToolCallOutputContentItem;
+
+export type V2ThreadSearchPartialNotification__DynamicToolCallStatus =
+  ServerNotification__DynamicToolCallStatus;
+export const V2ThreadSearchPartialNotification__DynamicToolCallStatus =
+  ServerNotification__DynamicToolCallStatus;
+
+export type V2ThreadSearchPartialNotification__CollabAgentStatus =
+  ServerNotification__CollabAgentStatus;
+export const V2ThreadSearchPartialNotification__CollabAgentStatus =
+  ServerNotification__CollabAgentStatus;
+
+export type V2ThreadSearchPartialNotification__CollabAgentToolCallStatus =
+  ServerNotification__CollabAgentToolCallStatus;
+export const V2ThreadSearchPartialNotification__CollabAgentToolCallStatus =
+  ServerNotification__CollabAgentToolCallStatus;
+
+export type V2ThreadSearchPartialNotification__CollabAgentTool =
+  ServerNotification__CollabAgentTool;
+export const V2ThreadSearchPartialNotification__CollabAgentTool =
+  ServerNotification__CollabAgentTool;
+
+export type V2ThreadSearchPartialNotification__SubAgentActivityKind =
+  ServerNotification__SubAgentActivityKind;
+export const V2ThreadSearchPartialNotification__SubAgentActivityKind =
+  ServerNotification__SubAgentActivityKind;
+
+export type V2ThreadSearchPartialNotification__WebSearchAction =
+  ServerNotification__WebSearchAction;
+export const V2ThreadSearchPartialNotification__WebSearchAction =
+  ServerNotification__WebSearchAction;
+
+export type V2ThreadSearchPartialNotification__ImageGenerationFailure =
+  ServerNotification__ImageGenerationFailure;
+export const V2ThreadSearchPartialNotification__ImageGenerationFailure =
+  ServerNotification__ImageGenerationFailure;
+
+export type V2ThreadSearchPartialNotification__TurnItemsView = ClientRequest__TurnItemsView;
+export const V2ThreadSearchPartialNotification__TurnItemsView = ClientRequest__TurnItemsView;
+
+export type V2ThreadSearchPartialNotification__TurnStatus = ServerNotification__TurnStatus;
+export const V2ThreadSearchPartialNotification__TurnStatus = ServerNotification__TurnStatus;
+
+export type V2ThreadSearchPartialNotification__RequestId = ClientRequest__RequestId;
+export const V2ThreadSearchPartialNotification__RequestId = ClientRequest__RequestId;
 
 export type V2ThreadSearchResponse__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
 export const V2ThreadSearchResponse__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
@@ -9722,6 +10410,18 @@ export const V2ThreadSearchResponse__AgentMessageDelivery =
 
 export type V2ThreadSearchResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadSearchResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadSearchResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadSearchResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadSearchResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadSearchResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadSearchResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadSearchResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadSearchResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadSearchResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadSearchResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadSearchResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -9850,6 +10550,11 @@ export const V2ThreadSettingsUpdatedNotification__ReasoningEffort = ClientReques
 export type V2ThreadSettingsUpdatedNotification__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
 export const V2ThreadSettingsUpdatedNotification__AbsolutePathBuf = ClientRequest__AbsolutePathBuf;
 
+export type V2ThreadSettingsUpdatedNotification__LegacyAppPathString =
+  ClientRequest__LegacyAppPathString;
+export const V2ThreadSettingsUpdatedNotification__LegacyAppPathString =
+  ClientRequest__LegacyAppPathString;
+
 export type V2ThreadSettingsUpdatedNotification__MultiAgentMode = ClientRequest__MultiAgentMode;
 export const V2ThreadSettingsUpdatedNotification__MultiAgentMode = ClientRequest__MultiAgentMode;
 
@@ -9874,6 +10579,9 @@ export const V2ThreadSettingsUpdateParams__ModeKind = ClientRequest__ModeKind;
 
 export type V2ThreadSettingsUpdateParams__ReasoningEffort = ClientRequest__ReasoningEffort;
 export const V2ThreadSettingsUpdateParams__ReasoningEffort = ClientRequest__ReasoningEffort;
+
+export type V2ThreadSettingsUpdateParams__LegacyAppPathString = ClientRequest__LegacyAppPathString;
+export const V2ThreadSettingsUpdateParams__LegacyAppPathString = ClientRequest__LegacyAppPathString;
 
 export type V2ThreadSettingsUpdateParams__MultiAgentMode = ClientRequest__MultiAgentMode;
 export const V2ThreadSettingsUpdateParams__MultiAgentMode = ClientRequest__MultiAgentMode;
@@ -9953,6 +10661,18 @@ export type V2ThreadStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ThreadStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadStartedNotification__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadStartedNotification__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadStartedNotification__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadStartedNotification__MessagePhase = ClientRequest__MessagePhase;
@@ -10144,6 +10864,18 @@ export const V2ThreadStartResponse__AgentMessageDelivery = ServerNotification__A
 export type V2ThreadStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2ThreadStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadStartResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadStartResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadStartResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadStartResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -10249,6 +10981,19 @@ export type V2ThreadTimelineListResponse__MemoryCitationEntry =
 export const V2ThreadTimelineListResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadTimelineListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadTimelineListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadTimelineListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadTimelineListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadTimelineListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadTimelineListResponse__AnswerReplacement =
+  ServerNotification__AnswerReplacement;
+
+export type V2ThreadTimelineListResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadTimelineListResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadTimelineListResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadTimelineListResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -10352,6 +11097,11 @@ export type V2ThreadTimelineListResponse__ThreadRealtimeSessionOutcome =
 export const V2ThreadTimelineListResponse__ThreadRealtimeSessionOutcome =
   ServerNotification__ThreadRealtimeSessionOutcome;
 
+export type V2ThreadTimelineListResponse__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+export const V2ThreadTimelineListResponse__ThreadRealtimeHandoffMode =
+  ServerNotification__ThreadRealtimeHandoffMode;
+
 export type V2ThreadTimelineListResponse__NonSteerableTurnKind =
   ServerNotification__NonSteerableTurnKind;
 export const V2ThreadTimelineListResponse__NonSteerableTurnKind =
@@ -10401,6 +11151,18 @@ export type V2ThreadTurnsListResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2ThreadTurnsListResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2ThreadTurnsListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadTurnsListResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadTurnsListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadTurnsListResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadTurnsListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadTurnsListResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadTurnsListResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadTurnsListResponse__BlockReason = ServerNotification__BlockReason;
 
 export type V2ThreadTurnsListResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadTurnsListResponse__MessagePhase = ClientRequest__MessagePhase;
@@ -10554,6 +11316,18 @@ export type V2ThreadUnarchiveResponse__MemoryCitationEntry =
 export const V2ThreadUnarchiveResponse__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 
+export type V2ThreadUnarchiveResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2ThreadUnarchiveResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2ThreadUnarchiveResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2ThreadUnarchiveResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2ThreadUnarchiveResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2ThreadUnarchiveResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2ThreadUnarchiveResponse__BlockReason = ServerNotification__BlockReason;
+export const V2ThreadUnarchiveResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2ThreadUnarchiveResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2ThreadUnarchiveResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -10674,6 +11448,18 @@ export type V2TurnCompletedNotification__MemoryCitationEntry =
 export const V2TurnCompletedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 
+export type V2TurnCompletedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2TurnCompletedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2TurnCompletedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2TurnCompletedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2TurnCompletedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2TurnCompletedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2TurnCompletedNotification__BlockReason = ServerNotification__BlockReason;
+export const V2TurnCompletedNotification__BlockReason = ServerNotification__BlockReason;
+
 export type V2TurnCompletedNotification__MessagePhase = ClientRequest__MessagePhase;
 export const V2TurnCompletedNotification__MessagePhase = ClientRequest__MessagePhase;
 
@@ -10775,6 +11561,9 @@ export const V2TurnSettingsUpdateParams__ApprovalsReviewer = ClientRequest__Appr
 export type V2TurnSettingsUpdateParams__ReasoningEffort = ClientRequest__ReasoningEffort;
 export const V2TurnSettingsUpdateParams__ReasoningEffort = ClientRequest__ReasoningEffort;
 
+export type V2TurnSettingsUpdateParams__LegacyAppPathString = ClientRequest__LegacyAppPathString;
+export const V2TurnSettingsUpdateParams__LegacyAppPathString = ClientRequest__LegacyAppPathString;
+
 export type V2TurnSettingsUpdateParams__ReasoningSummary = ClientRequest__ReasoningSummary;
 export const V2TurnSettingsUpdateParams__ReasoningSummary = ClientRequest__ReasoningSummary;
 
@@ -10820,6 +11609,18 @@ export type V2TurnStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
 export const V2TurnStartedNotification__MemoryCitationEntry =
   ServerNotification__MemoryCitationEntry;
+
+export type V2TurnStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2TurnStartedNotification__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2TurnStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2TurnStartedNotification__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2TurnStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2TurnStartedNotification__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2TurnStartedNotification__BlockReason = ServerNotification__BlockReason;
+export const V2TurnStartedNotification__BlockReason = ServerNotification__BlockReason;
 
 export type V2TurnStartedNotification__MessagePhase = ClientRequest__MessagePhase;
 export const V2TurnStartedNotification__MessagePhase = ClientRequest__MessagePhase;
@@ -10974,6 +11775,18 @@ export const V2TurnStartResponse__AgentMessageDelivery = ServerNotification__Age
 export type V2TurnStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 export const V2TurnStartResponse__MemoryCitationEntry = ServerNotification__MemoryCitationEntry;
 
+export type V2TurnStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+export const V2TurnStartResponse__HelplineSubject = ServerNotification__HelplineSubject;
+
+export type V2TurnStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+export const V2TurnStartResponse__TrustedContacts = ServerNotification__TrustedContacts;
+
+export type V2TurnStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+export const V2TurnStartResponse__AnswerReplacement = ServerNotification__AnswerReplacement;
+
+export type V2TurnStartResponse__BlockReason = ServerNotification__BlockReason;
+export const V2TurnStartResponse__BlockReason = ServerNotification__BlockReason;
+
 export type V2TurnStartResponse__MessagePhase = ClientRequest__MessagePhase;
 export const V2TurnStartResponse__MessagePhase = ClientRequest__MessagePhase;
 
@@ -11110,6 +11923,11 @@ export type V2UserVerificationStatusResponse__UserVerificationUnavailableReason 
 export const V2UserVerificationStatusResponse__UserVerificationUnavailableReason =
   V2UserVerificationRpcError__UserVerificationUnavailableReason;
 
+export type V2UserVerificationVerifyResponse__UserVerificationBiometricType = "fingerprint";
+export const V2UserVerificationVerifyResponse__UserVerificationBiometricType = Schema.Literal(
+  "fingerprint",
+).annotate({ identifier: "V2UserVerificationVerifyResponse__UserVerificationBiometricType" });
+
 export type V2UserVerificationVerifyResponse__UserVerificationProof = {
   readonly credentialId: string;
   readonly signature: string;
@@ -11182,6 +12000,18 @@ export const ClientRequest__ThreadSampleCancelParams = Schema.StructWithRest(
   Schema.Struct({ requestId: ClientRequest__RequestId }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadSampleCancelParams" });
+
+export type ClientRequest__ThreadSearchCancelParams = {
+  readonly requestId: ClientRequest__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadSearchCancelParams = Schema.StructWithRest(
+  Schema.Struct({ requestId: ClientRequest__RequestId }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Request cancellation on the same connection. `thread/search/cancel` targets only `thread/search`; `thread/search/stream/cancel` targets only `thread/search/stream`. Cancellation is idempotent: the cancel response acknowledges the request, and an interrupted search completes with an error after its subprocess is stopped and reaped. If completion races cancellation, the original search may still succeed. An already-completed search is unaffected.",
+  identifier: "ClientRequest__ThreadSearchCancelParams",
+});
 
 export type ClientRequest__InitializeParams = {
   readonly capabilities?: ClientRequest__InitializeCapabilities | null;
@@ -11828,7 +12658,10 @@ export type ClientRequest__FunctionCallOutputContentItem =
       readonly type: "input_image";
       readonly file_id: string;
     } & { readonly [x: string]: CodexJsonExtension })
-  | ({ readonly audio_url: string; readonly type: "input_audio" } & {
+  | ({ readonly type: "input_audio"; readonly audio_url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "input_audio"; readonly file_id: string } & {
       readonly [x: string]: CodexJsonExtension;
     })
   | ({ readonly encrypted_content: string; readonly type: "encrypted_content" } & {
@@ -11867,15 +12700,32 @@ export const ClientRequest__FunctionCallOutputContentItem = Schema.Union(
         [Schema.Record(Schema.String, CodexJsonExtension)],
       ).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
     ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        audio_url: Schema.String,
-        type: Schema.Literal("input_audio").annotate({
-          title: "InputAudioFunctionCallOutputContentItemType",
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({
+            title: "InputAudioFunctionCallOutputContentItemType",
+          }),
+          audio_url: Schema.String,
         }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "AudioUrlFunctionCallOutputContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
       }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "InputAudioFunctionCallOutputContentItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          type: Schema.Literal("input_audio").annotate({
+            title: "InputAudioFunctionCallOutputContentItemType",
+          }),
+          file_id: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({
+        title: "FileIdFunctionCallOutputContentItem",
+        description: "Inline audio data or an uploaded file loaded by the Responses API.",
+      }),
+    ]),
     Schema.StructWithRest(
       Schema.Struct({
         encrypted_content: Schema.String,
@@ -11905,6 +12755,7 @@ export const ClientRequest__ConfigurationReasoning = Schema.StructWithRest(
 });
 
 export type ClientRequest__ThreadSampleParams = {
+  readonly allowInProgressTurn?: boolean;
   readonly disableMcp?: boolean;
   readonly effort?: ClientRequest__ReasoningEffort | null;
   readonly expectedTurnId: string;
@@ -11917,6 +12768,11 @@ export type ClientRequest__ThreadSampleParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ThreadSampleParams = Schema.StructWithRest(
   Schema.Struct({
+    allowInProgressTurn: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Allow sampling the latest turn before it finishes.",
+      }),
+    ),
     disableMcp: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
@@ -11931,7 +12787,7 @@ export const ClientRequest__ThreadSampleParams = Schema.StructWithRest(
     ),
     expectedTurnId: Schema.String.annotate({
       description:
-        "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+        "The loaded source's latest turn, which must be finished (completed, failed, or interrupted) unless `allowInProgressTurn` is true.",
     }),
     interruptOnCancel: Schema.optionalKey(
       Schema.Union([
@@ -12222,57 +13078,6 @@ export const ClientRequest__SandboxPolicy = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "ClientRequest__SandboxPolicy" });
 
-export type ClientRequest__TurnSettingsUpdateParams = {
-  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
-  readonly effort?: ClientRequest__ReasoningEffort | null;
-  readonly model?: string | null;
-  readonly serviceTier?: string | null;
-  readonly summary?: ClientRequest__ReasoningSummary | null;
-  readonly threadId: string;
-  readonly turnId: string;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ClientRequest__TurnSettingsUpdateParams = Schema.StructWithRest(
-  Schema.Struct({
-    approvalsReviewer: Schema.optionalKey(
-      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
-        description:
-          "Changes the active turn's reviewer without changing future thread settings. Already captured steps and pending approvals retain their original reviewer.",
-      }),
-    ),
-    effort: Schema.optionalKey(
-      Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
-        description: "Omission or `null` leaves the effort unchanged.",
-      }),
-    ),
-    model: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({ description: "Omission or `null` leaves the model unchanged." }),
-        Schema.Null,
-      ]),
-    ),
-    serviceTier: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "`null` clears the requested tier; omission leaves it unchanged.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    summary: Schema.optionalKey(
-      Schema.Union([ClientRequest__ReasoningSummary, Schema.Null]).annotate({
-        description: "Omission or `null` leaves the summary preference unchanged.",
-      }),
-    ),
-    threadId: Schema.String,
-    turnId: Schema.String,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({
-  description:
-    "Experimental settings changes for one running turn, not future turns. Unsupported fields are rejected rather than silently ignored. Any live task kind may accept publication. Child sessions and consumers of frozen initial settings are unchanged.",
-  identifier: "ClientRequest__TurnSettingsUpdateParams",
-});
-
 export type ClientRequest__ThreadMemoryModeSetParams = {
   readonly mode: ClientRequest__ThreadMemoryMode;
   readonly threadId: string;
@@ -12286,9 +13091,12 @@ export type ClientRequest__ThreadListParams = {
   readonly ancestorThreadId?: string | null;
   readonly archived?: boolean | null;
   readonly attachedToThreadId?: string | null;
+  readonly currentAccountOnly?: boolean;
   readonly cursor?: string | null;
   readonly cwd?: ClientRequest__ThreadListCwdFilter | null;
   readonly excludedThreadIds?: ReadonlyArray<string> | null;
+  readonly includeAttachedThreads?: boolean;
+  readonly includedThreadIds?: ReadonlyArray<string> | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
   readonly originators?: ReadonlyArray<string> | null;
@@ -12330,6 +13138,12 @@ export const ClientRequest__ThreadListParams = Schema.StructWithRest(
         Schema.Null,
       ]),
     ),
+    currentAccountOnly: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Show local history visible to the current ChatGPT account. Defaults to false.",
+      }),
+    ),
     cursor: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -12349,6 +13163,20 @@ export const ClientRequest__ThreadListParams = Schema.StructWithRest(
         Schema.Array(Schema.String).annotate({
           description:
             "Thread IDs to exclude before applying the result limit. Up to 100 entries; invalid IDs or a larger list are rejected, never truncated. Send the same exclusions on each page. Omitted, null, or empty means no exclusions.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    includeAttachedThreads: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Include persistent threads attached to a parent when searching by title.",
+      }),
+    ),
+    includedThreadIds: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description:
+            "Restrict results to up to 100 thread IDs before pagination. Omit or send null for unrestricted results. An empty list matches nothing. Exclusions still apply. Repeat the same IDs on each page. The local store uses indexed metadata for this filter.",
         }),
         Schema.Null,
       ]),
@@ -12443,7 +13271,7 @@ export const ClientRequest__ThreadListParams = Schema.StructWithRest(
     useStateDbOnly: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
-          "If true, return from the state DB without scanning JSONL rollouts to repair thread metadata. Omitted or false preserves scan-and-repair behavior.",
+          "If true, the local store returns indexed metadata without scanning JSONL rollouts for repairs. Requests with `includedThreadIds` always use indexed metadata.",
       }),
     ),
   }),
@@ -12478,7 +13306,8 @@ export const ClientRequest__ProjectListParams = Schema.StructWithRest(
     ),
     sortKey: Schema.optionalKey(
       Schema.Union([ClientRequest__ProjectSortKey, Schema.Null]).annotate({
-        description: "Defaults to position. Recency sorting always places empty projects last.",
+        description:
+          "Defaults to position. Recency sorting always places empty projects last. Use the returned order; numeric positions are not exposed in project responses.",
       }),
     ),
   }),
@@ -12528,7 +13357,9 @@ export const ClientRequest__ThreadSectionUpdateParams = Schema.StructWithRest(
 
 export type ClientRequest__ThreadSearchParams = {
   readonly archived?: boolean | null;
+  readonly currentAccountOnly?: boolean;
   readonly cursor?: string | null;
+  readonly includeAttachedThreads?: boolean;
   readonly limit?: number | null;
   readonly searchTerm: string;
   readonly sortDirection?: ClientRequest__SortDirection | null;
@@ -12546,6 +13377,12 @@ export const ClientRequest__ThreadSearchParams = Schema.StructWithRest(
         Schema.Null,
       ]),
     ),
+    currentAccountOnly: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Show local history visible to the current ChatGPT account. Defaults to false.",
+      }),
+    ),
     cursor: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -12553,6 +13390,11 @@ export const ClientRequest__ThreadSearchParams = Schema.StructWithRest(
         }),
         Schema.Null,
       ]),
+    ),
+    includeAttachedThreads: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Include persistent threads attached to a parent in search results.",
+      }),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -12570,7 +13412,8 @@ export const ClientRequest__ThreadSearchParams = Schema.StructWithRest(
       ]),
     ),
     searchTerm: Schema.String.annotate({
-      description: "Required substring/full-text query for thread search.",
+      description:
+        "Required substring/full-text query. `thread/search/stream` limits this to 65,536 UTF-8 bytes after trimming surrounding whitespace.",
     }),
     sortDirection: Schema.optionalKey(
       Schema.Union([ClientRequest__SortDirection, Schema.Null]).annotate({
@@ -12767,6 +13610,114 @@ export const ClientRequest__ThreadRealtimeAppendAudioParams = Schema.StructWithR
   identifier: "ClientRequest__ThreadRealtimeAppendAudioParams",
 });
 
+export type ClientRequest__ThreadRealtimeListParams = {
+  readonly afterPosition?: number | null;
+  readonly cursor?: string | null;
+  readonly eventId?: string | null;
+  readonly fromObservedAtMs?: number | null;
+  readonly limit?: number | null;
+  readonly order?: ClientRequest__ThreadRealtimeOrder | null;
+  readonly requiredThroughPosition?: number | null;
+  readonly sessionId?: string | null;
+  readonly snapshotEnd?: number | null;
+  readonly threadId: string;
+  readonly toObservedAtMs?: number | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadRealtimeListParams = Schema.StructWithRest(
+  Schema.Struct({
+    afterPosition: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint64" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    eventId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "A required exact event ID, such as a completed item's acknowledgement. Returns pending until projected. Explicit filters can exclude a known event.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    fromObservedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Inclusive canonical observation time lower bound.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    limit: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint32" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    order: Schema.optionalKey(
+      Schema.Union([ClientRequest__ThreadRealtimeOrder, Schema.Null]).annotate({
+        description: "Defaults to canonical observation time.",
+      }),
+    ),
+    requiredThroughPosition: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Return pending until the projection includes this committed position.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    sessionId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    snapshotEnd: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Exclusive committed position delimiting an immutable snapshot.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    threadId: Schema.String,
+    toObservedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Exclusive canonical observation time upper bound.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadRealtimeListParams" });
+
 export type ClientRequest__ReviewStartParams = {
   readonly delivery?: ClientRequest__ReviewDelivery | null;
   readonly target: ClientRequest__ReviewTarget;
@@ -12785,6 +13736,80 @@ export const ClientRequest__ReviewStartParams = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ReviewStartParams" });
+
+export type ClientRequest__ProviderSettingsPatch =
+  | ({
+      readonly baseUrl?: string | null;
+      readonly envKey?: string | null;
+      readonly name?: string;
+      readonly providerId?: string | null;
+      readonly type: "customGateway";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly profile?: string | null;
+      readonly providerId: ClientRequest__BedrockProviderId;
+      readonly region?: string | null;
+      readonly type: "bedrock";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly credentialFile?: string | null;
+      readonly location?: string | null;
+      readonly projectId?: string | null;
+      readonly providerId: ClientRequest__GcpProviderId;
+      readonly type: "gcp";
+    } & { readonly [x: string]: CodexJsonExtension });
+export const ClientRequest__ProviderSettingsPatch = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        baseUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        envKey: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        name: Schema.optionalKey(Schema.String),
+        providerId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Omit or pass null to allocate a new custom provider ID.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        type: Schema.Literal("customGateway").annotate({
+          title: "CustomGatewayProviderSettingsPatchType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CustomGatewayProviderSettingsPatch" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        profile: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        providerId: ClientRequest__BedrockProviderId,
+        region: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("bedrock").annotate({ title: "BedrockProviderSettingsPatchType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "BedrockProviderSettingsPatch",
+      description: "AWS configuration fields for built-in Bedrock providers.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        credentialFile: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        location: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        projectId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        providerId: ClientRequest__GcpProviderId,
+        type: Schema.Literal("gcp").annotate({ title: "GcpProviderSettingsPatchType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "GcpProviderSettingsPatch",
+      description: "GCP configuration fields. Credential-file paths refer to the app-server host.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "Omitted patch fields preserve their values. Explicit null clears a nullable field.",
+  identifier: "ClientRequest__ProviderSettingsPatch",
+});
 
 export type ClientRequest__RemoteControlClientsListParams = {
   readonly cursor?: string | null;
@@ -12873,6 +13898,7 @@ export const ClientRequest__EnvironmentAddParams = Schema.StructWithRest(
 
 export type ClientRequest__McpServerOauthLoginParams = {
   readonly clientRegistration?: ClientRequest__McpServerOauthClientRegistration | null;
+  readonly environmentId?: string | null;
   readonly name: string;
   readonly scopes?: ReadonlyArray<string> | null;
   readonly threadId?: string | null;
@@ -12885,6 +13911,14 @@ export const ClientRequest__McpServerOauthLoginParams = Schema.StructWithRest(
         description:
           "Registration strategy for this login only; omission selects automatic discovery.",
       }),
+    ),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
     ),
     name: Schema.String,
     scopes: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
@@ -12904,6 +13938,7 @@ export const ClientRequest__McpServerOauthLoginParams = Schema.StructWithRest(
 export type ClientRequest__ListMcpServerStatusParams = {
   readonly cursor?: string | null;
   readonly detail?: ClientRequest__McpServerStatusDetail | null;
+  readonly environmentId?: string | null;
   readonly limit?: number | null;
   readonly serverName?: string | null;
   readonly threadId?: string | null;
@@ -12923,6 +13958,15 @@ export const ClientRequest__ListMcpServerStatusParams = Schema.StructWithRest(
         description:
           "Controls how much MCP inventory data to fetch for each server. Defaults to `Full` when omitted.",
       }),
+    ),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Select this environment's registration. Requires `serverName` and `threadId`. When omitted, a named request uses the same server as older clients.",
+        }),
+        Schema.Null,
+      ]),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -12954,7 +13998,9 @@ export const ClientRequest__ListMcpServerStatusParams = Schema.StructWithRest(
 ).annotate({ identifier: "ClientRequest__ListMcpServerStatusParams" });
 
 export type ClientRequest__McpResourceReadParams = {
+  readonly _meta?: { readonly [x: string]: Schema.Json } | null;
   readonly connectorId?: string | null;
+  readonly environmentId?: string | null;
   readonly originCallId?: string | null;
   readonly server: string;
   readonly target?: ClientRequest__McpResourceReadTarget | null;
@@ -12963,7 +14009,24 @@ export type ClientRequest__McpResourceReadParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__McpResourceReadParams = Schema.StructWithRest(
   Schema.Struct({
+    _meta: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })).annotate({
+          description:
+            "Additional MCP request metadata. Account and turn routing keys are reserved.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     originCallId: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -13814,6 +14877,7 @@ export type ServerNotification__CodexErrorInfo =
   | "modelNotFound"
   | "policyCapacityUnavailable"
   | "cyberPolicy"
+  | "bioPolicy"
   | "misalignmentPolicyViolation"
   | "tooManyDenials"
   | "internalServerError"
@@ -13822,6 +14886,7 @@ export type ServerNotification__CodexErrorInfo =
   | "threadRollbackFailed"
   | "sandboxError"
   | "other"
+  | "inferenceHookDenied"
   | ({
       readonly httpConnectionFailed: { readonly httpStatusCode?: number | null } & {
         readonly [x: string]: CodexJsonExtension;
@@ -13860,6 +14925,7 @@ export const ServerNotification__CodexErrorInfo = Schema.Union([
     "modelNotFound",
     "policyCapacityUnavailable",
     "cyberPolicy",
+    "bioPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
     "internalServerError",
@@ -13869,6 +14935,9 @@ export const ServerNotification__CodexErrorInfo = Schema.Union([
     "sandboxError",
     "other",
   ]),
+  Schema.Literal("inferenceHookDenied").annotate({
+    description: "The workspace's inference hook explicitly denied this request.",
+  }),
   Schema.StructWithRest(
     Schema.Struct({
       httpConnectionFailed: Schema.StructWithRest(
@@ -14223,6 +15292,23 @@ export const ServerNotification__MemoryCitation = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__MemoryCitation" });
 
+export type ServerNotification__AnswerAnnotation = {
+  readonly kind: "wellbeingHelpline";
+  readonly subject: ServerNotification__HelplineSubject;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__AnswerAnnotation = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        kind: Schema.Literal("wellbeingHelpline"),
+        subject: ServerNotification__HelplineSubject,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__AnswerAnnotation" });
+
 export type ServerNotification__FileUpdateChange = {
   readonly diff: string;
   readonly kind: ServerNotification__PatchChangeKind;
@@ -14498,6 +15584,7 @@ export const ServerNotification__ServerRequestResolvedNotification = Schema.Stru
 ).annotate({ identifier: "ServerNotification__ServerRequestResolvedNotification" });
 
 export type ServerNotification__McpServerStatusUpdatedNotification = {
+  readonly environmentId?: string | null;
   readonly error?: string | null;
   readonly failureReason?: ServerNotification__McpServerStartupFailureReason | null;
   readonly name: string;
@@ -14506,6 +15593,14 @@ export type ServerNotification__McpServerStatusUpdatedNotification = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const ServerNotification__McpServerStatusUpdatedNotification = Schema.StructWithRest(
   Schema.Struct({
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Registration scope, not necessarily the server's execution environment.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     failureReason: Schema.optionalKey(
       Schema.Union([ServerNotification__McpServerStartupFailureReason, Schema.Null]),
@@ -14532,11 +15627,18 @@ export const ServerNotification__McpServerEventStreamNotification = Schema.Struc
 export type ServerNotification__AccountUpdatedNotification = {
   readonly authMode?: ServerNotification__AuthMode | null;
   readonly planType?: ServerNotification__PlanType | null;
+  readonly reason?: ServerNotification__AccountUpdateReason | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ServerNotification__AccountUpdatedNotification = Schema.StructWithRest(
   Schema.Struct({
     authMode: Schema.optionalKey(Schema.Union([ServerNotification__AuthMode, Schema.Null])),
     planType: Schema.optionalKey(Schema.Union([ServerNotification__PlanType, Schema.Null])),
+    reason: Schema.optionalKey(
+      Schema.Union([ServerNotification__AccountUpdateReason, Schema.Null]).annotate({
+        description:
+          "Set when initial routing discovery completes for the same authenticated owner.",
+      }),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__AccountUpdatedNotification" });
@@ -14544,6 +15646,7 @@ export const ServerNotification__AccountUpdatedNotification = Schema.StructWithR
 export type ServerNotification__GatewayOAuthChangedNotification = {
   readonly authUrl?: string | null;
   readonly error?: string | null;
+  readonly loginId?: string | null;
   readonly providerId: string;
   readonly status: ServerNotification__GatewayOAuthStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -14558,6 +15661,12 @@ export const ServerNotification__GatewayOAuthChangedNotification = Schema.Struct
       ]),
     ),
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    loginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Identifies the completed device login attempt." }),
+        Schema.Null,
+      ]),
+    ),
     providerId: Schema.String,
     status: ServerNotification__GatewayOAuthStatus,
   }),
@@ -14756,96 +15865,14 @@ export const ServerNotification__ThreadRealtimeStartedNotification = Schema.Stru
   identifier: "ServerNotification__ThreadRealtimeStartedNotification",
 });
 
-export type ServerNotification__ThreadRealtimeItem =
-  | ({
-      readonly id: string;
-      readonly realtimeSessionId: string;
-      readonly type: "realtimeSessionStarted";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly id: string;
-      readonly realtimeSessionId: string;
-      readonly role: ServerNotification__ThreadRealtimeTranscriptRole;
-      readonly text: string;
-      readonly type: "transcriptSegment";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly id: string;
-      readonly realtimeSessionId: string;
-      readonly itemId: string;
-      readonly presentation: ServerNotification__ThreadRealtimeBemItemPresentation;
-      readonly turnId: string;
-      readonly type: "bemItemPromoted";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly id: string;
-      readonly realtimeSessionId: string;
-      readonly outcome: ServerNotification__ThreadRealtimeSessionOutcome;
-      readonly type: "realtimeSessionClosed";
-    } & { readonly [x: string]: CodexJsonExtension });
-export const ServerNotification__ThreadRealtimeItem = Schema.Union(
-  [
-    Schema.StructWithRest(
-      Schema.Struct({
-        id: Schema.String,
-        realtimeSessionId: Schema.String,
-        type: Schema.Literal("realtimeSessionStarted").annotate({
-          title: "RealtimeSessionStartedThreadRealtimeItemType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "RealtimeSessionStartedThreadRealtimeItem",
-      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
-    }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        id: Schema.String,
-        realtimeSessionId: Schema.String,
-        role: ServerNotification__ThreadRealtimeTranscriptRole,
-        text: Schema.String,
-        type: Schema.Literal("transcriptSegment").annotate({
-          title: "TranscriptSegmentThreadRealtimeItemType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "TranscriptSegmentThreadRealtimeItem",
-      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
-    }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        id: Schema.String,
-        realtimeSessionId: Schema.String,
-        itemId: Schema.String,
-        presentation: ServerNotification__ThreadRealtimeBemItemPresentation,
-        turnId: Schema.String,
-        type: Schema.Literal("bemItemPromoted").annotate({
-          title: "BemItemPromotedThreadRealtimeItemType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "BemItemPromotedThreadRealtimeItem",
-      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
-    }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        id: Schema.String,
-        realtimeSessionId: Schema.String,
-        outcome: ServerNotification__ThreadRealtimeSessionOutcome,
-        type: Schema.Literal("realtimeSessionClosed").annotate({
-          title: "RealtimeSessionClosedThreadRealtimeItemType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "RealtimeSessionClosedThreadRealtimeItem",
-      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "ServerNotification__ThreadRealtimeItem" });
+export type ServerNotification__ThreadRealtimeVoiceTranscript = {
+  readonly role: ServerNotification__ThreadRealtimeTranscriptRole;
+  readonly text: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadRealtimeVoiceTranscript = Schema.StructWithRest(
+  Schema.Struct({ role: ServerNotification__ThreadRealtimeTranscriptRole, text: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadRealtimeVoiceTranscript" });
 
 export type ServerNotification__ThreadRealtimeOutputAudioDeltaNotification = {
   readonly audio: ServerNotification__ThreadRealtimeAudioChunk;
@@ -16054,6 +17081,24 @@ export const V2GetAccountResponse__WorkspaceRouting = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2GetAccountResponse__WorkspaceRouting" });
 
+export type V2GetAccountSecuritySetupResponse__AccountSecuritySetupNotice = {
+  readonly accountId: string;
+  readonly action: V2GetAccountSecuritySetupResponse__AccountSecuritySetupAction;
+  readonly description: string;
+  readonly title: string;
+  readonly userId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GetAccountSecuritySetupResponse__AccountSecuritySetupNotice = Schema.StructWithRest(
+  Schema.Struct({
+    accountId: Schema.String,
+    action: V2GetAccountSecuritySetupResponse__AccountSecuritySetupAction,
+    description: Schema.String,
+    title: Schema.String,
+    userId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2GetAccountSecuritySetupResponse__AccountSecuritySetupNotice" });
+
 export type V2GetAccountTokenUsageResponse__ThreadUsage = {
   readonly estimatedUsageCreditsMicros: number;
   readonly estimatedUsageUsdMicros?: number | null;
@@ -16436,6 +17481,9 @@ export const V2ItemCompletedNotification__FunctionCallOutputContentItem =
 export type V2ItemCompletedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ItemCompletedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ItemCompletedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ItemCompletedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ItemCompletedNotification__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2ItemCompletedNotification__CommandAction =
@@ -16486,6 +17534,9 @@ export const V2ItemStartedNotification__FunctionCallOutputContentItem =
 export type V2ItemStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ItemStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ItemStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ItemStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ItemStartedNotification__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2ItemStartedNotification__CommandAction =
@@ -16507,6 +17558,7 @@ export const V2ItemStartedNotification__ImageGenerationInputImage =
 
 export type V2ListMcpServerStatusResponse__McpServerStatus = {
   readonly authStatus: V2ListMcpServerStatusResponse__McpAuthStatus;
+  readonly environmentId?: string | null;
   readonly httpOrigin?: string | null;
   readonly name: string;
   readonly pluginId?: string | null;
@@ -16522,6 +17574,15 @@ export type V2ListMcpServerStatusResponse__McpServerStatus = {
 export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.StructWithRest(
   Schema.Struct({
     authStatus: V2ListMcpServerStatusResponse__McpAuthStatus,
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Environment that contributed this registration; null for a thread-wide server. Older servers omit this field.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     httpOrigin: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -16602,6 +17663,78 @@ export const V2ModelListResponse__ReasoningEffortOption = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ModelListResponse__ReasoningEffortOption" });
 
+export type V2ModelProviderConfigWriteParams__ProviderSettingsPatch =
+  ClientRequest__ProviderSettingsPatch;
+export const V2ModelProviderConfigWriteParams__ProviderSettingsPatch =
+  ClientRequest__ProviderSettingsPatch;
+
+export type V2ModelProviderConfigWriteResponse__ProviderSettings =
+  | ({ readonly type: "openai" } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly auth: V2ModelProviderConfigWriteResponse__GatewayAuth;
+      readonly type: "customGateway";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly profile?: string | null;
+      readonly region?: string | null;
+      readonly type: "bedrock";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly credentialFile?: string | null;
+      readonly location?: string | null;
+      readonly projectId?: string | null;
+      readonly type: "gcp";
+    } & { readonly [x: string]: CodexJsonExtension });
+export const V2ModelProviderConfigWriteResponse__ProviderSettings = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("openai").annotate({ title: "OpenaiProviderSettingsType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "OpenaiProviderSettings" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        auth: V2ModelProviderConfigWriteResponse__GatewayAuth,
+        type: Schema.Literal("customGateway").annotate({
+          title: "CustomGatewayProviderSettingsType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CustomGatewayProviderSettings" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        profile: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        region: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("bedrock").annotate({ title: "BedrockProviderSettingsType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "BedrockProviderSettings" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        credentialFile: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Path on the app-server host, without credential-file contents.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        location: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        projectId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("gcp").annotate({ title: "GcpProviderSettingsType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "GcpProviderSettings" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ModelProviderConfigWriteResponse__ProviderSettings" });
+
+export type V2ModelProviderListResponse__ProviderSettings =
+  V2ModelProviderConfigWriteResponse__ProviderSettings;
+export const V2ModelProviderListResponse__ProviderSettings =
+  V2ModelProviderConfigWriteResponse__ProviderSettings;
+
 export type V2PluginInstalledResponse__MarketplaceLoadErrorInfo = {
   readonly marketplacePath: V2PluginInstalledResponse__AbsolutePathBuf;
   readonly message: string;
@@ -16657,7 +17790,7 @@ export const V2PluginInstalledResponse__PluginInterface = Schema.StructWithRest(
       Schema.Union([
         Schema.Array(Schema.String).annotate({
           description:
-            "Starter prompts for the plugin. Capped at 3 entries with a maximum of 128 characters per entry.",
+            "Starter prompts for the plugin. Capped at 3 entries with a maximum of 512 characters per entry.",
         }),
         Schema.Null,
       ]),
@@ -17045,6 +18178,9 @@ export const V2ReviewStartResponse__FunctionCallOutputContentItem =
 export type V2ReviewStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ReviewStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ReviewStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ReviewStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ReviewStartResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2ReviewStartResponse__CommandAction =
@@ -17171,6 +18307,9 @@ export const V2ThreadForkResponse__FunctionCallOutputContentItem =
 export type V2ThreadForkResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadForkResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadForkResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadForkResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadForkResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadForkResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17219,6 +18358,9 @@ export const V2ThreadItemsListResponse__FunctionCallOutputContentItem =
 export type V2ThreadItemsListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadItemsListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadItemsListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadItemsListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadItemsListResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2ThreadItemsListResponse__CommandAction =
@@ -17248,6 +18390,9 @@ export const V2ThreadItemsReadResponse__FunctionCallOutputContentItem =
 
 export type V2ThreadItemsReadResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadItemsReadResponse__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadItemsReadResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadItemsReadResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2ThreadItemsReadResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -17309,6 +18454,9 @@ export const V2ThreadListResponse__FunctionCallOutputContentItem =
 export type V2ThreadListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadListResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadListResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17364,6 +18512,10 @@ export const V2ThreadMetadataUpdateResponse__FunctionCallOutputContentItem =
 export type V2ThreadMetadataUpdateResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadMetadataUpdateResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadMetadataUpdateResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadMetadataUpdateResponse__AnswerAnnotation =
+  ServerNotification__AnswerAnnotation;
+
 export type V2ThreadMetadataUpdateResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadMetadataUpdateResponse__FileUpdateChange =
   ServerNotification__FileUpdateChange;
@@ -17402,6 +18554,9 @@ export const V2ThreadQueueStartResponse__FunctionCallOutputContentItem =
 
 export type V2ThreadQueueStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadQueueStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadQueueStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadQueueStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2ThreadQueueStartResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -17472,6 +18627,9 @@ export const V2ThreadReadResponse__FunctionCallOutputContentItem =
 export type V2ThreadReadResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadReadResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadReadResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadReadResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadReadResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadReadResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17489,15 +18647,20 @@ export const V2ThreadReadStateChangedNotification__ThreadReadState =
 export type V2ThreadReadStateUpdateResponse__ThreadReadState = ServerNotification__ThreadReadState;
 export const V2ThreadReadStateUpdateResponse__ThreadReadState = ServerNotification__ThreadReadState;
 
-export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
-export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
+export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
+export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
 
-export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
-export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
+export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
+export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
 
 export type V2ThreadRealtimeListVoicesResponse__RealtimeVoicesList = {
   readonly defaultV1: V2ThreadRealtimeListVoicesResponse__RealtimeVoice;
@@ -17566,6 +18729,9 @@ export const V2ThreadResumeResponse__FunctionCallOutputContentItem =
 
 export type V2ThreadResumeResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadResumeResponse__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadResumeResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadResumeResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2ThreadResumeResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -17637,6 +18803,9 @@ export const V2ThreadRevertResponse__FunctionCallOutputContentItem =
 export type V2ThreadRevertResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadRevertResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadRevertResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadRevertResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadRevertResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadRevertResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17671,6 +18840,67 @@ export const V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence = Schema.
   description: "One visible message occurrence returned by [`ThreadSearchOccurrencesResponse`].",
   identifier: "V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence",
 });
+
+export type V2ThreadSearchPartialNotification__ImageGenerationInputImage =
+  ServerNotification__ImageGenerationInputImage;
+export const V2ThreadSearchPartialNotification__ImageGenerationInputImage =
+  ServerNotification__ImageGenerationInputImage;
+
+export type V2ThreadSearchPartialNotification__ThreadEnvironment =
+  ServerNotification__ThreadEnvironment;
+export const V2ThreadSearchPartialNotification__ThreadEnvironment =
+  ServerNotification__ThreadEnvironment;
+
+export type V2ThreadSearchPartialNotification__CommandAction =
+  CommandExecutionRequestApprovalParams__CommandAction;
+export const V2ThreadSearchPartialNotification__CommandAction =
+  CommandExecutionRequestApprovalParams__CommandAction;
+
+export type V2ThreadSearchPartialNotification__ThreadSection = ServerNotification__ThreadSection;
+export const V2ThreadSearchPartialNotification__ThreadSection = ServerNotification__ThreadSection;
+
+export type V2ThreadSearchPartialNotification__SubAgentSource = ServerNotification__SubAgentSource;
+export const V2ThreadSearchPartialNotification__SubAgentSource = ServerNotification__SubAgentSource;
+
+export type V2ThreadSearchPartialNotification__ThreadStatus = ServerNotification__ThreadStatus;
+export const V2ThreadSearchPartialNotification__ThreadStatus = ServerNotification__ThreadStatus;
+
+export type V2ThreadSearchPartialNotification__CodexErrorInfo = ServerNotification__CodexErrorInfo;
+export const V2ThreadSearchPartialNotification__CodexErrorInfo = ServerNotification__CodexErrorInfo;
+
+export type V2ThreadSearchPartialNotification__MisalignmentErrorDetails =
+  ServerNotification__MisalignmentErrorDetails;
+export const V2ThreadSearchPartialNotification__MisalignmentErrorDetails =
+  ServerNotification__MisalignmentErrorDetails;
+
+export type V2ThreadSearchPartialNotification__TextElement = ClientRequest__TextElement;
+export const V2ThreadSearchPartialNotification__TextElement = ClientRequest__TextElement;
+
+export type V2ThreadSearchPartialNotification__FunctionCallOutputContentItem =
+  ClientRequest__FunctionCallOutputContentItem;
+export const V2ThreadSearchPartialNotification__FunctionCallOutputContentItem =
+  ClientRequest__FunctionCallOutputContentItem;
+
+export type V2ThreadSearchPartialNotification__MemoryCitation = ServerNotification__MemoryCitation;
+export const V2ThreadSearchPartialNotification__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadSearchPartialNotification__AnswerAnnotation =
+  ServerNotification__AnswerAnnotation;
+export const V2ThreadSearchPartialNotification__AnswerAnnotation =
+  ServerNotification__AnswerAnnotation;
+
+export type V2ThreadSearchPartialNotification__FileUpdateChange =
+  ServerNotification__FileUpdateChange;
+export const V2ThreadSearchPartialNotification__FileUpdateChange =
+  ServerNotification__FileUpdateChange;
+
+export type V2ThreadSearchPartialNotification__McpAppUi = ServerNotification__McpAppUi;
+export const V2ThreadSearchPartialNotification__McpAppUi = ServerNotification__McpAppUi;
+
+export type V2ThreadSearchPartialNotification__CollabAgentState =
+  ServerNotification__CollabAgentState;
+export const V2ThreadSearchPartialNotification__CollabAgentState =
+  ServerNotification__CollabAgentState;
 
 export type V2ThreadSearchResponse__ImageGenerationInputImage =
   ServerNotification__ImageGenerationInputImage;
@@ -17713,6 +18943,9 @@ export const V2ThreadSearchResponse__FunctionCallOutputContentItem =
 export type V2ThreadSearchResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadSearchResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadSearchResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadSearchResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadSearchResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadSearchResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17734,11 +18967,21 @@ export const V2ThreadSectionUpdateResponse__ThreadSection = ServerNotification__
 export type V2ThreadSettingsUpdatedNotification__Settings = ClientRequest__Settings;
 export const V2ThreadSettingsUpdatedNotification__Settings = ClientRequest__Settings;
 
+export type V2ThreadSettingsUpdatedNotification__ThreadEnvironment =
+  ServerNotification__ThreadEnvironment;
+export const V2ThreadSettingsUpdatedNotification__ThreadEnvironment =
+  ServerNotification__ThreadEnvironment;
+
 export type V2ThreadSettingsUpdatedNotification__SandboxPolicy = ClientRequest__SandboxPolicy;
 export const V2ThreadSettingsUpdatedNotification__SandboxPolicy = ClientRequest__SandboxPolicy;
 
 export type V2ThreadSettingsUpdateParams__Settings = ClientRequest__Settings;
 export const V2ThreadSettingsUpdateParams__Settings = ClientRequest__Settings;
+
+export type V2ThreadSettingsUpdateParams__TurnEnvironmentParams =
+  ClientRequest__TurnEnvironmentParams;
+export const V2ThreadSettingsUpdateParams__TurnEnvironmentParams =
+  ClientRequest__TurnEnvironmentParams;
 
 export type V2ThreadSettingsUpdateParams__SandboxPolicy = ClientRequest__SandboxPolicy;
 export const V2ThreadSettingsUpdateParams__SandboxPolicy = ClientRequest__SandboxPolicy;
@@ -17783,6 +19026,9 @@ export const V2ThreadStartedNotification__FunctionCallOutputContentItem =
 
 export type V2ThreadStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2ThreadStartedNotification__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadStartedNotification__FileUpdateChange = ServerNotification__FileUpdateChange;
@@ -17846,6 +19092,9 @@ export const V2ThreadStartResponse__FunctionCallOutputContentItem =
 export type V2ThreadStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadStartResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadStartResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -17869,6 +19118,9 @@ export const V2ThreadTimelineListResponse__FunctionCallOutputContentItem =
 export type V2ThreadTimelineListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadTimelineListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadTimelineListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadTimelineListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadTimelineListResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2ThreadTimelineListResponse__CommandAction =
@@ -17888,10 +19140,10 @@ export type V2ThreadTimelineListResponse__ImageGenerationInputImage =
 export const V2ThreadTimelineListResponse__ImageGenerationInputImage =
   ServerNotification__ImageGenerationInputImage;
 
-export type V2ThreadTimelineListResponse__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
-export const V2ThreadTimelineListResponse__ThreadRealtimeItem =
-  ServerNotification__ThreadRealtimeItem;
+export type V2ThreadTimelineListResponse__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
+export const V2ThreadTimelineListResponse__ThreadRealtimeVoiceTranscript =
+  ServerNotification__ThreadRealtimeVoiceTranscript;
 
 export type V2ThreadTimelineListResponse__CodexErrorInfo = ServerNotification__CodexErrorInfo;
 export const V2ThreadTimelineListResponse__CodexErrorInfo = ServerNotification__CodexErrorInfo;
@@ -17924,6 +19176,9 @@ export const V2ThreadTurnsListResponse__FunctionCallOutputContentItem =
 
 export type V2ThreadTurnsListResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadTurnsListResponse__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2ThreadTurnsListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadTurnsListResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2ThreadTurnsListResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -17985,6 +19240,9 @@ export const V2ThreadUnarchiveResponse__FunctionCallOutputContentItem =
 export type V2ThreadUnarchiveResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2ThreadUnarchiveResponse__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2ThreadUnarchiveResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2ThreadUnarchiveResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2ThreadUnarchiveResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 export const V2ThreadUnarchiveResponse__FileUpdateChange = ServerNotification__FileUpdateChange;
 
@@ -18013,6 +19271,9 @@ export const V2TurnCompletedNotification__FunctionCallOutputContentItem =
 export type V2TurnCompletedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2TurnCompletedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 
+export type V2TurnCompletedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2TurnCompletedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+
 export type V2TurnCompletedNotification__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
 export const V2TurnCompletedNotification__CommandAction =
@@ -18035,6 +19296,11 @@ export const V2TurnCompletedNotification__ImageGenerationInputImage =
 export type V2TurnPlanUpdatedNotification__TurnPlanStep = ServerNotification__TurnPlanStep;
 export const V2TurnPlanUpdatedNotification__TurnPlanStep = ServerNotification__TurnPlanStep;
 
+export type V2TurnSettingsUpdateParams__TurnEnvironmentParams =
+  ClientRequest__TurnEnvironmentParams;
+export const V2TurnSettingsUpdateParams__TurnEnvironmentParams =
+  ClientRequest__TurnEnvironmentParams;
+
 export type V2TurnStartedNotification__CodexErrorInfo = ServerNotification__CodexErrorInfo;
 export const V2TurnStartedNotification__CodexErrorInfo = ServerNotification__CodexErrorInfo;
 
@@ -18053,6 +19319,9 @@ export const V2TurnStartedNotification__FunctionCallOutputContentItem =
 
 export type V2TurnStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2TurnStartedNotification__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2TurnStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2TurnStartedNotification__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2TurnStartedNotification__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -18111,6 +19380,9 @@ export const V2TurnStartResponse__FunctionCallOutputContentItem =
 
 export type V2TurnStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
 export const V2TurnStartResponse__MemoryCitation = ServerNotification__MemoryCitation;
+
+export type V2TurnStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
+export const V2TurnStartResponse__AnswerAnnotation = ServerNotification__AnswerAnnotation;
 
 export type V2TurnStartResponse__CommandAction =
   CommandExecutionRequestApprovalParams__CommandAction;
@@ -18285,6 +19557,67 @@ export const ApplyPatchApprovalResponse__ReviewDecision = Schema.Union(
 ).annotate({
   description: "User's decision in response to an ExecApprovalRequest.",
   identifier: "ApplyPatchApprovalResponse__ReviewDecision",
+});
+
+export type ClientRequest__TurnSettingsUpdateParams = {
+  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
+  readonly effort?: ClientRequest__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
+  readonly model?: string | null;
+  readonly serviceTier?: string | null;
+  readonly summary?: ClientRequest__ReasoningSummary | null;
+  readonly threadId: string;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__TurnSettingsUpdateParams = Schema.StructWithRest(
+  Schema.Struct({
+    approvalsReviewer: Schema.optionalKey(
+      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
+        description:
+          "Changes the active turn's reviewer without changing future thread settings. Already captured steps and pending approvals retain their original reviewer.",
+      }),
+    ),
+    effort: Schema.optionalKey(
+      Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
+        description: "Omission or `null` leaves the effort unchanged.",
+      }),
+    ),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__TurnEnvironmentParams).annotate({
+          description:
+            "Replace the environments for subsequent steps of this turn, not future turns. Omitted/null preserves the selection; [] clears it. An already-started step is unchanged.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    model: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Omission or `null` leaves the model unchanged." }),
+        Schema.Null,
+      ]),
+    ),
+    serviceTier: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "`null` clears the requested tier; omission leaves it unchanged.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    summary: Schema.optionalKey(
+      Schema.Union([ClientRequest__ReasoningSummary, Schema.Null]).annotate({
+        description: "Omission or `null` leaves the summary preference unchanged.",
+      }),
+    ),
+    threadId: Schema.String,
+    turnId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Experimental settings changes for one running turn, not future turns. Unsupported fields are rejected rather than silently ignored. Any live task kind may accept publication. Child sessions and consumers of frozen initial settings are unchanged.",
+  identifier: "ClientRequest__TurnSettingsUpdateParams",
 });
 
 export type ClientRequest__ProjectCreateParams = {
@@ -18774,6 +20107,7 @@ export const ClientRequest__CommandExecParams = Schema.StructWithRest(
 
 export type ClientRequest__ThreadItemsListParams = {
   readonly cursor?: ClientRequest__ThreadItemsListCursor | null;
+  readonly deferOutput?: ClientRequest__ThreadItemOutputDeferral | null;
   readonly limit?: number | null;
   readonly sortDirection?: ClientRequest__SortDirection | null;
   readonly threadId: string;
@@ -18785,6 +20119,12 @@ export const ClientRequest__ThreadItemsListParams = Schema.StructWithRest(
       Schema.Union([ClientRequest__ThreadItemsListCursor, Schema.Null]).annotate({
         description:
           "Opaque continuation cursor or an exclusive item anchor in the requested visible turn. An item anchor requires a non-empty `turnId`; ascending (the default) returns items after it, and descending returns items before it. Continue with the returned string cursor.",
+      }),
+    ),
+    deferOutput: Schema.optionalKey(
+      Schema.Union([ClientRequest__ThreadItemOutputDeferral, Schema.Null]).annotate({
+        description:
+          "For a single turn, choose which saved outputs to fetch separately by item ID.",
       }),
     ),
     limit: Schema.optionalKey(
@@ -19023,6 +20363,14 @@ export const ClientRequest__ThreadRealtimeStartParams = Schema.StructWithRest(
   description: "EXPERIMENTAL - start a thread-scoped realtime session.",
   identifier: "ClientRequest__ThreadRealtimeStartParams",
 });
+
+export type ClientRequest__ModelProviderConfigWriteParams = {
+  readonly settings: ClientRequest__ProviderSettingsPatch;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ModelProviderConfigWriteParams = Schema.StructWithRest(
+  Schema.Struct({ settings: ClientRequest__ProviderSettingsPatch }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ModelProviderConfigWriteParams" });
 
 export type ClientRequest__ExternalAgentConfigMigrationItem = {
   readonly cwd?: string | null;
@@ -19389,6 +20737,59 @@ export const ServerNotification__UserInput = ClientRequest__UserInput;
 export type ServerNotification__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const ServerNotification__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
+export type ServerNotification__AgentMessageDisplay =
+  | ({
+      readonly annotation?: ServerNotification__AnswerAnnotation | null;
+      readonly mode: "show";
+      readonly trustedContacts: ServerNotification__TrustedContacts;
+      readonly version: 1;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly mode: "hide";
+      readonly replacement: ServerNotification__AnswerReplacement;
+      readonly version: 1;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly mode: "block";
+      readonly reason: ServerNotification__BlockReason;
+      readonly version: 1;
+    } & { readonly [x: string]: CodexJsonExtension });
+export const ServerNotification__AgentMessageDisplay = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        annotation: Schema.optionalKey(
+          Schema.Union([ServerNotification__AnswerAnnotation, Schema.Null]),
+        ),
+        mode: Schema.Literal("show"),
+        trustedContacts: ServerNotification__TrustedContacts,
+        version: Schema.Literal(1).annotate({ format: "uint8" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+    Schema.StructWithRest(
+      Schema.Struct({
+        mode: Schema.Literal("hide"),
+        replacement: ServerNotification__AnswerReplacement,
+        version: Schema.Literal(1).annotate({ format: "uint8" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+    Schema.StructWithRest(
+      Schema.Struct({
+        mode: Schema.Literal("block"),
+        reason: ServerNotification__BlockReason,
+        version: Schema.Literal(1).annotate({ format: "uint8" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "How Chat should present a recovered answer.",
+  identifier: "ServerNotification__AgentMessageDisplay",
+});
+
 export type ServerNotification__FileChangePatchUpdatedNotification = {
   readonly changes: ReadonlyArray<ServerNotification__FileUpdateChange>;
   readonly itemId: string;
@@ -19641,28 +21042,16 @@ export const ServerNotification__FuzzyFileSearchSessionUpdatedNotification = Sch
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__FuzzyFileSearchSessionUpdatedNotification" });
 
-export type ServerNotification__ThreadRealtimeItemStartedNotification = {
-  readonly item: ServerNotification__ThreadRealtimeItem;
-  readonly threadId: string;
+export type ServerNotification__ThreadRealtimeFrameChannels = {
+  readonly voice_transcript: ServerNotification__ThreadRealtimeVoiceTranscript;
 } & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ThreadRealtimeItemStartedNotification = Schema.StructWithRest(
-  Schema.Struct({ item: ServerNotification__ThreadRealtimeItem, threadId: Schema.String }),
+export const ServerNotification__ThreadRealtimeFrameChannels = Schema.StructWithRest(
+  Schema.Struct({ voice_transcript: ServerNotification__ThreadRealtimeVoiceTranscript }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({
-  description: "EXPERIMENTAL - a realtime timeline item started before its content streams.",
-  identifier: "ServerNotification__ThreadRealtimeItemStartedNotification",
-});
-
-export type ServerNotification__ThreadRealtimeItemCompletedNotification = {
-  readonly item: ServerNotification__ThreadRealtimeItem;
-  readonly threadId: string;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ThreadRealtimeItemCompletedNotification = Schema.StructWithRest(
-  Schema.Struct({ item: ServerNotification__ThreadRealtimeItem, threadId: Schema.String }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({
-  description: "EXPERIMENTAL - a realtime timeline item published after canonical commit.",
-  identifier: "ServerNotification__ThreadRealtimeItemCompletedNotification",
+  description:
+    "A frame holds one or more payloads, at most one per channel. They share one ID, observation time, and seal. V1 requires its only channel, `voice_transcript`.",
+  identifier: "ServerNotification__ThreadRealtimeFrameChannels",
 });
 
 export type ServerRequest__FileSystemPath = CommandExecutionRequestApprovalParams__FileSystemPath;
@@ -20003,6 +21392,8 @@ export const V2ConfigRequirementsReadResponse__ModelsRequirements = Schema.Struc
 export type V2ConfigRequirementsReadResponse__OtelRequirements = {
   readonly environment?: string | null;
   readonly exporter?: V2ConfigRequirementsReadResponse__OtelExporter | null;
+  readonly headers_helper?: string | null;
+  readonly headers_helper_refresh_interval_ms?: number | null;
   readonly log_agent_responses?: boolean | null;
   readonly log_guardian_assessments?: boolean | null;
   readonly log_sse_deltas?: boolean | null;
@@ -20018,6 +21409,19 @@ export const V2ConfigRequirementsReadResponse__OtelRequirements = Schema.StructW
     environment: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     exporter: Schema.optionalKey(
       Schema.Union([V2ConfigRequirementsReadResponse__OtelExporter, Schema.Null]),
+    ),
+    headers_helper: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    headers_helper_refresh_interval_ms: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint64" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(1).annotate({
+              expected: "a value greater than or equal to 1",
+            }),
+          ),
+        Schema.Null,
+      ]),
     ),
     log_agent_responses: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
     log_guardian_assessments: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -20156,6 +21560,11 @@ export type V2ItemCompletedNotification__FunctionCallOutputBody =
 export const V2ItemCompletedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ItemCompletedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ItemCompletedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPath =
   CommandExecutionRequestApprovalParams__FileSystemPath;
 export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPath =
@@ -20173,6 +21582,11 @@ export type V2ItemStartedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 export const V2ItemStartedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
+
+export type V2ItemStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ItemStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
 
 export type V2ModelListResponse__Model = {
   readonly additionalSpeedTiers?: ReadonlyArray<string>;
@@ -20252,6 +21666,39 @@ export const V2ModelListResponse__Model = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ModelListResponse__Model" });
+
+export type V2ModelProviderConfigWriteResponse__ModelProviderSummary = {
+  readonly baseUrl?: string | null;
+  readonly canEdit: boolean;
+  readonly id: string;
+  readonly name: string;
+  readonly settings: V2ModelProviderConfigWriteResponse__ProviderSettings;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ModelProviderConfigWriteResponse__ModelProviderSummary = Schema.StructWithRest(
+  Schema.Struct({
+    baseUrl: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Null when the endpoint is absent or cannot be safely displayed.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    canEdit: Schema.Boolean.annotate({
+      description:
+        "Whether a supported configuration field can be edited in the active user layer.",
+    }),
+    id: Schema.String,
+    name: Schema.String,
+    settings: V2ModelProviderConfigWriteResponse__ProviderSettings,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ModelProviderConfigWriteResponse__ModelProviderSummary" });
+
+export type V2ModelProviderListResponse__ModelProviderSummary =
+  V2ModelProviderConfigWriteResponse__ModelProviderSummary;
+export const V2ModelProviderListResponse__ModelProviderSummary =
+  V2ModelProviderConfigWriteResponse__ModelProviderSummary;
 
 export type V2PluginInstalledResponse__PluginShareContext = {
   readonly canPublishToWorkspace?: boolean | null;
@@ -20353,7 +21800,6 @@ export type V2ProjectCreateResponse__Project = {
   readonly id: string;
   readonly metadata: { readonly [x: string]: string };
   readonly name: string;
-  readonly position: number;
   readonly recencyAt?: number | null;
   readonly roots: ReadonlyArray<V2ProjectCreateResponse__ProjectRoot>;
   readonly updatedAt: number;
@@ -20366,9 +21812,6 @@ export const V2ProjectCreateResponse__Project = Schema.StructWithRest(
     id: Schema.String,
     metadata: Schema.Record(Schema.String, Schema.String),
     name: Schema.String,
-    position: Schema.Number.annotate({ format: "int64" }).check(
-      Schema.isInt().annotate({ expected: "an integer" }),
-    ),
     recencyAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -20412,6 +21855,9 @@ export const V2ReviewStartResponse__UserInput = ClientRequest__UserInput;
 
 export type V2ReviewStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ReviewStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
+
+export type V2ReviewStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ReviewStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
 
 export type V2SkillsListResponse__SkillMetadata = {
   readonly dependencies?: V2SkillsListResponse__SkillDependencies | null;
@@ -20470,6 +21916,9 @@ export const V2ThreadForkResponse__UserInput = ClientRequest__UserInput;
 export type V2ThreadForkResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadForkResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadForkResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadForkResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadItemsListResponse__UserInput = ClientRequest__UserInput;
 export const V2ThreadItemsListResponse__UserInput = ClientRequest__UserInput;
 
@@ -20478,6 +21927,11 @@ export type V2ThreadItemsListResponse__FunctionCallOutputBody =
 export const V2ThreadItemsListResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadItemsListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadItemsListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadItemsReadResponse__UserInput = ClientRequest__UserInput;
 export const V2ThreadItemsReadResponse__UserInput = ClientRequest__UserInput;
 
@@ -20485,6 +21939,11 @@ export type V2ThreadItemsReadResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 export const V2ThreadItemsReadResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadItemsReadResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadItemsReadResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
 
 export type V2ThreadListResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadListResponse__SessionSource = ServerNotification__SessionSource;
@@ -20497,6 +21956,9 @@ export const V2ThreadListResponse__UserInput = ClientRequest__UserInput;
 
 export type V2ThreadListResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadListResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadListResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadListResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
 
 export type V2ThreadMetadataUpdateResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadMetadataUpdateResponse__SessionSource = ServerNotification__SessionSource;
@@ -20511,6 +21973,11 @@ export type V2ThreadMetadataUpdateResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 export const V2ThreadMetadataUpdateResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadMetadataUpdateResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadMetadataUpdateResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
 
 export type V2ThreadQueueAddParams__UserInput = ClientRequest__UserInput;
 export const V2ThreadQueueAddParams__UserInput = ClientRequest__UserInput;
@@ -20532,6 +21999,11 @@ export type V2ThreadQueueStartResponse__FunctionCallOutputBody =
 export const V2ThreadQueueStartResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadQueueStartResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadQueueStartResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadQueueUpdateParams__UserInput = ClientRequest__UserInput;
 export const V2ThreadQueueUpdateParams__UserInput = ClientRequest__UserInput;
 
@@ -20550,6 +22022,24 @@ export const V2ThreadReadResponse__UserInput = ClientRequest__UserInput;
 export type V2ThreadReadResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadReadResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadReadResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadReadResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+
+export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+
+export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+
 export type V2ThreadResumeParams__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadResumeParams__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
@@ -20564,6 +22054,9 @@ export const V2ThreadResumeResponse__UserInput = ClientRequest__UserInput;
 
 export type V2ThreadResumeResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadResumeResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadResumeResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadResumeResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
 
 export type V2ThreadResumeResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadResumeResponse__SessionSource = ServerNotification__SessionSource;
@@ -20580,6 +22073,28 @@ export const V2ThreadRevertResponse__UserInput = ClientRequest__UserInput;
 export type V2ThreadRevertResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadRevertResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadRevertResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadRevertResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+
+export type V2ThreadSearchPartialNotification__SessionSource = ServerNotification__SessionSource;
+export const V2ThreadSearchPartialNotification__SessionSource = ServerNotification__SessionSource;
+
+export type V2ThreadSearchPartialNotification__TurnError = ServerNotification__TurnError;
+export const V2ThreadSearchPartialNotification__TurnError = ServerNotification__TurnError;
+
+export type V2ThreadSearchPartialNotification__UserInput = ClientRequest__UserInput;
+export const V2ThreadSearchPartialNotification__UserInput = ClientRequest__UserInput;
+
+export type V2ThreadSearchPartialNotification__FunctionCallOutputBody =
+  ClientRequest__FunctionCallOutputBody;
+export const V2ThreadSearchPartialNotification__FunctionCallOutputBody =
+  ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadSearchPartialNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadSearchPartialNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadSearchResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadSearchResponse__SessionSource = ServerNotification__SessionSource;
 
@@ -20591,6 +22106,9 @@ export const V2ThreadSearchResponse__UserInput = ClientRequest__UserInput;
 
 export type V2ThreadSearchResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadSearchResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadSearchResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadSearchResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
 
 export type V2ThreadSettingsUpdatedNotification__CollaborationMode =
   ClientRequest__CollaborationMode;
@@ -20614,6 +22132,11 @@ export type V2ThreadStartedNotification__FunctionCallOutputBody =
 export const V2ThreadStartedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadStartResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadStartResponse__SessionSource = ServerNotification__SessionSource;
 
@@ -20626,6 +22149,9 @@ export const V2ThreadStartResponse__UserInput = ClientRequest__UserInput;
 export type V2ThreadStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2ThreadStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2ThreadStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadTimelineListResponse__UserInput = ClientRequest__UserInput;
 export const V2ThreadTimelineListResponse__UserInput = ClientRequest__UserInput;
 
@@ -20633,6 +22159,16 @@ export type V2ThreadTimelineListResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 export const V2ThreadTimelineListResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
+
+export type V2ThreadTimelineListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadTimelineListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
+export type V2ThreadTimelineListResponse__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
+export const V2ThreadTimelineListResponse__ThreadRealtimeFrameChannels =
+  ServerNotification__ThreadRealtimeFrameChannels;
 
 export type V2ThreadTimelineListResponse__TurnError = ServerNotification__TurnError;
 export const V2ThreadTimelineListResponse__TurnError = ServerNotification__TurnError;
@@ -20648,6 +22184,11 @@ export type V2ThreadTurnsListResponse__FunctionCallOutputBody =
 export const V2ThreadTurnsListResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadTurnsListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadTurnsListResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2ThreadUnarchiveResponse__SessionSource = ServerNotification__SessionSource;
 export const V2ThreadUnarchiveResponse__SessionSource = ServerNotification__SessionSource;
 
@@ -20662,6 +22203,11 @@ export type V2ThreadUnarchiveResponse__FunctionCallOutputBody =
 export const V2ThreadUnarchiveResponse__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2ThreadUnarchiveResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2ThreadUnarchiveResponse__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2TurnCompletedNotification__TurnError = ServerNotification__TurnError;
 export const V2TurnCompletedNotification__TurnError = ServerNotification__TurnError;
 
@@ -20673,6 +22219,11 @@ export type V2TurnCompletedNotification__FunctionCallOutputBody =
 export const V2TurnCompletedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 
+export type V2TurnCompletedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2TurnCompletedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+
 export type V2TurnStartedNotification__TurnError = ServerNotification__TurnError;
 export const V2TurnStartedNotification__TurnError = ServerNotification__TurnError;
 
@@ -20683,6 +22234,11 @@ export type V2TurnStartedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
 export const V2TurnStartedNotification__FunctionCallOutputBody =
   ClientRequest__FunctionCallOutputBody;
+
+export type V2TurnStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
+export const V2TurnStartedNotification__AgentMessageDisplay =
+  ServerNotification__AgentMessageDisplay;
 
 export type V2TurnStartParams__CollaborationMode = ClientRequest__CollaborationMode;
 export const V2TurnStartParams__CollaborationMode = ClientRequest__CollaborationMode;
@@ -20701,6 +22257,9 @@ export const V2TurnStartResponse__UserInput = ClientRequest__UserInput;
 
 export type V2TurnStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
 export const V2TurnStartResponse__FunctionCallOutputBody = ClientRequest__FunctionCallOutputBody;
+
+export type V2TurnStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
+export const V2TurnStartResponse__AgentMessageDisplay = ServerNotification__AgentMessageDisplay;
 
 export type V2TurnSteerParams__UserInput = ClientRequest__UserInput;
 export const V2TurnSteerParams__UserInput = ClientRequest__UserInput;
@@ -21138,6 +22697,7 @@ export type ClientRequest__ThreadSettingsUpdateParams = {
   readonly cwd?: string | null;
   readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: ClientRequest__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
   readonly model?: string | null;
   readonly multiAgentMode?: ClientRequest__MultiAgentMode | null;
   readonly permissions?: string | null;
@@ -21186,6 +22746,15 @@ export const ClientRequest__ThreadSettingsUpdateParams = Schema.StructWithRest(
       Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
         description: "Override the reasoning effort for subsequent turns.",
       }),
+    ),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__TurnEnvironmentParams).annotate({
+          description:
+            "Replace the environments for future turns without changing the running turn. Omitted/null preserves the selection unless `cwd` is also provided, which selects the default environments for that directory. [] clears the selection.",
+        }),
+        Schema.Null,
+      ]),
     ),
     model: Schema.optionalKey(
       Schema.Union([
@@ -21241,12 +22810,21 @@ export const ClientRequest__ThreadSettingsUpdateParams = Schema.StructWithRest(
 export type ClientRequest__ThreadQueueAddParams = {
   readonly clientUserMessageId: string;
   readonly input: ReadonlyArray<ClientRequest__UserInput>;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ThreadQueueAddParams = Schema.StructWithRest(
   Schema.Struct({
     clientUserMessageId: Schema.String,
     input: Schema.Array(ClientRequest__UserInput),
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description: "ResponsesAPI metadata captured from the client submitting this input.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     threadId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -21255,12 +22833,22 @@ export const ClientRequest__ThreadQueueAddParams = Schema.StructWithRest(
 export type ClientRequest__ThreadQueueUpdateParams = {
   readonly input: ReadonlyArray<ClientRequest__UserInput>;
   readonly queuedSubmissionId: string;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__ThreadQueueUpdateParams = Schema.StructWithRest(
   Schema.Struct({
     input: Schema.Array(ClientRequest__UserInput),
     queuedSubmissionId: Schema.String,
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Non-empty metadata replaces the input's metadata; omission or an empty map preserves it.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     threadId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -21433,6 +23021,7 @@ export type ServerNotification__ThreadSettings = {
   readonly cwd: ServerNotification__AbsolutePathBuf;
   readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly effort?: ServerNotification__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<ServerNotification__ThreadEnvironment> | null;
   readonly model: string;
   readonly modelProvider: string;
   readonly multiAgentMode?: ServerNotification__MultiAgentMode;
@@ -21457,6 +23046,15 @@ export const ServerNotification__ThreadSettings = Schema.StructWithRest(
       }),
     ),
     effort: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningEffort, Schema.Null])),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ServerNotification__ThreadEnvironment).annotate({
+          description:
+            "Environments configured for future turns, in priority order, primary first. `null` means the server does not expose the selection; [] means none are selected.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     model: Schema.String,
     modelProvider: Schema.String,
     multiAgentMode: Schema.optionalKey(
@@ -21480,6 +23078,1126 @@ export const ServerNotification__ThreadSettings = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__ThreadSettings" });
 
+export type ServerNotification__AgentMessageModeration = {
+  readonly display?: ServerNotification__AgentMessageDisplay | null;
+  readonly moderated: boolean;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__AgentMessageModeration = Schema.StructWithRest(
+  Schema.Struct({
+    display: Schema.optionalKey(
+      Schema.Union([ServerNotification__AgentMessageDisplay, Schema.Null]),
+    ),
+    moderated: Schema.Boolean,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__AgentMessageModeration" });
+
+export type ServerNotification__HookStartedNotification = {
+  readonly run: ServerNotification__HookRunSummary;
+  readonly threadId: string;
+  readonly turnId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__HookStartedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    run: ServerNotification__HookRunSummary,
+    threadId: Schema.String,
+    turnId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__HookStartedNotification" });
+
+export type ServerNotification__HookCompletedNotification = {
+  readonly run: ServerNotification__HookRunSummary;
+  readonly threadId: string;
+  readonly turnId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__HookCompletedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    run: ServerNotification__HookRunSummary,
+    threadId: Schema.String,
+    turnId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__HookCompletedNotification" });
+
+export type ServerNotification__AppListUpdatedNotification = {
+  readonly data: ReadonlyArray<ServerNotification__AppInfo>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__AppListUpdatedNotification = Schema.StructWithRest(
+  Schema.Struct({ data: Schema.Array(ServerNotification__AppInfo) }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "EXPERIMENTAL - notification emitted when the app list changes.",
+  identifier: "ServerNotification__AppListUpdatedNotification",
+});
+
+export type ServerNotification__ExternalAgentConfigImportProgressNotification = {
+  readonly importId: string;
+  readonly itemTypeResults: ReadonlyArray<ServerNotification__ExternalAgentConfigImportTypeResult>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ExternalAgentConfigImportProgressNotification =
+  Schema.StructWithRest(
+    Schema.Struct({
+      importId: Schema.String,
+      itemTypeResults: Schema.Array(ServerNotification__ExternalAgentConfigImportTypeResult),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ identifier: "ServerNotification__ExternalAgentConfigImportProgressNotification" });
+
+export type ServerNotification__ExternalAgentConfigImportCompletedNotification = {
+  readonly importId: string;
+  readonly itemTypeResults: ReadonlyArray<ServerNotification__ExternalAgentConfigImportTypeResult>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ExternalAgentConfigImportCompletedNotification =
+  Schema.StructWithRest(
+    Schema.Struct({
+      importId: Schema.String,
+      itemTypeResults: Schema.Array(ServerNotification__ExternalAgentConfigImportTypeResult),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ identifier: "ServerNotification__ExternalAgentConfigImportCompletedNotification" });
+
+export type ServerNotification__ThreadRealtimeItem =
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly type: "realtimeSessionStarted";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly channels: ServerNotification__ThreadRealtimeFrameChannels;
+      readonly type: "frame";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly role: ServerNotification__ThreadRealtimeTranscriptRole;
+      readonly text: string;
+      readonly type: "transcriptSegment";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly itemId: string;
+      readonly presentation: ServerNotification__ThreadRealtimeBemItemPresentation;
+      readonly turnId: string;
+      readonly type: "bemItemPromoted";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly outcome: ServerNotification__ThreadRealtimeSessionOutcome;
+      readonly type: "realtimeSessionClosed";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly handoff_id: string;
+      readonly input: string;
+      readonly input_item_id: string;
+      readonly mode: ServerNotification__ThreadRealtimeHandoffMode;
+      readonly source_event_ids: ReadonlyArray<string>;
+      readonly turn_id: string;
+      readonly type: "turnInputAccepted";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly observedAtMs?: number | null;
+      readonly realtimeSessionId: string;
+      readonly input: string;
+      readonly input_item_id: string;
+      readonly source_event_ids: ReadonlyArray<string>;
+      readonly type: "sessionEndInputSaved";
+    } & { readonly [x: string]: CodexJsonExtension });
+export const ServerNotification__ThreadRealtimeItem = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        type: Schema.Literal("realtimeSessionStarted").annotate({
+          title: "RealtimeSessionStartedThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "RealtimeSessionStartedThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        channels: ServerNotification__ThreadRealtimeFrameChannels,
+        type: Schema.Literal("frame").annotate({ title: "FrameThreadRealtimeItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "FrameThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        role: ServerNotification__ThreadRealtimeTranscriptRole,
+        text: Schema.String,
+        type: Schema.Literal("transcriptSegment").annotate({
+          title: "TranscriptSegmentThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TranscriptSegmentThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        itemId: Schema.String,
+        presentation: ServerNotification__ThreadRealtimeBemItemPresentation,
+        turnId: Schema.String,
+        type: Schema.Literal("bemItemPromoted").annotate({
+          title: "BemItemPromotedThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "BemItemPromotedThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        outcome: ServerNotification__ThreadRealtimeSessionOutcome,
+        type: Schema.Literal("realtimeSessionClosed").annotate({
+          title: "RealtimeSessionClosedThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "RealtimeSessionClosedThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        handoff_id: Schema.String,
+        input: Schema.String,
+        input_item_id: Schema.String,
+        mode: ServerNotification__ThreadRealtimeHandoffMode,
+        source_event_ids: Schema.Array(Schema.String),
+        turn_id: Schema.String,
+        type: Schema.Literal("turnInputAccepted").annotate({
+          title: "TurnInputAcceptedThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnInputAcceptedThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        observedAtMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description:
+                "Canonical observation time in Unix milliseconds for eligible voice calls.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        realtimeSessionId: Schema.String,
+        input: Schema.String,
+        input_item_id: Schema.String,
+        source_event_ids: Schema.Array(Schema.String),
+        type: Schema.Literal("sessionEndInputSaved").annotate({
+          title: "SessionEndInputSavedThreadRealtimeItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "SessionEndInputSavedThreadRealtimeItem",
+      description: "EXPERIMENTAL - a thread-scoped realtime item in the canonical timeline.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__ThreadRealtimeItem" });
+
+export type ServerRequest__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+export const ServerRequest__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+
+export type ServerRequest__McpElicitationMultiSelectEnumSchema =
+  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema;
+export const ServerRequest__McpElicitationMultiSelectEnumSchema =
+  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema;
+
+export type V2ConfigReadResponse__ComputerUseConfig = {
+  readonly default_app_access?: V2ConfigReadResponse__AllowDenyRequirement | null;
+  readonly macos?: V2ConfigReadResponse__ComputerUseMacosConfig | null;
+  readonly windows?: V2ConfigReadResponse__ComputerUseWindowsConfig | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigReadResponse__ComputerUseConfig = Schema.StructWithRest(
+  Schema.Struct({
+    default_app_access: Schema.optionalKey(
+      Schema.Union([V2ConfigReadResponse__AllowDenyRequirement, Schema.Null]),
+    ),
+    macos: Schema.optionalKey(
+      Schema.Union([V2ConfigReadResponse__ComputerUseMacosConfig, Schema.Null]),
+    ),
+    windows: Schema.optionalKey(
+      Schema.Union([V2ConfigReadResponse__ComputerUseWindowsConfig, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigReadResponse__ComputerUseConfig" });
+
+export type V2ConfigRequirementsReadResponse__ComputerUseRequirements = {
+  readonly allowLockedComputerUse?: boolean | null;
+  readonly allowPersistentApproval?: boolean | null;
+  readonly defaultAppAccess?: V2ConfigRequirementsReadResponse__AllowDenyRequirement | null;
+  readonly macos?: V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements | null;
+  readonly windows?: V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__ComputerUseRequirements = Schema.StructWithRest(
+  Schema.Struct({
+    allowLockedComputerUse: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    allowPersistentApproval: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    defaultAppAccess: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__AllowDenyRequirement, Schema.Null]),
+    ),
+    macos: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements, Schema.Null]),
+    ),
+    windows: Schema.optionalKey(
+      Schema.Union([V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__ComputerUseRequirements" });
+
+export type V2ConfigWriteResponse__OverriddenMetadata = {
+  readonly effectiveValue: Schema.Json;
+  readonly message: string;
+  readonly overridingLayer: V2ConfigWriteResponse__ConfigLayerMetadata;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigWriteResponse__OverriddenMetadata = Schema.StructWithRest(
+  Schema.Struct({
+    effectiveValue: Schema.Json.annotate({ expected: "JSON value" }),
+    message: Schema.String,
+    overridingLayer: V2ConfigWriteResponse__ConfigLayerMetadata,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigWriteResponse__OverriddenMetadata" });
+
+export type V2ItemCompletedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ItemCompletedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+
+export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntry =
+  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
+
+export type V2ItemStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ItemStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2PluginInstalledResponse__PluginSummary = {
+  readonly authPolicy: V2PluginInstalledResponse__PluginAuthPolicy;
+  readonly availability?: V2PluginInstalledResponse__PluginAvailability;
+  readonly disabledReason?: V2PluginInstalledResponse__PluginDisabledReason | null;
+  readonly eligiblePlanTypes?: ReadonlyArray<string> | null;
+  readonly enabled: boolean;
+  readonly id: string;
+  readonly installPolicy: V2PluginInstalledResponse__PluginInstallPolicy;
+  readonly installPolicySource?: V2PluginInstalledResponse__PluginInstallPolicySource | null;
+  readonly installed: boolean;
+  readonly installedAt?: number | null;
+  readonly interface?: V2PluginInstalledResponse__PluginInterface | null;
+  readonly keywords?: ReadonlyArray<string>;
+  readonly localVersion?: string | null;
+  readonly mustShowInstallationInterstitial?: boolean | null;
+  readonly name: string;
+  readonly remotePluginId?: string | null;
+  readonly shareContext?: V2PluginInstalledResponse__PluginShareContext | null;
+  readonly source: V2PluginInstalledResponse__PluginSource;
+  readonly version?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2PluginInstalledResponse__PluginSummary = Schema.StructWithRest(
+  Schema.Struct({
+    authPolicy: V2PluginInstalledResponse__PluginAuthPolicy,
+    availability: Schema.optionalKey(
+      Schema.suspend(
+        (): Schema.Codec<V2PluginInstalledResponse__PluginAvailability> =>
+          V2PluginInstalledResponse__PluginAvailability,
+      ).annotate({
+        description: "Availability state for installing and using the plugin.",
+        default: "AVAILABLE",
+      }),
+    ),
+    disabledReason: Schema.optionalKey(
+      Schema.Union([V2PluginInstalledResponse__PluginDisabledReason, Schema.Null]).annotate({
+        description: "Why the remote plugin is unavailable, when provided by plugin-service.",
+      }),
+    ),
+    eligiblePlanTypes: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description: "Raw plugin-service plan identifiers eligible to install the plugin.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    enabled: Schema.Boolean,
+    id: Schema.String,
+    installPolicy: V2PluginInstalledResponse__PluginInstallPolicy,
+    installPolicySource: Schema.optionalKey(
+      Schema.Union([V2PluginInstalledResponse__PluginInstallPolicySource, Schema.Null]),
+    ),
+    installed: Schema.Boolean,
+    installedAt: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Unix timestamp in seconds when the remote plugin was installed, when available.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    interface: Schema.optionalKey(
+      Schema.Union([V2PluginInstalledResponse__PluginInterface, Schema.Null]),
+    ),
+    keywords: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+    localVersion: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Version of the locally materialized plugin package when available.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    mustShowInstallationInterstitial: Schema.optionalKey(
+      Schema.Union([Schema.Boolean, Schema.Null]),
+    ),
+    name: Schema.String,
+    remotePluginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Backend remote plugin identifier when available." }),
+        Schema.Null,
+      ]),
+    ),
+    shareContext: Schema.optionalKey(
+      Schema.Union([V2PluginInstalledResponse__PluginShareContext, Schema.Null]).annotate({
+        description: "Remote sharing context associated with this plugin when available.",
+      }),
+    ),
+    source: V2PluginInstalledResponse__PluginSource,
+    version: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Version advertised by the remote marketplace backend when available.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2PluginInstalledResponse__PluginSummary" });
+
+export type V2PluginListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+export const V2PluginListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+
+export type V2PluginReadResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+export const V2PluginReadResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+
+export type V2PluginSearchResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+export const V2PluginSearchResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+
+export type V2PluginShareListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+export const V2PluginShareListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
+
+export type V2RawResponseItemCompletedNotification__ResponseItem = ClientRequest__ResponseItem;
+export const V2RawResponseItemCompletedNotification__ResponseItem = ClientRequest__ResponseItem;
+
+export type V2ReviewStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ReviewStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2SkillsListResponse__SkillsListEntry = {
+  readonly cwd: string;
+  readonly errors: ReadonlyArray<V2SkillsListResponse__SkillErrorInfo>;
+  readonly skills: ReadonlyArray<V2SkillsListResponse__SkillMetadata>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2SkillsListResponse__SkillsListEntry = Schema.StructWithRest(
+  Schema.Struct({
+    cwd: Schema.String,
+    errors: Schema.Array(V2SkillsListResponse__SkillErrorInfo),
+    skills: Schema.Array(V2SkillsListResponse__SkillMetadata),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2SkillsListResponse__SkillsListEntry" });
+
+export type V2ThreadForkResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadForkResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadItemsListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadItemsListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadItemsReadResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadItemsReadResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadMetadataUpdateResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadMetadataUpdateResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadQueueAddResponse__QueuedSubmission = {
+  readonly clientUserMessageId: string;
+  readonly id: string;
+  readonly input: ReadonlyArray<V2ThreadQueueAddResponse__UserInput>;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadQueueAddResponse__QueuedSubmission = Schema.StructWithRest(
+  Schema.Struct({
+    clientUserMessageId: Schema.String,
+    id: Schema.String,
+    input: Schema.Array(V2ThreadQueueAddResponse__UserInput),
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Metadata retained with this input, including across reconnect and restoration.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadQueueAddResponse__QueuedSubmission" });
+
+export type V2ThreadQueueListResponse__QueuedSubmission =
+  V2ThreadQueueAddResponse__QueuedSubmission;
+export const V2ThreadQueueListResponse__QueuedSubmission =
+  V2ThreadQueueAddResponse__QueuedSubmission;
+
+export type V2ThreadQueueStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadQueueStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadQueueUpdateResponse__QueuedSubmission =
+  V2ThreadQueueAddResponse__QueuedSubmission;
+export const V2ThreadQueueUpdateResponse__QueuedSubmission =
+  V2ThreadQueueAddResponse__QueuedSubmission;
+
+export type V2ThreadReadResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadReadResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+
+export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+export const V2ThreadRealtimeListResponse__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+
+export type V2ThreadResumeParams__ResponseItem = ClientRequest__ResponseItem;
+export const V2ThreadResumeParams__ResponseItem = ClientRequest__ResponseItem;
+
+export type V2ThreadResumeResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadResumeResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadRevertResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadRevertResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadSearchPartialNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadSearchPartialNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadSearchResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadSearchResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadSettingsUpdatedNotification__ThreadSettings =
+  ServerNotification__ThreadSettings;
+export const V2ThreadSettingsUpdatedNotification__ThreadSettings =
+  ServerNotification__ThreadSettings;
+
+export type V2ThreadStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadTimelineListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadTimelineListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadTimelineListResponse__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+export const V2ThreadTimelineListResponse__ThreadRealtimeItem =
+  ServerNotification__ThreadRealtimeItem;
+
+export type V2ThreadTurnsListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadTurnsListResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2ThreadUnarchiveResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2ThreadUnarchiveResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2TurnCompletedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2TurnCompletedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2TurnStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2TurnStartedNotification__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type V2TurnStartParams__TurnToolOutput = ClientRequest__TurnToolOutput;
+export const V2TurnStartParams__TurnToolOutput = ClientRequest__TurnToolOutput;
+
+export type V2TurnStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+export const V2TurnStartResponse__AgentMessageModeration =
+  ServerNotification__AgentMessageModeration;
+
+export type ClientRequest__ThreadResumeParams = {
+  readonly approvalPolicy?: ClientRequest__AskForApproval | null;
+  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
+  readonly baseInstructions?: string | null;
+  readonly config?: { readonly [x: string]: Schema.Json } | null;
+  readonly cwd?: string | null;
+  readonly developerInstructions?: string | null;
+  readonly excludeTurns?: boolean;
+  readonly history?: ReadonlyArray<ClientRequest__ResponseItem> | null;
+  readonly initialTurnsPage?: ClientRequest__ThreadResumeInitialTurnsPageParams | null;
+  readonly model?: string | null;
+  readonly modelProvider?: string | null;
+  readonly path?: string | null;
+  readonly permissions?: string | null;
+  readonly personality?: ClientRequest__Personality | null;
+  readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
+  readonly sandbox?: ClientRequest__SandboxMode | null;
+  readonly serviceTier?: string | null;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadResumeParams = Schema.StructWithRest(
+  Schema.Struct({
+    approvalPolicy: Schema.optionalKey(Schema.Union([ClientRequest__AskForApproval, Schema.Null])),
+    approvalsReviewer: Schema.optionalKey(
+      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
+        description:
+          "Override where approval requests are routed for review on this thread and subsequent turns.",
+      }),
+    ),
+    baseInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    config: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+        Schema.Null,
+      ]),
+    ),
+    cwd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    developerInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    excludeTurns: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
+      }),
+    ),
+    history: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__ResponseItem).annotate({
+          description:
+            "[UNSTABLE] FOR CODEX CLOUD - DO NOT USE. If specified, the thread will be resumed with the provided history instead of loaded from disk.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    initialTurnsPage: Schema.optionalKey(
+      Schema.Union([ClientRequest__ThreadResumeInitialTurnsPageParams, Schema.Null]).annotate({
+        description:
+          "When present, include a `thread/turns/list` page in the resume response so clients can bootstrap recent turns without a second request.",
+      }),
+    ),
+    model: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Configuration overrides for the resumed thread, if any.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    modelProvider: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    path: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "[UNSTABLE] Specify the rollout path to resume from. If specified for a non-running thread, the thread_id param will be ignored. If thread_id identifies a running thread, the path must match the active rollout path.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    permissions: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Named profile id for the resumed thread. Cannot be combined with `sandbox`.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    personality: Schema.optionalKey(
+      Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
+        description:
+          "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
+      }),
+    ),
+    runtimeWorkspaceRoots: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__AbsolutePathBuf).annotate({
+          description: "Replace the thread's runtime workspace roots. Paths must be absolute.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    sandbox: Schema.optionalKey(Schema.Union([ClientRequest__SandboxMode, Schema.Null])),
+    serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.\n\nFor non-running threads, the precedence is: history > non-empty path > thread_id. If using history or a non-empty path for a non-running thread, the thread_id param will be ignored.\n\nIf thread_id identifies a running thread, app-server rejoins that thread and treats a non-empty path as a consistency check against the active rollout path. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
+  identifier: "ClientRequest__ThreadResumeParams",
+});
+
+export type ClientRequest__TurnStartParams = {
+  readonly additionalContext?: {
+    readonly [x: string]: ClientRequest__AdditionalContextEntry;
+  } | null;
+  readonly approvalPolicy?: ClientRequest__AskForApproval | null;
+  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
+  readonly clientUserMessageId?: string | null;
+  readonly collaborationMode?: ClientRequest__CollaborationMode | null;
+  readonly cwd?: string | null;
+  readonly cyberAccessProgram?: ClientRequest__CyberAccessProgram | null;
+  readonly disabledPluginIds?: ReadonlyArray<string> | null;
+  readonly effort?: ClientRequest__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
+  readonly input: ReadonlyArray<ClientRequest__UserInput>;
+  readonly model?: string | null;
+  readonly multiAgentMode?: ClientRequest__MultiAgentMode | null;
+  readonly outputSchema?: Schema.Json;
+  readonly parentTurnId?: string | null;
+  readonly permissions?: string | null;
+  readonly personality?: ClientRequest__Personality | null;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
+  readonly rootTurnId?: string | null;
+  readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
+  readonly sandboxPolicy?: ClientRequest__SandboxPolicy | null;
+  readonly serviceTier?: string | null;
+  readonly serviceTierForTurn?: string | null;
+  readonly summary?: ClientRequest__ReasoningSummary | null;
+  readonly threadId: string;
+  readonly toolOutput?: ClientRequest__TurnToolOutput | null;
+  readonly turnTrigger?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__TurnStartParams = Schema.StructWithRest(
+  Schema.Struct({
+    additionalContext: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, ClientRequest__AdditionalContextEntry).annotate({
+          description:
+            "Optional client-provided context fragments keyed by an opaque source identifier.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    approvalPolicy: Schema.optionalKey(
+      Schema.Union([ClientRequest__AskForApproval, Schema.Null]).annotate({
+        description: "Override the approval policy for this turn and subsequent turns.",
+      }),
+    ),
+    approvalsReviewer: Schema.optionalKey(
+      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
+        description:
+          "Override where approval requests are routed for review on this turn and subsequent turns.",
+      }),
+    ),
+    clientUserMessageId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    collaborationMode: Schema.optionalKey(
+      Schema.Union([ClientRequest__CollaborationMode, Schema.Null]).annotate({
+        description:
+          'EXPERIMENTAL - Set a pre-set collaboration mode. Takes precedence over model, reasoning_effort, and developer instructions if set.\n\nFor `collaboration_mode.settings.developer_instructions`, `null` means "use the built-in instructions for the selected mode".',
+      }),
+    ),
+    cwd: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Override the working directory for this turn and subsequent turns.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    cyberAccessProgram: Schema.optionalKey(
+      Schema.Union([ClientRequest__CyberAccessProgram, Schema.Null]).annotate({
+        description:
+          "EXPERIMENTAL - Request an authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
+      }),
+    ),
+    disabledPluginIds: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description:
+            "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    effort: Schema.optionalKey(
+      Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
+        description: "Override the reasoning effort for this turn and subsequent turns.",
+      }),
+    ),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__TurnEnvironmentParams).annotate({
+          description:
+            "Optional environments for this turn and subsequent turns.\n\nOmitted uses the thread sticky environments. Empty disables environment access for this turn. Non-empty selects the first environment as the current turn environment for this turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    input: Schema.Array(ClientRequest__UserInput),
+    model: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Override the model for this turn and subsequent turns.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    multiAgentMode: Schema.optionalKey(
+      Schema.Union([ClientRequest__MultiAgentMode, Schema.Null]).annotate({
+        description:
+          '@deprecated Ignored. Use `effort: "ultra"` for proactive multi-agent behavior.',
+      }),
+    ),
+    outputSchema: Schema.optionalKey(
+      Schema.Json.annotate({
+        expected: "JSON value",
+        description:
+          "Optional JSON Schema used to constrain the final assistant message for this turn.",
+      }),
+    ),
+    parentTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the turn that caused this new turn to start.\n\nSet this when starting work on behalf of another turn, such as delegated work in a different thread. Leave unset for work started directly by the user. Ignored when this request adds input to an active turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    permissions: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Select a named permissions profile id for this turn and subsequent turns. Cannot be combined with `sandboxPolicy`.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    personality: Schema.optionalKey(
+      Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
+        description:
+          "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
+      }),
+    ),
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    responsesapiClientMetadataPatch: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this new turn.\n\nWhen setting `parentTurnId`, set this to the parent turn's `rootTurnId` when known. This keeps descendant work attributed to the original turn. If omitted, the new turn becomes its own root. Ignored when this request adds input to an active turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    runtimeWorkspaceRoots: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(ClientRequest__AbsolutePathBuf).annotate({
+          description:
+            "Replace the thread's runtime workspace roots for this turn and subsequent turns. Paths must be absolute.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    sandboxPolicy: Schema.optionalKey(
+      Schema.Union([ClientRequest__SandboxPolicy, Schema.Null]).annotate({
+        description: "Override the sandbox policy for this turn and subsequent turns.",
+      }),
+    ),
+    serviceTier: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Override the service tier for this turn and subsequent turns.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    serviceTierForTurn: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Override the service tier only when this request starts a new turn. Use \"default\" for standard speed. Omitted or null inherits the thread's tier. Does not change the thread's tier or a turn being steered.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    summary: Schema.optionalKey(
+      Schema.Union([ClientRequest__ReasoningSummary, Schema.Null]).annotate({
+        description: "Override the reasoning summary for this turn and subsequent turns.",
+      }),
+    ),
+    threadId: Schema.String,
+    toolOutput: Schema.optionalKey(Schema.Union([ClientRequest__TurnToolOutput, Schema.Null])),
+    turnTrigger: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Optional source classification for the caller that starts this turn. Ignored when this request steers an already-active turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__TurnStartParams" });
+
+export type CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions = {
+  readonly entries?: ReadonlyArray<CommandExecutionRequestApprovalParams__FileSystemSandboxEntry> | null;
+  readonly globScanMaxDepth?: number | null;
+  readonly read?: ReadonlyArray<CommandExecutionRequestApprovalParams__LegacyAppPathString> | null;
+  readonly write?: ReadonlyArray<CommandExecutionRequestApprovalParams__LegacyAppPathString> | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions =
+  Schema.StructWithRest(
+    Schema.Struct({
+      entries: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(CommandExecutionRequestApprovalParams__FileSystemSandboxEntry),
+          Schema.Null,
+        ]),
+      ),
+      globScanMaxDepth: Schema.optionalKey(
+        Schema.Union([
+          Schema.Number.annotate({ format: "uint" })
+            .check(Schema.isInt().annotate({ expected: "an integer" }))
+            .check(
+              Schema.isGreaterThanOrEqualTo(1).annotate({
+                expected: "a value greater than or equal to 1",
+              }),
+            ),
+          Schema.Null,
+        ]),
+      ),
+      read: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(CommandExecutionRequestApprovalParams__LegacyAppPathString).annotate({
+            description: "This will be removed in favor of `entries`.",
+          }),
+          Schema.Null,
+        ]),
+      ),
+      write: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(CommandExecutionRequestApprovalParams__LegacyAppPathString).annotate({
+            description: "This will be removed in favor of `entries`.",
+          }),
+          Schema.Null,
+        ]),
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    identifier: "CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions",
+  });
+
+export type McpServerElicitationRequestParams__McpElicitationEnumSchema =
+  | McpServerElicitationRequestParams__McpElicitationSingleSelectEnumSchema
+  | McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema
+  | McpServerElicitationRequestParams__McpElicitationLegacyTitledEnumSchema;
+export const McpServerElicitationRequestParams__McpElicitationEnumSchema = Schema.Union([
+  McpServerElicitationRequestParams__McpElicitationSingleSelectEnumSchema,
+  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema,
+  McpServerElicitationRequestParams__McpElicitationLegacyTitledEnumSchema,
+]).annotate({ identifier: "McpServerElicitationRequestParams__McpElicitationEnumSchema" });
+
+export type PermissionsRequestApprovalParams__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+export const PermissionsRequestApprovalParams__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+
+export type PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+export const PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+
+export type ServerNotification__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+export const ServerNotification__AdditionalFileSystemPermissions =
+  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+
+export type ServerNotification__ThreadSettingsUpdatedNotification = {
+  readonly threadId: string;
+  readonly threadSettings: ServerNotification__ThreadSettings;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadSettingsUpdatedNotification = Schema.StructWithRest(
+  Schema.Struct({ threadId: Schema.String, threadSettings: ServerNotification__ThreadSettings }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadSettingsUpdatedNotification" });
+
 export type ServerNotification__ThreadItem =
   | ({
       readonly completedAtMs?: number | null;
@@ -21502,6 +24220,7 @@ export type ServerNotification__ThreadItem =
       readonly delivery?: ServerNotification__AgentMessageDelivery | null;
       readonly id: string;
       readonly memoryCitation?: ServerNotification__MemoryCitation | null;
+      readonly moderation?: ServerNotification__AgentMessageModeration | null;
       readonly phase?: ServerNotification__MessagePhase | null;
       readonly questions?: ReadonlyArray<ServerNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
@@ -21562,6 +24281,7 @@ export type ServerNotification__ThreadItem =
       readonly appContext?: ServerNotification__McpToolCallAppContext | null;
       readonly arguments: Schema.Json;
       readonly durationMs?: number | null;
+      readonly environmentId?: string | null;
       readonly error?: ServerNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
@@ -21772,6 +24492,9 @@ export const ServerNotification__ThreadItem = Schema.Union(
         id: Schema.String,
         memoryCitation: Schema.optionalKey(
           Schema.Union([ServerNotification__MemoryCitation, Schema.Null]),
+        ),
+        moderation: Schema.optionalKey(
+          Schema.Union([ServerNotification__AgentMessageModeration, Schema.Null]),
         ),
         phase: Schema.optionalKey(Schema.Union([ServerNotification__MessagePhase, Schema.Null])),
         questions: Schema.optionalKey(
@@ -22041,6 +24764,15 @@ export const ServerNotification__ThreadItem = Schema.Union(
               description: "The duration of the MCP tool call in milliseconds.",
               format: "int64",
             }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
             Schema.Null,
           ]),
         ),
@@ -22568,905 +25300,29 @@ export const ServerNotification__ThreadItem = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "ServerNotification__ThreadItem" });
 
-export type ServerNotification__HookStartedNotification = {
-  readonly run: ServerNotification__HookRunSummary;
+export type ServerNotification__ThreadRealtimeItemStartedNotification = {
+  readonly item: ServerNotification__ThreadRealtimeItem;
   readonly threadId: string;
-  readonly turnId?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__HookStartedNotification = Schema.StructWithRest(
-  Schema.Struct({
-    run: ServerNotification__HookRunSummary,
-    threadId: Schema.String,
-    turnId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__HookStartedNotification" });
-
-export type ServerNotification__HookCompletedNotification = {
-  readonly run: ServerNotification__HookRunSummary;
-  readonly threadId: string;
-  readonly turnId?: string | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__HookCompletedNotification = Schema.StructWithRest(
-  Schema.Struct({
-    run: ServerNotification__HookRunSummary,
-    threadId: Schema.String,
-    turnId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__HookCompletedNotification" });
-
-export type ServerNotification__AppListUpdatedNotification = {
-  readonly data: ReadonlyArray<ServerNotification__AppInfo>;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__AppListUpdatedNotification = Schema.StructWithRest(
-  Schema.Struct({ data: Schema.Array(ServerNotification__AppInfo) }),
+export const ServerNotification__ThreadRealtimeItemStartedNotification = Schema.StructWithRest(
+  Schema.Struct({ item: ServerNotification__ThreadRealtimeItem, threadId: Schema.String }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({
-  description: "EXPERIMENTAL - notification emitted when the app list changes.",
-  identifier: "ServerNotification__AppListUpdatedNotification",
+  description: "EXPERIMENTAL - a realtime timeline item started before its content streams.",
+  identifier: "ServerNotification__ThreadRealtimeItemStartedNotification",
 });
 
-export type ServerNotification__ExternalAgentConfigImportProgressNotification = {
-  readonly importId: string;
-  readonly itemTypeResults: ReadonlyArray<ServerNotification__ExternalAgentConfigImportTypeResult>;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ExternalAgentConfigImportProgressNotification =
-  Schema.StructWithRest(
-    Schema.Struct({
-      importId: Schema.String,
-      itemTypeResults: Schema.Array(ServerNotification__ExternalAgentConfigImportTypeResult),
-    }),
-    [Schema.Record(Schema.String, CodexJsonExtension)],
-  ).annotate({ identifier: "ServerNotification__ExternalAgentConfigImportProgressNotification" });
-
-export type ServerNotification__ExternalAgentConfigImportCompletedNotification = {
-  readonly importId: string;
-  readonly itemTypeResults: ReadonlyArray<ServerNotification__ExternalAgentConfigImportTypeResult>;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ExternalAgentConfigImportCompletedNotification =
-  Schema.StructWithRest(
-    Schema.Struct({
-      importId: Schema.String,
-      itemTypeResults: Schema.Array(ServerNotification__ExternalAgentConfigImportTypeResult),
-    }),
-    [Schema.Record(Schema.String, CodexJsonExtension)],
-  ).annotate({ identifier: "ServerNotification__ExternalAgentConfigImportCompletedNotification" });
-
-export type ServerRequest__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-export const ServerRequest__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-
-export type ServerRequest__McpElicitationMultiSelectEnumSchema =
-  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema;
-export const ServerRequest__McpElicitationMultiSelectEnumSchema =
-  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema;
-
-export type V2ConfigReadResponse__ComputerUseConfig = {
-  readonly default_app_access?: V2ConfigReadResponse__AllowDenyRequirement | null;
-  readonly macos?: V2ConfigReadResponse__ComputerUseMacosConfig | null;
-  readonly windows?: V2ConfigReadResponse__ComputerUseWindowsConfig | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2ConfigReadResponse__ComputerUseConfig = Schema.StructWithRest(
-  Schema.Struct({
-    default_app_access: Schema.optionalKey(
-      Schema.Union([V2ConfigReadResponse__AllowDenyRequirement, Schema.Null]),
-    ),
-    macos: Schema.optionalKey(
-      Schema.Union([V2ConfigReadResponse__ComputerUseMacosConfig, Schema.Null]),
-    ),
-    windows: Schema.optionalKey(
-      Schema.Union([V2ConfigReadResponse__ComputerUseWindowsConfig, Schema.Null]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ConfigReadResponse__ComputerUseConfig" });
-
-export type V2ConfigRequirementsReadResponse__ComputerUseRequirements = {
-  readonly allowLockedComputerUse?: boolean | null;
-  readonly allowPersistentApproval?: boolean | null;
-  readonly defaultAppAccess?: V2ConfigRequirementsReadResponse__AllowDenyRequirement | null;
-  readonly macos?: V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements | null;
-  readonly windows?: V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2ConfigRequirementsReadResponse__ComputerUseRequirements = Schema.StructWithRest(
-  Schema.Struct({
-    allowLockedComputerUse: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-    allowPersistentApproval: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-    defaultAppAccess: Schema.optionalKey(
-      Schema.Union([V2ConfigRequirementsReadResponse__AllowDenyRequirement, Schema.Null]),
-    ),
-    macos: Schema.optionalKey(
-      Schema.Union([V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements, Schema.Null]),
-    ),
-    windows: Schema.optionalKey(
-      Schema.Union([V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements, Schema.Null]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ConfigRequirementsReadResponse__ComputerUseRequirements" });
-
-export type V2ConfigWriteResponse__OverriddenMetadata = {
-  readonly effectiveValue: Schema.Json;
-  readonly message: string;
-  readonly overridingLayer: V2ConfigWriteResponse__ConfigLayerMetadata;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2ConfigWriteResponse__OverriddenMetadata = Schema.StructWithRest(
-  Schema.Struct({
-    effectiveValue: Schema.Json.annotate({ expected: "JSON value" }),
-    message: Schema.String,
-    overridingLayer: V2ConfigWriteResponse__ConfigLayerMetadata,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ConfigWriteResponse__OverriddenMetadata" });
-
-export type V2ItemCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
-export const V2ItemCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-
-export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntry =
-  CommandExecutionRequestApprovalParams__FileSystemSandboxEntry;
-
-export type V2ItemStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-export const V2ItemStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2PluginInstalledResponse__PluginSummary = {
-  readonly authPolicy: V2PluginInstalledResponse__PluginAuthPolicy;
-  readonly availability?: V2PluginInstalledResponse__PluginAvailability;
-  readonly disabledReason?: V2PluginInstalledResponse__PluginDisabledReason | null;
-  readonly eligiblePlanTypes?: ReadonlyArray<string> | null;
-  readonly enabled: boolean;
-  readonly id: string;
-  readonly installPolicy: V2PluginInstalledResponse__PluginInstallPolicy;
-  readonly installPolicySource?: V2PluginInstalledResponse__PluginInstallPolicySource | null;
-  readonly installed: boolean;
-  readonly installedAt?: number | null;
-  readonly interface?: V2PluginInstalledResponse__PluginInterface | null;
-  readonly keywords?: ReadonlyArray<string>;
-  readonly localVersion?: string | null;
-  readonly mustShowInstallationInterstitial?: boolean | null;
-  readonly name: string;
-  readonly remotePluginId?: string | null;
-  readonly shareContext?: V2PluginInstalledResponse__PluginShareContext | null;
-  readonly source: V2PluginInstalledResponse__PluginSource;
-  readonly version?: string | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2PluginInstalledResponse__PluginSummary = Schema.StructWithRest(
-  Schema.Struct({
-    authPolicy: V2PluginInstalledResponse__PluginAuthPolicy,
-    availability: Schema.optionalKey(
-      Schema.suspend(
-        (): Schema.Codec<V2PluginInstalledResponse__PluginAvailability> =>
-          V2PluginInstalledResponse__PluginAvailability,
-      ).annotate({
-        description: "Availability state for installing and using the plugin.",
-        default: "AVAILABLE",
-      }),
-    ),
-    disabledReason: Schema.optionalKey(
-      Schema.Union([V2PluginInstalledResponse__PluginDisabledReason, Schema.Null]).annotate({
-        description: "Why the remote plugin is unavailable, when provided by plugin-service.",
-      }),
-    ),
-    eligiblePlanTypes: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(Schema.String).annotate({
-          description: "Raw plugin-service plan identifiers eligible to install the plugin.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    enabled: Schema.Boolean,
-    id: Schema.String,
-    installPolicy: V2PluginInstalledResponse__PluginInstallPolicy,
-    installPolicySource: Schema.optionalKey(
-      Schema.Union([V2PluginInstalledResponse__PluginInstallPolicySource, Schema.Null]),
-    ),
-    installed: Schema.Boolean,
-    installedAt: Schema.optionalKey(
-      Schema.Union([
-        Schema.Number.annotate({
-          description:
-            "Unix timestamp in seconds when the remote plugin was installed, when available.",
-          format: "int64",
-        }).check(Schema.isInt().annotate({ expected: "an integer" })),
-        Schema.Null,
-      ]),
-    ),
-    interface: Schema.optionalKey(
-      Schema.Union([V2PluginInstalledResponse__PluginInterface, Schema.Null]),
-    ),
-    keywords: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
-    localVersion: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Version of the locally materialized plugin package when available.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    mustShowInstallationInterstitial: Schema.optionalKey(
-      Schema.Union([Schema.Boolean, Schema.Null]),
-    ),
-    name: Schema.String,
-    remotePluginId: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({ description: "Backend remote plugin identifier when available." }),
-        Schema.Null,
-      ]),
-    ),
-    shareContext: Schema.optionalKey(
-      Schema.Union([V2PluginInstalledResponse__PluginShareContext, Schema.Null]).annotate({
-        description: "Remote sharing context associated with this plugin when available.",
-      }),
-    ),
-    source: V2PluginInstalledResponse__PluginSource,
-    version: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Version advertised by the remote marketplace backend when available.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2PluginInstalledResponse__PluginSummary" });
-
-export type V2PluginListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-export const V2PluginListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-
-export type V2PluginReadResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-export const V2PluginReadResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-
-export type V2PluginSearchResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-export const V2PluginSearchResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-
-export type V2PluginShareListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-export const V2PluginShareListResponse__PluginSummary = V2PluginInstalledResponse__PluginSummary;
-
-export type V2RawResponseItemCompletedNotification__ResponseItem = ClientRequest__ResponseItem;
-export const V2RawResponseItemCompletedNotification__ResponseItem = ClientRequest__ResponseItem;
-
-export type V2ReviewStartResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ReviewStartResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2SkillsListResponse__SkillsListEntry = {
-  readonly cwd: string;
-  readonly errors: ReadonlyArray<V2SkillsListResponse__SkillErrorInfo>;
-  readonly skills: ReadonlyArray<V2SkillsListResponse__SkillMetadata>;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2SkillsListResponse__SkillsListEntry = Schema.StructWithRest(
-  Schema.Struct({
-    cwd: Schema.String,
-    errors: Schema.Array(V2SkillsListResponse__SkillErrorInfo),
-    skills: Schema.Array(V2SkillsListResponse__SkillMetadata),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2SkillsListResponse__SkillsListEntry" });
-
-export type V2ThreadForkResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadForkResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadItemsListResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadItemsListResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadItemsReadResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadItemsReadResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadListResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadListResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadMetadataUpdateResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadMetadataUpdateResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadQueueAddResponse__QueuedSubmission = {
-  readonly clientUserMessageId: string;
-  readonly id: string;
-  readonly input: ReadonlyArray<V2ThreadQueueAddResponse__UserInput>;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2ThreadQueueAddResponse__QueuedSubmission = Schema.StructWithRest(
-  Schema.Struct({
-    clientUserMessageId: Schema.String,
-    id: Schema.String,
-    input: Schema.Array(V2ThreadQueueAddResponse__UserInput),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ThreadQueueAddResponse__QueuedSubmission" });
-
-export type V2ThreadQueueListResponse__QueuedSubmission =
-  V2ThreadQueueAddResponse__QueuedSubmission;
-export const V2ThreadQueueListResponse__QueuedSubmission =
-  V2ThreadQueueAddResponse__QueuedSubmission;
-
-export type V2ThreadQueueStartResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadQueueStartResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadQueueUpdateResponse__QueuedSubmission =
-  V2ThreadQueueAddResponse__QueuedSubmission;
-export const V2ThreadQueueUpdateResponse__QueuedSubmission =
-  V2ThreadQueueAddResponse__QueuedSubmission;
-
-export type V2ThreadReadResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadReadResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadResumeParams__ResponseItem = ClientRequest__ResponseItem;
-export const V2ThreadResumeParams__ResponseItem = ClientRequest__ResponseItem;
-
-export type V2ThreadResumeResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadResumeResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadRevertResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadRevertResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadSearchResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadSearchResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadSettingsUpdatedNotification__ThreadSettings =
-  ServerNotification__ThreadSettings;
-export const V2ThreadSettingsUpdatedNotification__ThreadSettings =
-  ServerNotification__ThreadSettings;
-
-export type V2ThreadStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadStartResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadStartResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadTimelineListResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadTimelineListResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadTurnsListResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadTurnsListResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2ThreadUnarchiveResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2ThreadUnarchiveResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2TurnCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
-export const V2TurnCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2TurnStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-export const V2TurnStartedNotification__ThreadItem = ServerNotification__ThreadItem;
-
-export type V2TurnStartParams__TurnToolOutput = ClientRequest__TurnToolOutput;
-export const V2TurnStartParams__TurnToolOutput = ClientRequest__TurnToolOutput;
-
-export type V2TurnStartResponse__ThreadItem = ServerNotification__ThreadItem;
-export const V2TurnStartResponse__ThreadItem = ServerNotification__ThreadItem;
-
-export type ClientRequest__ThreadResumeParams = {
-  readonly approvalPolicy?: ClientRequest__AskForApproval | null;
-  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
-  readonly baseInstructions?: string | null;
-  readonly config?: { readonly [x: string]: Schema.Json } | null;
-  readonly cwd?: string | null;
-  readonly developerInstructions?: string | null;
-  readonly excludeTurns?: boolean;
-  readonly history?: ReadonlyArray<ClientRequest__ResponseItem> | null;
-  readonly initialTurnsPage?: ClientRequest__ThreadResumeInitialTurnsPageParams | null;
-  readonly model?: string | null;
-  readonly modelProvider?: string | null;
-  readonly path?: string | null;
-  readonly permissions?: string | null;
-  readonly personality?: ClientRequest__Personality | null;
-  readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
-  readonly sandbox?: ClientRequest__SandboxMode | null;
-  readonly serviceTier?: string | null;
+export type ServerNotification__ThreadRealtimeItemCompletedNotification = {
+  readonly item: ServerNotification__ThreadRealtimeItem;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
-export const ClientRequest__ThreadResumeParams = Schema.StructWithRest(
-  Schema.Struct({
-    approvalPolicy: Schema.optionalKey(Schema.Union([ClientRequest__AskForApproval, Schema.Null])),
-    approvalsReviewer: Schema.optionalKey(
-      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
-        description:
-          "Override where approval requests are routed for review on this thread and subsequent turns.",
-      }),
-    ),
-    baseInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    config: Schema.optionalKey(
-      Schema.Union([
-        Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
-        Schema.Null,
-      ]),
-    ),
-    cwd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    developerInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    excludeTurns: Schema.optionalKey(
-      Schema.Boolean.annotate({
-        description:
-          "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
-      }),
-    ),
-    history: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(ClientRequest__ResponseItem).annotate({
-          description:
-            "[UNSTABLE] FOR CODEX CLOUD - DO NOT USE. If specified, the thread will be resumed with the provided history instead of loaded from disk.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    initialTurnsPage: Schema.optionalKey(
-      Schema.Union([ClientRequest__ThreadResumeInitialTurnsPageParams, Schema.Null]).annotate({
-        description:
-          "When present, include a `thread/turns/list` page in the resume response so clients can bootstrap recent turns without a second request.",
-      }),
-    ),
-    model: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Configuration overrides for the resumed thread, if any.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    modelProvider: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    path: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "[UNSTABLE] Specify the rollout path to resume from. If specified for a non-running thread, the thread_id param will be ignored. If thread_id identifies a running thread, the path must match the active rollout path.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    permissions: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "Named profile id for the resumed thread. Cannot be combined with `sandbox`.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    personality: Schema.optionalKey(
-      Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
-        description:
-          "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
-      }),
-    ),
-    runtimeWorkspaceRoots: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(ClientRequest__AbsolutePathBuf).annotate({
-          description: "Replace the thread's runtime workspace roots. Paths must be absolute.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    sandbox: Schema.optionalKey(Schema.Union([ClientRequest__SandboxMode, Schema.Null])),
-    serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    threadId: Schema.String,
-  }),
+export const ServerNotification__ThreadRealtimeItemCompletedNotification = Schema.StructWithRest(
+  Schema.Struct({ item: ServerNotification__ThreadRealtimeItem, threadId: Schema.String }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({
-  description:
-    "There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.\n\nFor non-running threads, the precedence is: history > non-empty path > thread_id. If using history or a non-empty path for a non-running thread, the thread_id param will be ignored.\n\nIf thread_id identifies a running thread, app-server rejoins that thread and treats a non-empty path as a consistency check against the active rollout path. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
-  identifier: "ClientRequest__ThreadResumeParams",
+  description: "EXPERIMENTAL - a realtime timeline item published after canonical commit.",
+  identifier: "ServerNotification__ThreadRealtimeItemCompletedNotification",
 });
-
-export type ClientRequest__TurnStartParams = {
-  readonly additionalContext?: {
-    readonly [x: string]: ClientRequest__AdditionalContextEntry;
-  } | null;
-  readonly approvalPolicy?: ClientRequest__AskForApproval | null;
-  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
-  readonly clientUserMessageId?: string | null;
-  readonly collaborationMode?: ClientRequest__CollaborationMode | null;
-  readonly cwd?: string | null;
-  readonly cyberAccessProgram?: ClientRequest__CyberAccessProgram | null;
-  readonly disabledPluginIds?: ReadonlyArray<string> | null;
-  readonly effort?: ClientRequest__ReasoningEffort | null;
-  readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
-  readonly input: ReadonlyArray<ClientRequest__UserInput>;
-  readonly model?: string | null;
-  readonly multiAgentMode?: ClientRequest__MultiAgentMode | null;
-  readonly outputSchema?: Schema.Json;
-  readonly parentTurnId?: string | null;
-  readonly permissions?: string | null;
-  readonly personality?: ClientRequest__Personality | null;
-  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
-  readonly responsesapiClientMetadataPatch?: { readonly [x: string]: string } | null;
-  readonly rootTurnId?: string | null;
-  readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
-  readonly sandboxPolicy?: ClientRequest__SandboxPolicy | null;
-  readonly serviceTier?: string | null;
-  readonly serviceTierForTurn?: string | null;
-  readonly summary?: ClientRequest__ReasoningSummary | null;
-  readonly threadId: string;
-  readonly toolOutput?: ClientRequest__TurnToolOutput | null;
-  readonly turnTrigger?: string | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ClientRequest__TurnStartParams = Schema.StructWithRest(
-  Schema.Struct({
-    additionalContext: Schema.optionalKey(
-      Schema.Union([
-        Schema.Record(Schema.String, ClientRequest__AdditionalContextEntry).annotate({
-          description:
-            "Optional client-provided context fragments keyed by an opaque source identifier.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    approvalPolicy: Schema.optionalKey(
-      Schema.Union([ClientRequest__AskForApproval, Schema.Null]).annotate({
-        description: "Override the approval policy for this turn and subsequent turns.",
-      }),
-    ),
-    approvalsReviewer: Schema.optionalKey(
-      Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
-        description:
-          "Override where approval requests are routed for review on this turn and subsequent turns.",
-      }),
-    ),
-    clientUserMessageId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    collaborationMode: Schema.optionalKey(
-      Schema.Union([ClientRequest__CollaborationMode, Schema.Null]).annotate({
-        description:
-          'EXPERIMENTAL - Set a pre-set collaboration mode. Takes precedence over model, reasoning_effort, and developer instructions if set.\n\nFor `collaboration_mode.settings.developer_instructions`, `null` means "use the built-in instructions for the selected mode".',
-      }),
-    ),
-    cwd: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Override the working directory for this turn and subsequent turns.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    cyberAccessProgram: Schema.optionalKey(
-      Schema.Union([ClientRequest__CyberAccessProgram, Schema.Null]).annotate({
-        description:
-          "EXPERIMENTAL - Request an authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
-      }),
-    ),
-    disabledPluginIds: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(Schema.String).annotate({
-          description:
-            "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    effort: Schema.optionalKey(
-      Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
-        description: "Override the reasoning effort for this turn and subsequent turns.",
-      }),
-    ),
-    environments: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(ClientRequest__TurnEnvironmentParams).annotate({
-          description:
-            "Optional environments for this turn and subsequent turns.\n\nOmitted uses the thread sticky environments. Empty disables environment access for this turn. Non-empty selects the first environment as the current turn environment for this turn.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    input: Schema.Array(ClientRequest__UserInput),
-    model: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Override the model for this turn and subsequent turns.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    multiAgentMode: Schema.optionalKey(
-      Schema.Union([ClientRequest__MultiAgentMode, Schema.Null]).annotate({
-        description:
-          '@deprecated Ignored. Use `effort: "ultra"` for proactive multi-agent behavior.',
-      }),
-    ),
-    outputSchema: Schema.optionalKey(
-      Schema.Json.annotate({
-        expected: "JSON value",
-        description:
-          "Optional JSON Schema used to constrain the final assistant message for this turn.",
-      }),
-    ),
-    parentTurnId: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "ID of the turn that caused this new turn to start.\n\nSet this when starting work on behalf of another turn, such as delegated work in a different thread. Leave unset for work started directly by the user. Ignored when this request adds input to an active turn.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    permissions: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "Select a named permissions profile id for this turn and subsequent turns. Cannot be combined with `sandboxPolicy`.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    personality: Schema.optionalKey(
-      Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
-        description:
-          "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
-      }),
-    ),
-    responsesapiClientMetadata: Schema.optionalKey(
-      Schema.Union([
-        Schema.Record(Schema.String, Schema.String).annotate({
-          description:
-            'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata. Replaces unprotected client-provided entries when supplied; an empty map clears them.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
-        }),
-        Schema.Null,
-      ]),
-    ),
-    responsesapiClientMetadataPatch: Schema.optionalKey(
-      Schema.Union([
-        Schema.Record(Schema.String, Schema.String).annotate({
-          description:
-            "Merge entries into the ResponsesAPI turn metadata without removing existing entries. Applied after `responsesapiClientMetadata` if both are provided; reserved keys remain protected.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    rootTurnId: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "ID of the first turn in the chain of work that led to this new turn.\n\nWhen setting `parentTurnId`, set this to the parent turn's `rootTurnId` when known. This keeps descendant work attributed to the original turn. If omitted, the new turn becomes its own root. Ignored when this request adds input to an active turn.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    runtimeWorkspaceRoots: Schema.optionalKey(
-      Schema.Union([
-        Schema.Array(ClientRequest__AbsolutePathBuf).annotate({
-          description:
-            "Replace the thread's runtime workspace roots for this turn and subsequent turns. Paths must be absolute.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    sandboxPolicy: Schema.optionalKey(
-      Schema.Union([ClientRequest__SandboxPolicy, Schema.Null]).annotate({
-        description: "Override the sandbox policy for this turn and subsequent turns.",
-      }),
-    ),
-    serviceTier: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description: "Override the service tier for this turn and subsequent turns.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    serviceTierForTurn: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "Override the service tier only when this request starts a new turn. Use \"default\" for standard speed. Omitted or null inherits the thread's tier. Does not change the thread's tier or a turn being steered.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    summary: Schema.optionalKey(
-      Schema.Union([ClientRequest__ReasoningSummary, Schema.Null]).annotate({
-        description: "Override the reasoning summary for this turn and subsequent turns.",
-      }),
-    ),
-    threadId: Schema.String,
-    toolOutput: Schema.optionalKey(Schema.Union([ClientRequest__TurnToolOutput, Schema.Null])),
-    turnTrigger: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "Optional source classification for the caller that starts this turn. Ignored when this request steers an already-active turn.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ClientRequest__TurnStartParams" });
-
-export type CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions = {
-  readonly entries?: ReadonlyArray<CommandExecutionRequestApprovalParams__FileSystemSandboxEntry> | null;
-  readonly globScanMaxDepth?: number | null;
-  readonly read?: ReadonlyArray<CommandExecutionRequestApprovalParams__LegacyAppPathString> | null;
-  readonly write?: ReadonlyArray<CommandExecutionRequestApprovalParams__LegacyAppPathString> | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions =
-  Schema.StructWithRest(
-    Schema.Struct({
-      entries: Schema.optionalKey(
-        Schema.Union([
-          Schema.Array(CommandExecutionRequestApprovalParams__FileSystemSandboxEntry),
-          Schema.Null,
-        ]),
-      ),
-      globScanMaxDepth: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({ format: "uint" })
-            .check(Schema.isInt().annotate({ expected: "an integer" }))
-            .check(
-              Schema.isGreaterThanOrEqualTo(1).annotate({
-                expected: "a value greater than or equal to 1",
-              }),
-            ),
-          Schema.Null,
-        ]),
-      ),
-      read: Schema.optionalKey(
-        Schema.Union([
-          Schema.Array(CommandExecutionRequestApprovalParams__LegacyAppPathString).annotate({
-            description: "This will be removed in favor of `entries`.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      write: Schema.optionalKey(
-        Schema.Union([
-          Schema.Array(CommandExecutionRequestApprovalParams__LegacyAppPathString).annotate({
-            description: "This will be removed in favor of `entries`.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-    }),
-    [Schema.Record(Schema.String, CodexJsonExtension)],
-  ).annotate({
-    identifier: "CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions",
-  });
-
-export type McpServerElicitationRequestParams__McpElicitationEnumSchema =
-  | McpServerElicitationRequestParams__McpElicitationSingleSelectEnumSchema
-  | McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema
-  | McpServerElicitationRequestParams__McpElicitationLegacyTitledEnumSchema;
-export const McpServerElicitationRequestParams__McpElicitationEnumSchema = Schema.Union([
-  McpServerElicitationRequestParams__McpElicitationSingleSelectEnumSchema,
-  McpServerElicitationRequestParams__McpElicitationMultiSelectEnumSchema,
-  McpServerElicitationRequestParams__McpElicitationLegacyTitledEnumSchema,
-]).annotate({ identifier: "McpServerElicitationRequestParams__McpElicitationEnumSchema" });
-
-export type PermissionsRequestApprovalParams__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-export const PermissionsRequestApprovalParams__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-
-export type PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-export const PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-
-export type ServerNotification__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-export const ServerNotification__AdditionalFileSystemPermissions =
-  CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
-
-export type ServerNotification__ThreadSettingsUpdatedNotification = {
-  readonly threadId: string;
-  readonly threadSettings: ServerNotification__ThreadSettings;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ThreadSettingsUpdatedNotification = Schema.StructWithRest(
-  Schema.Struct({ threadId: Schema.String, threadSettings: ServerNotification__ThreadSettings }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__ThreadSettingsUpdatedNotification" });
-
-export type ServerNotification__Turn = {
-  readonly completedAt?: number | null;
-  readonly durationMs?: number | null;
-  readonly error?: ServerNotification__TurnError | null;
-  readonly id: string;
-  readonly items: ReadonlyArray<ServerNotification__ThreadItem>;
-  readonly itemsView?: ServerNotification__TurnItemsView;
-  readonly rootTurnId?: string | null;
-  readonly startedAt?: number | null;
-  readonly status: ServerNotification__TurnStatus;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__Turn = Schema.StructWithRest(
-  Schema.Struct({
-    completedAt: Schema.optionalKey(
-      Schema.Union([
-        Schema.Number.annotate({
-          description: "Unix timestamp (in seconds) when the turn completed.",
-          format: "int64",
-        }).check(Schema.isInt().annotate({ expected: "an integer" })),
-        Schema.Null,
-      ]),
-    ),
-    durationMs: Schema.optionalKey(
-      Schema.Union([
-        Schema.Number.annotate({
-          description: "Duration between turn start and completion in milliseconds, if known.",
-          format: "int64",
-        }).check(Schema.isInt().annotate({ expected: "an integer" })),
-        Schema.Null,
-      ]),
-    ),
-    error: Schema.optionalKey(
-      Schema.Union([ServerNotification__TurnError, Schema.Null]).annotate({
-        description: "Error associated with a failed or interrupted turn.",
-      }),
-    ),
-    id: Schema.String.annotate({
-      description: "Identifier for this turn. Codex-generated turn IDs are UUIDv7.",
-    }),
-    items: Schema.Array(ServerNotification__ThreadItem).annotate({
-      description: "Thread items currently included in this turn payload.",
-    }),
-    itemsView: Schema.optionalKey(
-      Schema.suspend(
-        (): Schema.Codec<ServerNotification__TurnItemsView> => ServerNotification__TurnItemsView,
-      ).annotate({
-        description: "Describes how much of `items` has been loaded for this turn.",
-        default: "full",
-      }),
-    ),
-    rootTurnId: Schema.optionalKey(
-      Schema.Union([
-        Schema.String.annotate({
-          description:
-            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
-        }),
-        Schema.Null,
-      ]),
-    ),
-    startedAt: Schema.optionalKey(
-      Schema.Union([
-        Schema.Number.annotate({
-          description: "Unix timestamp (in seconds) when the turn started.",
-          format: "int64",
-        }).check(Schema.isInt().annotate({ expected: "an integer" })),
-        Schema.Null,
-      ]),
-    ),
-    status: ServerNotification__TurnStatus,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__Turn" });
-
-export type ServerNotification__ItemStartedNotification = {
-  readonly item: ServerNotification__ThreadItem;
-  readonly startedAtMs: number;
-  readonly threadId: string;
-  readonly turnId: string;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ItemStartedNotification = Schema.StructWithRest(
-  Schema.Struct({
-    item: ServerNotification__ThreadItem,
-    startedAtMs: Schema.Number.annotate({
-      description: "Unix timestamp (in milliseconds) when this item lifecycle started.",
-      format: "int64",
-    }).check(Schema.isInt().annotate({ expected: "an integer" })),
-    threadId: Schema.String,
-    turnId: Schema.String,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__ItemStartedNotification" });
-
-export type ServerNotification__ItemCompletedNotification = {
-  readonly completedAtMs: number;
-  readonly item: ServerNotification__ThreadItem;
-  readonly threadId: string;
-  readonly turnId: string;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ItemCompletedNotification = Schema.StructWithRest(
-  Schema.Struct({
-    completedAtMs: Schema.Number.annotate({
-      description: "Unix timestamp (in milliseconds) when this item lifecycle completed.",
-      format: "int64",
-    }).check(Schema.isInt().annotate({ expected: "an integer" })),
-    item: ServerNotification__ThreadItem,
-    threadId: Schema.String,
-    turnId: Schema.String,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__ItemCompletedNotification" });
 
 export type ServerRequest__AdditionalFileSystemPermissions =
   CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
@@ -23484,6 +25340,7 @@ export type V2ConfigReadResponse__Config = {
   readonly approvals_reviewer?: V2ConfigReadResponse__ApprovalsReviewer | null;
   readonly apps?: V2ConfigReadResponse__AppsConfig | null;
   readonly browser_use?: V2ConfigReadResponse__BrowserUseConfig | null;
+  readonly client_search_provider?: V2ConfigReadResponse__WebSearchProvider | null;
   readonly compact_prompt?: string | null;
   readonly computer_use?: V2ConfigReadResponse__ComputerUseConfig | null;
   readonly desktop?: { readonly [x: string]: Schema.Json } | null;
@@ -23523,6 +25380,12 @@ export const V2ConfigReadResponse__Config = Schema.StructWithRest(
     apps: Schema.optionalKey(Schema.Union([V2ConfigReadResponse__AppsConfig, Schema.Null])),
     browser_use: Schema.optionalKey(
       Schema.Union([V2ConfigReadResponse__BrowserUseConfig, Schema.Null]),
+    ),
+    client_search_provider: Schema.optionalKey(
+      Schema.Union([V2ConfigReadResponse__WebSearchProvider, Schema.Null]).annotate({
+        description:
+          "Effective tools.client_search_provider hint. Model-selected providers take precedence.",
+      }),
     ),
     compact_prompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     computer_use: Schema.optionalKey(
@@ -23730,6 +25593,9 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ConfigRequirementsReadResponse__ConfigRequirements" });
 
+export type V2ItemCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2ItemCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
+
 export type V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissions =
   CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
 export const V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissions =
@@ -23739,6 +25605,9 @@ export type V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSyste
   CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
 export const V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSystemPermissions =
   CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions;
+
+export type V2ItemStartedNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2ItemStartedNotification__ThreadItem = ServerNotification__ThreadItem;
 
 export type V2PluginInstalledResponse__PluginMarketplaceEntry = {
   readonly interface?: V2PluginInstalledResponse__MarketplaceInterface | null;
@@ -23839,6 +25708,315 @@ export const V2PluginShareListResponse__PluginShareListItem = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2PluginShareListResponse__PluginShareListItem" });
 
+export type V2ReviewStartResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ReviewStartResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadForkResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadForkResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadItemsListResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadItemsListResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadItemsReadResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadItemsReadResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadListResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadListResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadMetadataUpdateResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadMetadataUpdateResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadQueueStartResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadQueueStartResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadReadResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadReadResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadRealtimeListResponse__ThreadRealtimeEntry = {
+  readonly item: V2ThreadRealtimeListResponse__ThreadRealtimeItem;
+  readonly position: number;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadRealtimeListResponse__ThreadRealtimeEntry = Schema.StructWithRest(
+  Schema.Struct({
+    item: V2ThreadRealtimeListResponse__ThreadRealtimeItem,
+    position: Schema.Number.annotate({ format: "uint64" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadRealtimeListResponse__ThreadRealtimeEntry" });
+
+export type V2ThreadResumeResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadResumeResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadRevertResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadRevertResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadSearchPartialNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadSearchPartialNotification__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadSearchResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadSearchResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadStartedNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadStartedNotification__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadStartResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadStartResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadTimelineListResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadTimelineListResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadTurnsListResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadTurnsListResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2ThreadUnarchiveResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2ThreadUnarchiveResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2TurnCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2TurnCompletedNotification__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2TurnStartedNotification__ThreadItem = ServerNotification__ThreadItem;
+export const V2TurnStartedNotification__ThreadItem = ServerNotification__ThreadItem;
+
+export type V2TurnStartResponse__ThreadItem = ServerNotification__ThreadItem;
+export const V2TurnStartResponse__ThreadItem = ServerNotification__ThreadItem;
+
+export type CommandExecutionRequestApprovalParams__AdditionalPermissionProfile = {
+  readonly fileSystem?: CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions | null;
+  readonly network?: CommandExecutionRequestApprovalParams__AdditionalNetworkPermissions | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const CommandExecutionRequestApprovalParams__AdditionalPermissionProfile =
+  Schema.StructWithRest(
+    Schema.Struct({
+      fileSystem: Schema.optionalKey(
+        Schema.Union([
+          CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions,
+          Schema.Null,
+        ]),
+      ),
+      network: Schema.optionalKey(
+        Schema.Union([
+          CommandExecutionRequestApprovalParams__AdditionalNetworkPermissions,
+          Schema.Null,
+        ]).annotate({ description: "Partial overlay used for per-command permission requests." }),
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ identifier: "CommandExecutionRequestApprovalParams__AdditionalPermissionProfile" });
+
+export type McpServerElicitationRequestParams__McpElicitationPrimitiveSchema =
+  | McpServerElicitationRequestParams__McpElicitationEnumSchema
+  | McpServerElicitationRequestParams__McpElicitationStringSchema
+  | McpServerElicitationRequestParams__McpElicitationNumberSchema
+  | McpServerElicitationRequestParams__McpElicitationBooleanSchema;
+export const McpServerElicitationRequestParams__McpElicitationPrimitiveSchema = Schema.Union([
+  McpServerElicitationRequestParams__McpElicitationEnumSchema,
+  McpServerElicitationRequestParams__McpElicitationStringSchema,
+  McpServerElicitationRequestParams__McpElicitationNumberSchema,
+  McpServerElicitationRequestParams__McpElicitationBooleanSchema,
+]).annotate({ identifier: "McpServerElicitationRequestParams__McpElicitationPrimitiveSchema" });
+
+export type PermissionsRequestApprovalParams__RequestPermissionProfile = {
+  readonly fileSystem?: PermissionsRequestApprovalParams__AdditionalFileSystemPermissions | null;
+  readonly network?: PermissionsRequestApprovalParams__AdditionalNetworkPermissions | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const PermissionsRequestApprovalParams__RequestPermissionProfile = Schema.StructWithRest(
+  Schema.Struct({
+    fileSystem: Schema.optionalKey(
+      Schema.Union([
+        PermissionsRequestApprovalParams__AdditionalFileSystemPermissions,
+        Schema.Null,
+      ]),
+    ),
+    network: Schema.optionalKey(
+      Schema.Union([PermissionsRequestApprovalParams__AdditionalNetworkPermissions, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "PermissionsRequestApprovalParams__RequestPermissionProfile" });
+
+export type PermissionsRequestApprovalResponse__GrantedPermissionProfile = {
+  readonly fileSystem?: PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions | null;
+  readonly network?: PermissionsRequestApprovalResponse__AdditionalNetworkPermissions | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const PermissionsRequestApprovalResponse__GrantedPermissionProfile = Schema.StructWithRest(
+  Schema.Struct({
+    fileSystem: Schema.optionalKey(
+      Schema.Union([
+        PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions,
+        Schema.Null,
+      ]),
+    ),
+    network: Schema.optionalKey(
+      Schema.Union([PermissionsRequestApprovalResponse__AdditionalNetworkPermissions, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "PermissionsRequestApprovalResponse__GrantedPermissionProfile" });
+
+export type ServerNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+export const ServerNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+
+export type ServerNotification__Turn = {
+  readonly completedAt?: number | null;
+  readonly durationMs?: number | null;
+  readonly error?: ServerNotification__TurnError | null;
+  readonly id: string;
+  readonly items: ReadonlyArray<ServerNotification__ThreadItem>;
+  readonly itemsView?: ServerNotification__TurnItemsView;
+  readonly rootTurnId?: string | null;
+  readonly startedAt?: number | null;
+  readonly status: ServerNotification__TurnStatus;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__Turn = Schema.StructWithRest(
+  Schema.Struct({
+    completedAt: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Unix timestamp (in seconds) when the turn completed.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    durationMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Duration between turn start and completion in milliseconds, if known.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    error: Schema.optionalKey(
+      Schema.Union([ServerNotification__TurnError, Schema.Null]).annotate({
+        description: "Error associated with a failed or interrupted turn.",
+      }),
+    ),
+    id: Schema.String.annotate({
+      description: "Identifier for this turn. Codex-generated turn IDs are UUIDv7.",
+    }),
+    items: Schema.Array(ServerNotification__ThreadItem).annotate({
+      description: "Thread items currently included in this turn payload.",
+    }),
+    itemsView: Schema.optionalKey(
+      Schema.suspend(
+        (): Schema.Codec<ServerNotification__TurnItemsView> => ServerNotification__TurnItemsView,
+      ).annotate({
+        description: "Describes how much of `items` has been loaded for this turn.",
+        default: "full",
+      }),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    startedAt: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Unix timestamp (in seconds) when the turn started.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    status: ServerNotification__TurnStatus,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__Turn" });
+
+export type ServerNotification__ItemStartedNotification = {
+  readonly item: ServerNotification__ThreadItem;
+  readonly startedAtMs: number;
+  readonly threadId: string;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ItemStartedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    item: ServerNotification__ThreadItem,
+    startedAtMs: Schema.Number.annotate({
+      description: "Unix timestamp (in milliseconds) when this item lifecycle started.",
+      format: "int64",
+    }).check(Schema.isInt().annotate({ expected: "an integer" })),
+    threadId: Schema.String,
+    turnId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ItemStartedNotification" });
+
+export type ServerNotification__ItemCompletedNotification = {
+  readonly completedAtMs: number;
+  readonly contentTokenCount?: number | null;
+  readonly item: ServerNotification__ThreadItem;
+  readonly threadId: string;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ItemCompletedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    completedAtMs: Schema.Number.annotate({
+      description: "Unix timestamp (in milliseconds) when this item lifecycle completed.",
+      format: "int64",
+    }).check(Schema.isInt().annotate({ expected: "an integer" })),
+    contentTokenCount: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Native content tokens for the completed assistant message, including a sampled footer. Null when unavailable. Completion telemetry is not part of the stored thread item.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    item: ServerNotification__ThreadItem,
+    threadId: Schema.String,
+    turnId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ItemCompletedNotification" });
+
+export type ServerRequest__AdditionalPermissionProfile =
+  CommandExecutionRequestApprovalParams__AdditionalPermissionProfile;
+export const ServerRequest__AdditionalPermissionProfile =
+  CommandExecutionRequestApprovalParams__AdditionalPermissionProfile;
+
+export type ServerRequest__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+export const ServerRequest__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+
+export type ServerRequest__McpElicitationPrimitiveSchema =
+  McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
+export const ServerRequest__McpElicitationPrimitiveSchema =
+  McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
+
+export type V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+export const V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+
+export type V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+export const V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfile =
+  PermissionsRequestApprovalParams__RequestPermissionProfile;
+
 export type V2ReviewStartResponse__Turn = ServerNotification__Turn;
 export const V2ReviewStartResponse__Turn = ServerNotification__Turn;
 
@@ -23848,6 +26026,7 @@ export const V2ThreadForkResponse__Turn = ServerNotification__Turn;
 export type V2ThreadItemsListResponse__ThreadItemEntry = {
   readonly completedAtMs?: number | null;
   readonly item: V2ThreadItemsListResponse__ThreadItem;
+  readonly outputDeferred?: boolean;
   readonly startedAtMs?: number | null;
   readonly turnId: string;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -23864,6 +26043,12 @@ export const V2ThreadItemsListResponse__ThreadItemEntry = Schema.StructWithRest(
       ]),
     ),
     item: V2ThreadItemsListResponse__ThreadItem,
+    outputDeferred: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "The saved output was omitted. Fetch the complete item with `thread/items/read`.",
+      }),
+    ),
     startedAtMs: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -23900,6 +26085,9 @@ export const V2ThreadResumeResponse__Turn = ServerNotification__Turn;
 
 export type V2ThreadRevertResponse__Turn = ServerNotification__Turn;
 export const V2ThreadRevertResponse__Turn = ServerNotification__Turn;
+
+export type V2ThreadSearchPartialNotification__Turn = ServerNotification__Turn;
+export const V2ThreadSearchPartialNotification__Turn = ServerNotification__Turn;
 
 export type V2ThreadSearchResponse__Turn = ServerNotification__Turn;
 export const V2ThreadSearchResponse__Turn = ServerNotification__Turn;
@@ -24059,87 +26247,176 @@ export const V2TurnStartedNotification__Turn = ServerNotification__Turn;
 export type V2TurnStartResponse__Turn = ServerNotification__Turn;
 export const V2TurnStartResponse__Turn = ServerNotification__Turn;
 
-export type CommandExecutionRequestApprovalParams__AdditionalPermissionProfile = {
-  readonly fileSystem?: CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions | null;
-  readonly network?: CommandExecutionRequestApprovalParams__AdditionalNetworkPermissions | null;
+export type McpServerElicitationRequestParams__McpElicitationSchema = {
+  readonly $schema?: string | null;
+  readonly properties: {
+    readonly [x: string]: McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
+  };
+  readonly required?: ReadonlyArray<string> | null;
+  readonly type: McpServerElicitationRequestParams__McpElicitationObjectType;
 } & { readonly [x: string]: CodexJsonExtension };
-export const CommandExecutionRequestApprovalParams__AdditionalPermissionProfile =
-  Schema.StructWithRest(
-    Schema.Struct({
-      fileSystem: Schema.optionalKey(
-        Schema.Union([
-          CommandExecutionRequestApprovalParams__AdditionalFileSystemPermissions,
-          Schema.Null,
-        ]),
-      ),
-      network: Schema.optionalKey(
-        Schema.Union([
-          CommandExecutionRequestApprovalParams__AdditionalNetworkPermissions,
-          Schema.Null,
-        ]).annotate({ description: "Partial overlay used for per-command permission requests." }),
-      ),
+export const McpServerElicitationRequestParams__McpElicitationSchema = Schema.StructWithRest(
+  Schema.Struct({
+    $schema: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    properties: Schema.Record(
+      Schema.String,
+      McpServerElicitationRequestParams__McpElicitationPrimitiveSchema,
+    ),
+    required: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+    type: McpServerElicitationRequestParams__McpElicitationObjectType,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "Typed form schema for MCP `elicitation/create` requests.\n\nThis matches the `requestedSchema` shape from the MCP 2025-11-25 `ElicitRequestFormParams` schema.",
+  identifier: "McpServerElicitationRequestParams__McpElicitationSchema",
+});
+
+export type ServerNotification__GuardianApprovalReviewAction =
+  | ({
+      readonly command: string;
+      readonly cwd: ServerNotification__LegacyAppPathString;
+      readonly source: ServerNotification__GuardianCommandSource;
+      readonly type: "command";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly argv: ReadonlyArray<string>;
+      readonly cwd: ServerNotification__AbsolutePathBuf;
+      readonly program: string;
+      readonly source: ServerNotification__GuardianCommandSource;
+      readonly type: "execve";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly approvalId: string;
+      readonly cwd: ServerNotification__LegacyAppPathString;
+      readonly processId: string;
+      readonly stdin: string;
+      readonly type: "writeStdin";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly cwd: ServerNotification__LegacyAppPathString;
+      readonly files: ReadonlyArray<ServerNotification__LegacyAppPathString>;
+      readonly type: "applyPatch";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly host: string;
+      readonly port: number;
+      readonly protocol: ServerNotification__NetworkApprovalProtocol;
+      readonly target: string;
+      readonly type: "networkAccess";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly connectorId?: string | null;
+      readonly connectorName?: string | null;
+      readonly server: string;
+      readonly toolName: string;
+      readonly toolTitle?: string | null;
+      readonly type: "mcpToolCall";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly permissions: ServerNotification__RequestPermissionProfile;
+      readonly reason?: string | null;
+      readonly type: "requestPermissions";
+    } & { readonly [x: string]: CodexJsonExtension });
+export const ServerNotification__GuardianApprovalReviewAction = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        command: Schema.String,
+        cwd: ServerNotification__LegacyAppPathString,
+        source: ServerNotification__GuardianCommandSource,
+        type: Schema.Literal("command").annotate({
+          title: "CommandGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CommandGuardianApprovalReviewAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        argv: Schema.Array(Schema.String),
+        cwd: ServerNotification__AbsolutePathBuf,
+        program: Schema.String,
+        source: ServerNotification__GuardianCommandSource,
+        type: Schema.Literal("execve").annotate({
+          title: "ExecveGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ExecveGuardianApprovalReviewAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        approvalId: Schema.String,
+        cwd: ServerNotification__LegacyAppPathString,
+        processId: Schema.String,
+        stdin: Schema.String,
+        type: Schema.Literal("writeStdin").annotate({
+          title: "WriteStdinGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "WriteStdinGuardianApprovalReviewAction",
+      description: "A child approval for input to an existing command execution item.",
     }),
-    [Schema.Record(Schema.String, CodexJsonExtension)],
-  ).annotate({ identifier: "CommandExecutionRequestApprovalParams__AdditionalPermissionProfile" });
-
-export type McpServerElicitationRequestParams__McpElicitationPrimitiveSchema =
-  | McpServerElicitationRequestParams__McpElicitationEnumSchema
-  | McpServerElicitationRequestParams__McpElicitationStringSchema
-  | McpServerElicitationRequestParams__McpElicitationNumberSchema
-  | McpServerElicitationRequestParams__McpElicitationBooleanSchema;
-export const McpServerElicitationRequestParams__McpElicitationPrimitiveSchema = Schema.Union([
-  McpServerElicitationRequestParams__McpElicitationEnumSchema,
-  McpServerElicitationRequestParams__McpElicitationStringSchema,
-  McpServerElicitationRequestParams__McpElicitationNumberSchema,
-  McpServerElicitationRequestParams__McpElicitationBooleanSchema,
-]).annotate({ identifier: "McpServerElicitationRequestParams__McpElicitationPrimitiveSchema" });
-
-export type PermissionsRequestApprovalParams__RequestPermissionProfile = {
-  readonly fileSystem?: PermissionsRequestApprovalParams__AdditionalFileSystemPermissions | null;
-  readonly network?: PermissionsRequestApprovalParams__AdditionalNetworkPermissions | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const PermissionsRequestApprovalParams__RequestPermissionProfile = Schema.StructWithRest(
-  Schema.Struct({
-    fileSystem: Schema.optionalKey(
-      Schema.Union([
-        PermissionsRequestApprovalParams__AdditionalFileSystemPermissions,
-        Schema.Null,
-      ]),
-    ),
-    network: Schema.optionalKey(
-      Schema.Union([PermissionsRequestApprovalParams__AdditionalNetworkPermissions, Schema.Null]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "PermissionsRequestApprovalParams__RequestPermissionProfile" });
-
-export type PermissionsRequestApprovalResponse__GrantedPermissionProfile = {
-  readonly fileSystem?: PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions | null;
-  readonly network?: PermissionsRequestApprovalResponse__AdditionalNetworkPermissions | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const PermissionsRequestApprovalResponse__GrantedPermissionProfile = Schema.StructWithRest(
-  Schema.Struct({
-    fileSystem: Schema.optionalKey(
-      Schema.Union([
-        PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions,
-        Schema.Null,
-      ]),
-    ),
-    network: Schema.optionalKey(
-      Schema.Union([PermissionsRequestApprovalResponse__AdditionalNetworkPermissions, Schema.Null]),
-    ),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "PermissionsRequestApprovalResponse__GrantedPermissionProfile" });
-
-export type ServerNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-export const ServerNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
+    Schema.StructWithRest(
+      Schema.Struct({
+        cwd: ServerNotification__LegacyAppPathString,
+        files: Schema.Array(ServerNotification__LegacyAppPathString),
+        type: Schema.Literal("applyPatch").annotate({
+          title: "ApplyPatchGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ApplyPatchGuardianApprovalReviewAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        host: Schema.String,
+        port: Schema.Number.annotate({ format: "uint16" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        protocol: ServerNotification__NetworkApprovalProtocol,
+        target: Schema.String,
+        type: Schema.Literal("networkAccess").annotate({
+          title: "NetworkAccessGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "NetworkAccessGuardianApprovalReviewAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        connectorName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        server: Schema.String,
+        toolName: Schema.String,
+        toolTitle: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("mcpToolCall").annotate({
+          title: "McpToolCallGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "McpToolCallGuardianApprovalReviewAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        permissions: ServerNotification__RequestPermissionProfile,
+        reason: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("requestPermissions").annotate({
+          title: "RequestPermissionsGuardianApprovalReviewActionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "RequestPermissionsGuardianApprovalReviewAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__GuardianApprovalReviewAction" });
 
 export type ServerNotification__Thread = {
   readonly agentNickname?: string | null;
   readonly agentRole?: string | null;
+  readonly attachedToThreadId?: string | null;
   readonly canAcceptDirectInput?: boolean | null;
   readonly cliVersion: string;
   readonly createdAt: number;
@@ -24186,6 +26463,15 @@ export const ServerNotification__Thread = Schema.StructWithRest(
       Schema.Union([
         Schema.String.annotate({
           description: "Optional role (agent_role) assigned to an AgentControl-spawned sub-agent.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    attachedToThreadId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Parent that owns this persisted attached thread, independent of fork or spawn lineage.",
         }),
         Schema.Null,
       ]),
@@ -24385,249 +26671,6 @@ export const ServerNotification__TurnCompletedNotification = Schema.StructWithRe
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__TurnCompletedNotification" });
 
-export type ServerRequest__AdditionalPermissionProfile =
-  CommandExecutionRequestApprovalParams__AdditionalPermissionProfile;
-export const ServerRequest__AdditionalPermissionProfile =
-  CommandExecutionRequestApprovalParams__AdditionalPermissionProfile;
-
-export type ServerRequest__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-export const ServerRequest__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-
-export type ServerRequest__McpElicitationPrimitiveSchema =
-  McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
-export const ServerRequest__McpElicitationPrimitiveSchema =
-  McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
-
-export type V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-export const V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-
-export type V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-export const V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfile =
-  PermissionsRequestApprovalParams__RequestPermissionProfile;
-
-export type V2ThreadForkResponse__Thread = ServerNotification__Thread;
-export const V2ThreadForkResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadListResponse__Thread = ServerNotification__Thread;
-export const V2ThreadListResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadMetadataUpdateResponse__Thread = ServerNotification__Thread;
-export const V2ThreadMetadataUpdateResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadReadResponse__Thread = ServerNotification__Thread;
-export const V2ThreadReadResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadResumeResponse__TurnsPage = {
-  readonly backwardsCursor?: string | null;
-  readonly data: ReadonlyArray<V2ThreadResumeResponse__Turn>;
-  readonly nextCursor?: string | null;
-} & { readonly [x: string]: CodexJsonExtension };
-export const V2ThreadResumeResponse__TurnsPage = Schema.StructWithRest(
-  Schema.Struct({
-    backwardsCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    data: Schema.Array(V2ThreadResumeResponse__Turn),
-    nextCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ThreadResumeResponse__TurnsPage" });
-
-export type V2ThreadResumeResponse__Thread = ServerNotification__Thread;
-export const V2ThreadResumeResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadRevertResponse__Thread = ServerNotification__Thread;
-export const V2ThreadRevertResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadSearchResponse__Thread = ServerNotification__Thread;
-export const V2ThreadSearchResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadStartedNotification__Thread = ServerNotification__Thread;
-export const V2ThreadStartedNotification__Thread = ServerNotification__Thread;
-
-export type V2ThreadStartResponse__Thread = ServerNotification__Thread;
-export const V2ThreadStartResponse__Thread = ServerNotification__Thread;
-
-export type V2ThreadUnarchiveResponse__Thread = ServerNotification__Thread;
-export const V2ThreadUnarchiveResponse__Thread = ServerNotification__Thread;
-
-export type McpServerElicitationRequestParams__McpElicitationSchema = {
-  readonly $schema?: string | null;
-  readonly properties: {
-    readonly [x: string]: McpServerElicitationRequestParams__McpElicitationPrimitiveSchema;
-  };
-  readonly required?: ReadonlyArray<string> | null;
-  readonly type: McpServerElicitationRequestParams__McpElicitationObjectType;
-} & { readonly [x: string]: CodexJsonExtension };
-export const McpServerElicitationRequestParams__McpElicitationSchema = Schema.StructWithRest(
-  Schema.Struct({
-    $schema: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    properties: Schema.Record(
-      Schema.String,
-      McpServerElicitationRequestParams__McpElicitationPrimitiveSchema,
-    ),
-    required: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
-    type: McpServerElicitationRequestParams__McpElicitationObjectType,
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({
-  description:
-    "Typed form schema for MCP `elicitation/create` requests.\n\nThis matches the `requestedSchema` shape from the MCP 2025-11-25 `ElicitRequestFormParams` schema.",
-  identifier: "McpServerElicitationRequestParams__McpElicitationSchema",
-});
-
-export type ServerNotification__GuardianApprovalReviewAction =
-  | ({
-      readonly command: string;
-      readonly cwd: ServerNotification__LegacyAppPathString;
-      readonly source: ServerNotification__GuardianCommandSource;
-      readonly type: "command";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly argv: ReadonlyArray<string>;
-      readonly cwd: ServerNotification__AbsolutePathBuf;
-      readonly program: string;
-      readonly source: ServerNotification__GuardianCommandSource;
-      readonly type: "execve";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly approvalId: string;
-      readonly cwd: ServerNotification__LegacyAppPathString;
-      readonly processId: string;
-      readonly stdin: string;
-      readonly type: "writeStdin";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly cwd: ServerNotification__LegacyAppPathString;
-      readonly files: ReadonlyArray<ServerNotification__LegacyAppPathString>;
-      readonly type: "applyPatch";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly host: string;
-      readonly port: number;
-      readonly protocol: ServerNotification__NetworkApprovalProtocol;
-      readonly target: string;
-      readonly type: "networkAccess";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly connectorId?: string | null;
-      readonly connectorName?: string | null;
-      readonly server: string;
-      readonly toolName: string;
-      readonly toolTitle?: string | null;
-      readonly type: "mcpToolCall";
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly permissions: ServerNotification__RequestPermissionProfile;
-      readonly reason?: string | null;
-      readonly type: "requestPermissions";
-    } & { readonly [x: string]: CodexJsonExtension });
-export const ServerNotification__GuardianApprovalReviewAction = Schema.Union(
-  [
-    Schema.StructWithRest(
-      Schema.Struct({
-        command: Schema.String,
-        cwd: ServerNotification__LegacyAppPathString,
-        source: ServerNotification__GuardianCommandSource,
-        type: Schema.Literal("command").annotate({
-          title: "CommandGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "CommandGuardianApprovalReviewAction" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        argv: Schema.Array(Schema.String),
-        cwd: ServerNotification__AbsolutePathBuf,
-        program: Schema.String,
-        source: ServerNotification__GuardianCommandSource,
-        type: Schema.Literal("execve").annotate({
-          title: "ExecveGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ExecveGuardianApprovalReviewAction" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        approvalId: Schema.String,
-        cwd: ServerNotification__LegacyAppPathString,
-        processId: Schema.String,
-        stdin: Schema.String,
-        type: Schema.Literal("writeStdin").annotate({
-          title: "WriteStdinGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "WriteStdinGuardianApprovalReviewAction",
-      description: "A child approval for input to an existing command execution item.",
-    }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        cwd: ServerNotification__LegacyAppPathString,
-        files: Schema.Array(ServerNotification__LegacyAppPathString),
-        type: Schema.Literal("applyPatch").annotate({
-          title: "ApplyPatchGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "ApplyPatchGuardianApprovalReviewAction" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        host: Schema.String,
-        port: Schema.Number.annotate({ format: "uint16" })
-          .check(Schema.isInt().annotate({ expected: "an integer" }))
-          .check(
-            Schema.isGreaterThanOrEqualTo(0).annotate({
-              expected: "a value greater than or equal to 0",
-            }),
-          ),
-        protocol: ServerNotification__NetworkApprovalProtocol,
-        target: Schema.String,
-        type: Schema.Literal("networkAccess").annotate({
-          title: "NetworkAccessGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "NetworkAccessGuardianApprovalReviewAction" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        connectorName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        server: Schema.String,
-        toolName: Schema.String,
-        toolTitle: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        type: Schema.Literal("mcpToolCall").annotate({
-          title: "McpToolCallGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "McpToolCallGuardianApprovalReviewAction" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        permissions: ServerNotification__RequestPermissionProfile,
-        reason: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        type: Schema.Literal("requestPermissions").annotate({
-          title: "RequestPermissionsGuardianApprovalReviewActionType",
-        }),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "RequestPermissionsGuardianApprovalReviewAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "ServerNotification__GuardianApprovalReviewAction" });
-
-export type ServerNotification__ThreadStartedNotification = {
-  readonly thread: ServerNotification__Thread;
-} & { readonly [x: string]: CodexJsonExtension };
-export const ServerNotification__ThreadStartedNotification = Schema.StructWithRest(
-  Schema.Struct({ thread: ServerNotification__Thread }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ServerNotification__ThreadStartedNotification" });
-
 export type ServerRequest__CommandExecutionRequestApprovalParams = {
   readonly additionalPermissions?: ServerRequest__AdditionalPermissionProfile | null;
   readonly approvalId?: string | null;
@@ -24788,14 +26831,52 @@ export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalRev
 export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewAction =
   ServerNotification__GuardianApprovalReviewAction;
 
-export type V2ThreadSearchResponse__ThreadSearchResult = {
-  readonly snippet: string;
-  readonly thread: V2ThreadSearchResponse__Thread;
+export type V2ThreadForkResponse__Thread = ServerNotification__Thread;
+export const V2ThreadForkResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadListResponse__Thread = ServerNotification__Thread;
+export const V2ThreadListResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadMetadataUpdateResponse__Thread = ServerNotification__Thread;
+export const V2ThreadMetadataUpdateResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadReadResponse__Thread = ServerNotification__Thread;
+export const V2ThreadReadResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadResumeResponse__TurnsPage = {
+  readonly backwardsCursor?: string | null;
+  readonly data: ReadonlyArray<V2ThreadResumeResponse__Turn>;
+  readonly nextCursor?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
-export const V2ThreadSearchResponse__ThreadSearchResult = Schema.StructWithRest(
-  Schema.Struct({ snippet: Schema.String, thread: V2ThreadSearchResponse__Thread }),
+export const V2ThreadResumeResponse__TurnsPage = Schema.StructWithRest(
+  Schema.Struct({
+    backwardsCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    data: Schema.Array(V2ThreadResumeResponse__Turn),
+    nextCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "V2ThreadSearchResponse__ThreadSearchResult" });
+).annotate({ identifier: "V2ThreadResumeResponse__TurnsPage" });
+
+export type V2ThreadResumeResponse__Thread = ServerNotification__Thread;
+export const V2ThreadResumeResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadRevertResponse__Thread = ServerNotification__Thread;
+export const V2ThreadRevertResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadSearchPartialNotification__Thread = ServerNotification__Thread;
+export const V2ThreadSearchPartialNotification__Thread = ServerNotification__Thread;
+
+export type V2ThreadSearchResponse__Thread = ServerNotification__Thread;
+export const V2ThreadSearchResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadStartedNotification__Thread = ServerNotification__Thread;
+export const V2ThreadStartedNotification__Thread = ServerNotification__Thread;
+
+export type V2ThreadStartResponse__Thread = ServerNotification__Thread;
+export const V2ThreadStartResponse__Thread = ServerNotification__Thread;
+
+export type V2ThreadUnarchiveResponse__Thread = ServerNotification__Thread;
+export const V2ThreadUnarchiveResponse__Thread = ServerNotification__Thread;
 
 export type ServerNotification__ItemGuardianApprovalReviewStartedNotification = {
   readonly action: ServerNotification__GuardianApprovalReviewAction;
@@ -24880,8 +26961,26 @@ export const ServerNotification__ItemGuardianApprovalReviewCompletedNotification
     identifier: "ServerNotification__ItemGuardianApprovalReviewCompletedNotification",
   });
 
+export type ServerNotification__ThreadStartedNotification = {
+  readonly thread: ServerNotification__Thread;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadStartedNotification = Schema.StructWithRest(
+  Schema.Struct({ thread: ServerNotification__Thread }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadStartedNotification" });
+
+export type ServerNotification__ThreadSearchResult = {
+  readonly snippet: string;
+  readonly thread: ServerNotification__Thread;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadSearchResult = Schema.StructWithRest(
+  Schema.Struct({ snippet: Schema.String, thread: ServerNotification__Thread }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadSearchResult" });
+
 export type ServerRequest__McpServerElicitationRequestParams =
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -24892,6 +26991,7 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly title: string;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -24901,6 +27001,7 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly requestedSchema: ServerRequest__McpElicitationSchema;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -24910,6 +27011,7 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly requestedSchema: Schema.Json;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -24919,6 +27021,7 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly requestedSchema: Schema.Json;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -24932,6 +27035,15 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -24956,6 +27068,15 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -24976,6 +27097,15 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
     ),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -24996,6 +27126,15 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
     ),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -25016,6 +27155,15 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
     ),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -25038,6 +27186,30 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ServerRequest__McpServerElicitationRequestParams" });
+
+export type V2ThreadSearchPartialNotification__ThreadSearchResult =
+  ServerNotification__ThreadSearchResult;
+export const V2ThreadSearchPartialNotification__ThreadSearchResult =
+  ServerNotification__ThreadSearchResult;
+
+export type V2ThreadSearchResponse__ThreadSearchResult = ServerNotification__ThreadSearchResult;
+export const V2ThreadSearchResponse__ThreadSearchResult = ServerNotification__ThreadSearchResult;
+
+export type ServerNotification__ThreadSearchPartialNotification = {
+  readonly data: ReadonlyArray<ServerNotification__ThreadSearchResult>;
+  readonly requestId: ServerNotification__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadSearchPartialNotification = Schema.StructWithRest(
+  Schema.Struct({
+    data: Schema.Array(ServerNotification__ThreadSearchResult),
+    requestId: ServerNotification__RequestId,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "A best-effort incremental batch for `thread/search/stream`. Match `requestId` to the request on this connection. Only a small subset of verified matches may be emitted; rows are unique and arrive in discovery order, but may be dropped under load or fall outside the final sorted page. Thread fields use stored metadata and the current watched status; live thread settings are enriched in the final response. Replace provisional rows with the authoritative final response. No partials follow it or an error.",
+  identifier: "ServerNotification__ThreadSearchPartialNotification",
+});
 
 export type ApplyPatchApprovalParams = {
   readonly callId: string;
@@ -25456,6 +27628,21 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/search/stream";
+      readonly params: ClientRequest__ThreadSearchParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/search/cancel";
+      readonly params: ClientRequest__ThreadSearchCancelParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/search/stream/cancel";
+      readonly params: ClientRequest__ThreadSearchCancelParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/searchOccurrences";
       readonly params: ClientRequest__ThreadSearchOccurrencesParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -25498,6 +27685,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/inject_items";
       readonly params: ClientRequest__ThreadInjectItemsParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/prepareApprovedPlan";
+      readonly params: ClientRequest__ThreadPrepareApprovedPlanParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -25711,6 +27903,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/realtime/list";
+      readonly params: ClientRequest__ThreadRealtimeListParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/realtime/listVoices";
       readonly params: ClientRequest__ThreadRealtimeListVoicesParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -25727,17 +27924,32 @@ export type ClientRequest =
   | ({
       readonly id: ClientRequest__RequestId;
       readonly method: "account/gatewayOAuth/read";
-      readonly params?: null;
+      readonly params?: ClientRequest__GatewayOAuthReadParams | null;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
       readonly method: "account/gatewayOAuth/login";
-      readonly params?: null;
+      readonly params?: ClientRequest__GatewayOAuthLoginParams | null;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
       readonly method: "account/gatewayOAuth/cancel";
       readonly params?: null;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "modelProvider/list";
+      readonly params: ClientRequest__ModelProviderListParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "modelProvider/config/write";
+      readonly params: ClientRequest__ModelProviderConfigWriteParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "modelProvider/default/set";
+      readonly params: ClientRequest__ModelProviderDefaultSetParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -25907,6 +28119,11 @@ export type ClientRequest =
   | ({
       readonly id: ClientRequest__RequestId;
       readonly method: "account/logout";
+      readonly params?: null;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "account/securitySetup/read";
       readonly params?: null;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -26640,6 +28857,43 @@ export const ClientRequest = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/search/stream").annotate({
+          title: "Thread/search/streamRequestMethod",
+        }),
+        params: ClientRequest__ThreadSearchParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "Thread/search/streamRequest",
+      description:
+        "Search with best-effort incremental `thread/search/partial` notifications. The final response is authoritative for results, ordering, and cursors.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/search/cancel").annotate({
+          title: "Thread/search/cancelRequestMethod",
+        }),
+        params: ClientRequest__ThreadSearchCancelParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/search/cancelRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/search/stream/cancel").annotate({
+          title: "Thread/search/stream/cancelRequestMethod",
+        }),
+        params: ClientRequest__ThreadSearchCancelParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "Thread/search/stream/cancelRequest",
+      description: "Cancel a `thread/search/stream` request on this connection.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
         method: Schema.Literal("thread/searchOccurrences").annotate({
           title: "Thread/searchOccurrencesRequestMethod",
         }),
@@ -26732,6 +28986,16 @@ export const ClientRequest = Schema.Union(
       description:
         "Append raw Responses API items to the thread history without starting a user turn.",
     }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/prepareApprovedPlan").annotate({
+          title: "Thread/prepareApprovedPlanRequestMethod",
+        }),
+        params: ClientRequest__ThreadPrepareApprovedPlanParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/prepareApprovedPlanRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -27117,6 +29381,16 @@ export const ClientRequest = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/realtime/list").annotate({
+          title: "Thread/realtime/listRequestMethod",
+        }),
+        params: ClientRequest__ThreadRealtimeListParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/realtime/listRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
         method: Schema.Literal("thread/realtime/listVoices").annotate({
           title: "Thread/realtime/listVoicesRequestMethod",
         }),
@@ -27146,7 +29420,9 @@ export const ClientRequest = Schema.Union(
         method: Schema.Literal("account/gatewayOAuth/read").annotate({
           title: "Account/gatewayOAuth/readRequestMethod",
         }),
-        params: Schema.optionalKey(Schema.Null),
+        params: Schema.optionalKey(
+          Schema.Union([ClientRequest__GatewayOAuthReadParams, Schema.Null]),
+        ),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/gatewayOAuth/readRequest" }),
@@ -27156,7 +29432,9 @@ export const ClientRequest = Schema.Union(
         method: Schema.Literal("account/gatewayOAuth/login").annotate({
           title: "Account/gatewayOAuth/loginRequestMethod",
         }),
-        params: Schema.optionalKey(Schema.Null),
+        params: Schema.optionalKey(
+          Schema.Union([ClientRequest__GatewayOAuthLoginParams, Schema.Null]),
+        ),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/gatewayOAuth/loginRequest" }),
@@ -27170,6 +29448,36 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/gatewayOAuth/cancelRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("modelProvider/list").annotate({
+          title: "ModelProvider/listRequestMethod",
+        }),
+        params: ClientRequest__ModelProviderListParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProvider/listRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("modelProvider/config/write").annotate({
+          title: "ModelProvider/config/writeRequestMethod",
+        }),
+        params: ClientRequest__ModelProviderConfigWriteParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProvider/config/writeRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("modelProvider/default/set").annotate({
+          title: "ModelProvider/default/setRequestMethod",
+        }),
+        params: ClientRequest__ModelProviderDefaultSetParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ModelProvider/default/setRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -27527,6 +29835,16 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/logoutRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("account/securitySetup/read").annotate({
+          title: "Account/securitySetup/readRequestMethod",
+        }),
+        params: Schema.optionalKey(Schema.Null),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Account/securitySetup/readRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -27963,27 +30281,6 @@ export const CommandExecutionRequestApprovalResponse = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "CommandExecutionRequestApprovalResponse" });
 
-export type CurrentTimeReadParams = { readonly threadId: string } & {
-  readonly [x: string]: CodexJsonExtension;
-};
-export const CurrentTimeReadParams = Schema.StructWithRest(
-  Schema.Struct({ threadId: Schema.String }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ title: "CurrentTimeReadParams" });
-
-export type CurrentTimeReadResponse = { readonly currentTimeAt: number } & {
-  readonly [x: string]: CodexJsonExtension;
-};
-export const CurrentTimeReadResponse = Schema.StructWithRest(
-  Schema.Struct({
-    currentTimeAt: Schema.Number.annotate({
-      description: "Current time as whole Unix seconds.",
-      format: "int64",
-    }).check(Schema.isInt().annotate({ expected: "an integer" })),
-  }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ title: "CurrentTimeReadResponse" });
-
 export type DynamicToolCallParams = {
   readonly arguments: Schema.Json;
   readonly callId: string;
@@ -28347,6 +30644,7 @@ export const JSONRPCResponse = Schema.StructWithRest(
 
 export type McpServerElicitationRequestParams =
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -28357,6 +30655,7 @@ export type McpServerElicitationRequestParams =
       readonly title: string;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -28366,6 +30665,7 @@ export type McpServerElicitationRequestParams =
       readonly requestedSchema: McpServerElicitationRequestParams__McpElicitationSchema;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -28375,6 +30675,7 @@ export type McpServerElicitationRequestParams =
       readonly requestedSchema: Schema.Json;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -28384,6 +30685,7 @@ export type McpServerElicitationRequestParams =
       readonly requestedSchema: Schema.Json;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly environmentId?: string | null;
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
@@ -28397,6 +30699,15 @@ export const McpServerElicitationRequestParams = Schema.Union(
   [
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -28422,6 +30733,15 @@ export const McpServerElicitationRequestParams = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -28442,6 +30762,15 @@ export const McpServerElicitationRequestParams = Schema.Union(
     ).annotate({ title: "McpServerElicitationRequestParams" }),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -28462,6 +30791,15 @@ export const McpServerElicitationRequestParams = Schema.Union(
     ).annotate({ title: "McpServerElicitationRequestParams" }),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -28482,6 +30820,15 @@ export const McpServerElicitationRequestParams = Schema.Union(
     ).annotate({ title: "McpServerElicitationRequestParams" }),
     Schema.StructWithRest(
       Schema.Struct({
+        environmentId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Registration scope, not necessarily the server's execution environment.",
+            }),
+            Schema.Null,
+          ]),
+        ),
         serverName: Schema.String,
         threadId: Schema.String,
         turnId: Schema.optionalKey(
@@ -28781,6 +31128,11 @@ export type ServerNotification =
   | ({
       readonly method: "process/outputDelta";
       readonly params: ServerNotification__ProcessOutputDeltaNotification;
+      readonly emittedAtMs?: number;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly method: "thread/search/partial";
+      readonly params: ServerNotification__ThreadSearchPartialNotification;
       readonly emittedAtMs?: number;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -29644,6 +31996,22 @@ export const ServerNotification = Schema.Union(
     }),
     Schema.StructWithRest(
       Schema.Struct({
+        method: Schema.Literal("thread/search/partial").annotate({
+          title: "Thread/search/partialNotificationMethod",
+        }),
+        params: ServerNotification__ThreadSearchPartialNotification,
+        emittedAtMs: Schema.optionalKey(
+          Schema.Number.annotate({
+            description:
+              "Unix timestamp (in milliseconds) when app-server emitted this notification.",
+            format: "int64",
+          }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/search/partialNotification" }),
+    Schema.StructWithRest(
+      Schema.Struct({
         method: Schema.Literal("process/exited").annotate({
           title: "Process/exitedNotificationMethod",
         }),
@@ -30469,11 +32837,6 @@ export type ServerRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ServerRequest__RequestId;
-      readonly method: "currentTime/read";
-      readonly params: ServerRequest__CurrentTimeReadParams;
-    } & { readonly [x: string]: CodexJsonExtension })
-  | ({
-      readonly id: ServerRequest__RequestId;
       readonly method: "applyPatchApproval";
       readonly params: ServerRequest__ApplyPatchApprovalParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -30584,19 +32947,6 @@ export const ServerRequest = Schema.Union(
     ).annotate({
       title: "Attestation/generateRequest",
       description: "Generate a fresh upstream attestation result on demand.",
-    }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        id: ServerRequest__RequestId,
-        method: Schema.Literal("currentTime/read").annotate({
-          title: "CurrentTime/readRequestMethod",
-        }),
-        params: ServerRequest__CurrentTimeReadParams,
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "CurrentTime/readRequest",
-      description: "Read the current time from an external clock owned by the client.",
     }),
     Schema.StructWithRest(
       Schema.Struct({
@@ -30821,6 +33171,7 @@ export const V2AccountSessionsSwitchResponse = Schema.Union([
 export type V2AccountUpdatedNotification = {
   readonly authMode?: V2AccountUpdatedNotification__AuthMode | null;
   readonly planType?: V2AccountUpdatedNotification__PlanType | null;
+  readonly reason?: V2AccountUpdatedNotification__AccountUpdateReason | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2AccountUpdatedNotification = Schema.StructWithRest(
   Schema.Struct({
@@ -30829,6 +33180,12 @@ export const V2AccountUpdatedNotification = Schema.StructWithRest(
     ),
     planType: Schema.optionalKey(
       Schema.Union([V2AccountUpdatedNotification__PlanType, Schema.Null]),
+    ),
+    reason: Schema.optionalKey(
+      Schema.Union([V2AccountUpdatedNotification__AccountUpdateReason, Schema.Null]).annotate({
+        description:
+          "Set when initial routing discovery completes for the same authenticated owner.",
+      }),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -32635,6 +34992,7 @@ export const V2GatewayOAuthCancelResponse = Schema.Record(
 export type V2GatewayOAuthChangedNotification = {
   readonly authUrl?: string | null;
   readonly error?: string | null;
+  readonly loginId?: string | null;
   readonly providerId: string;
   readonly status: V2GatewayOAuthChangedNotification__GatewayOAuthStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -32649,16 +35007,28 @@ export const V2GatewayOAuthChangedNotification = Schema.StructWithRest(
       ]),
     ),
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    loginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({ description: "Identifies the completed device login attempt." }),
+        Schema.Null,
+      ]),
+    ),
     providerId: Schema.String,
     status: V2GatewayOAuthChangedNotification__GatewayOAuthStatus,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "GatewayOAuthChangedNotification" });
 
-export type V2GatewayOAuthLoginResponse = { readonly [x: string]: Schema.Json };
-export const V2GatewayOAuthLoginResponse = Schema.Record(
-  Schema.String,
-  Schema.Json.annotate({ expected: "JSON value" }),
+export type V2GatewayOAuthLoginResponse = {
+  readonly prompt?: V2GatewayOAuthLoginResponse__GatewayOAuthPrompt | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GatewayOAuthLoginResponse = Schema.StructWithRest(
+  Schema.Struct({
+    prompt: Schema.optionalKey(
+      Schema.Union([V2GatewayOAuthLoginResponse__GatewayOAuthPrompt, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "GatewayOAuthLoginResponse" });
 
 export type V2GatewayOAuthReadResponse = {
@@ -32667,6 +35037,7 @@ export type V2GatewayOAuthReadResponse = {
   readonly providerName: string;
   readonly required: boolean;
   readonly status?: V2GatewayOAuthReadResponse__GatewayOAuthStatus | null;
+  readonly supportsDeviceAuth?: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2GatewayOAuthReadResponse = Schema.StructWithRest(
   Schema.Struct({
@@ -32679,6 +35050,12 @@ export const V2GatewayOAuthReadResponse = Schema.StructWithRest(
     status: Schema.optionalKey(
       Schema.Union([V2GatewayOAuthReadResponse__GatewayOAuthStatus, Schema.Null]).annotate({
         description: "Null when the effective provider does not use gateway OAuth.",
+      }),
+    ),
+    supportsDeviceAuth: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Whether the administrator configured a device authorization endpoint.",
+        default: false,
       }),
     ),
   }),
@@ -32799,18 +35176,43 @@ export const V2GetAccountRateLimitsResponse = Schema.StructWithRest(
 export type V2GetAccountResponse = {
   readonly account?: V2GetAccountResponse__Account | null;
   readonly requiresOpenaiAuth: boolean;
+  readonly userId?: string | null;
   readonly workspaceRouting?: V2GetAccountResponse__WorkspaceRouting | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2GetAccountResponse = Schema.StructWithRest(
   Schema.Struct({
     account: Schema.optionalKey(Schema.Union([V2GetAccountResponse__Account, Schema.Null])),
     requiresOpenaiAuth: Schema.Boolean,
+    userId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "ChatGPT user ID belonging to this account response, when available.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     workspaceRouting: Schema.optionalKey(
       Schema.Union([V2GetAccountResponse__WorkspaceRouting, Schema.Null]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "GetAccountResponse" });
+
+export type V2GetAccountSecuritySetupResponse = {
+  readonly notice?: V2GetAccountSecuritySetupResponse__AccountSecuritySetupNotice | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2GetAccountSecuritySetupResponse = Schema.StructWithRest(
+  Schema.Struct({
+    notice: Schema.optionalKey(
+      Schema.Union([V2GetAccountSecuritySetupResponse__AccountSecuritySetupNotice, Schema.Null]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "GetAccountSecuritySetupResponse",
+  description:
+    "Optional security reminder bound to the account that fetched it. Unavailable or ineligible accounts return no notice; this read never changes account security.",
+});
 
 export type V2GetAccountTokenUsageResponse = {
   readonly dailyUsageBuckets?: ReadonlyArray<V2GetAccountTokenUsageResponse__AccountTokenUsageDailyBucket> | null;
@@ -32929,6 +35331,7 @@ export const V2HookStartedNotification = Schema.StructWithRest(
 
 export type V2ItemCompletedNotification = {
   readonly completedAtMs: number;
+  readonly contentTokenCount?: number | null;
   readonly item: V2ItemCompletedNotification__ThreadItem;
   readonly threadId: string;
   readonly turnId: string;
@@ -32939,6 +35342,22 @@ export const V2ItemCompletedNotification = Schema.StructWithRest(
       description: "Unix timestamp (in milliseconds) when this item lifecycle completed.",
       format: "int64",
     }).check(Schema.isInt().annotate({ expected: "an integer" })),
+    contentTokenCount: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Native content tokens for the completed assistant message, including a sampled footer. Null when unavailable. Completion telemetry is not part of the stored thread item.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
     item: V2ItemCompletedNotification__ThreadItem,
     threadId: Schema.String,
     turnId: Schema.String,
@@ -33049,6 +35468,7 @@ export const V2ItemStartedNotification = Schema.StructWithRest(
 export type V2ListMcpServerStatusParams = {
   readonly cursor?: string | null;
   readonly detail?: V2ListMcpServerStatusParams__McpServerStatusDetail | null;
+  readonly environmentId?: string | null;
   readonly limit?: number | null;
   readonly serverName?: string | null;
   readonly threadId?: string | null;
@@ -33068,6 +35488,15 @@ export const V2ListMcpServerStatusParams = Schema.StructWithRest(
         description:
           "Controls how much MCP inventory data to fetch for each server. Defaults to `Full` when omitted.",
       }),
+    ),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Select this environment's registration. Requires `serverName` and `threadId`. When omitted, a named request uses the same server as older clients.",
+        }),
+        Schema.Null,
+      ]),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -33381,7 +35810,9 @@ export const V2MarketplaceUpgradeResponse = Schema.StructWithRest(
 ).annotate({ title: "MarketplaceUpgradeResponse" });
 
 export type V2McpResourceReadParams = {
+  readonly _meta?: { readonly [x: string]: Schema.Json } | null;
   readonly connectorId?: string | null;
+  readonly environmentId?: string | null;
   readonly originCallId?: string | null;
   readonly server: string;
   readonly target?: V2McpResourceReadParams__McpResourceReadTarget | null;
@@ -33390,7 +35821,24 @@ export type V2McpResourceReadParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2McpResourceReadParams = Schema.StructWithRest(
   Schema.Struct({
+    _meta: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })).annotate({
+          description:
+            "Additional MCP request metadata. Account and turn routing keys are reserved.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     originCallId: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -33509,6 +35957,7 @@ export const V2McpServerOauthLoginCompletedNotification = Schema.StructWithRest(
 
 export type V2McpServerOauthLoginParams = {
   readonly clientRegistration?: V2McpServerOauthLoginParams__McpServerOauthClientRegistration | null;
+  readonly environmentId?: string | null;
   readonly name: string;
   readonly scopes?: ReadonlyArray<string> | null;
   readonly threadId?: string | null;
@@ -33524,6 +35973,14 @@ export const V2McpServerOauthLoginParams = Schema.StructWithRest(
         description:
           "Registration strategy for this login only; omission selects automatic discovery.",
       }),
+    ),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
     ),
     name: Schema.String,
     scopes: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
@@ -33567,6 +36024,7 @@ export const V2McpServerRefreshResponse = Schema.Record(
 ).annotate({ title: "McpServerRefreshResponse" });
 
 export type V2McpServerStatusUpdatedNotification = {
+  readonly environmentId?: string | null;
   readonly error?: string | null;
   readonly failureReason?: V2McpServerStatusUpdatedNotification__McpServerStartupFailureReason | null;
   readonly name: string;
@@ -33575,6 +36033,14 @@ export type V2McpServerStatusUpdatedNotification = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2McpServerStatusUpdatedNotification = Schema.StructWithRest(
   Schema.Struct({
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Registration scope, not necessarily the server's execution environment.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     failureReason: Schema.optionalKey(
       Schema.Union([
@@ -33592,6 +36058,7 @@ export const V2McpServerStatusUpdatedNotification = Schema.StructWithRest(
 export type V2McpServerToolCallParams = {
   readonly _meta?: Schema.Json;
   readonly arguments?: Schema.Json;
+  readonly environmentId?: string | null;
   readonly server: string;
   readonly threadId: string;
   readonly tool: string;
@@ -33600,6 +36067,14 @@ export const V2McpServerToolCallParams = Schema.StructWithRest(
   Schema.Struct({
     _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
     arguments: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
+    environmentId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Exact registration scope; omission preserves legacy name-only selection.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     server: Schema.String,
     threadId: Schema.String,
     tool: Schema.String,
@@ -33722,6 +36197,7 @@ export type V2ModelListParams = {
   readonly cursor?: string | null;
   readonly includeHidden?: boolean | null;
   readonly limit?: number | null;
+  readonly modelProvider?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ModelListParams = Schema.StructWithRest(
   Schema.Struct({
@@ -33753,6 +36229,15 @@ export const V2ModelListParams = Schema.StructWithRest(
               expected: "a value greater than or equal to 0",
             }),
           ),
+        Schema.Null,
+      ]),
+    ),
+    modelProvider: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "List models for this configured provider instead of the app-server default.",
+        }),
         Schema.Null,
       ]),
     ),
@@ -33794,6 +36279,35 @@ export const V2ModelProviderCapabilitiesReadResponse = Schema.StructWithRest(
   Schema.Struct({ imageGeneration: Schema.Boolean, webSearch: Schema.Boolean }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ModelProviderCapabilitiesReadResponse" });
+
+export type V2ModelProviderConfigWriteParams = {
+  readonly settings: V2ModelProviderConfigWriteParams__ProviderSettingsPatch;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ModelProviderConfigWriteParams = Schema.StructWithRest(
+  Schema.Struct({ settings: V2ModelProviderConfigWriteParams__ProviderSettingsPatch }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ModelProviderConfigWriteParams" });
+
+export type V2ModelProviderConfigWriteResponse = {
+  readonly provider: V2ModelProviderConfigWriteResponse__ModelProviderSummary;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ModelProviderConfigWriteResponse = Schema.StructWithRest(
+  Schema.Struct({ provider: V2ModelProviderConfigWriteResponse__ModelProviderSummary }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ModelProviderConfigWriteResponse" });
+
+export type V2ModelProviderDefaultSetParams = { readonly providerId: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ModelProviderDefaultSetParams = Schema.StructWithRest(
+  Schema.Struct({
+    providerId: Schema.String.annotate({
+      description:
+        "Configured provider to use by default for new threads and unscoped model lists.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ModelProviderDefaultSetParams" });
 
 export type V2ModelProviderError =
   | ({
@@ -33848,6 +36362,26 @@ export const V2ModelProviderError = Schema.Union(
     "Structured JSON-RPC error data. Unknown errors must retain the client's normal fallback.",
 });
 
+export type V2ModelProviderListParams = { readonly [x: string]: Schema.Json };
+export const V2ModelProviderListParams = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "ModelProviderListParams" });
+
+export type V2ModelProviderListResponse = {
+  readonly canChangeDefault: boolean;
+  readonly data: ReadonlyArray<V2ModelProviderListResponse__ModelProviderSummary>;
+  readonly defaultProviderId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ModelProviderListResponse = Schema.StructWithRest(
+  Schema.Struct({
+    canChangeDefault: Schema.Boolean,
+    data: Schema.Array(V2ModelProviderListResponse__ModelProviderSummary),
+    defaultProviderId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ModelProviderListResponse" });
+
 export type V2ModelReroutedNotification = {
   readonly fromModel: string;
   readonly reason: V2ModelReroutedNotification__ModelRerouteReason;
@@ -33901,6 +36435,18 @@ export const V2ModelVerificationNotification = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ModelVerificationNotification" });
+
+export type V2NullableGatewayOAuthLoginParams = V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams | null;
+export const V2NullableGatewayOAuthLoginParams = Schema.Union([
+  V2NullableGatewayOAuthLoginParams__GatewayOAuthLoginParams,
+  Schema.Null,
+]).annotate({ title: "Nullable_GatewayOAuthLoginParams" });
+
+export type V2NullableGatewayOAuthReadParams = V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams | null;
+export const V2NullableGatewayOAuthReadParams = Schema.Union([
+  V2NullableGatewayOAuthReadParams__GatewayOAuthReadParams,
+  Schema.Null,
+]).annotate({ title: "Nullable_GatewayOAuthReadParams" });
 
 export type V2NullableGetAccountRateLimitsParams = V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams | null;
 export const V2NullableGetAccountRateLimitsParams = Schema.Union([
@@ -34772,7 +37318,8 @@ export const V2ProjectListParams = Schema.StructWithRest(
     ),
     sortKey: Schema.optionalKey(
       Schema.Union([V2ProjectListParams__ProjectSortKey, Schema.Null]).annotate({
-        description: "Defaults to position. Recency sorting always places empty projects last.",
+        description:
+          "Defaults to position. Recency sorting always places empty projects last. Use the returned order; numeric positions are not exposed in project responses.",
       }),
     ),
   }),
@@ -34797,7 +37344,14 @@ export type V2ProjectMoveParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ProjectMoveParams = Schema.StructWithRest(
   Schema.Struct({
-    beforeProjectId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    beforeProjectId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Place the project before this ID, or append it when omitted or null.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     projectId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -36042,7 +38596,7 @@ export const V2ThreadGuardianReviewParams = Schema.StructWithRest(
 ).annotate({
   title: "ThreadGuardianReviewParams",
   description:
-    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects.",
+    "Calling `thread/guardianReview` subscribes the connection to the thread. The subscription remains after the review completes, keeping the thread loaded until the client calls `thread/unsubscribe` or disconnects. Sequential calls on the same loaded thread can reuse Guardian history across direct reviews and live approvals. The reviewer keeps a separate conversation from the actor and follows the parent thread's normal persistence settings. A retry evaluates the final call again under the current policy.",
 });
 
 export type V2ThreadGuardianReviewResponse = {
@@ -36055,7 +38609,9 @@ export const V2ThreadGuardianReviewResponse = Schema.StructWithRest(
       Schema.Union([
         V2ThreadGuardianReviewResponse__ThreadGuardianAssessment,
         Schema.Null,
-      ]).annotate({ description: "Null when exec policy skips approval." }),
+      ]).annotate({
+        description: "Null when current policy or a remembered approval skips review.",
+      }),
     ),
     callId: Schema.String,
   }),
@@ -36119,6 +38675,7 @@ export const V2ThreadInjectItemsResponse = Schema.Record(
 
 export type V2ThreadItemsListParams = {
   readonly cursor?: V2ThreadItemsListParams__ThreadItemsListCursor | null;
+  readonly deferOutput?: V2ThreadItemsListParams__ThreadItemOutputDeferral | null;
   readonly limit?: number | null;
   readonly sortDirection?: V2ThreadItemsListParams__SortDirection | null;
   readonly threadId: string;
@@ -36130,6 +38687,12 @@ export const V2ThreadItemsListParams = Schema.StructWithRest(
       Schema.Union([V2ThreadItemsListParams__ThreadItemsListCursor, Schema.Null]).annotate({
         description:
           "Opaque continuation cursor or an exclusive item anchor in the requested visible turn. An item anchor requires a non-empty `turnId`; ascending (the default) returns items after it, and descending returns items before it. Continue with the returned string cursor.",
+      }),
+    ),
+    deferOutput: Schema.optionalKey(
+      Schema.Union([V2ThreadItemsListParams__ThreadItemOutputDeferral, Schema.Null]).annotate({
+        description:
+          "For a single turn, choose which saved outputs to fetch separately by item ID.",
       }),
     ),
     limit: Schema.optionalKey(
@@ -36227,9 +38790,12 @@ export type V2ThreadListParams = {
   readonly ancestorThreadId?: string | null;
   readonly archived?: boolean | null;
   readonly attachedToThreadId?: string | null;
+  readonly currentAccountOnly?: boolean;
   readonly cursor?: string | null;
   readonly cwd?: V2ThreadListParams__ThreadListCwdFilter | null;
   readonly excludedThreadIds?: ReadonlyArray<string> | null;
+  readonly includeAttachedThreads?: boolean;
+  readonly includedThreadIds?: ReadonlyArray<string> | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
   readonly originators?: ReadonlyArray<string> | null;
@@ -36271,6 +38837,12 @@ export const V2ThreadListParams = Schema.StructWithRest(
         Schema.Null,
       ]),
     ),
+    currentAccountOnly: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Show local history visible to the current ChatGPT account. Defaults to false.",
+      }),
+    ),
     cursor: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -36290,6 +38862,20 @@ export const V2ThreadListParams = Schema.StructWithRest(
         Schema.Array(Schema.String).annotate({
           description:
             "Thread IDs to exclude before applying the result limit. Up to 100 entries; invalid IDs or a larger list are rejected, never truncated. Send the same exclusions on each page. Omitted, null, or empty means no exclusions.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    includeAttachedThreads: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Include persistent threads attached to a parent when searching by title.",
+      }),
+    ),
+    includedThreadIds: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description:
+            "Restrict results to up to 100 thread IDs before pagination. Omit or send null for unrestricted results. An empty list matches nothing. Exclusions still apply. Repeat the same IDs on each page. The local store uses indexed metadata for this filter.",
         }),
         Schema.Null,
       ]),
@@ -36384,7 +38970,7 @@ export const V2ThreadListParams = Schema.StructWithRest(
     useStateDbOnly: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
-          "If true, return from the state DB without scanning JSONL rollouts to repair thread metadata. Omitted or false preserves scan-and-repair behavior.",
+          "If true, the local store returns indexed metadata without scanning JSONL rollouts for repairs. Requests with `includedThreadIds` always use indexed metadata.",
       }),
     ),
   }),
@@ -36620,6 +39206,43 @@ export const V2ThreadPredictionUpdatedNotification = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadPredictionUpdatedNotification" });
 
+export type V2ThreadPrepareApprovedPlanParams = {
+  readonly attachmentPath?: string | null;
+  readonly markdown: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadPrepareApprovedPlanParams = Schema.StructWithRest(
+  Schema.Struct({
+    attachmentPath: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Absolute path to the optional app-server copy of the plan.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    markdown: Schema.String,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadPrepareApprovedPlanParams",
+  description: "Prepare an approved plan for the first turn of a fresh thread.",
+});
+
+export type V2ThreadPrepareApprovedPlanResponse = { readonly prompt: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ThreadPrepareApprovedPlanResponse = Schema.StructWithRest(
+  Schema.Struct({
+    prompt: Schema.String.annotate({
+      description:
+        "Initial user prompt. If no attachment is readable, the plan is already in the thread's context.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadPrepareApprovedPlanResponse" });
+
 export type V2ThreadProjectUpdatedNotification = {
   readonly projectId: string | null;
   readonly threadId: string;
@@ -36632,12 +39255,21 @@ export const V2ThreadProjectUpdatedNotification = Schema.StructWithRest(
 export type V2ThreadQueueAddParams = {
   readonly clientUserMessageId: string;
   readonly input: ReadonlyArray<V2ThreadQueueAddParams__UserInput>;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadQueueAddParams = Schema.StructWithRest(
   Schema.Struct({
     clientUserMessageId: Schema.String,
     input: Schema.Array(V2ThreadQueueAddParams__UserInput),
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description: "ResponsesAPI metadata captured from the client submitting this input.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     threadId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -36768,12 +39400,22 @@ export const V2ThreadQueueStartResponse = Schema.StructWithRest(
 export type V2ThreadQueueUpdateParams = {
   readonly input: ReadonlyArray<V2ThreadQueueUpdateParams__UserInput>;
   readonly queuedSubmissionId: string;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
   readonly threadId: string;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadQueueUpdateParams = Schema.StructWithRest(
   Schema.Struct({
     input: Schema.Array(V2ThreadQueueUpdateParams__UserInput),
     queuedSubmissionId: Schema.String,
+    responsesapiClientMetadata: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.String).annotate({
+          description:
+            "Non-empty metadata replaces the input's metadata; omission or an empty map preserves it.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     threadId: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -37016,6 +39658,148 @@ export const V2ThreadRealtimeItemTranscriptDeltaNotification = Schema.StructWith
   title: "ThreadRealtimeItemTranscriptDeltaNotification",
   description: "EXPERIMENTAL - text appended to an active realtime transcript item.",
 });
+
+export type V2ThreadRealtimeListParams = {
+  readonly afterPosition?: number | null;
+  readonly cursor?: string | null;
+  readonly eventId?: string | null;
+  readonly fromObservedAtMs?: number | null;
+  readonly limit?: number | null;
+  readonly order?: V2ThreadRealtimeListParams__ThreadRealtimeOrder | null;
+  readonly requiredThroughPosition?: number | null;
+  readonly sessionId?: string | null;
+  readonly snapshotEnd?: number | null;
+  readonly threadId: string;
+  readonly toObservedAtMs?: number | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadRealtimeListParams = Schema.StructWithRest(
+  Schema.Struct({
+    afterPosition: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint64" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    eventId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "A required exact event ID, such as a completed item's acknowledgement. Returns pending until projected. Explicit filters can exclude a known event.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    fromObservedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Inclusive canonical observation time lower bound.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    limit: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint32" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    order: Schema.optionalKey(
+      Schema.Union([V2ThreadRealtimeListParams__ThreadRealtimeOrder, Schema.Null]).annotate({
+        description: "Defaults to canonical observation time.",
+      }),
+    ),
+    requiredThroughPosition: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Return pending until the projection includes this committed position.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    sessionId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    snapshotEnd: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Exclusive committed position delimiting an immutable snapshot.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    threadId: Schema.String,
+    toObservedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description: "Exclusive canonical observation time upper bound.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadRealtimeListParams" });
+
+export type V2ThreadRealtimeListResponse = {
+  readonly coverage: V2ThreadRealtimeListResponse__ThreadRealtimeCoverage;
+  readonly data: ReadonlyArray<V2ThreadRealtimeListResponse__ThreadRealtimeEntry>;
+  readonly nextCursor?: string | null;
+  readonly projectedThroughItemIndex: number;
+  readonly snapshotEnd: number;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadRealtimeListResponse = Schema.StructWithRest(
+  Schema.Struct({
+    coverage: V2ThreadRealtimeListResponse__ThreadRealtimeCoverage,
+    data: Schema.Array(V2ThreadRealtimeListResponse__ThreadRealtimeEntry),
+    nextCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    projectedThroughItemIndex: Schema.Number.annotate({
+      description:
+        "Exclusive position through which the projection has processed canonical history.",
+      format: "uint64",
+    })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+    snapshotEnd: Schema.Number.annotate({ format: "uint64" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadRealtimeListResponse" });
 
 export type V2ThreadRealtimeListVoicesParams = { readonly [x: string]: Schema.Json };
 export const V2ThreadRealtimeListVoicesParams = Schema.Record(
@@ -37626,6 +40410,7 @@ export const V2ThreadSampleCancelResponse = Schema.Record(
 ).annotate({ title: "ThreadSampleCancelResponse" });
 
 export type V2ThreadSampleParams = {
+  readonly allowInProgressTurn?: boolean;
   readonly disableMcp?: boolean;
   readonly effort?: V2ThreadSampleParams__ReasoningEffort | null;
   readonly expectedTurnId: string;
@@ -37638,6 +40423,11 @@ export type V2ThreadSampleParams = {
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadSampleParams = Schema.StructWithRest(
   Schema.Struct({
+    allowInProgressTurn: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Allow sampling the latest turn before it finishes.",
+      }),
+    ),
     disableMcp: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
@@ -37652,7 +40442,7 @@ export const V2ThreadSampleParams = Schema.StructWithRest(
     ),
     expectedTurnId: Schema.String.annotate({
       description:
-        "The loaded source's latest completed, failed, or interrupted turn. Stale or active sources are rejected.",
+        "The loaded source's latest turn, which must be finished (completed, failed, or interrupted) unless `allowInProgressTurn` is true.",
     }),
     interruptOnCancel: Schema.optionalKey(
       Schema.Union([
@@ -37730,6 +40520,24 @@ export const V2ThreadSampleResponse = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadSampleResponse" });
 
+export type V2ThreadSearchCancelParams = {
+  readonly requestId: V2ThreadSearchCancelParams__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSearchCancelParams = Schema.StructWithRest(
+  Schema.Struct({ requestId: V2ThreadSearchCancelParams__RequestId }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadSearchCancelParams",
+  description:
+    "Request cancellation on the same connection. `thread/search/cancel` targets only `thread/search`; `thread/search/stream/cancel` targets only `thread/search/stream`. Cancellation is idempotent: the cancel response acknowledges the request, and an interrupted search completes with an error after its subprocess is stopped and reaped. If completion races cancellation, the original search may still succeed. An already-completed search is unaffected.",
+});
+
+export type V2ThreadSearchCancelResponse = { readonly [x: string]: Schema.Json };
+export const V2ThreadSearchCancelResponse = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "ThreadSearchCancelResponse" });
+
 export type V2ThreadSearchOccurrencesParams = {
   readonly cursor?: string | null;
   readonly limit?: number | null;
@@ -37794,7 +40602,9 @@ export const V2ThreadSearchOccurrencesResponse = Schema.StructWithRest(
 
 export type V2ThreadSearchParams = {
   readonly archived?: boolean | null;
+  readonly currentAccountOnly?: boolean;
   readonly cursor?: string | null;
+  readonly includeAttachedThreads?: boolean;
   readonly limit?: number | null;
   readonly searchTerm: string;
   readonly sortDirection?: V2ThreadSearchParams__SortDirection | null;
@@ -37812,6 +40622,12 @@ export const V2ThreadSearchParams = Schema.StructWithRest(
         Schema.Null,
       ]),
     ),
+    currentAccountOnly: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Show local history visible to the current ChatGPT account. Defaults to false.",
+      }),
+    ),
     cursor: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -37819,6 +40635,11 @@ export const V2ThreadSearchParams = Schema.StructWithRest(
         }),
         Schema.Null,
       ]),
+    ),
+    includeAttachedThreads: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Include persistent threads attached to a parent in search results.",
+      }),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -37836,7 +40657,8 @@ export const V2ThreadSearchParams = Schema.StructWithRest(
       ]),
     ),
     searchTerm: Schema.String.annotate({
-      description: "Required substring/full-text query for thread search.",
+      description:
+        "Required substring/full-text query. `thread/search/stream` limits this to 65,536 UTF-8 bytes after trimming surrounding whitespace.",
     }),
     sortDirection: Schema.optionalKey(
       Schema.Union([V2ThreadSearchParams__SortDirection, Schema.Null]).annotate({
@@ -37860,6 +40682,22 @@ export const V2ThreadSearchParams = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadSearchParams" });
+
+export type V2ThreadSearchPartialNotification = {
+  readonly data: ReadonlyArray<V2ThreadSearchPartialNotification__ThreadSearchResult>;
+  readonly requestId: V2ThreadSearchPartialNotification__RequestId;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadSearchPartialNotification = Schema.StructWithRest(
+  Schema.Struct({
+    data: Schema.Array(V2ThreadSearchPartialNotification__ThreadSearchResult),
+    requestId: V2ThreadSearchPartialNotification__RequestId,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadSearchPartialNotification",
+  description:
+    "A best-effort incremental batch for `thread/search/stream`. Match `requestId` to the request on this connection. Only a small subset of verified matches may be emitted; rows are unique and arrive in discovery order, but may be dropped under load or fall outside the final sorted page. Thread fields use stored metadata and the current watched status; live thread settings are enriched in the final response. Replace provisional rows with the authoritative final response. No partials follow it or an error.",
+});
 
 export type V2ThreadSearchResponse = {
   readonly backwardsCursor?: string | null;
@@ -38126,6 +40964,7 @@ export type V2ThreadSettingsUpdateParams = {
   readonly cwd?: string | null;
   readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: V2ThreadSettingsUpdateParams__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<V2ThreadSettingsUpdateParams__TurnEnvironmentParams> | null;
   readonly model?: string | null;
   readonly multiAgentMode?: V2ThreadSettingsUpdateParams__MultiAgentMode | null;
   readonly permissions?: string | null;
@@ -38174,6 +41013,15 @@ export const V2ThreadSettingsUpdateParams = Schema.StructWithRest(
       Schema.Union([V2ThreadSettingsUpdateParams__ReasoningEffort, Schema.Null]).annotate({
         description: "Override the reasoning effort for subsequent turns.",
       }),
+    ),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(V2ThreadSettingsUpdateParams__TurnEnvironmentParams).annotate({
+          description:
+            "Replace the environments for future turns without changing the running turn. Omitted/null preserves the selection unless `cwd` is also provided, which selects the default environments for that directory. [] clears the selection.",
+        }),
+        Schema.Null,
+      ]),
     ),
     model: Schema.optionalKey(
       Schema.Union([
@@ -38765,6 +41613,7 @@ export const V2TurnPlanUpdatedNotification = Schema.StructWithRest(
 export type V2TurnSettingsUpdateParams = {
   readonly approvalsReviewer?: V2TurnSettingsUpdateParams__ApprovalsReviewer | null;
   readonly effort?: V2TurnSettingsUpdateParams__ReasoningEffort | null;
+  readonly environments?: ReadonlyArray<V2TurnSettingsUpdateParams__TurnEnvironmentParams> | null;
   readonly model?: string | null;
   readonly serviceTier?: string | null;
   readonly summary?: V2TurnSettingsUpdateParams__ReasoningSummary | null;
@@ -38783,6 +41632,15 @@ export const V2TurnSettingsUpdateParams = Schema.StructWithRest(
       Schema.Union([V2TurnSettingsUpdateParams__ReasoningEffort, Schema.Null]).annotate({
         description: "Omission or `null` leaves the effort unchanged.",
       }),
+    ),
+    environments: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(V2TurnSettingsUpdateParams__TurnEnvironmentParams).annotate({
+          description:
+            "Replace the environments for subsequent steps of this turn, not future turns. Omitted/null preserves the selection; [] clears it. An already-started step is unchanged.",
+        }),
+        Schema.Null,
+      ]),
     ),
     model: Schema.optionalKey(
       Schema.Union([
@@ -39254,10 +42112,22 @@ export const V2UserVerificationVerifyParams = Schema.StructWithRest(
 });
 
 export type V2UserVerificationVerifyResponse = {
+  readonly biometricType?: V2UserVerificationVerifyResponse__UserVerificationBiometricType | null;
   readonly proof: V2UserVerificationVerifyResponse__UserVerificationProof;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2UserVerificationVerifyResponse = Schema.StructWithRest(
-  Schema.Struct({ proof: V2UserVerificationVerifyResponse__UserVerificationProof }),
+  Schema.Struct({
+    biometricType: Schema.optionalKey(
+      Schema.Union([
+        V2UserVerificationVerifyResponse__UserVerificationBiometricType,
+        Schema.Null,
+      ]).annotate({
+        description:
+          "Native-reported authentication method for this signature. Older servers omit it. This is approval context, not part of the signed proof.",
+      }),
+    ),
+    proof: V2UserVerificationVerifyResponse__UserVerificationProof,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "UserVerificationVerifyResponse" });
 

@@ -11,7 +11,6 @@ import type {
   ServerRequest,
 } from "@nodex/codex-app-server-protocol";
 import type {
-  CurrentTimeReadResponse,
   DynamicToolCallResponse,
   McpServerElicitationAction,
   McpServerElicitationRequestParams,
@@ -73,12 +72,6 @@ export interface CodexServerRequestLifecycleContext {
 }
 
 export type CodexServerRequestAutoResponseEffect =
-  | {
-      readonly type: "respond";
-      readonly method: "currentTime/read";
-      readonly requestId: RequestId;
-      readonly response: CurrentTimeReadResponse;
-    }
   | {
       readonly type: "respond";
       readonly method: "mcpServer/elicitation/request";
@@ -172,7 +165,6 @@ export interface CodexServerRequestClassification {
     | "storeAndSynthesize"
     | "specialDynamic"
     | "dispatchDynamic"
-    | "respond"
     | "ignore";
 }
 
@@ -828,8 +820,6 @@ export function classifyCodexCanonicalServerRequest(
       return { source: "generated", behavior: "store" };
     case "item/tool/call":
       return { source: "generated", behavior: "specialDynamic" };
-    case "currentTime/read":
-      return { source: "generated", behavior: "respond" };
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
     case "applyPatchApproval":
@@ -918,7 +908,6 @@ function buildMcpSynthetic(
 }
 
 function requestThreadId(request: CodexCanonicalServerRequest): string | null {
-  if (request.method === "currentTime/read") return null;
   return "threadId" in request.params && typeof request.params.threadId === "string"
     ? request.params.threadId
     : null;
@@ -1224,15 +1213,6 @@ export function reduceCodexServerRequestRawState(
         turnMutations: stored.turnMutations,
       });
     }
-    case "currentTime/read":
-      return emptyRawResult(state, "responded", [
-        {
-          type: "respond",
-          method: request.method,
-          requestId: request.id,
-          response: { currentTimeAt: Math.floor(context.now() / 1000) },
-        },
-      ]);
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
     case "applyPatchApproval":

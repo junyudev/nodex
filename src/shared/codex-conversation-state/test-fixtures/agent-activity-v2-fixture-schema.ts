@@ -140,7 +140,6 @@ function isPendingProjectionRequest(
     case "item/plan/requestImplementation":
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
-    case "currentTime/read":
     case "applyPatchApproval":
     case "execCommandApproval":
       return false;
@@ -165,7 +164,6 @@ function isStateSyntheticCauseRequest(
     case "item/plan/requestImplementation":
     case "account/chatgptAuthTokens/refresh":
     case "attestation/generate":
-    case "currentTime/read":
     case "applyPatchApproval":
     case "execCommandApproval":
       return false;

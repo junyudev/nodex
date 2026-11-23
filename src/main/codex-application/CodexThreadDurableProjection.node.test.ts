@@ -66,6 +66,7 @@ const appThread = (turns: readonly Turn[], overrides: Partial<Thread> = {}): Thr
   extra: null,
   sessionId: "session-a",
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "notification preview",
   ephemeral: false,
@@ -491,6 +492,7 @@ it.effect("never treats thread/started as a history transport", () =>
       items: Array.from({ length: 1_000 }, (_, index) => ({
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: `poison-${index}`,
         text: "must not become resident",
         phase: null,

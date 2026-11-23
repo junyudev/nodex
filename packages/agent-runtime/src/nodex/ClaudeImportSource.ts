@@ -106,6 +106,7 @@ function normalizeMessages(
           result.push(
             wrap({
               type: "agentMessage",
+              moderation: null,
               id,
               text,
               phase: "final_answer",

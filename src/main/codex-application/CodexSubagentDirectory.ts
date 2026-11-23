@@ -379,6 +379,7 @@ const projectStartedSubagentThreadShell = (input: {
     extra: null,
     sessionId: input.parent.durable.threadId,
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: input.parent.durable.threadId,
     preview: "",
     ephemeral: false,

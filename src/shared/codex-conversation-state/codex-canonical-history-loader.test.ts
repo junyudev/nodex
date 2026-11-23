@@ -198,7 +198,12 @@ describe("canonical history operation ownership", () => {
       let owns = role !== "readonly";
       f.client.canRecordQueueAcceptance = () => owns;
       const input = [{ type: "text" as const, text: "Stored native input", text_elements: [] }];
-      const raw = { id: "native-queue", clientUserMessageId: "queue-client", input };
+      const raw = {
+        id: "native-queue",
+        clientUserMessageId: "queue-client",
+        input,
+        responsesapiClientMetadata: null,
+      };
       f.mutate((draft) => {
         const turn = conversationTurnDraft(
           draft,
@@ -272,7 +277,12 @@ describe("canonical history operation ownership", () => {
     const f = harness();
     f.client.canRecordQueueAcceptance = () => true;
     const input = [{ type: "text" as const, text: "Stored native input", text_elements: [] }];
-    const raw = { id: "native-queue", clientUserMessageId: "queue-client", input };
+    const raw = {
+      id: "native-queue",
+      clientUserMessageId: "queue-client",
+      input,
+      responsesapiClientMetadata: null,
+    };
     f.mutate((draft) => {
       const turn = conversationTurnDraft(
         draft,
@@ -940,6 +950,7 @@ test("item pages recover envelope starts without allowing older commentary to re
   const f = harness();
   const reply: ThreadItem = {
     type: "agentMessage",
+    moderation: null,
     id: "reply",
     text: "Done",
     phase: "final_answer",
@@ -984,6 +995,7 @@ test("completed-only item history does not invent a response start", async () =>
         turnId: "turn",
         item: {
           type: "agentMessage",
+          moderation: null,
           id: "reply",
           text: "Done",
           phase: "final_answer",

@@ -36,6 +36,7 @@ const content =
 function nativeFamily(family: Family) {
   const item: Extract<ThreadItem, { type: "agentMessage" }> = {
     type: "agentMessage",
+    moderation: null,
     id: "answer",
     text: family === "inlineMarkdown" ? `::codex-realtime-inline{}\n${content}` : content,
     phase: "final_answer",

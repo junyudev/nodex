@@ -109,6 +109,7 @@ const assistant: ThreadItemEntry = {
   ...user,
   item: {
     type: "agentMessage",
+    moderation: null,
     id: "assistant:source",
     text: "Stored original-marker-492",
     phase: "final_answer",
@@ -494,6 +495,7 @@ it.effect("preserves tool images and result metadata as passive history", () =>
         ...user,
         item: {
           type: "mcpToolCall",
+          environmentId: null,
           id: "tool:source",
           server: "assets",
           tool: "render",

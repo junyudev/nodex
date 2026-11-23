@@ -21,6 +21,7 @@ export async function seedCoordinatorNativeExecution(root: string, manifest: Sce
     reasoningEffort: "medium",
     extra: null,
     forkedFromId: null,
+    attachedToThreadId: null,
     parentThreadId: null,
     section: null,
     sectionEnteredAt: null,

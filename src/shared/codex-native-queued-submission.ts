@@ -60,11 +60,15 @@ export function normalizeCodexNativeQueuedSubmission(input: {
   readonly input: ReadonlyArray<
     ClientRequestResponsesByMethod["thread/queue/list"]["data"][number]["input"][number]
   >;
+  readonly responsesapiClientMetadata?: QueuedSubmission["responsesapiClientMetadata"];
 }): QueuedSubmission {
   return {
     id: input.id,
     clientUserMessageId: input.clientUserMessageId,
     input: input.input.map(normalizeNativeInput),
+    responsesapiClientMetadata: input.responsesapiClientMetadata
+      ? { ...input.responsesapiClientMetadata }
+      : null,
   };
 }
 

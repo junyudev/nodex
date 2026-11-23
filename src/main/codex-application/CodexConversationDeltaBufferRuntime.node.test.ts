@@ -144,6 +144,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
         extra: null,
         sessionId: "session-1",
         forkedFromId: null,
+        attachedToThreadId: null,
         parentThreadId: null,
         preview: "",
         ephemeral: false,
@@ -182,6 +183,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
               {
                 questions: null,
                 type: "agentMessage",
+                moderation: null,
                 id: "item-1",
                 text: "",
                 phase: null,

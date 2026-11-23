@@ -30,6 +30,7 @@ function buildState(): CodexCanonicalConversationState {
         extra: null,
         sessionId: "session-goal",
         forkedFromId: null,
+        attachedToThreadId: null,
         parentThreadId: null,
         preview: "",
         ephemeral: false,

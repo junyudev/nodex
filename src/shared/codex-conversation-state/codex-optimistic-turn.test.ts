@@ -28,6 +28,7 @@ function buildState() {
       extra: null,
       sessionId: "session-created",
       forkedFromId: null,
+      attachedToThreadId: null,
       parentThreadId: null,
       preview: "",
       ephemeral: false,
@@ -62,6 +63,7 @@ function buildState() {
         cwd: "/workspace",
         approvalPolicy: "on-request",
         approvalsReviewer: "user",
+        environments: null,
         sandboxPolicy: {
           type: "workspaceWrite",
           writableRoots: ["/workspace"],
@@ -86,6 +88,7 @@ function buildParams(): CodexCanonicalLiveTurnParams {
     cwd: "/workspace",
     approvalPolicy: "on-request",
     approvalsReviewer: "user",
+    environments: null,
     permissions: ":workspace",
     runtimeWorkspaceRoots: ["/workspace"],
     sandboxPolicy: {
@@ -241,6 +244,7 @@ describe("prepared Turn execution context", () => {
     const observed = produce(pending, (draft) => {
       draft.turns[0]!.items.push({
         type: "agentMessage",
+        moderation: null,
         id: "partial",
         text: "Already received",
         phase: "commentary",
@@ -397,6 +401,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
         {
           questions: null,
           type: "agentMessage",
+          moderation: null,
           id: "response-only-item",
           text: "must arrive through lifecycle",
           phase: "final_answer",
@@ -487,6 +492,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     const assistant = {
       questions: null,
       type: "agentMessage" as const,
+      moderation: null,
       id: "assistant-streaming",
       text: "partial",
       phase: null,

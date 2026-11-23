@@ -49,6 +49,7 @@ describe("mounted adaptive Markdown", () => {
     const key = { hostId: "local", threadId: "thread", entityKey: "turn:one" };
     const item = (text: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
       type: "agentMessage",
+      moderation: null,
       id: "answer",
       text: `::codex-realtime-inline{}\n${text}`,
       phase: "commentary",

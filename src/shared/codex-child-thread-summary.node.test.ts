@@ -15,6 +15,7 @@ const reply = (
   completedAtMs: null,
   item: {
     type: "agentMessage",
+    moderation: null,
     id: text,
     text,
     phase,

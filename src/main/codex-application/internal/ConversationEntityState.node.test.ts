@@ -43,6 +43,7 @@ const thread: Thread = {
   extra: null,
   sessionId: "session-canonical-projection",
   forkedFromId: null,
+  attachedToThreadId: null,
   parentThreadId: null,
   preview: "Canonical projection fixture",
   ephemeral: false,
@@ -258,6 +259,7 @@ it("delivers a completed canonical Turn projection without undefined fields", ()
       items: [
         {
           type: "agentMessage",
+          moderation: null,
           id: "answer-boot",
           text: "BOOT_OK",
           phase: "final_answer",
@@ -450,6 +452,7 @@ it("preserves cumulative large live deltas in canonical state and its presentati
       {
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: "agent-live-overflow",
         text: "",
         phase: null,
@@ -508,6 +511,7 @@ it("preserves a large terminal item payload in the transcript", () => {
       {
         questions: null,
         type: "agentMessage",
+        moderation: null,
         id: "agent-terminal-overflow",
         text: "",
         phase: null,
@@ -529,6 +533,7 @@ it("preserves a large terminal item payload in the transcript", () => {
         item: {
           questions: null,
           type: "agentMessage",
+          moderation: null,
           id: "agent-terminal-overflow",
           text: "z".repeat(2 * 1024 * 1024 + 1024),
           phase: null,

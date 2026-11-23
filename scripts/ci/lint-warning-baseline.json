@@ -173,7 +173,7 @@
     "nodex(no-polling-loop-in-tests)": 2
   },
   "src/main/codex-application/CodexApplicationProtocol.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 15
+    "nodex(no-polling-loop-in-tests)": 14
   },
   "src/main/codex-application/CodexConnectionLifecycle.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1

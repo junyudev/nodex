@@ -48,7 +48,7 @@ export function buildAgentActivityV2CorpusThread(
     id: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
     extra: null,
     sessionId: "session-activity-v2-corpus",
-    forkedFromId: null,
+    forkedFromId: null, attachedToThreadId: null,
     parentThreadId: null,
     preview: "Agent activity v2 protocol payload corpus",
     ephemeral: false,

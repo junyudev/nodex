@@ -18,6 +18,7 @@ import { settleAsyncRender } from "../../test/dom";
 const key = { hostId: "local", threadId: "thread" };
 const agent = (id: string, text: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
   type: "agentMessage",
+  moderation: null,
   id,
   text,
   phase: "final_answer",

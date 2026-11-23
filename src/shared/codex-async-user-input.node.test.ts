@@ -13,6 +13,7 @@ import type { CodexCanonicalItem } from "./codex-conversation-state/codex-conver
 
 const question: CodexCanonicalItem = {
   type: "agentMessage",
+  moderation: null,
   id: "ask",
   text: "Readable fallback",
   phase: "final_answer",

@@ -500,6 +500,7 @@ it.effect(
             startedAtMs: 1,
             item: {
               type: "mcpToolCall",
+              environmentId: null,
               id: "call-1",
               server: "nodex_app",
               tool: "read_page",
@@ -556,7 +557,7 @@ it.effect("resolves renderer response identities only while the exact occurrence
     const occurrence = yield* generation.admit({
       requestId: 7,
       protocol: "extension",
-      method: "currentTime/read",
+      method: "test/occurrence",
       params: {},
     });
     assert.strictEqual(yield* inbox.resolveOccurrence(occurrence), occurrence);
@@ -581,6 +582,7 @@ const nativeCall = (turnId: string, callId = "call") =>
     startedAtMs: 1,
     item: {
       type: "mcpToolCall",
+      environmentId: null,
       id: callId,
       server: "nodex_app",
       tool: "read_page",
@@ -718,7 +720,7 @@ it.effect(
           .admit({
             requestId: "late",
             protocol: "extension",
-            method: "currentTime/read",
+            method: "test/occurrence",
             params: {},
           })
           .pipe(Effect.flip);

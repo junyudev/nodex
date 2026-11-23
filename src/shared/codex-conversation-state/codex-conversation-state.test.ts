@@ -176,6 +176,7 @@ function hydrateCanonicalFixtureTurns(
         cwd: "/workspace/project",
         approvalPolicy: "on-request",
         approvalsReviewer: "user",
+        environments: null,
         sandboxPolicy: {
           type: "readOnly",
           networkAccess: false,
@@ -456,6 +457,7 @@ describe("protocol-backed canonical conversation state", () => {
         cwd: "/workspace/project",
         approvalPolicy: "on-request",
         approvalsReviewer: "user",
+        environments: null,
         sandboxPolicy: {
           type: "workspaceWrite",
           writableRoots: ["/workspace/project"],
@@ -575,6 +577,7 @@ describe("protocol-backed canonical conversation state", () => {
         cwd: "/workspace/project",
         approvalPolicy: "on-request",
         approvalsReviewer: "user",
+        environments: null,
         sandboxPolicy: {
           type: "readOnly",
           networkAccess: false,
@@ -680,6 +683,7 @@ describe("protocol-backed canonical conversation state", () => {
           cwd: "/workspace/project",
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
+          environments: null,
           sandboxPolicy: {
             type: "workspaceWrite",
             writableRoots: ["/workspace/project"],
@@ -731,6 +735,7 @@ describe("protocol-backed canonical conversation state", () => {
           cwd: "/workspace/project",
           approvalPolicy: "never",
           approvalsReviewer: "guardian_subagent",
+          environments: null,
           sandboxPolicy: {
             type: "workspaceWrite",
             writableRoots: ["/workspace/project"],
@@ -793,6 +798,7 @@ describe("protocol-backed canonical conversation state", () => {
           cwd: "/workspace/project",
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
+          environments: null,
           sandboxPolicy: {
             type: "workspaceWrite",
             writableRoots: ["/workspace/project"],
@@ -1017,7 +1023,12 @@ describe("protocol-backed canonical conversation state", () => {
           ...state,
           threadRuntimeStatus: { type: "idle" },
           unconfirmedServerQueueMessages: [
-            { id: "pending-queue", clientUserMessageId: "pending-client", input: [] },
+            {
+              id: "pending-queue",
+              clientUserMessageId: "pending-client",
+              responsesapiClientMetadata: null,
+              input: [],
+            },
           ],
         },
         template.id,
@@ -1060,6 +1071,7 @@ describe("protocol-backed canonical conversation state", () => {
     const existingMessage = {
       questions: [{ title: "Which scope?", options: ["Project", "Library"] }],
       type: "agentMessage",
+      moderation: null,
       id: "live-final",
       text: "Which scope?\n- Project\n- Library",
       phase: "final_answer",
@@ -1084,6 +1096,7 @@ describe("protocol-backed canonical conversation state", () => {
     expect(merged.items[0]).toMatchObject({
       id: "live-final",
       type: "agentMessage",
+      moderation: null,
       delivery: "async",
       questions: existingMessage.questions,
     });
@@ -1094,6 +1107,7 @@ describe("protocol-backed canonical conversation state", () => {
     const base = hydrateCanonicalFixtureTurns([template]).turns[0]!;
     const first: ThreadItem = {
       type: "agentMessage",
+      moderation: null,
       id: "ask-first",
       text: "Which scope?",
       phase: "final_answer",
@@ -1546,6 +1560,7 @@ test("hydrates the selected response start and keeps it across resume and older 
   const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
   const response = (id: string, startedAtMs: number | null): ThreadItem => ({
     type: "agentMessage",
+    moderation: null,
     id,
     text: id,
     phase: "final_answer",
@@ -1582,6 +1597,7 @@ test("joining native history prefers the selected response's recorded start over
   const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
   const response: ThreadItem = {
     type: "agentMessage",
+    moderation: null,
     id: "response",
     text: "Done",
     phase: "final_answer",

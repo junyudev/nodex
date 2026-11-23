@@ -389,6 +389,7 @@ describe("normalized transcript read owner", () => {
     const snapshot = fixture([
       {
         type: "agentMessage",
+        moderation: null,
         id: "first",
         text: "First",
         phase: "commentary",
@@ -398,6 +399,7 @@ describe("normalized transcript read owner", () => {
       },
       {
         type: "agentMessage",
+        moderation: null,
         id: "second",
         text: "Second",
         phase: "final_answer",
@@ -612,6 +614,7 @@ describe("normalized transcript read owner", () => {
       value: fixture([
         {
           type: "agentMessage",
+          moderation: null,
           id: "first",
           text: "Answer",
           phase: "final_answer",

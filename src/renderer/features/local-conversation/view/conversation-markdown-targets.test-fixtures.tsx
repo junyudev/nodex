@@ -64,6 +64,7 @@ function fixture(
   const threadId = options?.threadId ?? key.threadId;
   const item: Extract<ThreadItem, { type: "agentMessage" }> = {
     type: "agentMessage",
+    moderation: null,
     id: key.itemId,
     text: family === "inline" ? `::codex-realtime-inline{}\n${content}` : content,
     phase: "final_answer",

@@ -14,6 +14,7 @@ test("reconstructs hosted images and preserves their native details when a queue
           {
             id: "queued-1",
             clientUserMessageId: "client-1",
+            responsesapiClientMetadata: null,
             input: input.map((image) => ({ ...image, url: 123 })),
           },
         ],
@@ -217,6 +218,7 @@ test("a stale refresh retries after native acceptance instead of hiding the newl
   const item = {
     id: "native",
     clientUserMessageId: "client",
+    responsesapiClientMetadata: null,
     input: [{ type: "text" as const, text: "Compiled generated text", text_elements: [] }],
   };
   const request = vi.fn(async (method: string) => {
@@ -252,6 +254,7 @@ test("an authoritative native receipt settles an unknown add without resending t
   const item = {
     id: "native",
     clientUserMessageId: "client",
+    responsesapiClientMetadata: null,
     input: [{ type: "text" as const, text: "Captured original", text_elements: [] }],
   };
   let accepted = false;
@@ -282,6 +285,7 @@ test("native send acceptance preserves a same-id edit made while steering is wai
   let item = {
     id: "native",
     clientUserMessageId: "client",
+    responsesapiClientMetadata: null,
     input: [{ type: "text" as const, text: "Original", text_elements: [] }],
   };
   let release!: () => void;
@@ -334,6 +338,7 @@ test("accepted native steering retries only queue cleanup after delete fails", a
     {
       id: "native",
       clientUserMessageId: "client",
+      responsesapiClientMetadata: null,
       input: [{ type: "text", text: "Original", text_elements: [] }],
     },
   ];
@@ -385,6 +390,7 @@ test("returned native acceptance settles admission before a retired owner can pu
   const raw = {
     id: "native",
     clientUserMessageId: "client",
+    responsesapiClientMetadata: null,
     input: [{ type: "text" as const, text: "Original", text_elements: [] }],
   };
   let owner = {};
@@ -431,6 +437,7 @@ test("a steered native row already cleaned by its owner confirms absence instead
   const raw = {
     id: "native",
     clientUserMessageId: "client",
+    responsesapiClientMetadata: null,
     input: [{ type: "text" as const, text: "Original", text_elements: [] }],
   };
   let items = [raw];

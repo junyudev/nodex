@@ -191,6 +191,7 @@ vi.mock("./local-conversation-deps", () => ({
           cwd: fixture.response!.cwd,
           approvalPolicy: fixture.response!.approvalPolicy,
           approvalsReviewer: fixture.response!.approvalsReviewer,
+          environments: null,
           sandboxPolicy: fixture.response!.sandbox,
           activePermissionProfile: fixture.response!.activePermissionProfile,
           runtimeWorkspaceRoots: fixture.response!.runtimeWorkspaceRoots,
@@ -1169,6 +1170,7 @@ test("a followed snapshot arriving during preparation avoids a second native res
 test("compact history metadata survives text changes and item-ref admission rejects retired topology", async () => {
   const message = {
     type: "agentMessage" as const,
+    moderation: null,
     id: "retained",
     text: "answer",
     phase: null,
@@ -1421,6 +1423,7 @@ test("native owner mutations reach a following manager as actual draft patches",
     });
   const item = {
     type: "agentMessage" as const,
+    moderation: null,
     id: "message",
     text: "",
     phase: null,
@@ -1553,6 +1556,7 @@ test("native request identity and resolution propagate through the owner's docum
 test("hydration leaves async questions closed while a live owner patch opens them", async () => {
   const hydrated = {
     type: "agentMessage" as const,
+    moderation: null,
     id: "hydrated-question",
     text: "Earlier question",
     phase: null,
@@ -2102,6 +2106,7 @@ test("ordinary resume rereads its adopted tail after a new Turn arrives during p
     await waitFor(() =>
       expect(transcript.readItem("turn:before-prepare", "old-answer")).toMatchObject({
         type: "agentMessage",
+        moderation: null,
         text: "Before adoption",
       }),
     );
@@ -2112,6 +2117,7 @@ test("ordinary resume rereads its adopted tail after a new Turn arrives during p
     await waitFor(() =>
       expect(transcript.readItem("turn:during-prepare", "new-answer")).toMatchObject({
         type: "agentMessage",
+        moderation: null,
         text: "Added while preparing",
       }),
     );
@@ -2272,6 +2278,7 @@ test("durable resume merges a complete page with inline turns without reopening 
   const template = original.thread.turns[0]!;
   const item = (id: string) => ({
     type: "agentMessage" as const,
+    moderation: null,
     id,
     text: id,
     phase: null,

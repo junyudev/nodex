@@ -708,6 +708,7 @@ it.effect("hydrates before replaying interleaved ingress without duplicating hyd
               items: [
                 {
                   type: "agentMessage",
+                  moderation: null,
                   id: "message",
                   text: "hello",
                   phase: null,
