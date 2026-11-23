@@ -7,14 +7,18 @@
  *
  * Frames here run on the real timers captured before any test runs, as jsdom's already do in the VM
  * pool. This file runs before anything that loads Motion; a test that fakes timers still fakes
- * frames while they are fake.
+ * frames while they are fake. Like jsdom's, they end with the file's window: pending frames are
+ * dropped once its tests finish, before the environment is torn down.
  */
+import { afterAll } from "vite-plus/test";
+
 const setRealTimeout = globalThis.setTimeout.bind(globalThis);
 const clearRealTimeout = globalThis.clearTimeout.bind(globalThis);
 const now = performance.now.bind(performance);
 const callbacks = new Map<number, FrameRequestCallback>();
 let frame: ReturnType<typeof setTimeout> | null = null;
 let lastHandle = 0;
+let closed = false;
 
 function runFrame() {
   frame = null;
@@ -33,6 +37,7 @@ function runFrame() {
 }
 
 function requestAnimationFrame(callback: FrameRequestCallback): number {
+  if (closed) return 0;
   lastHandle += 1;
   callbacks.set(lastHandle, callback);
   frame ??= setRealTimeout(runFrame, 1000 / 60);
@@ -45,6 +50,14 @@ function cancelAnimationFrame(handle: number): void {
   clearRealTimeout(frame);
   frame = null;
 }
+
+// Setup hooks run last among a file's afterAll hooks, so nothing after this asks for a frame.
+afterAll(() => {
+  closed = true;
+  callbacks.clear();
+  if (frame !== null) clearRealTimeout(frame);
+  frame = null;
+});
 
 for (const target of new Set<object>([globalThis, window])) {
   Object.assign(target, { requestAnimationFrame, cancelAnimationFrame });
