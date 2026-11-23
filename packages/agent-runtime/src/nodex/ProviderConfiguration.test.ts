@@ -10,8 +10,15 @@ import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as Exit from "effect/Exit";
-import { effectiveSettings, makePolicy, makeWithPorts } from "./ProviderConfiguration.ts";
+import * as SqlClient from "effect/sql/SqlClient";
+import {
+  effectiveSettings,
+  makePolicy,
+  makeWithPorts,
+  runOwnedInstances,
+} from "./ProviderConfiguration.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 
 it.effect("revisions describe applied configuration, including deferred admission changes", () =>
   Effect.gen(function* () {
@@ -152,6 +159,55 @@ it.effect(
       });
       expect(closed).toEqual([idle, active, background]);
     }),
+);
+
+it.effect(
+  "an installed component replaces its unavailable configuration despite waiting work",
+  () =>
+    Effect.gen(function* () {
+      const id = ProviderInstanceId.make("codex");
+      const available = { driver: ProviderDriverKind.make("codex") };
+      const initial = {
+        [id]: {
+          ...available,
+          componentUnavailable: {
+            installationSource: { kind: "component" as const, id: "codex" },
+            reason: "installing" as const,
+            message: "Codex is still installing.",
+          },
+        },
+      };
+      const nativeMap = yield* Ref.make<ProviderInstanceConfigMap>(initial);
+      const configuration = yield* makeWithPorts(initial, {
+        // Work queued while the component installs waits for this configuration.
+        busyInstances: Effect.succeed(new Set([id])),
+        closeIdleInstance: () => Effect.void,
+        reconcile: (next) => Ref.set(nativeMap, next),
+      });
+      expect(yield* configuration.configure({ [id]: available })).toEqual({
+        applied: true,
+        deferredInstanceIds: [],
+      });
+      expect(yield* Ref.get(nativeMap)).toEqual({ [id]: available });
+    }),
+);
+
+it.effect("a held queue owns no configuration, while waiting and active runs do", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const runs = [
+      ["held", "queued", { queueHeld: true }],
+      ["next", "queued", {}],
+      ["released", "queued", { queueHeld: false }],
+      ["waiting", "waiting", {}],
+      ["done", "completed", {}],
+    ] as const;
+    for (const [instance, status, payload] of runs)
+      yield* sql`INSERT INTO orchestration_v2_projection_runs
+        (run_id,thread_id,ordinal,provider,provider_instance_id,status,requested_at,payload_json)
+        VALUES(${instance},${instance},1,'codex',${instance},${status},'2026-11-12T00:00:00Z',${JSON.stringify(payload)})`;
+    expect([...(yield* runOwnedInstances(sql))].sort()).toEqual(["next", "released", "waiting"]);
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
 it.effect("refuses both provider settings write paths without persisting secrets", () =>

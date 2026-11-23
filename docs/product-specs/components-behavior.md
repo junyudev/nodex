@@ -57,7 +57,7 @@ The installed Component stays independent of the original installation.
   are deleted, and the install stops until a person retries.
 
 A Component becomes usable as soon as it is installed. The app does not restart, and Agent work
-that starts afterwards can use it.
+that starts afterwards can use it, including work that was already waiting for it.
 
 While a Component installs, the rest of Nodex stays usable. Features show the
 Component's installation state when they need it to run. Agent surfaces read that state through

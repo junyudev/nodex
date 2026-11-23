@@ -31,7 +31,8 @@ with a busy result. Preparation reserves the completed installation briefly unti
 ownership; an unclaimed reservation expires so it does not prevent later cleanup.
 
 Updates select a new installation without changing an instance's identity. Active and queued work
-retain captured launch configuration. Disabling or removing an instance immediately blocks new
+retain captured launch configuration; a queue its person has paused holds none and runs with the
+configuration current when it resumes. Disabling or removing an instance immediately blocks new
 work across direct submission, queue append, delegation and Automation. Existing admitted work
 continues with its captured configuration unless cancelled. Pending ordinary edits apply after the
 instance is idle; an unavailable instance never silently falls back to another Agent.

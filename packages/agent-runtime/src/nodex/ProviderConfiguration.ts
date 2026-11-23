@@ -161,8 +161,11 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
     const deferredInstanceIds: string[] = [];
     for (const id of changed) {
       const old = before[id];
+      // An instance whose component is unavailable has no driver, so its work is waiting for
+      // this change, not running on the old configuration.
       if (
         old !== undefined &&
+        old.componentUnavailable === undefined &&
         busy.has(id) &&
         !(old.source === "nodex" && wanted[id] === undefined)
       ) {
@@ -202,6 +205,19 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
   };
 });
 
+/**
+ * Instances whose admitted work runs, or will start, on their current configuration. A held
+ * queue waits for its person, possibly for days, and owns no configuration until it is resumed.
+ */
+export const runOwnedInstances = (sql: SqlClient.SqlClient) =>
+  sql<{ readonly provider_instance_id: string }>`
+    SELECT DISTINCT provider_instance_id FROM orchestration_v2_projection_runs
+    WHERE status IN ('preparing', 'starting', 'running', 'waiting')
+      OR (status = 'queued' AND COALESCE(json_extract(payload_json, '$.queueHeld'), 0) = 0)
+  `.pipe(
+    Effect.map((rows) => rows.map((row) => ProviderInstanceId.make(row.provider_instance_id))),
+  );
+
 export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function* (
   initial: ProviderInstanceConfigMap,
 ): Effect.fn.Return<
@@ -222,10 +238,7 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
   return yield* makeWithPorts(initial, {
     busyInstances: Effect.gen(function* () {
       const native = yield* sessions.busyInstances;
-      const rows = yield* sql<{ readonly provider_instance_id: string }>`
-        SELECT DISTINCT provider_instance_id FROM orchestration_v2_projection_runs
-        WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
-      `;
+      const runs = yield* runOwnedInstances(sql);
       const changingCredentials = yield* Effect.filter(
         yield* instances.listInstances,
         (instance) => instance.auth?.isChangingCredentials ?? Effect.succeed(false),
@@ -233,7 +246,7 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
       return new Set([
         ...changingCredentials.map((instance) => instance.instanceId),
         ...native,
-        ...rows.map((row) => ProviderInstanceId.make(row.provider_instance_id)),
+        ...runs,
       ]);
     }).pipe(
       Effect.mapError(
