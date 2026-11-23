@@ -14,6 +14,12 @@ permissions:
   actions: read
   contents: read
 
+# A newer push supersedes a running one. Its run compares against the last green commit, so it
+# re-checks everything the cancelled run would have. Manual runs are never cancelled or queued.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('main-ci-{0}', github.ref) || format('main-ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   classify:
     name: classify

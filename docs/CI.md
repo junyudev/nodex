@@ -17,7 +17,9 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   selected until its affected changes pass or are reverted. Main CI runs every
   deterministic source gate when GitHub history is unavailable or the latest
   100 successful runs contain no eligible ancestor. The first run under this
-  rule also needs full coverage to establish a trusted base.
+  rule also needs full coverage to establish a trusted base. A newer push cancels a Main CI
+  run still in progress; because the newer run compares against the last green commit, it
+  re-checks everything the cancelled run covered. Manual runs are never cancelled.
 - `.github/workflows/ci-nightly.yml` runs every deterministic static, Rust,
   application, browser, stress, and macOS runtime contract, plus a curated
   Electron E2E set on standard `macos-26`. The `nightly complete` aggregate
