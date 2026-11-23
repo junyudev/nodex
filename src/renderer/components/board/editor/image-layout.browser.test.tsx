@@ -54,7 +54,7 @@ describe("NFM image layout in Chromium", () => {
 
   test("keeps intrinsic geometry distinct from an authored preview width", () => {
     const image = document.createElement("img");
-    image.src = "https://example.test/image.png";
+    image.src = "data:image/png;base64,YQ==";
     image.width = 640;
     image.height = 960;
     image.dataset.sourceWidth = "640";
@@ -70,9 +70,9 @@ describe("NFM image layout in Chromium", () => {
     expect(imageParse()(image)).toMatchObject({ previewWidth: 320 });
   });
 
-  test("reserves the complete image box before the source loads", async () => {
+  test("reserves the complete image box while the source is unavailable", async () => {
     const { view } = mountImage({
-      url: "https://127.0.0.1:9/delayed-image.png",
+      url: "data:image/png;base64,",
       previewWidth: 160,
       sourceWidth: 400,
       sourceHeight: 800,

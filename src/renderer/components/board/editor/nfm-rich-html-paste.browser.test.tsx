@@ -125,7 +125,7 @@ describe("rich HTML paste spacing in Chromium", () => {
 
   test("keeps marks, links, lists, images and code while trimming paragraph edges", async () => {
     const { blocks } = await pasteHtml(
-      '<p><b><br>Bold</b> <a href="https://example.com"><i>link<br></i></a></p><p><br></p><ul><li>Item</li></ul><p><img src="https://example.com/image.png" alt="Image"></p><pre><code>\ncode\n\n</code></pre>',
+      '<p><b><br>Bold</b> <a href="https://example.com"><i>link<br></i></a></p><p><br></p><ul><li>Item</li></ul><p><img src="data:image/png;base64,YQ==" alt="Image"></p><pre><code>\ncode\n\n</code></pre>',
       "Bold link\nItem\ncode",
     );
     expect(blocks.map((block) => block.type)).toEqual([
@@ -144,7 +144,7 @@ describe("rich HTML paste spacing in Chromium", () => {
       },
     ]);
     expect(blocks[1]?.content).toEqual([{ type: "text", text: "Item", styles: {} }]);
-    expect(blocks[2]?.props).toMatchObject({ url: "https://example.com/image.png" });
+    expect(blocks[2]?.props).toMatchObject({ url: "data:image/png;base64,YQ==" });
     expect(blocks[3]?.content).toEqual([{ type: "text", text: "\ncode\n\n", styles: {} }]);
   });
 

@@ -224,7 +224,7 @@ describe("collaborative NFM undo in Chromium", () => {
         {
           id: "block-image",
           type: "image",
-          props: { url: "https://example.test/image.png", name: "", caption: "" },
+          props: { url: "data:image/png;base64,YQ==", name: "", caption: "" },
         },
       ],
       "block-source",

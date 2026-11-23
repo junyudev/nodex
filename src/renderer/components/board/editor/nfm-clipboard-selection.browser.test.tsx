@@ -222,7 +222,7 @@ describe("current Block clipboard behavior in Chromium", () => {
           id: "image",
           type: "image",
           props: {
-            url: "nodex://files/01999999-9999-7999-8999-999999999999",
+            url: "data:image/png;base64,YQ==",
             caption: "Selected image",
             name: "selected.png",
             showPreview: true,
@@ -396,8 +396,8 @@ describe("current Block clipboard behavior in Chromium", () => {
             content: "Parent",
             children: [
               { id: "child", type: "paragraph", content: "Child" },
-              { id: "image-one", type: "image", props: { url: "https://example.com/one.png" } },
-              { id: "image-two", type: "image", props: { url: "https://example.com/two.png" } },
+              { id: "image-one", type: "image", props: { url: "data:image/png;base64,YQ==" } },
+              { id: "image-two", type: "image", props: { url: "data:image/png;base64,Yg==" } },
               {
                 id: "last-child",
                 type: "paragraph",
