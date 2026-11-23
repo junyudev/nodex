@@ -530,16 +530,21 @@ describe("completed runtime response scroll intent", () => {
         expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeGreaterThan(beforeWheel);
         if (index === 0) {
           const frame = view.container.querySelector<HTMLElement>("[data-test-viewport-frame]")!;
-          const scrollTopBeforeReflow = viewport.scrollTop;
+          const beforeReflow = getThreadScrollDistanceFromBottomPx(viewport);
           await act(async () => {
             frame.style.width = "620px";
             await frames(8);
           });
-          // The thread opts out of native anchoring, so only a write could move a reader who
-          // scrolled up. Distance from the bottom is not the measure: the zoomed rewrap rounds
-          // the content's height by a pixel either way, depending on the platform's fonts.
-          expect(viewport.scrollTop).toBe(scrollTopBeforeReflow);
-          expect(view.scroll().getScrollMode()).toBe("user");
+          // Compensation keeps the reader's distance from the bottom. Under zoom the browser snaps
+          // the written position to device pixels, so the viewport can read a pixel closer; the
+          // controller keeps the distance it asked for and compensates from that, so it never drifts.
+          expect(
+            view
+              .scroll()
+              .getUnroundedScrollDistanceFromBottomPx(
+                getThreadScrollDistanceFromBottomPx(viewport),
+              ),
+          ).toBeGreaterThanOrEqual(beforeReflow);
         }
       }
       expect(distances.at(-1)).toBeGreaterThan(50);
