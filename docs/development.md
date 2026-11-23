@@ -937,8 +937,12 @@ ratchets per-file/rule counts, including unused suppression comments, against
 [Lint Governance](LINTING.md) for inline exceptions, rename handling, full
 diagnostics, and the explicit new-rule baseline switch.
 `vp run check`, `vp run check:semantic`, `vp run typecheck`, `vp run lint`, and `vp run fmt:check` are
-deterministic root tasks with automatic input tracking and no restorable output.
-They cache successful local validation without enabling cache replay for the
+deterministic root tasks with no restorable output.
+The semantic tasks claim the machine budget, so they list their inputs (every workspace file
+outside dependency, build, cache and local directories) instead of using automatic input
+tracking: the tracker injects itself into child processes, and macOS system tools abort under
+it, which would hide performance cores and memory pressure from the budget. `fmt:check` keeps
+automatic tracking. They cache successful local validation without enabling cache replay for the
 repository's side-effectful package scripts. `vp run typecheck` follows the same
 integrated semantic path without formatting; it is deliberately not a
 lint-bypassing type-only authority.

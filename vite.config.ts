@@ -158,6 +158,35 @@ const singleOwnerEventHandlerFiles = [
 // that much of the shared computer budget; three at once would exhaust a 36 GiB computer.
 const semanticCommand =
   'tsx scripts/tooling/with-machine-budget.ts 4 11 "semantic check" -- "tsc-rs --build --noEmit && tsx scripts/ci/lint-warning-ratchet.ts"';
+// Tasks that claim the machine budget list their inputs instead of using automatic tracking. The
+// tracker injects itself into every child process, and macOS system tools such as sysctl abort
+// under it, which would hide performance cores and memory pressure from the budget. Every
+// workspace file outside dependency, build, cache and local directories is an input.
+const semanticTaskCache = {
+  env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+  input: [
+    "**/*",
+    "!**/node_modules/**",
+    "!.git/**",
+    "!.agents/**",
+    "!*.local/**",
+    "!.cache/**",
+    "!.generated/**",
+    "!.vitest-attachments/**",
+    "!.playwright-cli/**",
+    "!coverage/**",
+    "!test-results/**",
+    "!out/**",
+    "!build/**",
+    "!dist/**",
+    "!target/**",
+    "!third_party/blocknote/packages/*/dist/**",
+    "!third_party/blocknote/packages/*/types/**",
+    "!**/*.tsbuildinfo",
+    "!**/.DS_Store",
+  ],
+  output: [],
+};
 
 const toolingFixtureIgnorePatterns = new Set(["scripts/fixtures/tooling/**", "**/fixtures/**"]);
 export default defineConfig({
@@ -442,24 +471,7 @@ export default defineConfig({
       },
       check: {
         command: `vp fmt --check && ${semanticCommand}`,
-        cache: {
-          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-          input: [
-            { auto: true },
-            "scripts/ci/lint-warning-ratchet.ts",
-            "scripts/ci/count-ratchet.ts",
-            "scripts/ci/lint-warning-baseline.json",
-            "package.json",
-            "pnpm-lock.yaml",
-            "pnpm-workspace.yaml",
-            "patches/**",
-            "!.cache/**",
-            "!**/*.tsbuildinfo",
-            "!cache.local",
-            "!cache.local/**",
-          ],
-          output: [],
-        },
+        cache: semanticTaskCache,
       },
       "fmt:check": {
         command: "vp fmt --check",
@@ -480,66 +492,15 @@ export default defineConfig({
       },
       lint: {
         command: semanticCommand,
-        cache: {
-          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-          input: [
-            { auto: true },
-            "scripts/ci/lint-warning-ratchet.ts",
-            "scripts/ci/count-ratchet.ts",
-            "scripts/ci/lint-warning-baseline.json",
-            "package.json",
-            "pnpm-lock.yaml",
-            "pnpm-workspace.yaml",
-            "patches/**",
-            "!.cache/**",
-            "!**/*.tsbuildinfo",
-            "!cache.local",
-            "!cache.local/**",
-          ],
-          output: [],
-        },
+        cache: semanticTaskCache,
       },
       "check:semantic": {
         command: semanticCommand,
-        cache: {
-          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-          input: [
-            { auto: true },
-            "scripts/ci/lint-warning-ratchet.ts",
-            "scripts/ci/count-ratchet.ts",
-            "scripts/ci/lint-warning-baseline.json",
-            "package.json",
-            "pnpm-lock.yaml",
-            "pnpm-workspace.yaml",
-            "patches/**",
-            "!.cache/**",
-            "!**/*.tsbuildinfo",
-            "!cache.local",
-            "!cache.local/**",
-          ],
-          output: [],
-        },
+        cache: semanticTaskCache,
       },
       typecheck: {
         command: semanticCommand,
-        cache: {
-          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-          input: [
-            { auto: true },
-            "scripts/ci/lint-warning-ratchet.ts",
-            "scripts/ci/count-ratchet.ts",
-            "scripts/ci/lint-warning-baseline.json",
-            "package.json",
-            "pnpm-lock.yaml",
-            "pnpm-workspace.yaml",
-            "patches/**",
-            "!.cache/**",
-            "!**/*.tsbuildinfo",
-            "!cache.local",
-            "!cache.local/**",
-          ],
-          output: [],
-        },
+        cache: semanticTaskCache,
       },
     },
   },

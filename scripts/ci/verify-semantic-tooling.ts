@@ -86,15 +86,49 @@ async function command(
   };
 }
 
-/** Exercise Vite Task's actual command cache, including compound commands and invalidation. */
+/**
+ * Budget-claiming tasks must run their child processes untracked: the automatic input tracker
+ * injects itself into every child, and macOS system tools such as sysctl abort under it, which
+ * would hide performance cores and memory pressure from the machine budget.
+ */
+function budgetedTaskInputs(): readonly string[] {
+  const budgeted = Object.entries(rootConfiguration.run?.tasks ?? {}).flatMap(([name, task]) =>
+    typeof task === "object" &&
+    !Array.isArray(task) &&
+    [task.command].flat().some((command) => command.includes("with-machine-budget"))
+      ? [{ name, cache: task.cache }]
+      : [],
+  );
+  if (budgeted.length === 0) throw new Error("No task claims the machine budget.");
+  const inputs = budgeted.map(({ name, cache }) => {
+    const input = typeof cache === "object" ? cache.input : undefined;
+    const listed = input?.filter((entry): entry is string => typeof entry === "string");
+    if (!listed || listed.length !== input?.length)
+      throw new Error(`${name} claims the machine budget, so it must list its cache inputs.`);
+    return listed;
+  });
+  if (new Set(inputs.map((input) => JSON.stringify(input))).size !== 1)
+    throw new Error("Budget-claiming tasks must share one input policy.");
+  return inputs[0];
+}
+
+/**
+ * Exercise Vite Task's actual command cache, including compound commands and invalidation, under
+ * the input policy shared by the budget-claiming semantic tasks.
+ */
 export async function verifySemanticTaskCache(): Promise<void> {
+  const input = budgetedTaskInputs();
   await fixtureWorkspace(async (directory) => {
     const counter = path.join(directory, "executions.log");
     const environment = { COUNTER: counter, PROBE_POLICY: "first" };
     writeFileSync(path.join(directory, "input.txt"), "first");
+    const systemTool =
+      process.platform === "darwin"
+        ? "require('node:child_process').execFileSync('/usr/sbin/sysctl',['-n','hw.ncpu']);"
+        : "";
     writeFileSync(
       path.join(directory, "check.cjs"),
-      `require('node:fs').readFileSync('input.txt');require('node:fs').appendFileSync(process.env.COUNTER,'semantic\\n');`,
+      `${systemTool}require('node:fs').readFileSync('input.txt');require('node:fs').appendFileSync(process.env.COUNTER,'semantic\\n');`,
     );
     writeFileSync(
       path.join(directory, "format.cjs"),
@@ -104,7 +138,7 @@ export async function verifySemanticTaskCache(): Promise<void> {
       command: "node check.cjs",
       cache: {
         env: ["COUNTER", "PROBE_POLICY"],
-        input: [{ auto: true }, "!executions.log"],
+        input: [...input, "!executions.log"],
         output: [],
       },
     };
