@@ -62,8 +62,8 @@ async function copyQqGroupNumber(): Promise<void> {
 }
 
 /**
- * The account menu's way to reach the people who make Nodex: its Discord server, and its QQ group,
- * whose number stays readable in the row and is copied when chosen.
+ * The account menu's way to reach the people who make Nodex: its QQ group, whose number stays
+ * readable in the row and is copied when chosen, and its Discord server.
  */
 export function CommunityMenu() {
   const intl = useIntl();
@@ -72,13 +72,6 @@ export function CommunityMenu() {
       leftSlot={<AccountMenuLeading icon={<SlashFeedbackIcon />} />}
       label={intl.formatMessage(MESSAGES.title)}
     >
-      <NodexDropdownItem
-        leftSlot={<DiscordMarkIcon />}
-        rightSlot={<OpenExternalIcon className="icon-2xs text-token-description-foreground" />}
-        onSelect={() => void joinDiscord()}
-      >
-        Discord
-      </NodexDropdownItem>
       <NodexDropdownItem
         aria-label={intl.formatMessage(COPY_QQ_GROUP, { number: NODEX_QQ_GROUP_NUMBER })}
         leftSlot={<QqMarkIcon />}
@@ -91,6 +84,13 @@ export function CommunityMenu() {
         onSelect={() => void copyQqGroupNumber()}
       >
         {intl.formatMessage(MESSAGES.qqGroup)}
+      </NodexDropdownItem>
+      <NodexDropdownItem
+        leftSlot={<DiscordMarkIcon />}
+        rightSlot={<OpenExternalIcon className="icon-2xs text-token-description-foreground" />}
+        onSelect={() => void joinDiscord()}
+      >
+        Discord
       </NodexDropdownItem>
     </NodexDropdownFlyoutSubmenuItem>
   );

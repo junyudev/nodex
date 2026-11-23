@@ -255,7 +255,7 @@ describe("Nodex account menu", () => {
     expect(controls.nativeAction).not.toHaveBeenCalled();
   });
 
-  test("reaches the community whatever the account state: Discord opens outside, QQ copies its number", async () => {
+  test("reaches the community whatever the account state: QQ copies its number, Discord opens outside", async () => {
     const success = vi.spyOn(toast, "success");
     const controls = renderAccountControls({ ...signedOut, configured: false });
     await screen.findByText("Not available in this build.");
@@ -270,15 +270,12 @@ describe("Nodex account menu", () => {
     };
 
     await openCommunity();
-    await selectMenuItem("Discord");
-    expect(controls.invoke).toHaveBeenCalledWith(
-      "shell:open-external-url",
-      "https://discord.com/invite/9yRa5SUeDz",
-    );
-
-    await openCommunity();
     const qq = await screen.findByRole("menuitem", { name: "Copy QQ group number 1126214921" });
-    // The number stays readable in the row for anyone who would rather type it.
+    // The QQ group leads, and its number stays readable in the row for anyone who would rather type it.
+    expect(
+      qq.compareDocumentPosition(screen.getByRole("menuitem", { name: "Discord" })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(within(qq).getByText("1126214921")).toBeDefined();
     await selectMenuItem("Copy QQ group number 1126214921");
     await waitFor(() =>
@@ -289,6 +286,13 @@ describe("Nodex account menu", () => {
     );
     expect(clipboard.writeText).toHaveBeenCalledExactlyOnceWith("1126214921");
     success.mockRestore();
+
+    await openCommunity();
+    await selectMenuItem("Discord");
+    expect(controls.invoke).toHaveBeenCalledWith(
+      "shell:open-external-url",
+      "https://discord.com/invite/9yRa5SUeDz",
+    );
   });
 
   test("lists every Space once there is a choice, switches, and joins after the menu closes", async () => {
