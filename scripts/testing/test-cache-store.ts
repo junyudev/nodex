@@ -4,6 +4,7 @@ import {
   readFile,
   readdir,
   readlink,
+  realpath,
   rename,
   rm,
   stat,
@@ -13,12 +14,19 @@ import {
 import path from "node:path";
 import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache.ts";
 import type { CachedSuiteReport } from "./run-cached-tests.ts";
+import {
+  localInputReader,
+  portablePath,
+  sameMembers,
+  type LocalInputs,
+} from "./test-cache-inputs.ts";
 import type { TestEvidence } from "./test-cache-graph.ts";
 import type { CacheSuite } from "./test-cache-policy.ts";
 
 export interface CachedPass {
   readonly globalKey: string;
   readonly deps: Readonly<Record<string, string>>;
+  readonly local?: LocalInputs;
 }
 
 export const digest = (content: string | Buffer) =>
@@ -35,6 +43,7 @@ export function cacheDirectory(root: string, env: NodeJS.ProcessEnv, suite: Cach
 }
 
 export function fileHasher(root: string) {
+  const canonicalRoot = realpath(root).catch(() => undefined);
   const read = new Map<
     string,
     Promise<{ hash: string; stamp: string; ctimeNs: bigint } | undefined>
@@ -49,6 +58,13 @@ export function fileHasher(root: string) {
       try {
         const before = await readStat(file);
         if (!before.isFile()) return undefined;
+        const canonical = await canonicalRoot;
+        if (
+          !canonical ||
+          (!file.startsWith("node_modules/") &&
+            (await realpath(path.join(root, file))) !== path.join(canonical, file))
+        )
+          return undefined;
         const bytes = await readFile(path.join(root, file));
         const after = await readStat(file);
         if (stamp(before) !== stamp(after)) return undefined;
@@ -106,6 +122,7 @@ const ignoredRootDirectories = new Set([
 
 export async function workspaceInputs(root: string, resultsRoot?: string) {
   const files = new Set<string>();
+  const links = new Set<string>();
   const topology: string[] = [];
   async function visit(directory: string) {
     const entries = await readdir(path.join(root, directory), { withFileTypes: true });
@@ -121,8 +138,10 @@ export async function workspaceInputs(root: string, resultsRoot?: string) {
       const file = directory ? directory + "/" + entry.name : entry.name;
       if (resultsRoot && path.join(root, file) === resultsRoot) continue;
       if (entry.isDirectory()) {
+        topology.push(JSON.stringify([file]));
         await visit(file);
       } else if (entry.isSymbolicLink()) {
+        links.add(file);
         topology.push(JSON.stringify([file, await readlink(path.join(root, file))]));
       } else if (entry.isFile()) {
         files.add(file);
@@ -131,7 +150,7 @@ export async function workspaceInputs(root: string, resultsRoot?: string) {
     }
   }
   await visit("");
-  return { files, topology: digest(topology.sort().join("\n")) };
+  return { files, links, topology: digest(topology.sort().join("\n")) };
 }
 
 export async function globalCacheKey(
@@ -142,17 +161,15 @@ export async function globalCacheKey(
   workspace: Awaited<ReturnType<typeof workspaceInputs>>,
   hash: ReturnType<typeof fileHasher>,
 ) {
-  const globalFiles = [...workspace.files]
-    .filter(
-      (file) =>
-        /^(?:config\/|patches\/|scripts\/testing\/|scripts\/tooling\/vitest-)/u.test(file) ||
-        /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|\.env[^/]*|(?:vite|vitest|postcss)\.config\.[^/]+)$/u.test(
-          file,
-        ) ||
-        (suite === "renderer" && file === "src/renderer/test/setup.ts") ||
-        [".node-version", ".npmrc", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file),
-    )
-    .sort();
+  const sharedInput = (file: string) =>
+    /^(?:config\/|patches\/|scripts\/testing\/|scripts\/tooling\/vitest-)/u.test(file) ||
+    /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|\.env[^/]*|(?:vite|vitest|postcss)\.config\.[^/]+)$/u.test(
+      file,
+    ) ||
+    (suite === "renderer" && file === "src/renderer/test/setup.ts") ||
+    [".node-version", ".npmrc", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file);
+  if ([...workspace.links].some(sharedInput)) return undefined;
+  const globalFiles = [...workspace.files].filter(sharedInput).sort();
   const installed = await readFile(path.join(root, "node_modules/.modules.yaml"), "utf8").catch(
     () => undefined,
   );
@@ -181,7 +198,6 @@ export async function globalCacheKey(
       process.arch,
       epoch,
       environment,
-      workspace.topology,
       inputs,
       installedLock,
       installed.replace(/^\s*"prunedAt":.*\n/gmu, "").replaceAll(root, "<workspace>"),
@@ -238,22 +254,32 @@ async function changedPassInputs(
   globalKey: string,
   file: string,
   hash: ReturnType<typeof fileHasher>,
+  workspace: { topology: string; reader: ReturnType<typeof localInputReader> },
 ) {
   if (pass?.globalKey !== globalKey || typeof pass.deps?.[file] !== "string")
     throw new CorruptCachedPass(file);
   const changed: string[] = [];
   for (const [dependency, expected] of Object.entries(pass.deps)) {
-    if (
-      typeof expected !== "string" ||
-      path.isAbsolute(dependency) ||
-      path.posix.normalize(dependency) !== dependency ||
-      dependency === ".." ||
-      dependency.startsWith("../")
-    )
+    if (typeof expected !== "string" || !portablePath(dependency))
       throw new CorruptCachedPass(file);
     if ((await hash(dependency)) !== expected) changed.push(dependency);
   }
-  return changed;
+  if (pass.local?.topology !== undefined && pass.local.topology !== workspace.topology)
+    changed.push("workspace file names");
+  for (const [file, expected] of Object.entries(pass.local?.probes ?? {})) {
+    if (
+      !portablePath(file) ||
+      (expected !== "absent" && expected !== "directory" && expected !== "file")
+    )
+      throw new CorruptCachedPass(file);
+    if ((await workspace.reader.state(file)) !== expected) changed.push(file);
+  }
+  for (const [pattern, expected] of Object.entries(pass.local?.globs ?? {})) {
+    if (!portablePath(pattern) || !Array.isArray(expected)) throw new CorruptCachedPass(file);
+    const members = await workspace.reader.glob(pattern);
+    if (!members || !sameMembers(members, expected)) changed.push(pattern);
+  }
+  return [...new Set(changed)];
 }
 
 export type PassLookup =
@@ -270,6 +296,7 @@ export async function findPass(
   file: string,
   key: string,
   hash: ReturnType<typeof fileHasher>,
+  workspace = { topology: "", reader: localInputReader(directory) },
 ): Promise<PassLookup> {
   const base = entriesForFile(directory, file);
   const entries = (await readdir(base).catch(() => [])).filter((name) => name.endsWith(".json"));
@@ -287,7 +314,13 @@ export async function findPass(
     });
     if (content === undefined) continue;
     if (name !== key + "-" + digest(content) + ".json") throw new CorruptCachedPass(file);
-    const changed = await changedPassInputs(JSON.parse(content) as CachedPass, key, file, hash);
+    const changed = await changedPassInputs(
+      JSON.parse(content) as CachedPass,
+      key,
+      file,
+      hash,
+      workspace,
+    );
     if (changed.length === 0) {
       const now = new Date();
       await utimes(record, now, now).catch(() => undefined);

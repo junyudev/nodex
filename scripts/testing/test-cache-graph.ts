@@ -2,9 +2,18 @@ import { readFile } from "node:fs/promises";
 import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseSync } from "oxc-parser";
+import { parseSync, Visitor, type ParseResult } from "oxc-parser";
 import type { DevEnvironment, EnvironmentModuleNode } from "vite-plus";
 import type { TestModule } from "vite-plus/test/node";
+import {
+  cleanId,
+  localInputReader,
+  resolutionProbes,
+  simpleGlob,
+  workspaceExportReader,
+  type PathState,
+  type LocalInputs,
+} from "./test-cache-inputs.ts";
 import { relativeInput } from "./test-cache-policy.ts";
 
 // Keep an allowlist so new Node builtins with ambient authority fail closed.
@@ -64,10 +73,69 @@ const scriptFile = (file: string) => /\.[cm]?[jt]sx?$/u.test(file);
 
 interface SourceInputs {
   readonly reason?: string;
-  readonly staticRequests?: readonly string[];
   readonly workerUrl?: string;
-  readonly expandsGlob?: boolean;
+  readonly staticRequests?: readonly string[];
+  readonly dynamicRequests?: readonly string[];
+  readonly globs?: readonly string[];
   readonly customEnvironment?: boolean;
+}
+
+function readGlobs(file: string, parsed: ParseResult) {
+  const patterns: string[] = [];
+  let unsupported = false;
+  new Visitor({
+    CallExpression(call) {
+      const { callee, arguments: args } = call;
+      if (
+        callee.type !== "MemberExpression" ||
+        callee.computed ||
+        callee.object.type !== "MetaProperty" ||
+        callee.object.meta.name !== "import" ||
+        callee.property.type !== "Identifier" ||
+        callee.property.name !== "glob"
+      )
+        return;
+      const [pattern, options] = args;
+      if (
+        pattern?.type !== "Literal" ||
+        typeof pattern.value !== "string" ||
+        (options &&
+          (options.type !== "ObjectExpression" ||
+            options.properties.some(
+              (property) =>
+                property.type !== "Property" ||
+                property.computed ||
+                property.key.type !== "Identifier" ||
+                !["eager", "import", "query"].includes(property.key.name),
+            ))) ||
+        args.length > 2
+      ) {
+        unsupported = true;
+        return;
+      }
+      const value = pattern.value;
+      const resolved = value.startsWith("/")
+        ? value.slice(1)
+        : /^\.\.?\//u.test(value)
+          ? path.posix.join(path.posix.dirname(file), value)
+          : "";
+      if (simpleGlob(resolved)) patterns.push(resolved);
+      else unsupported = true;
+    },
+  }).visit(parsed.program);
+  return unsupported ? undefined : patterns;
+}
+
+function literalImports(source: string, imports: ParseResult["module"]["dynamicImports"]) {
+  const requests: string[] = [];
+  for (const {
+    moduleRequest: { start, end },
+  } of imports) {
+    const literal = /^(['"`])([^'"`$\\]+)\1$/u.exec(source.slice(start, end).trim());
+    if (!literal) return undefined;
+    requests.push(literal[2]);
+  }
+  return requests;
 }
 
 function inspectSource(file: string, source: string, rendererJsdom: boolean): SourceInputs {
@@ -91,14 +159,9 @@ function inspectSource(file: string, source: string, rendererJsdom: boolean): So
       entries.flatMap(({ moduleRequest }) => (moduleRequest ? [moduleRequest.value] : [])),
     ),
   ];
-  for (const {
-    moduleRequest: { start, end },
-  } of dynamicImports) {
-    const literal = /^(['"`])([^'"$`\\]+)\1$/u.exec(source.slice(start, end).trim());
-    if (!literal) return { reason: "computed import" };
-    requests.push(literal[2]);
-  }
-  for (const request of requests) {
+  const dynamicRequests = literalImports(source, dynamicImports);
+  if (!dynamicRequests) return { reason: "computed import" };
+  for (const request of [...requests, ...dynamicRequests]) {
     const reason = builtinReason(request);
     if (reason) return { reason };
     if (
@@ -143,9 +206,13 @@ function inspectSource(file: string, source: string, rendererJsdom: boolean): So
         )
       : source;
   if (/\b(?:Worker|SharedWorker)\s*\(/u.test(workerSource)) return { reason: "worker script" };
+  const globs = parsed.module.importMetas.length > 0 ? readGlobs(file, parsed) : [];
+  if (!globs) return { reason: "unsupported glob" };
   return {
     staticRequests,
-    workerUrl: workerUrl && requests.includes(workerUrl) ? workerUrl : undefined,
+    dynamicRequests,
+    workerUrl: workerUrl && staticRequests.includes(workerUrl) ? workerUrl : undefined,
+    globs: globs.length > 0 ? globs : undefined,
   };
 }
 
@@ -163,15 +230,11 @@ export interface TestEvidence {
   readonly file: string;
   readonly passed: boolean;
   readonly deps?: readonly string[];
+  readonly local?: Omit<LocalInputs, "topology">;
+  readonly broadTopology?: boolean;
   readonly reason?: string;
   readonly input?: string;
   readonly durationMs?: number;
-}
-
-interface RecordedProject {
-  readonly modules: readonly string[];
-  readonly files: Record<string, readonly number[] | undefined>;
-  readonly globalSetup?: readonly number[];
 }
 
 function fullyPassed(module: TestModule) {
@@ -187,21 +250,26 @@ function fullyPassed(module: TestModule) {
   );
 }
 
-const cleanId = (id: string) => id.split(/[?#]/u, 1)[0];
 const dependencyPackage = (id: string) => /(?:^|\/)node_modules\//u.test(id);
 const nativeArtifact = (id: string) => /\.(?:node|dylib|dll|so)$/u.test(cleanId(id));
 
-/** Worker records already supply the dynamic imports evaluated by this file. */
+/** Worker records supply evaluated lazy imports. Keep static imports and watched inputs. */
 export function graphInputs(
   imports: Iterable<{ id: string | null; url: string }>,
-  transform: { deps?: readonly string[]; dynamicDeps?: readonly string[] } | null,
-  expandsGlob: boolean,
+  eagerImports: readonly string[],
+  lazyImports: readonly string[],
 ) {
-  const eager = new Set(transform?.deps);
-  const lazy = new Set(expandsGlob ? [] : transform?.dynamicDeps);
-  return [...imports].flatMap(({ id, url }) =>
-    id && (!lazy.has(url) || eager.has(url)) ? [id] : [],
-  );
+  // Import analysis adds ?import to resource URLs before the module graph normalizes them.
+  const identity = (id: string) => id.replace(/([?&])import(?:&|$)/u, "$1").replace(/[?&]$/u, "");
+  const eager = new Set(eagerImports.map(identity));
+  const lazy = new Set(lazyImports.map(identity));
+  return [...imports].flatMap(({ id, url }) => {
+    if (!id) return [];
+    const names = [identity(id), identity(url)];
+    return names.some((name) => lazy.has(name)) && !names.some((name) => eager.has(name))
+      ? []
+      : [id];
+  });
 }
 
 export function dependencyReader(
@@ -209,9 +277,24 @@ export function dependencyReader(
   workspace: ReadonlySet<string>,
   rendererJsdom = false,
 ) {
+  const paths = localInputReader(root);
+  const workspaceExport = workspaceExportReader(root, workspace);
   const inspected = new Map<string, Promise<SourceInputs>>();
-  const modules = new Map<EnvironmentModuleNode, Promise<{ edges: string[]; reason?: string }>>();
-  const staticEdges = new Map<DevEnvironment, Map<string, Promise<(string | undefined)[]>>>();
+  const modules = new Map<
+    EnvironmentModuleNode,
+    Promise<{ edges: string[]; mocks?: readonly StaticMock[]; reason?: string }>
+  >();
+  const resolutions = new Map<DevEnvironment, Map<string, Promise<string | undefined>>>();
+  const imports = new Map<
+    DevEnvironment,
+    Map<
+      string,
+      Promise<{
+        probes: LocalInputs["probes"];
+        broadTopology: boolean;
+      }>
+    >
+  >();
   const checkSource = (file: string): Promise<SourceInputs> => {
     const existing = inspected.get(file);
     if (existing) return existing;
@@ -220,7 +303,6 @@ export function dependencyReader(
           .then((source) => ({
             ...inspectSource(file, source, rendererJsdom),
             customEnvironment: /@(?:vitest|jest)-environment\s+(?!jsdom\b)/u.test(source),
-            expandsGlob: /\bimport\s*\.\s*meta\s*\.\s*glob\b/u.test(source),
           }))
           .catch(() => ({ reason: "unreadable module" }))
       : Promise.resolve({});
@@ -228,57 +310,127 @@ export function dependencyReader(
     return pending;
   };
 
-  function workerEdges(environment: DevEnvironment, importer: string, requests: readonly string[]) {
-    let byImporter = staticEdges.get(environment);
-    if (!byImporter) {
-      byImporter = new Map();
-      staticEdges.set(environment, byImporter);
-    }
-    const existing = byImporter.get(importer);
+  function resolve(environment: DevEnvironment, importer: string, request: string) {
+    if (isBuiltin(request)) return Promise.resolve(request);
+    let resolved = resolutions.get(environment);
+    if (!resolved) resolutions.set(environment, (resolved = new Map()));
+    const key = JSON.stringify([importer, request]);
+    const existing = resolved.get(key);
     if (existing) return existing;
-    const pending = Promise.all(
-      requests.map(async (request) => {
-        if (isBuiltin(request)) return request;
-        const resolved = await environment.pluginContainer
-          .resolveId(request, importer)
-          .catch(() => null);
-        return resolved?.id;
-      }),
-    );
-    byImporter.set(importer, pending);
+    const pending = environment.pluginContainer
+      .resolveId(request, importer)
+      .then((result) => result?.id)
+      .catch(() => undefined);
+    resolved.set(key, pending);
     return pending;
+  }
+
+  function importInputs(
+    environment: DevEnvironment,
+    importer: string,
+    requests: readonly string[],
+  ) {
+    let files = imports.get(environment);
+    if (!files) imports.set(environment, (files = new Map()));
+    const key = JSON.stringify([importer, requests]);
+    const existing = files.get(key);
+    if (existing) return existing;
+    const pending = (async () => {
+      const probes: Record<string, PathState> = {};
+      let broadTopology = false;
+      for (const request of requests) {
+        if (isBuiltin(request)) continue;
+        const resolved = await resolve(environment, importer, request);
+        const bare = /^(?:@[\w.-]+\/)?[\w][\w./-]*$/u.test(request);
+        // Bare requests that stay in the install are covered by its locked identity.
+        if (bare && resolved && (dependencyPackage(resolved) || resolved === request)) continue;
+        const target = resolved && relativeInput(root, cleanId(resolved));
+        if (
+          bare &&
+          target &&
+          (await workspaceExport(request, target)) &&
+          (await paths.state(target)) === "file"
+        ) {
+          probes[target] = "file";
+          continue;
+        }
+        const extensions = environment.config.resolve.extensions;
+        const evidence =
+          resolved && !environment.config.resolve.tsconfigPaths
+            ? await resolutionProbes(root, importer, request, resolved, extensions, paths)
+            : undefined;
+        if (evidence) Object.assign(probes, evidence);
+        else broadTopology = true;
+      }
+      return { probes, broadTopology };
+    })();
+    files.set(key, pending);
+    return pending;
+  }
+
+  interface StaticMock {
+    specifier: string;
+    automock?: boolean;
   }
 
   function graphEdges(
     environment: DevEnvironment,
     node: EnvironmentModuleNode,
-    expandsGlob: boolean,
+    source: SourceInputs,
   ) {
     const existing = modules.get(node);
     if (existing) return existing;
     const pending = (async () => {
-      const edges = graphInputs(node.importedModules, node.transformResult, expandsGlob);
+      const transform = node.transformResult;
+      const eager = [...(transform?.deps ?? [])];
+      const lazy = [...(transform?.dynamicDeps ?? [])];
+      if (node.id && source.dynamicRequests?.length) {
+        const importer = node.id;
+        const resolveRequests = (requests: readonly string[]) =>
+          Promise.all(requests.map((request) => resolve(environment, importer, request)));
+        const [statics, dynamics] = await Promise.all([
+          resolveRequests(source.staticRequests ?? []),
+          resolveRequests(source.dynamicRequests),
+        ]);
+        eager.push(...statics.filter((id) => id !== undefined));
+        lazy.push(...dynamics.filter((id) => id !== undefined));
+      }
+      // Client transforms lack dynamicDeps and glob expansion creates additional
+      // dynamic imports. Read the final URLs as well as source resolution IDs.
+      if (node.id && transform && !transform.ssr && node.importedModules.size > 0) {
+        const parsed = parseSync("transform.js", transform.code);
+        if (parsed.errors.length > 0) return { edges: [], reason: "unparsed transform" };
+        const { dynamicImports, staticImports, staticExports } = parsed.module;
+        const requests = literalImports(transform.code, dynamicImports);
+        if (!requests) return { edges: [], reason: "computed transformed import" };
+        lazy.push(...requests);
+        eager.push(...staticImports.map(({ moduleRequest }) => moduleRequest.value));
+        for (const { entries } of staticExports) {
+          for (const { moduleRequest } of entries) {
+            if (moduleRequest) eager.push(moduleRequest.value);
+          }
+        }
+      }
+      const edges = graphInputs(node.importedModules, eager, lazy);
       if (!node.id) return { edges };
       // The pinned Vitest keeps mock targets in the transform result, including
       // restored FS module-cache entries. Resolve them like its related walker.
       const transformed = node.transformResult as typeof node.transformResult & {
-        __vitestStaticMocks?: readonly { specifier: string }[] | null;
+        __vitestStaticMocks?: readonly StaticMock[] | null;
       };
       const mocks =
         transformed?.__vitestStaticMocks ??
         (environment.pluginContainer.getModuleInfo(node.id)?.meta?.vitestStaticMocks as
-          | readonly { specifier: string }[]
+          | readonly StaticMock[]
           | undefined);
       for (const { specifier } of mocks ?? []) {
         const reason = builtinReason(specifier);
         if (reason) return { edges, reason };
-        const resolved = await environment.pluginContainer
-          .resolveId(specifier, node.id)
-          .catch(() => null);
-        if (resolved) edges.push(resolved.id);
+        const resolved = await resolve(environment, node.id, specifier);
+        if (resolved) edges.push(resolved);
         else return { edges, reason: "unresolved mock target" };
       }
-      return { edges };
+      return { edges, mocks };
     })();
     modules.set(node, pending);
     return pending;
@@ -286,31 +438,50 @@ export function dependencyReader(
 
   return async (
     module: TestModule,
-    project: RecordedProject | undefined,
+    recorded: readonly string[] | undefined,
+    globalSetup?: readonly string[],
   ): Promise<TestEvidence> => {
     const file = module.relativeModuleId;
     if (!fullyPassed(module)) return { file, passed: false, reason: "incomplete pass" };
     const spec = module.toTestSpecification();
-    const recorded = project?.files[file];
     const environment = module.viteEnvironment;
-    if (!recorded || !environment) return { file, passed: true, reason: "missing module graph" };
+    if (!recorded || !environment || (spec.project.config.globalSetup?.length && !globalSetup))
+      return { file, passed: true, reason: "missing module graph" };
     const deps = new Set<string>();
+    const probes: Record<string, PathState> = {};
+    const globs: Record<string, readonly string[]> = {};
+    // Enabled CSS preprocessing can resolve additional paths through its own resolver.
+    const css = spec.project.config.css;
+    let broadTopology =
+      css === true ||
+      Boolean(css && css.include && (!Array.isArray(css.include) || css.include.length > 0));
+    const recordImports = async (importer: string, requests: readonly string[]) => {
+      if (requests.length === 0) return;
+      const evidence = await importInputs(environment, importer, requests);
+      Object.assign(probes, evidence.probes);
+      broadTopology ||= evidence.broadTopology;
+    };
     const workerInputs = new Set<string>();
     const ids = new Set([
       module.moduleId,
       ...spec.project.config.setupFiles,
-      ...[...recorded, ...(project.globalSetup ?? [])].map((index) =>
-        path.resolve(root, project.modules[index]),
-      ),
+      ...recorded,
+      ...(globalSetup ?? []),
     ]);
-    // A conventional external snapshot is also an input when present. The
-    // workspace topology covers creation or deletion of an absent snapshot.
+    if (
+      spec.project.config.snapshotOptions?.resolveSnapshotPath ||
+      spec.project.config.snapshotEnvironment
+    )
+      return { file, passed: true, reason: "custom snapshot path" };
     const snapshot = path.posix.join(
       path.posix.dirname(file),
       "__snapshots__",
       path.posix.basename(file) + ".snap",
     );
-    if (workspace.has(snapshot)) deps.add(snapshot);
+    const snapshotState = await paths.state(snapshot);
+    if (snapshotState === "file") deps.add(snapshot);
+    else if (snapshotState === "absent") probes[snapshot] = snapshotState;
+    else return { file, passed: true, reason: "untracked snapshot", input: snapshot };
     for (const id of ids) {
       const reason = builtinReason(id);
       if (reason || nativeArtifact(id))
@@ -331,9 +502,19 @@ export function dependencyReader(
       deps.add(input);
       const source = await checkSource(input);
       if (source.reason) return { file, passed: true, reason: source.reason, input };
+      await recordImports(absolute, [
+        ...(source.staticRequests ?? []),
+        ...(source.dynamicRequests ?? []),
+      ]);
+      for (const pattern of source.globs ?? []) {
+        const matched = await paths.glob(pattern);
+        if (!matched) return { file, passed: true, reason: "untracked glob", input: pattern };
+        globs[pattern] = matched;
+      }
       if (source.workerUrl) {
         // Queue the plain entry separately from its Vite ?worker&url wrapper.
-        const [entry] = await workerEdges(environment, absolute, [cleanId(source.workerUrl)]);
+        const entry = await resolve(environment, absolute, cleanId(source.workerUrl));
+        await recordImports(absolute, [cleanId(source.workerUrl)]);
         if (!entry || !workspace.has(relativeInput(root, entry) ?? ""))
           return { file, passed: true, reason: "unresolved worker entry", input };
         workerInputs.add(entry);
@@ -342,12 +523,11 @@ export function dependencyReader(
       const node = environment.moduleGraph.getModuleById(id);
       if (node) nodes.add(node);
       for (const imported of nodes) {
-        const { edges, reason: unsafe } = await graphEdges(
-          environment,
-          imported,
-          source.expandsGlob === true,
-        );
+        const { edges, mocks, reason: unsafe } = await graphEdges(environment, imported, source);
         if (unsafe) return { file, passed: true, reason: unsafe };
+        await recordImports(absolute, mocks?.map(({ specifier }) => specifier) ?? []);
+        // Automocks can pick up new manual mocks through Vitest's own resolver.
+        broadTopology ||= mocks?.some(({ automock }) => automock) ?? false;
         for (const edge of edges) ids.add(edge);
       }
     }
@@ -365,26 +545,16 @@ export function dependencyReader(
         return { file, passed: true, reason: "untracked worker input", input: id };
       deps.add(input);
       const source = await checkSource(input);
-      if (source.reason || source.workerUrl || source.expandsGlob)
+      if (source.reason || source.workerUrl || source.globs)
         return { file, passed: true, reason: source.reason ?? "opaque worker input", input };
-      const edges = await workerEdges(environment, id, source.staticRequests ?? []);
-      for (const edge of edges) {
+      const requests = source.staticRequests ?? [];
+      await recordImports(id, requests);
+      for (const request of requests) {
+        const edge = await resolve(environment, id, request);
         if (!edge) return { file, passed: true, reason: "unresolved worker import", input };
         workerInputs.add(edge);
       }
     }
-    return { file, passed: true, deps: [...deps].sort() };
+    return { file, passed: true, deps: [...deps].sort(), local: { probes, globs }, broadTopology };
   };
-}
-
-export async function recordedProjects(cacheDir: string) {
-  const contents = await readFile(path.join(cacheDir, "dependencies.json"), "utf8").catch(
-    () => undefined,
-  );
-  if (!contents) return {};
-  const report = JSON.parse(contents) as {
-    version: number;
-    projects: Record<string, RecordedProject>;
-  };
-  return report.version === 1 ? report.projects : {};
 }

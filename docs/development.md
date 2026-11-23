@@ -1239,15 +1239,24 @@ module graph use the ordinary runner. Set `NODEX_TEST_CACHE=off` to bypass the c
 A reusable pass requires every test in the file to pass without retries, skips,
 or todos. Vitest records the imports the workers loaded. The cache also follows
 Vite graph edges for static imports, glob matches, watched inputs, and mock
-targets. Lazy imports come from each file's own worker record.
+targets. Lazy imports come from each file's worker report before Vitest adds
+its shared graph edges. A test that never opens a lazy module can reuse its
+pass after an edit to that module.
 Records use checkout-relative paths and content hashes for the test, its
-dependencies, setup imports, and snapshots. A shared key covers the workspace
-file names used by resolution and glob imports, Vite and Vitest configuration,
-package and TypeScript manifests, patches, lockfile, install metadata, Node
-runtime, test environment, and cache implementation. New or deleted workspace
-files invalidate the shared key. Local artifact directories such as
-`cache.local/` do not affect workspace identity. Keep checkout and installation
-inputs stable during validation.
+dependencies, setup imports, and snapshots. The shared key covers Vite and
+Vitest configuration, package and TypeScript manifests, patches, the lockfile,
+install metadata, Node, the declared environment, and the cache implementation.
+For ordinary workspace imports, each pass records the selected file and the
+earlier filesystem candidates Vite probed. Workspace exports that point
+directly to a file use the shared package manifest and the selected file.
+Each pass also checks matching names for supported literal globs and the presence of the test's conventional snapshot.
+A file addition or deletion invalidates the passes that depend on it. Passes
+with less precise resolver evidence also check workspace file names. Unsupported
+globs and untracked inputs stay uncached. Worktrees share passes with matching
+inputs. Local artifact directories such as `cache.local/` do not affect
+workspace identity. Keep checkout and installation inputs stable during
+validation. Cached batches use fresh Vitest transforms so a miss after a
+resolution or glob change executes against the current files.
 
 Eligibility excludes I/O-capable Node builtins, opaque module loading, native
 artifacts, unknown virtual modules, and worker execution outside the module graph.

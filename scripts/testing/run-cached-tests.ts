@@ -29,6 +29,7 @@ import {
   writeCacheReport,
   type PassLookup,
 } from "./test-cache-store.ts";
+import { localInputReader } from "./test-cache-inputs.ts";
 import type { TestEvidence } from "./test-cache-graph.ts";
 
 const GiB = 1024 ** 3;
@@ -171,12 +172,13 @@ async function runCachedFlow(
   const globalKey = await globalCacheKey(root, suite, commandContext.env, epoch, workspace, hash);
   if (!globalKey) return undefined;
 
+  const local = { topology: workspace.topology, reader: localInputReader(root) };
   const { cacheable, uncached } = partitionCacheFiles(suite, selected);
   for (const file of uncached) run.exclusions.set(file, { reason: "path policy" });
   try {
     const lookups = await Promise.all(
       cacheable.map(
-        async (file) => [file, await findPass(directory, file, globalKey, hash)] as const,
+        async (file) => [file, await findPass(directory, file, globalKey, hash, local)] as const,
       ),
     );
     for (const [file, lookup] of lookups) {
@@ -241,13 +243,13 @@ async function runCachedFlow(
     const evidence = await readFile(path.join(staging, "evidence.json"), "utf8")
       .then((content) => JSON.parse(content) as TestEvidence[])
       .catch(() => undefined);
-    for (const { file, reason, input, deps } of evidence ?? []) {
-      if (reason || !deps)
+    for (const { file, reason, input, deps, local } of evidence ?? []) {
+      if (reason || !deps || !local)
         run.exclusions.set(file, { reason: reason ?? "missing module graph", input });
       else run.exclusions.delete(file);
     }
     const audited = evidence?.find(({ file }) => file === audit);
-    if (audit && (!audited?.passed || !audited.deps)) {
+    if (audit && (!audited?.passed || !audited.deps || !audited.local)) {
       run.passes.clear();
       await invalidateCache(directory);
       process.stderr.write(
@@ -263,10 +265,13 @@ async function runCachedFlow(
     if (!evidence) return result.exitCode || 1;
 
     const currentWorkspace = await workspaceInputs(root, resultsRoot);
-    const stable = currentWorkspace.topology === workspace.topology && (await hash.unchanged());
+    const stable =
+      currentWorkspace.topology === workspace.topology &&
+      (await hash.unchanged()) &&
+      (await local.reader.unchanged());
     if (!stable) run.passes.clear();
     for (const entry of evidence) {
-      if (entry.file === audit || !entry.deps || entry.reason) continue;
+      if (entry.file === audit || !entry.deps || !entry.local || entry.reason) continue;
       if (!stable) {
         run.exclusions.set(entry.file, { reason: "workspace inputs changed" });
         continue;
@@ -284,6 +289,10 @@ async function runCachedFlow(
       await savePass(directory, entry.file, {
         globalKey,
         deps: Object.fromEntries(recorded),
+        local: {
+          ...entry.local,
+          topology: entry.broadTopology ? workspace.topology : undefined,
+        },
       });
       run.passes.add(entry.file);
     }
