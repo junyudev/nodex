@@ -369,7 +369,7 @@ describe("v2 activity summary fact accumulator", () => {
               semanticKind: "webSearch" as const,
               createdAt: 1,
               updatedAt: 1,
-              webSearch: { query: "parity", action: null, completed: false },
+              webSearch: { query: "parity", action: null, completed: false, sources: [] },
             },
           },
         },
@@ -487,7 +487,7 @@ describe("v2 activity summary fact accumulator", () => {
           semanticKind: "webSearch" as const,
           createdAt: 1,
           updatedAt: 1,
-          webSearch: { query: "parity", action: null, completed: true },
+          webSearch: { query: "parity", action: null, completed: true, sources: [] },
         },
       },
     };

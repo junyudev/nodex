@@ -110,6 +110,7 @@ export const THREAD_TOOL_CALL_FIXTURE_ITEMS = {
         queries: ["react renderer interaction tests", "react browser tests"],
       },
       completed: true,
+      sources: [],
     },
     toolCall: {
       subtype: "webSearch",

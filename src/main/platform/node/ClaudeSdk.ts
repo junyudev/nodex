@@ -1,3 +1,4 @@
+import { readClaudeWebSearchResults } from "@nodex/agent-runtime/claude-web-search";
 import type { claudeAgent } from "../../../shared/agents/claude";
 import type { AgentProfile } from "../../../shared/agents/profiles";
 import { readClaudeHistoryRecords, readClaudeHistoryRecord } from "./ClaudeHistoryRecords";
@@ -463,11 +464,27 @@ const nativeOperations = (moduleUrl: string) => {
         try: () => readClaudeHistoryRecords({ home, sessionId: input.sessionId, ...page }),
         catch: (cause) => failure("history", cause),
       });
-      return yield* nativeOperation<ClaudeNativeHistoryPage>(input, "history", {
+      const history = yield* nativeOperation<ClaudeNativeHistoryPage>(input, "history", {
         records: selected.entries,
         before: selected.before,
         hasMore: selected.hasMore,
       });
+      // The SDK history reader returns message blocks without structured tool output.
+      const resultsById = new Map(
+        selected.entries.flatMap((entry) => {
+          const results = readClaudeWebSearchResults(entry.toolUseResult);
+          return entry.uuid && results.length
+            ? [[entry.uuid, results.map((hit) => ({ ...hit, type: "web_search_result" }))] as const]
+            : [];
+        }),
+      );
+      return {
+        ...history,
+        messages: history.messages.map((message) => {
+          const tool_use_result = resultsById.get(message.uuid);
+          return tool_use_result ? { ...message, tool_use_result } : message;
+        }),
+      };
     });
   const historyImage: ClaudeSdk["Service"]["historyImage"] = (input, nativeMessageId, index) =>
     Effect.gen(function* () {

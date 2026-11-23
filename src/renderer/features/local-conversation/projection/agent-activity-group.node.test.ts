@@ -200,6 +200,7 @@ describe("generic v2 agent activity group projection", () => {
             query: "Nodex",
             action: null,
             completed: false,
+            sources: [],
           },
           toolCall: {
             toolName: "web",

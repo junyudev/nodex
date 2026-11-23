@@ -1,3 +1,4 @@
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import { render, textContent } from "../../../../../test/dom";
@@ -21,6 +22,7 @@ function buildWebSearchEntry(overrides?: Partial<CodexTranscriptEntry>): CodexTr
         query: "storybook react vite args",
       },
       completed: true,
+      sources: [],
     },
     toolCall: {
       subtype: "webSearch",
@@ -134,7 +136,7 @@ describe("WebSearchToolCall", () => {
         ),
       ),
     ).toBe(true);
-    expect(Boolean(container.querySelector("[data-tool-activity-icon='web-search']"))).toBe(true);
+    expect(Boolean(container.querySelector("[data-tool-activity-icon='search']"))).toBe(true);
   });
 
   test("shimmers the complete Codex summary while the search is running", () => {
@@ -149,6 +151,7 @@ describe("WebSearchToolCall", () => {
               query: "storybook react vite args",
             },
             completed: false,
+            sources: [],
           },
         })}
       />,
@@ -177,7 +180,7 @@ describe("WebSearchToolCall", () => {
     );
 
     expect(Boolean(textContent(container).includes("renderer | github.com"))).toBe(true);
-    expect(Boolean(container.querySelector("[data-tool-activity-icon='web-search']"))).toBe(true);
+    expect(Boolean(container.querySelector("[data-tool-activity-icon='search']"))).toBe(true);
     expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
   });
 
@@ -207,7 +210,7 @@ describe("WebSearchToolCall", () => {
     );
 
     expect(Boolean(textContent(container).includes("no domain here"))).toBe(true);
-    expect(Boolean(container.querySelector("[data-tool-activity-icon='web-search']"))).toBe(true);
+    expect(Boolean(container.querySelector("[data-tool-activity-icon='search']"))).toBe(true);
   });
 
   test("renders only the verb when the projected detail is empty", () => {
@@ -226,6 +229,43 @@ describe("WebSearchToolCall", () => {
     );
 
     expect(textContent(container)).toBe("Searched the web");
-    expect(Boolean(container.querySelector("[data-tool-activity-icon='web-search']"))).toBe(true);
+    expect(Boolean(container.querySelector("[data-tool-activity-icon='search']"))).toBe(true);
+  });
+
+  test("opens to the pages the search returned, and stays a plain row without any", () => {
+    const sources = [
+      {
+        url: "https://one.google.com/about/plans",
+        title: "Google One plans and pricing",
+        label: "one.google.com/about/plans",
+      },
+      { url: "https://example.com/notes", title: null, label: "example.com/notes" },
+    ];
+    const { container } = render(
+      <WebSearchToolCall
+        item={buildWebSearchEntry({
+          webSearch: {
+            query: "google ai pro price",
+            action: { type: "search", query: "google ai pro price" },
+            completed: true,
+            sources,
+          },
+        })}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { expanded: false });
+    expect(container.querySelector("[data-testid='web-search-sources']")).toBeNull();
+    fireEvent.click(toggle);
+
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => [link.getAttribute("href"), link.textContent])).toEqual([
+      ["https://one.google.com/about/plans", "Google One plans and pricing"],
+      ["https://example.com/notes", "example.com/notes"],
+    ]);
+    expect(links.every((link) => link.getAttribute("target") === "_blank")).toBe(true);
+
+    const plain = render(<WebSearchToolCall item={buildWebSearchEntry()} />);
+    expect(plain.container.querySelector("button[aria-expanded]")).toBeNull();
   });
 });

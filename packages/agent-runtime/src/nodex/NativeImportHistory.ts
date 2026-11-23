@@ -15,6 +15,7 @@ import {
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
+import { codexWebSearchFields } from "../orchestration-v2/Adapters/CodexWebSearch.ts";
 import { codexFileChangeDetail } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { fileChangeItemFields } from "@nodex/runtime-shared/fileChanges";
 import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
@@ -149,6 +150,8 @@ export function importHistoryEvents(input: {
       }),
       status: item.status === "failed" || item.status === "declined" ? "failed" : "completed",
     };
+  } else if (item.type === "webSearch") {
+    turnItem = { ...base, type: "web_search", ...codexWebSearchFields(item) };
   } else if (item.type === "plan" && driver === "antigravity") {
     const planId = PlanId.make(`native-import:${key}`);
     turnItem = {

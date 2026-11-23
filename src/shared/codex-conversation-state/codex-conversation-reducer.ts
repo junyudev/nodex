@@ -18,6 +18,7 @@ import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { Thread, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationReplayEvent } from "./codex-conversation-replay";
 import type { CodexItemStatus } from "../types";
+import { withCodexWebSearchResults } from "./codex-history-item-merge";
 import {
   isCodexFrameTextDeltaNotification,
   mutateCodexConversationFrameTextDeltas,
@@ -550,10 +551,11 @@ function upsertLifecycleItem(turn: Draft<CodexCanonicalTurnState>, item: CodexCa
   const existing = turn.items[index];
   const startedAtMs =
     existing?.type === item.type && "startedAtMs" in existing ? existing.startedAtMs : undefined;
-  const next =
+  const timestamped =
     ("startedAtMs" in item && item.startedAtMs != null) || startedAtMs == null
       ? item
       : { ...item, startedAtMs };
+  const next = withCodexWebSearchResults(timestamped, existing);
   if (index < 0) turn.items.push(next as Draft<CodexCanonicalItem>);
   else turn.items[index] = next as Draft<CodexCanonicalItem>;
   turn.finalAssistantStartedAtMs = resolveAssistantResponseStartedAtMs(turn);

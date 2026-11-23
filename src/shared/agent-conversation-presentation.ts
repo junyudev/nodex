@@ -8,6 +8,8 @@ import type {
   AgentInteractionResponse,
 } from "./agent-conversation";
 import { z } from "zod";
+import { readClaudeWebSearchResults } from "@nodex/agent-runtime/claude-web-search";
+import { readWebSearchSources } from "./codex-web-search";
 import { buildAgentHistoryImageSource } from "./agent-history-images";
 import { isAgentConversationTaskLiveInSnapshot } from "./agent-conversation";
 import { projectCodexMcpToolCallResult } from "./codex-mcp-tool-call";
@@ -277,8 +279,9 @@ function projectUpdate(
           status,
           webSearch: {
             query: typeof args.query === "string" ? args.query : update.title,
-            action: update.output ?? null,
+            action: null,
             completed: status !== "inProgress",
+            sources: readWebSearchSources(readClaudeWebSearchResults(update.output)),
           },
           markdownText: update.detail,
         },

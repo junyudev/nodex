@@ -78,6 +78,7 @@ import type {
   ServerNotification as CodexAppServerServerNotification,
 } from "@nodex/codex-app-server-protocol";
 import type { CodexExecutionProfile } from "./codex-execution-profile";
+import type { WebSource } from "./codex-web-search";
 import type { AgentBackendBinding } from "./agent-backend";
 import type {
   NodexClipboardEnvelopeV1,
@@ -3317,6 +3318,8 @@ export interface CodexWebSearchView {
   query: string;
   action: unknown;
   completed: boolean;
+  /** Pages the search returned, in result order; empty when the provider reported none. */
+  sources: readonly WebSource[];
 }
 
 export interface CodexGeneratedImageView {

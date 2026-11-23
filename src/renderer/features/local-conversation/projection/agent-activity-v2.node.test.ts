@@ -305,13 +305,13 @@ describe("agent activity v2 type boundary", () => {
     const hidden = buildTranscriptBlock("webSearch", {
       searchableText: "unrelated raw payload text",
       entry: buildConversationItem("web-hidden", {
-        webSearch: { query: " \n\t ", action: null, completed: false },
+        webSearch: { query: " \n\t ", action: null, completed: false, sources: [] },
       }),
     });
     const visible = buildTranscriptBlock("webSearch", {
       searchableText: "",
       entry: buildConversationItem("web-visible", {
-        webSearch: { query: " codex lifecycle ", action: null, completed: true },
+        webSearch: { query: " codex lifecycle ", action: null, completed: true, sources: [] },
       }),
     });
 
@@ -319,6 +319,22 @@ describe("agent activity v2 type boundary", () => {
     const classifiedVisible = classifyThreadExecPatchWebActivityItem(visible);
     expect(classifiedVisible?.grouping).toBe("groupable");
     expect(classifiedVisible?.item === visible).toBe(true);
+  });
+
+  test.each([
+    {
+      action: null,
+      sources: [{ url: "https://example.com/", title: null, label: "example.com/" }],
+    },
+    { action: { type: "openPage", url: "https://example.com/" }, sources: [] },
+  ])("keeps a web activity with sources or an action and no query", ({ action, sources }) => {
+    const item = buildTranscriptBlock("webSearch", {
+      entry: buildConversationItem("web-no-query", {
+        webSearch: { query: "", action, completed: true, sources },
+      }),
+    });
+
+    expect(classifyThreadExecPatchWebActivityItem(item)?.grouping).toBe("groupable");
   });
 
   test("defensively suppresses an ordinary empty file-change item", () => {
@@ -635,7 +651,7 @@ describe("agent activity v2 type boundary", () => {
       buildClassifiableBlock("exec"),
       buildClassifiableBlock("webSearch", {
         entry: buildConversationItem("web-visible", {
-          webSearch: { query: "activity grouping", action: null, completed: true },
+          webSearch: { query: "activity grouping", action: null, completed: true, sources: [] },
         }),
       }),
       buildClassifiableBlock("assistantMessage"),

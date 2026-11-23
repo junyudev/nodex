@@ -81,7 +81,7 @@ describe("tool-call icon helpers", () => {
         query: "activity",
         path: "src",
       }),
-    ).toBe("code-searching");
+    ).toBe("search");
     expect(
       toolCallIconTestHelpers.resolveExplorationActionIcon({
         type: "listFiles",
@@ -281,10 +281,8 @@ describe("tool-call icon helpers", () => {
       [],
     );
 
-    expect(commandDescriptor?.kind === "semantic" ? commandDescriptor.icon : "").toBe(
-      "code-searching",
-    );
-    expect(webDescriptor?.kind === "semantic" ? webDescriptor.icon : "").toBe("web-search");
+    expect(commandDescriptor?.kind === "semantic" ? commandDescriptor.icon : "").toBe("search");
+    expect(webDescriptor?.kind === "semantic" ? webDescriptor.icon : "").toBe("search");
   });
 
   test("uses semantic command evidence for stopped, web, and visualization activity", () => {
@@ -332,7 +330,7 @@ describe("tool-call icon helpers", () => {
     );
 
     expect(stopped?.kind === "semantic" ? stopped.icon : "").toBe("stopped");
-    expect(web?.kind === "semantic" ? web.icon : "").toBe("web-search");
+    expect(web?.kind === "semantic" ? web.icon : "").toBe("web");
     expect(visualization?.kind === "semantic" ? visualization.icon : "").toBe("visualization");
   });
 
@@ -363,10 +361,10 @@ describe("tool-call icon helpers", () => {
     expect(descriptor?.kind === "semantic" ? descriptor.icon : "").toBe(icon);
   });
 
-  test("web search row resolver falls back to the semantic globe", () => {
+  test("web search rows read as searches, like local ones", () => {
     const descriptor = resolveWebSearchIcon();
 
-    expect(descriptor.kind === "semantic" ? descriptor.icon : "").toBe("web-search");
+    expect(descriptor.kind === "semantic" ? descriptor.icon : "").toBe("search");
   });
 });
 

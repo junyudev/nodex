@@ -59,7 +59,7 @@ export type ToolActivityIconId =
   | "automatic-review-denied"
   | "browser-use"
   | "chat"
-  | "code-searching"
+  | "search"
   | "computer-use"
   | "connector"
   | "database"
@@ -78,7 +78,7 @@ export type ToolActivityIconId =
   | "skill"
   | "stopped"
   | "visualization"
-  | "web-search"
+  | "web"
   | "workspace";
 
 export type ToolActivityIconDescriptor =
@@ -136,7 +136,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       return <ComputerUseIcon aria-hidden className={iconClassName} />;
     case "connector":
       return <ConnectorFallbackIcon aria-hidden className={iconClassName} />;
-    case "code-searching":
+    case "search":
       return <ActivitySearchIcon aria-hidden className={iconClassName} />;
     case "database":
       return <BoardIcon className={iconClassName} />;
@@ -168,7 +168,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       return <StopIcon aria-hidden className={iconClassName} />;
     case "visualization":
       return <Sparkles aria-hidden className={iconClassName} />;
-    case "web-search":
+    case "web":
       return <ConnectorGlobeIcon aria-hidden className={iconClassName} />;
     case "workspace":
       return <SidebarVisibleIcon className={iconClassName} />;
@@ -300,7 +300,7 @@ export function semanticToolIcon(icon: ToolActivityIconId): ToolActivityIconDesc
 }
 
 export function resolveExplorationActionIcon(action: CodexCommandAction): ToolActivityIconId {
-  if (action.type === "search") return "code-searching";
+  if (action.type === "search") return "search";
   if (action.type === "listFiles") return "list-files";
   if (
     action.type === "read" &&
@@ -312,8 +312,9 @@ export function resolveExplorationActionIcon(action: CodexCommandAction): ToolAc
   return "run-command";
 }
 
+/** A web search reads as a search, like a local one; the globe belongs to web pages. */
 export function resolveWebSearchIcon(): ToolActivityIconDescriptor {
-  return semanticToolIcon("web-search");
+  return semanticToolIcon("search");
 }
 
 function extractLogoMetadata(value: unknown): {
@@ -404,7 +405,7 @@ const NODEX_TOOL_ACTIVITY_ICONS: Readonly<Record<NodexToolActivityIcon, ToolActi
   plugin: "plugin",
   project: "list-files",
   schedule: "schedule",
-  search: "code-searching",
+  search: "search",
   task: "app",
   terminal: "node-repl",
   workspace: "workspace",
@@ -473,7 +474,7 @@ export function resolveToolActivityEntryIcon(
     }
 
     const command = resolveConversationCommandText(block.entry);
-    if (command && isCurlWebSearchCommand(command)) return resolveWebSearchIcon();
+    if (command && isCurlWebSearchCommand(command)) return semanticToolIcon("web");
     if (command && resolveThreadVisualizationCommandKind(command) != null) {
       return semanticToolIcon("visualization");
     }
@@ -502,7 +503,7 @@ export function resolveToolActivityEntryIcon(
     ) {
       return semanticToolIcon("settings");
     }
-    if (registryEntry?.rendererKind === "chromeTabContext") return resolveWebSearchIcon();
+    if (registryEntry?.rendererKind === "chromeTabContext") return semanticToolIcon("web");
     return resolveDynamicToolFallbackIcon(call);
   }
   return null;
@@ -532,10 +533,10 @@ export function resolveToolActivitySprite(
     case "read-files":
     case "skill":
       return entry.type === "exec" ? "reading" : null;
-    case "code-searching":
+    case "search":
     case "list-files":
       return entry.type === "exec" ? "code-searching" : null;
-    case "web-search":
+    case "web":
       return entry.type === "exec" ? "web-search" : null;
     case "browser-use":
     case "computer-use":

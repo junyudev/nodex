@@ -173,7 +173,11 @@ export const agentActivityV2WebSearchItem = {
     query: "public app-server lifecycle",
     queries: ["app-server lifecycle", "tool call lifecycle"],
   },
-  results: null,
+  results: [{
+    type: "text_result",
+    title: "App-server lifecycle",
+    url: "https://www.example.invalid/lifecycle",
+  }],
 } satisfies WebSearchItem;
 
 export const agentActivityV2WhitespaceWebSearchItem = {

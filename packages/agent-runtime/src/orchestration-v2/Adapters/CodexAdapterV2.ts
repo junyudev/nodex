@@ -89,6 +89,7 @@ import type {
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexSchema from "effect-codex-app-server/schema";
+import { codexWebSearchFields, type CodexWebSearchItem } from "./CodexWebSearch.ts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -796,23 +797,6 @@ function compactStrings(values: ReadonlyArray<string | null | undefined>): Reado
     const trimmed = trimText(value);
     return trimmed === undefined ? [] : [trimmed];
   });
-}
-
-function webSearchPatterns(item: CodexWebSearchItem): ReadonlyArray<string> {
-  if (item.action === null || item.action === undefined) {
-    return compactStrings([item.query]);
-  }
-
-  switch (item.action.type) {
-    case "search":
-      return compactStrings([...(item.action.queries ?? []), item.action.query, item.query]);
-    case "openPage":
-      return compactStrings([item.action.url, item.query]);
-    case "findInPage":
-      return compactStrings([item.action.pattern, item.action.url, item.query]);
-    case "other":
-      return compactStrings([item.query]);
-  }
 }
 
 const decodeTurnReasoningEffort = Schema.decodeUnknownEffect(
@@ -1527,16 +1511,6 @@ function codexPermissionsApprovalPrompt(
   ]);
   return [...actions].join("\n") || "Request additional permissions";
 }
-
-type CodexWebSearchItem = {
-  readonly id: string;
-  readonly type: "webSearch";
-  readonly query?: string | null;
-  readonly action?:
-    | CodexSchema.V2ItemStartedNotification__WebSearchAction
-    | CodexSchema.V2ItemCompletedNotification__WebSearchAction
-    | null;
-};
 
 export type CodexDynamicToolItem = Extract<
   | CodexSchema.V2ItemStartedNotification__ThreadItem
@@ -4787,7 +4761,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: input.item.id,
             });
             const { ordinal, startedAt } = yield* resolveItemPosition(input.context, input.item.id);
-            const patterns = webSearchPatterns(input.item);
             const status = input.completed ? "completed" : "running";
             const node: OrchestrationV2ExecutionNode = {
               id: nodeId,
@@ -4822,7 +4795,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               completedAt,
               updatedAt,
               type: "web_search",
-              ...(patterns.length === 0 ? {} : { patterns: [...patterns] }),
+              ...codexWebSearchFields(input.item),
             };
             return { node, turnItem };
           });

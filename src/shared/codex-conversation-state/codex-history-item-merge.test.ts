@@ -3,6 +3,7 @@ import {
   mergeCodexAnchoredHistoryItems,
   mergeCodexCanonicalHistoryItems,
 } from "./codex-history-item-merge";
+import { agentActivityV2WebSearchItem } from "./test-fixtures/agent-activity-v2-item-family-corpus";
 import type { CodexCanonicalItem } from "./codex-conversation-state";
 
 const answer = (id: string, text = id): Extract<CodexCanonicalItem, { type: "agentMessage" }> => ({
@@ -17,6 +18,21 @@ const answer = (id: string, text = id): Extract<CodexCanonicalItem, { type: "age
 });
 
 describe("history item merge", () => {
+  it.each([false, true])(
+    "retains web results when either copy of an overlapping item has them (incoming preferred %s)",
+    (preferIncomingItems) => {
+      const search = agentActivityV2WebSearchItem;
+      const sparse = { ...search, results: null };
+      const options = { preferIncomingItems };
+      expect(mergeCodexCanonicalHistoryItems([sparse], [search], "append", options).items).toEqual([
+        search,
+      ]);
+      expect(mergeCodexCanonicalHistoryItems([search], [sparse], "append", options).items).toEqual([
+        search,
+      ]);
+    },
+  );
+
   it.each([false, true])(
     "preserves steer acceptance across an overlapping merge (incoming %s)",
     (preferIncomingItems) => {

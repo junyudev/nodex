@@ -39,4 +39,18 @@ export function assertWebSearchOutput(
   assert.lengthOf(webSearchItems, 1);
   assert.equal(webSearchItems[0]?.status, "completed");
   assert.include(webSearchItems[0]?.patterns ?? [], WEB_SEARCH_QUERY);
+  assert.deepEqual(webSearchItems[0]?.action, {
+    type: "search",
+    query: WEB_SEARCH_QUERY,
+    queries: null,
+  });
+  // The scenario reads this projection back from the Runtime's SQLite store.
+  const results = webSearchItems[0]?.results ?? [];
+  assert.lengthOf(results, 27);
+  assert.deepEqual(results[0], {
+    type: "text_result",
+    title: "10. How does FIFA determine ticket prices for the FIFA World Cup 2026™? – FIFA World Cup 2026™",
+    url: "https://gpcustomersupportfwc2026.tickets.fifa.com/hc/en-gb/articles/30201776314397-10-How-does-FIFA-determine-ticket-prices-for-the-FIFA-World-Cup-2026",
+    snippet: "With this approach, FIFA considers that ticket price adaptations help ensure fair market value for FIFA World Cup 2026™ matches.",
+  });
 }

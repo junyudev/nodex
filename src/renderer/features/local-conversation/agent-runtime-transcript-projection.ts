@@ -666,6 +666,32 @@ function projectQuestionResponder(
   return { ...responder, senderSessionId: context.sessionId };
 }
 
+function projectWebSearchAction(
+  item: Extract<AgentTurnItem, { type: "web_search" }>,
+): Extract<CodexCanonicalItem, { type: "webSearch" }>["action"] {
+  const action = item.action;
+  switch (action?.type) {
+    case "search":
+      return {
+        type: "search",
+        query: action.query ?? null,
+        queries: action.queries ? [...action.queries] : null,
+      };
+    case "openPage":
+      return { type: "openPage", url: action.url ?? null };
+    case "findInPage":
+      return { type: "findInPage", url: action.url ?? null, pattern: action.pattern ?? null };
+    case "other":
+      return { type: "other" };
+    case undefined:
+      return {
+        type: "search",
+        query: item.patterns?.[0] ?? null,
+        queries: item.patterns ? [...item.patterns] : null,
+      };
+  }
+}
+
 export function projectAgentRuntimeItem(
   item: AgentTurnItem,
   cwd = "",
@@ -785,12 +811,11 @@ export function projectAgentRuntimeItem(
       return {
         type: "webSearch",
         id,
-        query: item.patterns?.join(" ") ?? "",
-        action: {
-          type: "search",
-          query: item.patterns?.[0] ?? null,
-          queries: item.patterns ? [...item.patterns] : null,
-        },
+        query:
+          (item.action?.type === "search" ? item.action.query : null) ??
+          item.patterns?.join(" ") ??
+          "",
+        action: projectWebSearchAction(item),
         results: item.results ? item.results.map(jsonValue) : null,
       };
     case "file_search":

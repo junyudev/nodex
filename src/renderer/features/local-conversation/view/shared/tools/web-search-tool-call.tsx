@@ -4,8 +4,15 @@ import { isCodexWebSearchActivityInProgress } from "../../../../../../shared/cod
 import { describeWebSearchAction } from "../../../web-search-display";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import { asRecord, getString } from "./tool-call-utils";
-import { ToolActivityIcon, semanticToolIcon } from "./tool-call-icons";
-import { ThreadActivityShell, ThreadRichActivityHeader } from "./tool-primitives";
+import { ToolActivityIcon, resolveWebSearchIcon } from "./tool-call-icons";
+import {
+  ThreadActivityDetails,
+  ThreadActivityDisclosureRegion,
+  ThreadActivityShell,
+  ThreadRichActivityHeader,
+  useThreadActivityDisclosureState,
+} from "./tool-primitives";
+import { WebSourceList } from "./web-source-list";
 
 interface WebSearchToolCallProps {
   item: CodexTranscriptEntry;
@@ -65,14 +72,30 @@ export function WebSearchToolCall({ item }: WebSearchToolCallProps) {
     </CodexShimmerText>
   );
 
+  const sources = item.webSearch?.sources ?? [];
+  const { disclosure, expanded } = useThreadActivityDisclosureState({
+    canExpand: sources.length > 0,
+    isRunning: false,
+  });
+
   return (
     <ThreadActivityShell
       header={
         <ThreadRichActivityHeader
-          icon={<ToolActivityIcon descriptor={semanticToolIcon("web-search")} />}
+          disclosure={disclosure}
+          icon={<ToolActivityIcon descriptor={resolveWebSearchIcon()} />}
           summary={summary}
           testId="web-search-tool-call"
         />
+      }
+      body={
+        sources.length > 0 ? (
+          <ThreadActivityDisclosureRegion expanded={expanded} testId="web-search-tool-call-body">
+            <ThreadActivityDetails>
+              <WebSourceList sources={sources} />
+            </ThreadActivityDetails>
+          </ThreadActivityDisclosureRegion>
+        ) : null
       }
     />
   );

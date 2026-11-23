@@ -463,6 +463,13 @@ test("maps structured native tools into existing command, patch, search and MCP 
             name: "WebSearch",
             presentation: "web-search" as const,
             input: JSON.stringify({ query: "SDK" }),
+            output: {
+              query: "SDK",
+              results: [
+                "Search commentary",
+                { content: [{ title: "SDK docs", url: "https://example.com/docs" }] },
+              ],
+            },
           },
           {
             ...common,
@@ -494,6 +501,10 @@ test("maps structured native tools into existing command, patch, search and MCP 
   expect(items[1]?.fileChange?.changes["file.ts"]).toMatchObject({
     type: "update",
     unifiedDiff: "@@ -1 +1 @@\n-old\n+new",
+  });
+  expect(items[2]?.webSearch).toMatchObject({
+    query: "SDK",
+    sources: [{ title: "SDK docs", url: "https://example.com/docs", label: "example.com/docs" }],
   });
   expect(items[3]?.mcpToolCall).toMatchObject({
     invocation: { server: "files", tool: "read", arguments: { path: "file" } },

@@ -84,6 +84,7 @@ function buildWebsiteItem(turnId: string): CodexConversationItem {
       query: "reference docs",
       action: null,
       completed: true,
+      sources: [],
     },
     markdownText: "https://example.com/reference",
     createdAt: 4,

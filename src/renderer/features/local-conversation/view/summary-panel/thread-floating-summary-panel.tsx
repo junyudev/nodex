@@ -291,7 +291,7 @@ function resolveSummaryCommitOrPushMode({
 function buildSummarySourceIconDescriptor(
   item: ThreadSummaryPanelSourceItem,
 ): ToolActivityIconDescriptor {
-  if (item.kind !== "tool") return { kind: "semantic", icon: "web-search" };
+  if (item.kind !== "tool") return { kind: "semantic", icon: "web" };
 
   if (!item.logoUrl && !item.logoUrlDark) {
     return { kind: "semantic", icon: "connector" };

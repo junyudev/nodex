@@ -1,5 +1,6 @@
 import { resolveNativeSessionHandoffScope } from "./tool-metadata/native-session-handoff";
 import { isNativeAutomationUpdate } from "./tool-metadata/native-automation-update";
+import { describeWebSearchAction } from "../web-search-display";
 import type {
   ThreadAgentActivityClassification,
   ThreadAgentActivityGrouping,
@@ -107,10 +108,17 @@ export function classifyThreadExecPatchWebActivityItem<
           : "groupable",
       );
     }
-    case "webSearch":
-      return (item.entry.webSearch?.query ?? "").trim().length === 0
-        ? null
-        : createThreadAgentActivityItem(item, "groupable");
+    case "webSearch": {
+      const search = item.entry.webSearch;
+      if (!search) return null;
+      if (
+        !search.sources.length &&
+        !search.query.trim() &&
+        !describeWebSearchAction(search.action, "")
+      )
+        return null;
+      return createThreadAgentActivityItem(item, "groupable");
+    }
   }
 }
 

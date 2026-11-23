@@ -8,7 +8,8 @@ import * as nodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { loadClaudeAgentSdk } from "../provider/ClaudeAgentSdk.ts";
 import { createClaudeSessionStores } from "../provider/ClaudeSessionStore.ts";
-import { field } from "../orchestration-v2/unknownField.ts";
+import { field, text } from "../orchestration-v2/unknownField.ts";
+import { readClaudeWebSearchResults } from "../provider/ClaudeWebSearch.ts";
 import type { NativeImportInput } from "./NativeImport.ts";
 import { frozenNativeImportSource } from "./NativeImportSource.ts";
 
@@ -66,6 +67,7 @@ function normalizeMessages(
   const raw = new Map(
     records.flatMap((entry) => (entry.uuid ? [[entry.uuid, entry] as const] : [])),
   );
+  const webSearches = new Map<string, ThreadItemEntry>();
   return messages.flatMap((message) => {
     const record = raw.get(message.uuid);
     const timestamp = typeof record?.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
@@ -131,6 +133,39 @@ function normalizeMessages(
       if (type === "image" && message.type === "user") {
         userContent.push({ type: "image", url: imageUrl(block) });
         continue;
+      }
+      const toolName = field(block, "name");
+      if (
+        (type === "tool_use" || type === "server_tool_use") &&
+        (toolName === "WebSearch" || toolName === "web_search")
+      ) {
+        const toolId = field(block, "id");
+        const query = text(field(field(block, "input"), "query")) ?? "";
+        const entry = wrap({
+          type: "webSearch",
+          id,
+          query,
+          action: { type: "search", query: query || null, queries: null },
+          results: null,
+        });
+        if (typeof toolId === "string") webSearches.set(toolId, entry);
+        result.push(entry);
+        continue;
+      }
+      const toolUseId = field(block, "tool_use_id");
+      const search = typeof toolUseId === "string" ? webSearches.get(toolUseId) : undefined;
+      if (
+        search?.item.type === "webSearch" &&
+        (type === "tool_result" || type === "web_search_tool_result")
+      ) {
+        const results = readClaudeWebSearchResults(
+          type === "web_search_tool_result" ? field(block, "content") : record?.toolUseResult,
+        );
+        if (results.length > 0) {
+          search.item = { ...search.item, results };
+          search.completedAtMs = at;
+          continue;
+        }
       }
       const images: string[] = [];
       const copied = withoutMedia(block, images);

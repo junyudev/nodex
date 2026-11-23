@@ -22,6 +22,8 @@ import {
   type CodexConversationReducerContext,
 } from "./codex-conversation-reducer";
 
+import { agentActivityV2WebSearchItem } from "./test-fixtures/agent-activity-v2-item-family-corpus";
+
 const THREAD_ID = "thread_c03";
 const TURN_ID = "turn_c03";
 
@@ -446,6 +448,35 @@ test("external environment membership is thread-scoped, idempotent, and excludes
 });
 
 describe("canonical item lifecycle reducer", () => {
+  test.each([false, true])(
+    "retains web results across live completion (sparse completion: %s)",
+    (sparseCompletion) => {
+      const search = agentActivityV2WebSearchItem;
+      const sparse = { ...search, results: null };
+      const clock = buildClock(100, 200);
+      const location = { threadId: THREAD_ID, turnId: TURN_ID };
+      const started = reduceLifecycle(
+        buildState(),
+        {
+          method: "item/started",
+          params: { ...location, item: sparseCompletion ? search : sparse, startedAtMs: 100 },
+        },
+        clock.context,
+      );
+      const completed = reduceLifecycle(
+        started,
+        {
+          method: "item/completed",
+          params: { ...location, item: sparseCompletion ? sparse : search, completedAtMs: 200 },
+        },
+        clock.context,
+      );
+
+      expect(completed.turns[0]?.items).toContainEqual({ ...search, startedAtMs: 100 });
+      expect(completed.turns[0]?.completedItemIds?.[search.id]).toBe(true);
+    },
+  );
+
   test("async question delivery never starts final-answer timing while the Agent continues", () => {
     const item = {
       type: "agentMessage",

@@ -2026,9 +2026,7 @@ describe("ThreadAgentActivityGroupBlock", () => {
     expect(content.includes("Ran bun test")).toBe(false);
     expect(content.includes("edited.ts")).toBe(true);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='read-files']").length).toBe(1);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='code-searching']").length).toBe(
-      1,
-    );
+    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='search']").length).toBe(1);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='list-files']").length).toBe(1);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='run-command']").length).toBe(1);
     expect(groupBody?.querySelectorAll("[data-tool-activity-icon='edit-files']").length).toBe(1);

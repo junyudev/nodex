@@ -25,6 +25,7 @@
     "./context-usage": "./vendor/provider-core/src/contextUsage.ts",
     "./failure-cause": "./vendor/provider-core/src/failureCause.ts",
     "./pending-user-questions": "./src/nodex/PendingUserQuestions.ts",
+    "./claude-web-search": "./src/provider/ClaudeWebSearch.ts",
     "./native-history-items": "./src/nodex/NativeHistoryItems.ts",
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",

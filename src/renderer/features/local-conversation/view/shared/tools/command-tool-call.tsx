@@ -669,7 +669,7 @@ function resolveCommandHeaderIcon(
   if (!isExploration) return semanticToolIcon("run-command");
   if (actions.some((action) => resolveExplorationActionIcon(action) === "skill"))
     return semanticToolIcon("skill");
-  if (actions.some((action) => action.type === "search")) return semanticToolIcon("code-searching");
+  if (actions.some((action) => action.type === "search")) return semanticToolIcon("search");
   if (actions.some((action) => action.type === "listFiles")) return semanticToolIcon("list-files");
   return semanticToolIcon("read-files");
 }

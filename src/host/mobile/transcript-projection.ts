@@ -12,6 +12,7 @@ import {
   splitAgentApprovalOptions,
 } from "../../shared/agent-approval-options";
 import { getDisplayCommand } from "../../shared/codex-command-execution";
+import { readWebSearchSources } from "../../shared/codex-web-search";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type {
   ChatActivity,
@@ -474,8 +475,10 @@ export const projectNativeItem = (
       return work("command", "Run command", item.command, item.aggregatedOutput, item.status);
     case "fileChange":
       return work("file", "Edit files", null, json(item.changes), item.status);
-    case "webSearch":
-      return work("web", "Search the web", item.query, null);
+    case "webSearch": {
+      const sources = readWebSearchSources(item.results);
+      return work("web", "Search the web", item.query, sources.length ? json(sources) : null);
+    }
     case "mcpToolCall":
       return work(
         "tool",

@@ -286,6 +286,19 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     },
   );
 
+  test("projects native web-search results into sources", () => {
+    const raw = parseCodexProtocolThreadItem(agentActivityV2WebSearchItem);
+    expect(raw).not.toBeNull();
+    const item = materializeCodexCanonicalProtocolItem(raw!);
+    expect(project([item], { turnStatus: "completed" })[0]?.webSearch?.sources).toEqual([
+      {
+        url: "https://www.example.invalid/lifecycle",
+        title: "App-server lifecycle",
+        label: "example.invalid/lifecycle",
+      },
+    ]);
+  });
+
   test("uses explicit lifecycle status for statusless items regardless of sibling order", () => {
     const assistant = materializeCodexCanonicalProtocolItem({
       questions: null,

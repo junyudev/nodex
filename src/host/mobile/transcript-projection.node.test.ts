@@ -68,6 +68,23 @@ const snapshot = (items: ChatItem[]): ChatSnapshot => ({
 });
 
 describe("Mobile transcript", () => {
+  test("includes sources in a native web search's activity output", () => {
+    const item = projectNativeItem("session", "thread", "turn", {
+      type: "webSearch",
+      id: "search",
+      query: "release notes",
+      action: null,
+      results: [
+        { type: "text_result", url: "https://example.com/release", title: "Release notes" },
+        { url: "https://example.com/preview", snippet: "Page contents" },
+      ],
+    });
+    expect(item).toMatchObject({ kind: "activity", category: "web", detail: "release notes" });
+    expect(item.kind === "activity" && JSON.parse(item.output ?? "null")).toEqual([
+      { url: "https://example.com/release", title: "Release notes", label: "example.com/release" },
+    ]);
+  });
+
   test.each([
     [{ ...base, type: "command_execution", input: "echo hi", output: "hi" }, "command"],
     [{ ...base, type: "file_change", fileName: "a.md", diffStr: "+ added" }, "file"],

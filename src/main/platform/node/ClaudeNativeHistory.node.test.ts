@@ -140,6 +140,15 @@ it.effect(
               sessionId: id,
               cwd,
               timestamp: "2026-09-01T00:00:02.000Z",
+              toolUseResult: {
+                query: text,
+                results: [
+                  {
+                    tool_use_id: "native-tool",
+                    content: [{ title: text, url: "https://example.com/guide" }],
+                  },
+                ],
+              },
               message: {
                 role: "user",
                 content: [
@@ -191,6 +200,16 @@ it.effect(
       expect(a.messages).toHaveLength(3);
       expect(a.messages[0]?.message).toMatchObject({
         content: [{ type: "image" }, { type: "text", text: "Account A" }],
+      });
+      expect(a.messages.at(-1)).toMatchObject({
+        tool_use_result: [
+          { type: "web_search_result", title: "Account A", url: "https://example.com/guide" },
+        ],
+      });
+      expect(b.messages.at(-1)).toMatchObject({
+        tool_use_result: [
+          { type: "web_search_result", title: "Account B", url: "https://example.com/guide" },
+        ],
       });
       expect(yield* sdk.historyImage(first, user, 0)).toEqual({
         mediaType: "image/png",

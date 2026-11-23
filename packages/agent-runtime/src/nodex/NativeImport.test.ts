@@ -232,7 +232,11 @@ const fixture = (
             {
               id: user.turnId,
               status: "completed",
-              items: [sourceUser.item, sourceAssistant.item],
+              items: [
+                sourceUser.item,
+                ...(options.tool ? [options.tool.item] : []),
+                sourceAssistant.item,
+              ],
               startedAt: 1_700_000_000,
               completedAt: 1_700_000_001,
             },
@@ -485,6 +489,47 @@ it.effect("deletes an incomplete import through the normal conversation lifecycl
     assert.isNull(thread.executionHandoff);
     source.recover();
     assert.equal((yield* importThread(target).pipe(Effect.result))._tag, "Failure");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each([false, true])("copies Codex web search activity (legacy history: %s)", (legacy) =>
+  Effect.gen(function* () {
+    const url = "https://example.com/guide";
+    const source = fixture({
+      legacy,
+      tool: {
+        ...user,
+        item: {
+          type: "webSearch",
+          id: "web:source",
+          query: "guide",
+          action: { type: "findInPage", url, pattern: "guide" },
+          results: [
+            { type: "text_result", url, snippet: "Guide excerpt", domain: "example.com" },
+            { type: "text_result", url: "", title: "Invalid result" },
+            {
+              type: "text_result",
+              url: "https://example.com/notes",
+              title: "Notes",
+              snippet: null,
+            },
+            { type: "image_result", url: "https://example.com/thumbnail", title: "Thumbnail" },
+            { url: "https://example.com/preview", snippet: "Untitled preview" },
+          ],
+        },
+      },
+    });
+    const importThread = yield* source.makeImport;
+    const target = input(`web-search-${legacy}`);
+    yield* importThread(target);
+    const copied = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+    const search = copied.turnItems.find((item) => item.type === "web_search");
+    assert.isDefined(search);
+    assert.deepEqual(search?.action, { type: "findInPage", url, pattern: "guide" });
+    assert.deepEqual(search?.results, [
+      { type: "text_result", url, snippet: "Guide excerpt" },
+      { type: "text_result", url: "https://example.com/notes", title: "Notes" },
+    ]);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -1035,6 +1080,48 @@ it.effect("fences Claude retry against rewritten captured history and excludes l
       copied.messages.some((message) => message.text.includes("APPENDED_AFTER_CAPTURE")),
     );
     assert.isNull(copied.thread.executionHandoff);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("copies a Claude search and its recorded hits as one web activity", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const source = yield* claudeFixture("claude-web-search");
+    const hit = { title: "Search result", url: "https://example.com/result" };
+    const records = [
+      source.entries[0],
+      {
+        ...source.entries[1],
+        message: {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "search", name: "WebSearch", input: { query: "docs" } },
+          ],
+        },
+      },
+      {
+        ...source.entries[0],
+        uuid: "message-2",
+        parentUuid: "message-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "search", content: "Search results" }],
+        },
+        toolUseResult: { query: "docs", results: [{ tool_use_id: "search", content: [hit] }] },
+      },
+    ];
+    yield* fs.writeFileString(
+      source.file,
+      records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+    );
+    const importThread = yield* make();
+    yield* importThread(source.target);
+    const copied = yield* (yield* ProjectionStoreV2).getThreadProjection(source.target.threadId);
+    const activity = copied.turnItems.filter((item) => item.type !== "user_message");
+    assert.lengthOf(activity, 1);
+    const search = activity[0];
+    if (search?.type !== "web_search") return assert.fail("Missing copied web search");
+    assert.deepEqual(search.results, [hit]);
   }).pipe(Effect.provide(layer)),
 );
 

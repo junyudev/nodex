@@ -64,6 +64,21 @@ function withResidentAnswerFacts(item: FinalAnswer, resident: FinalAnswer): Fina
     : { ...item, memoryCitation, moderation };
 }
 
+/** A partial update can omit the results already observed for the same search. */
+export function withCodexWebSearchResults(
+  item: CodexCanonicalItem,
+  fallback: CodexCanonicalItem | undefined,
+): CodexCanonicalItem {
+  if (
+    item.type !== "webSearch" ||
+    item.results?.length ||
+    fallback?.type !== "webSearch" ||
+    !fallback.results?.length
+  )
+    return item;
+  return { ...item, results: fallback.results };
+}
+
 /** A second history merge must not roll an already reconciled steer back to its pending row. */
 function mergeSteeringAcceptance(
   resident: CodexCanonicalItem,
@@ -116,11 +131,14 @@ export function mergeCodexCanonicalHistoryItems(
           ? withResidentAnswerFacts(item, resident)
           : null;
       const acceptedSteer = mergeSteeringAcceptance(resident, item);
+      const useIncoming = preferIncomingItems || (snapshot && item.type === "agentMessage");
       updates.set(
         resident.id,
         acceptedSteer ??
           refreshedAnswer ??
-          (preferIncomingItems || (snapshot && item.type === "agentMessage") ? item : resident),
+          (useIncoming
+            ? withCodexWebSearchResults(item, resident)
+            : withCodexWebSearchResults(resident, item)),
       );
       continue;
     }

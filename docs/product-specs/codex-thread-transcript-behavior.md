@@ -283,7 +283,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - `userMessage`
   - selected `modelRerouted`
   - tool activity blocks (`commandExecution`, materialized `patch`, `mcpToolCall`,
-    `dynamicToolCall`, non-empty `webSearch`, `multiAgentAction`,
+    `dynamicToolCall`, visible `webSearch`, `multiAgentAction`,
     completed `mcpServerElicitation`, completed `userInputResponse`, and
     `contextCompaction`) and the [Thoughts](#thoughts) among them, plus auxiliary
     subagent activity state
@@ -526,7 +526,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Tool activity passes through one production classifier and one topology
   projector. Hidden items do not break adjacency; standalone items flush the
   current run; and every maximal run of groupable Thoughts, exec, materialized
-  patch, non-empty web search, ordinary MCP, registered groupable dynamic tool,
+  patch, visible web search, ordinary MCP, registered groupable dynamic tool,
   and in-progress Auto-review items first becomes a raw group. A settled non-active singleton is then demoted to its standalone family
   row, except a file-change singleton remains grouped when it does not represent
   exactly one ordinary changed file or when it contains visualization activity.
@@ -550,10 +550,24 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Tool and action surfaces use the shared local icon asset module:
   - semantic tool glyphs cover command execution, file edits, web/search, code search, list-files, approvals, denials, skills, hooks, plugins, connectors, and generic source fallbacks
   - decorative row glyphs are hidden from assistive technology; website favicons use decorative empty-alt images, while source logos expose meaningful alt text
-  - every activity row shows its family glyph: a terminal for commands, an open book for reads, a magnifier for searches, a folder for listings and a plain pencil for edits, with source logos for connectors
+  - every activity row shows its family glyph: a terminal for commands, an open book for reads, a magnifier for searches (local and web alike), a folder for listings and a plain pencil for edits, with source logos for connectors; the globe stands for web pages: web `curl` commands and browser tab context
   - visible activity glyphs use the documented `icon-xs` tertiary-text contract, chevrons use `icon-2xs`, and source/card glyphs use `icon-sm`
-- Standalone top-level web rows prefer extracted site favicons through the Google favicon URL helper and fall back to the semantic web-search glyph when no stable domain is available. Grouped web-search headers use the semantic web-search glyph, while expanded/detail web rows render the favicon only when a `faviconUrl` exists; they do not add a globe fallback when no site favicon was resolved.
-- A web-search row is groupable only when its visible query is non-empty after trimming; action-detail payloads such as fallback `queries` do not create a visible row by themselves. Web rows do not pre-group before the generic v2 pass. A live activity group whose open slice is web-search-owned renders `Searching the web` plus the latest active query/detail; a settled group renders `Searched the web`, and expanded bodies render direct detail rows without a nested web-search header.
+- A web search keeps the pages it returned as its sources, in result order and
+  once per address. Sources are typed text results, or untyped results that name
+  their page; page previews with only an address and excerpt are not sources.
+  Only plain `http(s)` addresses without credentials qualify. Every way a search
+  reaches a chat (live, reopened history, imports, Codex and Claude) carries them.
+- A web-search row with sources is a disclosure, closed by default. Opening it
+  shows the sources as wrapping chips: a 24px pill with the site's favicon and
+  the page title (or host and path when untitled), at most 160px wide, quiet
+  secondary text on the soft secondary fill. A chip opens its page like any chat
+  link and names the page and its host in a tooltip. On its own, the row's chips
+  hang from a hairline under its glyph; inside a work group's steps they sit flush
+  under the row, so steps never nest a second rail. Favicons come from the public
+  favicon service by origin, without a referrer; a globe holds the slot until the
+  icon loads and stays when the site has none. A row without sources stays a plain
+  line.
+- A web-search row is visible, and groupable, when it has a non-empty trimmed query, a describable action (an opened page or a find in page), or sources; fallback `queries` alone do not create a row. Web rows do not pre-group before the generic v2 pass. A live activity group whose open slice is web-search-owned renders `Searching the web` plus the latest active query/detail; a settled group renders `Searched the web`, and expanded bodies render direct detail rows without a nested web-search header.
 - Web-search action detail text follows the same display normalization across standalone rows, grouped headers, and grouped detail rows: `search` uses the first query, multi-query searches append `...`, `openPage` uses the URL, `findInPage` uses `'{pattern}' in {url}`, and search queries with removable `site:` filters render as `query text | domain · domain`.
 - MCP, plugin, connector, and elicitation rows resolve source logos from available metadata, Browser Use / computer-use source identifiers, connector/plugin logo URLs, then the generic source fallback.
 - Script calls use their whitespace-normalized, 80-character-bounded `title` argument, falling back to `Running JavaScript` or `Ran JavaScript`. Node REPL and CUA REPL use the terminal glyph when richer source identity is absent. The Agent Runtime retains MCP call identity, metadata and typed results through projection; application tools retain their specialized registry. Expanding a withheld result hydrates only its addressed runtime item, and image descriptors resolve the original result-content index through the owning conversation. Native call identity remains distinct from the runtime row identity used for detail reads.

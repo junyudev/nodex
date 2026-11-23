@@ -6,6 +6,7 @@ import type {
   ProtocolAppInfo,
 } from "../../../lib/types";
 import { resolveCodexMcpVisualSource } from "../../../../shared/codex-mcp-tool-call";
+import { toWebSource } from "../../../../shared/codex-web-search";
 import type { ThreadMcpAppSidePanelInput } from "../thread-stage-types";
 import {
   buildMcpAppSidePanelInput,
@@ -187,32 +188,13 @@ function resolveWebSearchAction(item: CodexConversationItem): unknown {
   return item.toolCall?.result;
 }
 
-function parseReferenceWebUrl(value: unknown): URL | null {
-  const rawUrl = trimNonEmptyString(value);
-  if (!rawUrl) return null;
-
-  try {
-    const url = new URL(rawUrl);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    if (url.username || url.password) return null;
-    return url;
-  } catch {
-    return null;
-  }
-}
-
 function resolveWebPageSource(action: unknown): WebPageSourceDraft | null {
   const record = asRecord(action);
   const actionType = trimNonEmptyString(record?.type);
   if (actionType !== "openPage" && actionType !== "findInPage") return null;
 
-  const url = parseReferenceWebUrl(record?.url);
-  if (!url) return null;
-
-  return {
-    url: url.href,
-    label: `${url.hostname.replace(/^www\./iu, "")}${url.pathname}`,
-  };
+  const source = toWebSource({ url: record?.url });
+  return source ? { url: source.url, label: source.label } : null;
 }
 
 function collectWebSources(

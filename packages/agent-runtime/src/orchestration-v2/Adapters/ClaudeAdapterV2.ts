@@ -45,6 +45,7 @@ import {
   queryClaudeAppliedSettings,
   type ClaudeAppliedSettings,
 } from "../../provider/ClaudeAppliedSettings.ts";
+import { readClaudeWebSearchResults } from "../../provider/ClaudeWebSearch.ts";
 import * as ClaudeSessionHistory from "../../provider/ClaudeSessionHistory.ts";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
@@ -105,7 +106,6 @@ import {
   type OrchestrationV2SubagentWorkflow,
   type OrchestrationV2WorkflowRunHandles,
   type OrchestrationV2TurnItem,
-  type OrchestrationV2WebSearchResult,
   ProviderDriverKind,
   type ProviderInstanceId,
   type ProviderRequestKind,
@@ -2589,25 +2589,6 @@ function webSearchPatternsFromClaudeTool(input: {
     firstStringInputField(input.toolInput, ["query", "url", "pattern"]) ??
     (isClaudeWebSearchOutput(output) ? output.query : undefined);
   return pattern === undefined || pattern.trim().length === 0 ? [] : [pattern];
-}
-
-function webSearchResultsFromClaudeOutput(
-  output: ClaudeNativeToolOutput,
-): ReadonlyArray<OrchestrationV2WebSearchResult> {
-  const value = claudeNativeToolOutputValue(output);
-  if (!isClaudeWebSearchOutput(value)) {
-    return [];
-  }
-
-  return value.results.flatMap((result) => {
-    if (typeof result === "string") {
-      return [];
-    }
-    return result.content.map((content) => ({
-      title: content.title,
-      url: content.url,
-    }));
-  });
 }
 
 function outputFromClaudeToolResult(
@@ -5343,7 +5324,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             toolInput: input.toolInput,
             output: input.output,
           });
-          const webSearchResults = webSearchResultsFromClaudeOutput(input.output);
+          const webSearchResults = readClaudeWebSearchResults(
+            claudeNativeToolOutputValue(input.output),
+          );
           const webFetchUrl = firstStringInputField(input.toolInput, ["url"])?.trim();
           const outputText =
             itemType === "command_execution"

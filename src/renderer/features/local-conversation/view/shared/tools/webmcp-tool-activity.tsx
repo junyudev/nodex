@@ -1,6 +1,6 @@
 import { useIntl } from "@/lib/i18n";
-import { useState } from "react";
-import { BrowserUseIcon, ConnectorGlobeIcon } from "@/components/shared/icons";
+import { BrowserUseIcon } from "@/components/shared/icons";
+import { SiteFavicon } from "@/components/shared/site-favicon";
 import {
   WebsiteFigmaIcon,
   WebsiteGitHubIcon,
@@ -46,18 +46,7 @@ function formatJsonOrText(value: string): string {
   }
 }
 
-function websiteFaviconUrl(href: string): string | null {
-  try {
-    const url = new URL(href);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.origin)}&sz=32`;
-  } catch {
-    return null;
-  }
-}
-
 function WebMcpSourceIcon({ href, loadRemote }: { href: string | null; loadRemote: boolean }) {
-  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const sourceId = href ? resolveBrowserWebsiteSourceIconId(href) : null;
   const SourceIcon = sourceId ? WEBSITE_SOURCE_ICONS[sourceId] : null;
   if (SourceIcon)
@@ -67,30 +56,14 @@ function WebMcpSourceIcon({ href, loadRemote }: { href: string | null; loadRemot
         className="icon-xs shrink-0 rounded-2xs text-token-conversation-body"
       />
     );
-  const faviconUrl = href && loadRemote ? websiteFaviconUrl(href) : null;
-  const loaded = faviconUrl !== null && loadedUrl === faviconUrl;
   if (href === null)
     return <BrowserUseIcon aria-hidden className="icon-xs shrink-0 text-token-conversation-body" />;
   return (
-    <span
-      aria-hidden
-      className="icon-xs relative inline-block shrink-0 text-token-conversation-body"
-    >
-      {!loaded ? <ConnectorGlobeIcon className="absolute inset-0 size-full" /> : null}
-      {faviconUrl ? (
-        <img
-          key={faviconUrl}
-          alt=""
-          className="absolute inset-0 size-full rounded-2xs object-contain"
-          style={{ opacity: loaded ? 1 : 0 }}
-          decoding="async"
-          draggable={false}
-          onLoad={() => setLoadedUrl(faviconUrl)}
-          referrerPolicy="no-referrer"
-          src={faviconUrl}
-        />
-      ) : null}
-    </span>
+    <SiteFavicon
+      className="icon-xs text-token-conversation-body"
+      href={href}
+      loadRemote={loadRemote}
+    />
   );
 }
 

@@ -40,6 +40,7 @@ import {
 } from "./codex-user-attachment-projection";
 import { projectCodexParsedCommand } from "./codex-command-action-projection";
 import { projectCodexMcpToolCall } from "./codex-mcp-tool-call";
+import { readWebSearchSources } from "./codex-web-search";
 import { projectNativeAutomationUpdate } from "./nodex-app-tools/automation-projection";
 import { parseCodexDelegationText } from "./codex-delegation";
 import { decodeUntrustedAppMessage } from "./codex-untrusted-app-input";
@@ -1343,6 +1344,7 @@ function projectCanonicalItemViews(
             query: item.query,
             action: item.action,
             completed: resolveWebSearchCompleted(item, context),
+            sources: readWebSearchSources(item.results),
           },
         },
       ];

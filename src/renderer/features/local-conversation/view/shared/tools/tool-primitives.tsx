@@ -380,6 +380,32 @@ export function useIsThreadActivityStep(): boolean {
   return useContext(ThreadActivityStepContext);
 }
 
+/** Indents content under a hairline that starts beneath the glyph of the row above it. */
+const ACTIVITY_RAIL_CLASS_NAME =
+  "relative ps-6 pt-3 before:pointer-events-none before:absolute before:start-2 before:top-3 before:bottom-0 before:border-s before:border-(--color-border) before:content-['']";
+
+/**
+ * What a row reveals when opened. On its own it hangs from a hairline under the row's glyph, like
+ * a work group's steps; inside those steps it sits flush under its row, so a list never nests a
+ * second rail.
+ */
+export function ThreadActivityDetails({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const isStep = useIsThreadActivityStep();
+  return (
+    <div
+      className={cn("flex min-w-0 flex-col gap-3", !isStep && ACTIVITY_RAIL_CLASS_NAME, className)}
+    >
+      {children}
+    </div>
+  );
+}
+
 /**
  * The steps of a work group: an indented list hanging from a hairline that starts under the
  * header icon. It grows with its rows; only an individual row's own output may scroll. The group
@@ -394,11 +420,7 @@ export function ThreadActivitySteps({
 }) {
   return (
     <div
-      className={cn(
-        "relative flex min-w-0 flex-col gap-3 ps-6 pt-3",
-        "before:pointer-events-none before:absolute before:start-2 before:top-3 before:bottom-0 before:border-s before:border-(--color-border) before:content-['']",
-        className,
-      )}
+      className={cn("flex min-w-0 flex-col gap-3", ACTIVITY_RAIL_CLASS_NAME, className)}
       data-activity-steps=""
     >
       <ThreadActivityStepContext.Provider value>

@@ -2,6 +2,7 @@ import { OrchestrationMessageContext } from "./messageContext.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
+  ServerNotification__WebSearchAction,
   V2ItemCompletedNotification__AgentMessageModeration,
   V2ItemCompletedNotification__ThreadItem,
 } from "@nodex/effect-codex-app-server/schema";
@@ -1773,6 +1774,8 @@ export const OrchestrationV2FileSearchResult = Schema.Struct({
 export type OrchestrationV2FileSearchResult = typeof OrchestrationV2FileSearchResult.Type;
 
 export const OrchestrationV2WebSearchResult = Schema.Struct({
+  /** A confirmed search hit can lack a title, as can a page preview. */
+  type: Schema.optional(Schema.Literal("text_result")),
   title: Schema.optional(Schema.String),
   url: Schema.optional(TrimmedNonEmptyString),
   snippet: Schema.optional(Schema.String),
@@ -1982,6 +1985,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("web_search"),
     patterns: Schema.optional(Schema.Array(Schema.String)),
+    action: Schema.optional(ServerNotification__WebSearchAction),
     results: Schema.optional(Schema.Array(OrchestrationV2WebSearchResult)),
   }),
   Schema.Struct({
@@ -2846,6 +2850,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("web_search"),
     patterns: Schema.optional(Schema.Array(Schema.String)),
+    action: Schema.optional(ServerNotification__WebSearchAction),
     results: Schema.optional(Schema.Array(OrchestrationV2WebSearchResult)),
   }),
   Schema.Struct({

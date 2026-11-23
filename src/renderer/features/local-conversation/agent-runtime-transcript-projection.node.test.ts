@@ -83,6 +83,46 @@ const message = (
   ...overrides,
 });
 
+describe("Runtime web activity", () => {
+  const sources = (fields: Partial<Extract<AgentTurnItem, { type: "web_search" }>>) => {
+    const item = projectAgentRuntimeItem({ ...base, type: "web_search", ...fields });
+    const views = projectCodexCanonicalTurnItemViews({
+      threadId: base.threadId,
+      turnId: base.runId,
+      items: item ? [item] : [],
+      observedAtMs: Date.parse(at),
+      turnStatus: "completed",
+    });
+    return views[0] && projectCodexItemViewToTranscriptEntry(views[0], "replay", 0).webSearch;
+  };
+
+  test("passes Codex and Claude hits through to the transcript and omits page previews", () => {
+    expect(
+      sources({
+        patterns: ["release notes"],
+        results: [
+          { type: "text_result", url: "https://example.com/release" },
+          { url: "https://example.org/notes", title: "Release notes" },
+          { url: "https://example.com/preview", snippet: "Page contents" },
+        ],
+      }),
+    ).toMatchObject({
+      action: { type: "search", query: "release notes" },
+      sources: [
+        { url: "https://example.com/release", title: null, label: "example.com/release" },
+        { url: "https://example.org/notes", title: "Release notes", label: "example.org/notes" },
+      ],
+    });
+  });
+
+  test.each([
+    { type: "openPage", url: "https://example.com/" },
+    { type: "findInPage", url: "https://example.com/", pattern: "release" },
+  ] as const)("preserves a native $type action", (action) => {
+    expect(sources({ action, patterns: ["release"] })?.action).toEqual(action);
+  });
+});
+
 describe("Runtime request recovery", () => {
   const failure = {
     class: "provider_error",
