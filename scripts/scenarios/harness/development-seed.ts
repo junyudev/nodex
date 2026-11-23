@@ -63,7 +63,7 @@ export const materializeDevelopmentSeed = async (input: {
   if (input.scenarioId === CROSS_PROVIDER_SCENARIO_ID) {
     const { prepareCrossProviderDelegationRuntime } =
       await import("../runtime/cross-provider-delegation");
-    prepareCrossProviderDelegationRuntime({
+    await prepareCrossProviderDelegationRuntime({
       nodexHome: input.nodexHome,
       spaceId: runtime.identity.libraryId,
       manifest,

@@ -21,7 +21,7 @@ import {
   prepareCrossProviderDelegationRuntime,
 } from "./cross-provider-delegation";
 
-it("seeds both composer choices and enables the delegated model on its configured Agent", () => {
+it("seeds both composer choices and enables the delegated model on its configured Agent", async () => {
   const runRoot = mkdtempSync(path.join(tmpdir(), "nodex-cross-provider-seed-"));
   const nodexHome = path.join(runRoot, "profile");
   const projectId = "project";
@@ -29,7 +29,7 @@ it("seeds both composer choices and enables the delegated model on its configure
   const parentSession = "passkeys";
   const releaseNotesSession = "release-notes";
   try {
-    prepareCrossProviderDelegationRuntime({
+    await prepareCrossProviderDelegationRuntime({
       nodexHome,
       spaceId,
       manifest: {

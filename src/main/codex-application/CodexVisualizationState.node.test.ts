@@ -99,30 +99,26 @@ it.effect(
       }),
     ),
 );
-it.effect(
-  "failed interaction writes preserve the prior cache/revision and publish no committed event",
-  () =>
-    withStore((store, file) =>
-      Effect.gen(function* () {
-        const owner = yield* CodexVisualizationState;
-        yield* owner.writeInteraction(
-          { identity, state: { modelContent: { selected: 1 } }, mutationId: "first" },
-          "renderer-one",
-        );
-        const before = store.readSnapshot();
-        rmSync(file);
-        mkdirSync(file);
-        const result = yield* owner.writeInteraction(
-          { identity, state: { modelContent: { selected: 2 } }, mutationId: "failed" },
-          "renderer-one",
-        );
-        assert.deepEqual(result, {
-          result: { ok: false, code: "storage_unavailable", retryable: false },
-          event: null,
-        });
-        assert.deepEqual(store.readSnapshot(), before);
-      }),
-    ),
+it.effect("an interaction write that cannot be saved is not acknowledged", () =>
+  withStore((_store, file) =>
+    Effect.gen(function* () {
+      const owner = yield* CodexVisualizationState;
+      yield* owner.writeInteraction(
+        { identity, state: { modelContent: { selected: 1 } }, mutationId: "first" },
+        "renderer-one",
+      );
+      rmSync(file);
+      mkdirSync(file);
+      const result = yield* owner.writeInteraction(
+        { identity, state: { modelContent: { selected: 2 } }, mutationId: "failed" },
+        "renderer-one",
+      );
+      assert.deepEqual(result, {
+        result: { ok: false, code: "storage_unavailable", retryable: false },
+        event: null,
+      });
+    }),
+  ),
 );
 
 it.effect(
@@ -242,6 +238,7 @@ it.effect(
         assert.strictEqual(yield* owner.read(identity), null);
         assert.strictEqual(yield* owner.read({ ...identity, path: "/second.html" }), null);
         const before = store.readSnapshot();
+        yield* Effect.promise(() => store.whenDurable());
         const invalid = yield* owner.write(
           { identity, state: { imageIds: ["image"] }, mutationId: "invalid" },
           "renderer",
@@ -253,12 +250,12 @@ it.effect(
         rmSync(file);
         // A directory at the atomic destination makes rename fail after writing the temp file.
         mkdirSync(file);
+        assert.deepEqual(store.readSnapshot(), before);
         const failed = yield* write(owner, identity, 9);
         assert.deepEqual(failed, {
           event: null,
           result: { ok: false, code: "storage_unavailable", retryable: false },
         });
-        assert.deepEqual(store.readSnapshot(), before);
       }),
     ),
 );
@@ -393,6 +390,7 @@ it.effect(
         assert.isFalse(
           Object.hasOwn(store.readState(), codexVisualizationInteractionAtomKey(scope)),
         );
+        yield* Effect.promise(() => store.whenDurable());
         assert.deepEqual(new PersistedAtomStore(file).readState(), store.readState());
         assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), store.readState());
         assert.strictEqual(store.readState().draft, "latest draft");
@@ -409,34 +407,6 @@ it.effect(
         }
         assert.deepEqual(yield* owner.clearThread(scope), []);
         assert.strictEqual(store.readSnapshot().revision, before.revision + 2);
-      }),
-    ),
-);
-
-it.effect(
-  "a failed clear preserves both records and does not publish successful deletion events",
-  () =>
-    withStore((store, file) =>
-      Effect.gen(function* () {
-        const owner = yield* CodexVisualizationState;
-        yield* write(owner, identity, 1);
-        interaction(store, identity, 2);
-        const before = store.readSnapshot();
-        rmSync(file);
-        mkdirSync(file);
-        const failure = yield* owner
-          .clearThread({ hostId: "local", threadId: "display" })
-          .pipe(Effect.result);
-        if (failure._tag !== "Failure") throw new Error("Expected failed durable deletion");
-        assert.strictEqual(failure.failure.operation, "clear-thread");
-        assert.deepEqual(store.readSnapshot(), before);
-        assert.deepEqual(
-          payloads(yield* owner.readPassiveContext({ hostId: "local", threadId: "display" })),
-          [
-            { path: "/plot.html", state: null },
-            { path: "/plot.html", interaction: { selected: 2 } },
-          ],
-        );
       }),
     ),
 );

@@ -779,8 +779,12 @@ writes, interrupts queued mutations, and drains the active write before returnin
 Renderer persisted atoms, Codex client-thread identity aliases and file-widget state share one
 Main-owned `PersistedAtomStore`. The repository owns its in-memory projection
 and process-local event revision under a Profile-scoped capability; renderer ingress and Codex application logic
-receive the same instance explicitly. Durable commits have one scoped delivery subscription,
-including Main-owned writes and batch deletions; IPC callers do not publish duplicate atom events.
+receive the same instance explicitly. A commit takes effect in memory and has one scoped delivery
+subscription, including Main-owned writes and batch deletions; IPC callers do not publish duplicate
+atom events. The file is written behind commits off Main's event loop, one write at a time, each
+carrying every change committed before it. Callers that acknowledge a write to a window wait for
+the write carrying it, a failed write is retried by the next change, and the remaining changes are
+written before Main's application Scope closes.
 Rebuilding the Main application owner
 reopens durable values from disk with a fresh delivery revision and never
 inherits a module cache or test path override.

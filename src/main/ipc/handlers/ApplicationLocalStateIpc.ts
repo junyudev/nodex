@@ -115,14 +115,18 @@ export const live: Layer.Layer<
             try: () => {
               if (!personalStateKeyMatches(mutation.key, senderSpace(event.senderFrame?.url ?? "")))
                 throw new Error("Personal state belongs to another Space");
-              const persistedEvent = persistedAtoms.commitMutation(
-                mutation,
-                String(event.sender.id),
-              );
-              return persistedEvent;
+              return persistedAtoms.commitMutation(mutation, String(event.sender.id));
             },
             catch: (cause) =>
               new ApplicationLocalStateIpcError({ operation: "update-persisted-atom", cause }),
+          }),
+        ),
+        // The window counts its change as saved only once it is on disk.
+        Effect.tap((persistedEvent) =>
+          Effect.tryPromise({
+            try: () => persistedAtoms.whenDurable(persistedEvent.revision),
+            catch: (cause) =>
+              new ApplicationLocalStateIpcError({ operation: "save-persisted-atom", cause }),
           }),
         ),
       ),

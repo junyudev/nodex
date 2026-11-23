@@ -21,12 +21,12 @@ export const crossProviderRuntimeRoot = (nodexHome: string): string =>
   path.join(path.dirname(nodexHome), "scripted-agent-runtime");
 
 /** Installed only in an owned seed home, before any Electron writer opens its local stores. */
-export const prepareCrossProviderDelegationRuntime = (input: {
+export const prepareCrossProviderDelegationRuntime = async (input: {
   readonly nodexHome: string;
   readonly spaceId: string;
   readonly manifest: ScenarioManifest;
   readonly clock?: "manual" | "realtime";
-}): void => {
+}): Promise<void> => {
   const root = crossProviderRuntimeRoot(input.nodexHome);
   fs.mkdirSync(path.join(root, "gates"), { recursive: true });
   const parentSession = input.manifest.entityIdsByKey?.parentSession;
@@ -192,4 +192,5 @@ export const prepareCrossProviderDelegationRuntime = (input: {
         }),
     },
   });
+  await atoms.whenDurable();
 };

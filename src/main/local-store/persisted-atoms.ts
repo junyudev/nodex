@@ -1,15 +1,6 @@
-import { syncDirectorySync } from "../platform/node/filesystem-durability";
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { syncDirectory } from "../platform/node/filesystem-durability";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import type {
@@ -37,29 +28,44 @@ function readPersistedAtomsFile(atomsPath: string): PersistedAtomState {
   }
 }
 
-function writePersistedAtomsFile(atomsPath: string, state: PersistedAtomState): void {
+async function writePersistedAtomsFile(atomsPath: string, contents: string): Promise<void> {
   const parent = dirname(atomsPath);
-  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  await mkdir(parent, { recursive: true, mode: 0o700 });
   const temporaryPath = join(parent, `.${basename(atomsPath)}.${process.pid}.${randomUUID()}.tmp`);
-  const handle = openSync(temporaryPath, "wx", 0o600);
   try {
-    writeFileSync(handle, JSON.stringify(state, null, 2), "utf8");
-    fsyncSync(handle);
+    const handle = await open(temporaryPath, "wx", 0o600);
+    try {
+      await handle.writeFile(contents, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporaryPath, atomsPath);
+    await syncDirectory(parent);
   } finally {
-    closeSync(handle);
-  }
-  try {
-    renameSync(temporaryPath, atomsPath);
-    syncDirectorySync(parent);
-  } finally {
-    rmSync(temporaryPath, { force: true });
+    await rm(temporaryPath, { force: true });
   }
 }
 
+interface DurabilityWaiter {
+  readonly revision: number;
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+}
+
+/**
+ * Profile-local window state. A change takes effect and reaches every window as soon as it is
+ * committed; the file is written behind it on the I/O thread pool. Changes that arrive while a
+ * write is under way are saved together by the next one, so typing costs one write per disk
+ * round trip instead of one per keystroke, and Main never waits for the disk.
+ */
 export class PersistedAtomStore {
   readonly #atomsPath: string;
   #stateCache: PersistedAtomState | null = null;
   #revision = 0;
+  #durableRevision = 0;
+  #writing: Promise<void> | null = null;
+  #waiters: DurabilityWaiter[] = [];
   readonly #listeners = new Set<(event: PersistedAtomEvent) => void>();
 
   constructor(atomsPath: string) {
@@ -80,7 +86,7 @@ export class PersistedAtomStore {
     };
   }
 
-  /** Successful durable mutations have one delivery source, including Main-owned writes. */
+  /** Committed mutations have one delivery source, including Main-owned writes. */
   subscribe(listener: (event: PersistedAtomEvent) => void): () => void {
     this.#listeners.add(listener);
     return () => {
@@ -110,7 +116,6 @@ export class PersistedAtomStore {
     const next = this.readState();
     if (mutation.value === undefined) delete next[key];
     else next[key] = mutation.value;
-    writePersistedAtomsFile(this.#atomsPath, next);
     this.#stateCache = next;
     this.#revision += 1;
     const event: PersistedAtomEvent = {
@@ -120,11 +125,12 @@ export class PersistedAtomStore {
       revision: this.#revision,
       originRendererId,
     };
+    this.#scheduleWrite();
     this.#publish(event);
     return event;
   }
 
-  /** Deletes related atoms in one durable write; each event retains the global revision order. */
+  /** Deletes related atoms in one commit; each event retains the global revision order. */
   removeAtoms(
     keys: readonly string[],
     mutationId: string,
@@ -138,7 +144,6 @@ export class PersistedAtomStore {
     const removed = normalizedKeys.filter((key) => Object.hasOwn(next, key));
     if (removed.length === 0) return [];
     for (const key of removed) delete next[key];
-    writePersistedAtomsFile(this.#atomsPath, next);
     this.#stateCache = next;
     const events = removed.map((key) => ({
       key,
@@ -147,6 +152,7 @@ export class PersistedAtomStore {
       revision: ++this.#revision,
       originRendererId,
     }));
+    this.#scheduleWrite();
     for (const event of events) this.#publish(event);
     return events;
   }
@@ -163,6 +169,57 @@ export class PersistedAtomStore {
       null,
     );
     return this.readState();
+  }
+
+  /**
+   * Settles once the file holds every change up to `revision`. A failed write rejects the changes
+   * it carried; they stay committed and the next change writes them again.
+   */
+  whenDurable(revision: number = this.#revision): Promise<void> {
+    if (revision <= this.#durableRevision) return Promise.resolve();
+    const durable = new Promise<void>((resolve, reject) => {
+      this.#waiters.push({ revision, resolve, reject });
+    });
+    this.#scheduleWrite();
+    return durable;
+  }
+
+  #scheduleWrite(): void {
+    if (this.#writing) return;
+    this.#writing = this.#writeBehind().then((decided) => {
+      this.#writing = null;
+      // A change committed after the last write was decided still needs a write of its own.
+      if (this.#revision > decided) this.#scheduleWrite();
+    });
+  }
+
+  /** Writes until the file is current or a write fails, and returns the last revision decided. */
+  async #writeBehind(): Promise<number> {
+    // Let the rest of this turn's messages commit first, so a burst shares one write.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    for (;;) {
+      const revision = this.#revision;
+      if (revision <= this.#durableRevision) return revision;
+      try {
+        await writePersistedAtomsFile(this.#atomsPath, JSON.stringify(this.#stateCache ?? {}));
+        this.#durableRevision = revision;
+        this.#settle(revision, null);
+      } catch (cause) {
+        this.#settle(revision, cause instanceof Error ? cause : new Error(String(cause)));
+        // Only newer changes try again right away, so a failing disk is not retried in a loop.
+        if (this.#revision === revision) return revision;
+      }
+    }
+  }
+
+  #settle(revision: number, error: Error | null): void {
+    const settled = this.#waiters.filter((waiter) => waiter.revision <= revision);
+    if (settled.length === 0) return;
+    this.#waiters = this.#waiters.filter((waiter) => waiter.revision > revision);
+    for (const waiter of settled) {
+      if (error) waiter.reject(error);
+      else waiter.resolve();
+    }
   }
 }
 

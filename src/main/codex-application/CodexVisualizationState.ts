@@ -40,6 +40,10 @@ type WriteCommit = {
   readonly result: CodexVisualizationStateWriteResult;
   readonly event: PersistedAtomEvent | null;
 };
+const STORAGE_UNAVAILABLE = {
+  result: { ok: false, code: "storage_unavailable", retryable: false },
+  event: null,
+} as const;
 export class CodexVisualizationState extends Context.Service<
   CodexVisualizationState,
   {
@@ -84,6 +88,17 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
     CodexVisualizationState,
     Effect.gen(function* () {
       const store = yield* ProfilePersistedAtoms;
+      // A widget's state is reported saved only once it is on disk.
+      const saved = <Commit extends { readonly event: PersistedAtomEvent | null }>(
+        commit: Commit,
+      ) => {
+        const event = commit.event;
+        if (!event) return Effect.succeed(commit);
+        return Effect.tryPromise(() => store.whenDurable(event.revision)).pipe(
+          Effect.as(commit),
+          Effect.catch(() => Effect.succeed(STORAGE_UNAVAILABLE)),
+        );
+      };
       const read = Effect.fn("CodexVisualizationState.read")(
         (raw: CodexVisualizationStateIdentity) =>
           Effect.try({
@@ -137,14 +152,11 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
                   event,
                 };
               } catch {
-                return {
-                  result: { ok: false, code: "storage_unavailable", retryable: false },
-                  event: null,
-                };
+                return STORAGE_UNAVAILABLE;
               }
             },
             catch: (cause) => new CodexVisualizationStateError({ operation: "write", cause }),
-          }),
+          }).pipe(Effect.flatMap(saved)),
       );
       const writeInteraction = Effect.fn("CodexVisualizationState.writeInteraction")(
         (input: CodexVisualizationInteractionWriteInput, originRendererId: string) =>
@@ -191,15 +203,12 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
                   event,
                 };
               } catch {
-                return {
-                  result: { ok: false, code: "storage_unavailable", retryable: false },
-                  event: null,
-                };
+                return STORAGE_UNAVAILABLE;
               }
             },
             catch: (cause) =>
               new CodexVisualizationStateError({ operation: "write-interaction", cause }),
-          }),
+          }).pipe(Effect.flatMap(saved)),
       );
       const readPassiveContext = Effect.fn("CodexVisualizationState.readPassiveContext")(
         (

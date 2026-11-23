@@ -45,7 +45,7 @@ describe("Codex client-thread identity", () => {
     }
   });
 
-  test("persists the exact conversation-scoped atom and resolves both directions", () => {
+  test("persists the exact conversation-scoped atom and resolves both directions", async () => {
     const store = useTempPersistedAtoms();
     const clientThreadId = "client-new-thread:11111111-1111-4111-8111-111111111111";
 
@@ -59,6 +59,7 @@ describe("Codex client-thread identity", () => {
     expect(codexClientThreadIdentityAtomKey("local", "conversation with spaces")).toBe(
       "thread-client-id-v1:local%3Aconversation%20with%20spaces",
     );
+    await store.whenDurable();
     const replacement = new PersistedAtomStore(
       join(tempDirectories.at(-1)!, "persisted-atoms-v1.json"),
     );

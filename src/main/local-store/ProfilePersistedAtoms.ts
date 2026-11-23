@@ -14,6 +14,13 @@ export const live: Layer.Layer<ProfilePersistedAtoms, never, MainConfig> = Layer
   ProfilePersistedAtoms,
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    return makePersistedAtomStore(config.nodexHome);
+    const store = makePersistedAtomStore(config.nodexHome);
+    // Writes trail their changes, so the last ones are saved before Nodex quits.
+    yield* Effect.addFinalizer(() =>
+      Effect.tryPromise(() => store.whenDurable()).pipe(
+        Effect.catch((cause) => Effect.logWarning("Could not save window state", { cause })),
+      ),
+    );
+    return store;
   }),
 );
