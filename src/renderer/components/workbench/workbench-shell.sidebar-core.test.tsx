@@ -921,7 +921,7 @@ describe("workbench session shell / sidebar-core", () => {
         await Promise.resolve();
       });
 
-      expect(await screen.findByRole("heading", { name: "Data controls" })).toBeTruthy();
+      expect(await screen.findByRole("heading", { name: "Archived chats", level: 1 })).toBeTruthy();
     });
   });
 
