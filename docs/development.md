@@ -180,7 +180,7 @@ picker uses stdio, with no network listener.
 
 The install lifecycle prepares Electron and runs `electron-builder install-app-deps`
 for the native architecture. This owns Electron's `node-pty` dependency. The
-standalone Agent Runtime uses separately pinned Node `24.22.1` and the matching
+standalone Agent Runtime uses separately pinned Node `24.22.3` and the matching
 node-pty N-API prebuilds; it never reuses Electron's addon. The standalone Node
 executable and license are bound by `resources/agent-runtime/node-runtime.lock.json`.
 A real load under that Node and a PE-header inspection verify the private addon.
