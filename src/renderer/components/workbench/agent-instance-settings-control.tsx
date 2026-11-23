@@ -29,6 +29,7 @@ import {
 import { useSettingsRead } from "../../lib/use-settings-read";
 import { AgentEnvironmentEditor } from "./agent-environment-editor";
 import { NodexButton, NodexSwitch } from "../ui/button";
+import { InstanceModels } from "@/features/model-policy/agent-models";
 import { Input } from "../ui/input";
 import { toast } from "../ui/toast";
 import {
@@ -454,6 +455,7 @@ function AgentProfiles({
             onChange={(rows) => edit(profileId, { environment: rows })}
           />
         ) : null}
+        <InstanceModels instanceId={profileId} />
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           {confirmRemove === profileId ? (
             <>

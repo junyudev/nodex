@@ -1255,6 +1255,24 @@ it.effect(
     }),
 );
 
+it.effect("keeps only Nodex's switch from a policy saved with a switch per provider", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture(
+      '[server.model_policy]\nprovidersOff = ["nodex", "claude_work"]\nexceptions = [\'["codex","gpt-5.6-sol"]\']\nagentsMayChooseCredit = true\n',
+    );
+    const settings = yield* makeApplicationSettings({
+      environment: {},
+      hostHomeDirectory: root,
+      settingsPath,
+    });
+    assert.deepEqual((yield* settings.snapshot()).modelPolicy, {
+      nodexOff: true,
+      exceptions: ['["codex","gpt-5.6-sol"]'],
+      agentsMayChooseCredit: true,
+    });
+  }),
+);
+
 it.effect(
   "persists model policy independently of account and meter settings, preserving unrelated TOML",
   () =>
@@ -1263,7 +1281,7 @@ it.effect(
       const input = { environment: {}, hostHomeDirectory: root, settingsPath };
       const settings = yield* makeApplicationSettings(input);
       const policy = {
-        providersOff: ["nodex"],
+        nodexOff: true,
         exceptions: ['["nodex","codex","gpt-6.1-sol"]'],
         agentsMayChooseCredit: false,
       };

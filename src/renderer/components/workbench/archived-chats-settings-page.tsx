@@ -432,10 +432,7 @@ export function ArchivedChatsSettingsPage({
         ) : null
       }
     >
-      <NodexSettingsSection
-        title={intl.formatMessage(settingsMessages.archivedChatsArchivedChats)}
-        cardClassName="overflow-visible"
-      >
+      <NodexSettingsSection cardClassName="overflow-visible">
         {loading ? (
           <p role="status" className="px-4 py-3 text-sm text-token-text-secondary">
             {intl.formatMessage({

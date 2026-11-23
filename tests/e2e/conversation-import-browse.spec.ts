@@ -64,7 +64,7 @@ test("searches a whole history and imports a selection made across searches", as
       });
 
       await openWorkbenchSettings(page);
-      await page.getByRole("link", { name: "Conversations", exact: true }).click();
+      await page.getByRole("link", { name: "Import", exact: true }).click();
 
       const total = conversationImportHistoryCounts.codex + conversationImportHistoryCounts.claude;
       const selection = page.getByRole("group", { name: "Import selection", exact: true });

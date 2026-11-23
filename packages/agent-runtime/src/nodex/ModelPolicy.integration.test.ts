@@ -117,7 +117,7 @@ it.live(
           expect(yield* Effect.flip(send("credit", sender))).toMatchObject({
             code: "model_off",
             retryable: false,
-            message: "GPT-6.1 Sol on Nodex is off in Settings → Models. Choose another model.",
+            message: "GPT-6.1 Sol on Nodex is off in Settings → Agents. Choose another model.",
           });
         }
         expect(
@@ -129,7 +129,7 @@ it.live(
         expect(compact).toMatchObject({ code: "model_off" });
         yield* call("providers.configure", {
           providers,
-          modelPolicy: { ...off, providersOff: ["nodex"] },
+          modelPolicy: { ...off, nodexOff: true },
         });
         expect(
           (yield* call("providers.read", {})).some((provider) => provider.source === "nodex"),
@@ -186,7 +186,7 @@ it.live(
             {
               home,
               cwd: home,
-              modelPolicy: { ...DEFAULT_MODEL_POLICY, providersOff: ["nodex"] },
+              modelPolicy: { ...DEFAULT_MODEL_POLICY, nodexOff: true },
               providers: {
                 nodex_codex_alice: {
                   driver: "codex",

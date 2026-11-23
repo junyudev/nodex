@@ -270,7 +270,7 @@ export function ConversationImportSettingsPage({
 
   return (
     <NodexSettingsPageSurface
-      title={intl.formatMessage(settingsMessages.conversationImportTitle)}
+      title={intl.formatMessage(settingsMessages.importTitle)}
       subtitle={intl.formatMessage({
         id: "settings.conversationImport.eachImportIsANewChat",
         defaultMessage:
@@ -1009,10 +1009,7 @@ function ConversationImportSection({
   ) : null;
 
   return (
-    <NodexSettingsSection
-      title={intl.formatMessage(settingsMessages.conversationImportImport2)}
-      cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]"
-    >
+    <NodexSettingsSection cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2.5">
         <PageSearchInput
           id={searchId}

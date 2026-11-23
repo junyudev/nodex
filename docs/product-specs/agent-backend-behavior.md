@@ -97,7 +97,7 @@ server credentials and retains its own process lifecycle.
 
 The default OpenCode instance is enabled for an unconfigured Profile. An explicitly
 disabled instance stays disabled. OpenCode models start off, as
-[Model policy](model-policy-behavior.md) describes; turn them on in setup or Settings → Models,
+[Model policy](model-policy-behavior.md) describes; turn them on in setup or in the Agent's card in Settings → Agents,
 or find one by searching the model menu. Availability and pricing
 remain with the native provider.
 

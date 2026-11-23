@@ -5,22 +5,22 @@ import { buildSettingsSearchResults, type SettingsSearchContext } from "@/lib/se
 import { scoreSettingsQueryMatch } from "@/lib/settings-search-score";
 import {
   ArchiveIcon,
-  HooksIcon,
   InboxIcon,
   KeyboardShortcutsIcon,
   MicIcon,
-  PageIcon,
   PluginsIcon,
-  SettingsAgentIcon,
+  SettingsAgentsIcon,
   SettingsAppearanceIcon,
+  SettingsBackupsIcon,
   SettingsBrowserIcon,
+  SettingsChatsIcon,
   SettingsComputerUseIcon,
+  SettingsEditorIcon,
   SettingsGeneralIcon,
   SettingsGitIcon,
   SettingsImportIcon,
-  SettingsLocalEnvironmentsIcon,
+  SettingsRemoteIcon,
   SettingsWorktreeIcon,
-  SlashModelIcon,
 } from "../shared/icons";
 import { UserRound } from "../shared/icons/generic-icons";
 import { WebsiteGitHubIcon } from "../shared/icons/website-icons";
@@ -33,34 +33,37 @@ import {
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
-  | "spaces"
-  | "github"
   | "account"
+  | "remote"
   | "general-settings"
-  | "agent-import"
   | "appearance"
+  | "editor"
   | "voice"
-  | "agent"
-  | "models"
   | "keyboard-shortcuts"
+  | "agent"
+  | "chats"
   | "inbox-settings"
   | "plugins-settings"
   | "browser"
   | "computer-use"
-  | "hooks-settings"
+  | "github"
   | "git"
-  | "local-environments"
   | "worktrees"
-  | "page"
-  | "data-controls"
+  | "import"
+  | "archived-chats"
   | "backups";
 
+/**
+ * Each group answers one question: who you are and where Nodex reaches you (no heading), the app
+ * on this computer, who does the work and how it works with you, what Agents can reach, where code
+ * work happens, and the data you bring in or keep.
+ */
 export type SettingsSectionGroupKey =
-  | "personal"
+  | "account"
+  | "app"
   | "agents"
   | "integrations"
   | "coding"
-  | "workspace"
   | "data";
 
 export interface SettingsSectionDefinition {
@@ -77,212 +80,143 @@ export interface SettingsSectionDefinition {
   visibleWhen?: () => boolean;
 }
 
-export const SETTINGS_SECTION_GROUP_LABELS = defineMessages({
-  agents: { id: "settings.navigation.group.agents", defaultMessage: "AI" },
-  coding: { id: "settings.navigation.group.coding", defaultMessage: "Coding" },
-  data: { id: "settings.navigation.group.data", defaultMessage: "Data & recovery" },
-  integrations: { id: "settings.navigation.group.integrations", defaultMessage: "Integrations" },
-  personal: { id: "settings.navigation.group.personal", defaultMessage: "Personal" },
-  workspace: { id: "settings.navigation.group.workspace", defaultMessage: "Workspace" },
-});
+/** The account group leads the rail without a heading. */
+export const SETTINGS_SECTION_GROUP_LABELS: Readonly<
+  Record<SettingsSectionGroupKey, MessageDescriptor | null>
+> = {
+  account: null,
+  ...defineMessages({
+    app: { id: "settings.navigation.group.app", defaultMessage: "App" },
+    agents: { id: "settings.navigation.group.agents", defaultMessage: "Agents" },
+    integrations: { id: "settings.navigation.group.integrations", defaultMessage: "Integrations" },
+    coding: { id: "settings.navigation.group.coding", defaultMessage: "Coding" },
+    data: { id: "settings.navigation.group.data", defaultMessage: "Data" },
+  }),
+};
 
 export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = [
-  "personal",
+  "account",
+  "app",
   "agents",
   "integrations",
   "coding",
-  "workspace",
   "data",
 ];
 
-export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
-  {
-    id: "spaces",
-    labelMessage: settingsMessages.spacesTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "spaces",
-    icon: SettingsGeneralIcon,
-    groupKey: "workspace",
-    searchMessages: [
-      "Spaces",
-      "Remote access",
-      "Devices",
-      "Link a device",
-      "Revoke",
-      "People",
-      "Invite someone",
-      "Join a Space",
-      "Leave",
-      "Certificate fingerprint",
-      "One-time code",
-    ],
+function section(
+  definition: Omit<SettingsSectionDefinition, "label" | "searchMessages"> & {
+    readonly searchMessages?: readonly string[];
   },
-  {
+): SettingsSectionDefinition {
+  return {
+    ...definition,
+    get label() {
+      return getIntl().formatMessage(definition.labelMessage);
+    },
+    get searchMessages() {
+      return definition.searchMessages ?? settingsSearchSourceMessages(definition.id);
+    },
+  };
+}
+
+/** The rail, in order. */
+export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+  section({
     id: "account",
     labelMessage: settingsMessages.accountTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "account",
     icon: UserRound,
-    groupKey: "personal",
-    get searchMessages() {
-      return settingsSearchSourceMessages("account");
-    },
-  },
-  {
+    groupKey: "account",
+  }),
+  section({
+    id: "remote",
+    labelMessage: settingsMessages.remoteTitle,
+    pageKey: "remote",
+    icon: SettingsRemoteIcon,
+    groupKey: "account",
+  }),
+  section({
     id: "general-settings",
     labelMessage: settingsMessages.generalGeneral,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "general",
     icon: SettingsGeneralIcon,
-    groupKey: "personal",
-    get searchMessages() {
-      return settingsSearchSourceMessages("general-settings");
-    },
-  },
-  {
+    groupKey: "app",
+  }),
+  section({
     id: "appearance",
     labelMessage: settingsMessages.appearanceTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "appearance",
     icon: SettingsAppearanceIcon,
-    groupKey: "personal",
-    get searchMessages() {
-      return settingsSearchSourceMessages("appearance");
-    },
-  },
-  {
+    groupKey: "app",
+  }),
+  section({
+    id: "editor",
+    labelMessage: settingsMessages.editorTitle,
+    pageKey: "editor",
+    icon: SettingsEditorIcon,
+    groupKey: "app",
+  }),
+  section({
     id: "voice",
     labelMessage: settingsMessages.voiceTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "voice",
     icon: MicIcon,
-    groupKey: "personal",
-    get searchMessages() {
-      return settingsSearchSourceMessages("voice");
-    },
-  },
-  {
+    groupKey: "app",
+  }),
+  section({
     id: "keyboard-shortcuts",
     labelMessage: settingsMessages.keyboardShortcutsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "keyboard-shortcuts",
     icon: KeyboardShortcutsIcon,
-    groupKey: "personal",
-    get searchMessages() {
-      return settingsSearchSourceMessages("keyboard-shortcuts");
-    },
-  },
-  {
+    groupKey: "app",
+  }),
+  section({
     id: "agent",
     labelMessage: settingsMessages.agentsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "agent",
-    icon: SettingsAgentIcon,
+    icon: SettingsAgentsIcon,
     groupKey: "agents",
-    get searchMessages() {
-      return settingsSearchSourceMessages("agent");
-    },
     searchTerms: ({ activeProjectName }) => (activeProjectName ? [activeProjectName] : []),
-  },
-  {
-    id: "models",
-    labelMessage: settingsMessages.modelsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "models",
-    icon: SlashModelIcon,
+  }),
+  section({
+    id: "chats",
+    labelMessage: settingsMessages.chatsTitle,
+    pageKey: "chats",
+    icon: SettingsChatsIcon,
     groupKey: "agents",
-    get searchMessages() {
-      return settingsSearchSourceMessages("models");
-    },
-  },
-  {
-    id: "agent-import",
-    labelMessage: settingsMessages.conversationImportTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "import",
-    icon: SettingsImportIcon,
+  }),
+  section({
+    id: "inbox-settings",
+    labelMessage: settingsMessages.inboxTitle,
+    pageKey: "inbox",
+    icon: InboxIcon,
     groupKey: "agents",
-    get searchMessages() {
-      return settingsSearchSourceMessages("agent-import");
-    },
-  },
-  {
-    id: "hooks-settings",
-    labelMessage: settingsMessages.hooksTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "hooks",
-    icon: HooksIcon,
-    groupKey: "agents",
-    get searchMessages() {
-      return settingsSearchSourceMessages("hooks-settings");
-    },
-  },
-  {
+  }),
+  section({
     id: "plugins-settings",
     labelMessage: settingsMessages.pluginsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "plugins",
     icon: PluginsIcon,
     groupKey: "integrations",
-    get searchMessages() {
-      return settingsSearchSourceMessages("plugins-settings");
-    },
-  },
-  {
+  }),
+  section({
     id: "browser",
     labelMessage: settingsMessages.browserTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "browser",
     icon: SettingsBrowserIcon,
     groupKey: "integrations",
-    get searchMessages() {
-      return settingsSearchSourceMessages("browser");
-    },
-  },
-  {
+  }),
+  section({
     id: "computer-use",
     labelMessage: settingsMessages.computerUseTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "computer-use",
     visibleWhen: () => readSettingsHostPresentation().computerUse,
     icon: SettingsComputerUseIcon,
     groupKey: "integrations",
-    get searchMessages() {
-      return settingsSearchSourceMessages("computer-use");
-    },
-  },
-  {
+  }),
+  section({
     id: "github",
     labelMessage: settingsMessages.githubTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "github",
     icon: WebsiteGitHubIcon,
     groupKey: "integrations",
@@ -294,100 +228,44 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
       "Mentions",
       "Repositories",
     ],
-  },
-  {
+  }),
+  section({
     id: "git",
     labelMessage: settingsMessages.gitTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "git",
     icon: SettingsGitIcon,
     groupKey: "coding",
-    get searchMessages() {
-      return settingsSearchSourceMessages("git");
-    },
-  },
-  {
-    id: "local-environments",
-    labelMessage: settingsMessages.environmentsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "local-environments",
-    icon: SettingsLocalEnvironmentsIcon,
-    groupKey: "coding",
-    get searchMessages() {
-      return settingsSearchSourceMessages("local-environments");
-    },
-    searchTerms: ({ projectNames, activeProjectName }) =>
-      activeProjectName ? [...projectNames, activeProjectName] : projectNames,
-  },
-  {
+  }),
+  section({
     id: "worktrees",
     labelMessage: settingsMessages.worktreesTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "worktrees",
     icon: SettingsWorktreeIcon,
     groupKey: "coding",
-    get searchMessages() {
-      return settingsSearchSourceMessages("worktrees");
-    },
-  },
-  {
-    id: "page",
-    labelMessage: settingsMessages.pageTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "page",
-    icon: PageIcon,
-    groupKey: "workspace",
-    get searchMessages() {
-      return settingsSearchSourceMessages("page");
-    },
-  },
-  {
-    id: "inbox-settings",
-    labelMessage: settingsMessages.inboxTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "inbox",
-    icon: InboxIcon,
-    groupKey: "workspace",
-    get searchMessages() {
-      return settingsSearchSourceMessages("inbox-settings");
-    },
-  },
-  {
-    id: "data-controls",
+    searchTerms: ({ projectNames, activeProjectName }) =>
+      activeProjectName ? [...projectNames, activeProjectName] : projectNames,
+  }),
+  section({
+    id: "import",
+    labelMessage: settingsMessages.importTitle,
+    pageKey: "import",
+    icon: SettingsImportIcon,
+    groupKey: "data",
+  }),
+  section({
+    id: "archived-chats",
     labelMessage: settingsMessages.archivedChatsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
-    pageKey: "data-controls",
+    pageKey: "archived-chats",
     icon: ArchiveIcon,
     groupKey: "data",
-    get searchMessages() {
-      return settingsSearchSourceMessages("data-controls");
-    },
-  },
-  {
+  }),
+  section({
     id: "backups",
     labelMessage: settingsMessages.backupsTitle,
-    get label() {
-      return getIntl().formatMessage(this.labelMessage);
-    },
     pageKey: "backups",
-    icon: ArchiveIcon,
+    icon: SettingsBackupsIcon,
     groupKey: "data",
-    get searchMessages() {
-      return settingsSearchSourceMessages("backups");
-    },
-  },
+  }),
 ];
 
 export function resolveVisibleSettingsSections(): SettingsSectionDefinition[] {

@@ -95,7 +95,7 @@ contract live in [Native Conversation Connection Behavior](native-conversation-c
 
 ## Machine admission and queue
 
-Settings → Agents → **Automatic work at once** limits unattended new work across this
+Settings → Chats → **Automatic chats at once** limits unattended new work across this
 machine, from 1 to 16, initially 4. Saving applies to the running Runtime and future
 launches. Lowering the limit lets existing work finish; nothing preempts an episode.
 Your chats and the tasks they delegate never wait for capacity.
@@ -707,7 +707,7 @@ Codex's speed always comes from the global Fast preference, which only Settings 
 unstarted chat's choice change.
 
 Only another choice replaces the memory. Until the Agent catalog answers, the composer shows
-the remembered choice as it is. A remembered model switched off in Settings → Models stays
+the remembered choice as it is. A remembered model switched off in Settings → Agents stays
 selected and the composer says so. Otherwise, if its Agent no longer offers the model, the
 chat starts on that Agent's default model; if the Agent cannot take messages, it starts on
 Codex's default and then another available Agent's. Later new chats return to the remembered
@@ -909,7 +909,7 @@ at the top of the overview switches between them. The choice belongs to the pers
 every chat and window, and starts as the map. Until the conversation has a subagent the
 overview says so in words and offers no choice.
 
-Beside that control, **Subagents can delegate** shows whether this conversation's subagents may
+Beside that control, **Let subagents delegate** shows whether this conversation's subagents may
 delegate or start chats, from the first delegation on. It follows Settings → Agents and reads
 `This chat` only while the conversation answers differently; the order of who decides is in
 [Agent permissions](agent-permissions-behavior.md#subagents-that-delegate). A choice made in another

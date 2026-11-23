@@ -24,6 +24,8 @@ import {
   type CodexSetupImportRuntime,
 } from "./codex-setup-import-control";
 import { CodexSpeedSettingControl } from "./workbench-settings-controls";
+import { InstanceModels } from "@/features/model-policy/agent-models";
+import { CODEX_BINDING } from "../../../shared/agents/codex";
 import { readCodexHomeSettings, updateCodexHomeSettings } from "./workbench-settings-overlay-deps";
 
 export interface CodexHomeSettingsRuntime {
@@ -184,6 +186,7 @@ export function CodexAgentSettingsSection({
       >
         <CodexSpeedSettingControl />
       </NodexSettingsRow>
+      <InstanceModels instanceId={CODEX_BINDING.instanceId} />
       <CodexExecutableSettingsControl open={open && disclosure.open} runtime={executableRuntime} />
       <NodexSettingsRow
         label={intl.formatMessage(settingsMessages.codexCodexHome)}

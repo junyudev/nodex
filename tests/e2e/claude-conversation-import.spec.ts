@@ -137,7 +137,7 @@ test("imports Claude history as an independent executable copy with a replacemen
       await setupSource.scrollIntoViewIfNeeded();
       await expect(page.getByText("Copy setup from", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("codex-setup-import-location.png") });
-      await page.getByRole("link", { name: "Conversations", exact: true }).click();
+      await page.getByRole("link", { name: "Import", exact: true }).click();
       await page
         .getByRole("textbox", { name: "Search conversations or paste a link or ID", exact: true })
         .fill(nativeSessionId);

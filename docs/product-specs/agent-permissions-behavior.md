@@ -18,7 +18,7 @@ Agent execution behavior is specified in [Agent Runtime](agent-runtime-behavior.
 | Approve for me   | Uses the same workspace boundary; the Agent's native reviewer approves routine requests and asks the person about risky ones. |
 | Full access      | Runs commands and changes files anywhere on this computer without asking.                                                     |
 
-Modes are ordered from narrowest to broadest. Settings > Agents > Default permissions selects
+Modes are ordered from narrowest to broadest. Settings > Chats > Default permissions selects
 the mode for new chats; it starts as Full access. Changing the default does not change
 existing chats. The composer's permission control changes the current chat; it shows only an
 icon while the chat matches the default and names the mode when it differs. Turning on Full
@@ -133,7 +133,7 @@ through restart and apply it again when dispatching their follow-up message.
 The Agent the person talks to may always delegate. Whether a subagent may delegate in turn, or
 start chats with `create_session` or `fork_session`, is decided in this order: the Agent that
 delegated it can withhold it for that one task; then the conversation's own choice, set in its
-Subagents tab; then **Subagents can delegate** in Settings → Agents, which is on by default. A
+Subagents tab; then **Let subagents delegate** in Settings → Chats, which is on by default. A
 conversation keeps a choice only while it differs from Settings, so switching back follows
 Settings again. A subagent that may not delegate is refused with `delegation_denied` and a message
 naming who decided, and is asked to finish the work itself and say what else would need another

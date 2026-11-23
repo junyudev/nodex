@@ -86,13 +86,13 @@ function SettingsPageContent({
 
   if (
     isRemoteSpace() &&
-    /\/(sources|agent|agent-import|models|inbox-settings|plugins-settings|backups|git|worktrees|local-environments|hooks-settings)(?:\/|$)/u.test(
+    /\/(sources|agent|import|inbox-settings|plugins-settings|backups|git|worktrees)(?:[/?#]|$)/u.test(
       path,
     )
   )
     return (
       <p className="p-3 text-sm text-token-text-secondary">
-        {/\/(git|worktrees|local-environments)(?:\/|$)/u.test(path)
+        {/\/(git|worktrees)(?:[/?#]|$)/u.test(path)
           ? intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteFilesystem)
           : intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent)}
       </p>

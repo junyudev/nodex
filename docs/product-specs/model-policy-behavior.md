@@ -6,13 +6,15 @@ Conversation history remains readable with its original account and model bindin
 
 ## Choices and identity
 
-The Profile stores provider switches and exceptions to each provider's model default.
-Every provider defaults on. OpenCode's models default off, free ones included, because third
-parties run them on their own terms; every other model defaults on. Switching a provider off preserves its model exceptions.
-New models follow the provider default. Nodex has one provider switch; its model keys
-contain the Runtime driver and exact model ID, independent of the signed-in account.
-Other keys contain the configured instance and exact model ID. Changing accounts never
-moves an existing conversation onto the new account.
+The Profile stores the Nodex switch and exceptions to each provider's model default. Nodex is
+the only provider with a switch of its own, because it spends credits; every other provider is
+on while its Agent is, so turning an Agent or one of its profiles off is the one way to turn
+all of it off. OpenCode's models default off, free ones included, because third parties run
+them on their own terms; every other model defaults on. Turning Nodex off preserves its model
+exceptions. New models follow the provider default. Nodex's model keys contain the Runtime
+driver and exact model ID, independent of the signed-in account. Other keys contain the
+configured instance and exact model ID. Changing accounts never moves an existing conversation
+onto the new account.
 
 `agentsMayChooseCredit` defaults to false. The meter's `usageMeters.nodexCredit` preference
 is independent and grants no model access.
@@ -34,27 +36,30 @@ It can spend credit on the exact model the person selected for writing or for th
 
 ## Settings and pickers
 
-Settings → Models lists Nodex first and open, then one closed card per other provider with
-its count (`8 of 13 on`). Each card has a provider switch; opening one shows its models with
-their own switches and whole-list moves (All on, All off, and Free only for OpenCode). A
-filter field narrows every card and opens those it matches. A discounted Nodex model carries
-its rate mark, as in Model prices. Nodex also offers **Let Agents choose Nodex models**, and
-links to its prices and Top up.
+Settings → Agents shows models where each Agent is set up. For someone signed in to Nodex, a
+Nodex card comes first, with its switch, **Let Agents choose Nodex models**, its models and a
+link to prices and Top up. Each other Agent's card, and each profile, API key connection and
+ACP instance inside it, has a **Models** row counting what is on (`8 of 13 on`); opening it
+shows the models with their own switches and whole-list moves (All on, All off, and Free only
+for OpenCode). The row is absent until the Agent advertises models. **Filter models** in the
+page header replaces the cards with every matching model, under Nodex or the Agent that runs
+it. A discounted Nodex model carries its rate mark, as in Model prices.
 
-An off provider is one quiet line, and turning it back on restores each model's own switch.
-With Nodex off the card reads `Off. Nothing on this computer can spend your credits.`
+With Nodex off its card is one quiet line, `Off. Nothing on this computer can spend your
+credits.`, and turning it back on restores each model's own switch.
 
 A model picker lists only models that are on. The composer's picker ends its list with a row
-counting what is off, which opens Settings → Models, and its gear opens the same page. The row
+counting what is off, which opens Settings → Agents, and its gear opens the same page. The row
 scrolls with the models rather than holding a place below them. Searching also finds
 off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
 Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
-A whole provider that is off returns only from Settings. Other pickers, such as Inbox,
+Nodex turned off as a whole returns only from Settings. Other pickers, such as Inbox,
 Automations, the writing model and a Page's agent configuration, list on models and keep a
 saved choice visible.
 
 A chat whose model is off keeps showing it, marked `Off`, and raises a composer notice naming
-the model with **Choose model**, and **Turn on** or, for Nodex and an off provider, **Manage**.
+the model with **Choose model**, and **Turn on** or, for Nodex, **Manage**, which opens its
+card in Settings → Agents.
 
 When a change would stop running work, Settings asks first, naming the models and how many
 chats stop. The confirmation also says so when a Claude chat on an allowed model stops,
@@ -96,7 +101,7 @@ a manual follow-up; its Thread's current model cannot establish the original cal
 
 Policy refusals are non-retryable:
 
-- `model_off`: `GPT-6.1 Sol on Nodex is off in Settings → Models. Choose another model.`
+- `model_off`: `GPT-6.1 Sol on Nodex is off in Settings → Agents. Choose another model.`
 - `credit_requires_person`: `Only the person can start Nodex models. Choose another provider.`
 
 Errors retain these codes and actionable messages through Runtime transport, Session

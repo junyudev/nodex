@@ -1,7 +1,14 @@
 import type { HookSource } from "@nodex/codex-app-server-protocol/v2/HookSource";
 
-export const CODEX_HOOKS_SETTINGS_PATH = "/settings/hooks-settings";
+/** Settings › Plugins › Hooks. */
+export const CODEX_HOOKS_SETTINGS_PATH = "/settings/plugins-settings/hooks";
 export const CODEX_HOOKS_UNKNOWN_PLUGIN_ID = "__unknown__";
+
+/** Whether a Settings path shows the Hooks tab. */
+export function isCodexHooksSettingsPath(path: string): boolean {
+  const pathname = path.split(/[?#]/u, 1)[0] ?? "";
+  return pathname === CODEX_HOOKS_SETTINGS_PATH;
+}
 
 export type CodexHooksSettingsSource =
   | "plugin"

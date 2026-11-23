@@ -1,17 +1,21 @@
 import { agentDefinition } from "./agents/registry.ts";
 import { z } from "zod";
 
-/** Profile authority. Entries are exceptions, so newly advertised models follow their provider. */
+/**
+ * Profile authority. Entries are exceptions, so newly advertised models follow their provider.
+ * Nodex is the one provider with a switch of its own, because it spends credits; every other
+ * provider is on while its Agent is, and its models switch one by one.
+ */
 export const ModelPolicySchema = z
   .object({
-    providersOff: z.array(z.string().min(1)).max(4096),
+    nodexOff: z.boolean(),
     exceptions: z.array(z.string().min(1)).max(65536),
     agentsMayChooseCredit: z.boolean(),
   })
   .strict();
 export type ModelPolicy = z.infer<typeof ModelPolicySchema>;
 export const DEFAULT_MODEL_POLICY: ModelPolicy = {
-  providersOff: [],
+  nodexOff: false,
   exceptions: [],
   agentsMayChooseCredit: false,
 };
@@ -35,7 +39,7 @@ export const policyModelKey = (provider: PolicyProvider, model: string): string 
     model,
   ]);
 export const isProviderOn = (policy: ModelPolicy, provider: PolicyProvider): boolean =>
-  !policy.providersOff.includes(policyProviderKey(provider));
+  !spendsNodexCredit(provider) || !policy.nodexOff;
 /** OpenCode's models run on third parties' terms, so a person turns them on; others start on. */
 const onByDefault = (provider: PolicyProvider): boolean =>
   agentDefinition(provider.driver).capabilities.modelsOptIn !== true;
@@ -65,15 +69,10 @@ export const withFreeModelsOn = (
   provider.models
     .filter((model) => isFreeModel(model.slug))
     .reduce((next, model) => setModelOn(next, provider, model.slug, true), policy);
-export function setProviderOn(
-  policy: ModelPolicy,
-  provider: PolicyProvider,
-  on: boolean,
-): ModelPolicy {
-  const key = policyProviderKey(provider);
-  const others = policy.providersOff.filter((entry) => entry !== key);
-  return { ...policy, providersOff: on ? others : [...others, key] };
-}
+export const setNodexOn = (policy: ModelPolicy, on: boolean): ModelPolicy => ({
+  ...policy,
+  nodexOff: !on,
+});
 export function modelPolicyFailure(
   policy: ModelPolicy,
   provider: PolicyProvider,
@@ -88,7 +87,7 @@ export function modelPolicyFailure(
   if (!isModelOn(policy, provider, model))
     return {
       code: "model_off",
-      message: `${label} on ${spendsNodexCredit(provider) ? "Nodex" : (provider.displayName ?? provider.instanceId)} is off in Settings → Models. Choose another model.`,
+      message: `${label} on ${spendsNodexCredit(provider) ? "Nodex" : (provider.displayName ?? provider.instanceId)} is off in Settings → Agents. Choose another model.`,
       retryable: false,
     };
   if (
@@ -110,8 +109,7 @@ export const canStartModel = (
 ): boolean => modelPolicyFailure(policy, provider, model, origin) === null;
 export const sameModelPolicy = (left: ModelPolicy, right: ModelPolicy): boolean =>
   left.agentsMayChooseCredit === right.agentsMayChooseCredit &&
-  JSON.stringify([...left.providersOff].sort()) ===
-    JSON.stringify([...right.providersOff].sort()) &&
+  left.nodexOff === right.nodexOff &&
   JSON.stringify([...left.exceptions].sort()) === JSON.stringify([...right.exceptions].sort());
 
 /** A full renderer catalog retains off rows. Automatic consumers use this projection. */

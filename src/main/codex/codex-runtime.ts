@@ -449,7 +449,7 @@ export async function resolveCodexRuntime(
       "codex",
     ))
   )
-    throw new Error("Codex is turned off in Settings → General → Components.");
+    throw new Error("Codex is turned off in Settings → General → Add-ons.");
   const runtime = await verifyCodexPackage(location, options);
   const desktop = await resolveDesktopTools({
     ...options,

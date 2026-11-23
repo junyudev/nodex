@@ -8,26 +8,24 @@ import type {
 } from "./workbench-settings-routes";
 
 export type SettingsPageKey =
-  | "spaces"
-  | "github"
   | "account"
+  | "remote"
   | "general"
   | "appearance"
+  | "editor"
   | "voice"
-  | "agent"
-  | "models"
-  | "import"
   | "keyboard-shortcuts"
+  | "agent"
+  | "chats"
   | "inbox"
   | "plugins"
   | "browser"
   | "computer-use"
-  | "page"
+  | "github"
   | "git"
   | "worktrees"
-  | "local-environments"
-  | "hooks"
-  | "data-controls"
+  | "import"
+  | "archived-chats"
   | "backups";
 
 /** Opens a chat from Settings; an Agent chat may name its Session to skip a Thread lookup. */

@@ -1,4 +1,4 @@
-import { useIntl, type IntlShape } from "@/lib/i18n";
+import { useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import {
   useEffect,
   useMemo,
@@ -37,7 +37,8 @@ interface SettingsSidebarProps {
 
 interface SettingsSectionGroup {
   groupKey: SettingsSectionGroupKey;
-  label: string;
+  /** Absent for the account group, which leads the rail without a heading. */
+  label: string | null;
   sections: SettingsSectionDefinition[];
 }
 
@@ -311,11 +312,13 @@ export function SettingsSidebar({
               <>
                 {groupedSections.map((group) => (
                   <div key={group.groupKey} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
-                      <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
-                        {group.label}
+                    {group.label ? (
+                      <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
+                        <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
+                          {group.label}
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                     <div className="flex flex-col gap-px">
                       {group.sections.map((section) => (
                         <SettingsSidebarItem
@@ -340,6 +343,10 @@ export function SettingsSidebar({
   );
 }
 
+function labelOf(message: MessageDescriptor | null, intl: IntlShape): string | null {
+  return message ? intl.formatMessage(message) : null;
+}
+
 function groupVisibleSections(
   sections: readonly SettingsSectionDefinition[],
   intl: IntlShape,
@@ -351,7 +358,7 @@ function groupVisibleSections(
     return [
       {
         groupKey,
-        label: intl.formatMessage(SETTINGS_SECTION_GROUP_LABELS[groupKey]),
+        label: labelOf(SETTINGS_SECTION_GROUP_LABELS[groupKey], intl),
         sections: groupSections,
       },
     ];

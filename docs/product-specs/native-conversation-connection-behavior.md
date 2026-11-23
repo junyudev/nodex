@@ -2,7 +2,7 @@
 
 ## Importing native conversations
 
-Settings > Conversations imports Codex, Claude Code and Antigravity conversations as independent
+Settings > Import imports Codex, Claude Code and Antigravity conversations as independent
 Nodex copies. Antigravity's source is its own history on this computer, from the Antigravity app and
 its command line, offered once an Antigravity profile is enabled; see
 [Antigravity history](#antigravity-history).

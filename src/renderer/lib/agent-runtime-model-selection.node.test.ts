@@ -119,7 +119,7 @@ it("automatic composer defaults skip off models while a remembered off model rem
   });
   expect(remembered?.model).toBe("sol");
   expect(() => requireAgentRuntimeModelSelection(providers, remembered)).toThrow(
-    "Sol on Codex is off in Settings → Models. Choose another model.",
+    "Sol on Codex is off in Settings → Agents. Choose another model.",
   );
 });
 

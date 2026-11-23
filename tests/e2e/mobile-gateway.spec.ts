@@ -172,8 +172,8 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
 
     const identity = await test.step("link a Member Device from Spaces Settings", async () => {
       await openWorkbenchSettings(page);
-      await page.getByRole("link", { name: "Spaces", exact: true }).click();
-      const toggle = page.getByRole("switch", { name: "Remote access", exact: true });
+      await page.getByRole("link", { name: "Remote", exact: true }).click();
+      const toggle = page.getByRole("switch", { name: "Allow remote connections", exact: true });
       await expect(toggle).not.toBeChecked();
       await toggle.click();
       await expect(toggle).toBeChecked();
@@ -489,7 +489,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
 
     await test.step("revoke the phone from Spaces Settings", async () => {
       await openWorkbenchSettings(page);
-      await page.getByRole("link", { name: "Spaces", exact: true }).click();
+      await page.getByRole("link", { name: "Remote", exact: true }).click();
       await page.getByRole("button", { name: "Revoke Test phone", exact: true }).click();
       expect(await connected.waitForClose()).toBe(4401);
       await expect(identity.connect()).rejects.toThrow("Device renewal refused (401)");

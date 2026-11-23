@@ -67,7 +67,7 @@ existing rows.
 
 On Apple silicon, choosing the Codex sign-in or API key action installs the
 [Codex Component](components-behavior.md) on first use. The row shows progress while the chosen
-sign-in waits. If Codex is turned off, the row links to **Settings → General → Components**.
+sign-in waits. If Codex is turned off, the row links to **Settings → General → Add-ons**.
 
 Antigravity's built-in row recognizes a downloaded runtime or an `agy` on this computer,
 including installations on the login-shell PATH. An older command stays visible with the version
@@ -142,7 +142,7 @@ an ordinary Project for each selected row, and the page does not create anything
 copies the selected folders' chats from the last 30 days, at most 20 from each, through the ordinary
 [native conversation import](native-conversation-connection-behavior.md). Copies are made in the
 background: progress replaces the dots while setup shows, each chat appears in the sidebar as it
-finishes, and a toast reports the total. A chat that fails can be retried in Settings → Conversations.
+finishes, and a toast reports the total. A chat that fails can be retried in Settings → Import.
 
 ## Landing
 

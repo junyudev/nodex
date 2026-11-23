@@ -68,7 +68,7 @@ it("does not save when the field loses focus unchanged", async () => {
 
 it("shows the Codex desktop app instructions beside the Nodex guidance", async () => {
   render(<EffectiveInstructionsRow />, { wrapper: TestQueryProvider });
-  const toggle = await screen.findByRole("button", { name: /Full Nodex instructions/ });
+  const toggle = await screen.findByRole("button", { name: /What Agents receive/ });
   await act(async () => {
     fireEvent.click(toggle);
     await Promise.resolve();

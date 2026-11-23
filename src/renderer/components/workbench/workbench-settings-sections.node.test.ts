@@ -20,22 +20,23 @@ describe("settings section catalog", () => {
     expect(SETTINGS_SECTIONS.find((section) => section.id === "inbox-settings")?.pageKey).toBe(
       "inbox",
     );
-    expect(SETTINGS_SECTIONS.find((section) => section.id === "agent-import")?.pageKey).toBe(
-      "import",
-    );
-    expect(SETTINGS_SECTIONS.find((section) => section.id === "hooks-settings")?.pageKey).toBe(
-      "hooks",
-    );
-    expect(SETTINGS_SECTIONS.some((section) => section.label === "Editor")).toBe(false);
+    expect(SETTINGS_SECTIONS.find((section) => section.id === "import")?.pageKey).toBe("import");
+    expect(SETTINGS_SECTIONS.find((section) => section.id === "remote")?.pageKey).toBe("remote");
   });
 
-  test("orders the rail by product area", () => {
+  test("gives every rail entry an icon of its own", () => {
+    expect(new Set(SETTINGS_SECTIONS.map((section) => section.icon)).size).toBe(
+      SETTINGS_SECTIONS.length,
+    );
+  });
+
+  test("orders the rail by the question each group answers", () => {
     expect(SETTINGS_SECTION_GROUP_ORDER).toEqual([
-      "personal",
+      "account",
+      "app",
       "agents",
       "integrations",
       "coding",
-      "workspace",
       "data",
     ]);
   });
@@ -49,9 +50,18 @@ describe("settings section catalog", () => {
       sectionId: "agent",
       anchor: "antigravity",
     });
-    expect(
-      resolveSettingsCommandTarget(settingsCommandId("general-settings"), "Spellcheck"),
-    ).toEqual({ sectionId: "general-settings", anchor: "writing" });
+    expect(resolveSettingsCommandTarget(settingsCommandId("editor"), "Spellcheck")).toEqual({
+      sectionId: "editor",
+      anchor: "typing",
+    });
+    expect(resolveSettingsCommandTarget(settingsCommandId("chats"), "Artifact")).toEqual({
+      sectionId: "chats",
+      anchor: "instructions",
+    });
+    expect(resolveSettingsCommandTarget(settingsCommandId("worktrees"), "Setup script")).toEqual({
+      sectionId: "worktrees",
+      anchor: "environments",
+    });
     expect(resolveSettingsCommandTarget(settingsCommandId("appearance"), "Code font size")).toEqual(
       { sectionId: "appearance", anchor: "advanced" },
     );

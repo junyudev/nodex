@@ -69,7 +69,7 @@ Accepted text remains ordinary editable content. A subsequent successful submiss
 whether that accepted text was edited or replaced; failed or queued sends do not become a
 successful submission outcome.
 
-**Settings → General → Composer → Show predictions** controls the Profile preference and
+**Settings → Chats → Show predictions** controls the Profile preference and
 persists across restart. Main publishes successful changes to every window and clears every
 host's prediction cache even when no Composer is mounted. Disabling it also hides its ghost
 without changing Composer text. Clearing uses only a running execution process and never wakes

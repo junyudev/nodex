@@ -146,7 +146,7 @@ export function requireAgentRuntimeModelSelection(
           {
             id: "lib.agentRuntimeModelSelection.modelOff",
             defaultMessage:
-              "{model} on {provider} is off in Settings → Models. Choose another model.",
+              "{model} on {provider} is off in Settings → Agents. Choose another model.",
           },
           {
             model: model.name,

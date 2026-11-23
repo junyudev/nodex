@@ -3,14 +3,11 @@ import type { SettingsPageComponentRegistry } from "./workbench-settings-page-re
 
 /** Each section loads independently of Settings navigation and every other page. */
 export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
-  spaces: lazy(async () => ({
-    default: (await import("@/features/spaces/spaces-settings-page")).SpacesSettingsPage,
-  })),
-  github: lazy(async () => ({
-    default: (await import("./github-settings-page")).GitHubSettingsPage,
-  })),
   account: lazy(async () => ({
     default: (await import("@/features/nodex-account/account-settings-page")).AccountSettingsPage,
+  })),
+  remote: lazy(async () => ({
+    default: (await import("@/features/spaces/spaces-settings-page")).RemoteSettingsPage,
   })),
   general: lazy(async () => ({
     default: (await import("./general-settings-page")).GeneralSettingsPage,
@@ -18,8 +15,23 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   appearance: lazy(async () => ({
     default: (await import("./appearance-settings-page")).AppearanceSettingsPage,
   })),
+  editor: lazy(async () => ({
+    default: (await import("./editor-settings-page")).EditorSettingsPage,
+  })),
   voice: lazy(async () => ({
     default: (await import("@/features/dictation/voice-settings-page")).VoiceSettingsPage,
+  })),
+  "keyboard-shortcuts": lazy(async () => ({
+    default: (await import("./keyboard-shortcuts-settings-page")).KeyboardShortcutsSettingsPage,
+  })),
+  agent: lazy(async () => ({
+    default: (await import("./agent-settings-page")).AgentSettingsPage,
+  })),
+  chats: lazy(async () => ({
+    default: (await import("./chats-settings-page")).ChatsSettingsPage,
+  })),
+  inbox: lazy(async () => ({
+    default: (await import("@/features/inbox/inbox-settings-page")).InboxSettingsPage,
   })),
   plugins: lazy(async () => ({
     default: (await import("@/features/plugins/view/plugins-settings-page"))
@@ -32,23 +44,8 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   "computer-use": lazy(async () => ({
     default: (await import("./computer-use-settings-page")).ComputerUseSettingsPage,
   })),
-  "keyboard-shortcuts": lazy(async () => ({
-    default: (await import("./keyboard-shortcuts-settings-page")).KeyboardShortcutsSettingsPage,
-  })),
-  inbox: lazy(async () => ({
-    default: (await import("@/features/inbox/inbox-settings-page")).InboxSettingsPage,
-  })),
-  agent: lazy(async () => ({
-    default: (await import("./agent-settings-page")).AgentSettingsPage,
-  })),
-  models: lazy(async () => ({
-    default: (await import("@/features/model-policy/models-settings-page")).ModelsSettingsPage,
-  })),
-  import: lazy(async () => ({
-    default: (await import("./conversation-import-settings-page")).ConversationImportSettingsPage,
-  })),
-  page: lazy(async () => ({
-    default: (await import("./page-settings-page")).PageSettingsPage,
+  github: lazy(async () => ({
+    default: (await import("./github-settings-page")).GitHubSettingsPage,
   })),
   git: lazy(async () => ({
     default: (await import("./git-settings-page")).GitSettingsPage,
@@ -56,14 +53,10 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   worktrees: lazy(async () => ({
     default: (await import("./worktrees-settings-page")).WorktreesSettingsPage,
   })),
-  "local-environments": lazy(async () => ({
-    default: (await import("./local-environments-settings-section-page"))
-      .LocalEnvironmentsSettingsSectionPage,
+  import: lazy(async () => ({
+    default: (await import("./conversation-import-settings-page")).ConversationImportSettingsPage,
   })),
-  hooks: lazy(async () => ({
-    default: (await import("./workbench-hooks-settings-page")).WorkbenchHooksSettingsPage,
-  })),
-  "data-controls": lazy(async () => ({
+  "archived-chats": lazy(async () => ({
     default: (await import("./archived-chats-settings-page")).ArchivedChatsSettingsPage,
   })),
   backups: lazy(async () => ({

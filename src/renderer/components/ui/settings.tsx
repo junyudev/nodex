@@ -8,6 +8,7 @@ import {
 } from "react";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
+import { ToolbarButton } from "./toolbar-button";
 import {
   NodexCollapsiblePanel,
   NodexCollapsibleRoot,
@@ -502,6 +503,60 @@ export function NodexSettingsAddRow({
       <PlusIcon className="icon-2xs shrink-0" />
       {label}
     </button>
+  );
+}
+
+export interface NodexSettingsTab<Id extends string> {
+  readonly id: Id;
+  readonly label: string;
+  /** How many items the tab holds, when that is known. */
+  readonly count?: number;
+}
+
+/** A page's tabs, such as Plugins' kinds of extension or Worktrees' Environments. */
+export function NodexSettingsTabs<Id extends string>({
+  label,
+  tabs,
+  selected,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly tabs: readonly NodexSettingsTab<Id>[];
+  readonly selected: Id;
+  readonly onSelect: (tab: Id) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="hide-scrollbar relative inline-flex max-w-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden"
+      onWheel={(event) => {
+        const delta = event.deltaX || event.deltaY;
+        if (delta !== 0) event.currentTarget.scrollLeft += delta;
+      }}
+    >
+      {tabs.map((tab) => {
+        const isSelected = tab.id === selected;
+        return (
+          <ToolbarButton
+            key={tab.id}
+            aria-pressed={isSelected}
+            color="ghost"
+            className={cn(
+              "shrink-0 focus-visible:ring-inset",
+              isSelected &&
+                "bg-[color-mix(in_oklab,var(--color-text)_5%,transparent)] text-token-foreground",
+            )}
+            onClick={() => onSelect(tab.id)}
+          >
+            {tab.label}
+            {tab.count === undefined ? null : (
+              <span className="ms-0.5 text-tertiary">{tab.count}</span>
+            )}
+          </ToolbarButton>
+        );
+      })}
+    </div>
   );
 }
 

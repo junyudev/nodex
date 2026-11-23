@@ -97,7 +97,9 @@ test("explains a blocked prompt and opens its project hook settings", async ({},
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("blocked-hook.png") });
     await link.click();
-    await expect(page.getByRole("heading", { name: "Hooks", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("main").getByRole("button", { name: "Hooks", exact: true, pressed: true }),
+    ).toBeVisible();
   } finally {
     await harness.close();
   }

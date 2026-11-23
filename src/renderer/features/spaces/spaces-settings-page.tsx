@@ -1,4 +1,5 @@
-import { FormattedMessage, useIntl } from "@/lib/i18n";
+import { defineMessage, FormattedMessage, useIntl } from "@/lib/i18n";
+import { settingsMessages } from "@/components/workbench/workbench-settings-search-catalog";
 import type { components } from "@nodex/core-protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
@@ -33,6 +34,12 @@ import {
   routeHosts,
 } from "./space-administration-presentation";
 import { currentSpace, leaveSpace, switchSpace, useSpaceConnections } from "./spaces-runtime";
+
+/** Whether this computer's personal Space accepts connections from linked devices and people. */
+const remoteConnectionsLabel = defineMessage({
+  id: "spaces.spacesSettingsPage.allowRemoteConnections",
+  defaultMessage: "Allow remote connections",
+});
 
 type Member = components["schemas"]["Member"];
 
@@ -290,8 +297,8 @@ function ThisSpace({
   const accessDescription = () => {
     if (remoteAccess.query.isError)
       return intl.formatMessage({
-        id: "spaces.spacesSettingsPage.remoteAccessIsUnavailable",
-        defaultMessage: "Remote access is unavailable.",
+        id: "spaces.spacesSettingsPage.remoteConnectionsAreUnavailable",
+        defaultMessage: "Remote connections are unavailable.",
       });
     if (access?.routesChanged)
       return intl.formatMessage({
@@ -313,17 +320,29 @@ function ThisSpace({
       });
     if (access?.intent?.enabled)
       return intl.formatMessage({
-        id: "spaces.spacesSettingsPage.remoteAccessIsOnBut",
-        defaultMessage: "Remote access is on, but the listener is unavailable.",
+        id: "spaces.spacesSettingsPage.remoteConnectionsAreOnButUnavailable",
+        defaultMessage: "Remote connections are on, but this computer can’t accept them right now.",
       });
     return intl.formatMessage({
-      id: "spaces.spacesSettingsPage.letYourPhoneAndOther",
+      id: "spaces.spacesSettingsPage.letYourPhoneAndOtherComputersReachThisComputer",
       defaultMessage:
-        "Let your phone and other computers reach this Space over your network or tailnet. Nodex stays open to serve them.",
+        "Let your phone and other computers reach this computer over your network or tailnet. Nodex stays open to serve them.",
     });
   };
   return (
-    <NodexSettingsSection>
+    <NodexSettingsSection
+      title={
+        space.kind === "personal"
+          ? intl.formatMessage({
+              id: "spaces.spacesSettingsPage.thisComputer",
+              defaultMessage: "This computer",
+            })
+          : intl.formatMessage({
+              id: "spaces.spacesSettingsPage.thisSpace",
+              defaultMessage: "This Space",
+            })
+      }
+    >
       <NodexSettingsRow
         label={
           <span className="flex items-center gap-2.5">
@@ -365,17 +384,11 @@ function ThisSpace({
       </NodexSettingsRow>
       {space.kind === "personal" && owner ? (
         <NodexSettingsRow
-          label={intl.formatMessage({
-            id: "spaces.spacesSettingsPage.remoteAccess",
-            defaultMessage: "Remote access",
-          })}
+          label={intl.formatMessage(remoteConnectionsLabel)}
           description={accessDescription()}
         >
           <NodexSwitch
-            ariaLabel={intl.formatMessage({
-              id: "spaces.spacesSettingsPage.remoteAccess",
-              defaultMessage: "Remote access",
-            })}
+            ariaLabel={intl.formatMessage(remoteConnectionsLabel)}
             checked={remoteAccess.query.data?.intent?.enabled ?? false}
             disabled={
               remoteAccess.query.isPending ||
@@ -406,8 +419,8 @@ function useRemoteAccess(enabled: boolean) {
     onSuccess: (state) => queryClient.setQueryData(keys.remoteAccess(), state),
     onError: failed(
       intl.formatMessage({
-        id: "spaces.spacesSettingsPage.couldNotChangeRemoteAccess",
-        defaultMessage: "Could not change remote access",
+        id: "spaces.spacesSettingsPage.couldNotChangeRemoteConnections",
+        defaultMessage: "Could not change remote connections",
       }),
     ),
   });
@@ -418,11 +431,14 @@ function Devices({
   me,
   members,
   canLink,
+  enableConnections,
   thisDeviceId,
 }: {
   me: Member | null;
   members: readonly Member[];
   canLink: boolean;
+  /** Turns on remote connections first when linking needs them and this person may. */
+  enableConnections: (() => Promise<unknown>) | null;
   thisDeviceId: string | null;
 }) {
   const intl = useIntl();
@@ -432,7 +448,10 @@ function Devices({
   const [offer, setOffer] = useState<components["schemas"]["DeviceLinkOffer"] | null>(null);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: keys.devices() });
   const link = useMutation({
-    mutationFn: admin.linkDevice,
+    mutationFn: async () => {
+      if (!canLink) await enableConnections?.();
+      return admin.linkDevice();
+    },
     onSuccess: setOffer,
     onError: failed(
       intl.formatMessage({
@@ -541,18 +560,11 @@ function Devices({
         </NodexSettingsRow>
       ) : (
         <NodexSettingsAddRow
-          label={
-            canLink
-              ? intl.formatMessage({
-                  id: "spaces.spacesSettingsPage.linkADevice",
-                  defaultMessage: "Link a device",
-                })
-              : intl.formatMessage({
-                  id: "spaces.spacesSettingsPage.linkADeviceTurnOn",
-                  defaultMessage: "Link a device · turn on Remote access first",
-                })
-          }
-          disabled={!canLink || link.isPending}
+          label={intl.formatMessage({
+            id: "spaces.spacesSettingsPage.linkADevice",
+            defaultMessage: "Link a device",
+          })}
+          disabled={(!canLink && !enableConnections) || link.isPending}
           onClick={() => link.mutate()}
         />
       )}
@@ -798,10 +810,11 @@ function AllSpaces() {
 }
 
 /**
- * Everything about reaching a Space in one place: the Space open now, the devices that reach it,
- * the people in it, and the other Spaces this computer has joined.
+ * Settings › Remote: everything about reaching a Space from elsewhere — the Space open now and
+ * whether it accepts connections, the devices that reach it, the people in it, and the other
+ * Spaces this computer has joined.
  */
-export function SpacesSettingsPage() {
+export function RemoteSettingsPage() {
   const intl = useIntl();
   const bound = currentSpace();
   const space =
@@ -813,17 +826,21 @@ export function SpacesSettingsPage() {
   const canLink = space.kind === "team" || remoteAccess.query.data?.listener != null;
   return (
     <NodexSettingsPageSurface
-      title={intl.formatMessage({
-        id: "spaces.spacesSettingsPage.spaces",
-        defaultMessage: "Spaces",
-      })}
-      subtitle={intl.formatMessage({
-        id: "spaces.spacesSettingsPage.whoCanReachThisSpace",
-        defaultMessage: "Who can reach this Space, and from which devices.",
-      })}
+      title={intl.formatMessage(settingsMessages.remoteTitle)}
+      subtitle={intl.formatMessage(settingsMessages.remoteSubtitle)}
     >
       <ThisSpace space={space} me={me} remoteAccess={remoteAccess} />
-      <Devices me={me} members={members} canLink={canLink} thisDeviceId={space.deviceId} />
+      <Devices
+        me={me}
+        members={members}
+        canLink={canLink}
+        enableConnections={
+          space.kind === "personal" && owner && !remoteAccess.query.isError
+            ? () => remoteAccess.toggle.mutateAsync(true)
+            : null
+        }
+        thisDeviceId={space.deviceId}
+      />
       {space.kind === "team" || (owner && remoteAccess.query.data?.listener) ? (
         <People me={me} members={members} />
       ) : null}

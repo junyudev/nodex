@@ -97,6 +97,7 @@ import { CodexExecutableUpdateSchema } from "../../shared/codex-executable-setti
 import { CodexHomeSettingsUpdateSchema } from "../../shared/codex-home-settings";
 import { resolveCodexHome } from "../codex/codex-home";
 import { stringify as stringifyToml } from "smol-toml";
+import { z } from "zod";
 import {
   applyCommandKeybindingUpdate,
   createCommandKeymapState,
@@ -1765,11 +1766,27 @@ export function updateTerminalShellSettings(
   return getTerminalShellSettings(source);
 }
 
+/**
+ * A policy saved while every provider had its own switch. Only Nodex's carries over: the others
+ * duplicated their Agent's own on/off, and their models keep their individual switches.
+ */
+const ProviderSwitchesModelPolicySchema = z
+  .object({
+    providersOff: z.array(z.string().min(1)).max(4096),
+    exceptions: ModelPolicySchema.shape.exceptions,
+    agentsMayChooseCredit: z.boolean(),
+  })
+  .strict()
+  .transform(({ providersOff, ...policy }): ModelPolicy => ({
+    ...policy,
+    nodexOff: providersOff.includes("nodex"),
+  }));
+
 export function getModelPolicy(source: ApplicationSettingsDocumentSource): ModelPolicy {
   const stored = loadProfileServerTomlConfig(source).model_policy;
   if (stored === undefined) return DEFAULT_MODEL_POLICY;
   // Invalid spending policy fails closed instead of silently enabling credit.
-  return ModelPolicySchema.parse(stored);
+  return z.union([ModelPolicySchema, ProviderSwitchesModelPolicySchema]).parse(stored);
 }
 export function updateModelPolicy(
   input: ModelPolicy,

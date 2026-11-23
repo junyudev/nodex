@@ -126,7 +126,7 @@ and [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 
 ## Composer prediction assignments
 
-Composer predictions default on. **Settings → General → Composer → Show predictions**
+Composer predictions default on. **Settings → Chats → Show predictions**
 stores the Profile preference as `server.composer_predictions_enabled` in its configuration.
 Main broadcasts successful changes to all windows. Turning it off cancels pending generation
 and clears cached suggestions across hosts, including when no Composer is open.
@@ -169,7 +169,7 @@ and host scope without exposing the prompt or starting a native connection. See
 
 On Apple silicon macOS, Nodex installs the Document Tools component into the Profile the first
 time an Agent calls `load_workspace_dependencies`. Turn it off or back on under
-**Settings → General → Components**. If the install takes longer than the tool's wait, the Agent
+**Settings → General → Add-ons**. If the install takes longer than the tool's wait, the Agent
 can retry while the download continues. The tool returns the verified Node and Python paths and
 uses only the managed runtimes.
 
@@ -264,7 +264,7 @@ accounts or gateways. An optional absolute or `~/` config directory sets `CLAUDE
 that instance without changing HOME or copying credentials. Run `claude auth login` with the same
 config directory to sign in. Restart the task connection after changing executable or account paths.
 
-Use **Settings > Conversations** to import independent copies of Claude Code conversations from
+Use **Settings > Import** to import independent copies of Claude Code conversations from
 enabled profiles into a Project or projectless chat. The copy retains the source profile as its Agent
 and starts its own native session when continued. Imported history and media belong to the Nodex
 Profile and remain available after the source conversation is removed.
@@ -339,7 +339,7 @@ in this Profile share the installation. Each profile can select its own executab
 with `binaryPath`. See [Antigravity runtime](product-specs/antigravity-agent-behavior.md#runtime)
 for installation and removal behavior.
 
-Use **Settings > Conversations** to import copies of Antigravity's own conversations, from the
+Use **Settings > Import** to import copies of Antigravity's own conversations, from the
 Antigravity app (`~/.gemini/antigravity`) and its command line (`~/.gemini/antigravity-cli`). The
 first enabled profile reads them and continues each copy as its account; see
 [Antigravity history](product-specs/native-conversation-connection-behavior.md#antigravity-history).
@@ -550,7 +550,7 @@ opens links externally. See [Workbench link opening](product-specs/workbench-she
 
 ## Writing model
 
-Settings → General → Chats saves the exact Agent instance and model in the Profile.
+Settings → Chats saves the exact Agent instance and model in the Profile.
 
 ```toml
 [server.writing_model]
@@ -565,7 +565,7 @@ generation. The same preference applies to chat titles and Git drafts.
 ## Usage meters
 
 The `[server.usage_meters]` table holds the `antigravity`, `claude`, `codex`, and
-`nodexCredit` switches. Each defaults to `true`. Settings → General → Usage meters
+`nodexCredit` switches. Each defaults to `true`. Settings → Appearance → Usage meters
 applies changes to every window in the Profile.
 
 ## Model policy
@@ -575,16 +575,17 @@ of usage-meter visibility and applies to Runtime execution as well as catalogs.
 
 ```toml
 [server.model_policy]
-providersOff = []
+nodexOff = false
 exceptions = []
 agentsMayChooseCredit = false
 ```
 
-The arrays store provider keys and model exception keys. A Nodex provider key is `nodex`;
-its model key is a JSON array such as `["nodex","codex","gpt-6.1-sol"]`. Other model keys
-contain the configured Runtime instance ID and the exact model ID. Prefer the shared policy
-helpers when changing these keys; provider switches preserve model exceptions. OpenCode's
-default is free models on; all other models default on. Malformed stored policy fails the
+`nodexOff` is the one provider switch: Nodex's, because it spends credits. Every other
+provider is on while its Agent is. `exceptions` stores model keys whose switch differs from
+their provider's default. A Nodex model key is a JSON array such as
+`["nodex","codex","gpt-6.1-sol"]`; other model keys contain the configured Runtime instance
+ID and the exact model ID. Prefer the shared policy helpers when changing these keys; the Nodex
+switch preserves model exceptions. OpenCode's models default off; all other models default on. Malformed stored policy fails the
 settings read rather than enabling models. Changes synchronize across windows and reach
 Runtime admission immediately when applied. See [Model policy behavior](product-specs/model-policy-behavior.md)
 for origin rules, retirement and native limitations.

@@ -4,7 +4,7 @@ import {
   BackIcon,
   OpenExternalIcon,
   SearchIcon,
-  SettingsAgentIcon,
+  GenericAgentIcon,
 } from "@/components/shared/icons";
 import { NodexIconButton } from "@/components/ui/button";
 import {
@@ -251,7 +251,7 @@ function RegistryIcon({ agent }: { readonly agent: AcpRegistryAgent }) {
       onError={() => setFailed(true)}
     />
   ) : (
-    <SettingsAgentIcon className="icon-sm shrink-0 text-token-text-secondary" />
+    <GenericAgentIcon className="icon-sm shrink-0 text-token-text-secondary" />
   );
 }
 

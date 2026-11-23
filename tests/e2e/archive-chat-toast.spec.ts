@@ -106,7 +106,7 @@ test("a chat archived from the sidebar comes back through Undo and Data controls
         const viewToast = await archive(page, row);
         await viewToast.getByRole("button", { name: "View" }).click();
         await expect(viewToast).toHaveCount(0);
-        await expect(page.getByRole("heading", { name: "Data controls" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Archived chats", level: 1 })).toBeVisible();
         const archivedChat = page.getByRole("button", { name: "Unarchive" });
         await expect(archivedChat).toHaveCount(1);
         await archivedChat.click();

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   buildBrowserSettingsPath,
   buildSettingsPath,
+  ENVIRONMENTS_SETTINGS_PATH,
   OPEN_SOURCE_LICENSES_SETTINGS_PATH,
   parseSettingsPath,
   resolveSettingsShellState,
@@ -11,7 +12,7 @@ describe("workbench settings routes", () => {
   test("builds canonical top-level and Browser detail paths", () => {
     expect(buildSettingsPath("general-settings")).toBe("/settings/general-settings");
     expect(buildSettingsPath("keyboard-shortcuts")).toBe("/settings/keyboard-shortcuts");
-    expect(buildSettingsPath("local-environments")).toBe("/settings/local-environments");
+    expect(buildSettingsPath("archived-chats")).toBe("/settings/archived-chats");
     expect(buildSettingsPath("computer-use")).toBe("/settings/computer-use");
     expect(buildBrowserSettingsPath()).toBe("/settings/browser");
     expect(buildBrowserSettingsPath("passwords")).toBe("/settings/browser/passwords");
@@ -23,7 +24,7 @@ describe("workbench settings routes", () => {
   test("parses canonical settings paths without validating unknown slugs as sections", () => {
     expect(parseSettingsPath("/settings/general-settings")).toBe("general-settings");
     expect(parseSettingsPath("/settings/keyboard-shortcuts")).toBe("keyboard-shortcuts");
-    expect(parseSettingsPath("/settings/local-environments")).toBe("local-environments");
+    expect(parseSettingsPath("/settings/archived-chats")).toBe("archived-chats");
     expect(parseSettingsPath("/settings/computer-use")).toBe("computer-use");
     expect(parseSettingsPath("/settings/browser/passwords")).toBe("browser/passwords");
     expect(parseSettingsPath("/settings/not-real")).toBe("not-real");
@@ -33,9 +34,7 @@ describe("workbench settings routes", () => {
 
   test("preserves canonical query/hash parsing for owner state", () => {
     expect(parseSettingsPath("/settings/general-settings?panel=updates")).toBe("general-settings");
-    expect(parseSettingsPath("/settings/local-environments#project-alpha")).toBe(
-      "local-environments",
-    );
+    expect(parseSettingsPath("/settings/worktrees#project-alpha")).toBe("worktrees");
     expect(
       resolveSettingsShellState("/settings/backups?restore=latest#snapshots").activeSectionId,
     ).toBe("backups");
@@ -72,13 +71,24 @@ describe("workbench settings routes", () => {
     expect(resolved.browserAnchor).toBe(null);
   });
 
-  test("keeps a plugin's settings page under Plugins", () => {
+  test("keeps a plugin's settings page and the Hooks tab under Plugins", () => {
     const resolved = resolveSettingsShellState(
       "/settings/plugins-settings/plugins/figma%40openai-curated?pluginName=figma",
     );
 
     expect(resolved.activeSectionId).toBe("plugins-settings");
     expect(resolved.detailPageId).toBe(null);
+    expect(
+      resolveSettingsShellState("/settings/plugins-settings/hooks?hostId=local&source=user")
+        .activeSectionId,
+    ).toBe("plugins-settings");
+  });
+
+  test("lands on Worktrees' Environments tab through its anchor", () => {
+    const resolved = resolveSettingsShellState(ENVIRONMENTS_SETTINGS_PATH);
+
+    expect(resolved.activeSectionId).toBe("worktrees");
+    expect(resolved.settingsAnchor).toBe("environments");
   });
 
   test("keeps the licenses detail page nested under General", () => {

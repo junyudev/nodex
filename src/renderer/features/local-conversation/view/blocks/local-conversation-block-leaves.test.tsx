@@ -479,7 +479,7 @@ describe("UserMessageBubble collapse", () => {
     );
 
     expect(getByRole("link", { name: "Hook blocked this message" }).getAttribute("href")).toBe(
-      "/settings/hooks-settings?hostId=local",
+      "/settings/plugins-settings/hooks?hostId=local",
     );
   });
 
@@ -1229,7 +1229,9 @@ describe("UserMessageBubble collapse", () => {
     );
 
     const status = getByText("Hook feedback");
-    expect(status.closest("a")?.getAttribute("href")).toBe("/settings/hooks-settings?hostId=local");
+    expect(status.closest("a")?.getAttribute("href")).toBe(
+      "/settings/plugins-settings/hooks?hostId=local",
+    );
     expect(queryByLabelText("Edit message")).toBe(null);
   });
 
@@ -1282,7 +1284,7 @@ describe("UserMessageBubble collapse", () => {
 
     const link = getByText("Hook feedback").closest("a");
     expect(link?.getAttribute("href")).toBe(
-      "/settings/hooks-settings?hostId=remote-1&source=project&projectRoot=%2Fworkspace%2Fnodex",
+      "/settings/plugins-settings/hooks?hostId=remote-1&source=project&projectRoot=%2Fworkspace%2Fnodex",
     );
     fireEvent.click(link as HTMLElement);
     expect(onOpenHooksSettings).toHaveBeenCalledWith({

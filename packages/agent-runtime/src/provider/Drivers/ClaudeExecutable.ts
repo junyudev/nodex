@@ -113,7 +113,7 @@ export const checkClaudeCodeExecutable = Effect.fnUntraced(function* (
   const fs = yield* FileSystem.FileSystem;
   if (yield* fs.exists(component.removalMarker).pipe(Effect.orElseSucceed(() => false))) {
     return yield* new ClaudeCodeUnavailableError({
-      message: "Claude Code is turned off in Settings → General → Components.",
+      message: "Claude Code is turned off in Settings → General → Add-ons.",
     });
   }
   if (

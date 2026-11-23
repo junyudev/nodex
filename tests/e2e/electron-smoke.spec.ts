@@ -3303,7 +3303,7 @@ test.describe("parallel functional Electron smoke", () => {
       await openWorkbenchSettings(page);
       await page
         .getByTestId("settings-route-shell")
-        .getByRole("link", { name: "Pages", exact: true })
+        .getByRole("link", { name: "Editor", exact: true })
         .click();
       const shorthandSwitch = page.getByRole("switch", { name: "Task shorthand on Block to Page" });
       await expect(shorthandSwitch).toHaveAttribute("aria-checked", "false");

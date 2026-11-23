@@ -16,6 +16,9 @@ import { renderWithAppMaitai } from "@/test/app-maitai";
 import { openNodexMenu } from "@/test/dom";
 import { AppearanceSettingsPage } from "./appearance-settings-page";
 
+// Usage meters read live account usage; their own tests cover them.
+vi.mock("./usage-meter-setting-rows", () => ({ UsageMeterSettingRows: () => null }));
+
 async function press(control: HTMLElement) {
   await act(async () => {
     fireEvent.click(control);

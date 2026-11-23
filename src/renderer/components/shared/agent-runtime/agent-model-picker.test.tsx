@@ -708,7 +708,7 @@ test("names this chat's own model as off instead of swapping it", async () => {
           model,
           selection: selected,
           unavailableLabel: "Off",
-          unavailableReason: "Kimi K3 is off in Settings → Models.",
+          unavailableReason: "Kimi K3 is off in Settings → Agents.",
         },
       ],
     }),

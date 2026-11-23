@@ -117,9 +117,9 @@ test("joins a team Space, collaborates live and keeps personal work isolated thr
               (await invokeIpc(page, "spaces:list")).find((space) => space.kind === "team")?.name,
           )
           .toBe("Team Research");
-        // The remote Owner administers the team from Settings → Spaces on their own desktop.
+        // The remote Owner administers the team from Settings → Remote on their own desktop.
         await openWorkbenchSettings(page);
-        await page.getByRole("link", { name: "Spaces", exact: true }).click();
+        await page.getByRole("link", { name: "Remote", exact: true }).click();
         const people = page.getByRole("region", { name: "People", exact: true });
         await people.getByRole("button", { name: "Invite someone", exact: true }).click();
         const shownLink = await people.locator("code").first().textContent();

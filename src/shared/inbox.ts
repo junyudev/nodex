@@ -775,7 +775,7 @@ export function resolveInboxModel(
   if (!modelIsOn(model))
     return {
       kind: "unavailable",
-      message: `${model.name} on ${spendsNodexCredit(provider) ? "Nodex" : (provider.displayName ?? provider.instanceId)} is off in Settings → Models. Choose another model.`,
+      message: `${model.name} on ${spendsNodexCredit(provider) ? "Nodex" : (provider.displayName ?? provider.instanceId)} is off in Settings → Agents. Choose another model.`,
     };
   if (!choice.model && spendsNodexCredit(provider))
     return { kind: "unavailable", message: "Choose a model explicitly to use Nodex credit." };

@@ -194,7 +194,7 @@ Member attention changes invalidate the same Core-projected stream.
   [Team Space Behavior](./team-space-behavior.md).
 - `Archived`, above the list, switches it to the Space's archived chats, newest first and without
   sections; search then looks among them, and `Chats` returns. Each opens to read, and `Restore`
-  appears beside those you may manage, as Data controls on a desktop lists them.
+  appears beside those you may manage, as Archived chats in a desktop's Settings lists them.
 - Starting a chat chooses a Project, a location (the checkout or a new worktree, offered as soon as
   a Project that can use one is chosen) and an Agent, and remembers them per Space and Member. An Agent that cannot run says why rather than disappearing. An
   Agent is a model and, where the model offers a choice, its reasoning effort: the Composer's chip

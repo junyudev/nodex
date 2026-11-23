@@ -101,7 +101,7 @@ version is ready.
 
 ## Settings
 
-**Settings → General → Components** lists the Components this build installs after the app. The
+**Settings → General → Add-ons** lists the Components this build installs after the app. The
 section is absent when there are none.
 
 Each row names the Component and what it provides, and carries one switch. On keeps it installed;

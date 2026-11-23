@@ -346,8 +346,8 @@ export const settingsMessages = defineMessages({
     defaultMessage: "Remove models you don't use from every picker.",
   },
   voiceSearchSubtitle: {
-    id: "settings.search.voice.subtitle",
-    defaultMessage: "Microphone, dictation behavior, and recoverable recordings.",
+    id: "settings.voice.subtitle",
+    defaultMessage: "The microphone, how dictation works, and your recent recordings.",
   },
   voiceSearchGeneral: { id: "settings.search.voice.general", defaultMessage: "General" },
   voiceSearchMicrophone: { id: "settings.search.voice.microphone", defaultMessage: "Microphone" },
@@ -411,8 +411,16 @@ export const settingsMessages = defineMessages({
     defaultMessage: "Delete recording",
   },
   accountSearchSubtitle: {
-    id: "settings.search.account.subtitle",
-    defaultMessage: "Optional. Everything local works without signing in.",
+    id: "settings.account.subtitle",
+    defaultMessage: "Your Nodex account, and the credits that pay for Nodex models.",
+  },
+  keyboardShortcutsSubtitle: {
+    id: "settings.keyboardShortcuts.subtitle",
+    defaultMessage: "Every command's shortcut. Search by name or by pressing the keys.",
+  },
+  githubSubtitle: {
+    id: "settings.github.subtitle",
+    defaultMessage: "Your GitHub account, and the repositories and activity that reach your Inbox.",
   },
   accountSearchAccount: { id: "settings.search.account.account", defaultMessage: "Nodex Account" },
   accountSearchSignIn: { id: "settings.search.account.signIn", defaultMessage: "Sign in" },
@@ -435,8 +443,7 @@ export const settingsMessages = defineMessages({
   generalGeneral: { id: "settings.general.title", defaultMessage: "General" },
   generalHowNodexStartsAndUpdatesHow: {
     id: "settings.general.subtitle",
-    defaultMessage:
-      "How Nodex starts and updates, how chats and writing behave, and what you share.",
+    defaultMessage: "How Nodex starts, notifies you and updates, and what you share.",
   },
   generalApp: { id: "settings.general.app.title", defaultMessage: "App" },
   generalRestoreWindows: {
@@ -509,7 +516,7 @@ export const settingsMessages = defineMessages({
     id: "settings.openSourceLicenses.rowDescription",
     defaultMessage: "Third-party notices for bundled dependencies.",
   },
-  componentsComponents: { id: "appComponents.title", defaultMessage: "Components" },
+  componentsComponents: { id: "appComponents.title", defaultMessage: "Add-ons" },
   componentsDesktopTools: {
     id: "appComponents.desktopTools.name",
     defaultMessage: "Desktop Tools",
@@ -609,7 +616,7 @@ export const settingsMessages = defineMessages({
   generalWhileAThreadIsRunningQueue: {
     id: "settings.general.queueFollowUps.description",
     defaultMessage:
-      "While a thread is running, queue new messages by default instead of steering it right away.",
+      "While a chat is running, queue new messages instead of steering it right away.",
   },
   writingModelLabel: { id: "settings.writingModel.label", defaultMessage: "Writing model" },
   writingModelDescription: {
@@ -649,26 +656,25 @@ export const settingsMessages = defineMessages({
       "Link plain domains like example.com. Leave off to avoid filename-like text such as .md paths.",
   },
   generalLargePasteTextThreshold: {
-    id: "settings.general.pasteTextThreshold.label",
-    defaultMessage: "Large paste text threshold",
+    id: "settings.editor.longPasteSize",
+    defaultMessage: "Long paste size",
   },
   generalPromptWhenPastedPlainTextReaches: {
-    id: "settings.general.pasteTextThreshold.description",
+    id: "settings.editor.longPasteSizeDescription",
     defaultMessage:
-      "Prompt when pasted plain text reaches this many characters, so you can materialize it instead of inflating the note.",
+      "Offer to keep pasted text as its own file once it is this many characters long, instead of growing the Page.",
   },
   generalPasteResourceTextThreshold: {
     id: "settings.general.pasteResourceTextThreshold",
     defaultMessage: "Paste resource text threshold",
   },
   generalLargePasteDescriptionSoftLimit: {
-    id: "settings.general.pasteDescriptionLimit.label",
-    defaultMessage: "Large paste description soft limit",
+    id: "settings.editor.pageSizeWarning",
+    defaultMessage: "Page size warning",
   },
   generalPromptBeforePastedPlainTextPushes: {
-    id: "settings.general.pasteDescriptionLimit.description",
-    defaultMessage:
-      "Prompt before pasted plain text pushes the note near its description size ceiling.",
+    id: "settings.editor.pageSizeWarningDescription",
+    defaultMessage: "Offer the same before a paste brings a Page close to its size limit.",
   },
   generalPasteResourceDescriptionSoftLimit: {
     id: "settings.general.pasteResourceDescriptionSoftLimit",
@@ -683,18 +689,17 @@ export const settingsMessages = defineMessages({
     defaultMessage: "Copy file references as local paths",
   },
   generalUseAbsoluteLocalPathsInCopied: {
-    id: "settings.general.copyFileReferences.description",
+    id: "settings.editor.copyFileReferencesDescription",
     defaultMessage:
-      "Use absolute local paths in copied plain text; Library Files resolve to this Profile’s immutable .blob files.",
+      "Copied text names each file by its full path on this computer, including files kept in the Library.",
   },
   generalMarkdownFileLinks: {
     id: "settings.general.markdownFileLinks.label",
     defaultMessage: "Markdown file links",
   },
   generalChooseWhichDesktopAppHandlesAbsolute: {
-    id: "settings.general.markdownFileLinks.description",
-    defaultMessage:
-      "Choose which desktop app handles absolute local file links in rendered markdown.",
+    id: "settings.editor.markdownFileLinksDescription",
+    defaultMessage: "The app that opens a link to a file on this computer.",
   },
   generalNotifications: { id: "settings.general.notifications", defaultMessage: "Notifications" },
   generalTurnCompletionNotifications: {
@@ -824,10 +829,14 @@ export const settingsMessages = defineMessages({
   voiceTitle: { id: "settings.voice.title", defaultMessage: "Voice" },
   modelsTitle: { id: "settings.models.title", defaultMessage: "Models" },
   agentsTitle: { id: "settings.agents.title", defaultMessage: "Agents" },
+  agentsFilterModels: {
+    id: "modelPolicy.modelsSettingsPage.filterModels",
+    defaultMessage: "Filter models",
+  },
   agentsTheCodingAgentsNodexCanRun: {
-    id: "settings.agents.theCodingAgentsNodexCanRun",
+    id: "settings.agents.subtitle",
     defaultMessage:
-      "The coding agents and models Nodex can run. Open one to change how it starts and signs in.",
+      "The Agents and models Nodex can run. Open one to sign in, choose its models or change how it starts.",
   },
   agentsPermissions: { id: "settings.agents.permissions", defaultMessage: "Permissions" },
   agentsDefaultPermissions: {
@@ -839,13 +848,13 @@ export const settingsMessages = defineMessages({
     defaultMessage: "What new chats can do on this computer without asking.",
   },
   agentsSubagentsCanDelegate: {
-    id: "settings.agents.subagentsCanDelegate",
-    defaultMessage: "Subagents can delegate",
+    id: "settings.agents.letSubagentsDelegate",
+    defaultMessage: "Let subagents delegate",
   },
   agentsSubagentsCanDelegateDescription: {
-    id: "settings.agents.subagentsCanDelegateDescription",
+    id: "settings.agents.letSubagentsDelegateDescription",
     defaultMessage:
-      "Off, only the Agent you talk to delegates and starts chats. A chat can choose otherwise in its Subagents tab. Agents’ built-in subagents follow their own rules.",
+      "Subagents can hand work to other Agents and start chats. Off, only the Agent you talk to can. A chat can change this in its Subagents tab.",
   },
   codexSpeed: { id: "settings.codex.speed", defaultMessage: "Speed" },
   codexTheSpeedNewCodexChatsStart: {
@@ -904,10 +913,6 @@ export const settingsMessages = defineMessages({
   agentsInstallAgentsFromTheACPRegistry: {
     id: "settings.agents.installAgentsFromTheACPRegistry",
     defaultMessage: "Install agents from the ACP Registry or run your own command.",
-  },
-  conversationImportTitle: {
-    id: "settings.conversationImport.title",
-    defaultMessage: "Conversations",
   },
   conversationImportImport2: {
     id: "settings.conversationImport.import2",
@@ -1074,7 +1079,6 @@ export const settingsMessages = defineMessages({
     id: "settings.git.addCommitMessageGuidance",
     defaultMessage: "Add commit message guidance…",
   },
-  gitSave: { id: "settings.git.save", defaultMessage: "Save" },
   gitPullRequestInstructionsLabel: {
     id: "settings.git.pullRequestInstructions.label",
     defaultMessage: "Pull request instructions",
@@ -1250,10 +1254,10 @@ export const settingsMessages = defineMessages({
     id: "settings.hooks.configuredHooksWillAppearHere",
     defaultMessage: "Configured hooks will appear here",
   },
-  archivedChatsTitle: { id: "settings.archivedChats.title", defaultMessage: "Data controls" },
+  archivedChatsTitle: { id: "settings.archivedChats.title", defaultMessage: "Archived chats" },
   archivedChatsManageArchivedChatsAndPermanentLocal: {
-    id: "settings.archivedChats.manageArchivedChatsAndPermanentLocal",
-    defaultMessage: "Manage archived chats and permanent local deletion.",
+    id: "settings.archivedChats.subtitle",
+    defaultMessage: "Restore archived chats, or delete them from this computer for good.",
   },
   archivedChatsArchivedChats: {
     id: "settings.archivedChats.archivedChats",
@@ -1278,8 +1282,8 @@ export const settingsMessages = defineMessages({
   },
   backupsTitle: { id: "settings.backups.title", defaultMessage: "Backups" },
   backupsSnapshotCadenceRetentionAndRestoreOperations: {
-    id: "settings.backups.snapshotCadenceRetentionAndRestoreOperations",
-    defaultMessage: "Snapshot cadence, retention, and restore operations.",
+    id: "settings.backups.subtitle",
+    defaultMessage: "Snapshots of your Library to restore from, and edits waiting to be recovered.",
   },
   backupsAutomaticSnapshots: {
     id: "settings.backups.automaticSnapshots",
@@ -1313,14 +1317,15 @@ export const settingsMessages = defineMessages({
   },
   backupsRefresh: { id: "settings.backups.refresh", defaultMessage: "Refresh" },
   backupsSaveSchedule: { id: "settings.backups.saveSchedule", defaultMessage: "Save schedule" },
+  backupsRecovery: { id: "settings.backups.recovery", defaultMessage: "Recovery" },
   backupsHistoryRetention: {
-    id: "settings.backups.historyRetention",
-    defaultMessage: "History retention",
+    id: "settings.backups.deletedBlocksKept",
+    defaultMessage: "Deleted blocks kept",
   },
   backupsNewestDeletedBlockRecordsKeptPer: {
-    id: "settings.backups.newestDeletedBlockRecordsKeptPer",
+    id: "settings.backups.deletedBlocksKeptDescription",
     defaultMessage:
-      "Newest deleted Block records kept per Project before safe collection. Use 0 to collect every unreferenced tombstone.",
+      "How many recently deleted blocks each Project keeps so they can be restored. At 0, every deleted block nothing refers to is cleared.",
   },
   backupsRecords: { id: "settings.backups.records", defaultMessage: "records" },
   backupsValueLockedByEnvVar: {
@@ -1420,6 +1425,77 @@ export const settingsMessages = defineMessages({
   generalLanguageForTheAppUI: {
     id: "settings.ide.language.description",
     defaultMessage: "Language for the app UI",
+  },
+  generalAbout: { id: "settings.general.about.title", defaultMessage: "About" },
+  appearanceSubtitle: {
+    id: "settings.appearance.subtitle",
+    defaultMessage: "How Nodex looks, and what the rail shows.",
+  },
+  usageMetersFootnote: {
+    id: "settings.usageMeters.footnote",
+    defaultMessage: "Each meter sits at the bottom of the rail while its account reports usage.",
+  },
+  editorTitle: { id: "settings.editor.title", defaultMessage: "Editor" },
+  editorSubtitle: {
+    id: "settings.editor.subtitle",
+    defaultMessage: "How typing, pasting and links behave in Pages and chats.",
+  },
+  editorTyping: { id: "settings.editor.typing", defaultMessage: "Typing" },
+  editorPasting: { id: "settings.editor.pasting", defaultMessage: "Pasting" },
+  chatsTitle: { id: "settings.chats.title", defaultMessage: "Chats" },
+  chatsSubtitle: {
+    id: "settings.chats.subtitle",
+    defaultMessage:
+      "What chats may do without asking, the instructions every chat follows, and how chats show their work.",
+  },
+  chatsInstructions: { id: "settings.chats.instructions", defaultMessage: "Instructions" },
+  chatsInAChat: { id: "settings.chats.inAChat", defaultMessage: "In a chat" },
+  chatsAutomaticChatsAtOnce: {
+    id: "settings.chats.automaticChatsAtOnce",
+    defaultMessage: "Automatic chats at once",
+  },
+  chatsAutomaticChatsAtOnceDescription: {
+    id: "settings.chats.automaticChatsAtOnceDescription",
+    defaultMessage:
+      "Automations and Pages that start on their own wait once this many are running. Chats you start, and the tasks they delegate, always run.",
+  },
+  chatsCommandOutput: { id: "settings.chats.commandOutput", defaultMessage: "Command output" },
+  chatsCommandOutputDescription: {
+    id: "settings.chats.commandOutputDescription",
+    defaultMessage: "How much of the commands an Agent runs to show in a chat.",
+  },
+  chatsYourInstructions: {
+    id: "settings.agentInstructions.yourInstructions",
+    defaultMessage: "Your instructions",
+  },
+  chatsOpenResultsBesideTheChat: {
+    id: "settings.agentInstructions.openResultsBesideTheChat",
+    defaultMessage: "Open results beside the chat",
+  },
+  chatsOpenResultsBesideTheChatDescription: {
+    id: "settings.agentInstructions.openResultsBesideTheChatDescription",
+    defaultMessage:
+      "When an Agent makes or changes a file or Page, it can open it next to the chat.",
+  },
+  chatsWhatAgentsReceive: {
+    id: "settings.agentInstructions.whatAgentsReceive",
+    defaultMessage: "What Agents receive",
+  },
+  chatsWhatAgentsReceiveDescription: {
+    id: "settings.agentInstructions.whatAgentsReceiveDescription",
+    defaultMessage: "Nodex’s guidance and your instructions, as Agents read them every turn",
+  },
+  remoteTitle: { id: "settings.remote.title", defaultMessage: "Remote" },
+  remoteSubtitle: {
+    id: "settings.remote.subtitle",
+    defaultMessage:
+      "Use this computer from your phone or another computer, and open Spaces hosted elsewhere.",
+  },
+  importTitle: { id: "settings.import.title", defaultMessage: "Import" },
+  worktreesSubtitle: {
+    id: "settings.worktrees.subtitle",
+    defaultMessage:
+      "Where Nodex keeps the worktrees chats work in, and how each Project sets them up.",
   },
 });
 
@@ -1559,6 +1635,37 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
+  remote: {
+    title: settingsMessages.remoteTitle,
+    subtitle: settingsMessages.remoteSubtitle,
+    groups: [
+      {
+        title: "This computer",
+        entries: [
+          entry("Allow remote connections", undefined, [
+            "Remote access",
+            "network",
+            "tailnet",
+            "Wi-Fi",
+          ]),
+          entry("Rename this Space"),
+        ],
+      },
+      {
+        title: "Devices",
+        messages: [
+          "Link a device",
+          "Revoke",
+          "Phone",
+          "Nodex Mobile",
+          "One-time code",
+          "Certificate fingerprint",
+        ],
+      },
+      { title: "People", messages: ["Invite someone", "Remove", "Team Space"] },
+      { title: "Your Spaces", messages: ["Spaces", "Join a Space", "Leave"] },
+    ],
+  },
   "general-settings": {
     title: settingsMessages.generalGeneral,
     subtitle: settingsMessages.generalHowNodexStartsAndUpdatesHow,
@@ -1596,27 +1703,6 @@ export const SETTINGS_SEARCH_PANELS = {
             ],
             () => readSettingsHostPresentation().terminalShell,
           ),
-          entry(
-            settingsMessages.generalNodexVersion,
-            settingsMessages.generalCheckForUpdatesOrRestartTo,
-            [
-              "App updates",
-              settingsMessages.appUpdatesCheckNow,
-              settingsMessages.appUpdatesRestartToUpdate,
-              "download updates",
-              "install updates",
-            ],
-          ),
-          entry(
-            settingsMessages.appUpdatesCheckAutomatically,
-            settingsMessages.appUpdatesLookForUpdatesInTheBackground,
-            ["automatic updates", "check updates"],
-          ),
-          entry(
-            settingsMessages.appUpdatesUpdateChannel,
-            settingsMessages.appUpdatesNightlyGetsNewBuildsFirstSwitching,
-            [settingsMessages.appUpdatesStable, settingsMessages.appUpdatesNightly, "beta"],
-          ),
           entry(settingsMessages.generalShowTips, settingsMessages.generalShowTipsDescription, [
             "tips",
             "hints",
@@ -1626,171 +1712,6 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.generalRunSetupAgain,
             settingsMessages.generalConnectAgentsAndAddProjects,
             ["setup", "welcome", "onboarding"],
-          ),
-          entry(
-            settingsMessages.generalOpenSourceLicenses,
-            settingsMessages.generalThirdPartyNoticesForBundledDependencies,
-            ["open source", "licenses", "dependencies"],
-          ),
-        ],
-      },
-      {
-        anchor: "components",
-        title: settingsMessages.componentsComponents,
-        visibleWhen: () => readSettingsHostPresentation().components,
-        entries: [
-          entry(
-            settingsMessages.componentsDesktopTools,
-            settingsMessages.componentsDesktopToolsDescription,
-            ["storage", "disk space", "download", "install", "remove", "uninstall", "runtime"],
-          ),
-          entry(
-            settingsMessages.componentsClaudeCode,
-            settingsMessages.componentsClaudeCodeDescription,
-            ["storage", "disk space", "download", "install", "remove", "API key", "credits"],
-          ),
-          entry(
-            settingsMessages.componentsDocumentTools,
-            settingsMessages.componentsDocumentToolsDescription,
-            [
-              "storage",
-              "disk space",
-              "download",
-              "install",
-              "remove",
-              "Python",
-              "docx",
-              "pptx",
-              "xlsx",
-            ],
-          ),
-        ],
-      },
-      {
-        anchor: "usage-meters",
-        title: settingsMessages.usageMetersUsageMeters,
-        entries: [
-          entry("Antigravity", settingsMessages.generalShowAntigravityUsageInTheRail, [
-            "usage",
-            "quota",
-            "rail",
-            "meter",
-          ]),
-          entry("Claude", settingsMessages.generalShowClaudeUsageInTheRail, [
-            "usage",
-            "limits",
-            "rail",
-            "meter",
-          ]),
-          entry("Codex", settingsMessages.generalShowCodexUsageInTheRail, [
-            "usage",
-            "rate limits",
-            "rail",
-            "meter",
-          ]),
-          entry(
-            settingsMessages.usageMetersNodexCredits,
-            settingsMessages.generalShowNodexCreditsInTheRail,
-            ["credit", "credits", "balance", "rail", "meter"],
-          ),
-        ],
-      },
-      {
-        anchor: "chats",
-        title: settingsMessages.generalChats,
-        entries: [
-          entry(
-            settingsMessages.generalThreadDetail,
-            settingsMessages.generalChooseHowMuchCommandOutputTo,
-            [
-              settingsMessages.generalSteps,
-              settingsMessages.generalStepsWithCodeCommands,
-              settingsMessages.generalStepsWithCodeOutput,
-              settingsMessages.generalHideCommandsAndOutputs,
-              settingsMessages.generalShowCommandsCollapseOutput,
-              settingsMessages.generalShowCommandsAndExpandOutput,
-            ],
-          ),
-          entry(
-            settingsMessages.generalShowPredictions,
-            settingsMessages.generalSuggestYourNextMessageAfterAn,
-            ["autocomplete", "suggestions"],
-          ),
-          entry(
-            {
-              message: settingsMessages.generalEnterToSendLongPrompts,
-              values: { modifier: "Cmd" },
-            },
-            settingsMessages.generalSingleLinePromptsStillSendOn,
-            ["Ctrl+Enter to send long prompts", "composer", "modifier chord"],
-          ),
-          entry(
-            settingsMessages.generalQueueFollowUps,
-            settingsMessages.generalWhileAThreadIsRunningQueue,
-            ["steer", "composer"],
-          ),
-          entry(settingsMessages.writingModelLabel, settingsMessages.writingModelDescription, [
-            "title",
-            "name",
-            "commit",
-            "pull request",
-            "generate",
-            "model",
-            "utility",
-          ]),
-        ],
-      },
-      {
-        anchor: "writing",
-        title: settingsMessages.generalWriting,
-        entries: [
-          entry(
-            settingsMessages.generalSpellcheck,
-            settingsMessages.generalMarkMisspelledWordsWhereverYouType,
-            ["spelling"],
-          ),
-          entry(
-            settingsMessages.generalAutoLinkWhileTyping,
-            settingsMessages.generalTurnTypedURLsIntoLinksAs,
-          ),
-          entry(
-            settingsMessages.generalAutoLinkOnPaste,
-            settingsMessages.generalRecognizeLinksInPastedTextIncluding,
-          ),
-          entry(
-            settingsMessages.generalRecognizeBareDomains,
-            settingsMessages.generalLinkPlainDomainsLikeExampleCom,
-          ),
-          entry(
-            settingsMessages.generalLargePasteTextThreshold,
-            settingsMessages.generalPromptWhenPastedPlainTextReaches,
-            [settingsMessages.generalPasteResourceTextThreshold],
-          ),
-          entry(
-            settingsMessages.generalLargePasteDescriptionSoftLimit,
-            settingsMessages.generalPromptBeforePastedPlainTextPushes,
-            [settingsMessages.generalPasteResourceDescriptionSoftLimit],
-          ),
-        ],
-      },
-      {
-        anchor: "files-and-links",
-        title: settingsMessages.generalFilesLinks,
-        entries: [
-          entry(
-            settingsMessages.generalCopyFileReferencesAsLocalPaths,
-            settingsMessages.generalUseAbsoluteLocalPathsInCopied,
-            ["absolute path", "portable file reference", "NFM copy"],
-          ),
-          entry(
-            settingsMessages.generalMarkdownFileLinks,
-            settingsMessages.generalChooseWhichDesktopAppHandlesAbsolute,
-            [
-              "Open markdown file links in",
-              ...FILE_LINK_OPENER_OPTIONS.map(
-                (option) => FILE_LINK_OPENER_LABEL_MESSAGES[option.id] ?? option.label,
-              ),
-            ],
           ),
         ],
       },
@@ -1837,6 +1758,70 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.generalShareUsageAnalytics,
             settingsMessages.generalSendAnonymousCountsOfHowNodex,
             ["Telemetry", "anonymous usage", "Statsig", settingsMessages.generalSeeWhatIsSent],
+          ),
+        ],
+      },
+      {
+        anchor: "about",
+        title: settingsMessages.generalAbout,
+        entries: [
+          entry(
+            settingsMessages.generalNodexVersion,
+            settingsMessages.generalCheckForUpdatesOrRestartTo,
+            [
+              "App updates",
+              settingsMessages.appUpdatesCheckNow,
+              settingsMessages.appUpdatesRestartToUpdate,
+              "download updates",
+              "install updates",
+            ],
+          ),
+          entry(
+            settingsMessages.appUpdatesCheckAutomatically,
+            settingsMessages.appUpdatesLookForUpdatesInTheBackground,
+            ["automatic updates", "check updates"],
+          ),
+          entry(
+            settingsMessages.appUpdatesUpdateChannel,
+            settingsMessages.appUpdatesNightlyGetsNewBuildsFirstSwitching,
+            [settingsMessages.appUpdatesStable, settingsMessages.appUpdatesNightly, "beta"],
+          ),
+          entry(
+            settingsMessages.generalOpenSourceLicenses,
+            settingsMessages.generalThirdPartyNoticesForBundledDependencies,
+            ["open source", "licenses", "dependencies"],
+          ),
+        ],
+      },
+      {
+        anchor: "components",
+        title: settingsMessages.componentsComponents,
+        visibleWhen: () => readSettingsHostPresentation().components,
+        entries: [
+          entry(
+            settingsMessages.componentsDesktopTools,
+            settingsMessages.componentsDesktopToolsDescription,
+            ["storage", "disk space", "download", "install", "remove", "uninstall", "runtime"],
+          ),
+          entry(
+            settingsMessages.componentsClaudeCode,
+            settingsMessages.componentsClaudeCodeDescription,
+            ["storage", "disk space", "download", "install", "remove", "API key", "credits"],
+          ),
+          entry(
+            settingsMessages.componentsDocumentTools,
+            settingsMessages.componentsDocumentToolsDescription,
+            [
+              "storage",
+              "disk space",
+              "download",
+              "install",
+              "remove",
+              "Python",
+              "docx",
+              "pptx",
+              "xlsx",
+            ],
           ),
         ],
       },
@@ -1892,6 +1877,35 @@ export const SETTINGS_SEARCH_PANELS = {
             "Light theme",
             "Dark theme",
           ]),
+        ],
+      },
+      {
+        anchor: "usage-meters",
+        title: settingsMessages.usageMetersUsageMeters,
+        entries: [
+          entry("Antigravity", settingsMessages.generalShowAntigravityUsageInTheRail, [
+            "usage",
+            "quota",
+            "rail",
+            "meter",
+          ]),
+          entry("Claude", settingsMessages.generalShowClaudeUsageInTheRail, [
+            "usage",
+            "limits",
+            "rail",
+            "meter",
+          ]),
+          entry("Codex", settingsMessages.generalShowCodexUsageInTheRail, [
+            "usage",
+            "rate limits",
+            "rail",
+            "meter",
+          ]),
+          entry(
+            settingsMessages.usageMetersNodexCredits,
+            settingsMessages.generalShowNodexCreditsInTheRail,
+            ["credit", "credits", "balance", "rail", "meter"],
+          ),
         ],
       },
       {
@@ -1956,6 +1970,83 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
+  editor: {
+    title: settingsMessages.editorTitle,
+    subtitle: settingsMessages.editorSubtitle,
+    groups: [
+      {
+        anchor: "typing",
+        title: settingsMessages.editorTyping,
+        entries: [
+          entry(
+            settingsMessages.generalSpellcheck,
+            settingsMessages.generalMarkMisspelledWordsWhereverYouType,
+            ["spelling"],
+          ),
+          entry(
+            settingsMessages.generalAutoLinkWhileTyping,
+            settingsMessages.generalTurnTypedURLsIntoLinksAs,
+          ),
+          entry(
+            settingsMessages.generalRecognizeBareDomains,
+            settingsMessages.generalLinkPlainDomainsLikeExampleCom,
+          ),
+        ],
+      },
+      {
+        anchor: "pasting",
+        title: settingsMessages.editorPasting,
+        entries: [
+          entry(
+            settingsMessages.generalAutoLinkOnPaste,
+            settingsMessages.generalRecognizeLinksInPastedTextIncluding,
+          ),
+          entry(
+            settingsMessages.generalLargePasteTextThreshold,
+            settingsMessages.generalPromptWhenPastedPlainTextReaches,
+            [settingsMessages.generalPasteResourceTextThreshold],
+          ),
+          entry(
+            settingsMessages.generalLargePasteDescriptionSoftLimit,
+            settingsMessages.generalPromptBeforePastedPlainTextPushes,
+            [settingsMessages.generalPasteResourceDescriptionSoftLimit],
+          ),
+        ],
+      },
+      {
+        anchor: "pages",
+        title: settingsMessages.pageTitle,
+        entries: [
+          entry(
+            settingsMessages.pageTaskShorthandLabel,
+            settingsMessages.pageTaskShorthandDescription,
+            ["task shorthand", "block import", "priority", "estimate", "tags", "1XL"],
+          ),
+        ],
+      },
+      {
+        anchor: "files-and-links",
+        title: settingsMessages.generalFilesLinks,
+        entries: [
+          entry(
+            settingsMessages.generalCopyFileReferencesAsLocalPaths,
+            settingsMessages.generalUseAbsoluteLocalPathsInCopied,
+            ["absolute path", "portable file reference", "NFM copy"],
+          ),
+          entry(
+            settingsMessages.generalMarkdownFileLinks,
+            settingsMessages.generalChooseWhichDesktopAppHandlesAbsolute,
+            [
+              "Open markdown file links in",
+              ...FILE_LINK_OPENER_OPTIONS.map(
+                (option) => FILE_LINK_OPENER_LABEL_MESSAGES[option.id] ?? option.label,
+              ),
+            ],
+          ),
+        ],
+      },
+    ],
+  },
   voice: {
     title: settingsMessages.voiceTitle,
     subtitle: settingsMessages.voiceSearchSubtitle,
@@ -1993,9 +2084,41 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
-  models: {
-    title: settingsMessages.modelsTitle,
-    subtitle: settingsMessages.modelsSearchSubtitle,
+  "keyboard-shortcuts": {
+    title: settingsMessages.keyboardShortcutsTitle,
+    groups: [
+      {
+        title: settingsMessages.keyboardShortcutsTitle,
+        messages: [
+          settingsMessages.linkOpeningOpenWebLinkInDefaultBrowser,
+          settingsMessages.linkOpeningHoldTheAssignedKeysWhileClicking,
+          settingsMessages.keyboardShortcutsSearchLabel,
+          settingsMessages.keyboardShortcutsSearchPlaceholder,
+          settingsMessages.keyboardShortcutsSearchByKeystrokes,
+          settingsMessages.keyboardShortcutsSearchCapturePlaceholder,
+          settingsMessages.keyboardShortcutsLoadingShortcuts,
+          settingsMessages.keyboardShortcutsCouldNotLoadShortcuts,
+          settingsMessages.keyboardShortcutsNoMatchingShortcuts,
+          settingsMessages.keyboardShortcutsCommand,
+          settingsMessages.keyboardShortcutsKeybinding,
+          settingsMessages.keyboardShortcutsActions,
+          settingsMessages.keyboardShortcutsChangeShortcut,
+          settingsMessages.keyboardShortcutsSetShortcut,
+          settingsMessages.keyboardShortcutsClearShortcut,
+          settingsMessages.keyboardShortcutsResetShortcut,
+          settingsMessages.keyboardShortcutsResetAllToDefaults,
+          settingsMessages.keyboardShortcutsResetAllKeyboardShortcuts,
+          settingsMessages.keyboardShortcutsThisWillDiscardAllCustomShortcuts,
+          settingsMessages.linkOpeningUnassigned,
+          settingsMessages.keyboardShortcutsConflict,
+          settingsMessages.keyboardShortcutsCommandKeybindings,
+        ],
+      },
+    ],
+  },
+  agent: {
+    title: settingsMessages.agentsTitle,
+    subtitle: settingsMessages.agentsTheCodingAgentsNodexCanRun,
     groups: [
       {
         anchor: "nodex",
@@ -2018,28 +2141,6 @@ export const SETTINGS_SEARCH_PANELS = {
           ),
         ],
       },
-    ],
-  },
-  agent: {
-    title: settingsMessages.agentsTitle,
-    subtitle: settingsMessages.agentsTheCodingAgentsNodexCanRun,
-    groups: [
-      {
-        anchor: "default-permissions",
-        title: settingsMessages.agentsPermissions,
-        entries: [
-          entry(
-            settingsMessages.agentsDefaultPermissions,
-            settingsMessages.agentsWhatNewChatsCanDoOn,
-            ["Ask for approval", "Approve for me", "Full access", "approvals", "sandbox"],
-          ),
-          entry(
-            settingsMessages.agentsSubagentsCanDelegate,
-            settingsMessages.agentsSubagentsCanDelegateDescription,
-            ["nested", "delegation", "delegate_task", "spawn"],
-          ),
-        ],
-      },
       ...agentSettingsSections.map((section): SettingsSearchCatalogGroup => {
         if ("profile" in section) {
           const profile: AgentProfileDefinition = section.profile;
@@ -2055,36 +2156,96 @@ export const SETTINGS_SEARCH_PANELS = {
       }),
     ],
   },
-  "agent-import": {
-    title: settingsMessages.conversationImportTitle,
+  chats: {
+    title: settingsMessages.chatsTitle,
+    subtitle: settingsMessages.chatsSubtitle,
     groups: [
       {
-        title: settingsMessages.conversationImportImport2,
+        anchor: "permissions",
+        title: settingsMessages.agentsPermissions,
         entries: [
           entry(
-            settingsMessages.conversationImportImportConversations,
-            settingsMessages.conversationImportCopyAgentConversations,
-            [
-              "codex://threads",
-              "Search conversations",
-              "Conversation link or ID",
-              "Claude Code",
-              "Codex",
-              "Antigravity",
-              "agy",
-              "CODEX_HOME",
-              "CLAUDE_CONFIG_DIR",
-              "batch",
-            ],
+            settingsMessages.agentsDefaultPermissions,
+            settingsMessages.agentsWhatNewChatsCanDoOn,
+            ["Ask for approval", "Approve for me", "Full access", "approvals", "sandbox"],
+          ),
+          entry(
+            settingsMessages.agentsSubagentsCanDelegate,
+            settingsMessages.agentsSubagentsCanDelegateDescription,
+            ["nested", "delegation", "delegate_task", "spawn"],
+          ),
+          entry(
+            settingsMessages.chatsAutomaticChatsAtOnce,
+            settingsMessages.chatsAutomaticChatsAtOnceDescription,
+            ["automations", "concurrency", "queue", "limit", "capacity"],
           ),
         ],
-        messages: [
-          settingsMessages.conversationImportDestination,
-          settingsMessages.conversationImportProjectless,
-          settingsMessages.conversationImportFolderMissing,
-          settingsMessages.conversationImportChooseFolder,
-          settingsMessages.conversationImportImportAndOpen,
-          settingsMessages.conversationImportNotImported,
+      },
+      {
+        anchor: "instructions",
+        title: settingsMessages.chatsInstructions,
+        entries: [
+          entry(settingsMessages.chatsYourInstructions, undefined, [
+            "custom instructions",
+            "preferences",
+            "system prompt",
+            "standing instructions",
+          ]),
+          entry(
+            settingsMessages.chatsOpenResultsBesideTheChat,
+            settingsMessages.chatsOpenResultsBesideTheChatDescription,
+            ["artifact", "When helpful", "Ask first", "Never", "side panel"],
+          ),
+          entry(
+            settingsMessages.chatsWhatAgentsReceive,
+            settingsMessages.chatsWhatAgentsReceiveDescription,
+            ["Nodex guidance", "system prompt", "Codex desktop app"],
+          ),
+        ],
+      },
+      {
+        anchor: "in-a-chat",
+        title: settingsMessages.chatsInAChat,
+        entries: [
+          entry(
+            settingsMessages.chatsCommandOutput,
+            settingsMessages.chatsCommandOutputDescription,
+            [
+              settingsMessages.generalSteps,
+              settingsMessages.generalStepsWithCodeCommands,
+              settingsMessages.generalStepsWithCodeOutput,
+              settingsMessages.generalHideCommandsAndOutputs,
+              settingsMessages.generalShowCommandsCollapseOutput,
+              settingsMessages.generalShowCommandsAndExpandOutput,
+            ],
+          ),
+          entry(
+            settingsMessages.generalShowPredictions,
+            settingsMessages.generalSuggestYourNextMessageAfterAn,
+            ["autocomplete", "suggestions"],
+          ),
+          entry(
+            {
+              message: settingsMessages.generalEnterToSendLongPrompts,
+              values: { modifier: "Cmd" },
+            },
+            settingsMessages.generalSingleLinePromptsStillSendOn,
+            ["Ctrl+Enter to send long prompts", "composer", "modifier chord"],
+          ),
+          entry(
+            settingsMessages.generalQueueFollowUps,
+            settingsMessages.generalWhileAThreadIsRunningQueue,
+            ["steer", "composer"],
+          ),
+          entry(settingsMessages.writingModelLabel, settingsMessages.writingModelDescription, [
+            "title",
+            "name",
+            "commit",
+            "pull request",
+            "generate",
+            "model",
+            "utility",
+          ]),
         ],
       },
     ],
@@ -2135,50 +2296,58 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
-  "keyboard-shortcuts": {
-    title: settingsMessages.keyboardShortcutsTitle,
+  "plugins-settings": {
+    title: settingsMessages.pluginsTitle,
     groups: [
       {
-        title: settingsMessages.keyboardShortcutsTitle,
+        title: settingsMessages.pluginsTitle,
         messages: [
-          settingsMessages.linkOpeningOpenWebLinkInDefaultBrowser,
-          settingsMessages.linkOpeningHoldTheAssignedKeysWhileClicking,
-          settingsMessages.keyboardShortcutsSearchLabel,
-          settingsMessages.keyboardShortcutsSearchPlaceholder,
-          settingsMessages.keyboardShortcutsSearchByKeystrokes,
-          settingsMessages.keyboardShortcutsSearchCapturePlaceholder,
-          settingsMessages.keyboardShortcutsLoadingShortcuts,
-          settingsMessages.keyboardShortcutsCouldNotLoadShortcuts,
-          settingsMessages.keyboardShortcutsNoMatchingShortcuts,
-          settingsMessages.keyboardShortcutsCommand,
-          settingsMessages.keyboardShortcutsKeybinding,
-          settingsMessages.keyboardShortcutsActions,
-          settingsMessages.keyboardShortcutsChangeShortcut,
-          settingsMessages.keyboardShortcutsSetShortcut,
-          settingsMessages.keyboardShortcutsClearShortcut,
-          settingsMessages.keyboardShortcutsResetShortcut,
-          settingsMessages.keyboardShortcutsResetAllToDefaults,
-          settingsMessages.keyboardShortcutsResetAllKeyboardShortcuts,
-          settingsMessages.keyboardShortcutsThisWillDiscardAllCustomShortcuts,
-          settingsMessages.linkOpeningUnassigned,
-          settingsMessages.keyboardShortcutsConflict,
-          settingsMessages.keyboardShortcutsCommandKeybindings,
+          settingsMessages.pluginsSearchManage,
+          settingsMessages.pluginsSearchBrowse,
+          settingsMessages.pluginsSearchAddMarketplace,
+          settingsMessages.pluginsSearchSkills,
         ],
       },
-    ],
-  },
-  page: {
-    title: settingsMessages.pageTitle,
-    subtitle: settingsMessages.pagePageCreationAndImportBehavior,
-    groups: [
       {
-        title: settingsMessages.pageBlockImport,
+        anchor: "hooks",
+        title: settingsMessages.hooksFromConfig,
         entries: [
           entry(
-            settingsMessages.pageTaskShorthandLabel,
-            settingsMessages.pageTaskShorthandDescription,
-            ["task shorthand", "block import", "priority", "estimate", "tags", "1XL"],
+            settingsMessages.hooksUserConfig,
+            settingsMessages.hooksHooksConfiguredForTheCurrentUser,
           ),
+          entry(
+            settingsMessages.hooksAdminConfig,
+            settingsMessages.hooksHooksManagedBySystemAndOrganization,
+          ),
+        ],
+      },
+      {
+        anchor: "hooks",
+        title: settingsMessages.hooksFromPlugins,
+        messages: [
+          settingsMessages.hooksUnknownPlugin,
+          settingsMessages.hooksTrust,
+          settingsMessages.hooksManagedHooksAreAlwaysOn,
+        ],
+      },
+      {
+        anchor: "hooks",
+        title: settingsMessages.hooksFromProjects,
+        messages: [
+          settingsMessages.hooksProjectConfig,
+          settingsMessages.hooksReloadHooks,
+          settingsMessages.hooksNoHooksFound,
+          settingsMessages.hooksCouldNotLoadHooks,
+        ],
+      },
+      {
+        anchor: "hooks",
+        title: settingsMessages.hooksOtherSources,
+        messages: [
+          settingsMessages.hooksSessionFlags,
+          settingsMessages.hooksUnknownSource,
+          settingsMessages.hooksConfiguredHooksWillAppearHere,
         ],
       },
     ],
@@ -2200,21 +2369,18 @@ export const SETTINGS_SEARCH_PANELS = {
       {
         title: settingsMessages.gitCommitInstructionsLabel,
         description: settingsMessages.gitCommitInstructionsDescription,
-        messages: [settingsMessages.gitCommitInstructionsPlaceholder, settingsMessages.gitSave],
+        messages: [settingsMessages.gitCommitInstructionsPlaceholder],
       },
       {
         title: settingsMessages.gitPullRequestInstructionsLabel,
         description: settingsMessages.gitPullRequestInstructionsDescription,
-        messages: [
-          settingsMessages.gitPullRequestInstructionsPlaceholder,
-          settingsMessages.gitSave,
-        ],
+        messages: [settingsMessages.gitPullRequestInstructionsPlaceholder],
       },
     ],
   },
   worktrees: {
     title: settingsMessages.worktreesTitle,
-    subtitle: settingsMessages.worktreesManagedWorktreeCreationNamingAndCleanup,
+    subtitle: settingsMessages.worktreesSubtitle,
     groups: [
       {
         title: settingsMessages.worktreesDefaults,
@@ -2237,13 +2403,8 @@ export const SETTINGS_SEARCH_PANELS = {
           settingsMessages.worktreesRemoveWorktreeRecord,
         ],
       },
-    ],
-  },
-  "local-environments": {
-    title: settingsMessages.environmentsLocalEnvironments,
-    subtitle: settingsMessages.environmentsLocalEnvironmentsTellNodexHowTo2,
-    groups: [
       {
+        anchor: "environments",
         title: settingsMessages.environmentsSelectAProject,
         messages: [
           settingsMessages.environmentsAddProject,
@@ -2254,6 +2415,7 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "environments",
         title: settingsMessages.environmentsSetup,
         description: settingsMessages.environmentsThisScriptRunsOnWorktreeCreation,
         entries: [
@@ -2280,6 +2442,7 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "environments",
         title: settingsMessages.environmentsCleanup,
         description: settingsMessages.environmentsRunsAtTheProjectRootBefore,
         messages: [
@@ -2292,6 +2455,7 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "environments",
         title: settingsMessages.environmentsActions,
         description: settingsMessages.environmentsTheseActionsCanRunAnyCommand,
         messages: [
@@ -2307,51 +2471,41 @@ export const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
-  "hooks-settings": {
-    title: settingsMessages.hooksTitle,
-    subtitle: settingsMessages.hooksManageLifecycleHooksFromConfigAnd,
+  import: {
+    title: settingsMessages.importTitle,
     groups: [
       {
-        title: settingsMessages.hooksFromConfig,
+        title: settingsMessages.conversationImportImport2,
         entries: [
           entry(
-            settingsMessages.hooksUserConfig,
-            settingsMessages.hooksHooksConfiguredForTheCurrentUser,
+            settingsMessages.conversationImportImportConversations,
+            settingsMessages.conversationImportCopyAgentConversations,
+            [
+              "codex://threads",
+              "Search conversations",
+              "Conversation link or ID",
+              "Claude Code",
+              "Codex",
+              "Antigravity",
+              "agy",
+              "CODEX_HOME",
+              "CLAUDE_CONFIG_DIR",
+              "batch",
+            ],
           ),
-          entry(
-            settingsMessages.hooksAdminConfig,
-            settingsMessages.hooksHooksManagedBySystemAndOrganization,
-          ),
         ],
-      },
-      {
-        title: settingsMessages.hooksFromPlugins,
         messages: [
-          settingsMessages.hooksUnknownPlugin,
-          settingsMessages.hooksTrust,
-          settingsMessages.hooksManagedHooksAreAlwaysOn,
-        ],
-      },
-      {
-        title: settingsMessages.hooksFromProjects,
-        messages: [
-          settingsMessages.hooksProjectConfig,
-          settingsMessages.hooksReloadHooks,
-          settingsMessages.hooksNoHooksFound,
-          settingsMessages.hooksCouldNotLoadHooks,
-        ],
-      },
-      {
-        title: settingsMessages.hooksOtherSources,
-        messages: [
-          settingsMessages.hooksSessionFlags,
-          settingsMessages.hooksUnknownSource,
-          settingsMessages.hooksConfiguredHooksWillAppearHere,
+          settingsMessages.conversationImportDestination,
+          settingsMessages.conversationImportProjectless,
+          settingsMessages.conversationImportFolderMissing,
+          settingsMessages.conversationImportChooseFolder,
+          settingsMessages.conversationImportImportAndOpen,
+          settingsMessages.conversationImportNotImported,
         ],
       },
     ],
   },
-  "data-controls": {
+  "archived-chats": {
     title: settingsMessages.archivedChatsTitle,
     subtitle: settingsMessages.archivedChatsManageArchivedChatsAndPermanentLocal,
     groups: [
@@ -2395,7 +2549,7 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
-        title: settingsMessages.backupsHistoryRetention,
+        title: settingsMessages.backupsRecovery,
         entries: [
           entry(
             settingsMessages.backupsHistoryRetention,
@@ -2484,14 +2638,35 @@ const SETTINGS_SEARCH_CATALOG = {
   account: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.account),
   },
+  remote: {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.remote),
+  },
   "general-settings": {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["general-settings"]),
   },
   appearance: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.appearance),
   },
+  editor: {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.editor),
+  },
   voice: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.voice),
+  },
+  "keyboard-shortcuts": {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["keyboard-shortcuts"]),
+  },
+  agent: {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.agent),
+  },
+  chats: {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.chats),
+  },
+  "inbox-settings": {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["inbox-settings"]),
+  },
+  "plugins-settings": {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["plugins-settings"]),
   },
   browser: {
     messages: [
@@ -2543,15 +2718,6 @@ const SETTINGS_SEARCH_CATALOG = {
       settingsMessages.browserSearchFullCdpAccess,
     ],
   },
-  "plugins-settings": {
-    messages: [
-      settingsMessages.pluginsTitle,
-      settingsMessages.pluginsSearchManage,
-      settingsMessages.pluginsSearchBrowse,
-      settingsMessages.pluginsSearchAddMarketplace,
-      settingsMessages.pluginsSearchSkills,
-    ],
-  },
   "computer-use": {
     messages: [
       settingsMessages.computerUseTitle,
@@ -2564,38 +2730,17 @@ const SETTINGS_SEARCH_CATALOG = {
       settingsMessages.computerUseAlwaysHidePictureInPicture,
     ],
   },
-  models: {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.models),
-  },
-  agent: {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.agent),
-  },
-  "agent-import": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["agent-import"]),
-  },
-  "keyboard-shortcuts": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["keyboard-shortcuts"]),
-  },
-  "inbox-settings": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["inbox-settings"]),
-  },
-  page: {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.page),
-  },
   git: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.git),
   },
   worktrees: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.worktrees),
   },
-  "local-environments": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["local-environments"]),
+  import: {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.import),
   },
-  "hooks-settings": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["hooks-settings"]),
-  },
-  "data-controls": {
-    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["data-controls"]),
+  "archived-chats": {
+    messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["archived-chats"]),
   },
   backups: {
     messages: () => materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.backups),

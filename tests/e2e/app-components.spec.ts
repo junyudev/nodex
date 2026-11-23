@@ -47,7 +47,7 @@ async function capture(page: Page, section: Locator, directory: string, name: st
 }
 
 const componentsSection = (page: Page) =>
-  page.getByRole("region", { name: "Components", exact: true });
+  page.getByRole("region", { name: "Add-ons", exact: true });
 const componentSwitch = (page: Page, name: string, enabled: boolean) =>
   componentsSection(page).getByRole("switch", {
     name: `${enabled ? "Remove" : "Install"} ${name}`,

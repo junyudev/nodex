@@ -151,23 +151,24 @@ authenticated HTTPS client, live content streams and Documents; it never starts,
 stops or polls a process on the team host. The Core-authored Library ID is the
 stable `spaceId`, independent of endpoint, process generation and Store epoch.
 
-Settings → Spaces is one page for reaching the Space that is open:
+Settings → Remote is one page for reaching the Space that is open:
 
-- **This Space** shows its avatar, name and kind, and the person's role. Owners
-  rename it there. In the personal Space, the Owner turns Remote access on or off
-  and sees the addresses linked devices reach it at.
+- **This computer**, or **This Space** for a team Space, shows its avatar, name and
+  kind, and the person's role. Owners rename it there. In the personal Space, the Owner
+  turns **Allow remote connections** on or off and sees the addresses linked devices
+  reach it at.
 - **Devices** lists the reader's own Devices first and, for an Owner, everyone's,
   each with whose it is, what it is and when it was last seen. A Device with a
   live connection, such as a phone's open stream, is seen within the last
   minute. This computer is
   marked and leaves through Your Spaces instead of revoking itself. Link a device
   shows a one-time link that pins the certificate and its code, with the time
-  left; in the personal Space it needs Remote access on.
+  left; in the personal Space it turns remote connections on first when they are off.
 - **People** lists the reader first. The reader renames themselves from their own
   row, beside the Owner's Space rename; a name Core would refuse, such as “You”,
   is explained before saving. An Owner invites someone, which shows the
   invite link and one-time code to send, and removes a Member after confirming.
-  The personal Space shows People once its Owner turns Remote access on.
+  The personal Space shows People once its Owner allows remote connections.
 - **Your Spaces** lists every connected Space with its availability, opens one,
   leaves a team Space and joins another.
 
@@ -370,7 +371,7 @@ work, so a desktop and a phone offer only what Core allows. The rest is each Mem
 A hosted chat's title, archive state and Project are shared by every Member. The host
 carries each change with that Member's authority; for anyone who may not manage the
 chat, its header, sidebar rows, sidebar menu, command palette, shortcuts, `/compact`,
-`/clear`, `/merge` and Compact and retry leave these controls out, and Data controls
+`/clear`, `/merge` and Compact and retry leave these controls out, and Archived chats
 lists the archived chats the reader may restore. Its filter applies [chat search
 text matching](command-palette-behavior.md#text-matching) to loaded titles, Projects,
 folders, and opening previews. The list retains its order.
@@ -417,7 +418,7 @@ person moved by hand reads “A person moved it” to every reader.
 “You” is only ever how a reader sees their own Member; no stored Member name
 may be “You”. A Space's local Owner starts with the name its OS account gives
 its person, or the one chosen with `nodex serve init --owner-name`. Each
-Member renames themselves in Settings → Spaces → People or with `nodex space
+Member renames themselves in Settings → Remote → People or with `nodex space
 display-name NAME`; a host's local Owner uses `nodex serve display-name NAME`.
 Join a Space explains a refused name beside the field instead of failing to join.
 A handoff records its dispatching Member, Agent or Service separately from the

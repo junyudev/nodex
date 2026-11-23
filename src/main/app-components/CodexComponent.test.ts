@@ -74,7 +74,7 @@ it.effect("passive admission waits for wanted Codex only and preserves the turne
     expect(yield* admit).toMatchObject({
       failure: {
         availabilityReason: "turned-off",
-        message: "Codex is turned off in Settings → General → Components.",
+        message: "Codex is turned off in Settings → General → Add-ons.",
       },
     });
     expect(ensured).toBe(1);

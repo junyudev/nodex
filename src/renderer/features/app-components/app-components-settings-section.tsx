@@ -101,7 +101,7 @@ export function AppComponentsSettingsSection() {
   return (
     <NodexSettingsSection
       id={APP_COMPONENTS_SETTINGS_ANCHOR}
-      title={intl.formatMessage({ id: "appComponents.title", defaultMessage: "Components" })}
+      title={intl.formatMessage({ id: "appComponents.title", defaultMessage: "Add-ons" })}
       // These switches remove files, which no other Settings switch does.
       footnote={intl.formatMessage({
         id: "appComponents.footnote",

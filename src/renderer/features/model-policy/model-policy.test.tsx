@@ -56,7 +56,7 @@ it("shares canonical policy across windows and does not replay delayed notificat
     expect(second.result.current.isLoading).toBe(false);
   });
   const desired: ModelPolicy = {
-    providersOff: ["nodex"],
+    nodexOff: true,
     exceptions: [],
     agentsMayChooseCredit: false,
   };
@@ -76,9 +76,9 @@ it("restores the canonical policy when a write fails", async () => {
   await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
   rejectSave = true;
   await act(async () => {
-    await expect(
-      hook.result.current.updateSettings({ ...saved, providersOff: ["nodex"] }),
-    ).rejects.toThrow("Write failed");
+    await expect(hook.result.current.updateSettings({ ...saved, nodexOff: true })).rejects.toThrow(
+      "Write failed",
+    );
   });
   expect(hook.result.current.settings).toEqual(DEFAULT_MODEL_POLICY);
   expect(hook.result.current.isSaving).toBe(false);

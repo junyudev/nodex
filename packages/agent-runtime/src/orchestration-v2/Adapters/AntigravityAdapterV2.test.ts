@@ -2345,7 +2345,7 @@ it.effect("checks Antigravity's native default immediately before dispatch", () 
           ? Effect.fail(
               new ModelPolicyError({
                 code: "model_off",
-                message: "Gemini is off in Settings → Models.",
+                message: "Gemini is off in Settings → Agents.",
                 retryable: false,
               }),
             )

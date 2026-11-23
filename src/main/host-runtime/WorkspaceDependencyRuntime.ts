@@ -50,7 +50,7 @@ export const live = (
               ? {
                   status: "unavailable",
                   reason: "not_installed",
-                  message: "Document Tools are turned off in Settings → General → Components.",
+                  message: "Document Tools are turned off in Settings → General → Add-ons.",
                 }
               : { status: "unavailable", reason: "invalid_bundle" };
           }

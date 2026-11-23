@@ -168,7 +168,7 @@ test("native workspace dependency paths generate and reopen document artifacts",
         if (usesComponent) {
           await openWorkbenchSettings(page);
           await page.getByRole("link", { name: "General", exact: true }).click();
-          const section = page.getByRole("region", { name: "Components", exact: true });
+          const section = page.getByRole("region", { name: "Add-ons", exact: true });
           const documentTools = section.locator("[data-app-component-row]").filter({
             has: page.getByRole("switch", { name: "Remove Document Tools", exact: true }),
           });

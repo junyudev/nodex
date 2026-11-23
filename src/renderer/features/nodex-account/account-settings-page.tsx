@@ -1,4 +1,5 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
+import { settingsMessages } from "@/components/workbench/workbench-settings-search-catalog";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import { useEffect, useState } from "react";
 import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy";
@@ -6,7 +7,8 @@ import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
-import { buildSettingsPath } from "@/components/workbench/workbench-settings-routes";
+import { buildSettingsAnchorPath } from "@/components/workbench/workbench-settings-routes";
+import { NODEX_MODELS_ANCHOR } from "@/lib/agent-settings-navigation";
 import { cn } from "@/lib/utils";
 import { NodexAccountAvatar, resolveNodexAccountView } from "./nodex-account-identity";
 import {
@@ -126,6 +128,7 @@ function AccountSettingsContent({
         id: "account.accountSettingsPage.account",
         defaultMessage: "Account",
       })}
+      subtitle={intl.formatMessage(settingsMessages.accountSearchSubtitle)}
     >
       <NodexSettingsSection>
         <div aria-busy={account.loading || view.signingIn}>
@@ -354,7 +357,10 @@ function AccountCredit({
           pricing={status.pricing}
           creditsPerUsd={status.creditsPerUsd}
           unavailableModels={status.models.filter((model) => !model.available).map(({ id }) => id)}
-          onManageModels={onPathChange && (() => onPathChange(buildSettingsPath("models")))}
+          onManageModels={
+            onPathChange &&
+            (() => onPathChange(buildSettingsAnchorPath("agent", NODEX_MODELS_ANCHOR)))
+          }
         />
       ) : null}
     </>

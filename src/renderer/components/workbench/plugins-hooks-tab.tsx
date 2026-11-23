@@ -31,7 +31,7 @@ import {
   NodexDialogHeader,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
-import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
+import { NodexSettingsSection } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import type { Project } from "../../lib/types";
@@ -737,6 +737,7 @@ export interface CodexHooksSettingsViewProps {
   onTrust: (hook: HookMetadata) => void;
 }
 
+/** The Hooks tab of Settings › Plugins: hooks by where they are configured. */
 export function CodexHooksSettingsView({
   entries,
   hostId,
@@ -770,10 +771,9 @@ export function CodexHooksSettingsView({
   };
 
   return (
-    <NodexSettingsPageSurface
-      title={intl.formatMessage(settingsMessages.hooksTitle)}
-      subtitle={
-        <span className="whitespace-normal">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="m-0 text-sm text-token-text-secondary">
           {intl.formatMessage(settingsMessages.hooksManageLifecycleHooksFromConfigAnd)}{" "}
           <a
             className="inline-flex text-token-text-link-foreground"
@@ -783,9 +783,7 @@ export function CodexHooksSettingsView({
           >
             {intl.formatMessage({ id: "settings.hooks.learnMore", defaultMessage: "Learn more" })}
           </a>
-        </span>
-      }
-      action={
+        </p>
         <NodexTooltip tooltipContent={intl.formatMessage(settingsMessages.hooksReloadHooks)}>
           <NodexButton
             variant="ghost"
@@ -801,8 +799,7 @@ export function CodexHooksSettingsView({
             )}
           </NodexButton>
         </NodexTooltip>
-      }
-    >
+      </div>
       {noRoots || isEmpty ? (
         <div className="rounded-lg border border-token-border p-3">
           <div className="text-sm text-token-text-primary">
@@ -846,11 +843,11 @@ export function CodexHooksSettingsView({
         onToggle={onToggle}
         onTrust={onTrust}
       />
-    </NodexSettingsPageSurface>
+    </div>
   );
 }
 
-export function WorkbenchHooksSettingsPage({
+export function PluginsHooksTab({
   path,
   onPathChange,
   projects,

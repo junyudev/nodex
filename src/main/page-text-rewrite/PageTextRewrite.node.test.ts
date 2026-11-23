@@ -275,7 +275,7 @@ it.effect.each(["model_off", "credit_requires_person"] as const)(
   (code) =>
     Effect.gen(function* () {
       let calls = 0;
-      const message = "GPT-6.1 Sol on Nodex is off in Settings → Models. Choose another model.";
+      const message = "GPT-6.1 Sol on Nodex is off in Settings → Agents. Choose another model.";
       const service = yield* make.pipe(
         provide({
           catalog: () => Effect.succeed([provider()]),

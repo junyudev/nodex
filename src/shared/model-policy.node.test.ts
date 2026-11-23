@@ -6,7 +6,8 @@ import {
   isModelOn,
   isModelSwitchOn,
   setModelOn,
-  setProviderOn,
+  setNodexOn,
+  isProviderOn,
   policyModelKey,
   modelPolicyFailure,
   projectModelPolicyCatalog,
@@ -39,12 +40,14 @@ describe("Profile model policy", () => {
   });
   it("preserves individual exceptions through provider off/on and account changes", () => {
     const off = setModelOn(defaults, credit, "sol", false);
-    const disabled = setProviderOn(off, credit, false);
+    const disabled = setNodexOn(off, false);
     expect(isModelSwitchOn(disabled, credit, "sol")).toBe(false);
     expect(isModelSwitchOn(disabled, credit, "luna")).toBe(true);
     const bob = { ...credit, instanceId: "nodex_codex_bob" };
     expect(isModelOn(disabled, bob, "new-model")).toBe(false);
-    expect(setProviderOn(disabled, bob, true)).toEqual(off);
+    expect(setNodexOn(disabled, true)).toEqual(off);
+    // Only Nodex has a switch of its own; another provider is on while its Agent is.
+    expect(isProviderOn(disabled, native)).toBe(true);
     expect(policyModelKey(credit, "sol")).toEqual(policyModelKey(bob, "sol"));
     expect(policyModelKey(native, "sol")).not.toEqual(
       policyModelKey({ ...native, instanceId: "codex_personal" }, "sol"),
@@ -78,7 +81,7 @@ describe("Profile model policy", () => {
     ).toEqual({
       code: "model_off",
       retryable: false,
-      message: "GPT-6.1 Sol on Nodex is off in Settings → Models. Choose another model.",
+      message: "GPT-6.1 Sol on Nodex is off in Settings → Agents. Choose another model.",
     });
     expect(modelPolicyFailure(defaults, credit, "sol", "agent")?.code).toBe(
       "credit_requires_person",

@@ -122,7 +122,7 @@ export function importRecentChats(
         {
           description: getIntl().formatMessage({
             id: "firstRun.firstRunProjects.retryTheRestInSettings",
-            defaultMessage: "Retry the rest in Settings → Conversations.",
+            defaultMessage: "Retry the rest in Settings → Import.",
           }),
         },
       );

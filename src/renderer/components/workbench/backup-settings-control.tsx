@@ -3,7 +3,7 @@ import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { DeleteIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -62,7 +62,17 @@ function formatBackupTimestamp(value: string, intl: IntlShape = getIntl()): stri
   });
 }
 
-export function BackupSettingsControl({ open }: { open: boolean }) {
+/**
+ * Backups' sections. Recovery leads with what can come back — the page's own rows, such as
+ * unsaved edits, then how many deleted blocks are kept — before snapshots and their schedule.
+ */
+export function BackupSettingsControl({
+  open,
+  recovery = null,
+}: {
+  open: boolean;
+  recovery?: ReactNode;
+}) {
   const intl = useIntl();
   const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [historySettings, setHistorySettings] = useState<HistorySettings | null>(null);
@@ -430,6 +440,42 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
 
   return (
     <div className="flex flex-col gap-[var(--padding-panel)]">
+      <SectionBlock title={intl.formatMessage(settingsMessages.backupsRecovery)}>
+        {recovery}
+        <SettingRow
+          label={intl.formatMessage(settingsMessages.backupsHistoryRetention)}
+          description={intl.formatMessage(settingsMessages.backupsNewestDeletedBlockRecordsKeptPer)}
+        >
+          <div className="flex items-center gap-2">
+            <NodexSettingsNumberInput
+              className="w-20"
+              min={0}
+              value={historyValues.retentionCount}
+              disabled={Boolean(historySettings?.envOverrides.retentionCount)}
+              onChange={(event) => historyForm.setFieldValue("retentionCount", event.target.value)}
+            />
+            <span className="text-sm text-token-text-secondary">
+              {intl.formatMessage(settingsMessages.backupsRecords)}
+            </span>
+          </div>
+        </SettingRow>
+        <div className="flex items-center justify-between gap-3 p-3">
+          <div className="text-sm text-token-text-secondary">
+            {hasHistoryEnvOverride
+              ? intl.formatMessage(settingsMessages.backupsValueLockedByEnvVar)
+              : intl.formatMessage(settingsMessages.backupsAppliedByBackgroundMaintenance)}
+          </div>
+          <NodexButton
+            variant="primary"
+            size="sm"
+            onClick={() => void historyForm.handleSubmit()}
+            disabled={isBackupBusy}
+          >
+            {intl.formatMessage(settingsMessages.backupsApply)}
+          </NodexButton>
+        </div>
+      </SectionBlock>
+
       <SectionBlock title={intl.formatMessage(settingsMessages.backupsAutomaticSnapshots)}>
         <SettingRow
           label={intl.formatMessage(settingsMessages.backupsAutoBackups)}
@@ -523,43 +569,9 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
         </div>
       </SectionBlock>
 
-      <SectionBlock title={intl.formatMessage(settingsMessages.backupsHistoryRetention)}>
-        <SettingRow
-          label={intl.formatMessage(settingsMessages.backupsHistoryRetention)}
-          description={intl.formatMessage(settingsMessages.backupsNewestDeletedBlockRecordsKeptPer)}
-        >
-          <div className="flex items-center gap-2">
-            <NodexSettingsNumberInput
-              className="w-20"
-              min={0}
-              value={historyValues.retentionCount}
-              disabled={Boolean(historySettings?.envOverrides.retentionCount)}
-              onChange={(event) => historyForm.setFieldValue("retentionCount", event.target.value)}
-            />
-            <span className="text-sm text-token-text-secondary">
-              {intl.formatMessage(settingsMessages.backupsRecords)}
-            </span>
-          </div>
-        </SettingRow>
-        <div className="flex items-center justify-between gap-3 p-3">
-          <div className="text-sm text-token-text-secondary">
-            {hasHistoryEnvOverride
-              ? intl.formatMessage(settingsMessages.backupsValueLockedByEnvVar)
-              : intl.formatMessage(settingsMessages.backupsAppliedByBackgroundMaintenance)}
-          </div>
-          <NodexButton
-            variant="primary"
-            size="sm"
-            onClick={() => void historyForm.handleSubmit()}
-            disabled={isBackupBusy}
-          >
-            {intl.formatMessage(settingsMessages.backupsApply)}
-          </NodexButton>
-        </div>
-      </SectionBlock>
-
       <SectionBlock title={intl.formatMessage(settingsMessages.backupsSnapshots)}>
-        {storageOptimization ? (
+        {/* Trimming old history is shown while it runs; a settled store needs no report. */}
+        {storageOptimization?.optimizing ? (
           <div className="flex items-start justify-between gap-3 px-3 pt-3 text-xs text-token-text-secondary">
             <div>
               <div className="text-token-text-primary">

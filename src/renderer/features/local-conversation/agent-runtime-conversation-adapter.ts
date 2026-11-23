@@ -18,6 +18,7 @@ import { formatNodexMultiplier } from "@/lib/nodex-model-prices";
 import {
   isModelOn,
   isProviderOn,
+  policyProviderKey,
   spendsNodexCredit,
   modelPolicyFailure,
   setModelOn,
@@ -155,7 +156,11 @@ import {
   acpImportedHistoryEmptyState,
   acpPendingImportedHistory,
 } from "../acp-agents/acp-agent-model";
-import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import {
+  agentModelsSettingsAnchor,
+  NODEX_MODELS_ANCHOR,
+  useAgentSettingsNavigation,
+} from "@/lib/agent-settings-navigation";
 import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeActivityStore,
@@ -1553,13 +1558,20 @@ export function useAgentRuntimeConversationAdapter(input: {
       : []),
     ...allEntries.filter(entryIsOn),
   ];
-  const openModelSettings = (providerKey?: string) =>
+  const openModelSettings = (providerKey?: string) => {
+    const provider =
+      providerKey === undefined
+        ? undefined
+        : catalogState.providers.find((entry) => policyProviderKey(entry) === providerKey);
+    const anchor =
+      providerKey === NODEX_MODELS_ANCHOR
+        ? NODEX_MODELS_ANCHOR
+        : provider && agentModelsSettingsAnchor(provider);
     workbenchOwner.openRoute({
       kind: "settings",
-      path: providerKey
-        ? buildSettingsAnchorPath("models", providerKey)
-        : buildSettingsPath("models"),
+      path: anchor ? buildSettingsAnchorPath("agent", anchor) : buildSettingsPath("agent"),
     });
+  };
   // Editing rewinds the Run the chat's own Agent ran; the edited message may then change Agent.
   const canRollback =
     (observedSelection ? providerOf(observedSelection) : provider)?.supportsConversationRollback ===
@@ -2523,8 +2535,8 @@ export function useAgentRuntimeConversationAdapter(input: {
           )
             throw new Error(
               getIntl().formatMessage({
-                id: "conversation.agentRuntimeConversationAdapter.manageInSettings",
-                defaultMessage: "Manage this model in Settings → Models.",
+                id: "conversation.agentRuntimeConversationAdapter.manageInAgentSettings",
+                defaultMessage: "Manage this model in Settings → Agents.",
               }),
             );
           await modelPolicyState.updateSettings(

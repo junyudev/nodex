@@ -11,7 +11,7 @@ import { appComponentRoot, appComponentRemovalMarker } from "./AppComponentStore
 import type { AppComponents } from "./AppComponents";
 
 export const CLAUDE_CODE_INSTALLING = "Claude Code is still installing.";
-const turnedOff = "Claude Code is turned off in Settings → General → Components.";
+const turnedOff = "Claude Code is turned off in Settings → General → Add-ons.";
 
 export function claudeCodeLocation(config: AppComponentTarget & { readonly nodexHome: string }) {
   const definition = appComponentDefinition(config, "claude-code");

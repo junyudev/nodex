@@ -7,6 +7,9 @@ import {
 
 export const SETTINGS_ROOT_PATH = "/settings";
 export const OPEN_SOURCE_LICENSES_SETTINGS_PATH = "/settings/open-source-licenses";
+/** Worktrees' Environments tab, whose anchor search results also land on. */
+export const ENVIRONMENTS_SETTINGS_ANCHOR = "environments";
+export const ENVIRONMENTS_SETTINGS_PATH = `/settings/worktrees#${ENVIRONMENTS_SETTINGS_ANCHOR}`;
 
 export type SettingsDetailPageId = "open-source-licenses";
 
@@ -153,7 +156,7 @@ export function resolveSettingsShellState(
     activeSectionId = "browser";
     browserAnchor = parseBrowserAnchor(path);
   } else if (requestedSlug?.startsWith("plugins-settings/")) {
-    // An installed plugin's settings page belongs to Settings › Plugins.
+    // An installed plugin's settings and the Hooks tab belong to Settings › Plugins.
     activeSectionId = "plugins-settings";
   } else if (requestedSlug?.startsWith("browser/")) {
     const detail = parseBrowserDetail(requestedSlug.slice("browser/".length));

@@ -55,23 +55,25 @@ describe("hook feedback settings", () => {
         cwd: "/workspace/nodex",
         sources: ["project"],
       }),
-    ).toBe("/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex");
+    ).toBe(
+      "/settings/plugins-settings/hooks?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
+    );
     expect(
       buildHookFeedbackSettingsHref({
         hostId: "remote-1",
         cwd: "/workspace/nodex",
         sources: ["system", "mdm"],
       }),
-    ).toBe("/settings/hooks-settings?hostId=remote-1&source=admin");
+    ).toBe("/settings/plugins-settings/hooks?hostId=remote-1&source=admin");
     expect(
       buildHookFeedbackSettingsHref({ hostId: "local", cwd: null, sources: ["project"] }),
-    ).toBe("/settings/hooks-settings?hostId=local");
+    ).toBe("/settings/plugins-settings/hooks?hostId=local");
     expect(
       buildHookFeedbackSettingsHref({
         hostId: "local",
         cwd: "/workspace/nodex",
         sources: ["project", "user"],
       }),
-    ).toBe("/settings/hooks-settings?hostId=local");
+    ).toBe("/settings/plugins-settings/hooks?hostId=local");
   });
 });

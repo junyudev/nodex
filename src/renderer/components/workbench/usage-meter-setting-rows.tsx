@@ -42,6 +42,7 @@ export function UsageMeterSettingRows() {
     <NodexSettingsSection
       id="usage-meters"
       title={intl.formatMessage(settingsMessages.usageMetersUsageMeters)}
+      footnote={intl.formatMessage(settingsMessages.usageMetersFootnote)}
     >
       {[...meters].map(([key, message]) => {
         const label = typeof message === "string" ? message : intl.formatMessage(message);

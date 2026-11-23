@@ -163,7 +163,7 @@ test("installs the official Codex Component on first use and reuses it after res
   const openComponents = async (page: Page) => {
     await openWorkbenchSettings(page);
     await page.getByRole("link", { name: "General", exact: true }).click();
-    return page.getByRole("region", { name: "Components", exact: true });
+    return page.getByRole("region", { name: "Add-ons", exact: true });
   };
   const codexRow = (region: Locator) =>
     region
@@ -265,7 +265,7 @@ test("installs the official Codex Component on first use and reuses it after res
       enabled: false,
       removalPending: true,
     });
-    const turnedOff = "Codex is turned off in Settings → General → Components.";
+    const turnedOff = "Codex is turned off in Settings → General → Add-ons.";
     await expect(invokeIpc(restarted, "codex:account:read")).rejects.toThrow(turnedOff);
     const providers = await invokeIpc(restarted, "agent-runtime:providers:read", {});
     expect(providers.find(({ instanceId }) => instanceId === "codex")).toMatchObject({
@@ -468,7 +468,7 @@ test("uses a configured Codex executable after restart without installing the Co
     await expect(restarted.locator("html")).toHaveAttribute("data-theme", "light");
     await openWorkbenchSettings(restarted);
     await restarted.getByRole("link", { name: "General", exact: true }).click();
-    const components = restarted.getByRole("region", { name: "Components", exact: true });
+    const components = restarted.getByRole("region", { name: "Add-ons", exact: true });
     await expect(
       components
         .locator("[data-app-component-row]")

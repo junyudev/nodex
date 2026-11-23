@@ -2,7 +2,6 @@ import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState } from "react";
-import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
 import type { CodexGitSettings } from "../../lib/types";
@@ -30,7 +29,6 @@ function GitInstructionSettingControl({
   placeholder: string;
   value: string;
 }) {
-  const intl = useIntl();
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
 
@@ -52,26 +50,16 @@ function GitInstructionSettingControl({
     );
   };
 
+  // Saves when the field loses focus, like every other instruction field in Settings.
   return (
     <SectionBlock title={label}>
-      <div className="flex items-start justify-between gap-4 p-3 pb-0">
-        <p className="text-sm text-token-text-secondary">{description}</p>
-        <NodexButton
-          variant="secondary"
-          size="sm"
-          disabled={!changed || saving}
-          onClick={() => void save()}
-        >
-          {saving
-            ? intl.formatMessage({ id: "settings.git.saving", defaultMessage: "Saving…" })
-            : intl.formatMessage(settingsMessages.gitSave)}
-        </NodexButton>
-      </div>
+      <p className="m-0 px-3 pt-3 text-sm text-token-text-secondary">{description}</p>
       <div className="p-3 pt-2">
         <textarea
           aria-label={ariaLabel}
           className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
           disabled={saving}
+          onBlur={() => void save()}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={placeholder}
           rows={6}

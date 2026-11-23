@@ -25,7 +25,7 @@ export function agentReadinessGuidance(
   const title = intl.formatMessage(message, values);
   const next =
     readiness.action?.kind === "components"
-      ? "Open Settings → General → Components."
+      ? "Open Settings → General → Add-ons."
       : readiness.action?.kind === "check-again"
         ? "Check the Agent again or choose another Agent."
         : "Check the Agent in Settings or choose another Agent.";

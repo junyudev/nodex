@@ -4,6 +4,7 @@ import { providerComponentSetup } from "../app-components/provider-component-set
 import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
 
 import { useState } from "react";
+import { InstanceModels } from "@/features/model-policy/agent-models";
 import { flushSync } from "react-dom";
 import { defineMessages, FormattedMessage, useIntl } from "@/lib/i18n";
 import { ApiKeyIcon, ProviderKeyIcon } from "@/components/shared/icons";
@@ -434,6 +435,7 @@ function ConnectionRow({
         />
       }
     >
+      <InstanceModels instanceId={providerKeyRuntimeInstanceId(connection)} />
       <ConnectionDetail
         key={connection.id}
         connection={connection}

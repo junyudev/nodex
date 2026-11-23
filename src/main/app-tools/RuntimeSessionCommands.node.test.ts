@@ -109,7 +109,7 @@ const fixture = (
             new AgentRuntimeApplicationError({
               operation: name,
               code: options.policyFailure,
-              message: "Choose another model in Settings → Models.",
+              message: "Choose another model in Settings → Agents.",
               retryable: false,
             }),
           );
@@ -282,7 +282,7 @@ it.effect.each([
     assert.isTrue(result.isError);
     assert.deepEqual(result.structuredContent, { error: { code } });
     assert.deepEqual(result.content, [
-      { type: "text", text: "Choose another model in Settings → Models." },
+      { type: "text", text: "Choose another model in Settings → Agents." },
     ]);
   }),
 );

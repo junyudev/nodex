@@ -20,10 +20,12 @@ const creditProviders = async (page: Page) =>
     )) as AgentRuntimeOperations["providers.read"]["output"]
   ).filter((provider) => provider.source === "nodex");
 
+/** Settings › Agents with Nodex's card open, where credit-spending models are switched. */
 const openModelsSettings = async (page: Page) => {
   await openWorkbenchSettings(page);
-  await page.getByRole("link", { name: "Models", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Agents", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Agents", exact: true, level: 1 })).toBeVisible();
+  await page.getByRole("main").getByRole("button", { name: "Nodex", exact: true }).click();
 };
 
 const startNewChat = async (page: Page) => {
@@ -79,7 +81,9 @@ test("turning models off removes them everywhere and survives a restart", async 
 
     // Credit is only turned back on deliberately: choosing it lands on its setting.
     await offRow.click();
-    await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Agents", exact: true, level: 1 }),
+    ).toBeVisible();
     await expect(page.getByRole("switch", { name: "GPT-6.1 Sol", exact: true })).not.toBeChecked();
 
     page = await harness.restart();
@@ -126,7 +130,7 @@ test("turning models off removes them everywhere and survives a restart", async 
         messageId: createUuidV7(),
       },
     );
-    expect(refusal).toContain("is off in Settings → Models");
+    expect(refusal).toContain("is off in Settings → Agents");
     await shot(page, "models-settings-nodex-off.png");
     await startNewChat(page);
     search = await openComposerModelPicker(page);

@@ -2051,6 +2051,10 @@ export function BrowserExtensionsSettingsPage({
   );
 }
 
+/**
+ * Says why a Browser capability can't work on this computer. A working or still-checking one
+ * shows nothing: the controls that use it are the evidence.
+ */
 function CapabilityRow({
   capability,
   label,
@@ -2059,43 +2063,23 @@ function CapabilityRow({
   label: string;
 }) {
   const intl = useIntl();
+  if (capability.available || capability === EMPTY_CAPABILITY) return null;
   return (
     <NodexSettingsRow
       label={label}
       description={
-        capability.available
-          ? intl.formatMessage(
-              {
-                id: "browser.browserSettingsPages.availableVia",
-                defaultMessage: "Available through {provider}.",
-              },
-              { provider: capability.provider },
-            )
-          : ((capability === EMPTY_CAPABILITY
-              ? intl.formatMessage(CHECKING_AVAILABILITY)
-              : capability.reason) ??
-            intl.formatMessage({
-              id: "browser.browserSettingsPages.unavailablePeriod",
-              defaultMessage: "Unavailable.",
-            }))
+        capability.reason ??
+        intl.formatMessage({
+          id: "browser.browserSettingsPages.unavailablePeriod",
+          defaultMessage: "Unavailable.",
+        })
       }
     >
-      <span
-        className={
-          capability.available
-            ? "text-xs text-token-success-foreground"
-            : "text-xs text-token-text-tertiary"
-        }
-      >
-        {capability.available
-          ? intl.formatMessage({
-              id: "browser.browserSettingsPages.available",
-              defaultMessage: "Available",
-            })
-          : intl.formatMessage({
-              id: "browser.browserSettingsPages.unavailable",
-              defaultMessage: "Unavailable",
-            })}
+      <span className="text-xs text-token-text-tertiary">
+        {intl.formatMessage({
+          id: "browser.browserSettingsPages.unavailable",
+          defaultMessage: "Unavailable",
+        })}
       </span>
     </NodexSettingsRow>
   );

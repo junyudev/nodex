@@ -159,7 +159,7 @@ it.effect("checks the Component switch even after successful use", () =>
     assert.deepEqual((yield* call).structuredContent, {
       status: "unavailable",
       reason: "not_installed",
-      message: "Document Tools are turned off in Settings → General → Components.",
+      message: "Document Tools are turned off in Settings → General → Add-ons.",
     });
   }),
 );

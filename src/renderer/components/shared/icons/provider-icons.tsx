@@ -7,7 +7,7 @@ import {
   type ProviderKeyPresetId,
 } from "../../../../shared/provider-keys";
 import { cn } from "@/lib/utils";
-import { NodexLogoMarkIcon, SettingsAgentIcon } from "./app-icons";
+import { NodexLogoMarkIcon, GenericAgentIcon } from "./app-icons";
 import {
   AntigravityIcon,
   ApiKeyIcon,
@@ -90,7 +90,7 @@ export function AgentProviderIcon({
   return Mark ? (
     <Mark className={className} />
   ) : (
-    <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />
+    <GenericAgentIcon className={cn("size-4 shrink-0", className)} />
   );
 }
 

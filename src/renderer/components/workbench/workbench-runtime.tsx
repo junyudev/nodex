@@ -104,6 +104,7 @@ import {
 import {
   buildSettingsAnchorPath,
   buildSettingsPath,
+  ENVIRONMENTS_SETTINGS_PATH,
   resolveBrowserSettingsDestination,
 } from "./workbench-settings-routes";
 import {
@@ -115,6 +116,7 @@ import type { BrowserSettingsDestination } from "./workbench-settings-routes";
 import type { SettingsOpenThread } from "./workbench-settings-page-registry";
 import {
   buildCodexHooksSettingsPath,
+  CODEX_HOOKS_SETTINGS_PATH,
   type CodexHooksSettingsTarget,
 } from "@/lib/codex-hooks-route";
 import {
@@ -2014,7 +2016,7 @@ export function WorkbenchRuntime({
         projectId: input?.projectId ?? null,
         configPath: input?.configPath ?? null,
       });
-      setSettingsPath(buildSettingsPath("local-environments"));
+      setSettingsPath(ENVIRONMENTS_SETTINGS_PATH);
     },
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
   );
@@ -2502,7 +2504,7 @@ export function WorkbenchRuntime({
     setPendingWorktreeClientThreadId,
     setLocalEnvironmentSettingsInitial,
     closePendingWorktreeRoute,
-    openArchivedChats: () => openSettingsAt("data-controls"),
+    openArchivedChats: () => openSettingsAt("archived-chats"),
     onOpenProjectSessionInNewWindow,
   });
   const {
@@ -3209,7 +3211,7 @@ export function WorkbenchRuntime({
     onOpenSettings: (target) =>
       openSettingsPath(target == null ? PLUGINS_SETTINGS_PATH : buildPluginSettingsPath(target)),
     onOpenAgentsSettings: () => openAgentSettings("codex"),
-    onOpenHooksSettings: () => openSettingsAt("hooks-settings"),
+    onOpenHooksSettings: () => openSettingsPath(CODEX_HOOKS_SETTINGS_PATH),
   };
   // Pages and Inboxes reach Automations through this, wherever they are shown.
   const automationsNavigation: AutomationsNavigation = {

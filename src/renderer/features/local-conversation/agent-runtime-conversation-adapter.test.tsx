@@ -42,12 +42,7 @@ import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
 import { supportsConversationProviderControl } from "./conversation-provider-controls";
-import {
-  DEFAULT_MODEL_POLICY,
-  setModelOn,
-  setProviderOn,
-  type ModelPolicy,
-} from "../../../shared/model-policy";
+import { DEFAULT_MODEL_POLICY, setModelOn, type ModelPolicy } from "../../../shared/model-policy";
 import { AgentSettingsNavigationProvider } from "../../lib/agent-settings-navigation";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { LocalConversationTestQueryProvider } from "./view/local-conversation-test-query.test-fixtures";
@@ -77,7 +72,7 @@ function RuntimeWorkbench({ children }: PropsWithChildren) {
 // Account supply is an independent Main projection; catalog behavior uses a deterministic observation.
 const nodexSupply = vi.hoisted(() => ({ available: true }));
 const policyState = vi.hoisted(() => ({
-  settings: { providersOff: [], exceptions: [], agentsMayChooseCredit: false } as ModelPolicy,
+  settings: { nodexOff: false, exceptions: [], agentsMayChooseCredit: false } as ModelPolicy,
   updateSettings: vi.fn<(value: ModelPolicy) => Promise<void>>(),
 }));
 vi.mock("../model-policy/model-policy", () => ({ useModelPolicy: () => policyState }));
@@ -3429,7 +3424,7 @@ it("separates off models, preserves provider switches, and enables only non-cred
     "gpt-6.1-sol",
   ]);
   const creditEntry = catalog.off!.entries.find((entry) => entry.spendsCredit)!;
-  await expect(catalog.off!.choose(creditEntry.selection)).rejects.toThrow("Settings → Models");
+  await expect(catalog.off!.choose(creditEntry.selection)).rejects.toThrow("Settings → Agents");
   const localEntry = catalog.off!.entries.find((entry) => !entry.spendsCredit)!;
   await act(async () => {
     await catalog.off!.choose(localEntry.selection);
@@ -3438,15 +3433,14 @@ it("separates off models, preserves provider switches, and enables only non-cred
   await waitFor(() =>
     expect(result.current.provider.modelCatalog?.selected.model).toBe(provider.models[0]!.slug),
   );
+  // Turning the chosen model off again leaves the chat on it, marked off.
   await act(async () => {
-    policyState.settings = setProviderOn(policyState.settings, local, false);
+    policyState.settings = setModelOn(policyState.settings, local, provider.models[0]!.slug, false);
     rerender();
   });
-  await waitFor(() => expect(result.current.provider.modelCatalog?.off?.count).toBe(3));
-  expect(result.current.provider.modelCatalog?.off?.entries.map((entry) => entry.model.id)).toEqual(
-    ["gpt-6.1-sol"],
+  await waitFor(() =>
+    expect(result.current.provider.modelCatalog?.currentModelOff?.code).toBe("model_off"),
   );
-  expect(result.current.provider.modelCatalog?.currentModelOff?.code).toBe("model_off");
   await act(async () => unmount());
 });
 

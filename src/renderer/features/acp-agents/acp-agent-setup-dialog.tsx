@@ -1,6 +1,6 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
-import { SettingsAgentIcon } from "@/components/shared/icons";
+import { GenericAgentIcon } from "@/components/shared/icons";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -210,7 +210,7 @@ export function AcpAgentSetupDialog({
         <NodexDialogFrame>
           <NodexDialogHeader>
             <NodexDialogTitle className="flex items-center gap-2">
-              <SettingsAgentIcon className="icon-sm" />
+              <GenericAgentIcon className="icon-sm" />
               <span className="min-w-0 truncate">{instance?.displayName ?? "Agent"}</span>
             </NodexDialogTitle>
             {status ? <AcpStatusText status={status} /> : null}

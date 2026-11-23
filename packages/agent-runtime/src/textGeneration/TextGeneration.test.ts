@@ -191,7 +191,7 @@ it.effect(
         const error = yield* Effect.flip(request);
         expect(error).toBeInstanceOf(TextGenerationError);
         expect(error.detail).toBe(
-          "sol on codex is off in Settings → Models. Choose another model.",
+          "sol on codex is off in Settings → Agents. Choose another model.",
         );
       }
     }),
@@ -267,7 +267,7 @@ it.effect.each(["codex", "nodex_codex_00000000000000000000000000000000"])(
           modelSelection: { instanceId: native, model: "off" },
         })
         .pipe(Effect.flip);
-      expect(explicit.detail).toContain("off in Settings → Models");
+      expect(explicit.detail).toContain("off in Settings → Agents");
       expect(called).toEqual(["codex/on"]);
     }),
 );

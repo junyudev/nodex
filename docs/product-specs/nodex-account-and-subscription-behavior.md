@@ -184,4 +184,4 @@ without paid model calls.
 Production gateway availability, payment checkout and real paid inference need
 separate deployment acceptance. Desktop test fixtures do not prove those services.
 
-The Profile's **Nodex credits** switch in Settings → General → Usage meters controls the rail meter and its periodic balance reads. Turning it off preserves OAuth renewal, managed model access, and the public model and top-up supply refresh. Account settings and pending Checkout still read credit, and enabling the meter reads once immediately. Only credit surfaces refresh balance on window focus; observing identity or model access does not.
+The Profile's **Nodex credits** switch in Settings → Appearance → Usage meters controls the rail meter and its periodic balance reads. Turning it off preserves OAuth renewal, managed model access, and the public model and top-up supply refresh. Account settings and pending Checkout still read credit, and enabling the meter reads once immediately. Only credit surfaces refresh balance on window focus; observing identity or model access does not.

@@ -19,6 +19,7 @@ import { FONT_SIZE_LIMITS } from "@/lib/typography-preferences";
 import type { ResolvedTheme } from "@/lib/theme-preferences";
 import { cn } from "@/lib/utils";
 import { AccentColorSettingControl } from "./accent-color-setting-control";
+import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import {
   CodeFontSizeSettingControl,
   FontFamilySettingControl,
@@ -122,7 +123,10 @@ export function AppearanceSettingsPage({
   }, [advancedInput]);
 
   return (
-    <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.appearanceTitle)}>
+    <NodexSettingsPageSurface
+      title={intl.formatMessage(settingsMessages.appearanceTitle)}
+      subtitle={intl.formatMessage(settingsMessages.appearanceSubtitle)}
+    >
       <section aria-labelledby={visualStyleTitleId} className="flex flex-col gap-4">
         <h2 id={visualStyleTitleId} className="text-base font-medium text-token-text-primary">
           {intl.formatMessage(settingsMessages.appearanceVisualStyle)}
@@ -157,6 +161,8 @@ export function AppearanceSettingsPage({
           />
         ))}
       </section>
+
+      <UsageMeterSettingRows />
 
       <NodexCollapsibleRoot
         id={APPEARANCE_ADVANCED_ANCHOR}

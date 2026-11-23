@@ -26,6 +26,9 @@ boundaries and a single content scroll area.
 - Top-level sections use `/settings/:section`.
 - Browser details use `/settings/browser/<detail>`.
 - Browser overview subsections use hash anchors.
+- Plugins' Hooks tab uses `/settings/plugins-settings/hooks`, with its source
+  selection in the query.
+- Worktrees' Environments tab uses the `#environments` anchor.
 - Open-source notices use the focused `/settings/open-source-licenses` detail
   route owned by General.
 
@@ -56,14 +59,21 @@ unsupported integrations. Browser keeps built-in browsing on Windows while hidin
 Profile import and control of external browsers. General always shows the running
 version, with update status and actions only on hosts that support app updates.
 
-The desktop groups are:
+The rail groups sections by the question they answer, and each section has its own
+icon:
 
-- Personal: Account, General, Appearance, Voice, Keyboard shortcuts.
-- AI: Agents, Models, Conversations, Hooks.
-- Integrations: Browser, Computer use.
-- Coding: Git, Environments, Worktrees.
-- Workspace: Pages, Inbox.
-- Data & recovery: Data controls, Backups.
+- Without a heading: Account and Remote, who you are and where Nodex reaches you.
+- App: General, Appearance, Editor, Voice, Keyboard shortcuts.
+- Agents: Agents, Chats, Inbox.
+- Integrations: Plugins, Browser, Computer use, GitHub.
+- Coding: Git, Worktrees.
+- Data: Import, Archived chats, Backups.
+
+Every page opens with a one-line subtitle saying what it controls, orders its groups
+from the most used to the least, and keeps no section that holds a single setting.
+Pages with kinds of the same thing use the shared Settings tabs: Plugins' Plugins,
+Apps, MCPs, Skills, Hooks and Marketplace, and Worktrees' Worktrees and
+Environments.
 
 Account owns the optional Nodex identity and its connection controls, following
 [Nodex Account Login](nodex-account-login-behavior.md). The rail avatar menu
@@ -77,15 +87,34 @@ for root preferences, automatic retention, grouped inventory, and safe removal.
 Browser subsections and detail pages remain children of Browser and do not
 become independent rail entries.
 
-Models owns which models are on, as described in
-[Model policy](model-policy-behavior.md), and Agents owns how each one starts and signs in.
+Agents owns every Agent and model Nodex can run: how each starts and signs in, and which
+of its models are on, as described in [Model policy](model-policy-behavior.md).
 
-Conversations owns source discovery, destination selection and independent conversation imports
+Chats owns what chats may do without asking and how they work with the person:
+Permissions (Default permissions, Let subagents delegate, Automatic chats at once),
+Instructions (Your instructions, Open results beside the chat and What Agents receive,
+as described in [Agent Instructions](agent-instructions-behavior.md)) and In a chat
+(Command output, Show predictions, the long-prompt send key, Queue follow-ups and
+Writing model). A team Space window shows only In a chat's presentation rows, because
+permissions, instructions and the Agents behind predictions and writing belong to this
+desktop.
+
+Editor owns how typing, pasting and links behave in Pages and chats: Typing
+(Spellcheck, Auto-link while typing, Recognize bare domains), Pasting (Auto-link on
+paste and the two large-paste prompts), Pages (task shorthand) and Files & links
+(copying file references as local paths, and the app that opens Markdown file links).
+
+Remote owns reaching a Space from elsewhere, as described in
+[Team Spaces](team-space-behavior.md). Archived chats lists archived conversations to
+restore or delete.
+
+Import owns source discovery, destination selection and independent conversation imports
 for Codex and Claude, as described in
 [Native Conversation Import Behavior](native-conversation-connection-behavior.md), and imports of
 conversations saved by ACP Agents, as described in [ACP Agent behavior](acp-agent-behavior.md).
-Agents shows one collapsible card per Agent kind, in the order Codex, Claude Code, Antigravity, API keys,
-OpenCode and Other agents. Every card starts closed with a short status summary, so the page reads as a list of
+Agents shows Nodex's models first for someone signed in to Nodex, then one collapsible card
+per Agent kind, in the order Codex, Claude Code, Antigravity, API keys, OpenCode and Other
+agents. Every card starts closed with a short status summary, so the page reads as a list of
 Agents; opening one reveals its setup, and cards stay open while Settings remains on Agents. A search
 result, Manage link or deep link that names an Agent, profile or ACP instance opens its card on
 arrival; one that names only the page opens it with every card closed. Claude Code, Antigravity and OpenCode list
@@ -102,10 +131,10 @@ first-run setup navigation. Its profile contract is described in
 Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
-General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, [display language](localization-behavior.md), the running
-version with its update actions and preferences, [`Show tips`](first-run-behavior.md#tips), `Run setup again`, open source licenses), Chats, Writing, Files &
-links, Notifications, Privacy (crash reports, session replays and usage analytics; see
-[Product Analytics Behavior](product-analytics-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
+General is grouped by what a setting affects, in this order: App ([display language](localization-behavior.md), window restore, Terminal shell and start at login on Windows,
+[`Show tips`](first-run-behavior.md#tips), `Run setup again`), Notifications, Privacy (crash reports, session replays and usage analytics; see
+[Product Analytics Behavior](product-analytics-behavior.md)), About (the running version with its update actions and preferences, and open source licenses),
+Add-ons (see [Components](components-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
 description adds its current state only when that differs from what the switch shows, such as an
 environment override, a prerequisite or a change that applies after restart. A search result for a
 General setting lands on its group. Chats' **Writing model** applies to chat titles, commit messages and pull request descriptions.
@@ -123,7 +152,7 @@ this row and keep their existing terminal behavior. WSL is outside this catalog.
 
 Browser owns General, Autofill and passwords, Extensions,
 Downloads, Permissions, Site permissions, Developer mode, and its focused
-history/manager detail pages. Pages owns only the Block → Page task-shorthand
+history/manager detail pages. Editor's Pages group holds the Block → Page task-shorthand
 import preference defined by
 [Task Shorthand Page Promotion Behavior](task-shorthand-page-promotion-behavior.md).
 
@@ -186,7 +215,8 @@ appearance's resolved palette and accent. Native sidebar material
 and typography preferences remain independent of the palette.
 
 Appearance groups Mode and Theme in Visual style. Theme groups `Accent color`
-with the UI `Font`. Advanced starts collapsed and owns UI, Content and Code font sizes,
+with the UI `Font`. Usage meters follow, choosing which accounts' usage the rail shows.
+Advanced starts collapsed and owns UI, Content and Code font sizes,
 Reduce motion, Content and Code font families, and `Separate light/dark modes`.
 The latter reveals both appearance editors without switching Mode, copying
 preferences, or changing saved values. When disabled, the editor presents the
@@ -240,7 +270,7 @@ CSS shimmer and loading-placeholder media rules continue to honor the operating
 system directly. The preference is app-scoped presentation, persists in renderer
 storage, and is neither Window Session layout nor main-process state.
 
-General > Composer includes `Show predictions`, enabled by default. It controls
+Chats > In a chat includes `Show predictions`, enabled by default. It controls
 next-message predictions across the current Profile and synchronizes immediately
 between windows. Turning it off cancels pending predictions and clears their
 cached previews; text already accepted into a draft stays editable. The preference
@@ -280,7 +310,7 @@ installer verification and distribution configuration are specified in the
 
 Feature entry points may open a Settings section with explicit context. Card
 Stage environment selectors stay compact choosers and route `Environment
-settings` into Environments with the selected Project/config identity. The
+settings` into Worktrees' Environments tab with the selected Project/config identity. The
 Environments page owns workspace selection, summary, editing, parse errors,
 creation, and environment-variable presentation.
 

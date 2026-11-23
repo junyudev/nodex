@@ -1,12 +1,7 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
-import { useState, type ReactNode } from "react";
-import {
-  AgentInstanceIcon,
-  ClaudeIcon,
-  NodexLogoMarkIcon,
-  OpenAIIcon,
-  SettingsSearchIcon,
-} from "@/components/shared/icons";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { AgentProviderIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
+import { agentDefinition } from "../../../shared/agents/registry";
 import { NodexSwitch } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -19,14 +14,11 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import {
-  NodexSettingsPageSurface,
+  NodexSettingsExpandableRow,
   NodexSettingsRow,
   NodexSettingsSection,
-  useNodexSettingsDisclosures,
   type NodexSettingsDisclosureState,
 } from "@/components/ui/settings";
-import type { SettingsSectionPageProps } from "@/components/workbench/workbench-settings-page-registry";
-import { buildSettingsPath } from "@/components/workbench/workbench-settings-routes";
 import { NodexRateMark } from "@/features/nodex-account/nodex-model-prices";
 import { resolveNodexAccountView } from "@/features/nodex-account/nodex-account-identity";
 import { useNodexAccount } from "@/features/nodex-account/use-nodex-account";
@@ -36,29 +28,27 @@ import {
   isModelOn,
   isFreeModel,
   isModelSwitchOn,
-  isProviderOn,
-  policyProviderKey,
   setModelOn,
-  setProviderOn,
+  setNodexOn,
   spendsNodexCredit,
   type ModelPolicy,
-  type PolicyProvider,
 } from "../../../shared/model-policy";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import { useModelPolicy, useModelPolicyCatalog } from "./model-policy";
 
+/**
+ * Which models are on, where each Agent is set up: Settings › Agents shows Nodex's models first
+ * and each Agent's models inside its own card. Off models leave every picker, and nothing in Nodex
+ * can start them.
+ */
+
 type CatalogData = NonNullable<ReturnType<typeof useModelPolicyCatalog>["data"]>;
 type CatalogProvider = CatalogData["providers"][number];
 
-/** Nodex is one choice however many runtimes serve it, and stays listed while none are running. */
-const NODEX_POLICY_PROVIDER: PolicyProvider = {
-  instanceId: "nodex",
-  driver: "codex",
-  source: "nodex",
-};
-
-const FREE_MODEL_DRIVERS: readonly string[] = ["opencode", "opencode2"];
+/** Agents whose models start off, such as OpenCode's, offer to turn on only the free ones. */
+const offersFreeOnly = (driver: string): boolean =>
+  agentDefinition(driver).capabilities.modelsOptIn === true;
 
 function ListAction({
   children,
@@ -195,7 +185,7 @@ function NodexCard({
   readonly onOpenAccount: () => void;
 }) {
   const intl = useIntl();
-  if (!isProviderOn(policy, NODEX_POLICY_PROVIDER)) {
+  if (policy.nodexOff) {
     return (
       <OffProviderCard
         id="nodex"
@@ -205,7 +195,7 @@ function NodexCard({
           id: "modelPolicy.modelsSettingsPage.offNothingOnThisComputer",
           defaultMessage: "Off. Nothing on this computer can spend your credits.",
         })}
-        onTurnOn={() => onPolicyChange(setProviderOn(policy, NODEX_POLICY_PROVIDER, true))}
+        onTurnOn={() => onPolicyChange(setNodexOn(policy, true))}
       />
     );
   }
@@ -252,9 +242,7 @@ function NodexCard({
             defaultMessage: "Turn off all Nodex models",
           })}
           checked
-          onCheckedChange={() =>
-            onPolicyChange(setProviderOn(policy, NODEX_POLICY_PROVIDER, false))
-          }
+          onCheckedChange={() => onPolicyChange(setNodexOn(policy, false))}
         />
       }
       disclosure={disclosure}
@@ -320,124 +308,12 @@ function NodexCard({
             <ModelRow
               key={`${provider.instanceId}:${model.slug}`}
               label={model.name}
-              leading={
-                provider.driver === "claudeAgent" ? (
-                  <ClaudeIcon className="size-3.5" />
-                ) : (
-                  <OpenAIIcon className="size-3.5" />
-                )
-              }
+              leading={<AgentProviderIcon kind={provider.driver} className="size-3.5" />}
               multiplier={rateOf(model.slug)}
               on={isModelSwitchOn(policy, provider, model.slug)}
               onChange={(next) => onPolicyChange(setModelOn(policy, provider, model.slug, next))}
             />
           ))}
-      </div>
-    </NodexSettingsSection>
-  );
-}
-
-function ProviderCard({
-  provider,
-  policy,
-  query,
-  disclosure,
-  onPolicyChange,
-}: {
-  readonly provider: CatalogProvider;
-  readonly policy: ModelPolicy;
-  readonly query: string;
-  readonly disclosure: NodexSettingsDisclosureState;
-  readonly onPolicyChange: (next: ModelPolicy) => void;
-}) {
-  const intl = useIntl();
-  const title = provider.displayName ?? provider.instanceId;
-  const icon = (
-    <AgentInstanceIcon binding={{ driver: provider.driver, instanceId: provider.instanceId }} />
-  );
-  const id = policyProviderKey(provider);
-  if (!isProviderOn(policy, provider)) {
-    return (
-      <OffProviderCard
-        id={id}
-        title={title}
-        icon={icon}
-        onTurnOn={() => onPolicyChange(setProviderOn(policy, provider, true))}
-      />
-    );
-  }
-  const setAll = (pick: (slug: string) => boolean) =>
-    onPolicyChange(
-      provider.models.reduce(
-        (next, model) => setModelOn(next, provider, model.slug, pick(model.slug)),
-        policy,
-      ),
-    );
-  const rows = provider.models.filter((model) => matches(model.name, model.slug, query));
-  const count = provider.models.filter((model) =>
-    isModelSwitchOn(policy, provider, model.slug),
-  ).length;
-  const searching = query.trim() !== "";
-  return (
-    <NodexSettingsSection
-      id={id}
-      title={title}
-      icon={icon}
-      summary={intl.formatMessage(
-        {
-          id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
-          defaultMessage: "{value1} of {value2} on",
-        },
-        { value1: count, value2: provider.models.length },
-      )}
-      action={
-        <NodexSwitch
-          ariaLabel={intl.formatMessage(
-            {
-              id: "modelPolicy.modelsSettingsPage.turnOffAllValueModels",
-              defaultMessage: "Turn off all {value1} models",
-            },
-            { value1: title },
-          )}
-          checked
-          onCheckedChange={() => onPolicyChange(setProviderOn(policy, provider, false))}
-        />
-      }
-      disclosure={searching ? { ...disclosure, open: true } : disclosure}
-    >
-      <div className="flex flex-col pb-1.5">
-        <ListHeader
-          count={intl.formatMessage(
-            {
-              id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
-              defaultMessage: "{value1} of {value2} on",
-            },
-            { value1: count, value2: provider.models.length },
-          )}
-        >
-          {FREE_MODEL_DRIVERS.includes(provider.driver) ? (
-            <ListAction onClick={() => setAll(isFreeModel)}>
-              <FormattedMessage
-                id="modelPolicy.modelsSettingsPage.freeOnly"
-                defaultMessage="Free only"
-              />
-            </ListAction>
-          ) : null}
-          <ListAction onClick={() => setAll(() => true)}>
-            <FormattedMessage id="modelPolicy.modelsSettingsPage.allOn" defaultMessage="All on" />
-          </ListAction>
-          <ListAction onClick={() => setAll(() => false)}>
-            <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
-          </ListAction>
-        </ListHeader>
-        {rows.map((model) => (
-          <ModelRow
-            key={model.slug}
-            label={model.name}
-            on={isModelSwitchOn(policy, provider, model.slug)}
-            onChange={(next) => onPolicyChange(setModelOn(policy, provider, model.slug, next))}
-          />
-        ))}
       </div>
     </NodexSettingsSection>
   );
@@ -517,180 +393,312 @@ function StopRunningDialog({
   );
 }
 
-export function ModelsSettingsPage({
-  open,
-  settingsAnchor,
-  onPathChange,
-}: SettingsSectionPageProps) {
-  if (!open) return null;
-  return (
-    <ModelsSettingsContent
-      anchor={settingsAnchor ?? null}
-      onOpenAccount={() => onPathChange(buildSettingsPath("account"))}
-    />
-  );
+interface AgentModels {
+  readonly policy: ModelPolicy;
+  /** Providers that advertise at least one model. */
+  readonly providers: readonly CatalogProvider[];
+  readonly nodexProviders: readonly CatalogProvider[];
+  readonly signedIn: boolean;
+  readonly balance: number | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly rateOf: (modelId: string) => number | null;
+  /** Saves a change that spends no credit. */
+  readonly apply: (next: ModelPolicy) => void;
+  /** Saves a Nodex change, first asking when it would stop a chat spending credits. */
+  readonly changeCredit: (next: ModelPolicy) => void;
+  readonly onOpenAccount: () => void;
 }
 
-function ModelsSettingsContent({
-  anchor,
+const AgentModelsContext = createContext<AgentModels | null>(null);
+
+function useAgentModels(): AgentModels {
+  const models = useContext(AgentModelsContext);
+  if (!models) throw new Error("Agent models are read inside AgentModelsProvider.");
+  return models;
+}
+
+/** Loads the policy and every provider's models once for the Agent cards that show them. */
+export function AgentModelsProvider({
   onOpenAccount,
+  children,
 }: {
-  readonly anchor: string | null;
   readonly onOpenAccount: () => void;
+  readonly children: ReactNode;
 }) {
   const intl = useIntl();
   const { settings: policy, isLoading, error: loadError, updateSettings } = useModelPolicy();
   const catalog = useModelPolicyCatalog();
   const account = useNodexAccount(true);
   const signedIn = resolveNodexAccountView(account, intl).signedIn;
-  const [query, setQuery] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingCut, setPendingCut] = useState<{
     readonly next: ModelPolicy;
     readonly subject: string;
     readonly stopped: StoppedCreditWork;
   } | null>(null);
-  const disclosure = useNodexSettingsDisclosures(anchor ?? "nodex");
 
-  const providers = (catalog.data?.providers ?? []).filter(
-    (provider) => provider.models.length > 0,
-  );
-  const nodexProviders = providers.filter(spendsNodexCredit);
-  const otherProviders = providers.filter((provider) => !spendsNodexCredit(provider));
-  const pricingGroup = account.snapshot?.modelStatus?.pricing?.groups[0];
-  const rateOf = (modelId: string) =>
-    pricingGroup?.models.find((model) => model.id === modelId)?.multiplier ?? null;
-
-  const apply = (next: ModelPolicy) => {
-    setSaveError(null);
-    void updateSettings(next).catch(() =>
-      setSaveError(
-        intl.formatMessage({
-          id: "modelPolicy.modelsSettingsPage.couldNotSaveYourModel",
-          defaultMessage: "Could not save your model choices.",
-        }),
-      ),
+  const value = useMemo<AgentModels>(() => {
+    const providers = (catalog.data?.providers ?? []).filter(
+      (provider) => provider.models.length > 0,
     );
-  };
-  /** Turning off what a running chat is spending on has to stop that chat, so it asks first. */
-  const changeCredit = (next: ModelPolicy) => {
-    const stopped = creditWorkStoppedBy({
-      work: catalog.data?.runningOnCredit ?? [],
-      providers: nodexProviders,
-      current: policy,
-      next,
-    });
-    if (!stopped) return apply(next);
-    const turnedOff = nodexProviders.flatMap(({ models, ...provider }) =>
-      models.filter(
-        ({ slug }) => isModelOn(policy, provider, slug) && !isModelOn(next, provider, slug),
-      ),
-    );
-    setPendingCut({
-      next,
-      stopped,
-      subject: isProviderOn(next, NODEX_POLICY_PROVIDER) ? (turnedOff[0]?.name ?? "it") : "Nodex",
-    });
-  };
-
-  const error =
-    saveError ??
-    (loadError || catalog.error
-      ? intl.formatMessage({
-          id: "modelPolicy.modelsSettingsPage.couldNotLoadYourModel",
-          defaultMessage: "Could not load your model choices.",
-        })
-      : null);
-  const searching = query.trim() !== "";
-  const nodexMatches = nodexProviders.some((provider) =>
-    provider.models.some((model) => matches(model.name, model.slug, query)),
-  );
+    const nodexProviders = providers.filter(spendsNodexCredit);
+    const pricingGroup = account.snapshot?.modelStatus?.pricing?.groups[0];
+    const apply = (next: ModelPolicy) => {
+      setSaveError(null);
+      void updateSettings(next).catch(() =>
+        setSaveError(
+          intl.formatMessage({
+            id: "modelPolicy.modelsSettingsPage.couldNotSaveYourModel",
+            defaultMessage: "Could not save your model choices.",
+          }),
+        ),
+      );
+    };
+    return {
+      policy,
+      providers,
+      nodexProviders,
+      signedIn,
+      balance: nodexCreditBalance(account.snapshot),
+      loading: isLoading || catalog.isPending,
+      error:
+        saveError ??
+        (loadError || catalog.error
+          ? intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.couldNotLoadYourModel",
+              defaultMessage: "Could not load your model choices.",
+            })
+          : null),
+      rateOf: (modelId) =>
+        pricingGroup?.models.find((model) => model.id === modelId)?.multiplier ?? null,
+      apply,
+      /** Turning off what a running chat is spending on has to stop that chat, so it asks first. */
+      changeCredit: (next) => {
+        const stopped = creditWorkStoppedBy({
+          work: catalog.data?.runningOnCredit ?? [],
+          providers: nodexProviders,
+          current: policy,
+          next,
+        });
+        if (!stopped) return apply(next);
+        const turnedOff = nodexProviders.flatMap(({ models, ...provider }) =>
+          models.filter(
+            ({ slug }) => isModelOn(policy, provider, slug) && !isModelOn(next, provider, slug),
+          ),
+        );
+        setPendingCut({
+          next,
+          stopped,
+          subject: next.nodexOff ? "Nodex" : (turnedOff[0]?.name ?? "it"),
+        });
+      },
+      onOpenAccount,
+    };
+  }, [
+    account.snapshot,
+    catalog.data,
+    catalog.error,
+    catalog.isPending,
+    intl,
+    isLoading,
+    loadError,
+    onOpenAccount,
+    policy,
+    saveError,
+    signedIn,
+    updateSettings,
+  ]);
   return (
-    <NodexSettingsPageSurface
-      title={intl.formatMessage({
-        id: "modelPolicy.modelsSettingsPage.models",
-        defaultMessage: "Models",
-      })}
-      subtitle={intl.formatMessage({
-        id: "modelPolicy.modelsSettingsPage.offModelsLeaveEveryPicker",
-        defaultMessage: "Off models leave every picker, and nothing in Nodex can start them.",
-      })}
-      action={
-        <div className="flex h-7 w-44 items-center rounded-lg border border-token-border bg-token-bg-fog">
-          <SettingsSearchIcon className="icon-xs ms-2 shrink-0 text-token-input-placeholder-foreground" />
-          <input
-            type="text"
-            role="searchbox"
-            aria-label={intl.formatMessage({
-              id: "modelPolicy.modelsSettingsPage.filterModels",
-              defaultMessage: "Filter models",
-            })}
-            placeholder={intl.formatMessage({
-              id: "modelPolicy.modelsSettingsPage.filterModels",
-              defaultMessage: "Filter models",
-            })}
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            className="ms-1 w-full min-w-0 appearance-none border-none bg-transparent pe-1.5 text-sm text-token-foreground ring-0 outline-none placeholder:text-token-input-placeholder-foreground"
-          />
-        </div>
-      }
-    >
-      <div className="flex flex-col gap-1.5" aria-busy={isLoading || catalog.isPending}>
-        <div className="flex flex-col gap-3">
-          {signedIn && (!searching || nodexMatches) ? (
-            <NodexCard
-              providers={nodexProviders}
-              loading={catalog.isPending}
-              policy={policy}
-              balance={nodexCreditBalance(account.snapshot)}
-              rateOf={rateOf}
-              query={query}
-              disclosure={searching ? { ...disclosure("nodex"), open: true } : disclosure("nodex")}
-              onPolicyChange={changeCredit}
-              onOpenAccount={onOpenAccount}
-            />
-          ) : null}
-          {otherProviders
-            .filter(
-              (provider) =>
-                !searching ||
-                provider.models.some((model) => matches(model.name, model.slug, query)),
-            )
-            .map((provider) => (
-              <ProviderCard
-                key={provider.instanceId}
-                provider={provider}
-                policy={policy}
-                query={query}
-                disclosure={disclosure(policyProviderKey(provider))}
-                onPolicyChange={apply}
-              />
-            ))}
-        </div>
-        {error ? (
-          <p role="alert" className="m-0 px-1 pt-1 text-xs text-danger">
-            {error}
-          </p>
-        ) : null}
-        <p className="m-0 px-1 pt-1 text-xs leading-4 text-token-description-foreground">
-          <FormattedMessage
-            id="modelPolicy.modelsSettingsPage.aChatSBuiltIn"
-            defaultMessage="A chat's built-in subagents use the same account as the chat, so only a chat you started on Nodex can spend credits this way. Codex can still choose an off model for them."
-          />
+    <AgentModelsContext value={value}>
+      {children}
+      {value.error ? (
+        <p role="alert" className="m-0 px-1 text-xs text-danger">
+          {value.error}
         </p>
-      </div>
+      ) : null}
       {pendingCut ? (
         <StopRunningDialog
           subject={pendingCut.subject}
           stopped={pendingCut.stopped}
           onCancel={() => setPendingCut(null)}
           onConfirm={() => {
-            apply(pendingCut.next);
+            value.apply(pendingCut.next);
             setPendingCut(null);
           }}
         />
       ) : null}
-    </NodexSettingsPageSurface>
+    </AgentModelsContext>
+  );
+}
+
+/** Nodex's card, first among the Agents for someone signed in to Nodex. */
+export function NodexModelsSection({
+  disclosure,
+}: {
+  readonly disclosure: NodexSettingsDisclosureState;
+}) {
+  const models = useAgentModels();
+  if (!models.signedIn) return null;
+  return (
+    <NodexCard
+      providers={models.nodexProviders}
+      loading={models.loading}
+      policy={models.policy}
+      balance={models.balance}
+      rateOf={models.rateOf}
+      query=""
+      disclosure={disclosure}
+      onPolicyChange={models.changeCredit}
+      onOpenAccount={models.onOpenAccount}
+    />
+  );
+}
+
+/** One provider's models, each with its own switch, under whole-list moves. */
+function ModelList({
+  provider,
+  query = "",
+  counted = true,
+}: {
+  readonly provider: CatalogProvider;
+  readonly query?: string;
+  /** Off when the row that opens the list already says how many are on. */
+  readonly counted?: boolean;
+}) {
+  const intl = useIntl();
+  const { policy, apply } = useAgentModels();
+  const setAll = (pick: (slug: string) => boolean) =>
+    apply(
+      provider.models.reduce(
+        (next, model) => setModelOn(next, provider, model.slug, pick(model.slug)),
+        policy,
+      ),
+    );
+  return (
+    <div className="flex flex-col pb-1.5">
+      <ListHeader count={counted ? modelsOnSummary(policy, provider, intl) : ""}>
+        {offersFreeOnly(provider.driver) ? (
+          <ListAction onClick={() => setAll(isFreeModel)}>
+            <FormattedMessage
+              id="modelPolicy.modelsSettingsPage.freeOnly"
+              defaultMessage="Free only"
+            />
+          </ListAction>
+        ) : null}
+        <ListAction onClick={() => setAll(() => true)}>
+          <FormattedMessage id="modelPolicy.modelsSettingsPage.allOn" defaultMessage="All on" />
+        </ListAction>
+        <ListAction onClick={() => setAll(() => false)}>
+          <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
+        </ListAction>
+      </ListHeader>
+      {provider.models
+        .filter((model) => matches(model.name, model.slug, query))
+        .map((model) => (
+          <ModelRow
+            key={model.slug}
+            label={model.name}
+            on={isModelSwitchOn(policy, provider, model.slug)}
+            onChange={(next) => apply(setModelOn(policy, provider, model.slug, next))}
+          />
+        ))}
+    </div>
+  );
+}
+
+function modelsOnSummary(
+  policy: ModelPolicy,
+  provider: CatalogProvider,
+  intl: ReturnType<typeof useIntl>,
+): string {
+  return intl.formatMessage(
+    {
+      id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
+      defaultMessage: "{value1} of {value2} on",
+    },
+    {
+      value1: provider.models.filter((model) => isModelSwitchOn(policy, provider, model.slug))
+        .length,
+      value2: provider.models.length,
+    },
+  );
+}
+
+/**
+ * An Agent instance's models inside its card: one row saying how many are on, opening to the
+ * list. Absent until the Agent advertises models, such as before it signs in.
+ */
+export function InstanceModels({ instanceId }: { readonly instanceId: string }) {
+  const intl = useIntl();
+  // A card shown outside Settings › Agents, such as in setup, has no model list of its own.
+  const models = useContext(AgentModelsContext);
+  const [expanded, setExpanded] = useState(false);
+  const provider = models?.providers.find((entry) => entry.instanceId === instanceId);
+  if (!models || !provider) return null;
+  const { policy } = models;
+  return (
+    <NodexSettingsExpandableRow
+      label={intl.formatMessage({
+        id: "modelPolicy.agentModels.models",
+        defaultMessage: "Models",
+      })}
+      detail={modelsOnSummary(policy, provider, intl)}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      <ModelList provider={provider} counted={false} />
+    </NodexSettingsExpandableRow>
+  );
+}
+
+/** What a model filter finds across Nodex and every Agent, each under the provider that runs it. */
+export function ModelFilterResults({ query }: { readonly query: string }) {
+  const intl = useIntl();
+  const models = useAgentModels();
+  const nodexMatches =
+    models.signedIn &&
+    models.nodexProviders.some((provider) =>
+      provider.models.some((model) => matches(model.name, model.slug, query)),
+    );
+  const others = models.providers.filter(
+    (provider) =>
+      !spendsNodexCredit(provider) &&
+      provider.models.some((model) => matches(model.name, model.slug, query)),
+  );
+  if (!nodexMatches && others.length === 0)
+    return (
+      <p className="m-0 px-1 text-sm text-token-text-secondary">
+        {intl.formatMessage({
+          id: "modelPolicy.agentModels.noModelsMatch",
+          defaultMessage: "No models match.",
+        })}
+      </p>
+    );
+  return (
+    <div className="flex flex-col gap-3">
+      {nodexMatches ? (
+        <NodexCard
+          providers={models.nodexProviders}
+          loading={models.loading}
+          policy={models.policy}
+          balance={models.balance}
+          rateOf={models.rateOf}
+          query={query}
+          disclosure={{ open: true, onOpenChange: () => undefined }}
+          onPolicyChange={models.changeCredit}
+          onOpenAccount={models.onOpenAccount}
+        />
+      ) : null}
+      {others.map((provider) => (
+        <NodexSettingsSection
+          key={provider.instanceId}
+          title={provider.displayName ?? provider.instanceId}
+          titlePlacement="inside"
+        >
+          <ModelList provider={provider} query={query} />
+        </NodexSettingsSection>
+      ))}
+    </div>
   );
 }

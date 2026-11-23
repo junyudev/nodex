@@ -1,3 +1,4 @@
+import { settingsMessages } from "@/components/workbench/workbench-settings-search-catalog";
 import {
   getIntl,
   useIntl,
@@ -690,6 +691,7 @@ export function VoiceSettingsPage({
         id: "dictation.voiceSettingsPage.title",
         defaultMessage: "Voice",
       })}
+      subtitle={intl.formatMessage(settingsMessages.voiceSearchSubtitle)}
     >
       <NodexSettingsSection
         title={intl.formatMessage({

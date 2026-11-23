@@ -224,7 +224,7 @@ Claude Code profiles. A Cron task lists the instance's advertised models once it
 (otherwise it asks to connect the Agent in Settings) and sends only the options that model
 advertises.
 
-Settings > Conversations lists conversations an Agent saved for the chosen Project's folder when the
+Settings > Import lists conversations an Agent saved for the chosen Project's folder when the
 Agent can list them, and offers Connect for Agents whose capabilities are not yet known. Load more
 follows the Agent's pages, including past an empty page that reports more; a failed read keeps what
 already loaded and offers Try again for the same page. Import sends nothing to the Agent. When the Agent can only resume, Nodex says earlier messages will not be shown

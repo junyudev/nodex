@@ -29,7 +29,7 @@ it("keeps a chat's choice only while it differs from Settings", async () => {
   render(<SubagentDelegationConversationControl sessionId="session" />, {
     wrapper: TestQueryProvider,
   });
-  const control = await screen.findByRole("switch", { name: "Subagents can delegate" });
+  const control = await screen.findByRole("switch", { name: "Let subagents delegate" });
   await waitFor(() => expect((control as HTMLButtonElement).disabled).toBe(false));
   expect(control.getAttribute("aria-checked")).toBe("true");
   expect(screen.queryByText("This chat")).toBeNull();

@@ -333,7 +333,7 @@ respect_system_proxy = false
         const requestsBeforeImport = modelServer.requests().length;
         let page = await harness.launch();
         await openWorkbenchSettings(page);
-        await page.getByRole("link", { name: "Conversations", exact: true }).click();
+        await page.getByRole("link", { name: "Import", exact: true }).click();
         await page
           .getByRole("textbox", { name: "Search conversations or paste a link or ID", exact: true })
           .fill(`codex://threads/${sourceId}`);

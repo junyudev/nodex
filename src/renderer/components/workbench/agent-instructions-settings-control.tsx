@@ -21,6 +21,7 @@ import {
 } from "@/lib/agent-runtime-settings";
 import { toastFailure } from "@/lib/failure-toast";
 import { cn } from "@/lib/utils";
+import { settingsMessages } from "./workbench-settings-search-catalog";
 
 const ARTIFACT_OPENING_OPTIONS: readonly {
   readonly value: ArtifactOpeningPolicy;
@@ -54,7 +55,7 @@ const ARTIFACT_OPENING_OPTIONS: readonly {
     label: defineMessage({ id: "settings.agentInstructions.never", defaultMessage: "Never" }),
     description: defineMessage({
       id: "settings.agentInstructions.agentsOnlyTellYouWhereAn",
-      defaultMessage: "Agents only tell you where an artifact is.",
+      defaultMessage: "Agents only say where a result is.",
     }),
   },
 ];
@@ -90,22 +91,13 @@ export function ArtifactOpeningSettingRow() {
   );
   return (
     <NodexSettingsRow
-      label={intl.formatMessage({
-        id: "settings.agentInstructions.artifactOpening",
-        defaultMessage: "Artifact opening",
-      })}
-      description={intl.formatMessage({
-        id: "settings.agentInstructions.whetherAgentsOpenArtifactsBesideThe",
-        defaultMessage: "Whether Agents open artifacts beside the chat with open_in_nodex.",
-      })}
+      label={intl.formatMessage(settingsMessages.chatsOpenResultsBesideTheChat)}
+      description={intl.formatMessage(settingsMessages.chatsOpenResultsBesideTheChatDescription)}
     >
       <NodexOptionPicker
         triggerButton={
           <NodexSettingsDropdownTrigger
-            aria-label={intl.formatMessage({
-              id: "settings.agentInstructions.artifactOpening",
-              defaultMessage: "Artifact opening",
-            })}
+            aria-label={intl.formatMessage(settingsMessages.chatsOpenResultsBesideTheChat)}
             disabled={pending}
             className="min-w-40 justify-between"
           >
@@ -213,14 +205,8 @@ export function EffectiveInstructionsRow() {
   const [expanded, setExpanded] = useState(false);
   return (
     <NodexSettingsExpandableRow
-      label={intl.formatMessage({
-        id: "settings.agentInstructions.fullNodexInstructions",
-        defaultMessage: "Full Nodex instructions",
-      })}
-      detail={intl.formatMessage({
-        id: "settings.agentInstructions.whatAgentsReadFromNodexIn",
-        defaultMessage: "What Agents read from Nodex in every turn",
-      })}
+      label={intl.formatMessage(settingsMessages.chatsWhatAgentsReceive)}
+      detail={intl.formatMessage(settingsMessages.chatsWhatAgentsReceiveDescription)}
       expanded={expanded}
       onExpandedChange={setExpanded}
     >

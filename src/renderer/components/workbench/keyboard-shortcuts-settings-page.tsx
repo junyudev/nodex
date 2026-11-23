@@ -266,6 +266,7 @@ export function KeyboardShortcutsSettingsPage() {
   return (
     <SettingsPageSurface
       title={intl.formatMessage(settingsMessages.keyboardShortcutsTitle)}
+      subtitle={intl.formatMessage(settingsMessages.keyboardShortcutsSubtitle)}
       contentClassName="electron:min-w-[calc(320px*var(--codex-window-zoom))]"
     >
       <div className="relative">

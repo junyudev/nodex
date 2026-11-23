@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_MODEL_POLICY,
   setModelOn,
-  setProviderOn,
+  setNodexOn,
   type PolicyProvider,
 } from "../../shared/model-policy";
 import { creditWorkStoppedBy } from "./model-policy-stopped-work";
@@ -45,7 +45,7 @@ const off = (provider: PolicyProvider, model: string) =>
 
 describe("creditWorkStoppedBy", () => {
   it("has nothing to ask when no chat is running on what turns off", () => {
-    expect(stopped([], setProviderOn(DEFAULT_MODEL_POLICY, codex, false))).toBeNull();
+    expect(stopped([], setNodexOn(DEFAULT_MODEL_POLICY, false))).toBeNull();
     expect(stopped([onCodex("a", "gpt-6-luna")], off(codex, "gpt-6.1-sol"))).toBeNull();
   });
 
@@ -61,7 +61,7 @@ describe("creditWorkStoppedBy", () => {
     expect(
       stopped(
         [onCodex("a"), onCodex("a", "gpt-6-luna"), onClaude("b", "claude-opus-5-5")],
-        setProviderOn(DEFAULT_MODEL_POLICY, codex, false),
+        setNodexOn(DEFAULT_MODEL_POLICY, false),
       ),
     ).toEqual({
       chats: 2,

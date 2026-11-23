@@ -478,12 +478,6 @@
       "codex": 1
     }
   },
-  "src/renderer/components/workbench/general-settings-page.tsx": {
-    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
-    "literals": {
-      "codex": 2
-    }
-  },
   "src/renderer/components/workbench/page-turn.tsx": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
@@ -708,15 +702,6 @@
       "claude": 2,
       "codex": 7,
       "acpRegistry": 1
-    }
-  },
-  "src/renderer/features/model-policy/models-settings-page.tsx": {
-    "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
-    "literals": {
-      "codex": 1,
-      "opencode": 1,
-      "opencode2": 1,
-      "claudeAgent": 1
     }
   },
   "src/renderer/features/nodex-account/nodex-credit-meter.tsx": {

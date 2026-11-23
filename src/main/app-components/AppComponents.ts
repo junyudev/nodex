@@ -407,7 +407,7 @@ export const make = Effect.gen(function* () {
           return Result.succeed(
             unavailable(
               "turned-off",
-              "This component is turned off in Settings → General → Components.",
+              "This component is turned off in Settings → General → Add-ons.",
             ),
           );
         const { installation } = component;

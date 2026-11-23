@@ -1,7 +1,7 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AgentInstanceIcon, SettingsAgentIcon } from "@/components/shared/icons";
+import { AgentInstanceIcon, GenericAgentIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexSettingsAddRow,
@@ -20,6 +20,7 @@ import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-set
 import { installReviewedVersion } from "./acp-agent-actions";
 import { AcpAgentAddDialog } from "./acp-agent-add-dialog";
 import { AcpAgentDetail } from "./acp-agent-detail";
+import { InstanceModels } from "@/features/model-policy/agent-models";
 import {
   ACP_ADD_AGENT_ID,
   ACP_STATUS_ACTION_LABELS,
@@ -198,6 +199,7 @@ function AgentRow({
         ) : null
       }
     >
+      <InstanceModels instanceId={instance.id} />
       <AcpAgentDetail
         key={instance.id}
         instance={instance}
@@ -274,7 +276,7 @@ export function AcpAgentsSettingsSection({
         id: "acpAgents.acpAgentsSettingsSection.otherAgents",
         defaultMessage: "Other agents",
       })}
-      icon={<SettingsAgentIcon />}
+      icon={<GenericAgentIcon />}
       description={intl.formatMessage({
         id: "acpAgents.acpAgentsSettingsSection.agentsThatSupportTheAgent",
         defaultMessage:

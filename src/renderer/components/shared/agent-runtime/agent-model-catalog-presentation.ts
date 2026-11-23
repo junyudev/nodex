@@ -57,7 +57,7 @@ export interface AgentModelCatalogPresentation {
     readonly count: number;
     readonly choose: (selection: AgentModelSelection) => Promise<void>;
   };
-  /** Opens Settings → Models, at one provider's card when named. */
+  /** Opens Settings → Agents, at one provider's card when named. */
   readonly manageModels?: (providerKey?: string) => void;
   readonly entries: readonly AgentModelPickerEntry[];
   readonly selected: AgentModelSelection;

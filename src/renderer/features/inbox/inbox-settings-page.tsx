@@ -277,22 +277,12 @@ export function InboxSettingsPage() {
           defaultMessage: "Routing preferences",
         })}
       >
-        <div className="flex items-start justify-between gap-4 p-3 pb-0">
-          <p className="text-sm text-token-text-secondary">
-            <FormattedMessage
-              id="inbox.inboxSettingsPage.standingInstructionsNodexFollowsOver"
-              defaultMessage="Standing instructions Nodex follows over its own guidance, such as which Project research belongs in or which model leads UI work."
-            />
-          </p>
-          <NodexButton
-            variant="secondary"
-            size="sm"
-            disabled={instructions === settings.instructions || update.isPending}
-            onClick={() => save({ instructions })}
-          >
-            <FormattedMessage id="inbox.inboxSettingsPage.save" defaultMessage="Save" />
-          </NodexButton>
-        </div>
+        <p className="m-0 px-3 pt-3 text-sm text-token-text-secondary">
+          <FormattedMessage
+            id="inbox.inboxSettingsPage.standingInstructionsNodexFollowsOver"
+            defaultMessage="Standing instructions Nodex follows over its own guidance, such as which Project research belongs in or which model leads UI work."
+          />
+        </p>
         <div className="p-3 pt-2">
           <textarea
             aria-label={intl.formatMessage({
@@ -304,6 +294,11 @@ export function InboxSettingsPage() {
             value={instructions}
             placeholder={intl.formatMessage(INBOX_ROUTING_PREFERENCES_PLACEHOLDER)}
             onChange={(event) => setInstructionsDraft(event.currentTarget.value)}
+            // Saves when the field loses focus, like every other instruction field in Settings.
+            onBlur={() => {
+              if (instructions !== settings.instructions && !update.isPending)
+                save({ instructions });
+            }}
             className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
           />
         </div>

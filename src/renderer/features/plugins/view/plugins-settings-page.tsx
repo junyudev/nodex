@@ -15,12 +15,17 @@ import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icon
 import { NodexSwitch } from "@/components/ui/button";
 import { CardTile } from "@/components/ui/card-tile";
 import { PageEmptyState } from "@/components/ui/section-header";
-import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NodexSettingsPageSurface,
+  NodexSettingsSection,
+  NodexSettingsTabs,
+} from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import type { SettingsSectionPageProps } from "@/components/workbench/workbench-settings-page-registry";
+import { PluginsHooksTab } from "@/components/workbench/plugins-hooks-tab";
+import { CODEX_HOOKS_SETTINGS_PATH, isCodexHooksSettingsPath } from "@/lib/codex-hooks-route";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { MarketplaceAddParams } from "@nodex/codex-app-server-protocol/v2/MarketplaceAddParams";
 import { appViewFromRow, connectedApps } from "../model/app-model";
@@ -67,9 +72,10 @@ import { SkillInstructions } from "./skill-preview-modal";
 import { usePluginHelperActions } from "./use-plugin-helper-actions";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
-type ManageTab = "plugins" | "apps" | "mcps" | "skills" | "marketplace";
+type ManageTab = "plugins" | "apps" | "mcps" | "skills" | "hooks" | "marketplace";
+type SearchableTab = Exclude<ManageTab, "hooks">;
 
-const SEARCH_COPY: Record<ManageTab, MessageDescriptor> = {
+const SEARCH_COPY: Record<SearchableTab, MessageDescriptor> = {
   plugins: defineMessage({
     id: "plugins.pluginsSettingsPage.searchPlugins",
     defaultMessage: "Search plugins",
@@ -91,7 +97,14 @@ const SEARCH_COPY: Record<ManageTab, MessageDescriptor> = {
     defaultMessage: "Search marketplaces",
   }),
 };
-const TAB_ORDER: readonly ManageTab[] = ["plugins", "apps", "mcps", "skills", "marketplace"];
+const TAB_ORDER: readonly ManageTab[] = [
+  "plugins",
+  "apps",
+  "mcps",
+  "skills",
+  "hooks",
+  "marketplace",
+];
 
 export interface PluginsSettingsNavigation {
   readonly projectId: string | null;
@@ -100,57 +113,6 @@ export interface PluginsSettingsNavigation {
   /** Opens a Customize page, such as a plugin's details. */
   readonly onOpenCustomize: (path: string) => void;
   readonly onStartChat: (prompt: string) => void;
-}
-
-/** Tabs that show their item counts; a tab with nothing in it is hidden. */
-function ManageTabs({
-  tabs,
-  selected,
-  onSelect,
-}: {
-  readonly tabs: readonly {
-    readonly id: ManageTab;
-    readonly label: string;
-    readonly count: number;
-  }[];
-  readonly selected: ManageTab;
-  readonly onSelect: (tab: ManageTab) => void;
-}) {
-  const intl = useIntl();
-  return (
-    <div
-      role="group"
-      aria-label={intl.formatMessage({
-        id: "plugins.pluginsSettingsPage.manageExtensions",
-        defaultMessage: "Manage extensions",
-      })}
-      className="hide-scrollbar relative inline-flex max-w-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden"
-      onWheel={(event) => {
-        const delta = event.deltaX || event.deltaY;
-        if (delta !== 0) event.currentTarget.scrollLeft += delta;
-      }}
-    >
-      {tabs.map((tab) => {
-        const isSelected = tab.id === selected;
-        return (
-          <ToolbarButton
-            key={tab.id}
-            aria-pressed={isSelected}
-            color="ghost"
-            className={cn(
-              "shrink-0 focus-visible:ring-inset",
-              isSelected &&
-                "bg-[color-mix(in_oklab,var(--color-text)_5%,transparent)] text-token-foreground",
-            )}
-            onClick={() => onSelect(tab.id)}
-          >
-            {tab.label}
-            <span className="ms-0.5 text-tertiary">{tab.count}</span>
-          </ToolbarButton>
-        );
-      })}
-    </div>
-  );
 }
 
 /** The settings-page search: a 32px outlined field. */
@@ -531,8 +493,15 @@ function SkillSettingsRow({
  */
 export function PluginsSettingsPage({
   navigation,
+  hooks,
 }: {
   readonly navigation: PluginsSettingsNavigation;
+  /** The Hooks tab, which has its own route so a chat's hook notice can land on it. */
+  readonly hooks: {
+    readonly selected: boolean;
+    readonly onSelectedChange: (selected: boolean) => void;
+    readonly content: ReactNode;
+  };
 }) {
   const intl = useIntl();
   const context = { hostId: "local", projectId: navigation.projectId };
@@ -543,7 +512,7 @@ export function PluginsSettingsPage({
   const mcpServers = usePluginMcpServers(context);
   const marketplaces = useMarketplaces(context);
   const apps = usePluginApps(context);
-  const [selectedTab, setSelectedTab] = useState<ManageTab>("plugins");
+  const [selectedTab, setSelectedTab] = useState<SearchableTab>("plugins");
   const [addingMcpServer, setAddingMcpServer] = useState(false);
   const [search, setSearch] = useState("");
   const [addMarketplaceOpen, setAddMarketplaceOpen] = useState(false);
@@ -551,7 +520,7 @@ export function PluginsSettingsPage({
 
   const pluginRows = installed.data ?? [];
   const query = normalizePluginSearch(search);
-  const counts: Record<ManageTab, number> = {
+  const counts: Record<SearchableTab, number> = {
     plugins: pluginRows.length,
     apps: connectedApps((apps.data?.apps ?? []).map(appViewFromRow), "").length,
     mcps: (mcpServers.data?.servers ?? []).filter(
@@ -560,7 +529,7 @@ export function PluginsSettingsPage({
     skills: skills.settingsSkills.length,
     marketplace: manageableMarketplaces(marketplaces.data?.marketplaces ?? [], "").length,
   };
-  const loading: Record<ManageTab, boolean> = {
+  const loading: Record<SearchableTab, boolean> = {
     plugins: installed.isPending,
     apps: apps.isPending,
     mcps: mcpServers.isPending,
@@ -578,22 +547,27 @@ export function PluginsSettingsPage({
       id: "plugins.pluginsSettingsPage.skills",
       defaultMessage: "Skills",
     }),
+    hooks: intl.formatMessage({ id: "plugins.pluginsSettingsPage.hooks", defaultMessage: "Hooks" }),
     marketplace: intl.formatMessage({
       id: "plugins.pluginsSettingsPage.marketplace",
       defaultMessage: "Marketplace",
     }),
   };
-  const tabs = TAB_ORDER.filter((id) => id === "mcps" || counts[id] > 0).map((id) => ({
-    id,
-    label: labels[id],
-    count: counts[id],
-  }));
+  // MCPs and Hooks are always offered; another tab shows once it has something in it.
+  const tabs = TAB_ORDER.filter((id) => id === "mcps" || id === "hooks" || counts[id] > 0).map(
+    (id) => ({
+      id,
+      label: labels[id],
+      count: id === "hooks" ? undefined : counts[id],
+    }),
+  );
   // Adding a server shows MCPs; an emptied tab falls through to the next one with something in it.
-  const tab: ManageTab = addingMcpServer
+  const searchable: SearchableTab = addingMcpServer
     ? "mcps"
     : selectedTab === "mcps" || loading[selectedTab] || counts[selectedTab] > 0
       ? selectedTab
-      : (TAB_ORDER.find((id) => counts[id] > 0) ?? "mcps");
+      : (TAB_ORDER.find((id): id is SearchableTab => id !== "hooks" && counts[id] > 0) ?? "mcps");
+  const tab: ManageTab = hooks.selected && !addingMcpServer ? "hooks" : searchable;
 
   const focusSearch = useEffectEvent(() => searchRef.current?.focus());
   useEffect(() => {
@@ -641,7 +615,9 @@ export function PluginsSettingsPage({
   };
 
   let content: ReactNode;
-  if (tab === "plugins") {
+  if (tab === "hooks") {
+    content = hooks.content;
+  } else if (tab === "plugins") {
     content = (
       <PluginsTab
         rows={pluginRows.filter((row) => pluginMatchesSearch(row, query))}
@@ -688,8 +664,8 @@ export function PluginsSettingsPage({
         defaultMessage: "Plugins",
       })}
       subtitle={intl.formatMessage({
-        id: "plugins.pluginsSettingsPage.description",
-        defaultMessage: "Manage plugins, skills, and MCPs",
+        id: "plugins.pluginsSettingsPage.subtitle",
+        defaultMessage: "Plugins, skills, MCP servers and hooks your Agents can use.",
       })}
       action={
         <div className="flex items-center gap-2">
@@ -738,7 +714,10 @@ export function PluginsSettingsPage({
                   defaultMessage: "Add MCP server",
                 }),
                 icon: <SlashMcpIcon className="icon-sm" />,
-                onSelect: () => setAddingMcpServer(true),
+                onSelect: () => {
+                  hooks.onSelectedChange(false);
+                  setAddingMcpServer(true);
+                },
               },
             ]}
             trailingAction={
@@ -761,22 +740,29 @@ export function PluginsSettingsPage({
     >
       <div className="@container/skills-grid flex min-h-0 flex-1 flex-col gap-10 text-base select-none">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ManageTabs
+          <NodexSettingsTabs
+            label={intl.formatMessage({
+              id: "plugins.pluginsSettingsPage.manageExtensions",
+              defaultMessage: "Manage extensions",
+            })}
             tabs={tabs}
             selected={tab}
             onSelect={(next) => {
               setAddingMcpServer(false);
-              setSelectedTab(next);
+              hooks.onSelectedChange(next === "hooks");
+              if (next !== "hooks") setSelectedTab(next);
             }}
           />
-          <div className="w-56 min-w-0 max-[1023px]:hidden">
-            <SettingsSearchInput
-              label={intl.formatMessage(SEARCH_COPY[tab])}
-              value={search}
-              inputRef={searchRef}
-              onChange={setSearch}
-            />
-          </div>
+          {tab === "hooks" ? null : (
+            <div className="w-56 min-w-0 max-[1023px]:hidden">
+              <SettingsSearchInput
+                label={intl.formatMessage(SEARCH_COPY[tab])}
+                value={search}
+                inputRef={searchRef}
+                onChange={setSearch}
+              />
+            </div>
+          )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">{content}</div>
       </div>
@@ -829,6 +815,8 @@ function SkillsList({
 export function PluginsSettingsSectionPage({
   activeProjectId,
   path,
+  projects,
+  settingsAnchor,
   onPathChange,
   onOpenCustomize,
   onStartChat,
@@ -852,5 +840,19 @@ export function PluginsSettingsSectionPage({
       />
     );
   }
-  return <PluginsSettingsPage navigation={navigation} />;
+  // A settings search result for hooks lands on the tab's anchor.
+  const hooksSelected = isCodexHooksSettingsPath(path) || settingsAnchor === "hooks";
+  return (
+    <PluginsSettingsPage
+      navigation={navigation}
+      hooks={{
+        selected: hooksSelected,
+        onSelectedChange: (selected) => {
+          if (selected !== hooksSelected)
+            onPathChange(selected ? CODEX_HOOKS_SETTINGS_PATH : PLUGINS_SETTINGS_PATH);
+        },
+        content: <PluginsHooksTab path={path} onPathChange={onPathChange} projects={projects} />,
+      }}
+    />
+  );
 }

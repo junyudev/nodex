@@ -7,11 +7,11 @@ and can change the part that belongs to them.
 
 | Layer                | Owner                 | Where it is shown                                     | Editable              |
 | -------------------- | --------------------- | ----------------------------------------------------- | --------------------- |
-| Nodex guidance       | Nodex                 | Settings > Agents > Full Nodex instructions           | No                    |
-| Your instructions    | This Profile's person | Settings > Agents > Your instructions                 | Yes                   |
+| Nodex guidance       | Nodex                 | Settings > Chats > What Agents receive                | No                    |
+| Your instructions    | This Profile's person | Settings > Chats > Your instructions                  | Yes                   |
 | Chat context         | Nodex, per chat       | Named in the same panel; generated when a chat starts | No                    |
 | Native configuration | The Agent's own home  | Each provider's own settings                          | Through that provider |
-| Codex desktop app    | Codex, per thread     | Full Nodex instructions, as a representative thread   | Through Codex         |
+| Codex desktop app    | Codex, per thread     | What Agents receive, as a representative thread       | Through Codex         |
 
 Codex desktop app instructions are the developer text Codex app threads receive. Nodex shows a
 representative thread, because each thread's text depends on its tools and workspace.
@@ -30,7 +30,7 @@ is needed.
 
 Your instructions have two parts.
 
-- **Artifact opening** is a preference Nodex turns into one sentence of guidance:
+- **Open results beside the chat** is a preference Nodex turns into one sentence of guidance:
   - **When helpful** (default): open an artifact beside the chat when showing it would help.
   - **Ask first**: ask before opening anything beside the chat.
   - **Never**: only say where an artifact is.

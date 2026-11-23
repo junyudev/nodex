@@ -7,7 +7,6 @@ import { NodexButton } from "../ui/button";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
   NodexSettingsRow as SettingRow,
-  NodexSettingsSection as SettingsSection,
 } from "../ui/settings";
 import { BackupSettingsControl } from "./backup-settings-control";
 
@@ -55,19 +54,12 @@ export function BackupsSettingsPage({ open }: SettingsSectionPageProps) {
         settingsMessages.backupsSnapshotCadenceRetentionAndRestoreOperations,
       )}
     >
-      <div className="flex flex-col gap-[var(--padding-panel)]">
-        {library.data?.libraryId ? (
-          <SettingsSection
-            title={intl.formatMessage({
-              id: "settings.backups.recovery",
-              defaultMessage: "Recovery",
-            })}
-          >
-            <UnsavedEditsRow libraryId={library.data.libraryId} />
-          </SettingsSection>
-        ) : null}
-        <BackupSettingsControl open={open} />
-      </div>
+      <BackupSettingsControl
+        open={open}
+        recovery={
+          library.data?.libraryId ? <UnsavedEditsRow libraryId={library.data.libraryId} /> : null
+        }
+      />
     </SettingsPageSurface>
   );
 }

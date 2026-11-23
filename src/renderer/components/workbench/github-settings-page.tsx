@@ -57,7 +57,10 @@ export function GitHubSettingsView({
   };
   const problem = snapshot.problems[0];
   return (
-    <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.githubTitle)}>
+    <NodexSettingsPageSurface
+      title={intl.formatMessage(settingsMessages.githubTitle)}
+      subtitle={intl.formatMessage(settingsMessages.githubSubtitle)}
+    >
       <NodexSettingsSection>
         <NodexSettingsRow
           label={intl.formatMessage({ id: "settings.github.account", defaultMessage: "Account" })}

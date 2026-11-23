@@ -35,7 +35,7 @@ export const hasCodexSession = (
   items: readonly Pick<SessionWindow["sessions"]["items"][number]["task"], "thread">[],
 ): boolean => items.some(({ thread }) => thread?.backend_binding.driver === "codex");
 
-const turnedOff = "Codex is turned off in Settings → General → Components.";
+const turnedOff = "Codex is turned off in Settings → General → Add-ons.";
 
 const unavailable = (reason: CodexPackageUnavailableReason, message: string) =>
   ({ status: "unavailable", reason, message }) as const;

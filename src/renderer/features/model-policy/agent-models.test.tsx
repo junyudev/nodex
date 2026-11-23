@@ -1,9 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import type { SettingsSectionPageProps } from "@/components/workbench/workbench-settings-page-registry";
 import { DEFAULT_MODEL_POLICY, type ModelPolicy } from "../../../shared/model-policy";
-import { ModelsSettingsPage } from "./models-settings-page";
+import type { ReactNode } from "react";
+import {
+  AgentModelsProvider,
+  InstanceModels,
+  ModelFilterResults,
+  NodexModelsSection,
+} from "./agent-models";
 
 const updateSettings = vi.fn(async (next: ModelPolicy) => next);
 let policy: ModelPolicy;
@@ -88,19 +93,15 @@ vi.mock("@/features/nodex-account/nodex-account-identity", () => ({
   }),
 }));
 
-const onPathChange = vi.fn();
-const renderPage = () =>
+const onOpenAccount = vi.fn();
+const open = { open: true, onOpenChange: () => undefined };
+const renderModels = (children: ReactNode) =>
   render(
     <NodexTooltipProvider>
-      <ModelsSettingsPage
-        {...({
-          open: true,
-          onPathChange,
-          settingsAnchor: null,
-        } as unknown as SettingsSectionPageProps)}
-      />
+      <AgentModelsProvider onOpenAccount={onOpenAccount}>{children}</AgentModelsProvider>
     </NodexTooltipProvider>,
   );
+const renderNodex = () => renderModels(<NodexModelsSection disclosure={open} />);
 const toggle = async (name: string) => {
   await act(async () => {
     fireEvent.click(screen.getByRole("switch", { name }));
@@ -114,12 +115,12 @@ beforeEach(() => {
   runningOnCredit = [];
   signedIn = true;
   updateSettings.mockClear();
-  onPathChange.mockClear();
+  onOpenAccount.mockClear();
 });
 afterEach(cleanup);
 
-test("opens on Nodex with its credits, its models and Agents kept out by default", () => {
-  renderPage();
+test("Nodex's card shows its credits, its models and keeps Agents out by default", () => {
+  renderNodex();
   expect(screen.getByText("Spends your credits. 312 left.")).toBeDefined();
   expect(
     screen
@@ -131,35 +132,34 @@ test("opens on Nodex with its credits, its models and Agents kept out by default
   expect(within(screen.getByText("GPT-6 Luna").closest("label")!).getByText("×0.5")).toBeDefined();
   expect(within(screen.getByText("GPT-6.1 Sol").closest("label")!).queryByText(/×/u)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Prices and top up" }));
-  expect(onPathChange).toHaveBeenCalledOnce();
+  expect(onOpenAccount).toHaveBeenCalledOnce();
 });
 
 test("offers no Nodex card to someone who isn't signed in", () => {
   signedIn = false;
-  renderPage();
+  renderNodex();
   expect(screen.queryByText(/Spends your credits/u)).toBeNull();
-  expect(screen.getByText("Codex")).toBeDefined();
 });
 
 test("turning a model off keeps its own switch independent of the account", async () => {
-  renderPage();
+  renderNodex();
   await toggle("GPT-6.1 Sol");
   expect(lastPolicy()?.exceptions).toEqual(['["nodex","codex","gpt-6.1-sol"]']);
 });
 
 test("lets the person allow Agents to choose Nodex models", async () => {
-  renderPage();
+  renderNodex();
   await toggle("Let Agents choose Nodex models");
   expect(lastPolicy()?.agentsMayChooseCredit).toBe(true);
 });
 
-test("collapses an off provider to one line that says what it guarantees", async () => {
-  policy = { ...DEFAULT_MODEL_POLICY, providersOff: ["nodex"] };
-  renderPage();
+test("collapses Nodex off to one line that says what it guarantees", async () => {
+  policy = { ...DEFAULT_MODEL_POLICY, nodexOff: true };
+  renderNodex();
   expect(screen.getByText("Off. Nothing on this computer can spend your credits.")).toBeDefined();
   expect(screen.queryByRole("switch", { name: "GPT-6.1 Sol" })).toBeNull();
   await toggle("Turn on Nodex");
-  expect(lastPolicy()?.providersOff).toEqual([]);
+  expect(lastPolicy()?.nodexOff).toBe(false);
 });
 
 test("asks before turning off what a running chat is spending on", async () => {
@@ -172,7 +172,7 @@ test("asks before turning off what a running chat is spending on", async () => {
       sessionId: "session",
     },
   ];
-  renderPage();
+  renderNodex();
   await toggle("Turn off all Nodex models");
   expect(updateSettings).not.toHaveBeenCalled();
   const dialog = await screen.findByRole("dialog");
@@ -189,7 +189,7 @@ test("asks before turning off what a running chat is spending on", async () => {
     fireEvent.click(within(confirmation).getByRole("button", { name: "Stop and turn off" }));
     await Promise.resolve();
   });
-  expect(lastPolicy()?.providersOff).toEqual(["nodex"]);
+  expect(lastPolicy()?.nodexOff).toBe(true);
 });
 
 test("doesn't interrupt anything when a model nothing is running on turns off", async () => {
@@ -202,23 +202,30 @@ test("doesn't interrupt anything when a model nothing is running on turns off", 
       sessionId: null,
     },
   ];
-  renderPage();
+  renderNodex();
   await toggle("GPT-6.1 Sol");
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(updateSettings).toHaveBeenCalledOnce();
 });
 
-test("filtering opens the cards it matches and hides the rest", async () => {
-  renderPage();
-  expect(
-    screen.getByText("Gemini 3.5 Flash", { selector: "span" }).closest("[data-closed]"),
-  ).not.toBeNull();
+test("an Agent's models open from one row that counts what is on", async () => {
+  renderModels(<InstanceModels instanceId="codex" />);
+  expect(screen.queryByRole("switch", { name: "GPT-5.6 Sol" })).toBeNull();
   await act(async () => {
-    fireEvent.change(screen.getByRole("searchbox", { name: "Filter models" }), {
-      target: { value: "gemini" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: /Models/u }));
     await Promise.resolve();
   });
+  await toggle("GPT-5.6 Sol");
+  expect(lastPolicy()?.exceptions).toEqual(['["codex","gpt-5.6-sol"]']);
+});
+
+test("an Agent without advertised models has no models row", () => {
+  renderModels(<InstanceModels instanceId="claude_work" />);
+  expect(screen.queryByRole("button", { name: /Models/u })).toBeNull();
+});
+
+test("a filter finds models across Nodex and every Agent", () => {
+  renderModels(<ModelFilterResults query="gemini" />);
   expect(screen.getByRole("switch", { name: "Gemini 3.5 Flash" })).toBeDefined();
   expect(screen.queryByText(/Spends your credits/u)).toBeNull();
   expect(screen.queryByRole("switch", { name: "GPT-5.6 Sol" })).toBeNull();
@@ -229,9 +236,9 @@ test("Free only returns OpenCode to its free models", async () => {
     ...DEFAULT_MODEL_POLICY,
     exceptions: ['"unused"', JSON.stringify(["opencode_a", "google/gemini-3.5-flash"])],
   };
-  renderPage();
+  renderModels(<InstanceModels instanceId="opencode_a" />);
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /OpenCode/u }));
+    fireEvent.click(screen.getByRole("button", { name: /Models/u }));
     await Promise.resolve();
   });
   await act(async () => {

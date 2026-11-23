@@ -133,6 +133,19 @@ Settings panels, grouped form rows, and option lists use a **single flat card** 
 }
 ```
 
+### Settings pages read top to bottom
+
+- Open each page with a one-line subtitle saying what it controls.
+- Order groups from the most used to the least; paths, thresholds and diagnostics go last, or
+  under a collapsed Advanced group.
+- Never give a single setting its own page or group; fold it into the nearest owner.
+- Show a status row only when it asks for action. A capability that works shows nothing; the
+  controls that use it are the evidence.
+- Save a preference as the person changes it; a text field saves when it loses focus. Keep an
+  explicit Save only for a draft that must be checked as a whole, such as an Agent profile.
+- Write labels and descriptions in product words, without tool, process, file-format or storage
+  names.
+
 ### Single flat surface — no gradient heroes
 
 Main content areas use a **solid background**, never a gradient or patterned hero. The focus is the content, not the container.

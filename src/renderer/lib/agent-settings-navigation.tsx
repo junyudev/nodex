@@ -6,6 +6,7 @@ import {
 import { createContext, useContext, type ReactNode } from "react";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { providerKeyConnectionIdOfInstanceId } from "../../shared/provider-keys";
+import { spendsNodexCredit } from "../../shared/model-policy";
 import { isAcpAgentsAnchor } from "@/features/acp-agents/acp-agent-model";
 import {
   isProviderKeyAnchor,
@@ -13,6 +14,9 @@ import {
 } from "@/features/provider-keys/provider-key-anchor";
 
 export type AgentSettingsKind = AgentSettingsAnchor;
+
+/** Settings › Agents' first card: Nodex's own models, which spend credits. */
+export const NODEX_MODELS_ANCHOR = "nodex";
 
 /** Opens Settings > Agents at a section or one item in it. */
 type OpenAgentSettings = (kind?: AgentSettingsKind, instanceId?: string) => void;
@@ -24,6 +28,17 @@ export function agentSettingsAnchor(kind: AgentSettingsKind, instanceId?: string
   return section && "profileAnchorPrefix" in section
     ? `${section.profileAnchorPrefix}${instanceId}`
     : kind;
+}
+
+/** Where a provider's models are switched: Nodex's own card, or the card of the Agent running them. */
+export function agentModelsSettingsAnchor(provider: {
+  readonly driver: string;
+  readonly instanceId: string;
+  readonly source?: string | undefined;
+}): string | undefined {
+  if (spendsNodexCredit(provider)) return NODEX_MODELS_ANCHOR;
+  const target = agentSettingsTarget(provider);
+  return target.kind && agentSettingsAnchor(target.kind, target.instanceId);
 }
 
 /** A setup entry may precede the creation of a configured instance. */

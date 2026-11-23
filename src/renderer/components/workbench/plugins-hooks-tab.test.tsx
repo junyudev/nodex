@@ -3,7 +3,7 @@ import { fireEvent } from "@testing-library/react";
 import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetadata";
 import type { HooksListEntry } from "@nodex/codex-app-server-protocol/v2/HooksListEntry";
 import { render } from "../../test/dom";
-import { CodexHooksSettingsView } from "./workbench-hooks-settings-page";
+import { CodexHooksSettingsView } from "./plugins-hooks-tab";
 
 type CommandHookMetadata = Extract<HookMetadata, { handlerType: "command" }>;
 
@@ -42,7 +42,7 @@ function renderView(input?: {
     <CodexHooksSettingsView
       entries={input?.entries ?? []}
       hostId="local"
-      path={input?.path ?? "/settings/hooks-settings?hostId=local"}
+      path={input?.path ?? "/settings/plugins-settings/hooks?hostId=local"}
       projectRoots={["/workspace/nodex"]}
       projectRootLabels={{ "/workspace/nodex": "Nodex" }}
       loading={false}
@@ -73,7 +73,7 @@ describe("Hooks settings", () => {
 
     fireEvent.click(getByText("Nodex"));
     expect(onPathChange).toHaveBeenCalledWith(
-      "/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
+      "/settings/plugins-settings/hooks?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
     );
   });
 
@@ -104,7 +104,7 @@ describe("Hooks settings", () => {
           errors: [],
         },
       ],
-      path: "/settings/hooks-settings?hostId=local&source=user",
+      path: "/settings/plugins-settings/hooks?hostId=local&source=user",
       onToggle,
       onTrust,
     });
@@ -149,7 +149,7 @@ describe("Hooks settings", () => {
     };
     const { getByText } = renderView({
       entries: [{ cwd: "/workspace/nodex", hooks: [mcpHook], warnings: [], errors: [] }],
-      path: "/settings/hooks-settings?hostId=local&source=user",
+      path: "/settings/plugins-settings/hooks?hostId=local&source=user",
     });
 
     fireEvent.click(getByText("Hook 1"));
@@ -168,7 +168,7 @@ describe("Hooks settings", () => {
           errors: [],
         },
       ],
-      path: "/settings/hooks-settings?hostId=local&source=user",
+      path: "/settings/plugins-settings/hooks?hostId=local&source=user",
     });
 
     expect(getByText("Interrupt")).toBeTruthy();

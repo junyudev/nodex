@@ -44,12 +44,17 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("OpenCode", "agent")).toBe(true);
     expect(hasSectionResult("Kimi", "agent")).toBe(true);
     expect(hasSectionResult("Agent Client Protocol", "agent")).toBe(true);
-    expect(hasSectionResult("materialize inflating note", "general-settings")).toBe(true);
-    expect(hasSectionResult("task shorthand", "page")).toBe(true);
+    expect(hasSectionResult("pasted text own file", "editor")).toBe(true);
+    expect(hasSectionResult("task shorthand", "editor")).toBe(true);
     expect(hasSectionResult("auto-create branch detached", "worktrees")).toBe(true);
-    expect(hasSectionResult("CODEX_SOURCE_TREE_PATH", "local-environments")).toBe(true);
+    expect(hasSectionResult("CODEX_SOURCE_TREE_PATH", "worktrees")).toBe(true);
+    expect(hasSectionResult("Your instructions", "chats")).toBe(true);
+    expect(hasSectionResult("Default permissions", "chats")).toBe(true);
+    expect(hasSectionResult("Usage meters", "appearance")).toBe(true);
+    expect(hasSectionResult("Remote access", "remote")).toBe(true);
+    expect(hasSectionResult("Trust", "plugins-settings")).toBe(true);
     expect(hasSectionResult("locked computer", "computer-use")).toBe(true);
-    expect(hasSectionResult("collect unreferenced tombstone", "backups")).toBe(true);
+    expect(hasSectionResult("deleted blocks restored", "backups")).toBe(true);
   });
 
   test("finds settings details by their Chinese labels and English aliases", () => {
@@ -69,7 +74,7 @@ describe("workbench settings search catalog", () => {
     for (const [english, chinese, sectionId] of [
       ["Model prices", "模型价格", "account"],
       ["Dictation dictionary", "听写词典", "voice"],
-      ["Turn models off", "关闭模型", "models"],
+      ["Turn models off", "关闭模型", "agent"],
       ["Routing preferences", "分派偏好", "inbox-settings"],
       ["Password manager", "密码管理器", "browser"],
       ["Add a marketplace", "添加插件市场", "plugins-settings"],
@@ -84,20 +89,20 @@ describe("workbench settings search catalog", () => {
     }
   });
 
-  test("finds conversation import under Conversations and setup copying under Agents", () => {
-    expect(hasSectionResult("codex://threads", "agent-import")).toBe(true);
-    expect(hasSectionResult("Import conversations", "agent-import")).toBe(true);
+  test("finds conversation import under Import and setup copying under Agents", () => {
+    expect(hasSectionResult("codex://threads", "import")).toBe(true);
+    expect(hasSectionResult("Import conversations", "import")).toBe(true);
     expect(hasSectionResult("MCP servers", "agent")).toBe(true);
-    expect(hasSectionResult("MCP servers", "agent-import")).toBe(false);
+    expect(hasSectionResult("MCP servers", "import")).toBe(false);
     expect(hasSectionResult("AGENTS.md", "agent")).toBe(true);
   });
 
-  test("uses runtime project names as hidden local-environment terms", () => {
+  test("uses runtime project names as hidden Worktrees terms", () => {
     const results = searchCatalog("Docs Space");
 
     expect(results.length).toBe(1);
-    expect(results[0]?.sectionId).toBe("local-environments");
-    expect(results[0]?.label).toBe("Environments");
+    expect(results[0]?.sectionId).toBe("worktrees");
+    expect(results[0]?.label).toBe("Worktrees");
   });
 
   test("routes typography to Appearance and expands Advanced only for its own settings", () => {
@@ -150,21 +155,22 @@ describe("workbench settings search catalog", () => {
     expect(settingsSearchAnchor("git", "Commit instructions")).toBeNull();
   });
 
-  test("lands on the General section a search names", () => {
-    const anchors = {
-      "Update channel": "app",
-      "Restart to update": "app",
-      "Queue follow-ups": "chats",
-      Spellcheck: "writing",
-      "Markdown file links": "files-and-links",
-      "Turn completion notifications": "notifications",
-      "Share crash reports": "privacy",
-      Statsig: "privacy",
-      "App server requests": "app-server-diagnostics",
-    };
-    for (const [query, anchor] of Object.entries(anchors)) {
-      expect(hasSectionResult(query, "general-settings")).toBe(true);
-      expect(settingsSearchAnchor("general-settings", query)).toBe(anchor);
+  test("lands on the group a search names", () => {
+    const anchors = [
+      ["Restore windows", "general-settings", "app"],
+      ["Update channel", "general-settings", "about"],
+      ["Restart to update", "general-settings", "about"],
+      ["Turn completion notifications", "general-settings", "notifications"],
+      ["Share crash reports", "general-settings", "privacy"],
+      ["Statsig", "general-settings", "privacy"],
+      ["App server requests", "general-settings", "app-server-diagnostics"],
+      ["Queue follow-ups", "chats", "in-a-chat"],
+      ["Spellcheck", "editor", "typing"],
+      ["Markdown file links", "editor", "files-and-links"],
+    ] as const;
+    for (const [query, sectionId, anchor] of anchors) {
+      expect(hasSectionResult(query, sectionId)).toBe(true);
+      expect(settingsSearchAnchor(sectionId, query)).toBe(anchor);
     }
     expect(settingsSearchAnchor("general-settings", "General")).toBeNull();
   });
@@ -181,11 +187,11 @@ describe("workbench settings search catalog", () => {
     for (const query of ["拼写检查", "spellcheck"]) {
       const [result] = searchWorkbenchSettings(SETTINGS_SECTIONS, SEARCH_CONTEXT, query, intl);
       expect(result).toEqual({
-        sectionId: "general-settings",
-        panelLabel: "常规",
+        sectionId: "editor",
+        panelLabel: "编辑器",
         label: "拼写检查",
       });
-      expect(settingsSearchAnchor("general-settings", query, intl)).toBe("writing");
+      expect(settingsSearchAnchor("editor", query, intl)).toBe("typing");
     }
     for (const query of ["语言", "locale", "简体中文"]) {
       expect(settingsSearchAnchor("general-settings", query, intl)).toBe("app");
@@ -201,19 +207,19 @@ describe("workbench settings search catalog", () => {
     }
   });
 
-  test("finds default permissions on the Agents page without raw Codex config", () => {
+  test("finds default permissions on the Chats page without raw Codex config", () => {
     for (const query of [
       "Default permissions",
       "Full access",
       "Ask for approval",
-      "Subagents can delegate",
+      "Let subagents delegate",
       "nested delegation",
     ]) {
-      expect(hasSectionResult(query, "agent")).toBe(true);
-      expect(settingsSearchAnchor("agent", query)).toBe("default-permissions");
+      expect(hasSectionResult(query, "chats")).toBe(true);
+      expect(settingsSearchAnchor("chats", query)).toBe("permissions");
     }
     for (const query of ["Approval policy", "danger-full-access", "network_access"]) {
-      expect(hasSectionResult(query, "agent")).toBe(false);
+      expect(hasSectionResult(query, "chats")).toBe(false);
     }
   });
 

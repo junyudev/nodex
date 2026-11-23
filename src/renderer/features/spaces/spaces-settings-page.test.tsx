@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vite-plus/test";
 import { renderWithQuery } from "@/test/query";
-import { SpacesSettingsPage } from "./spaces-settings-page";
+import { RemoteSettingsPage } from "./spaces-settings-page";
 
 const team = {
   spaceId: "team",
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 test("a Member renames themselves in People and is told why Core would refuse a name", async () => {
   admin.renameMember.mockResolvedValue(member("member:jun", "Jun Yu", "member"));
-  renderWithQuery(<SpacesSettingsPage />);
+  renderWithQuery(<RemoteSettingsPage />);
   // Only an Owner renames the Space; everyone names themselves.
   expect(screen.queryByRole("button", { name: "Rename this Space" })).toBeNull();
   await act(async () => {

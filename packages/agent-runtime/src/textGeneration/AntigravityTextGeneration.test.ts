@@ -587,7 +587,7 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
             : Effect.fail(
                 new TextGenerationError({
                   operation: "structured",
-                  detail: "Gemini test is off in Settings → Models.",
+                  detail: "Gemini test is off in Settings → Agents.",
                   cause: { code: "model_off" },
                 }),
               ),

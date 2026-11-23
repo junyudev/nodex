@@ -19,6 +19,8 @@ import {
   GlobeIcon as Globe16Icon,
 } from "./customize-action-icons";
 import {
+  ChatBubble16Glyph,
+  ClockArrowRotateCounterclockwise16Glyph,
   PlaySmFill16Glyph,
   Keyboard16Glyph,
   CommitSimple16Glyph,
@@ -491,8 +493,112 @@ function AgentPolicyGlyph({ className }: IconProps) {
   );
 }
 
-export function SettingsAgentIcon({ className }: IconProps) {
+/** A coding Agent Nodex knows only by protocol, such as an ACP Agent, or one without its own mark. */
+export function GenericAgentIcon({ className }: IconProps) {
   return <AgentPolicyGlyph className={className ?? "icon-sm inline-block align-middle"} />;
+}
+
+/** Settings › Agents: the Agents and models Nodex can run. */
+export function SettingsAgentsIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      className={className ?? "icon-sm inline-block align-middle"}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <IconSilhouette>
+        <rect
+          x="3.75"
+          y="6.25"
+          width="12.5"
+          height="10"
+          rx="3"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M10 6.25V4M1.75 10.25v2.5M18.25 10.25v2.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <circle cx="10" cy="3" r="1.25" fill="currentColor" />
+        <circle cx="7.5" cy="11.25" r="1.25" fill="currentColor" />
+        <circle cx="12.5" cy="11.25" r="1.25" fill="currentColor" />
+      </IconSilhouette>
+    </svg>
+  );
+}
+
+/** Settings › Remote: this computer reached from a phone or another computer. */
+export function SettingsRemoteIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      className={className ?? "icon-sm inline-block align-middle"}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <IconSilhouette>
+        <path
+          d="M11.25 12.5H4.25a1.5 1.5 0 0 1-1.5-1.5V5.25a1.5 1.5 0 0 1 1.5-1.5h9a1.5 1.5 0 0 1 1.5 1.5v1M1.5 15.25h9.75"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <rect
+          x="13.25"
+          y="8.25"
+          width="5"
+          height="8.5"
+          rx="1.25"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+      </IconSilhouette>
+    </svg>
+  );
+}
+
+/** Settings › Chats: how chats work with you. */
+export function SettingsChatsIcon({ className }: IconProps) {
+  return (
+    <ChatBubble16Glyph
+      width={20}
+      height={20}
+      className={className ?? "icon-sm inline-block align-middle"}
+    />
+  );
+}
+
+/** Settings › Editor: typing, pasting and links in Pages and chats. */
+export function SettingsEditorIcon({ className }: IconProps) {
+  return (
+    <TextFormat20Glyph
+      width={20}
+      height={20}
+      className={className ?? "icon-sm inline-block align-middle"}
+    />
+  );
+}
+
+/** Settings › Backups: snapshots to restore from. */
+export function SettingsBackupsIcon({ className }: IconProps) {
+  return (
+    <ClockArrowRotateCounterclockwise16Glyph
+      width={20}
+      height={20}
+      className={className ?? "icon-sm inline-block align-middle"}
+    />
+  );
 }
 
 function WorktreeGlyph({ className }: IconProps) {

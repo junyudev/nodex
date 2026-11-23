@@ -71,7 +71,7 @@ test("replaces an unsaved instruction draft when reopened settings supply a new 
 });
 
 test.each(["saved", "failed"])(
-  "keeps instruction editing disabled until a save has %s",
+  "saves instructions when the field loses focus and keeps editing disabled until the save has %s",
   async (outcome) => {
     const action = deferred<typeof settings>();
     updateGitSettings.mockReturnValueOnce(action.promise);
@@ -83,7 +83,7 @@ test.each(["saved", "failed"])(
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(view.getAllByRole("button", { name: "Save" })[0]!);
+      fireEvent.blur(input);
       await Promise.resolve();
     });
     expect(updateGitSettings).toHaveBeenCalledWith({ commitInstructions: "Updated instructions" });
@@ -96,9 +96,5 @@ test.each(["saved", "failed"])(
     });
     await waitFor(() => expect(input).toHaveProperty("disabled", false));
     expect(input).toHaveProperty("value", "Updated instructions");
-    expect(view.getAllByRole("button", { name: "Save" })[0]).toHaveProperty(
-      "disabled",
-      outcome === "saved",
-    );
   },
 );

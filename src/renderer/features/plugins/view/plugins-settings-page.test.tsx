@@ -49,14 +49,25 @@ const figma = pluginRow({
   selector: { marketplacePath: "/marketplace.json", pluginName: "figma" },
 });
 
-function renderPage() {
+const onHooksSelectedChange = vi.fn();
+
+function renderPage(hooksSelected = false) {
   const navigation: PluginsSettingsNavigation = {
     projectId: null,
     onOpenPluginSettings: vi.fn(),
     onOpenCustomize: vi.fn(),
     onStartChat: vi.fn(),
   };
-  render(<PluginsSettingsPage navigation={navigation} />);
+  render(
+    <PluginsSettingsPage
+      navigation={navigation}
+      hooks={{
+        selected: hooksSelected,
+        onSelectedChange: onHooksSelectedChange,
+        content: <p>Hooks by source</p>,
+      }}
+    />,
+  );
   return navigation;
 }
 
@@ -68,6 +79,7 @@ async function click(element: Element) {
 }
 
 beforeEach(() => {
+  onHooksSelectedChange.mockClear();
   vi.mocked(useInstalledPlugins).mockReturnValue({
     data: [figma],
     isPending: false,
@@ -124,8 +136,16 @@ it("counts installed plugins and MCP servers and hides other empty tabs", () => 
   renderPage();
 
   const tabs = screen.getByRole("group", { name: "Manage extensions" });
-  expect(tabs.textContent).toBe("Plugins1MCPs1");
+  expect(tabs.textContent).toBe("Plugins1MCPs1Hooks");
   expect(screen.getByRole("button", { name: /Plugins/, pressed: true })).toBeTruthy();
+});
+
+it("shows Hooks as a tab whose route selects it", async () => {
+  renderPage(true);
+  expect(screen.getByText("Hooks by source")).toBeDefined();
+  expect(screen.queryByLabelText(/^Search /u)).toBeNull();
+  await click(screen.getByRole("button", { name: /^Plugins/u, pressed: false }));
+  expect(onHooksSelectedChange).toHaveBeenLastCalledWith(false);
 });
 
 it("switches a plugin on without opening it", async () => {
