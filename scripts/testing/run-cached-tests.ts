@@ -27,6 +27,7 @@ import {
   savePass,
   workspaceInputs,
   writeCacheReport,
+  type PassLookup,
 } from "./test-cache-store.ts";
 import type { TestEvidence } from "./test-cache-graph.ts";
 
@@ -34,14 +35,86 @@ const GiB = 1024 ** 3;
 export const validationConcurrency = (cores: number, memoryBytes: number) =>
   Math.max(1, Math.min(6, Math.floor(cores / 2), Math.floor(memoryBytes / (6 * GiB))));
 
-type SuiteContext = { repositoryRoot: string; env: NodeJS.ProcessEnv; signal: AbortSignal };
+interface CacheExclusion {
+  readonly reason: string;
+  readonly input?: string;
+}
+
+export interface CachedSuiteReport {
+  readonly suite: CacheSuite;
+  readonly selected: number;
+  readonly hits: number;
+  readonly ran: number;
+  readonly cacheable: number;
+  readonly uncacheable: readonly (CacheExclusion & { readonly count: number })[];
+  readonly missCauses: readonly { input: string; count: number }[];
+  readonly unrecorded: number;
+  readonly globalKeyMisses: number;
+  readonly lookupMs: number;
+}
+
+type SuiteContext = {
+  repositoryRoot: string;
+  env: NodeJS.ProcessEnv;
+  signal: AbortSignal;
+  onReport?: (report: CachedSuiteReport) => void;
+};
+
+interface CacheRun {
+  selected: readonly string[];
+  hits: readonly string[];
+  ran: readonly string[];
+  lookupMs?: number;
+  readonly passes: Set<string>;
+  readonly lookups: Map<string, PassLookup>;
+  readonly exclusions: Map<string, CacheExclusion>;
+}
+
+function summarizeRun(suite: CacheSuite, run: CacheRun, lookupMs: number): CachedSuiteReport {
+  const causes = new Map<string, number>();
+  let unrecorded = 0;
+  let globalKeyMisses = 0;
+  for (const file of run.passes) {
+    const lookup = run.lookups.get(file);
+    if (lookup?.kind === "unrecorded") unrecorded++;
+    if (lookup?.kind === "globalKeyMiss") globalKeyMisses++;
+    if (lookup?.kind !== "changed") continue;
+    for (const input of lookup.inputs) causes.set(input, (causes.get(input) ?? 0) + 1);
+  }
+  const exclusions = new Map<string, CacheExclusion & { count: number }>();
+  for (const { reason, input } of run.exclusions.values()) {
+    const key = JSON.stringify([reason, input]);
+    const group = exclusions.get(key);
+    if (group) group.count++;
+    else exclusions.set(key, { reason, input, count: 1 });
+  }
+  return {
+    suite,
+    selected: run.selected.length,
+    hits: run.hits.length,
+    ran: run.ran.length,
+    cacheable: run.passes.size,
+    uncacheable: [...exclusions.values()].sort(
+      (a, b) =>
+        b.count - a.count ||
+        a.reason.localeCompare(b.reason) ||
+        (a.input ?? "").localeCompare(b.input ?? ""),
+    ),
+    missCauses: [...causes]
+      .map(([input, count]) => ({ input, count }))
+      .sort((a, b) => b.count - a.count || a.input.localeCompare(b.input)),
+    unrecorded,
+    globalKeyMisses,
+    lookupMs,
+  };
+}
 
 export async function runCachedSuite(
   suite: CacheSuite,
   filters: readonly string[],
   context: SuiteContext,
 ): Promise<number> {
-  const { repositoryRoot: root, env, signal } = context;
+  const { env, onReport } = context;
   const tier = resolveVitestTestTier(env.NODEX_TEST_TIER);
   const runUncached = () =>
     runTests({ suites: [suite], tier, related: false, args: filters }, context);
@@ -55,7 +128,34 @@ export async function runCachedSuite(
     return runUncached();
 
   const started = performance.now();
-  const commandContext = { cwd: root, env: { ...env, NODEX_TEST_TIER: tier }, signal };
+  const run: CacheRun = {
+    selected: [],
+    hits: [],
+    ran: [],
+    passes: new Set(),
+    lookups: new Map(),
+    exclusions: new Map(),
+  };
+  let fallback = false;
+  try {
+    const result = await runCachedFlow(suite, filters, context, run, started);
+    if (result !== undefined) return result;
+    fallback = true;
+  } finally {
+    if (!fallback)
+      onReport?.(summarizeRun(suite, run, run.lookupMs ?? performance.now() - started));
+  }
+  return runUncached();
+}
+
+async function runCachedFlow(
+  suite: CacheSuite,
+  filters: readonly string[],
+  { repositoryRoot: root, env, signal }: SuiteContext,
+  run: CacheRun,
+  started: number,
+): Promise<number | undefined> {
+  const commandContext = { cwd: root, env: { ...env, NODEX_TEST_TIER: "default" }, signal };
   const directory = cacheDirectory(root, env, suite);
   const resultsRoot = path.dirname(path.dirname(directory));
   const [{ files: selected, isolated }, workspace, epoch, history] = await Promise.all([
@@ -65,30 +165,39 @@ export async function runCachedSuite(
     readCacheReport(root, suite),
   ]);
   // Skipping files changes the shared worker state when isolation is disabled.
-  if (!isolated) return runUncached();
+  if (!isolated || selected.length === 0) return undefined;
+  run.selected = selected;
   const hash = fileHasher(root);
   const globalKey = await globalCacheKey(root, suite, commandContext.env, epoch, workspace, hash);
-  if (!globalKey || selected.length === 0) return runUncached();
+  if (!globalKey) return undefined;
 
   const { cacheable, uncached } = partitionCacheFiles(suite, selected);
-  const found = await Promise.all(
-    cacheable.map(async (file) =>
-      (await findPass(directory, file, globalKey, hash)) ? file : undefined,
-    ),
-  ).catch(async (error: unknown) => {
+  for (const file of uncached) run.exclusions.set(file, { reason: "path policy" });
+  try {
+    const lookups = await Promise.all(
+      cacheable.map(
+        async (file) => [file, await findPass(directory, file, globalKey, hash)] as const,
+      ),
+    );
+    for (const [file, lookup] of lookups) {
+      run.lookups.set(file, lookup);
+      if (lookup.kind === "hit") run.passes.add(file);
+    }
+  } catch (error) {
     if (!(error instanceof CorruptCachedPass)) throw error;
     await invalidateCache(directory);
     process.stderr.write(
       `[test-cache] Audit failed for ${error.message}: corrupted record. Invalidated ${suite} cached passes.\n`,
     );
-    return undefined;
-  });
-  if (!found) return 1;
-  const hits = new Set(found.filter((file) => file !== undefined));
-  const [audit] = chooseCacheAudits([...hits], randomUUID(), history.auditedAt);
-  const batch = selected.filter((file) => !hits.has(file) || file === audit);
+    return 1;
+  }
+  const [audit] = chooseCacheAudits([...run.passes], randomUUID(), history.auditedAt);
+  const batch = selected.filter((file) => !run.passes.has(file) || file === audit);
+  const skipped = selected.filter((file) => run.passes.has(file) && file !== audit);
+  const lookupMs = performance.now() - started;
+  run.lookupMs = lookupMs;
   process.stdout.write(
-    `[test-cache] ${suite}: ${hits.size} hits, ${batch.length} files to run${audit ? " including audit " + audit : ""} (${((performance.now() - started) / 1_000).toFixed(2)}s lookup)\n`,
+    `[test-cache] ${suite}: ${skipped.length} hits, ${batch.length} files to run${audit ? " including audit " + audit : ""} (${(lookupMs / 1_000).toFixed(2)}s lookup)\n`,
   );
 
   const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-cache-"));
@@ -107,6 +216,12 @@ export async function runCachedSuite(
       signal,
     });
     const batchStarted = Date.now();
+    if (signal.aborted) return 130;
+    run.hits = skipped;
+    run.ran = batch;
+    for (const file of batch) {
+      if (!run.exclusions.has(file)) run.exclusions.set(file, { reason: "missing test evidence" });
+    }
     const result = await runCommand(
       runtimeCommand(
         suite,
@@ -126,8 +241,14 @@ export async function runCachedSuite(
     const evidence = await readFile(path.join(staging, "evidence.json"), "utf8")
       .then((content) => JSON.parse(content) as TestEvidence[])
       .catch(() => undefined);
+    for (const { file, reason, input, deps } of evidence ?? []) {
+      if (reason || !deps)
+        run.exclusions.set(file, { reason: reason ?? "missing module graph", input });
+      else run.exclusions.delete(file);
+    }
     const audited = evidence?.find(({ file }) => file === audit);
     if (audit && (!audited?.passed || !audited.deps)) {
+      run.passes.clear();
       await invalidateCache(directory);
       process.stderr.write(
         `[test-cache] Audit failed for ${audit}. Invalidated ${suite} cached passes.\n`,
@@ -135,6 +256,7 @@ export async function runCachedSuite(
       return result.exitCode || 1;
     }
     if ((await cacheEpoch(directory)) !== epoch) {
+      run.passes.clear();
       process.stderr.write(`[test-cache] ${suite} passes were invalidated during this run.\n`);
       return result.exitCode || 1;
     }
@@ -142,31 +264,28 @@ export async function runCachedSuite(
 
     const currentWorkspace = await workspaceInputs(root, resultsRoot);
     const stable = currentWorkspace.topology === workspace.topology && (await hash.unchanged());
-    const reasons = new Map<string, number>();
-    const eligible = new Set(hits);
+    if (!stable) run.passes.clear();
     for (const entry of evidence) {
-      if (entry.file === audit) continue;
-      const deps = entry.deps;
-      const reason = entry.reason ?? (!deps ? "missing module graph" : undefined);
-      if (reason || !deps) {
-        reasons.set(
-          reason ?? "missing module graph",
-          (reasons.get(reason ?? "missing module graph") ?? 0) + 1,
-        );
+      if (entry.file === audit || !entry.deps || entry.reason) continue;
+      if (!stable) {
+        run.exclusions.set(entry.file, { reason: "workspace inputs changed" });
         continue;
       }
-      eligible.add(entry.file);
-      if (!stable) continue;
       const inputs = await Promise.all(
-        deps.map(async (file) => [file, await hash(file, batchStarted)] as const),
+        entry.deps.map(async (file) => [file, await hash(file, batchStarted)] as const),
       );
-      if (inputs.some(([, content]) => content === undefined)) continue;
+      const recorded = inputs.filter(
+        (pair): pair is readonly [string, string] => pair[1] !== undefined,
+      );
+      if (recorded.length !== inputs.length) {
+        run.exclusions.set(entry.file, { reason: "dependency unavailable or changed" });
+        continue;
+      }
       await savePass(directory, entry.file, {
         globalKey,
-        deps: Object.fromEntries(
-          inputs.filter((pair): pair is readonly [string, string] => pair[1] !== undefined),
-        ),
+        deps: Object.fromEntries(recorded),
       });
+      run.passes.add(entry.file);
     }
     const timings = { ...history.timings };
     const auditedAt = { ...history.auditedAt };
@@ -174,16 +293,17 @@ export async function runCachedSuite(
       if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
     }
     if (audit) auditedAt[audit] = Date.now();
-    const previous = cacheReach(selected, eligible, history.timings ?? {});
+    const previous = cacheReach(selected, run.passes, history.timings ?? {});
     const usePrevious = previous.timed === selected.length;
-    const reach = usePrevious ? previous : cacheReach(selected, eligible, timings);
+    const reach = usePrevious ? previous : cacheReach(selected, run.passes, timings);
     const share =
       reach.timeShare === undefined
         ? ""
         : `, ${(100 * reach.timeShare).toFixed(1)}% of ${usePrevious ? "previous" : "observed"} file time` +
           (reach.timed < selected.length ? ` (${reach.timed}/${selected.length} timed)` : "");
+    const summary = summarizeRun(suite, run, lookupMs);
     await writeCacheReport(root, suite, {
-      hits: [...hits],
+      hits: run.hits,
       evidence: evidence.map(({ file, passed, reason, input, durationMs }) => ({
         file,
         passed,
@@ -193,18 +313,20 @@ export async function runCachedSuite(
       })),
       timings,
       auditedAt,
+      summary,
     });
-    const missing = batch.length - evidence.length;
-    if (missing > 0) reasons.set("missing test evidence", missing);
+    const reasons = new Map<string, number>();
+    for (const { reason, count } of summary.uncacheable)
+      reasons.set(reason, (reasons.get(reason) ?? 0) + count);
     process.stdout.write(
-      `[test-cache] ${suite}: ${eligible.size}/${selected.length} cacheable (${((eligible.size / selected.length) * 100).toFixed(1)}% of files${share}); ${
+      `[test-cache] ${suite}: ${summary.cacheable}/${summary.selected} cacheable (${((summary.cacheable / summary.selected) * 100).toFixed(1)}% of files${share}); ${
         [...reasons]
           .sort((left, right) => right[1] - left[1])
           .map(([reason, count]) => `${reason} (${count})`)
           .join(", ") || `${uncached.length} excluded`
       }\n`,
     );
-    if (!stable && hits.size > 0) {
+    if (!stable && audit) {
       process.stderr.write("[test-cache] Workspace inputs changed during validation.\n");
       return result.exitCode || 1;
     }

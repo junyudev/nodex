@@ -77,18 +77,21 @@ export async function discoverSuiteManifest(
     const result = await runCommand(command);
     if (result.exitCode !== 0)
       throw new Error("Test discovery failed for " + suite + " (exit " + result.exitCode + ").");
-    const { files, isolated } = JSON.parse(await readFile(output, "utf8")) as {
+    const { files, isolated, setupFiles } = JSON.parse(await readFile(output, "utf8")) as {
       files?: unknown;
       isolated?: unknown;
+      setupFiles?: unknown;
     };
     if (
       typeof isolated !== "boolean" ||
       !Array.isArray(files) ||
-      !files.every((file): file is string => typeof file === "string")
+      !files.every((file): file is string => typeof file === "string") ||
+      !Array.isArray(setupFiles) ||
+      !setupFiles.every((file): file is string => typeof file === "string")
     ) {
       throw new Error("Invalid test discovery result for " + suite + ".");
     }
-    return { files, isolated };
+    return { files, isolated, setupFiles };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

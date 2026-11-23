@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache.ts";
+import type { CachedSuiteReport } from "./run-cached-tests.ts";
 import type { TestEvidence } from "./test-cache-graph.ts";
 import type { CacheSuite } from "./test-cache-policy.ts";
 
@@ -224,6 +225,7 @@ export const writeCacheReport = (
   suite: CacheSuite,
   report: CacheReportHistory & {
     hits: readonly string[];
+    summary: CachedSuiteReport;
     evidence: readonly Omit<TestEvidence, "deps">[];
   },
 ) => publish(reportPath(root, suite), JSON.stringify(report));
@@ -231,25 +233,32 @@ export const writeCacheReport = (
 export const invalidateCache = (directory: string) =>
   publish(path.join(directory, "epoch"), randomUUID());
 
-export async function matchesPass(
+async function changedPassInputs(
   pass: CachedPass,
   globalKey: string,
   file: string,
-  hash: (file: string) => Promise<string | undefined>,
+  hash: ReturnType<typeof fileHasher>,
 ) {
-  if (pass.globalKey !== globalKey || typeof pass.deps?.[file] !== "string") return false;
+  if (pass?.globalKey !== globalKey || typeof pass.deps?.[file] !== "string")
+    throw new CorruptCachedPass(file);
+  const changed: string[] = [];
   for (const [dependency, expected] of Object.entries(pass.deps)) {
     if (
       typeof expected !== "string" ||
       path.isAbsolute(dependency) ||
       path.posix.normalize(dependency) !== dependency ||
-      dependency.startsWith("../") ||
-      (await hash(dependency)) !== expected
+      dependency === ".." ||
+      dependency.startsWith("../")
     )
-      return false;
+      throw new CorruptCachedPass(file);
+    if ((await hash(dependency)) !== expected) changed.push(dependency);
   }
-  return true;
+  return changed;
 }
+
+export type PassLookup =
+  | { readonly kind: "hit" | "unrecorded" | "globalKeyMiss" }
+  | { readonly kind: "changed"; readonly inputs: readonly string[] };
 
 const entriesForFile = (directory: string, file: string) => path.join(directory, digest(file));
 const maxEntries = 4;
@@ -261,12 +270,16 @@ export async function findPass(
   file: string,
   key: string,
   hash: ReturnType<typeof fileHasher>,
-) {
+): Promise<PassLookup> {
   const base = entriesForFile(directory, file);
-  const entries = await readdir(base).catch(() => []);
-  for (const name of entries.filter(
-    (entry) => entry.startsWith(key + "-") && entry.endsWith(".json"),
-  )) {
+  const entries = (await readdir(base).catch(() => [])).filter((name) => name.endsWith(".json"));
+  let closest: string[] | undefined;
+  let otherGlobalKey = false;
+  for (const name of entries) {
+    if (!name.startsWith(key + "-")) {
+      otherGlobalKey = true;
+      continue;
+    }
     const record = path.join(base, name);
     const content = await readFile(record, "utf8").catch((error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
@@ -274,14 +287,17 @@ export async function findPass(
     });
     if (content === undefined) continue;
     if (name !== key + "-" + digest(content) + ".json") throw new CorruptCachedPass(file);
-    const pass = JSON.parse(content) as CachedPass;
-    if (pass && (await matchesPass(pass, key, file, hash))) {
+    const changed = await changedPassInputs(JSON.parse(content) as CachedPass, key, file, hash);
+    if (changed.length === 0) {
       const now = new Date();
       await utimes(record, now, now).catch(() => undefined);
-      return true;
+      return { kind: "hit" };
     }
+    // Compare against the closest retained pass so old edits are not counted again.
+    if (!closest || changed.length < closest.length) closest = changed;
   }
-  return false;
+  if (closest) return { kind: "changed", inputs: closest };
+  return { kind: otherGlobalKey ? "globalKeyMiss" : "unrecorded" };
 }
 
 export async function savePass(directory: string, file: string, pass: CachedPass) {

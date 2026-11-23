@@ -1,11 +1,17 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import type { TestModule } from "vite-plus/test/node";
 import { mergePathLists } from "./check-changed.ts";
 import { validationConcurrency } from "./run-cached-tests.ts";
-import { cacheReach, chooseCacheAudits, partitionCacheFiles } from "./test-cache-policy.ts";
+import { discoverSuiteManifest } from "./runtime.ts";
+import {
+  CACHE_SUITES,
+  cacheReach,
+  chooseCacheAudits,
+  partitionCacheFiles,
+} from "./test-cache-policy.ts";
 import {
   builtinReason,
   dependencyReader,
@@ -18,7 +24,6 @@ import {
   fileHasher,
   findPass,
   globalCacheKey,
-  matchesPass,
   savePass,
   workspaceInputs,
 } from "./test-cache-store.ts";
@@ -82,21 +87,44 @@ async function passFor(root: string, inputs: readonly string[] = []) {
 }
 
 describe("test result cache", () => {
-  it("requires the global key and each dependency to match", async () => {
-    const file = "src/shared/example.test.ts";
-    const current: Record<string, string> = {
-      [file]: "test",
-      "src/shared/dependency.ts": "source",
-    };
-    const pass = { globalKey: "global", deps: { ...current } };
-    const hash = (dependency: string) => Promise.resolve(current[dependency]);
-    expect(await matchesPass(pass, "global", file, hash)).toBe(true);
-    expect(await matchesPass(pass, "other", file, hash)).toBe(false);
-    current["src/shared/dependency.ts"] = "changed";
-    expect(await matchesPass(pass, "global", file, hash)).toBe(false);
-    delete current["src/shared/dependency.ts"];
-    expect(await matchesPass(pass, "global", file, hash)).toBe(false);
-    expect(await matchesPass({ ...pass, deps: {} }, "global", file, hash)).toBe(false);
+  it("explains misses using the closest pass under the current global key", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-lookup-"));
+    const file = "sample.test.ts";
+    const asset = "kernel.wasm";
+    const dependency = "dependency.ts";
+    const lookup = (key = "key") => findPass(root, file, key, fileHasher(root));
+    try {
+      await writeInputs(root, { [file]: "test", [asset]: "old", [dependency]: "old" });
+      expect(await lookup()).toEqual({ kind: "unrecorded" });
+      await savePass(root, file, await passFor(root, [file, asset, dependency]));
+      expect(await lookup("other")).toEqual({ kind: "globalKeyMiss" });
+      expect(await lookup()).toEqual({ kind: "hit" });
+
+      await writeFile(path.join(root, asset), "new bytes");
+      await rm(path.join(root, dependency));
+      expect(await lookup()).toEqual({ kind: "changed", inputs: [asset, dependency] });
+      await writeFile(path.join(root, dependency), "new source");
+      await savePass(root, file, await passFor(root, [file, asset, dependency]));
+      await writeFile(path.join(root, asset), "newer bytes");
+      expect(await lookup()).toEqual({ kind: "changed", inputs: [asset] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(CACHE_SUITES)("keeps every %s setup file eligible for caching", async (suite) => {
+    const root = path.resolve(import.meta.dirname, "../..");
+    const { setupFiles } = await discoverSuiteManifest(suite, [], false, {
+      cwd: root,
+      env: process.env,
+    });
+    const rejected = [];
+    for (const setup of setupFiles) {
+      const file = path.relative(root, setup);
+      const reason = sourceReason(file, await readFile(setup, "utf8"), suite === "renderer");
+      if (reason) rejected.push(`${file}: ${reason}`);
+    }
+    expect(rejected, `Ineligible ${suite} setup files disable test result caching`).toEqual([]);
   });
 
   it("shares workspace identity across checkouts with different local artifacts", async () => {
@@ -216,10 +244,13 @@ describe("test result cache", () => {
       const unrelatedEvidence = await read(testModule(root, unrelated), project);
       await savePass(root, dependent, await passFor(root, evidence.deps));
       await savePass(root, unrelated, await passFor(root, unrelatedEvidence.deps));
-      expect(await findPass(root, dependent, "key", fileHasher(root))).toBe(true);
+      expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({ kind: "hit" });
       await writeFile(path.join(root, helper), "export const run = 2;");
-      expect(await findPass(root, dependent, "key", fileHasher(root))).toBe(false);
-      expect(await findPass(root, unrelated, "key", fileHasher(root))).toBe(true);
+      expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({
+        kind: "changed",
+        inputs: [helper],
+      });
+      expect(await findPass(root, unrelated, "key", fileHasher(root))).toEqual({ kind: "hit" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -253,15 +284,16 @@ describe("test result cache", () => {
           project,
         );
         expect(evidence.deps).toEqual([dependent, input].sort());
-        const pass = await passFor(root, evidence.deps);
-        const independentPass = await passFor(
-          root,
-          (await read(testModule(root, unrelated), project)).deps,
-        );
-        expect(await matchesPass(pass, "key", dependent, fileHasher(root))).toBe(true);
+        await savePass(root, dependent, await passFor(root, evidence.deps));
+        const unrelatedEvidence = await read(testModule(root, unrelated), project);
+        await savePass(root, unrelated, await passFor(root, unrelatedEvidence.deps));
+        expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({ kind: "hit" });
         await writeFile(path.join(root, input), source.replace("1", "2"));
-        expect(await matchesPass(pass, "key", dependent, fileHasher(root))).toBe(false);
-        expect(await matchesPass(independentPass, "key", unrelated, fileHasher(root))).toBe(true);
+        expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({
+          kind: "changed",
+          inputs: [input],
+        });
+        expect(await findPass(root, unrelated, "key", fileHasher(root))).toEqual({ kind: "hit" });
       } finally {
         await rm(root, { recursive: true, force: true });
       }

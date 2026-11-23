@@ -30,7 +30,10 @@ export async function discoverTests(suite: string, args: readonly string[], rela
         !project.config.browser.enabled &&
         project.config.experimental.viteModuleRunner !== false,
     );
-    return { files, isolated };
+    const setupFiles = [
+      ...new Set(context.projects.flatMap((project) => project.config.setupFiles)),
+    ];
+    return { files, isolated, setupFiles };
   } finally {
     await context.close();
   }
