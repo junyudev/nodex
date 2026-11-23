@@ -1,5 +1,10 @@
 import { agentProfileInput } from "../../shared/agents/profiles";
-import { claudeProfile, openCodeProfile } from "../../shared/agents/profile.test-fixtures";
+import { antigravityAgent } from "../../shared/agents/antigravity";
+import {
+  antigravityProfile,
+  claudeProfile,
+  openCodeProfile,
+} from "../../shared/agents/profile.test-fixtures";
 import { randomUUID } from "node:crypto";
 import {
   encodeState,
@@ -944,18 +949,18 @@ describe("ApplicationSettings", () => {
         input: {
           instances: [
             {
-              id: "claude-main",
-              agentDefinitionId: "claude-agent-acp",
-              displayName: "Claude Agent",
+              id: "qoder-main",
+              agentDefinitionId: "qoder",
+              displayName: "Qoder",
               source: {
                 kind: "local",
                 executable: "/usr/local/bin/node",
-                args: [path.join(root, "claude-agent-acp/dist/index.js")],
+                args: [path.join(root, "qoder/dist/index.js")],
               },
               environment: [],
               customModels: [],
               enabled: true,
-              credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
+              credentials: { kind: "isolated-home", home: path.join(root, "qoder-home") },
               proxy: "inherit-host",
             },
           ],
@@ -964,18 +969,18 @@ describe("ApplicationSettings", () => {
 
       assert.deepEqual(updated.acpAgents.instances, [
         {
-          id: "claude-main",
-          agentDefinitionId: "claude-agent-acp",
-          displayName: "Claude Agent",
+          id: "qoder-main",
+          agentDefinitionId: "qoder",
+          displayName: "Qoder",
           source: {
             kind: "local",
             executable: "/usr/local/bin/node",
-            args: [path.join(root, "claude-agent-acp/dist/index.js")],
+            args: [path.join(root, "qoder/dist/index.js")],
           },
           environment: [],
           customModels: [],
           enabled: true,
-          credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
+          credentials: { kind: "isolated-home", home: path.join(root, "qoder-home") },
           proxy: "inherit-host",
         },
       ]);
@@ -1326,7 +1331,12 @@ it.effect("serializes different driver writes through one Profile document", () 
       { concurrency: "unbounded" },
     );
     const snapshot = yield* settings.snapshot();
-    assert.deepEqual(snapshot.agentProfiles, [claude, opencode]);
+    // Antigravity keeps its default profile, which uses agy on this computer.
+    assert.deepEqual(snapshot.agentProfiles, [
+      claude,
+      antigravityProfile({ id: antigravityAgent.profile.initialId }),
+      opencode,
+    ]);
     assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).unrelated, { present: true });
   }),
 );
