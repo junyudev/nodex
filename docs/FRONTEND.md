@@ -302,6 +302,12 @@ measured vertical caption clearance. See [Windows host behavior](product-specs/w
   local clipping or ownership boundary requires otherwise. Fix pointer/focus
   ownership at the responsible DOM layer; do not mask it with arbitrary z-index
   escalation or full-surface pointer overlays.
+- React bubbles events along the component tree, through portals. A handler on
+  a container that infers where the person is working (activating a group,
+  pinning a preview, claiming keyboard navigation, submitting, touching an
+  activation budget) acts only on input inside its own DOM, checked with
+  `isEventWithinCurrentTarget`. Menus move real focus on every hovered row, so
+  an unguarded focus capture runs once per row.
 - Shared dialogs own the named modal layer above editor chrome and establish a
   `NodexFloatingLayerProvider` for their content. Their portalled Dropdown,
   Popover, ContextMenu, HoverCard, and Tooltip descendants derive the next

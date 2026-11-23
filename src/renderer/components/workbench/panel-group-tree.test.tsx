@@ -1,5 +1,6 @@
 import { fireEvent } from "@testing-library/react";
 import { act } from "react";
+import { createPortal } from "react-dom";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { PanelGroupTree } from "./panel-group-tree";
 import {
@@ -272,5 +273,66 @@ describe("PanelGroupTree", () => {
     expect(rightLeaf?.querySelector('[data-testid="after-list:leaf:right"]') !== null).toBe(true);
     expect(leftLeaf?.querySelector('[data-testid="after-tabs:main"]') !== null).toBe(true);
     expect(rightLeaf?.querySelector('[data-testid="after-tabs:leaf:right"]') !== null).toBe(true);
+  });
+
+  test("only input inside a leaf's own DOM focuses or activates its group", async () => {
+    const layout = splitWorkbenchPanelLeaf(makeWorkbenchPanelLayout(["one", "two"], "one"), {
+      leafId: "main",
+      side: "right",
+      tabId: "two",
+      newLeafId: "leaf:right",
+      newBranchId: "branch:root",
+    });
+    const onFocusGroup = vi.fn();
+    const onActivateGroup = vi.fn();
+    const view = render(
+      <PanelGroupTree
+        sessionId="session-1"
+        panelId="right"
+        layout={{ ...layout, activeLeafId: "main" }}
+        tabItemsByLeafId={{
+          main: [makeTab("one", "One")],
+          "leaf:right": [
+            {
+              ...makeTab("two", "Two"),
+              renderPanel: () => (
+                <>
+                  <button type="button">Inside</button>
+                  {createPortal(<button type="button">Menu row</button>, document.body)}
+                </>
+              ),
+            },
+          ],
+        }}
+        activeTabIdsByLeafId={{ main: "one", "leaf:right": "two" }}
+        renderEmptyLeaf={(leafId) => <div>Empty {leafId}</div>}
+        onSelectTab={() => undefined}
+        onCloseTab={() => undefined}
+        onReorderTab={() => undefined}
+        onMoveTab={() => undefined}
+        onSplitGroup={() => undefined}
+        onFocusGroup={onFocusGroup}
+        onActivateGroup={onActivateGroup}
+        onResizeGroup={() => undefined}
+      />,
+    );
+
+    await act(async () => {
+      const row = view.getByRole("button", { name: "Menu row" });
+      fireEvent.pointerDown(row);
+      row.focus();
+      await Promise.resolve();
+    });
+    expect(onFocusGroup).not.toHaveBeenCalled();
+    expect(onActivateGroup).not.toHaveBeenCalled();
+
+    await act(async () => {
+      const inside = view.getByRole("button", { name: "Inside" });
+      fireEvent.pointerDown(inside);
+      inside.focus();
+      await Promise.resolve();
+    });
+    expect(onFocusGroup).toHaveBeenCalledWith("leaf:right");
+    expect(onActivateGroup).toHaveBeenCalledWith("leaf:right", "two");
   });
 });

@@ -18,6 +18,7 @@ import {
 } from "react";
 import { AppShellTabs, type AppShellLeadingTab, type AppShellTabItem } from "./app-shell-tabs";
 import { markContextualKeyboardActionPresentationActive } from "@/lib/contextual-keyboard-actions";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import {
   findWorkbenchPanelLeaf,
   getWorkbenchPanelTopLeftLeafId,
@@ -509,10 +510,12 @@ function PanelGroupLeaf({
     focusLeaf();
     activateLeaf();
   };
-  // The leading tab presents its own surface; interacting with it never focuses this group.
-  const isLeadingTabEvent = (event: SyntheticEvent) =>
-    event.target instanceof Element &&
-    event.target.closest("[data-app-shell-leading-tab]") !== null;
+  // Only input inside this leaf's own DOM moves the person into the group. Portalled menus,
+  // popovers and dialogs it opened bubble here through React, and the leading tab presents its
+  // own surface.
+  const isGroupInteraction = (event: SyntheticEvent) =>
+    isEventWithinCurrentTarget(event) &&
+    !(event.target as Element).closest("[data-app-shell-leading-tab]");
 
   return (
     <div
@@ -523,10 +526,10 @@ function PanelGroupLeaf({
         isActive && !contentConcealed && "ring-1 ring-inset ring-token-foreground/10",
       )}
       onFocusCapture={(event) => {
-        if (!isLeadingTabEvent(event)) focusLeaf();
+        if (isGroupInteraction(event)) focusLeaf();
       }}
       onPointerDownCapture={(event) => {
-        if (!isLeadingTabEvent(event)) focusAndActivateLeaf();
+        if (isGroupInteraction(event)) focusAndActivateLeaf();
       }}
     >
       {(tabs.length > 0 && (activeTabId || contentConcealed)) || leadingTab ? (
