@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
+import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
@@ -106,9 +107,12 @@ it.effect.each(["local", "remote-a"])(
         const resume = requests[1]!;
         const config = resume.params.config as Record<string, unknown>;
         assert.strictEqual(config["features.js_repl"], false);
+        // A remote destination never receives this host's REPL, only the inert disabled server.
         if (hostId !== "local") {
-          assert.strictEqual(config["mcp_servers.node_repl.enabled"], false);
-          assert.strictEqual(config["mcp_servers.node_repl"], undefined);
+          assert.deepEqual(
+            config["mcp_servers.node_repl"],
+            DISABLED_DESKTOP_TOOL_REPL_CONFIG["mcp_servers.node_repl"],
+          );
         }
         assert.deepEqual(
           config["mcp_servers.nodex_app.enabled_tools"],

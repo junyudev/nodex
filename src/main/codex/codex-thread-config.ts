@@ -78,9 +78,14 @@ export const CODEX_DESKTOP_THREAD_FEATURE_CONFIG = Object.freeze(
   buildCodexDesktopThreadFeatureConfig(),
 );
 
+/**
+ * Codex rejects a whole configuration whose MCP server has no transport, so the REPL is
+ * disabled with a complete, inert stdio definition. It also keeps any configured `node_repl`
+ * disabled when the layers merge.
+ */
 export const DISABLED_DESKTOP_TOOL_REPL_CONFIG = Object.freeze({
   "features.js_repl": false,
-  "mcp_servers.node_repl.enabled": false,
+  "mcp_servers.node_repl": Object.freeze({ command: "node_repl", enabled: false }),
 });
 
 const normalizeConfigValue = (value: unknown): ThreadConfigValue => {

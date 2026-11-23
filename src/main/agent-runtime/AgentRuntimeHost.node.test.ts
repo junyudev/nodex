@@ -1,3 +1,4 @@
+import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import { assert, it } from "@effect/vitest";
 import type {
   AgentHostNativeSessionIdentity,
@@ -626,7 +627,7 @@ it.effect("WSL threads receive no local Desktop Tools", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     const cwd = "//wsl.localhost/Ubuntu/home/user/repo";
-    const config = { "features.js_repl": false, "mcp_servers.node_repl.enabled": false };
+    const config = DISABLED_DESKTOP_TOOL_REPL_CONFIG;
     assert.deepEqual(yield* f.execute(prepareThread("codex", "lease", cwd)), { config });
     assert.deepEqual(yield* f.execute(prepareThread("codex-wsl")), { config });
     assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", cwd)), {});

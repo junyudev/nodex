@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { selectAppToolCatalog } from "../../shared/nodex-app-tools/catalog-selection";
 import {
+  DISABLED_DESKTOP_TOOL_REPL_CONFIG,
   buildCodexDesktopThreadFeatureConfig,
   buildCodexThreadConfig,
   CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
@@ -83,5 +84,14 @@ describe("Codex native app-tool visibility", () => {
     expect(() =>
       buildCodexThreadConfig({ nativeAppTools: true, overrides: { invalid: () => undefined } }),
     ).toThrow("JSON values");
+  });
+});
+
+describe("disabled Desktop Tool REPL", () => {
+  test("disables the REPL with a complete server, since Codex rejects one without a transport", () => {
+    const servers = Object.entries(DISABLED_DESKTOP_TOOL_REPL_CONFIG).filter(([key]) =>
+      key.startsWith("mcp_servers."),
+    );
+    expect(servers).toEqual([["mcp_servers.node_repl", { command: "node_repl", enabled: false }]]);
   });
 });
