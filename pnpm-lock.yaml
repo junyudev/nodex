@@ -265,8 +265,8 @@ importers:
         version: 0.35.5(@types/node@24.19.2)
     devDependencies:
       '@agentclientprotocol/sdk':
-        specifier: 2.6.0
-        version: 2.6.0(zod@4.6.7)
+        specifier: 2.9.1
+        version: 2.9.1(zod@4.6.7)
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.330
         version: 0.3.330(@anthropic-ai/sdk@0.128.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7))(zod@4.6.7)
@@ -1678,8 +1678,8 @@ packages:
       typescript:
         optional: true
 
-  '@agentclientprotocol/sdk@2.6.0':
-    resolution: {integrity: sha512-3FtL6MkAV5F9qxg0FQV8wmBszIm2xuVPoDWOILIFSDQ+Vq3Twdh7Cw6Hk2GOPUbevgrTUpUAqZXQy7Geaj79mw==}
+  '@agentclientprotocol/sdk@2.9.1':
+    resolution: {integrity: sha512-8iJdxGa3SunLfzqLLb3RfQFmr4hnmWeAyeAK6MbkJiXJbrRlMRgKsVnDl/7Hu48yu/30gAlytNDzh5W77rv5SA==}
     peerDependencies:
       '@modelcontextprotocol/server': ^2.4.0
       zod: ^3.25.76 || ^4.0.0
@@ -12150,7 +12150,7 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
 
-  '@agentclientprotocol/sdk@2.6.0(zod@4.6.7)':
+  '@agentclientprotocol/sdk@2.9.1(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
 
