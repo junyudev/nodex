@@ -26,7 +26,7 @@ for (const scenario of ["browser", "approval", "unavailable"] as const) {
       "The signed Desktop Tools require macOS Apple Silicon",
     );
     const binaryPath = await prepareOpenCodeDesktopToolsBinary();
-    test.skip(!binaryPath, "OpenCode 2.1.4 is uncached and the npm registry is unreachable");
+    test.skip(!binaryPath, "OpenCode 2.3.2 is uncached and the npm registry is unreachable");
     let runRoot: string | undefined;
     try {
       const harness = await ElectronScenarioHarness.create({

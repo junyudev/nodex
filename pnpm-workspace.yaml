@@ -133,7 +133,7 @@ packageExtensions:
 peerDependencyRules:
   allowedVersions:
     # OpenCode shares the workspace Effect patch with its protocol/schema packages.
-    "@opencode/client@2.1.4>effect": 4.0.6
+    "@opencode/client@2.3.2>effect": 4.0.6
   allowAny:
     # Vite+ supplies the Vite API through its own package version.
     - vite

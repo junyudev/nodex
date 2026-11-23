@@ -4,9 +4,9 @@ import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-const version = "2.1.4";
-const tarballHash = "daa2fe04f27885090dccaeed9e0d6514bc80a7849ccb0a9d94521b383851bfa5";
-const binaryHash = "d8a65dd253dbea759ae0dd829792ff219b40178c7decffea822430a4d1ccadb3";
+const version = "2.3.2";
+const tarballHash = "829f91179a6f4080f528d3a6756b87d2e9953debfb0a068a59bf473d2d7535a9";
+const binaryHash = "635c523002b6eaf897597facba703729794cb07bdb59044d5e173b07b77ff934";
 
 async function fileHash(file: string) {
   const hash = createHash("sha256");

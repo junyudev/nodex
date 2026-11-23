@@ -361,8 +361,8 @@ importers:
         specifier: workspace:*
         version: link:crates/nodex-search-kernel
       '@opencode-ai/sdk':
-        specifier: 1.19.5
-        version: 1.19.5
+        specifier: 1.19.6
+        version: 1.19.6
       '@oxlint/plugins':
         specifier: 1.93.0
         version: 1.93.0
@@ -807,8 +807,8 @@ importers:
         specifier: workspace:*
         version: link:../../crates/nodex-search-kernel
       '@opencode-ai/sdk':
-        specifier: 1.19.5
-        version: 1.19.5
+        specifier: 1.19.6
+        version: 1.19.6
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -1045,17 +1045,17 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@opencode-ai/sdk':
-        specifier: 1.19.5
-        version: 1.19.5
+        specifier: 1.19.6
+        version: 1.19.6
       '@opencode/client':
-        specifier: 2.1.4
-        version: 2.1.4(effect@4.0.6)(solid-js@1.9.17)
+        specifier: 2.3.2
+        version: 2.3.2(effect@4.0.6)(solid-js@1.9.17)
       '@opencode/protocol':
-        specifier: 2.1.4
-        version: 2.1.4
+        specifier: 2.3.2
+        version: 2.3.2
       '@opencode/schema':
-        specifier: 2.1.4
-        version: 2.1.4
+        specifier: 2.3.2
+        version: 2.3.2
       effect:
         specifier: 4.0.6
         version: 4.0.6
@@ -3645,13 +3645,13 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opencode-ai/sdk@1.19.5':
-    resolution: {integrity: sha512-+bqu8gHiwmq96T9q5G34uLNHWCInIMsrE3hytCNHj1cVaxjY0AGJyNCT1rkeeZwgPU7A5TMTNwN+0XxCO2vqDg==}
+  '@opencode-ai/sdk@1.19.6':
+    resolution: {integrity: sha512-jYV7s+Tlc5jDILOyWFIgISkPlfk7z3ByqeC8/T9aESZBgSZosQR784U2UoM3ZrJ8S0LJ2cB+IA9xZN7Jj8tnhQ==}
 
-  '@opencode/client@2.1.4':
-    resolution: {integrity: sha512-xNHP8Xu4wcq4G849Xnbb8IxYxMTzF0TqvohWVUQZH5aURrVHIIbHMfXbZY6s4i4C9kpVbwjXFFwWAo6KIK3oiw==}
+  '@opencode/client@2.3.2':
+    resolution: {integrity: sha512-zwlR1Q0MQxpLJU4tILaaNyHrexNQpTbquy4Lv4i5lwkSba5MMuhK0tsPmGhyLIrqAyY+sY1qI75dOzOpsCJK7Q==}
     peerDependencies:
-      effect: 4.0.1
+      effect: 4.1.0
       solid-js: '>=1.9.0'
     peerDependenciesMeta:
       effect:
@@ -3659,11 +3659,11 @@ packages:
       solid-js:
         optional: true
 
-  '@opencode/protocol@2.1.4':
-    resolution: {integrity: sha512-dnifgvY6p4xdHkXRH3PEaobfCqrHb1AhihKxPNRNkGn5SueRCFCfK2pZW1GkeC36fGCmcLxlfihuIMaQL1BVzA==}
+  '@opencode/protocol@2.3.2':
+    resolution: {integrity: sha512-AEb1DZeWYrCVm+g2OUPWBLskCzGr4sXYj59Do8PzTHFb4a6jrDL0wN7kqYq65NrXGOW32alwxlnMHxJSjAfJ+w==}
 
-  '@opencode/schema@2.1.4':
-    resolution: {integrity: sha512-PLr8eFW81Yz6U7YsSgfSUClUUH//8omh3HiXu/L08VX5arorWNAu2uSjoXyHIGkm7TaTbdXBGPmmDfpvrDM2wQ==}
+  '@opencode/schema@2.3.2':
+    resolution: {integrity: sha512-9PqnLzPNV0QTG3HrRHTVjVEQ2Hv+zcprM6QvwxNVdQ3RUTmtdpmUD6/0y0NQnHFzHwI3hpnkNCIstjw9TVsJcg==}
 
   '@opentelemetry/api@1.9.1':
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
@@ -14336,24 +14336,24 @@ snapshots:
   '@noxcturnal/noxcturnal-win32-x64-msvc@0.1.11':
     optional: true
 
-  '@opencode-ai/sdk@1.19.5':
+  '@opencode-ai/sdk@1.19.6':
     dependencies:
       cross-spawn: 7.0.6
 
-  '@opencode/client@2.1.4(effect@4.0.6)(solid-js@1.9.17)':
+  '@opencode/client@2.3.2(effect@4.0.6)(solid-js@1.9.17)':
     dependencies:
-      '@opencode/protocol': 2.1.4
-      '@opencode/schema': 2.1.4
+      '@opencode/protocol': 2.3.2
+      '@opencode/schema': 2.3.2
     optionalDependencies:
       effect: 4.0.6
       solid-js: 1.9.17
 
-  '@opencode/protocol@2.1.4':
+  '@opencode/protocol@2.3.2':
     dependencies:
-      '@opencode/schema': 2.1.4
+      '@opencode/schema': 2.3.2
       effect: 4.0.6
 
-  '@opencode/schema@2.1.4':
+  '@opencode/schema@2.3.2':
     dependencies:
       '@standard-schema/spec': 1.1.0
       effect: 4.0.6

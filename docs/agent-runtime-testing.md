@@ -81,7 +81,7 @@ vp run test:e2e tests/e2e/opencode-desktop-tools.spec.ts
 vp run test:e2e tests/e2e/acp-desktop-tools.spec.ts
 ```
 
-OpenCode uses the production adapter and a SHA-256-pinned OpenCode 2.1.4
+OpenCode uses the production adapter and a SHA-256-pinned OpenCode 2.3.2
 executable in the shared development cache. Its disposable Profile enables the
 loopback model through Model Settings before the first Composer submission. A
 Chat Completions server scripts the model and rejects unexpected requests. The spec skips when

@@ -268,7 +268,7 @@
     "@nodex/mobile-protocol": "workspace:*",
     "@nodex/query-lint-runtime": "workspace:*",
     "@nodex/search-kernel": "workspace:*",
-    "@opencode-ai/sdk": "1.19.5",
+    "@opencode-ai/sdk": "1.19.6",
     "@oxlint/plugins": "1.93.0",
     "@pierre/diffs": "1.6.1",
     "@pierre/trees": "1.0.0-beta.6",

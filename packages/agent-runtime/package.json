@@ -56,7 +56,7 @@
     "@nodex/runtime-contracts": "workspace:*",
     "@nodex/runtime-shared": "workspace:*",
     "@nodex/search-kernel": "workspace:*",
-    "@opencode-ai/sdk": "1.19.5",
+    "@opencode-ai/sdk": "1.19.6",
     "@types/node": "24.19.2",
     "effect": "4.0.6",
     "effect-acp": "workspace:*",

@@ -18,10 +18,10 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "1.19.5",
-    "@opencode/client": "2.1.4",
-    "@opencode/protocol": "2.1.4",
-    "@opencode/schema": "2.1.4",
+    "@opencode-ai/sdk": "1.19.6",
+    "@opencode/client": "2.3.2",
+    "@opencode/protocol": "2.3.2",
+    "@opencode/schema": "2.3.2",
     "@nodex/runtime-contracts": "workspace:*",
     "@nodex/provider-core": "workspace:*",
     "@nodex/runtime-shared": "workspace:*",
