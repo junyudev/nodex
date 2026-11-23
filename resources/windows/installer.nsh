@@ -146,14 +146,20 @@
 
 !macro customRemoveFiles
   SetOutPath "$TEMP"
-  !insertmacro nodexMaintenanceLog "step=remove-installation started"
-  nsExec::ExecToLog '"$PLUGINSDIR\nodex-maintenance.exe" --remove-installation "$INSTDIR" "${NODEX_MAINTENANCE_LOG}"'
-  Pop $R0
-  ${If} $R0 != 0
-    !insertmacro nodexMaintenanceLog "step=remove-installation failed exit=$R0"
-    SetErrorLevel 2
-    Abort "Nodex could not remove its installed files. Close any programs using them and try again."
+  ${If} ${isUpdated}
+    !insertmacro nodexMaintenanceLog "step=remove-installation started"
+    nsExec::ExecToLog '"$PLUGINSDIR\nodex-maintenance.exe" --remove-installation "$INSTDIR" "${NODEX_MAINTENANCE_LOG}"'
+    Pop $R0
+    ${If} $R0 != 0
+      !insertmacro nodexMaintenanceLog "step=remove-installation failed exit=$R0"
+      SetErrorLevel 2
+      Abort "Nodex could not remove its installed files. Close any programs using them and try again."
+    ${EndIf}
+    !insertmacro nodexMaintenanceLog "step=remove-installation completed"
+  ${Else}
+    ; An explicitly launched uninstaller can briefly hold the installed root.
+    ; NSIS already supports removing its own installation in place.
+    RMDir /r "$INSTDIR"
   ${EndIf}
-  !insertmacro nodexMaintenanceLog "step=remove-installation completed"
   !insertmacro nodexRemoveRegistrations
 !macroend
