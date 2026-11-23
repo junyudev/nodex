@@ -468,6 +468,47 @@ describe("DocumentSessionRegistry", () => {
     expect(runtime.persist).toHaveBeenCalledTimes(1);
   });
 
+  test("keeps at most four page editors without a view and releases the least recently viewed", async () => {
+    const registry = new DocumentSessionRegistry();
+    const pages = Array.from({ length: 6 }, (_, index) => {
+      const runtime = createRuntime({
+        descriptor: { ...descriptor(), ownerBlockId: `page-${index}`, documentId: `doc-${index}` },
+      });
+      const key = makeEditorSurfaceKey("session-1", `tab-${index}`);
+      const lease = registry.acquire({
+        key,
+        descriptor: runtime.runtime.descriptor,
+        createRuntime: () => runtime.runtime,
+      });
+      const destroy = vi.fn();
+      lease.getOrCreateEditor(`editor-${index}`, () => ({ _tiptapEditor: { destroy } }));
+      return { ...runtime, key, lease, destroy };
+    });
+    const hide = (index: number) =>
+      pages[index]!.lease.releaseView(pages[index]!.lease.claimView());
+
+    for (const index of [0, 1, 2, 3]) hide(index);
+    expect(registry.backgroundSize).toBe(4);
+    // Showing a page again makes it the most recently viewed.
+    hide(0);
+    const shown = pages[5]!.lease.claimView();
+    hide(4);
+
+    await vi.waitFor(() => expect(pages[1]!.close).toHaveBeenCalledOnce());
+    expect(pages[1]!.destroy).toHaveBeenCalledOnce();
+    expect(registry.get(pages[1]!.key)).toBeNull();
+    expect(registry.backgroundSize).toBe(4);
+    for (const index of [0, 2, 3, 4, 5]) {
+      expect(pages[index]!.close).not.toHaveBeenCalled();
+      expect(registry.get(pages[index]!.key)).toBe(pages[index]!.lease);
+    }
+
+    pages[5]!.lease.releaseView(shown);
+    await vi.waitFor(() => expect(pages[2]!.close).toHaveBeenCalledOnce());
+    expect(registry.size).toBe(4);
+    expect(pages[0]!.close).not.toHaveBeenCalled();
+  });
+
   test("can release an ephemeral preview view without an extra background persist", async () => {
     const registry = new DocumentSessionRegistry();
     const runtime = createRuntime({});
@@ -478,9 +519,7 @@ describe("DocumentSessionRegistry", () => {
     });
     session.awarenessLease.publish({ user: { name: "Preview" } });
 
-    const released = session.releaseView(session.claimView(), {
-      persist: false,
-    });
+    const released = session.releaseView(session.claimView(), { retain: false });
     await Promise.resolve();
 
     expect(released).toBe(true);

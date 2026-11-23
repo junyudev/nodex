@@ -37,7 +37,7 @@ describe("editor session observation", () => {
     expect(listener).toHaveBeenCalled();
     retain = true;
     detach();
-    expect(lease.releaseView).toHaveBeenCalledWith(7, { persist: true });
+    expect(lease.releaseView).toHaveBeenCalledWith(7, { retain: true });
     expect(runtimeRef.current).toBeNull();
     expect(registry.dispose).not.toHaveBeenCalled();
     unsubscribe();

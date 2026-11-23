@@ -43,6 +43,13 @@ export interface EditorSurfaceAwarenessLease {
   getRetainedState: () => Readonly<Record<string, unknown>> | null;
 }
 
+/**
+ * Page editors kept without a view in one window, beyond the ones on screen. Each holds its editor,
+ * undo history and a live document replica, so past this the least recently viewed one is released
+ * and loads again when its tab is next shown.
+ */
+export const MAX_BACKGROUND_PAGE_EDITORS = 4;
+
 export const makeEditorSurfaceKey = (projectSessionId: string, tabId: string): string =>
   `${projectSessionId}\u0000${tabId}`;
 
@@ -100,6 +107,7 @@ export class EditorSurfaceLease {
 
   private readonly connectBarrier: Promise<void>;
   private readonly releaseRuntime: () => Promise<void>;
+  private readonly onBackgroundChange: (background: boolean) => void;
   private connectPromise: Promise<void> | null = null;
   private disposePromise: Promise<void> | null = null;
   private editor: RetainedBlockNoteEditor | null = null;
@@ -121,12 +129,15 @@ export class EditorSurfaceLease {
     readonly connectBarrier?: Promise<void>;
     readonly releaseRuntime?: () => Promise<void>;
     readonly awarenessLease?: EditorSurfaceAwarenessLease;
+    /** Told when the lease is kept without a view and when it leaves that state. */
+    readonly onBackgroundChange?: (background: boolean) => void;
   }) {
     this.key = input.key;
     this.descriptor = input.descriptor;
     this.runtime = input.runtime;
     this.transactionOrigin = Object.freeze({ surfaceKey: input.key });
     this.connectBarrier = input.connectBarrier ?? Promise.resolve();
+    this.onBackgroundChange = input.onBackgroundChange ?? (() => undefined);
     this.releaseRuntime =
       input.releaseRuntime ?? (() => this.runtime.close().then(() => undefined));
     this.awarenessLease = input.awarenessLease ?? {
@@ -153,17 +164,23 @@ export class EditorSurfaceLease {
     }
     this.nextViewGeneration += 1;
     this.activeViewGeneration = this.nextViewGeneration;
+    this.onBackgroundChange(false);
     return this.activeViewGeneration;
   }
 
-  releaseView(generation: number, options: { readonly persist?: boolean } = {}): boolean {
+  /**
+   * Ends a view. A retained lease saves its document and waits in the background for its next
+   * view; `retain: false` means the caller disposes it next.
+   */
+  releaseView(generation: number, options: { readonly retain?: boolean } = {}): boolean {
     if (generation !== this.activeViewGeneration) return false;
     this.activeViewGeneration = 0;
     if (this.disposed) return true;
 
     this.awarenessLease.release();
-    if (options.persist === false) return true;
+    if (options.retain === false) return true;
     void this.persist();
+    this.onBackgroundChange(true);
     return true;
   }
 
@@ -239,6 +256,7 @@ export class EditorSurfaceLease {
     if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.activeViewGeneration = 0;
+    this.onBackgroundChange(false);
     this.awarenessLease.release();
 
     const editor = this.editor;
@@ -274,6 +292,8 @@ export class DocumentSessionRegistry {
   private readonly documents = new Map<string, DocumentSession>();
   /** Includes a retiring session if its only draft could not be made durable. */
   private readonly retainedDocuments = new Set<DocumentSession>();
+  /** Leases kept without a view, least recently viewed first. */
+  private readonly background = new Set<EditorSurfaceLease>();
 
   acquire(input: {
     readonly key: string;
@@ -309,6 +329,7 @@ export class DocumentSessionRegistry {
       connectBarrier,
       releaseRuntime: () => this.releaseDocument(document),
       awarenessLease: this.createAwarenessLease(document, input.key),
+      onBackgroundChange: (background) => this.setBackground(surface, background),
     });
     this.surfaces.set(input.key, surface);
     return surface;
@@ -344,6 +365,22 @@ export class DocumentSessionRegistry {
 
   get size(): number {
     return this.surfaces.size;
+  }
+
+  get backgroundSize(): number {
+    return this.background.size;
+  }
+
+  private setBackground(surface: EditorSurfaceLease, background: boolean): void {
+    this.background.delete(surface);
+    if (!background) return;
+    this.background.add(surface);
+    for (const oldest of this.background) {
+      if (this.background.size <= MAX_BACKGROUND_PAGE_EDITORS) return;
+      this.background.delete(oldest);
+      // Closing saves the document first; one it cannot save stays open and is reused on reopen.
+      void this.dispose(oldest.key, oldest).catch(() => undefined);
+    }
   }
 
   get canonicalDocumentSize(): number {

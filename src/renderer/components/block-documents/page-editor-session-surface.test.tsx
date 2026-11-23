@@ -60,7 +60,7 @@ describe("Page editor session surface", () => {
       <PageEditorSessionSurface {...props} descriptor={{ ...descriptor, generation: 2 }} />,
     );
     await waitFor(() => expect(acquire).toHaveBeenCalledTimes(2));
-    expect(first.releaseView).toHaveBeenCalledWith(1, { persist: true });
+    expect(first.releaseView).toHaveBeenCalledWith(1, { retain: true });
     expect(acquire.mock.calls[1]?.[0].descriptor.generation).toBe(2);
     view.unmount();
     expect(second.releaseView).toHaveBeenCalledOnce();
@@ -93,7 +93,7 @@ describe("Page editor session surface", () => {
     view.rerender(<PageEditorSessionSurface {...props} retainModelOnUnmount={false} />);
     expect(acquire).toHaveBeenCalledTimes(2);
     view.unmount();
-    expect(second.releaseView).toHaveBeenCalledWith(1, { persist: false });
+    expect(second.releaseView).toHaveBeenCalledWith(1, { retain: false });
     expect(dispose).toHaveBeenCalledWith("tab", second as unknown as EditorSurfaceLease);
   });
 });

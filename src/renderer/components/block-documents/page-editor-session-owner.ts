@@ -65,7 +65,7 @@ export class PageEditorSessionObservation {
         input.runtimeRef.current = null;
       if (!session) return;
       const retainModel = input.retainModel();
-      const released = session.releaseView(viewGeneration, { persist: retainModel });
+      const released = session.releaseView(viewGeneration, { retain: retainModel });
       if (!released || retainModel) return;
       void input.registry.dispose(input.sessionKey, session).catch(() => undefined);
     };
