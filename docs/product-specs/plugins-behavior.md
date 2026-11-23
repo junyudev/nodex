@@ -96,10 +96,16 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   sign-in. Servers that need a sign-in, connected apps and hooks stay in Codex, because their
   credentials and review live there; Installation › Agents names them. OpenCode does not receive
   plugins yet. Disabling or uninstalling a plugin, or narrowing its Projects, cuts off its
-  servers for other Agents at once; a call already running finishes, and its result is not
-  returned. When Codex replaces an installed plugin, Nodex picks up the replacement before
-  preparing the next reply. If a replacement interrupts Session preparation, Nodex retries
-  once with the current inventory.
+  servers for other Agents as soon as Nodex reads the change; a call already running
+  finishes, and its result is not returned.
+- **Plugins never hold up a reply.** Nodex keeps the plugins it last read for each Project and
+  rereads them in the background whenever they may have changed, including when Codex replaces
+  an installed plugin. A Claude Code or ACP reply waits at most five seconds for a reread in
+  progress, then starts with the plugins Nodex last read, or without plugins before Nodex has
+  read any. It picks up the rest at a later reply; a Claude Code chat with background work
+  running waits until that work is done. A plugin whose skills or servers cannot be prepared
+  is left out of the reply, and the others still reach it. A Codex chat waits for the
+  plugins instead, because Codex needs them to start.
 
 ### Plugin apps
 

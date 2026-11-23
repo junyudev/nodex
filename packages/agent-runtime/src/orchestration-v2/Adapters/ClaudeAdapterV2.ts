@@ -1502,10 +1502,13 @@ export function claudeMcpQueryOverrides(input: {
 export function claudePluginQueryDecision(
   live: { readonly key: string | null } | null,
   key: string | null,
-): "open" | "reuse" | "revoke-and-reopen" {
+): "open" | "reuse" | "add-when-idle" | "revoke-and-reopen" {
   if (live === null) return "open";
-  if (live.key !== key) return "revoke-and-reopen";
-  return "reuse";
+  if (live.key === key) return "reuse";
+  // A process that received no plugins has nothing to revoke. It takes the new set when
+  // reopening loses no background work.
+  if (live.key === null) return "add-when-idle";
+  return "revoke-and-reopen";
 }
 
 export function withClaudePluginQueryOptions(
@@ -3368,7 +3371,7 @@ interface ClaudeLiveQueryContext {
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
   readonly pluginKey: string | null;
-  readonly pluginRevision: Effect.Effect<string | null, ExecutionHost.ExecutionHostError>;
+  readonly pluginRevision: Effect.Effect<string | null>;
   readonly pluginSkills: readonly {
     readonly name: string;
     readonly path: string;
@@ -9967,7 +9970,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing.nativeThreadId === nativeThreadId &&
             existing.cwd === turnInput.runtimePolicy.cwd &&
             existing.queryPolicyKey === queryPolicyKey &&
-            pluginDecision === "reuse" &&
+            (pluginDecision === "reuse" ||
+              (pluginDecision === "add-when-idle" &&
+                (yield* liveProcessRunsBackgroundWork(existing)))) &&
             existing.cliShellKey === cliShellKey &&
             existing.launchKey === compiledSelection.launchIdentity &&
             (yield* applyLiveSelection(existing, compiledSelection.live))

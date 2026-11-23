@@ -902,3 +902,31 @@ it.effect(
       }),
     ),
 );
+
+it.effect("cancels a timed-out plugin inventory read and releases its scheduler slot", () =>
+  withOpenScheduler((scheduler) =>
+    Effect.gen(function* () {
+      const dispatched = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const pending = yield* request(
+        scheduler,
+        "plugin/installed",
+        sent(
+          Deferred.succeed(dispatched, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+          ),
+        ),
+        { timeoutMs: 30_000 },
+      ).pipe(Effect.forkScoped);
+
+      yield* Deferred.await(dispatched);
+      assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 1);
+      yield* TestClock.adjust("30 seconds");
+      const error = yield* expectFailure(Fiber.join(pending));
+      assert.strictEqual(error.operation, "scheduler.execution");
+      assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 0);
+      yield* Deferred.await(interrupted);
+    }),
+  ),
+);

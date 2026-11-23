@@ -816,12 +816,27 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
         yield* pumpLocked(state);
       });
 
+    const releaseAbandonedRead = (state: GenerationState, request: PhysicalRequest) =>
+      Effect.gen(function* () {
+        const { method, requestId } = request.descriptor;
+        if (
+          (method !== "thread/resume" && method !== "plugin/installed") ||
+          state.inFlight.get(requestId) !== request
+        )
+          return;
+        state.inFlight.delete(requestId);
+        removeInFlightMetrics(request);
+        yield* pumpLocked(state);
+        // Resume responses can still bind a native Thread. Inventory reads have no side effects.
+        if (method === "plugin/installed") return dispatchKey(requestId);
+      });
+
     const detachWaiter = (
       state: GenerationState,
       request: PhysicalRequest,
       waiter: LogicalWaiter,
-    ) =>
-      mutationLock.withPermits(1)(
+    ) => {
+      const detached = mutationLock.withPermits(1)(
         Effect.gen(function* () {
           if (!waiter.active) return;
           if (
@@ -847,18 +862,7 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
           if (waiterIndex !== -1) request.waiters.splice(waiterIndex, 1);
           metrics.callerDetached += 1;
           if (request.waiters.length > 0) return;
-          if (request.phase === "in-flight") {
-            // Resume abandonment frees admission immediately; its eventual reply is still observed.
-            if (
-              request.descriptor.method !== "thread/resume" ||
-              state.inFlight.get(request.descriptor.requestId) !== request
-            )
-              return;
-            state.inFlight.delete(request.descriptor.requestId);
-            removeInFlightMetrics(request);
-            yield* pumpLocked(state);
-            return;
-          }
+          if (request.phase === "in-flight") return yield* releaseAbandonedRead(state, request);
           const index = state.queued.indexOf(request);
           if (index === -1) return;
           state.queued.splice(index, 1);
@@ -874,6 +878,12 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
           yield* pumpLocked(state);
         }),
       );
+      return detached.pipe(
+        Effect.flatMap((dispatch) =>
+          dispatch ? FiberMap.remove(state.fibers, dispatch) : Effect.void,
+        ),
+      );
+    };
 
     const timeoutWaiter = (
       state: GenerationState,
@@ -900,6 +910,7 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
                   metrics.executionTimedOut += 1;
                   if (error.reason === "outcome-unknown") metrics.outcomeUnknown += 1;
                   yield* reportWaiterMetrics(waiter, request);
+                  let cancelDispatch;
                   if (
                     request.descriptor.method === "plugin/list" &&
                     state.inFlight.get(id) === request
@@ -909,18 +920,11 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
                     waiter.active = false;
                     const index = request.waiters.indexOf(waiter);
                     if (index !== -1) request.waiters.splice(index, 1);
-                    if (
-                      request.waiters.length === 0 &&
-                      request.descriptor.method === "thread/resume" &&
-                      state.inFlight.get(id) === request
-                    ) {
-                      state.inFlight.delete(id);
-                      removeInFlightMetrics(request);
-                      yield* pumpLocked(state);
-                    }
+                    if (request.waiters.length === 0)
+                      cancelDispatch = yield* releaseAbandonedRead(state, request);
                   }
                   yield* Deferred.fail(waiter.deferred, error);
-                  return null;
+                  return cancelDispatch ?? null;
                 }
                 if (state.inFlight.get(id) !== request) return null;
                 state.inFlight.delete(id);

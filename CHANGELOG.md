@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Plugins no longer stop you from sending messages to Claude Code or ACP Agents. Opening several chats at once, or Codex being slow to list your installed plugins, could fail a reply with "Timed out preparing the Session's plugins" until you refreshed the Plugins page. Nodex now keeps the plugins it last read and rereads them in the background, so a reply waits at most a few seconds and starts with the plugins it has, picking up the rest at a later reply. A plugin that cannot be prepared is left out without holding up the others.
+
 ### Removed
 
 ## [0.5.11] - 2026-11-23

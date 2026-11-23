@@ -54,6 +54,14 @@ form. When the resolved set changes, its revision changes, leases are revoked, a
 the backend refreshes at its next safe point: Claude Code in a fresh query before
 the next turn, ACP at the next activation.
 
+Plugins are an addition to a reply, never a condition for it. The Host keeps the latest
+catalog it has read for each Project and rereads it in the background when plugin state may
+have changed; it revokes the leases of Sessions whose resolved set changed once the reread
+publishes. Opening Session plugins waits only briefly for a reread in progress, then uses the
+latest catalog, or none before the first read. One plugin that cannot be prepared is left out
+of the Session. Codex Sessions are the exception: their out-of-scope overrides wait for the
+catalog, because a Codex thread cannot start without its plugin inventory anyway.
+
 The broker runs stdio servers and HTTP servers that need no sign-in. Servers that
 need sign-in, connected apps and hooks stay Codex-only, because their credentials
 and trust live in Codex. Customize states these limits on the plugin instead of
@@ -76,7 +84,7 @@ interface lease for the plugin, using the plugin's own name and logo.
   person takes and per-thread overrides.
 - Codex delivery has no Nodex-specific process topology or experimental fields.
 - The Host keeps no per-backend copies of installation state. Session resolution
-  reads the current Codex inventory and scope.
+  uses the latest Codex inventory the Host has read and the current scope.
 - Revocation is the broker's: a revoked lease refuses new calls and withholds
   results of calls already in flight.
 - A plugin that only works in Codex is still installable; Customize says so.

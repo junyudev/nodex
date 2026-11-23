@@ -313,7 +313,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         Effect.ignore,
       ),
     );
-    const { plugins } = yield* exchange({
+    const opened = exchange({
       type: "host.request",
       operation: "plugins.open",
       identity,
@@ -331,6 +331,19 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         orElse: () => Effect.fail(pluginError("Timed out preparing the Session’s plugins.")),
       }),
     );
+    // A Codex thread needs its plugin scope to start. Every other Agent can reply without
+    // plugins, so a Host that cannot prepare them never holds up the reply.
+    const { plugins } = yield* request.backend === "codex"
+      ? opened
+      : opened.pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Session plugins are unavailable for this reply", {
+              backend: request.backend,
+              message: error.message,
+            }).pipe(Effect.as({ plugins: null })),
+          ),
+        );
+    const delivered = plugins?.revision ?? null;
     const revision = exchange({
       type: "host.request",
       operation: "plugins.revision",
@@ -341,8 +354,14 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         Schema.decodeUnknownEffect(Schema.Struct({ revision: Schema.NullOr(Schema.String) })),
       ),
       Effect.map(({ revision }) => revision),
-      Effect.timeout("30 seconds"),
-      Effect.mapError(() => pluginError()),
+      Effect.timeout("10 seconds"),
+      // The Host revokes withdrawn plugins itself, so an unanswered check keeps what the
+      // Session already has rather than holding up the reply.
+      Effect.catch(() =>
+        Effect.logWarning("Session plugin revision is unavailable", {
+          backend: request.backend,
+        }).pipe(Effect.as(delivered)),
+      ),
     );
     return { plugins, revision };
   });

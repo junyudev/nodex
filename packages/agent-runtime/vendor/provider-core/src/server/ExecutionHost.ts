@@ -129,8 +129,13 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
 ) {}
 
 export interface SessionPluginAttachment {
+  /** Null when the Session receives no plugins, including while the Host cannot prepare them. */
   readonly plugins: SessionPlugins | null;
-  readonly revision: Effect.Effect<string | null, ExecutionHostError>;
+  /**
+   * The plugin revision the Session should run now; null when none is available. A revision
+   * that differs from `plugins.revision` asks the backend to reopen at its next safe point.
+   */
+  readonly revision: Effect.Effect<string | null>;
 }
 
 export interface OpenSessionPluginsRequest extends SessionPluginsRequest {
@@ -175,6 +180,10 @@ export class ExecutionHost extends Context.Reference<{
     readonly nativeDriver: import("@nodex/runtime-contracts").ProviderDriverKind;
     readonly cwd: string | null;
   }) => Effect.Effect<HostThreadPreparation, ExecutionHostError>;
+  /**
+   * Only a Codex Session fails when its plugins cannot be resolved, because its thread needs
+   * the plugin scope to start. Other Sessions then receive no plugins and reply anyway.
+   */
   readonly openPlugins?: (
     request: OpenSessionPluginsRequest,
   ) => Effect.Effect<SessionPluginAttachment, ExecutionHostError, Scope.Scope>;

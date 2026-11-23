@@ -6,10 +6,10 @@ import {
   describeAgentSupport,
   makeInstalledPluginCache,
   pluginCatalogSnapshot,
-  type PluginCatalogSnapshot,
   readInstalledPlugin,
   readPluginCatalog,
 } from "../../host/agent-plugins/PluginCatalog";
+import type { LoadedPluginCatalog } from "../../host/agent-plugins/PluginCatalogCache";
 import {
   FolderReviewError,
   LOCAL_MARKETPLACE,
@@ -37,10 +37,6 @@ import {
 } from "./PluginSettingsModel";
 import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2/McpServerStatus";
 import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
-import * as Cache from "effect/Cache";
-import * as Data from "effect/Data";
-import * as Duration from "effect/Duration";
-import * as Exit from "effect/Exit";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -107,9 +103,10 @@ export class PluginManager extends Context.Service<
       name: K,
       input: PluginCommands[K]["input"],
     ) => Effect.Effect<PluginCommands[K]["output"]>;
-    readonly catalog?: (
+    readonly loadCatalog: (
       projectId: string | null,
-    ) => Effect.Effect<PluginCatalogSnapshot, PluginManagementError>;
+    ) => Effect.Effect<LoadedPluginCatalog, PluginManagementError>;
+    readonly catalogInvalidations: Stream.Stream<void>;
     readonly changes: Stream.Stream<PluginManagementChanged>;
   }
 >()("nodex/main/codex-application/PluginManager") {}
@@ -134,11 +131,6 @@ const PluginOperationLease = Context.Reference<AbortSignal | null>(
   "nodex/main/codex-application/PluginOperationLease",
   { defaultValue: () => null },
 );
-class CatalogKey extends Data.Class<{
-  readonly projectId: string | null;
-  readonly generation: number;
-}> {}
-
 export const live = (options: {
   readonly runtimeStateHome: string;
   readonly codexHome: string;
@@ -357,68 +349,48 @@ export const live = (options: {
         installedRaw(context).pipe(Effect.map((response) => policy.project(response, "local")));
       const observePackage = yield* makeInstalledPluginCache(options.codexHome);
       // Codex evaluates each Project's own source roots and configuration when listing plugins.
-      const catalogs = yield* Cache.makeWith(
-        Effect.fn("PluginManager.loadCatalog")(function* ({ projectId }: CatalogKey) {
-          const context = yield* resolve({ hostId: "local", projectId });
-          const [inventory, scope] = yield* Effect.all([installed(context), scopes]);
-          const packages = yield* readPluginCatalog(
-            inventory.marketplaces.flatMap(({ plugins }) => plugins),
-            scope,
-            observePackage,
-          );
-          yield* assertCurrent(context);
-          const presentation = new Map(rows(inventory).map((row) => [row.nativeId, row]));
-          const snapshot = pluginCatalogSnapshot(
-            packages.map(({ entry }) => {
-              const row = presentation.get(entry.id);
-              if (!row) return entry;
-              return {
-                ...entry,
-                presentation: {
-                  pluginName:
-                    entry.package?.presentation?.displayName ??
-                    row.summary.interface?.displayName ??
-                    row.summary.name,
-                  composerIconUrl: row.composerIconUrl,
-                  logoUrl: row.logoUrl,
-                  logoDarkUrl: row.logoDarkUrl,
-                  target: selectorToRouteTarget(row),
-                },
-              };
-            }),
-          );
-          return {
-            snapshot,
-            isCurrent: Effect.forEach(packages, ({ isCurrent }) => isCurrent, {
-              concurrency: 4,
-            }).pipe(Effect.map((checks) => checks.every(Boolean))),
-          };
-        }),
-        {
-          capacity: Infinity,
-          timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
-        },
-      );
-      let catalogGeneration = 0;
-      const invalidateCatalog = Effect.sync(() => {
-        catalogGeneration++;
-      }).pipe(Effect.andThen(Cache.invalidateAll(catalogs)));
-      const catalog = Effect.fn("PluginManager.catalog")(function* (projectId: string | null) {
-        while (true) {
-          const generation = catalogGeneration;
-          const key = new CatalogKey({ projectId, generation });
-          const result = yield* Cache.get(catalogs, key).pipe(Effect.result);
-          if (generation !== catalogGeneration) continue;
-          if (Result.isFailure(result)) return yield* Effect.fail(result.failure);
-          const cached = result.success;
-          const isCurrent = yield* cached.isCurrent;
-          if (generation !== catalogGeneration) continue;
-          if (isCurrent) return cached.snapshot;
-          // Codex can replace a package without notifying this host. Retire exactly the stale
-          // snapshot so concurrent readers share the next authoritative inventory request.
-          yield* Cache.invalidateWhen(catalogs, key, (value) => value === cached);
-        }
+      const loadCatalog = Effect.fn("PluginManager.loadCatalog")(function* (
+        projectId: string | null,
+      ) {
+        const context = yield* resolve({ hostId: "local", projectId });
+        const [inventory, scope] = yield* Effect.all([installed(context), scopes]);
+        const packages = yield* readPluginCatalog(
+          inventory.marketplaces.flatMap(({ plugins }) => plugins),
+          scope,
+          observePackage,
+        );
+        yield* assertCurrent(context);
+        const presentation = new Map(rows(inventory).map((row) => [row.nativeId, row]));
+        const snapshot = pluginCatalogSnapshot(
+          packages.map(({ entry }) => {
+            const row = presentation.get(entry.id);
+            if (!row) return entry;
+            return {
+              ...entry,
+              presentation: {
+                pluginName:
+                  entry.package?.presentation?.displayName ??
+                  row.summary.interface?.displayName ??
+                  row.summary.name,
+                composerIconUrl: row.composerIconUrl,
+                logoUrl: row.logoUrl,
+                logoDarkUrl: row.logoDarkUrl,
+                target: selectorToRouteTarget(row),
+              },
+            };
+          }),
+        );
+        return {
+          snapshot,
+          isCurrent: Effect.forEach(packages, ({ isCurrent }) => isCurrent, {
+            concurrency: 4,
+          }).pipe(Effect.map((checks) => checks.every(Boolean))),
+        };
       });
+      // Invalidations are idempotent: a reader only needs the newest one.
+      const catalogInvalidations = yield* PubSub.sliding<void>(1);
+      yield* Effect.addFinalizer(() => PubSub.shutdown(catalogInvalidations));
+      const invalidateCatalog = PubSub.publish(catalogInvalidations, undefined);
       const emit = Effect.fn("PluginManager.emit")(function* (
         kind: PluginManagementChanged["kind"],
         progress?: MarketplaceRemovalProgress,
@@ -2335,7 +2307,8 @@ export const live = (options: {
         refresh: (context) => applied(context, undefined),
       };
       return PluginManager.of({
-        catalog,
+        loadCatalog,
+        catalogInvalidations: Stream.fromPubSub(catalogInvalidations),
         changes: Stream.fromPubSub(events),
         query: Effect.fn("PluginManager.query")(function* <K extends keyof PluginQueries>(
           name: K,
