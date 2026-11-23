@@ -206,107 +206,45 @@ it.live("preserves the Claude Code refusal across Host transport without admitti
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );
 
-const pluginBridge = Effect.fn(function* () {
-  const requests: AgentHostRequest[] = [];
-  let wake: Deferred.Deferred<void> | null = null;
-  const bridge = yield* make(
-    {
-      home: "/runtime",
-      cwd: "/workspace",
-      providers: {},
-      host: { tools: [], sessionPlugins: true },
-    },
-    (notification) => {
-      if (notification.type !== "host.request") return Effect.void;
-      requests.push(notification);
-      return wake ? Deferred.succeed(wake, undefined).pipe(Effect.asVoid) : Effect.void;
-    },
-  );
-  /** Waits for the next request of an operation the bridge sends to the Host. */
-  const next = Effect.fn(function* (operation: AgentHostRequest["operation"]) {
-    while (true) {
-      const arrival = yield* Deferred.make<void>();
-      wake = arrival;
-      const found = requests.find((request) => request.operation === operation);
-      if (found) {
-        requests.splice(requests.indexOf(found), 1);
-        return found;
-      }
-      yield* Deferred.await(arrival);
-    }
-  });
-  const answer = (request: AgentHostRequest, output: unknown) =>
-    bridge.accept({ type: "host.result", id: request.id, success: true, output });
-  const refuse = (request: AgentHostRequest, message: string) =>
-    bridge.accept({ type: "host.result", id: request.id, success: false, error: { message } });
-  return { bridge, next, answer, refuse };
-});
-
-it.live("reports a Codex Session's plugin preparation error and closes the failed attachment", () =>
+it.live("reports the host's plugin preparation error and closes the failed attachment", () =>
   Effect.gen(function* () {
-    const { bridge, next, answer, refuse } = yield* pluginBridge();
+    const opened = yield* Deferred.make<AgentHostRequest>();
+    const closing = yield* Deferred.make<AgentHostRequest>();
+    const bridge = yield* make(
+      {
+        home: "/runtime",
+        cwd: "/workspace",
+        providers: {},
+        host: { tools: [], sessionPlugins: true },
+      },
+      (notification) => {
+        if (notification.type !== "host.request") return Effect.void;
+        if (notification.operation === "plugins.open")
+          return Deferred.succeed(opened, notification).pipe(Effect.asVoid);
+        return Deferred.succeed(closing, notification).pipe(Effect.asVoid);
+      },
+    );
     const pending = yield* Effect.scoped(
-      bridge.openPlugins!({ backend: "codex", threadId: turn.threadId, projectId: null }),
+      bridge.openPlugins!({
+        backend: "claude",
+        threadId: turn.threadId,
+        projectId: turn.projectId,
+      }),
     ).pipe(Effect.result, Effect.forkChild);
-    const message = "Could not read the installed plugins.";
-    yield* refuse(yield* next("plugins.open"), message);
-    yield* answer(yield* next("plugins.close"), {});
+    const request = yield* Deferred.await(opened);
+    const message = "Could not prepare Skills from plugin example@custom.";
+    yield* bridge.accept({
+      type: "host.result",
+      id: request.id,
+      success: false,
+      error: { message },
+    });
+    const close = yield* Deferred.await(closing);
+    expect(close).toMatchObject({ operation: "plugins.close" });
+    yield* bridge.accept({ type: "host.result", id: close.id, success: true, output: {} });
     expect(yield* Fiber.join(pending)).toMatchObject({
       _tag: "Failure",
       failure: { operation: "plugins.open", message },
     });
-  }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
-);
-
-it.live("starts other Agents without plugins when the Host cannot prepare them", () =>
-  Effect.gen(function* () {
-    const { bridge, next, answer, refuse } = yield* pluginBridge();
-    const scope = yield* Scope.make();
-    const opening = yield* bridge.openPlugins!({
-      backend: "claude",
-      threadId: turn.threadId,
-      projectId: turn.projectId,
-    }).pipe(Scope.provide(scope), Effect.forkChild);
-    yield* refuse(yield* next("plugins.open"), "Could not prepare the Session’s plugin Skills.");
-    const attachment = yield* Fiber.join(opening);
-    expect(attachment.plugins).toBeNull();
-    const checking = yield* attachment.revision.pipe(Effect.forkChild);
-    yield* refuse(yield* next("plugins.revision"), "The Host is unavailable.");
-    expect(yield* Fiber.join(checking)).toBeNull();
-    const closing = yield* Scope.close(scope, Exit.void).pipe(Effect.forkChild);
-    yield* answer(yield* next("plugins.close"), {});
-    yield* Fiber.join(closing);
-  }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
-);
-
-it.live("keeps the delivered plugins when the Host cannot answer a revision check", () =>
-  Effect.gen(function* () {
-    const { bridge, next, answer, refuse } = yield* pluginBridge();
-    const scope = yield* Scope.make();
-    const opening = yield* bridge.openPlugins!({
-      backend: "claude",
-      threadId: turn.threadId,
-      projectId: turn.projectId,
-    }).pipe(Scope.provide(scope), Effect.forkChild);
-    yield* answer(yield* next("plugins.open"), {
-      plugins: {
-        revision: "revision-a",
-        skillsRoot: null,
-        skills: [],
-        mcpServers: [],
-        pluginIds: [],
-        codexDisabledPluginIds: [],
-      },
-    });
-    const attachment = yield* Fiber.join(opening);
-    const current = yield* attachment.revision.pipe(Effect.forkChild);
-    yield* answer(yield* next("plugins.revision"), { revision: "revision-b" });
-    expect(yield* Fiber.join(current)).toBe("revision-b");
-    const unanswered = yield* attachment.revision.pipe(Effect.forkChild);
-    yield* refuse(yield* next("plugins.revision"), "The Host is unavailable.");
-    expect(yield* Fiber.join(unanswered)).toBe("revision-a");
-    const closing = yield* Scope.close(scope, Exit.void).pipe(Effect.forkChild);
-    yield* answer(yield* next("plugins.close"), {});
-    yield* Fiber.join(closing);
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );

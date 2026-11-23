@@ -3,8 +3,6 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { z } from "zod";
 import { PluginMcpBroker } from "../../../host/agent-plugins/broker";
-import { PLUGIN_CATALOG_LOAD_DEADLINE } from "../../../host/agent-plugins/PluginCatalogCache";
-import { PluginCatalogSource } from "../../../host/agent-plugins/PluginCatalogSource";
 import { PluginManager } from "../../codex-application/PluginManager";
 import { CoreAuthority } from "../../core-runtime/CoreAuthority";
 import { ProjectWorkspace } from "../../project-application/ProjectWorkspace";
@@ -46,7 +44,6 @@ export const live = Layer.effectDiscard(
   Effect.gen(function* () {
     const ipc = yield* ElectronIpc;
     const plugins = yield* PluginManager;
-    const catalog = yield* PluginCatalogSource;
     const broker = yield* PluginMcpBroker;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
@@ -60,13 +57,11 @@ export const live = Layer.effectDiscard(
         : projects
             .getProject(projectId)
             .pipe(Effect.map((project) => project?.lifecycle === "active"));
-    // A plugin change rereads the catalog in the background; views follow the reread too.
     const changes = plugins.changes.pipe(
       Stream.filter(
         ({ kind }) =>
           kind === "plugins" || kind === "account" || kind === "connection" || kind === "mcp",
       ),
-      Stream.merge(catalog.published),
       Stream.tap(() =>
         Effect.sync(() =>
           safeBroadcastToWindows(windows.all(), "agent-plugins:app-event", [
@@ -80,15 +75,9 @@ export const live = Layer.effectDiscard(
       files,
       changes,
       home: config.nodexHome,
-      // App access follows the current catalog, never one a change has made stale.
       catalog: (projectId) =>
-        catalog
-          .read(projectId, { maxWait: PLUGIN_CATALOG_LOAD_DEADLINE, freshOnly: true })
-          .pipe(
-            Effect.flatMap((snapshot) =>
-              snapshot ? Effect.succeed(snapshot.entries) : Effect.fail(unavailable),
-            ),
-          ),
+        plugins.catalog?.(projectId).pipe(Effect.map(({ entries }) => entries)) ??
+        Effect.succeed([]),
       projectIsActive: (project) => projectIsActive(project.projectId),
       sessionIsInProject: (sessionId, projectId) =>
         projects

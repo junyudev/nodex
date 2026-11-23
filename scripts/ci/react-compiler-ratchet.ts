@@ -49,15 +49,19 @@ interface UncompiledFunction {
 }
 
 /** Run the production client Babel hook, without Vite bundling or the development transform cache. */
-export async function collectRendererCompilerFailures(root = process.cwd()) {
-  const filenames = readdirSync(rendererCompilerSourceRoot(root), {
-    recursive: true,
-    withFileTypes: true,
-  })
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.resolve(entry.parentPath, entry.name))
+export async function collectRendererCompilerFailures(
+  root = process.cwd(),
+  files?: readonly string[],
+) {
+  const candidates = files
+    ? files.map((file) => path.resolve(root, file))
+    : readdirSync(rendererCompilerSourceRoot(root), { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => path.resolve(entry.parentPath, entry.name));
+  const filenames = [...new Set(candidates)]
     .filter((filename) => isRendererCompilerSource(filename, root))
     .sort();
+  if (filenames.length === 0) return { counts: {}, failures: [], compiled: 0, files: 0 };
   let events: LoggerEvent[] = [];
   const names = new Map<string, string>();
   // Error events have a function location but no name. Observe the original AST before compilation.
@@ -153,7 +157,10 @@ function printFailure({ file, name, events }: UncompiledFunction): void {
 async function main(): Promise<number> {
   const options = parseRatchetArguments(process.argv.slice(2), "react-compiler-ratchet.ts");
   const baseline = followBaselineRenames(readBaseline(baselinePath, options));
-  const { counts, failures, compiled, files } = await collectRendererCompilerFailures();
+  const { counts, failures, compiled, files } = await collectRendererCompilerFailures(
+    process.cwd(),
+    options.files,
+  );
   const comparison = compareBaseline(counts, baseline);
   for (const failure of failures) {
     if (options.all || comparison.regressions.some(({ file }) => file === failure.file))

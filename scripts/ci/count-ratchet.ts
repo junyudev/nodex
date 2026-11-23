@@ -8,12 +8,22 @@ export type CountBaseline = Record<string, Record<string, number>>;
 export const baselineGrowthFlag = "--allow-baseline-growth";
 
 export function parseRatchetArguments(args: readonly string[], entrypoint: string) {
-  if (args.some((argument) => !["--update", "--all", baselineGrowthFlag].includes(argument)))
-    throw new Error(`Usage: ${entrypoint} [--all] [--update [${baselineGrowthFlag}]]`);
-  const update = args.includes("--update");
-  const allowGrowth = args.includes(baselineGrowthFlag);
+  const filesIndex = args.indexOf("--files");
+  const files = filesIndex < 0 ? undefined : args.slice(filesIndex + 1);
+  const flags = filesIndex < 0 ? args : args.slice(0, filesIndex);
+  if (
+    flags.some((argument) => !["--update", "--all", baselineGrowthFlag].includes(argument)) ||
+    files?.some((file) => !file || file.startsWith("-")) ||
+    files?.length === 0
+  )
+    throw new Error(
+      `Usage: ${entrypoint} [--all] [--update [${baselineGrowthFlag}] | --files <file>...]`,
+    );
+  const update = flags.includes("--update");
+  if (files && update) throw new Error("--files cannot update a repository-wide baseline.");
+  const allowGrowth = flags.includes(baselineGrowthFlag);
   if (allowGrowth && !update) throw new Error(`${baselineGrowthFlag} requires --update.`);
-  return { update, allowGrowth, all: args.includes("--all") };
+  return { update, allowGrowth, all: flags.includes("--all"), files };
 }
 
 type RatchetArguments = ReturnType<typeof parseRatchetArguments>;
@@ -117,7 +127,7 @@ function writeBaseline(baselinePath: string, counts: CountBaseline): void {
 export function finishRatchet({
   counts,
   comparison: { regressions, stale },
-  options: { update, allowGrowth },
+  options: { update, allowGrowth, files },
   baselinePath,
   unit,
   forbiddenMessage,
@@ -141,7 +151,7 @@ export function finishRatchet({
     console.error(forbiddenMessage);
     return 1;
   }
-  if (!update && stale.length > 0) {
+  if (!update && !files && stale.length > 0) {
     for (const { file, rule, count, actual } of stale)
       console.error(`${file}: ${rule}: ${actual} ${unit} (stale baseline ${count}).`);
     console.error(`Run ${updateCommand} to lock in fixed counts and file moves.`);

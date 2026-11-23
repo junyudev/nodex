@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  appendFileSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -31,6 +32,14 @@ export const MACHINE_BUDGET_MEMORY_ENV = "NODEX_MACHINE_BUDGET_MEMORY_GB";
 export const MACHINE_BUDGET_DIRECTORY_ENV = "NODEX_MACHINE_BUDGET_DIR";
 /** Set for children of a holder so that nested commands share their parent's claim. */
 export const MACHINE_BUDGET_HELD_ENV = "NODEX_MACHINE_BUDGET_HELD";
+
+/** Optional JSON Lines sink for queue timing across a command's subprocesses. */
+export const MACHINE_BUDGET_REPORT_ENV = "NODEX_MACHINE_BUDGET_REPORT";
+
+export type BudgetQueueEvent = { readonly id: string; readonly label: string } & (
+  | { readonly requestedAt: number }
+  | { readonly grantedAt: number; readonly waitedMs: number }
+);
 
 const POLL_INTERVAL_MS = 500;
 const STATUS_REPEAT_MS = 60_000;
@@ -377,6 +386,16 @@ export async function acquireMachineBudget(
     grantedAt: null,
   };
   const startedAt = Date.now();
+  const reportPath = context.env[MACHINE_BUDGET_REPORT_ENV];
+  const report = (event: BudgetQueueEvent) => {
+    if (!reportPath) return;
+    try {
+      appendFileSync(reportPath, JSON.stringify(event) + "\n");
+    } catch (error) {
+      log(`[machine-budget] Could not report queue timing. ${String(error)}`);
+    }
+  };
+  report({ id: own.id, label: own.label, requestedAt: startedAt });
   let enqueued = false;
   let reportedState: string | undefined;
   let reportedAt = 0;
@@ -428,7 +447,9 @@ export async function acquireMachineBudget(
     store.remove(own.id);
     throw error;
   }
-  const waitedMs = Date.now() - startedAt;
+  const grantedAt = own.grantedAt;
+  const waitedMs = grantedAt - startedAt;
+  report({ id: own.id, label: own.label, grantedAt, waitedMs });
   if (reportedState !== undefined) {
     log(`[machine-budget] ${own.label} starts after waiting ${formatDuration(waitedMs)}.`);
   }

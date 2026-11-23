@@ -11,12 +11,10 @@ import type {
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import { ScopedAgentCore, type ScopedAgentAdmission } from "../../host/ScopedAgentCore";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -103,9 +101,7 @@ const desktopTools = {
   pluginRoots: ["/materialized/browser"],
 };
 
-const makeFixture = Effect.fnUntraced(function* (
-  readThread?: (threadId: string) => Effect.Effect<null>,
-) {
+const fixture = Effect.gen(function* () {
   const events = yield* PubSub.unbounded<AgentRuntimeProcessDelivery>();
   const ended = yield* Deferred.make<never>();
   const calls: AgentRuntimeMethod[] = [];
@@ -153,12 +149,8 @@ const makeFixture = Effect.fnUntraced(function* (
       Effect.map(Stream.fromSubscription),
     ),
     request: <M extends AgentRuntimeMethod>(method: M, input: AgentRuntimeOperations[M]["input"]) =>
-      Effect.gen(function* () {
+      Effect.sync(() => {
         calls.push(method);
-        if (method === "thread.read" && readThread)
-          return (yield* readThread(
-            (input as AgentRuntimeOperations["thread.read"]["input"]).threadId,
-          )) as AgentRuntimeOperations[M]["output"];
         if (method === "native-session.authority")
           return (live.get(
             (input as AgentRuntimeOperations["native-session.authority"]["input"]).incarnationId,
@@ -184,9 +176,7 @@ const makeFixture = Effect.fnUntraced(function* (
       if (input.kind === "read_coordinator")
         return { value: { kind: input.kind, session_id: coordinatorId } };
       if (input.kind === "read_managed_session")
-        return {
-          value: { kind: input.kind, managed: managed ? { session_id: "session" } : null },
-        };
+        return { value: { kind: input.kind, managed: managed ? { session_id: "session" } : null } };
       if (input.kind === "project")
         return {
           value: {
@@ -222,21 +212,6 @@ const makeFixture = Effect.fnUntraced(function* (
   const scope = yield* Scope.make();
   yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
   const execute = yield* make(connection, {
-    ...(readThread
-      ? {
-          plugins: {
-            catalog: {
-              read: () => Effect.die("Unexpected plugin catalog read"),
-              published: Stream.empty,
-            },
-            broker: {
-              openLease: () => Effect.die("Unexpected lease"),
-              openSkillCatalog: () => Effect.die("Unexpected catalog lease"),
-              revokeLease: () => Effect.die("Unexpected revocation"),
-            },
-          },
-        }
-      : {}),
     projectlessId: "projectless",
     providers: {
       acp: { driver: "acpRegistry", config: {} },
@@ -356,38 +331,6 @@ const makeFixture = Effect.fnUntraced(function* (
     close: Scope.close(scope, Exit.void),
   };
 });
-
-const fixture = makeFixture();
-
-it.effect("bounds both plugin thread lookups with one deadline", () =>
-  Effect.gen(function* () {
-    const sourceRead = yield* Deferred.make<void>();
-    const f = yield* makeFixture((threadId) =>
-      threadId === "thread:source"
-        ? Deferred.succeed(sourceRead, undefined).pipe(Effect.andThen(Effect.never))
-        : Effect.sleep("4 seconds").pipe(Effect.as(null)),
-    );
-    const opening = yield* f
-      .execute({
-        type: "host.request",
-        id: "plugins",
-        operation: "plugins.open",
-        identity: frame,
-        attachmentId: "attachment",
-        request: {
-          threadId: frame.threadId,
-          sourceThreadId: "thread:source",
-          projectId: null,
-          backend: "claude",
-        },
-      })
-      .pipe(Effect.flip, Effect.forkScoped({ startImmediately: true }));
-    yield* TestClock.adjust("4 seconds");
-    yield* Deferred.await(sourceRead);
-    yield* TestClock.adjust("6 seconds");
-    assert.propertyVal(yield* Fiber.join(opening), "operation", "plugins.open");
-  }),
-);
 
 const prepareTurn = (identity = turn()): AgentHostRequest => ({
   type: "host.request",

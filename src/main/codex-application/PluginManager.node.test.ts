@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as PubSub from "effect/PubSub";
+import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import { StandaloneSkills } from "./StandaloneSkills";
 import { assert, it } from "@effect/vitest";
@@ -31,7 +32,6 @@ import {
 } from "../settings/ApplicationSettings";
 import { pluginReader } from "../../host/agent-plugins/PluginCatalog";
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
-import { makePluginCatalogCache } from "../../host/agent-plugins/PluginCatalogCache";
 import { pluginSummary } from "../../shared/test-fixtures/plugins";
 import type { PluginSummary } from "../../shared/codex-plugin-management";
 import type { Project } from "../../shared/types";
@@ -79,6 +79,7 @@ const make = (
     appTools?: import("@nodex/codex-app-server-protocol/v2/AppToolSummary").AppToolSummary[];
     accountMetadata?: unknown;
     events?: Stream.Stream<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>;
+    beforeInstalled?: Effect.Effect<void>;
     hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
   } = {},
 ) => {
@@ -147,7 +148,7 @@ const make = (
       if (method === "plugin/installed") {
         onRead?.();
         const snapshot = inventory();
-        return Effect.succeed(snapshot);
+        return options.beforeInstalled?.pipe(Effect.as(snapshot)) ?? Effect.succeed(snapshot);
       }
       if (method === "plugin/list")
         return Effect.succeed({
@@ -2159,13 +2160,14 @@ it.effect("denies managed app tools and reports absent native tool catalogs expl
   );
 });
 
-it.effect("loads Project catalogs, reuses packages, and signals inventory invalidations", () =>
+it.effect("shares a cold catalog across opens and reuses packages after invalidation", () =>
   Effect.gen(function* () {
     const profile = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-plugin-catalog-"))),
       (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
     );
-    const manifest = join(profile, "plugins/cache/custom/a/local/.codex-plugin/plugin.json");
+    const root = join(profile, "plugins/cache/custom/a/local");
+    const manifest = join(root, ".codex-plugin/plugin.json");
     yield* Effect.promise(async () => {
       await mkdir(dirname(manifest), { recursive: true });
       await writeFile(manifest, JSON.stringify({ name: "a" }));
@@ -2176,60 +2178,109 @@ it.effect("loads Project catalogs, reuses packages, and signals inventory invali
     );
     const nativeEvents =
       yield* PubSub.unbounded<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>();
+    const reading = yield* Deferred.make<void>();
+    const unblock = yield* Deferred.make<void>();
     const harness = make({
       profileHome: profile,
       codexHome: profile,
       plugins: [pluginSummary({ id: "a@custom", name: "a", installed: true, enabled: true })],
       events: Stream.fromPubSub(nativeEvents),
+      beforeInstalled: Deferred.succeed(reading, undefined).pipe(
+        Effect.andThen(Deferred.await(unblock)),
+      ),
+    });
+    const counts = () => ({
+      inventory: harness.calls.filter(({ method }) => method === "plugin/installed").length,
+      packages: reader.mock.calls.length,
     });
     yield* withManager(harness, (manager, database) =>
       Effect.gen(function* () {
-        const initial = yield* manager.loadCatalog(null);
-        yield* manager.loadCatalog("p");
-        assert.deepEqual(
-          harness.calls
-            .filter(({ method }) => method === "plugin/installed")
-            .map(({ params }) => params.cwds),
-          [null, ["/a", "/b"]],
-        );
-        assert.lengthOf(reader.mock.calls, 1);
-        assert.isTrue(yield* initial.isCurrent);
+        const options = {
+          home: profile,
+          spaceId: "space",
+          catalog: manager.catalog!,
+          changes: Stream.empty,
+          broker: {
+            openLease: unavailable,
+            openSkillCatalog: unavailable,
+            revokeLease: unavailable,
+          },
+        };
+        const first = yield* makePluginSessions(options);
+        const second = yield* makePluginSessions(options);
+        const request = { threadId: "thread", projectId: null, backend: "claude" } as const;
+        const openFirst = yield* first
+          .open("first", request)
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        yield* Deferred.await(reading);
+        const openSecond = yield* second
+          .open("second", request)
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        assert.deepEqual(counts(), { inventory: 1, packages: 0 });
+        yield* Deferred.succeed(unblock, undefined);
+        const attached = yield* Fiber.join(openFirst);
+        assert.isString(attached?.revision);
+        assert.equal((yield* Fiber.join(openSecond))?.revision, attached?.revision);
+        assert.deepEqual(counts(), { inventory: 1, packages: 1 });
 
-        const observe = (count: number) =>
-          manager.catalogInvalidations.pipe(
-            Stream.take(count),
-            Stream.runDrain,
-            Effect.forkScoped({ startImmediately: true }),
-          );
-        const skillsChanged = yield* observe(1);
+        assert.equal(yield* first.revision("first"), attached?.revision);
+        assert.equal(yield* second.revision("second"), attached?.revision);
+        assert.deepEqual(counts(), { inventory: 1, packages: 1 });
+
+        // A different Project needs its own effective inventory, but sees the same cache package.
+        yield* manager.catalog!("p");
+        assert.deepEqual(counts(), { inventory: 2, packages: 1 });
+        assert.deepEqual(
+          harness.calls.filter(({ method }) => method === "plugin/installed").at(-1)?.params.cwds,
+          ["/a", "/b"],
+        );
+
+        const observed = yield* manager.changes.pipe(
+          Stream.filter(({ kind }) => kind === "skills"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        harness.setPlugin(
+          pluginSummary({ id: "b@custom", name: "b", installed: true, enabled: true }),
+        );
         yield* PubSub.publish(nativeEvents, {
           kind: "notification",
           hostId: "local",
           generation: 1,
           value: { protocol: "generated", method: "skills/changed", params: {} },
         });
-        yield* Fiber.join(skillsChanged);
+        yield* Fiber.join(observed);
+        const refreshed = yield* first.revision("first");
+        assert.notEqual(refreshed, attached?.revision);
+        assert.equal(yield* second.revision("second"), refreshed);
+        assert.deepEqual(counts(), { inventory: 3, packages: 1 });
 
-        // Applying scope emits a change. The subsequent forced list may replace cached packages.
-        const scopeChanged = yield* observe(2);
         const scoped = yield* manager.command("set-project-scope", {
           ...context,
           pluginId: "a@custom",
           scope: { kind: "projects", projectIds: ["p"] },
         });
         assert.equal(scoped.status, "success");
-        yield* Fiber.join(scopeChanged);
-        const { snapshot } = yield* manager.loadCatalog(null);
-        assert.notEqual(snapshot.revision, initial.snapshot.revision);
-        assert.deepEqual(snapshot.entries[0]?.scope, { kind: "projects", projectIds: ["p"] });
-        assert.lengthOf(reader.mock.calls, 1);
+        const updated = yield* first.open("scoped", { ...request, backend: "codex" });
+        assert.notEqual(updated?.revision, refreshed);
+        assert.deepEqual(updated?.codexDisabledPluginIds, ["a@custom"]);
+        assert.deepEqual(counts(), { inventory: 5, packages: 1 });
 
-        const projectChanged = yield* observe(1);
+        const project = yield* second.open("project", { ...request, projectId: "p" });
+        const archived = yield* manager.changes.pipe(
+          Stream.filter(({ kind }) => kind === "plugins"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped({ startImmediately: true }),
+        );
         harness.setProject(null);
         yield* database.notifyProjectsChanged("lifecycle", "p");
-        yield* Fiber.join(projectChanged);
-        const result = yield* manager.loadCatalog("p").pipe(Effect.flip);
+        yield* Fiber.join(archived);
+        assert.isString(project?.revision);
+        const result = yield* second.revision("project").pipe(Effect.flip);
         assert.propertyVal(result, "code", "project_unavailable");
+        assert.isNull(yield* second.revision("project"));
       }),
     );
   }),
@@ -2276,7 +2327,7 @@ it.effect(
             (row) => row.nativeId === pluginId,
           );
           assert.isTrue(row?.localFolder?.endsWith("/source"));
-          const { snapshot: original } = yield* manager.loadCatalog(null);
+          const original = yield* manager.catalog!(null);
           assert.equal(installedReads(), 1);
           assert.equal(
             original.entries.find(({ id }) => id === pluginId)?.package?.identity.description,
@@ -2287,7 +2338,7 @@ it.effect(
           );
           const updated = yield* manager.command("folder-update", { ...context, pluginId });
           assert.equal(updated.status, "success");
-          const { snapshot: catalog } = yield* manager.loadCatalog(null);
+          const catalog = yield* manager.catalog!(null);
           assert.equal(installedReads(), 2);
           assert.notEqual(catalog.revision, original.revision);
           assert.equal(
@@ -2393,10 +2444,8 @@ it.effect(
           const options = {
             home: profile,
             spaceId: "space",
-            catalog: yield* makePluginCatalogCache({
-              load: manager.loadCatalog,
-              invalidations: manager.catalogInvalidations,
-            }),
+            catalog: manager.catalog!,
+            changes: Stream.empty,
             broker: {
               openLease: unavailable,
               openSkillCatalog: unavailable,
@@ -2428,7 +2477,7 @@ it.effect(
             ["updated"],
           );
           assert.notEqual(updated?.revision, first?.revision);
-
+          assert.equal(yield* sessions.revision("first"), updated?.revision);
           assert.lengthOf(
             harness.calls.filter(({ method }) => method === "plugin/installed"),
             2,
@@ -2441,6 +2490,18 @@ it.effect(
             ["reinstalled"],
           );
           assert.notEqual(reinstalled?.revision, updated?.revision);
+
+          const updateDuringOpen = yield* Effect.cached(replace("3.0.0", "raced"));
+          const racing = yield* makePluginSessions({
+            ...options,
+            catalog: (projectId) => options.catalog(projectId).pipe(Effect.tap(updateDuringOpen)),
+          });
+          const raced = yield* racing.open("raced", request);
+          assert.deepEqual(
+            raced?.skills.map(({ alias }) => alias),
+            ["raced"],
+          );
+          assert.notEqual(raced?.revision, reinstalled?.revision);
         }),
       );
     }),

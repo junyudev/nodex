@@ -79,6 +79,12 @@ compiler configuration, checker, shared ratchet core, baseline, and toolchain
 inputs. The CI `ui-contracts` group includes it; renderer and compiler/ratchet
 input changes select that group without adding compilation to the semantic aliases.
 
+`check:changed` runs the lint warning ratchet with `--files <file>...` before
+the full semantic gate. It also uses `--files` to limit React Compiler coverage
+to changed renderer sources. File-scoped checks follow baseline renames and
+fail on new counts. The full checks also require stale baseline counts to be
+removed. Baseline updates apply to the whole repository.
+
 Both ratchets and their updaters share baseline validation, sorted writes,
 comparison, and stale-count policy. Lower counts fail until the corresponding
 baseline command records them. They follow Git renames against the merge-base with `main`

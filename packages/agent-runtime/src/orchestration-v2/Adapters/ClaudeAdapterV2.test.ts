@@ -2130,12 +2130,6 @@ describe("Claude plugin query lifetime", () => {
     assert.equal(decide({ key: "generation-a" }, "generation-b"), "revoke-and-reopen");
     assert.equal(decide({ key: "generation-a" }, null), "revoke-and-reopen");
   });
-
-  it("adds plugins to a query that received none without forcing a reopen", () => {
-    const decide = ClaudeAdapterV2.claudePluginQueryDecision;
-    assert.equal(decide({ key: null }, null), "reuse");
-    assert.equal(decide({ key: null }, "generation-a"), "add-when-idle");
-  });
 });
 
 describe("ClaudeAdapterV2 MCP credential channel", () => {
@@ -3126,81 +3120,73 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  const sessionPlugins = (revision: string) => ({
-    revision,
-    skillsRoot: "/plugins/" + revision,
-    skills: [],
-    mcpServers: [],
-    pluginIds: [],
-    codexDisabledPluginIds: [],
-  });
-  const pluginTurns = Effect.fn(function* (
-    openPlugins: (
-      request: ExecutionHost.OpenSessionPluginsRequest,
-    ) => Effect.Effect<ExecutionHost.SessionPluginAttachment, never, Scope.Scope>,
-  ) {
-    const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true }).pipe(
-      Effect.provideService(ExecutionHost.ExecutionHost, {
-        prepareTurn: () => Effect.succeed({}),
-        openPlugins,
-      }),
-    );
-    const turn = (ordinal: number) => {
-      const input = makeClaudeTestTurnInput({
-        threadId: harness.threadId,
-        providerThread: harness.providerThread,
-        now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
-        attemptId: RunAttemptId.make("plugin-" + ordinal),
-        providerTurnOrdinal: ordinal,
-        text: "Hello.",
-        attachments: [],
-      });
-      return harness.runtime
-        .startTurn({
-          ...input,
-          hostExecutionIdentity: {
-            threadId: harness.threadId,
-            projectId: ProjectId.make("project-plugins"),
-            providerSessionId: harness.runtime.providerSession.id,
-            providerInstanceId: harness.runtime.instanceId,
-            providerThreadId: harness.providerThread.id,
-            nativeGeneration: 1,
-            nativeThreadRef: harness.providerThread.nativeThreadRef,
-            runId: input.runId,
-            attemptId: input.attemptId,
-            cwd: input.runtimePolicy.cwd,
-          },
-        })
-        .pipe(
-          Effect.andThen(
-            Effect.suspend(() =>
-              Queue.offer(
-                harness.processQueues.at(-1)!,
-                makeResultFrame({ uuid: "plugin-result-" + ordinal, result: "Done" }),
-              ),
-            ),
-          ),
-          Effect.andThen(Queue.take(harness.terminalReceipts)),
-        );
-    };
-    return { harness, turn };
-  });
-
   it.effect("resumes in a fresh Claude query after the Host plugin revision changes", () =>
     Effect.gen(function* () {
       let revision = "one";
       const closed: string[] = [];
-      const { harness, turn } = yield* pluginTurns(() =>
-        Effect.gen(function* () {
-          const opened = revision;
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              closed.push(opened);
+      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true }).pipe(
+        Effect.provideService(ExecutionHost.ExecutionHost, {
+          prepareTurn: () => Effect.succeed({}),
+          openPlugins: () =>
+            Effect.gen(function* () {
+              const opened = revision;
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  closed.push(opened);
+                }),
+              );
+              return {
+                revision: Effect.sync(() => revision),
+                plugins: {
+                  revision: opened,
+                  skillsRoot: "/plugins/" + opened,
+                  skills: [],
+                  mcpServers: [],
+                  pluginIds: [],
+                  codexDisabledPluginIds: [],
+                },
+              };
             }),
-          );
-          return { revision: Effect.sync(() => revision), plugins: sessionPlugins(opened) };
         }),
       );
+      const turn = (ordinal: number) => {
+        const input = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe("2026-11-06T00:00:00Z"),
+          attemptId: RunAttemptId.make("plugin-" + ordinal),
+          providerTurnOrdinal: ordinal,
+          text: "Hello.",
+          attachments: [],
+        });
+        return harness.runtime
+          .startTurn({
+            ...input,
+            hostExecutionIdentity: {
+              threadId: harness.threadId,
+              projectId: ProjectId.make("project-plugins"),
+              providerSessionId: harness.runtime.providerSession.id,
+              providerInstanceId: harness.runtime.instanceId,
+              providerThreadId: harness.providerThread.id,
+              nativeGeneration: 1,
+              nativeThreadRef: harness.providerThread.nativeThreadRef,
+              runId: input.runId,
+              attemptId: input.attemptId,
+              cwd: input.runtimePolicy.cwd,
+            },
+          })
+          .pipe(
+            Effect.andThen(
+              Effect.suspend(() =>
+                Queue.offer(
+                  harness.processQueues.at(-1)!,
+                  makeResultFrame({ uuid: "plugin-result-" + ordinal, result: "Done" }),
+                ),
+              ),
+            ),
+            Effect.andThen(Queue.take(harness.terminalReceipts)),
+          );
+      };
       yield* turn(1);
       yield* turn(2);
       assert.equal(harness.processQueues.length, 1);
@@ -3215,38 +3201,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.deepInclude(harness.getOpenedOptions()?.plugins ?? [], {
         type: "local",
         path: "/plugins/two",
-        skipMcpDiscovery: true,
-      });
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
-      ),
-    ),
-  );
-
-  it.effect("adds plugins the Host could not prepare when the Claude query opened", () =>
-    Effect.gen(function* () {
-      let revision: string | null = null;
-      const { harness, turn } = yield* pluginTurns(() =>
-        Effect.succeed({
-          revision: Effect.sync(() => revision),
-          plugins: revision === null ? null : sessionPlugins(revision),
-        }),
-      );
-      yield* turn(1);
-      yield* turn(2);
-      assert.equal(harness.processQueues.length, 1);
-      assert.notDeepInclude(harness.getOpenedOptions()?.plugins ?? [], {
-        type: "local",
-        path: "/plugins/one",
-        skipMcpDiscovery: true,
-      });
-      revision = "one";
-      yield* turn(3);
-      assert.equal(harness.processQueues.length, 2);
-      assert.deepInclude(harness.getOpenedOptions()?.plugins ?? [], {
-        type: "local",
-        path: "/plugins/one",
         skipMcpDiscovery: true,
       });
     }).pipe(

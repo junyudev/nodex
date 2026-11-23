@@ -3,6 +3,7 @@ import { runToolingProbe } from "../tooling/probe";
 import {
   appendFileSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -238,7 +239,35 @@ export async function verifyLintWarningRatchet(): Promise<void> {
     };
     writeFileSync(baselinePath, JSON.stringify(initial));
     await expect(["fmt", "--write"], 0);
-    for (const task of ["typecheck", "lint", "check:semantic", "check"])
+    // Queue reports live outside the workspace, whose files are the task's inputs.
+    const reports = mkdtempSync(path.join(os.tmpdir(), "nodex-queue-report-"));
+    try {
+      const firstReport = path.join(reports, "first.jsonl");
+      // A private budget grants at once, so the fixture never queues behind real checks.
+      const budget = { NODEX_MACHINE_BUDGET: "8", NODEX_MACHINE_BUDGET_DIR: reports };
+      const first = await command(directory, ["run", "typecheck"], {
+        ...budget,
+        CI: "",
+        NODEX_MACHINE_BUDGET_REPORT: firstReport,
+      });
+      if (first.status !== 0 || !existsSync(firstReport))
+        throw new Error(
+          "The semantic task did not report its machine budget grant.\n" + first.output,
+        );
+      const nextReport = path.join(reports, "next.jsonl");
+      const replay = await command(directory, ["run", "typecheck"], {
+        ...budget,
+        CI: "",
+        NODEX_MACHINE_BUDGET_REPORT: nextReport,
+      });
+      if (replay.status !== 0 || existsSync(nextReport))
+        throw new Error(
+          "A new queue report path invalidated the semantic task result.\n" + replay.output,
+        );
+    } finally {
+      rmSync(reports, { recursive: true, force: true });
+    }
+    for (const task of ["lint", "check:semantic", "check"])
       await expect(["run", task], 0, "2 baseline warnings, 0 new.");
     await expect(
       [...lint, "--all"],
@@ -249,6 +278,8 @@ export async function verifyLintWarningRatchet(): Promise<void> {
     );
 
     writeFileSync(path.join(directory, "src/new.ts"), warning);
+    await expect([...lint, "--files", "src/warning.ts"], 0, "1 baseline warnings, 0 new.");
+    await expect([...lint, "--files", "src/new.ts"], 1, "src/new.ts:2:3 warning", "baseline 0, +1");
     const regression = await expect(
       ["run", "lint"],
       1,
@@ -269,6 +300,7 @@ export async function verifyLintWarningRatchet(): Promise<void> {
       throw new Error("Lowering the baseline did not drop the fixed file.");
 
     writeFileSync(baselinePath, JSON.stringify({ ...initial, "src/warning.ts": { [rule]: 2 } }));
+    await expect([...lint, "--files", "src/warning.ts"], 0, "1 baseline warnings, 0 new.");
     await expect(["run", "typecheck"], 1, "stale baseline 2", "vp run lint:baseline");
     await expect(["run", "lint:baseline"], 0, "2 warnings.");
     if (readBaseline()["src/warning.ts"][rule] !== 1)
@@ -412,6 +444,13 @@ export async function verifyReactCompilerRatchet(): Promise<void> {
       throw new Error("An unchanged compiler task did not reuse its cached result.");
     writeFileSync(path.join(directory, filename), bailout);
     const before = readFileSync(baselinePath, "utf8");
+    const focused = ["exec", "tsx", "scripts/ci/react-compiler-ratchet.ts", "--files"];
+    await expect(
+      [...focused, "src/renderer/greeting.tsx", "src/renderer/greeting.test.tsx"],
+      0,
+      "1 renderer sources: 1 compiled functions",
+    );
+    await expect([...focused, filename], 1, "Todo (Finally)", "baseline 0, +1");
     await expect(
       compiler,
       1,

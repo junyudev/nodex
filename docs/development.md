@@ -900,19 +900,30 @@ display state model. Fixture classes and runtime commands are detailed below.
 
 ### Choosing checks
 
-Run `vp run check:changed` before handing off a branch. Like every CI job, it first
-installs dependencies from `pnpm-lock.yaml`, a no-op when they are current, so a lockfile
-another checkout pulled in cannot fail checks for unrelated reasons. It compares HEAD with
-its merge base with `origin/main` (local `main` only when the remote-tracking ref
-is absent), and includes staged, unstaged, and untracked files. Keep `origin/main`
-current before checking. It runs changed-file format and lint, the semantic gate,
-and the same static, Rust, and application-test gates Main CI selects for the
-unpushed change. The static `types` lane supplies repository-wide formatting and
-the semantic gate once; `ui-contracts` supplies the catalog check when selected.
-Selected dependency audits run locally too and require network access, as in CI.
-Rust builds and tests run serially under the shared machine budget, with four build jobs
-and two test threads. Unit and renderer suites use the test result cache;
-other selected application suites run uncached.
+Run `vp run check:changed` before handing off a branch and before pushing `main`.
+On a branch, it chooses whichever of local `main` and `origin/main` gives the
+closest merge base, preferring `origin/main` on ties. On `main` it compares with
+`origin/main` to cover every unpushed commit. Keep the remote-tracking ref current.
+Pass a ref explicitly with `vp run check:changed <ref>`. Staged, unstaged, and
+untracked paths all count.
+
+A frozen dependency install runs first. As slots become available, the runner
+starts changed-file format and lint, i18n, changed and sibling unit and
+renderer tests, the semantic gate, selected static groups, full cached unit and
+renderer suites, other selected application suites, and Rust. The static
+`types` lane runs `vp run check`. The local `ui-contracts` lane compiles changed
+renderer files. Vitest steps and Rust steps each run serially within their own
+group. Checks finish even when another step fails.
+
+The summary shows outcomes, run and shared-machine queue times, and available
+test cache statistics. Failed or timed-out steps print their full output. Raise
+the 20-minute per-step running-time limit with `--timeout <seconds>` or
+`CHECK_CHANGED_TIMEOUT`. Time waiting in the shared machine queue does not count.
+Each run appends a record to
+`cache.local/check-changed/runs.jsonl` in the primary checkout. After install,
+an unchanged worktree and validation environment reuse the last passing summary
+from the worktree's `node_modules/.cache/`. Edits during checks prevent reuse.
+
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,
 including Rust, stress, browser, and static contracts.

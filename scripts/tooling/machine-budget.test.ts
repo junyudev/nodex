@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
@@ -6,6 +6,7 @@ import {
   acquireMachineBudget,
   admittedTickets,
   machineBudgetCapacity,
+  MACHINE_BUDGET_REPORT_ENV,
   type BudgetContext,
   type BudgetTicket,
 } from "./machine-budget.ts";
@@ -94,10 +95,11 @@ test("runs claims one at a time while the computer is short of memory", () => {
 
 test("queues a claim until an earlier holder releases", async () => {
   const lines: string[] = [];
+  const report = path.join(directory, "queue.jsonl");
   const first = await acquireMachineBudget({ weight: 3, memoryGiB: 2, label: "first" }, context());
   const second = acquireMachineBudget(
     { weight: 2, memoryGiB: 2, label: "second" },
-    context({ log: (line) => lines.push(line) }),
+    context({ env: { [MACHINE_BUDGET_REPORT_ENV]: report }, log: (line) => lines.push(line) }),
   );
   expect(await settled(second)).toBe(false);
   expect(lines[0]).toContain("second is waiting");
@@ -106,6 +108,17 @@ test("queues a claim until an earlier holder releases", async () => {
   first.release();
   const lease = await second;
   expect(lease.waitedMs).toBeGreaterThan(0);
+  const [request, grant] = (await readFile(report, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(request).toMatchObject({ label: "second", requestedAt: expect.any(Number) });
+  expect(grant).toEqual({
+    id: request.id,
+    label: "second",
+    waitedMs: lease.waitedMs,
+    grantedAt: request.requestedAt + lease.waitedMs,
+  });
   lease.release();
   expect(await readdir(path.join(directory, "tickets"))).toEqual([]);
 });

@@ -139,8 +139,6 @@ it.effect(
           },
         } satisfies import("../../../shared/codex-plugin-settings").SkillContentsResult;
         const manager = PluginManager.of({
-          loadCatalog: () => Effect.die("Unexpected Session plugin catalog read"),
-          catalogInvalidations: Stream.empty,
           changes: Stream.fromPubSub(events),
           query: (name) =>
             Effect.sync(() => {

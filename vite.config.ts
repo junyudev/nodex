@@ -164,6 +164,8 @@ const semanticCommand =
 // workspace file outside dependency, build, cache and local directories is an input.
 const semanticTaskCache = {
   env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+  // Budget settings, holds and queue reports change scheduling, never the result.
+  untrackedEnv: ["NODEX_MACHINE_BUDGET*"],
   input: [
     "**/*",
     "!**/node_modules/**",

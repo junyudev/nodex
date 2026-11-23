@@ -14,7 +14,6 @@ import { live as standaloneSkillsLive } from "../platform/node/StandaloneSkillsN
 import { PluginService, live as pluginServiceLive } from "../codex-application/PluginService";
 import { PluginManager, live as pluginManagerLive } from "../codex-application/PluginManager";
 import { PluginCatalogSource } from "../../host/agent-plugins/PluginCatalogSource";
-import { makePluginCatalogCache } from "../../host/agent-plugins/PluginCatalogCache";
 import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
@@ -22,6 +21,7 @@ import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHost
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   BrowserApplication,
   BrowserApplicationError,
@@ -332,14 +332,20 @@ const pluginCatalog = Layer.effect(
   Effect.gen(function* () {
     const manager = yield* PluginManager;
     const codex = yield* CodexPlatform;
-    return yield* makePluginCatalogCache({
-      load: (projectId) =>
+    const catalog = manager.catalog;
+    if (!catalog) return yield* Effect.die("Plugin management has no catalog.");
+    return PluginCatalogSource.of({
+      catalog: (projectId) =>
         codex.ordinaryPackageAfterStartupCheck.pipe(
           Effect.flatMap((current) =>
-            current.status === "available" ? manager.loadCatalog(projectId) : Effect.succeed(null),
+            current.status === "available" ? catalog(projectId) : Effect.succeed(null),
           ),
         ),
-      invalidations: manager.catalogInvalidations,
+      changes: manager.changes.pipe(
+        Stream.filter(({ kind }) =>
+          ["plugins", "account", "connection", "skills", "mcp"].includes(kind),
+        ),
+      ),
     });
   }),
 ).pipe(Layer.provideMerge(plugins));

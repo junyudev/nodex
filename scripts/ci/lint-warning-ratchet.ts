@@ -36,9 +36,12 @@ function ruleKey(diagnostic: Diagnostic): string {
     : "oxlint/diagnostic";
 }
 
+const relativeFile = (file: string) =>
+  path.relative(process.cwd(), path.resolve(file)).split(path.sep).join("/");
+
 function filename(diagnostic: Diagnostic): string {
   if (!diagnostic.filename) return "<configuration>";
-  return path.relative(process.cwd(), path.resolve(diagnostic.filename)).split(path.sep).join("/");
+  return relativeFile(diagnostic.filename);
 }
 
 function countWarnings(diagnostics: readonly Diagnostic[]): CountBaseline {
@@ -79,7 +82,13 @@ function printDiagnostic(diagnostic: Diagnostic): void {
 function main(): number {
   const options = parseRatchetArguments(process.argv.slice(2), "lint-warning-ratchet.ts");
   const baseline = followBaselineRenames(readBaseline(baselinePath, options));
-  const invocation = vitePlusCommand(["lint", "--format", "json"]);
+  const files = options.files && new Set(options.files.map(relativeFile));
+  const invocation = vitePlusCommand([
+    "lint",
+    "--format",
+    "json",
+    ...(files ? ["--no-error-on-unmatched-pattern", ...[...files].map((file) => "./" + file)] : []),
+  ]);
   const result = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -93,9 +102,12 @@ function main(): number {
   const report = JSON.parse(result.stdout.slice(marker)) as {
     readonly diagnostics: readonly Diagnostic[];
   };
-  const counts = countWarnings(report.diagnostics);
+  const diagnostics = report.diagnostics.filter(
+    (diagnostic) => !files || diagnostic.severity !== "warning" || files.has(filename(diagnostic)),
+  );
+  const counts = countWarnings(diagnostics);
   const comparison = compareBaseline(counts, baseline);
-  for (const diagnostic of report.diagnostics) {
+  for (const diagnostic of diagnostics) {
     if (
       options.all ||
       diagnostic.severity !== "warning" ||

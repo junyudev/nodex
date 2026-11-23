@@ -447,24 +447,21 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         }
         if (request.operation === "plugins.revision")
           return {
-            revision: yield* plugins?.revision(request.attachmentId) ?? Effect.succeed(null),
+            revision: yield* (
+              plugins
+                ?.revision(request.attachmentId)
+                .pipe(Effect.mapError(() => unavailable(request.operation))) ?? Effect.succeed(null)
+            ),
           };
         if (!plugins) return { plugins: null };
-        const readThread = (threadId: string) => connection.request("thread.read", { threadId });
-        const thread = yield* Effect.gen(function* () {
-          const target = yield* readThread(request.request.threadId);
-          return (
-            target ??
-            (request.request.sourceThreadId
-              ? yield* readThread(request.request.sourceThreadId)
-              : null)
-          );
-        }).pipe(
-          Effect.timeoutOrElse({
-            duration: "10 seconds",
-            orElse: () => Effect.fail(unavailable("plugins.open")),
-          }),
-        );
+        const target = yield* connection.request("thread.read", {
+          threadId: request.request.threadId,
+        });
+        const thread =
+          target ??
+          (request.request.sourceThreadId
+            ? yield* connection.request("thread.read", { threadId: request.request.sourceThreadId })
+            : null);
         if (
           !thread ||
           (request.request.projectId !== null &&
