@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.5.11] - 2026-11-23
+
+### Added
 - See the pages an Agent's web search found. Open a search in a chat to get its results as chips with each site's icon and page title; a chip opens the page. Codex and Claude searches both show their pages, live and when you come back to a chat.
 - Google Antigravity is a built-in Agent with its own section in **Settings > Agents**. It starts with a profile that uses the account `agy` is signed in to on your computer, so an `agy` you already use works with no setup. Add a profile for each other account and sign in with Google or connect a Gemini API key, Gemini Enterprise or Agent Platform. Nodex downloads and updates the Antigravity runtime for you, or runs the `agy` you point it at. Chats use the models on your plan with each model's thinking levels, list what Antigravity's subagents did, and its limits sit beside your other usage meters.
 - Antigravity conversations, from the Antigravity app or its `agy` command line, can be imported from **Settings > Import** beside Codex and Claude Code. They appear in the same list across every folder, with search, filters and batch import. Each import is a new chat that already shows the full history, including thoughts, commands, file edits and tool calls, and continues as your Antigravity profile. The original conversation stays unchanged.
@@ -19,7 +28,6 @@ All notable changes to this project will be documented in this file.
 - Codex replies that OpenAI's safeguards hide or block after they stream now stay hidden. Nodex shows a short notice in their place, on your phone too, and other Agents reading the chat see the notice instead of the reply. A reply shown with a support note keeps that note beneath it.
 
 ### Changed
-
 - Settings is easier to find your way around. The sidebar now groups pages by what they are about — the App, your Agents, Integrations, Coding and Data — and every page says what it controls. **Chats** gathers what chats may do without asking, your instructions and how chats look; **Editor** gathers typing, pasting and links; Hooks moved into **Plugins** and Environments into **Worktrees**. **Spaces** is now **Remote**, where you link your phone, invite people and join other computers, and Link a device turns remote connections on for you. Conversations is now **Import**, and Data controls is **Archived chats**.
 - Each Agent's models are now in its own card in **Settings > Agents**, beside how it signs in, with Nodex's credit-spending models first. A filter at the top finds any model across them. Only Nodex keeps a switch for all of its models; turn another Agent or profile off to turn all of it off.
 - Branches Nodex creates for chats now start with `nodex/` instead of `codex/`. A prefix you set in **Settings > Git** stays as it is.
@@ -45,7 +53,6 @@ All notable changes to this project will be documented in this file.
 - An Agent's work in a chat reads as one live line. While it works, the line names the tool that is running, and each new tool's words wipe in as the last ones fade, without cutting in mid-shimmer. Its icon animates while the tool runs and holds still between tools. Opened, the steps hang from a thin line at their full length instead of scrolling in a short box: each command shows the command itself, each edit its file and line counts.
 
 ### Fixed
-
 - Searching a Page no longer takes over your cursor. After `Cmd/Ctrl+F` or opening a Page from a search result, the matched words used to stay selected, so clicking elsewhere and typing could jump back and replace them. Find now only highlights matches: you can click and type anywhere while it stays open, and its highlights follow your edits without scrolling the Page. Pressing Escape hands the current match to the Page as your selection.
 - Menus keep up with the pointer. Moving across the rows of a menu opened from a Page, Inbox item or other panel tab used to stall each highlight for a moment, because every row the pointer crossed made the whole window redraw. Rows now highlight as soon as the pointer reaches them, and hovering a menu no longer adds Back steps or clears Forward.
 - Clicking the group beside a Project's or Inbox's Home tab makes that group active. It used to switch straight back to Home's group.
@@ -55,8 +62,6 @@ All notable changes to this project will be documented in this file.
 - A chat waiting on a long delegated task no longer shows as stalled in the Inbox. Nodex used to count only the chat's own messages as progress, so a chat that handed work to another Agent for more than twenty minutes was marked "Stalled · needs you" while that Agent was still working. Progress anywhere in the delegated work now counts.
 - A signed-in Codex no longer shows as "Isn't ready" with nothing to do. Setup, the Composer and the model menu now say what happened: signed in but unable to connect, not answering in time, or unable to start, each with Check again. Nodex reads Codex's sign-in from your computer before it asks the network, so being offline never hides your account. Codex is ready in about a second instead of about nine, and turns ready by itself when the connection returns.
 - Agents installed on your computer are found however Nodex was opened. Claude Code, OpenCode and Google Antigravity are found when Nodex starts from the Dock or Finder, even if your shell's startup files are slow or fail, and an older copy earlier on your PATH no longer hides a working one. A version too old to connect is shown with the version it needs, in setup and in Settings → Agents.
-
-### Removed
 
 ## [0.5.10] - 2026-11-18
 
