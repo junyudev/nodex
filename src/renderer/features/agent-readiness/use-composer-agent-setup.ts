@@ -114,7 +114,7 @@ export function useComposerAgentSetup({
       return undefined;
     };
     const installation = component
-      ? componentInstallationReadiness(component, provider?.installed === true)
+      ? componentInstallationReadiness(component, provider)
       : managedInstallation();
     return agentReadiness({
       definition,

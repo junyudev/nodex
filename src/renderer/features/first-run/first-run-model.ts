@@ -360,7 +360,7 @@ function installationFor(
     source?.kind === "component" &&
     input.installations.components.find(({ id }) => id === source.id);
   const installation = component
-    ? componentInstallationReadiness(component, provider?.installed === true)
+    ? componentInstallationReadiness(component, provider)
     : source?.kind === "managed"
       ? input.installations.managed[source.id]?.(provider)
       : undefined;

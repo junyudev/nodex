@@ -170,7 +170,7 @@ describe("Agent readiness from an installation source", () => {
   it("uses the component id as an opaque target and carries download progress", () => {
     const installation = componentInstallationReadiness(
       component({ status: "downloading", receivedBytes: 35, totalBytes: 100 }),
-      false,
+      provider,
     );
     const readiness = agentReadiness({ definition, provider, installation });
     expect(readiness).toMatchObject({
@@ -192,7 +192,7 @@ describe("Agent readiness from an installation source", () => {
         message: "Invalid archive",
         retryAt,
       }),
-      false,
+      provider,
     );
     const readiness = agentReadiness({ definition, provider, installation });
     expect(readiness).toMatchObject({
@@ -202,8 +202,37 @@ describe("Agent readiness from an installation source", () => {
     });
   });
 
+  it("waits for the catalog to adopt an installed Component, then reports the provider's check", () => {
+    const installed = component({ status: "installed", installedBytes: 100 });
+    const stale = snapshot({
+      installed: false,
+      installationSource: source,
+      componentUnavailableReason: "installing",
+    });
+    expect(componentInstallationReadiness(installed, stale)).toEqual({
+      problem: { kind: "installing" },
+    });
+    const checking = snapshot({ installed: false, checkPending: true, installationSource: source });
+    expect(componentInstallationReadiness(installed, checking)).toBeUndefined();
+    expect(agentReadiness({ definition, provider: checking })?.problem).toEqual({
+      kind: "checking",
+    });
+    // An adopted executable that cannot start must never read as still installing.
+    const failed = snapshot({
+      installed: false,
+      status: "error",
+      installationSource: source,
+      message: "Could not start Codex.",
+    });
+    expect(componentInstallationReadiness(installed, failed)).toBeUndefined();
+    expect(agentReadiness({ definition, provider: failed })).toMatchObject({
+      problem: { kind: "not-installed" },
+      detail: "Could not start Codex.",
+    });
+  });
+
   it("keeps dormant Components selectable and routes a supplier's off state to Components", () => {
-    const onDemand = componentInstallationReadiness(component({ status: "on-demand" }), false);
+    const onDemand = componentInstallationReadiness(component({ status: "on-demand" }), provider);
     expect(
       agentReadiness({
         definition: agentDefinition("codex"),
@@ -213,7 +242,7 @@ describe("Agent readiness from an installation source", () => {
     ).toMatchObject({ problem: { kind: "not-installed", onDemand: true }, blocksSend: false });
     const off = componentInstallationReadiness(
       component({ status: "not-installed" }, false),
-      false,
+      provider,
     );
     expect(agentReadiness({ definition, provider, installation: off })).toMatchObject({
       problem: { kind: "turned-off", supplier: true },

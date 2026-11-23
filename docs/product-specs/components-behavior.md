@@ -62,7 +62,8 @@ that starts afterwards can use it, including work that was already waiting for i
 While a Component installs, the rest of Nodex stays usable. Features show the
 Component's installation state when they need it to run. Agent surfaces read that state through
 [Agent readiness](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
-together with the provider snapshot. Components own download progress, retry and activation.
+together with the provider snapshot. Components own download progress, retry and activation; once
+the Agent has taken up its installed Component, the Agent's own check says whether it can run.
 
 - **Codex.** An existing sign-in or Codex Session, access to Codex models with Nodex credits,
   choosing a Codex model, or starting sign-in requests Codex. Sign-in waits for installation

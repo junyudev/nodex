@@ -20,20 +20,24 @@ export function providerComponentReadiness(component: AppComponentState | undefi
   return "installing";
 }
 
-/** The Components owner is authoritative until the catalog sees the usable executable. */
+/**
+ * The Components owner is authoritative until the catalog adopts the usable executable. Once the
+ * provider stops reporting its Component unavailable, the provider's own check says what is wrong.
+ */
 export function componentInstallationReadiness(
   component: AppComponentState,
-  installed: boolean,
+  provider: Pick<AgentReadinessProvider, "installed" | "componentUnavailableReason"> | undefined,
 ): AgentInstallationReadiness | undefined {
-  if (installed) return undefined;
+  if (provider?.installed) return undefined;
   if (!component.enabled) return { problem: { kind: "turned-off", supplier: true } };
   const status = appComponentStatus(component);
   switch (status.kind) {
     case "on-demand":
       return { problem: { kind: "not-installed", onDemand: true } };
     case "installed":
-      // The executable has been written, but the provider catalog has not adopted it yet.
-      return { problem: { kind: "installing" } };
+      return provider && !provider.componentUnavailableReason
+        ? undefined
+        : { problem: { kind: "installing" } };
     case "retrying":
       return { problem: { kind: "installation-failed", retry: "automatic" } };
     case "failed":
@@ -75,7 +79,7 @@ export function providerComponentSetup(
       provider.installationSource.id !== component.id)
   )
     return null;
-  const installation = componentInstallationReadiness(component, false);
+  const installation = componentInstallationReadiness(component, provider);
   if (
     !installation ||
     (installation.problem.kind === "not-installed" && installation.problem.onDemand)
