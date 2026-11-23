@@ -142,6 +142,7 @@ function createSearchPlugin(): Plugin<NfmSearchPluginState> {
           : previousState.matches;
 
         let activeIndex = previousState.activeIndex;
+        const previousActive = previousState.matches[previousState.activeIndex];
 
         if (matches.length === 0) {
           activeIndex = -1;
@@ -154,6 +155,11 @@ function createSearchPlugin(): Plugin<NfmSearchPluginState> {
           activeIndex = wrapIndex(action.index, matches.length);
         } else if (queryChanged) {
           activeIndex = -1;
+        } else if (tr.docChanged && previousActive) {
+          // Edits keep the same occurrence active instead of whichever one now holds its index.
+          const anchor = tr.mapping.map(previousActive.from);
+          const following = matches.findIndex((match) => match.to > anchor);
+          activeIndex = following >= 0 ? following : matches.length - 1;
         } else {
           activeIndex = Math.min(Math.max(activeIndex, 0), matches.length - 1);
         }
@@ -340,6 +346,19 @@ export function revealNfmSearchBlock(
   });
 }
 
+/** Leaving Find hands the active match to the editor as its selection. */
+export function selectActiveNfmSearchMatch(
+  editor: EditorWithSearchCommands & { focus: () => void },
+): void {
+  const { activeMatch } = getNfmSearchState(editor);
+  if (activeMatch) {
+    editor.transact((tr) => {
+      tr.setSelection(TextSelection.create(tr.doc, activeMatch.from, activeMatch.to));
+    });
+  }
+  editor.focus();
+}
+
 export function revealActiveNfmSearchMatch(
   editor: EditorWithSearchNavigation,
   onScroll?: () => void,
@@ -351,11 +370,7 @@ export function revealActiveNfmSearchMatch(
   const blockId = getBlockIdAtPosition(editor.prosemirrorState.doc, activeMatch.from);
   if (blockId) expandNfmSearchAncestors(editor, blockId);
 
-  editor.transact((tr) => {
-    tr.setSelection(TextSelection.create(tr.doc, activeMatch.from, activeMatch.to));
-    tr.scrollIntoView();
-  });
-
+  // Find only highlights and scrolls; the caret stays wherever the person left it.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const currentMatch = getNfmSearchState(editor).activeMatch;

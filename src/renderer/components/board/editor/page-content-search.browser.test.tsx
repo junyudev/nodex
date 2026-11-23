@@ -170,6 +170,44 @@ test("Page Find matches across formatting, reveals toggles, navigates with Enter
   await waitFor(() => expect(find.resultLabel).toBe("No results"));
 });
 
+test("Page Find highlights without taking the caret, follows edits, and hands its match over on Escape", async () => {
+  const editor = makeEditor("caret");
+  render(
+    <ContentSearchProvider>
+      <ContentSearchSurface />
+      <Editor editor={editor} contextId="caret" />
+    </ContentSearchProvider>,
+  );
+  const input = await open(editor);
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+  });
+  await waitFor(() => expect(find.resultLabel).toBe("2 / 2 results"));
+  const second = getNfmSearchState(editor).activeMatch!;
+  expect(editor.prosemirrorState.selection.empty).toBe(true);
+
+  // The person clicks into another Block and types an earlier occurrence of the query.
+  await act(async () => {
+    editor.setTextCursorPosition("toggle-caret", "end");
+    editor.focus();
+    editor.transact((tr) => tr.insertText(" migration"));
+  });
+  const caret = editor.prosemirrorState.selection.from;
+  await waitFor(() => expect(find.resultLabel).toBe("3 / 3 results"));
+  const { activeMatch } = getNfmSearchState(editor);
+  expect(activeMatch?.from).toBe(second.from + " migration".length);
+  expect(editor.prosemirrorState.selection.empty).toBe(true);
+  expect(editor.prosemirrorState.selection.from).toBe(caret);
+
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search Page" }), { key: "Escape" });
+  });
+  expect(editor.prosemirrorView?.hasFocus()).toBe(true);
+  const { from, to } = editor.prosemirrorState.selection;
+  expect({ from, to }).toEqual({ from: activeMatch!.from, to: activeMatch!.to });
+  expect(getNfmSearchState(editor).query).toBe("");
+});
+
 test("Page reveal activates the addressed Block and focused child editors retain one Find", async () => {
   const parent = makeEditor("parent");
   const child = makeEditor("child");

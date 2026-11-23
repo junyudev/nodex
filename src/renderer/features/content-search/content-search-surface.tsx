@@ -392,7 +392,7 @@ export function ContentSearchSurface() {
       navigationDisabled={controller.navigationDisabled}
       onDomainChange={controller.setDomain}
       onQueryChange={controller.setQuery}
-      onClose={controller.close}
+      onClose={() => controller.close({ returnFocus: true })}
       onNext={controller.goNext}
       onPrevious={controller.goPrevious}
     />,

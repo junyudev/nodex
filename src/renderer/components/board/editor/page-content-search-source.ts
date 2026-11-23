@@ -9,6 +9,7 @@ import {
   replaceAllNfmSearchMatches,
   revealActiveNfmSearchMatch,
   revealNfmSearchBlock,
+  selectActiveNfmSearchMatch,
   setNfmSearchQuery,
 } from "./search-extension";
 
@@ -32,6 +33,7 @@ export function createPageContentSearchSource(
     search: (query, _limit, options) => {
       const reveal = options?.pageReveal !== consumedReveal ? options?.pageReveal : undefined;
       consumedReveal = options?.pageReveal;
+      const previousQuery = getNfmSearchState(editor).query;
       setNfmSearchQuery(editor, query, reveal?.blockId);
       const matches = readNfmSearchMatches(editor).map((range, ordinal) => ({
         id: `${contextId}:${range.from}:${range.to}`,
@@ -39,7 +41,9 @@ export function createPageContentSearchSource(
         domain: "page" as const,
         ordinal,
       }));
-      const preferred = reveal ? getNfmSearchState(editor).activeIndex : undefined;
+      // A repeated query refreshes after edits, which already moved the active occurrence.
+      const preferred =
+        reveal || previousQuery === query ? getNfmSearchState(editor).activeIndex : undefined;
       if (reveal && (preferred === undefined || preferred < 0))
         revealNfmSearchBlock(editor, reveal.blockId, onScroll);
       return {
@@ -50,11 +54,12 @@ export function createPageContentSearchSource(
         ...(preferred !== undefined ? { preferredMatchId: matches[preferred]?.id ?? null } : {}),
       };
     },
-    activate: (match, query) => {
+    activate: (match, query, options) => {
       setNfmSearchQuery(editor, query);
       activateNfmSearchMatch(editor, match.ordinal);
-      revealActiveNfmSearchMatch(editor, onScroll);
+      if (options?.reveal !== false) revealActiveNfmSearchMatch(editor, onScroll);
     },
+    returnFocus: () => selectActiveNfmSearchMatch(editor),
     clear: () => {
       if (editor._tiptapEditor.isDestroyed || !getNfmSearchState(editor).query) return;
       setNfmSearchQuery(editor, "");

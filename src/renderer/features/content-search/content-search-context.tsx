@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -69,11 +70,17 @@ export interface ContentSearchLocalSource {
   ) => Promise<void> | void;
   /** Publish retained identities before navigation; DOM maintenance never starts another search. */
   publishResult?: (result: ContentSearchLocalResult, activeMatchId: string) => void;
+  /**
+   * Marks the active match. `reveal: false` follows a `subscribe` refresh: the person is working
+   * in the surface, so Find keeps its view, focus and selection where they are.
+   */
   activate: (
     match: ContentSearchLocalMatch,
     query: string,
-    options?: { signal: AbortSignal },
+    options?: { signal: AbortSignal; reveal?: boolean },
   ) => Promise<void> | void;
+  /** Leaving Find from its bar returns focus to the surface at the active match. */
+  returnFocus?: () => void;
   clear: () => void;
 }
 
@@ -101,6 +108,8 @@ interface ContentSearchState {
   pageContextId: string | null;
   pageReveal: PageSearchReveal | null;
   chatTarget: { readonly sessionId: string; readonly target: ChatSearchReveal } | null;
+  /** Counts Find intents; only these move the view to the active match. */
+  revealIntent: number;
 }
 
 export interface ContentSearchController {
@@ -115,7 +124,7 @@ export interface ContentSearchController {
   resultLabel: string;
   navigationDisabled: boolean;
   requestOpen: (request?: ContentSearchOpenOptions) => void;
-  close: () => void;
+  close: (options?: { returnFocus?: boolean }) => void;
   setDomain: (domain: ContentSearchDomain) => void;
   setQuery: (query: string) => void;
   goNext: () => void;
@@ -144,6 +153,26 @@ const EMPTY_QUERY_BY_DOMAIN: Record<ContentSearchDomain, string> = {
 };
 
 const ContentSearchContext = createContext<ContentSearchController | null>(null);
+
+/** Resolves true once the match is active; a reveal also brings it into view first. */
+async function activateLocalMatch(
+  source: ContentSearchLocalSource,
+  result: ContentSearchLocalResult,
+  match: ContentSearchLocalMatch,
+  signal: AbortSignal,
+  reveal: boolean,
+): Promise<boolean> {
+  try {
+    source.publishResult?.(result, match.id);
+    if (reveal) await source.ensureVisible?.(match, { signal });
+    if (signal.aborted) return false;
+    await source.activate(match, result.query, { signal, reveal });
+    return !signal.aborted;
+  } catch {
+    if (!signal.aborted) source.clear();
+    return false;
+  }
+}
 
 function isLocalDomain(domain: ContentSearchDomain): domain is ContentSearchLocalDomain {
   return domain !== "browser";
@@ -201,6 +230,10 @@ export function ContentSearchProvider({
   const lastOpenRequestTickRef = useRef(openRequest?.tick ?? 0);
   const lastChatRevealIdRef = useRef<string | null>(null);
   const lastDomainRef = useRef<ContentSearchDomain>("conversation");
+  const activeSourceRef = useRef<ContentSearchLocalSource | undefined>(undefined);
+  const revealedIntentRef = useRef(0);
+  /** Tracks closing synchronously so effects from an earlier commit cannot revive a match. */
+  const openRef = useRef(false);
   const [sources, setSources] = useState<readonly ContentSearchLocalSource[]>([]);
   const [browserTarget, setBrowserTarget] = useState<ContentSearchBrowserTarget | null>(null);
   const [state, setState] = useState<ContentSearchState>({
@@ -213,6 +246,7 @@ export function ContentSearchProvider({
     pageContextId: null,
     pageReveal: null,
     chatTarget: null,
+    revealIntent: 0,
   });
 
   const [sourceRevision, setSourceRevision] = useState(0);
@@ -266,9 +300,11 @@ export function ContentSearchProvider({
     focusContentSearchInput();
   }, []);
 
-  const close = useCallback(() => {
+  const close = useCallback((options?: { returnFocus?: boolean }) => {
+    openRef.current = false;
     activeEnsureAbortRef.current?.abort();
     activeEnsureAbortRef.current = null;
+    if (options?.returnFocus) activeSourceRef.current?.returnFocus?.();
     for (const source of sourcesRef.current.values()) {
       source.clear();
     }
@@ -354,6 +390,7 @@ export function ContentSearchProvider({
           : (currentIndex + delta + storedMatches) % storedMatches;
       return {
         ...current,
+        revealIntent: current.revealIntent + 1,
         activeIndexByDomain: {
           ...current.activeIndexByDomain,
           [domain]: nextIndex,
@@ -490,15 +527,14 @@ export function ContentSearchProvider({
     pageReveal: state.pageReveal,
     sourceRevision,
   });
-  if (
+  const searchIntentChanged =
     localSearchInput.domain !== state.domain ||
     localSearchInput.open !== state.open ||
     localSearchInput.query !== query ||
     localSearchInput.source !== source ||
     localSearchInput.chatTarget !== chatTarget ||
-    localSearchInput.pageReveal !== state.pageReveal ||
-    localSearchInput.sourceRevision !== sourceRevision
-  ) {
+    localSearchInput.pageReveal !== state.pageReveal;
+  if (searchIntentChanged || localSearchInput.sourceRevision !== sourceRevision) {
     const nextInput = {
       domain: state.domain,
       open: state.open,
@@ -510,9 +546,11 @@ export function ContentSearchProvider({
     };
     setLocalSearchInput(nextInput);
     const { domain, open } = nextInput;
-    if (open && isLocalDomain(domain)) {
+    // A content refresh keeps the current result and view until the new one arrives.
+    if (open && isLocalDomain(domain) && searchIntentChanged) {
       setState((current) => ({
         ...current,
+        revealIntent: current.revealIntent + 1,
         loadingDomain:
           (source || reveal) && query
             ? domain
@@ -592,42 +630,35 @@ export function ContentSearchProvider({
     };
   }, [localSearchInput]);
 
+  useLayoutEffect(() => {
+    openRef.current = state.open;
+  }, [state.open]);
+
   useEffect(() => {
-    if (!state.open || !isLocalDomain(state.domain)) return;
+    if (!state.open || !openRef.current || !isLocalDomain(state.domain)) return;
     const domain = state.domain;
     const result = state.resultByDomain[domain];
     const liveQuery = normalizeContentSearchQuery(state.queryByDomain[domain]);
     const activeIndex = state.activeIndexByDomain[domain] ?? 0;
     const match = result?.matches[activeIndex] ?? null;
-    if (
-      !source ||
-      !result ||
-      result.query !== liveQuery ||
-      match?.contextId !== source.contextId ||
-      state.loadingDomain === domain ||
-      !match
-    ) {
+    if (!source || !result || result.query !== liveQuery || state.loadingDomain === domain) {
       source?.clear();
       return;
     }
+    const intent = state.revealIntent;
+    if (match?.contextId !== source.contextId || !match) {
+      revealedIntentRef.current = intent;
+      source.clear();
+      return;
+    }
+    const reveal = intent !== revealedIntentRef.current;
     activeEnsureAbortRef.current?.abort();
     const controller = new AbortController();
     activeEnsureAbortRef.current = controller;
 
-    void (async () => {
-      try {
-        if (source.publishResult) source.publishResult(result, match.id);
-        if (source.ensureVisible) await source.ensureVisible(match, { signal: controller.signal });
-        if (controller.signal.aborted) return;
-        await source.activate(match, result.query, {
-          signal: controller.signal,
-        });
-      } catch {
-        if (!controller.signal.aborted) {
-          source.clear();
-        }
-      }
-    })();
+    void activateLocalMatch(source, result, match, controller.signal, reveal).then((settled) => {
+      if (settled) revealedIntentRef.current = intent;
+    });
     return () => {
       controller.abort();
       if (activeEnsureAbortRef.current === controller) {
@@ -641,8 +672,13 @@ export function ContentSearchProvider({
     state.open,
     state.queryByDomain,
     state.resultByDomain,
+    state.revealIntent,
     source,
   ]);
+
+  useEffect(() => {
+    activeSourceRef.current = source;
+  }, [source]);
 
   useEffect(() => {
     if (!state.open || !query) return;

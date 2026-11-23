@@ -396,7 +396,7 @@ describe("actual transcript Find placement", () => {
     owner.applyEvent({ type: "reset", value: projectCodexTranscript(state) });
     function CloseFind() {
       const find = useContentSearch();
-      return <button onClick={find.close}>Close Find</button>;
+      return <button onClick={() => find.close()}>Close Find</button>;
     }
     const view = render(
       <LocalConversationTestQueryProvider>

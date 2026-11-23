@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Searching a Page no longer takes over your cursor. After `Cmd/Ctrl+F` or opening a Page from a search result, the matched words used to stay selected, so clicking elsewhere and typing could jump back and replace them. Find now only highlights matches: you can click and type anywhere while it stays open, and its highlights follow your edits without scrolling the Page. Pressing Escape hands the current match to the Page as your selection.
 - Menus keep up with the pointer. Moving across the rows of a menu opened from a Page, Inbox item or other panel tab used to stall each highlight for a moment, because every row the pointer crossed made the whole window redraw. Rows now highlight as soon as the pointer reaches them, and hovering a menu no longer adds Back steps or clears Forward.
 - Clicking the group beside a Project's or Inbox's Home tab makes that group active. It used to switch straight back to Home's group.
 - Claude Agent can use Nodex's tools again. Its current releases ask for them in a form Nodex did not answer, so Nodex's own tools, such as Pages and Desktop Tools, were missing from its chats. Nodex now hands its tools to Claude Agent the way it does to every other ACP Agent.
