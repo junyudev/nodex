@@ -1,5 +1,6 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import { BlockDisclosureStateStore } from "@/lib/block-disclosure-state";
@@ -152,6 +153,48 @@ describe("Page outliner surface", () => {
       await Promise.resolve();
     });
     expect(view.getByRole("button", { name: "Expand Rich title" })).toBeTruthy();
+  });
+
+  test("leaves a portalled control's input to the control", async () => {
+    const onTouch = vi.fn();
+    const onExpandedChange = vi.fn();
+    const view = render(
+      <PageOutlinerRow
+        targetBlockId="target"
+        plainTitle="Page"
+        title={
+          <>
+            <button type="button">Page title</button>
+            {createPortal(<button type="button">Popup action</button>, document.body)}
+          </>
+        }
+        expanded
+        expandable
+        active
+        onTouch={onTouch}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    const popupAction = view.getByRole("button", { name: "Popup action" });
+    await act(async () => {
+      popupAction.focus();
+      fireEvent.pointerDown(popupAction);
+      fireEvent.keyDown(popupAction, { key: "Enter", metaKey: true });
+      await Promise.resolve();
+    });
+    expect(onTouch).not.toHaveBeenCalled();
+    expect(onExpandedChange).not.toHaveBeenCalled();
+
+    const title = view.getByRole("button", { name: "Page title" });
+    await act(async () => {
+      title.focus();
+      fireEvent.pointerDown(title);
+      fireEvent.keyDown(title, { key: "Enter", metaKey: true });
+      await Promise.resolve();
+    });
+    expect(onTouch).toHaveBeenCalledTimes(2);
+    expect(onExpandedChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   test("lets a nested Page header toggle without collapsing its parent", async () => {

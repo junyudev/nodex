@@ -8,6 +8,7 @@ import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
+  SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { PagePullRequestLink } from "@/components/board/page-stage/page-workspace-row";
@@ -35,6 +36,7 @@ import {
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 import type { RelationTargetWindow } from "@/lib/data-source-relation-value";
 import { cn } from "@/lib/utils";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { canMoveDatabaseViewPage } from "@/lib/database-view-row-mutations";
 import type {
   DatabaseJsonValue,
@@ -342,12 +344,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   } as CSSProperties;
   const handleCardClick = (event: ReactMouseEvent<HTMLElement>): void => {
     if (event.defaultPrevented) return;
-    if (
-      typeof Node === "undefined" ||
-      !(event.target instanceof Node) ||
-      !event.currentTarget.contains(event.target)
-    )
-      return;
+    if (!isEventWithinCurrentTarget(event)) return;
     if (
       typeof Element !== "undefined" &&
       event.target instanceof Element &&
@@ -363,12 +360,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   };
   const handleCardDoubleClick = (event: ReactMouseEvent<HTMLElement>): void => {
     if (event.defaultPrevented || event.shiftKey) return;
-    if (
-      typeof Node === "undefined" ||
-      !(event.target instanceof Node) ||
-      !event.currentTarget.contains(event.target)
-    )
-      return;
+    if (!isEventWithinCurrentTarget(event)) return;
     if (
       typeof Element !== "undefined" &&
       event.target instanceof Element &&
@@ -377,6 +369,10 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
     )
       return;
     onOpenPage(row.pageId, title, "durable");
+  };
+  const handleCardHighlight = (event: SyntheticEvent<HTMLElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
+    onHighlight(row.pageId);
   };
   const renderCard = (previewRect: DOMRect | null) => (
     <article
@@ -400,8 +396,8 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
             )
           : undefined
       }
-      onPointerDown={previewRect ? undefined : () => onHighlight(row.pageId)}
-      onFocus={previewRect ? undefined : () => onHighlight(row.pageId)}
+      onPointerDown={previewRect ? undefined : handleCardHighlight}
+      onFocus={previewRect ? undefined : handleCardHighlight}
       onClick={previewRect ? undefined : handleCardClick}
       onDoubleClick={previewRect ? undefined : handleCardDoubleClick}
       onDragStart={!previewRect && draggable ? (event) => onDragStartPage(row, event) : undefined}

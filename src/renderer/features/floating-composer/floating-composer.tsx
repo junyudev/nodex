@@ -48,6 +48,7 @@ import {
 import { APP_SHELL_RIGHT_PANEL_COMPOSER_OVERLAY_LAYER_CLASS } from "@/lib/app-shell-layers";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { RightPanelComposerPresentationProvider } from "@/features/local-conversation/view/right-panel-composer-presentation";
 import type { WorkbenchComposerOverlayState } from "../../../shared/workbench-scene";
 import { FloatingComposerHeaderSlotContext } from "./floating-composer-header-slot";
@@ -230,11 +231,6 @@ function mergeAttention(
   if (left === "request" || right === "request") return "request";
   if (left === "activity" || right === "activity") return "activity";
   return "none";
-}
-
-/** Whether a React event comes from inside its handler's element rather than through a portal. */
-function isDomDescendant(event: { currentTarget: Element; target: EventTarget }): boolean {
-  return event.target instanceof Node && event.currentTarget.contains(event.target);
 }
 
 /** Whether `target` belongs to the composer: inside its frame or in UI it opened. */
@@ -933,7 +929,7 @@ export function FloatingComposer({
   const handleFrameKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (
       !expandedShown ||
-      !isDomDescendant(event) ||
+      !isEventWithinCurrentTarget(event) ||
       event.key !== "Escape" ||
       event.defaultPrevented ||
       event.repeat ||
@@ -951,7 +947,7 @@ export function FloatingComposer({
   const handleFrameClick = (event: ReactMouseEvent<HTMLElement>) => {
     if (!visible || !hasTranscript || draggedRef.current || event.defaultPrevented) return;
     const target = event.target;
-    if (!(target instanceof Element) || !isDomDescendant(event)) return;
+    if (!(target instanceof Element) || !isEventWithinCurrentTarget(event)) return;
     if (!target.closest("[data-floating-composer-header]")) return;
     if (target.closest(INTERACTIVE_TARGET_SELECTOR)) return;
     setExpanded(!expanded);
@@ -1083,14 +1079,14 @@ export function FloatingComposer({
         <span
           className="contents"
           onPointerDownCapture={(event) => {
-            if (event.button !== 0 || !isDomDescendant(event)) return;
+            if (event.button !== 0 || !isEventWithinCurrentTarget(event)) return;
             event.preventDefault();
             event.stopPropagation();
             draggedRef.current = false;
             startFrameDrag(event);
           }}
           onClickCapture={(event) => {
-            if (!isDomDescendant(event)) return;
+            if (!isEventWithinCurrentTarget(event)) return;
             event.preventDefault();
             event.stopPropagation();
             if (draggedRef.current) {

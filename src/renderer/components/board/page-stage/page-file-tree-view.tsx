@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
@@ -103,6 +104,7 @@ export function PageFileTreeView({
     row.kind === "folder" ? onToggleFolder(row.path) : onToggleBodyGroup();
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.defaultPrevented || !isEventWithinCurrentTarget(event)) return;
     const index = rows.findIndex((row) => row.key === tabStopKey);
     const row = rows[index];
     if (!row) return;

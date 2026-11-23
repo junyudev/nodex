@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
@@ -137,7 +138,7 @@ export function ComposerContextControls({ children }: { children: ReactNode }) {
           event.shiftKey ||
           event.currentTarget.scrollWidth <= event.currentTarget.clientWidth ||
           !(event.target instanceof Element) ||
-          !event.currentTarget.contains(event.target)
+          !isEventWithinCurrentTarget(event)
         )
           return;
         event.preventDefault();

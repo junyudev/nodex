@@ -4,6 +4,7 @@ import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useExecutionHold } from "@/lib/execution-holds-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import type {
   ComponentPropsWithoutRef,
   CSSProperties,
@@ -12,6 +13,7 @@ import type {
   PointerEvent,
   Ref,
   ReactNode,
+  SyntheticEvent,
 } from "react";
 import {
   forwardRef,
@@ -274,11 +276,6 @@ export function stopCodexSidebarRowActionPropagation(event: SidebarRowActionEven
 function stopCodexSidebarRowActionKeyPropagation(event: KeyboardEvent<HTMLElement>) {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.stopPropagation();
-}
-
-// Portals still bubble through their React owner; rows only activate for DOM-owned events.
-function isEventWithinCurrentTarget(event: SidebarRowActionEvent): boolean {
-  return event.target instanceof Node && event.currentTarget.contains(event.target);
 }
 
 function clearCodexSidebarTextSelection(): void {
@@ -1244,7 +1241,8 @@ export function CodexProjectRow({
     }
     onHoverCardOpenChange?.(nextOpen);
   };
-  const prefetchProjectHoverCardMetadata = () => {
+  const prefetchProjectHoverCardMetadata = (event: SyntheticEvent<HTMLDivElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
     // A prefetch ignores `enabled`; a hosted Project has no path on this desktop to present.
     if (isHostedChat()) return;
     void queryClient.prefetchQuery(localPathPresentationContextQueryOptions());
@@ -1343,7 +1341,7 @@ export function CodexProjectRow({
           onPointerEnter={prefetchProjectHoverCardMetadata}
           onFocusCapture={prefetchProjectHoverCardMetadata}
           onContextMenu={(event) => {
-            if (!canShowNativeContextMenu()) return;
+            if (!isEventWithinCurrentTarget(event) || !canShowNativeContextMenu()) return;
             event.preventDefault();
             event.stopPropagation();
             setProjectHoverCardOpen(false);

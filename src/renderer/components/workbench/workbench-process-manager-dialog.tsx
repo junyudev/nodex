@@ -305,9 +305,9 @@ function ProcessManagerRow({
       )}
       onClick={() => onOpenOutput(row)}
       onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
+        // The row is a tab stop alongside its action button and menu.
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         onOpenOutput(row);
       }}

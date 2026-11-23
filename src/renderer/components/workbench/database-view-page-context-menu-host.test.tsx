@@ -1,6 +1,7 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { createRef } from "react";
+import { createPortal } from "react-dom";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { dataSourcePagePropertyMenuSourceFromBindings } from "@/components/database/data-source-page-property-menu-source";
@@ -192,6 +193,31 @@ describe("DatabaseViewPageContextMenuHost", () => {
       ).toBeNull(),
     );
     expect(resolveSession).not.toHaveBeenCalled();
+  });
+
+  test("lets a portalled control's context menu event continue to bubble", async () => {
+    const resolveSession = vi.fn(session);
+    const onContextMenu = vi.fn();
+    const view = render(
+      <div onContextMenu={onContextMenu}>
+        <DatabaseViewPageContextMenuHost resolveSession={resolveSession}>
+          <div>
+            {createPortal(
+              <button type="button" data-database-view-page-menu-target="portal-page">
+                Popup action
+              </button>,
+              document.body,
+            )}
+          </div>
+        </DatabaseViewPageContextMenuHost>
+      </div>,
+    );
+    await act(async () => {
+      expect(fireEvent.contextMenu(view.getByRole("button", { name: "Popup action" }))).toBe(true);
+      await Promise.resolve();
+    });
+    expect(resolveSession).not.toHaveBeenCalled();
+    expect(onContextMenu).toHaveBeenCalledTimes(1);
   });
 
   test("resets search and focus after root dismissal", async () => {

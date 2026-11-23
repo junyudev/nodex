@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl, defineMessages, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { editorHasBlockWithType, isTableCellSelection } from "@blocknote/core";
@@ -1387,11 +1388,13 @@ export function NfmTextActionMenuSurface({
     [reportSelectionPresentation],
   );
 
-  const handleToolbarFocusCapture = () => {
+  const handleToolbarFocusCapture = (event: FocusEvent<HTMLDivElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
     handleSelectionPresentationOwnerChange("toolbar-focus", true);
   };
 
   const handleToolbarBlurCapture = (event: FocusEvent<HTMLDivElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
     const nextTarget = event.relatedTarget;
     if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
       return;

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { act } from "react";
+import { createPortal } from "react-dom";
 import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -466,7 +467,7 @@ describe("AppShellTabs", () => {
     expect(view.getByText("B.ts") !== null).toBe(true);
   });
 
-  test("does not pin a preview from an exempt panel interaction", async () => {
+  test("pins a preview only from non-exempt input inside its panel", async () => {
     const pinned: string[] = [];
     const view = renderAppShellTabs({
       activeTabId: "preview-file",
@@ -479,13 +480,17 @@ describe("AppShellTabs", () => {
           renderPanel: () => (
             <div data-tab-preview-pin-exempt="true">
               <button type="button">Open two.ts</button>
+              {createPortal(<button type="button">Popup action</button>, document.body)}
             </div>
           ),
         },
       ],
     });
 
+    const popupAction = view.getByRole("button", { name: "Popup action" });
     await act(async () => {
+      fireEvent.pointerDown(popupAction);
+      fireEvent.keyDown(popupAction, { key: "Enter" });
       fireEvent.pointerDown(view.getByRole("button", { name: "Open two.ts" }));
       fireEvent.keyDown(view.getByRole("button", { name: "Open two.ts" }), {
         key: "Enter",

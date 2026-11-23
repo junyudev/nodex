@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -195,6 +196,7 @@ function SidebarPageRootRow({
       onContextMenu={
         actionableTarget && mutationsEnabled
           ? (event) => {
+              if (!isEventWithinCurrentTarget(event)) return;
               event.preventDefault();
               event.stopPropagation();
               changeActionsOpen(true);

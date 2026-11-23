@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl } from "@/lib/i18n";
 import {
   forwardRef,
@@ -182,6 +183,8 @@ export function ConversationVideoPlayer({
     rate: 1,
   });
   const [fullscreen, setFullscreen] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [actionFailed, setActionFailed] = useState(false);
   const seeking = useRef<{ readonly pointerId: number; readonly wasPlaying: boolean } | null>(null);
   useLayoutEffect(
@@ -274,12 +277,16 @@ export function ConversationVideoPlayer({
         )}
         data-content-search-skip="true"
         data-markdown-copy="exclude"
-        onKeyDownCapture={(event) => {
+        onKeyDown={(event) => {
           if (
             event.key !== "Escape" ||
-            event.currentTarget.ownerDocument.fullscreenElement !== event.currentTarget
+            event.defaultPrevented ||
+            event.currentTarget.ownerDocument.fullscreenElement !== event.currentTarget ||
+            !isEventWithinCurrentTarget(event)
           )
             return;
+          // If focus is outside the open popup and trigger, Base UI dismisses at document.
+          if (volumeOpen || optionsOpen) return;
           event.preventDefault();
           event.stopPropagation();
           toggleFullscreen();
@@ -369,7 +376,7 @@ export function ConversationVideoPlayer({
               {progress}
             </span>
             <div className="ms-auto flex shrink-0 items-center gap-1.5">
-              <NodexPopover>
+              <NodexPopover open={volumeOpen} onOpenChange={setVolumeOpen}>
                 <NodexPopoverTrigger>
                   <MediaControlButton
                     label={intl.formatMessage({
@@ -430,6 +437,8 @@ export function ConversationVideoPlayer({
                 </NodexPopoverContent>
               </NodexPopover>
               <NodexDropdownMenu
+                open={optionsOpen}
+                onOpenChange={setOptionsOpen}
                 align="end"
                 side="top"
                 portalContainer={portalContainer}

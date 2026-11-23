@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import {
   DatabaseSearchExcerpt,
   DatabaseSearchTitle,
@@ -191,10 +192,12 @@ export function DatabaseListRow({
         if (event.target === event.currentTarget) onActivate();
       }}
       onPointerDown={(event) => {
+        if (!isEventWithinCurrentTarget(event)) return;
         if ((event.target as HTMLElement).closest(DATABASE_LIST_INTERACTIVE_SELECTOR)) return;
         onActivate();
       }}
       onClick={(event) => {
+        if (!isEventWithinCurrentTarget(event)) return;
         if ((event.target as HTMLElement).closest(DATABASE_LIST_INTERACTIVE_SELECTOR)) return;
         if (event.shiftKey) {
           event.preventDefault();
@@ -206,7 +209,7 @@ export function DatabaseListRow({
         onOpen(presentedTitle, "preview");
       }}
       onDoubleClick={(event) => {
-        if (event.shiftKey) return;
+        if (event.shiftKey || !isEventWithinCurrentTarget(event)) return;
         const target = event.target as HTMLElement;
         if (
           target.closest(DATABASE_LIST_INTERACTIVE_SELECTOR) &&

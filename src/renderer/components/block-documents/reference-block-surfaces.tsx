@@ -1,7 +1,8 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl } from "@/lib/i18n";
 import { DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES } from "../../../shared/workflow-status";
 import { ArchiveIcon, ChevronRightIcon, OpenInIcon } from "@/components/shared/icons";
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type SyntheticEvent } from "react";
 import { Rows3, TriangleAlert } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { DatabaseViewReadModel } from "../../../shared/database-views";
@@ -145,6 +146,11 @@ export function ReferencedCardRow({
       defaultMessage: "Untitled",
     });
 
+  const handleTouch = (event: SyntheticEvent<HTMLElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
+    activationBudget.touch(surfaceInstanceKey);
+  };
+
   return (
     <section
       ref={visibilityRef}
@@ -154,8 +160,8 @@ export function ReferencedCardRow({
       data-reference-expanded={expanded ? "true" : "false"}
       data-reference-editor-active={active ? "true" : "false"}
       className="min-w-0 py-0.5"
-      onFocusCapture={() => activationBudget.touch(surfaceInstanceKey)}
-      onPointerDownCapture={() => activationBudget.touch(surfaceInstanceKey)}
+      onFocusCapture={handleTouch}
+      onPointerDownCapture={handleTouch}
     >
       <div className="group/reference-row flex min-h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-token-foreground/5">
         <button

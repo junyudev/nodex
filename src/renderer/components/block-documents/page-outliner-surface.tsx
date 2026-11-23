@@ -1,13 +1,13 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl } from "@/lib/i18n";
 import {
   useCallback,
   useId,
   useState,
-  type FocusEventHandler,
   type KeyboardEvent,
-  type PointerEventHandler,
   type ReactNode,
   type RefCallback,
+  type SyntheticEvent,
 } from "react";
 import { OpenInIcon } from "@/components/shared/icons";
 import { LoadingResultsShimmer } from "@/components/ui/loading-results-shimmer";
@@ -111,8 +111,10 @@ export function PageOutlinerFrame({
   onTouch,
   children,
 }: PageOutlinerFrameProps) {
-  const handleFocus: FocusEventHandler<HTMLElement> = () => onTouch?.();
-  const handlePointerDown: PointerEventHandler<HTMLElement> = () => onTouch?.();
+  const handleTouch = (event: SyntheticEvent<HTMLElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
+    onTouch?.();
+  };
   return (
     <section
       ref={sectionRef}
@@ -123,8 +125,8 @@ export function PageOutlinerFrame({
       data-page-outliner-expanded={expanded ? "true" : "false"}
       data-page-outliner-active={active ? "true" : "false"}
       className="relative w-full min-w-0 self-stretch"
-      onFocusCapture={handleFocus}
-      onPointerDownCapture={handlePointerDown}
+      onFocusCapture={handleTouch}
+      onPointerDownCapture={handleTouch}
     >
       {children}
     </section>
@@ -160,6 +162,7 @@ export function PageOutlinerDisclosure({
   const intl = useIntl();
   const handleKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.isDefaultPrevented() || event.nativeEvent.isComposing) return;
+    if (!isEventWithinCurrentTarget(event)) return;
     if (event.key !== "Enter") return;
     if (!event.metaKey && !event.ctrlKey) return;
     if (event.altKey || event.shiftKey || !expandable) return;

@@ -1,6 +1,7 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useIntl } from "@/lib/i18n";
 import { ChevronRightIcon } from "@/components/shared/icons";
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type SyntheticEvent } from "react";
 
 import {
   BlockDisclosureStateStore,
@@ -110,6 +111,11 @@ export function OwnedDocumentReferenceSurface({
     );
   };
 
+  const handleTouch = (event: SyntheticEvent<HTMLElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
+    activationBudget.touch(surfaceInstanceKey);
+  };
+
   return (
     <section
       ref={visibilityRef}
@@ -118,8 +124,8 @@ export function OwnedDocumentReferenceSurface({
       data-owned-document-expanded={expanded ? "true" : "false"}
       data-owned-document-editor-active={active ? "true" : "false"}
       className="min-w-0 py-0.5"
-      onFocusCapture={() => activationBudget.touch(surfaceInstanceKey)}
-      onPointerDownCapture={() => activationBudget.touch(surfaceInstanceKey)}
+      onFocusCapture={handleTouch}
+      onPointerDownCapture={handleTouch}
     >
       <div className="group/owned-document flex min-h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-token-foreground/5">
         <button

@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import {
   defineMessages,
   FormattedMessage,
@@ -647,7 +648,7 @@ export function AppShellTabs({
   const pinPreviewTabFromPanelEvent = (event: SyntheticEvent<HTMLElement>) => {
     if (!activeTab?.preview) return;
     if (activeTab.pinBehavior === "disabled") return;
-    if (isPreviewPinExemptEvent(event.nativeEvent)) return;
+    if (!isEventWithinCurrentTarget(event) || isPreviewPinExemptEvent(event.nativeEvent)) return;
     pinTab(activeTab.id);
   };
 

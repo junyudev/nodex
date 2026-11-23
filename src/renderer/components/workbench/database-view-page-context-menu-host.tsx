@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import {
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -38,16 +39,21 @@ export function DatabaseViewPageContextMenuHost({
     if (!open) setTargetKey(null);
   };
 
-  const handleContextMenu = (event: ReactMouseEvent<HTMLSpanElement>): void => {
-    if (!(event.target instanceof Element)) {
-      event.stopPropagation();
+  const handleContextMenu = (
+    event: ReactMouseEvent<HTMLSpanElement> & { preventBaseUIHandler?: () => void },
+  ): void => {
+    if (!isEventWithinCurrentTarget(event)) {
+      // Skip the merged trigger handler without consuming the popup's event.
+      event.preventBaseUIHandler?.();
       return;
     }
-    const target = event.target.closest<HTMLElement>(
-      `[${DATABASE_VIEW_PAGE_MENU_TARGET_ATTRIBUTE}]`,
-    );
+    const target =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(`[${DATABASE_VIEW_PAGE_MENU_TARGET_ATTRIBUTE}]`)
+        : null;
     const nextTargetKey = target?.getAttribute(DATABASE_VIEW_PAGE_MENU_TARGET_ATTRIBUTE);
     if (!nextTargetKey || !resolveSession(nextTargetKey)) {
+      event.preventBaseUIHandler?.();
       event.stopPropagation();
       return;
     }
@@ -57,10 +63,12 @@ export function DatabaseViewPageContextMenuHost({
   return (
     <NodexContextMenuRoot open={menuOpen} onOpenChange={handleMenuOpenChange}>
       <NodexContextMenuTrigger>
-        <span className="contents" data-database-view-page-menu-region="true">
-          <span className="contents" onContextMenu={handleContextMenu}>
-            {children}
-          </span>
+        <span
+          className="contents"
+          data-database-view-page-menu-region="true"
+          onContextMenu={handleContextMenu}
+        >
+          {children}
         </span>
       </NodexContextMenuTrigger>
       {session ? (

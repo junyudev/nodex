@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { openNodexMenu } from "@/test/dom";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { attachMediaDataSource } from "@/components/conversation-media/conversation-media-playback";
 import {
@@ -160,6 +161,68 @@ test("contains malformed data-source setup inside the current player's unavailab
   expect(view.getByText("Resident answer")).toBeTruthy();
   expect(create).not.toHaveBeenCalled();
 });
+
+test.each(["Video options", "Video volume"] as const)(
+  "dismisses %s before exiting fullscreen",
+  async (control) => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const view = render(
+      <NodexTooltipProvider>
+        <ConversationVideoPlayer
+          resource={{ identity: "clip", url: null, isCurrent: () => true, canMount: () => true }}
+          alt="Clip"
+          onSaveCopy={async () => undefined}
+          downloadPending={false}
+          downloadFailed={false}
+          loadErrorFallback={null}
+        />
+      </NodexTooltipProvider>,
+    );
+    const video = view.getByLabelText("Clip");
+    const player = video.parentElement;
+    let fullscreenElement = player;
+    const exitFullscreen = vi.fn(async () => {
+      fullscreenElement = null;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    Object.defineProperties(document, {
+      fullscreenElement: { configurable: true, get: () => fullscreenElement },
+      exitFullscreen: { configurable: true, value: exitFullscreen },
+    });
+    try {
+      await act(async () => {
+        document.dispatchEvent(new Event("fullscreenchange"));
+        await Promise.resolve();
+      });
+
+      const trigger = view.getByRole("button", { name: control });
+      await openNodexMenu(trigger);
+      const popupControl =
+        control === "Video options"
+          ? await view.findByRole("menuitem", { name: "Save video as…" })
+          : await view.findByRole("button", { name: "Mute video" });
+      expect(player?.contains(popupControl)).toBe(true);
+      await act(async () => {
+        // The volume popover is nonmodal. Its document listener also owns Escape
+        // when the key originates elsewhere in the player.
+        fireEvent.keyDown(control === "Video options" ? popupControl : video, { key: "Escape" });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
+      expect(document.fullscreenElement).toBe(player);
+
+      await act(async () => {
+        fireEvent.keyDown(video, { key: "Escape" });
+        await Promise.resolve();
+      });
+      expect(document.fullscreenElement).toBeNull();
+    } finally {
+      Reflect.deleteProperty(document, "fullscreenElement");
+      Reflect.deleteProperty(document, "exitFullscreen");
+    }
+  },
+);
 
 test("does not admit a retired stream decoder when a pending player module settles without a parent rerender", async () => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);

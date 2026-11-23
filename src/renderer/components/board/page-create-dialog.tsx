@@ -1,3 +1,4 @@
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { resolveCodexRendererCommandPlatform } from "../../lib/codex-window-runtime";
@@ -307,7 +308,7 @@ function PageCreateDialogContent({
 
   const handleShortcut = (event: KeyboardEvent<HTMLFormElement>) => {
     if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || !isEventWithinCurrentTarget(event)) return;
     event.preventDefault();
     event.stopPropagation();
     void submit(event.shiftKey || createMore);
