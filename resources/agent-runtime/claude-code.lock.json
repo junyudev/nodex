@@ -1,15 +1,15 @@
 {
-  "version": "0.3.322",
+  "version": "0.3.330",
   "assets": {
     "darwin-arm64": {
-      "url": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.322.tgz",
-      "archiveSize": 147737860,
-      "archiveSha256": "7b0c90817ff94002578389efd5280337cde9ecfc43115fc0f76d64ac4e6db128",
-      "unpackedSize": 323703048,
+      "url": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.330.tgz",
+      "archiveSize": 164285736,
+      "archiveSha256": "5b66e0d3dfaaec5d68998327e685aa37cc44d31d65332f09c2f53ba0a2080313",
+      "unpackedSize": 363856392,
       "executable": {
         "path": "package/claude",
-        "size": 323702464,
-        "sha256": "a9d237949db816a0b7afd88a9a8e1df36b3a597a30f5a41d1c0539eb180a3450"
+        "size": 363855808,
+        "sha256": "f7c5093b9dd6560d08af28bc27b123fb55091deae3180ac39df199522da86815"
       }
     }
   }

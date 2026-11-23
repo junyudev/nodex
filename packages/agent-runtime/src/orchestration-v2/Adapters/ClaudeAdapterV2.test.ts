@@ -5943,6 +5943,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     "sandbox_required_unavailable",
     "initialize_not_first",
     "config_file_invalid",
+    "managed_settings_not_delivered",
+    "initialize_fields_not_delivered",
   ] as const) {
     it.effect(`reports ${reason} before any model turn`, () =>
       Effect.gen(function* () {

@@ -99,7 +99,7 @@ it.effect(
           binaryPath: writeFakeCli({
             directory: config.stateDir,
             name: "claude",
-            source: 'console.log("2.1.322 (Claude Code)");',
+            source: 'console.log("2.1.330 (Claude Code)");',
           }),
         },
       });

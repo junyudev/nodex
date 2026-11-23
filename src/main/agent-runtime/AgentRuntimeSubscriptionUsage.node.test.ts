@@ -36,7 +36,7 @@ const claude = (overrides: {
     driver: "claudeAgent",
     enabled: true,
     installed: true,
-    version: "2.1.322",
+    version: "2.1.330",
     status: overrides.signedIn === false ? "error" : "ready",
     auth:
       overrides.signedIn === false
