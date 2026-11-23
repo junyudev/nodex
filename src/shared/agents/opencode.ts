@@ -191,7 +191,7 @@ export const openCodeAgent = {
       },
     ],
   },
-  registryAgentIds: ["opencode"],
+  registryAgentIds: ["opencode", "opencode-v2"],
   setup: { installation: { kind: "managed", id: "opencode" }, firstRun: { order: 6 } },
   capabilities: {
     cliBootstrap: true,

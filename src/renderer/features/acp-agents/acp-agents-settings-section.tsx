@@ -15,6 +15,8 @@ import { focusFallbackRef } from "@/lib/focus-fallback";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
+import type { AgentDefinition } from "../../../shared/agents/definition";
+import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import { installReviewedVersion } from "./acp-agent-actions";
 import { AcpAgentAddDialog } from "./acp-agent-add-dialog";
 import { AcpAgentDetail } from "./acp-agent-detail";
@@ -228,6 +230,7 @@ export function AcpAgentsSettingsSection({
   const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const appHandle = useScopeHandle(appScope);
+  const openAgentSettings = useAgentSettingsNavigation();
   const instances = snapshot.settings?.instances ?? [];
   const anchored = instances.find(({ id }) => acpAgentAnchor(id) === anchor)?.id ?? null;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -258,6 +261,10 @@ export function AcpAgentsSettingsSection({
     openModal(appHandle, AcpAgentAddDialog, {
       owner,
       onAdded: (instanceId: string) => setExpanded(instanceId),
+      onOpenBuiltIn: (definition: AgentDefinition) => {
+        const kind = agentSettingsTarget({ driver: definition.driver }).kind;
+        if (kind) openAgentSettings?.(kind);
+      },
     });
 
   return (

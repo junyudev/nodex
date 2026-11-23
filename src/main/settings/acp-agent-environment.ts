@@ -92,7 +92,11 @@ export function writeAcpInstances(
   publish: (next: StoredAcpInstances) => void,
 ): void {
   const result = AcpAgentSettingsUpdateSchema.safeParse(input);
-  if (!result.success) throw new Error("Invalid ACP Agent settings.");
+  if (!result.success)
+    throw new Error(
+      result.error.issues.find(({ code }) => code === "custom")?.message ??
+        "Invalid ACP Agent settings.",
+    );
   for (const instance of result.data.instances) {
     const old = previous.find(({ id }) => id === instance.id);
     if (old && old.agentDefinitionId !== instance.agentDefinitionId)

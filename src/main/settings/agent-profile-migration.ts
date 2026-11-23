@@ -20,7 +20,12 @@ import {
   type StoredAgentEnvironment,
 } from "./agent-environment-storage";
 import { readStoredAcpInstances } from "./acp-agent-environment";
-import { readStoredAgentProfiles, type AgentProfileStorage } from "./agent-profile-store";
+import {
+  readStoredAgentProfiles,
+  toStoredProfile,
+  type AgentProfileStorage,
+} from "./agent-profile-store";
+import { acpInstanceBuiltInAgent } from "../../shared/acp-agent-settings";
 
 interface LegacyProfileTables {
   readonly agent_instance_identity_version?: number;
@@ -236,4 +241,45 @@ export function migrateLegacyAgentProfiles(
         })
       : previous.acp_agent_instances;
   return { agent_instances, acp_agent_instances };
+}
+
+/**
+ * An ACP instance whose Agent is built into Nodex duplicates that Agent. One saved before built-in
+ * Agents claimed their Registry identities becomes the built-in Agent's own: a connection that ran
+ * agy with this computer's sign-in becomes the Antigravity profile that does the same, unless one
+ * already does. Its chats keep their history and continue on the built-in Agent once chosen.
+ * Returns null when nothing duplicates a built-in Agent.
+ */
+export function migrateBuiltInAcpInstances(
+  source: AgentProfileStorage,
+  previous: { readonly agent_instances?: unknown[]; readonly acp_agent_instances?: unknown[] },
+  changes: AgentSecretChanges,
+) {
+  const instances = readStoredAcpInstances(previous.acp_agent_instances);
+  const duplicates = instances.filter((instance) => acpInstanceBuiltInAgent(instance));
+  if (!duplicates.length) return null;
+  const profiles = readStoredAgentProfiles(previous.agent_instances);
+  const antigravity = profiles.filter(({ driver }) => driver === antigravityAgent.driver);
+  const connection = duplicates.find(
+    (instance) => acpInstanceBuiltInAgent(instance) === antigravityAgent,
+  );
+  const added =
+    connection && !antigravity.some(({ settings }) => settings.authMethod === "computer")
+      ? [
+          // No profile uses this computer's sign-in, so a new one starts with it.
+          toStoredProfile({
+            ...createAgentProfile(antigravityAgent, undefined, antigravity),
+            displayName: connection.displayName,
+            enabled: connection.enabled,
+          }),
+        ]
+      : [];
+  for (const { environment } of duplicates)
+    for (const variable of environment)
+      if (variable.sensitive)
+        changes.retire({ ...source, backend: acpRegistryAgent.settingsAnchor }, variable.secretRef);
+  return {
+    agent_instances: readStoredAgentProfiles([...profiles, ...added]),
+    acp_agent_instances: instances.filter((instance) => !duplicates.includes(instance)),
+  };
 }

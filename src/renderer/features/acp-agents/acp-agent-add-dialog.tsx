@@ -49,11 +49,16 @@ import { acpArgumentProblem, type AcpArgumentDraft } from "./acp-agent-draft";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { AcpArgumentsEditor } from "./acp-arguments-editor";
 import { useAcpAgents } from "./use-acp-agents";
+import { AgentProviderIcon } from "@/components/shared/icons";
+import type { AgentDefinition } from "../../../shared/agents/definition";
+import { builtInAgentForRegistryId } from "../../../shared/agents/registry";
 
 export interface AcpAgentAddDialogProps extends ModalCloseProps {
   readonly owner: AcpAgentsOwner;
   /** Called with the saved instance so Settings can reveal its progress. */
   readonly onAdded?: (instanceId: string) => void;
+  /** Opens the settings of a built-in Agent the Registry also lists. */
+  readonly onOpenBuiltIn?: (definition: AgentDefinition) => void;
 }
 
 type Storage = { readonly kind: "shared" } | { readonly kind: "separate"; readonly home: string };
@@ -285,9 +290,11 @@ function useRegistrySearch(owner: AcpAgentsOwner) {
 function RegistryResults({
   search: { query, setQuery, results, loading },
   onChoose,
+  onOpenBuiltIn,
 }: {
   readonly search: ReturnType<typeof useRegistrySearch>;
   readonly onChoose: (agent: AcpRegistryAgent) => void;
+  readonly onOpenBuiltIn: (definition: AgentDefinition) => void;
 }) {
   const intl = useIntl();
   return (
@@ -347,23 +354,34 @@ function RegistryResults({
           </p>
         ) : (
           results.agents?.map((agent) => {
-            const unavailable = acpRegistryUnavailableText(agent, intl);
+            // A built-in Agent has one identity in Nodex; its Registry entry leads to it.
+            const builtIn = builtInAgentForRegistryId(agent.id);
+            const unavailable = builtIn ? null : acpRegistryUnavailableText(agent, intl);
             return (
               <div role="listitem" key={agent.id}>
                 <button
                   type="button"
                   className="flex w-full cursor-interaction items-start gap-2.5 rounded-lg px-2 py-2 text-start outline-hidden hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background"
-                  onClick={() => onChoose(agent)}
+                  onClick={() => (builtIn ? onOpenBuiltIn(builtIn) : onChoose(agent))}
                 >
-                  <RegistryIcon agent={agent} />
+                  {builtIn ? (
+                    <AgentProviderIcon
+                      kind={builtIn.driver}
+                      className="size-5 shrink-0 text-token-text-secondary"
+                    />
+                  ) : (
+                    <RegistryIcon agent={agent} />
+                  )}
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex min-w-0 items-baseline gap-1.5">
                       <span className="truncate text-sm font-medium text-token-text-primary">
                         {agent.name}
                       </span>
-                      <span className="shrink-0 text-xs tabular-nums text-token-description-foreground">
-                        v{agent.version}
-                      </span>
+                      {builtIn ? null : (
+                        <span className="shrink-0 text-xs tabular-nums text-token-description-foreground">
+                          v{agent.version}
+                        </span>
+                      )}
                     </span>
                     <span className="line-clamp-1 text-xs text-token-text-secondary">
                       {agent.description}
@@ -375,8 +393,15 @@ function RegistryResults({
                       unavailable ? "text-danger" : "text-token-description-foreground",
                     )}
                   >
-                    {unavailable ??
-                      (agent.distribution ? acpDistributionLabel(agent.distribution, intl) : null)}
+                    {builtIn
+                      ? intl.formatMessage({
+                          id: "acpAgents.acpAgentAddDialog.builtIn",
+                          defaultMessage: "Built in",
+                        })
+                      : (unavailable ??
+                        (agent.distribution
+                          ? acpDistributionLabel(agent.distribution, intl)
+                          : null))}
                   </span>
                 </button>
               </div>
@@ -888,7 +913,12 @@ function LocalCommandForm({
  * Adds an ACP instance from the Registry or a local command. Saving creates the instance; its
  * install and connection then continue in Settings even if this dialog closes.
  */
-export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialogProps) {
+export function AcpAgentAddDialog({
+  owner,
+  onAdded,
+  onOpenBuiltIn,
+  onClose,
+}: AcpAgentAddDialogProps) {
   const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const [tab, setTab] = useState<"registry" | "local">("registry");
@@ -1009,7 +1039,14 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
             <NodexDialogBody>
               {/* Each source's first field takes focus when chosen, so its panel isn't a tab stop. */}
               <NodexTabsPanel value="registry" tabIndex={-1} className="outline-hidden">
-                <RegistryResults search={search} onChoose={setChosen} />
+                <RegistryResults
+                  search={search}
+                  onChoose={setChosen}
+                  onOpenBuiltIn={(definition) => {
+                    onClose();
+                    onOpenBuiltIn?.(definition);
+                  }}
+                />
               </NodexTabsPanel>
               <NodexTabsPanel value="local" tabIndex={-1} className="outline-hidden">
                 <LocalCommandForm

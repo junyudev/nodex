@@ -111,6 +111,7 @@
   "acpAgents.acpAgentAddDialog.asPublishedByTheRegistry": "按注册表发布的内容安装（无校验和）",
   "acpAgents.acpAgentAddDialog.automatic": "自动",
   "acpAgents.acpAgentAddDialog.backToSearch": "返回搜索",
+  "acpAgents.acpAgentAddDialog.builtIn": "已内置",
   "acpAgents.acpAgentAddDialog.canTBeChangedLater": "之后无法更改。要使用其他账户，请添加另一个实例。",
   "acpAgents.acpAgentAddDialog.cancel": "取消",
   "acpAgents.acpAgentAddDialog.checkingInstallation": "正在检查安装…",

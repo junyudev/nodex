@@ -42,6 +42,17 @@ for (const definition of agentDefinitions) {
 export const agentDefinition = (driver: string | null | undefined): AgentDefinition =>
   (driver && byDriver.get(driver)) || fallback;
 
+/**
+ * The built-in Agent an ACP Registry identity belongs to. A built-in Agent has one identity in
+ * Nodex, so ACP connects only Agents Nodex does not build in.
+ */
+export const builtInAgentForRegistryId = (
+  agentId: string | null | undefined,
+): AgentDefinition | undefined =>
+  agentId
+    ? agentDefinitions.find(({ registryAgentIds }) => registryAgentIds?.includes(agentId))
+    : undefined;
+
 /** Driver aliases share a definition while exact instance routing keeps its original driver. */
 export function sameAgentDriver(left: string, right: string): boolean {
   if (left === right) return true;

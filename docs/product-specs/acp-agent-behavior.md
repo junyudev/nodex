@@ -7,6 +7,12 @@ instances. Registry, login and installation state do not replace that identity o
 ## Configuration and installation
 
 An instance selects either a Registry Agent or a local executable with individual arguments.
+ACP connects only Agents Nodex does not build in. The Registry also lists Codex, Claude Code,
+Antigravity and OpenCode; their entries read **Built in** and open that Agent's own settings, and
+an instance cannot take a built-in Agent's identity. An instance saved with one before is replaced
+by the built-in Agent: one that ran agy with this computer's sign-in becomes the Antigravity
+profile that uses agy on this computer, unless a profile already does. Its chats keep their
+history and continue on the built-in Agent once its model is chosen.
 The logical Agent and known native storage/authentication roots are fixed once saved; use a new
 instance for another native profile. Names, installation versions, executable location, models and
 authentication tokens remain editable without changing identity.

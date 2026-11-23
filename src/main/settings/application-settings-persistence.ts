@@ -1,5 +1,9 @@
 import { withAgentSecretChanges } from "./agent-environment-storage";
-import { hasLegacyAgentProfiles, migrateLegacyAgentProfiles } from "./agent-profile-migration";
+import {
+  hasLegacyAgentProfiles,
+  migrateBuiltInAcpInstances,
+  migrateLegacyAgentProfiles,
+} from "./agent-profile-migration";
 import {
   readStoredAgentProfiles,
   presentAgentProfiles,
@@ -389,6 +393,15 @@ function writeProfileServerTomlConfig(
 
 /** Upgrade the Profile document and its secret references under the writer permit. */
 export function migrateProfileAgentProfiles(source: ApplicationSettingsDocumentSource): void {
+  migrateLegacyProfileTables(source);
+  const current = loadProfileServerTomlConfig(source);
+  withAgentSecretChanges((changes) => {
+    const migrated = migrateBuiltInAcpInstances(source, current, changes);
+    if (migrated) writeProfileServerTomlConfig(source, { ...current, ...migrated });
+  });
+}
+
+function migrateLegacyProfileTables(source: ApplicationSettingsDocumentSource): void {
   const previous = loadProfileServerTomlConfig(source);
   if (previous.agent_instances !== undefined) return;
   const hasLegacyInbox = [previous.inbox_chat_agent, previous.inbox_suggestion_agent].some(

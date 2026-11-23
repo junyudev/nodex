@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { builtInAgentForRegistryId } from "./agents/registry";
 import {
   AGENT_ENVIRONMENT_LIMIT,
   ENVIRONMENT_NAME_PATTERN,
@@ -140,7 +141,25 @@ export const AcpAgentSettingsUpdateSchema = z
   .refine(
     ({ instances }) => new Set(instances.map(({ id }) => id)).size === instances.length,
     "Duplicate ACP instance identity",
-  );
+  )
+  .superRefine(({ instances }, context) => {
+    for (const instance of instances) {
+      const builtIn = acpInstanceBuiltInAgent(instance);
+      if (builtIn)
+        context.addIssue({
+          code: "custom",
+          message: `${builtIn.label} is built into Nodex. Set it up in Settings → Agents → ${builtIn.label}.`,
+        });
+    }
+  });
+/** The built-in Agent an ACP instance would duplicate, by its Agent or Registry identity. */
+export const acpInstanceBuiltInAgent = (
+  instance: Pick<AcpAgentInstanceConfig, "agentDefinitionId" | "source">,
+) =>
+  builtInAgentForRegistryId(instance.agentDefinitionId) ??
+  (instance.source.kind === "registry"
+    ? builtInAgentForRegistryId(instance.source.agentId)
+    : undefined);
 export type UpdateAcpAgentSettingsInput = z.infer<typeof AcpAgentSettingsUpdateSchema>;
 export type AcpAgentInstanceInput = UpdateAcpAgentSettingsInput["instances"][number];
 export type AcpAgentInstanceConfig = Omit<AcpAgentInstanceInput, "environment"> & {

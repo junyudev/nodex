@@ -77,7 +77,7 @@ function definitionFor(driver: ProfileAgentDriver): AgentProfileDefinition {
   return profileAgentDefinition(driver)!.profile;
 }
 
-function toStoredProfile(
+export function toStoredProfile(
   profile: AgentProfile,
   environment: StoredAgentEnvironment[] = [],
 ): StoredAgentProfile {

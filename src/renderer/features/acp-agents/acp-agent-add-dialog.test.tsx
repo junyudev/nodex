@@ -54,7 +54,7 @@ const PREVIEW = {
   reason: null,
 };
 
-function mount(main: ReturnType<typeof fakeAcpRuntime>) {
+function mount(main: ReturnType<typeof fakeAcpRuntime>, onOpenBuiltIn = vi.fn()) {
   const owner = createAcpAgentsOwner({
     runtime: main.runtime,
     subscribeChanges: () => () => {},
@@ -65,7 +65,12 @@ function mount(main: ReturnType<typeof fakeAcpRuntime>) {
   const onClose = vi.fn();
   const view = renderWithAppMaitai(
     <NodexTooltipProvider delay={0}>
-      <AcpAgentAddDialog owner={owner} onAdded={onAdded} onClose={onClose} />
+      <AcpAgentAddDialog
+        owner={owner}
+        onAdded={onAdded}
+        onOpenBuiltIn={onOpenBuiltIn}
+        onClose={onClose}
+      />
     </NodexTooltipProvider>,
   );
   return { view, onAdded, onClose };
@@ -126,6 +131,23 @@ describe("Add ACP Agent dialog", () => {
       expectedInstallationId: PREVIEW.installationId,
     });
     expect(onAdded).toHaveBeenCalledWith(added.id);
+  });
+
+  test("a built-in Agent's Registry entry opens the built-in Agent instead of adding a copy", async () => {
+    const main = fakeAcpRuntime();
+    main.runtime.search.mockResolvedValue(
+      ok({ agents: [registryAgent({ id: "antigravity-acp", name: "Google Antigravity" })] }),
+    );
+    const onOpenBuiltIn = vi.fn();
+    const { view, onClose } = mount(main, onOpenBuiltIn);
+    const entry = await view.findByRole("button", { name: /Google Antigravity/ });
+    expect(entry.textContent).toContain("Built in");
+
+    await press(entry);
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onOpenBuiltIn).toHaveBeenCalledWith(expect.objectContaining({ driver: "antigravity" }));
+    expect(main.runtime.previewInstall).not.toHaveBeenCalled();
+    expect(main.settings().instances).toEqual([]);
   });
 
   test("a reviewed Registry Agent without a name points back at the Name field", async () => {

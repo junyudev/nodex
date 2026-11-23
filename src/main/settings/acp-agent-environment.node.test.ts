@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vite-plus/test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { stringify } from "smol-toml";
+import { parse, stringify } from "smol-toml";
 import {
   AcpAgentSettingsUpdateSchema,
   type AcpAgentInstanceInput,
@@ -10,6 +10,8 @@ import {
 import {
   getAcpAgentSettings,
   getAcpLaunchConfiguration,
+  getAgentProfiles,
+  migrateProfileAgentProfiles,
   updateAcpAgentSettings,
 } from "./application-settings-persistence";
 import { readStoredAcpInstances, writeAcpInstances } from "./acp-agent-environment";
@@ -55,8 +57,8 @@ it("migrates local package settings without changing identity or requiring the o
       server: {
         acp_agent_instances: [
           {
-            id: "claude-main",
-            agentDefinitionId: "claude-agent-acp",
+            id: "packaged-main",
+            agentDefinitionId: "packaged-agent",
             packageRoot: "/missing/package",
             nodeExecutable: "/missing/node",
             enabled: true,
@@ -69,8 +71,8 @@ it("migrates local package settings without changing identity or requiring the o
   );
   const migrated = getAcpAgentSettings(source);
   expect(migrated.instances[0]).toMatchObject({
-    id: "claude-main",
-    agentDefinitionId: "claude-agent-acp",
+    id: "packaged-main",
+    agentDefinitionId: "packaged-agent",
     source: {
       kind: "local",
       executable: "/missing/node",
@@ -170,6 +172,77 @@ it("rejects identity reuse and managed profile overrides without losing saved st
     ).toBe(false);
   updateAcpAgentSettings({ instances: [{ ...instance(), enabled: false }] }, source);
   expect(() => getAcpLaunchConfiguration(source, "qoder-personal")).toThrow("disabled");
+});
+
+it("connects built-in Agents only as themselves", () => {
+  const source = fixture();
+  for (const duplicate of [
+    { ...instance(), agentDefinitionId: "antigravity-acp" },
+    {
+      ...instance(),
+      agentDefinitionId: "qoder",
+      source: { kind: "registry" as const, agentId: "claude-acp", distribution: "auto" as const },
+    },
+  ])
+    expect(() => updateAcpAgentSettings({ instances: [duplicate] }, source)).toThrow(
+      "is built into Nodex",
+    );
+  expect(getAcpAgentSettings(source).instances).toEqual([]);
+});
+
+it("turns saved duplicates of built-in Agents into the built-in Agent and releases their secrets", () => {
+  const source = fixture();
+  const kept = instance();
+  updateAcpAgentSettings(
+    {
+      instances: [
+        kept,
+        {
+          ...instance(),
+          id: "agy-terminal",
+          agentDefinitionId: "agy",
+          displayName: "Google Antigravity",
+          source: { kind: "local", executable: "/usr/local/bin/agy", args: ["acp"] },
+          environment: [{ name: "AGY_TOKEN", sensitive: true, value: "agy-secret" }],
+        },
+      ],
+    },
+    source,
+  );
+  const secrets = path.join(source.root, "agent-secrets/acp");
+  expect(readdirSync(secrets)).toHaveLength(1);
+  // Saved before built-in Agents claimed their Registry identities.
+  const saved = parse(readFileSync(source.settingsPath, "utf8")) as {
+    server: { agent_instances: unknown[]; acp_agent_instances: Record<string, unknown>[] };
+  };
+  saved.server.agent_instances = [];
+  saved.server.acp_agent_instances = [
+    ...saved.server.acp_agent_instances.map((entry) =>
+      entry.id === "agy-terminal" ? { ...entry, agentDefinitionId: "antigravity-acp" } : entry,
+    ),
+    {
+      id: "claude-package",
+      agentDefinitionId: "claude-agent-acp",
+      packageRoot: "/missing/package",
+      nodeExecutable: "/missing/node",
+      enabled: true,
+      credentials: { kind: "inherit-host-profile" },
+      proxy: "inherit-host",
+    },
+  ];
+  writeFileSync(source.settingsPath, stringify(saved));
+
+  migrateProfileAgentProfiles(source);
+  expect(getAcpAgentSettings(source).instances.map(({ id }) => id)).toEqual([kept.id]);
+  expect(readdirSync(secrets)).toEqual([]);
+  expect(getAgentProfiles(source).filter(({ driver }) => driver === "antigravity")).toEqual([
+    expect.objectContaining({
+      displayName: "Google Antigravity",
+      enabled: true,
+      binaryPath: "",
+      settings: expect.objectContaining({ authMethod: "computer" }),
+    }),
+  ]);
 });
 
 it("keeps saved native profile identity stable while permitting tokens and executable upgrades", () => {

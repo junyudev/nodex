@@ -162,7 +162,7 @@ export const claudeAgent = {
       },
     ],
   },
-  registryAgentIds: ["claude-acp"],
+  registryAgentIds: ["claude-acp", "claude-agent-acp"],
   usageMeter: {
     trackedBySettings: true,
     preference: "claude",
