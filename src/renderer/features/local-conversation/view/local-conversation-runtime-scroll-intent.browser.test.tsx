@@ -535,16 +535,16 @@ describe("completed runtime response scroll intent", () => {
             frame.style.width = "620px";
             await frames(8);
           });
-          // Compensation keeps the reader's distance from the bottom. Under zoom the browser snaps
-          // the written position to device pixels, so the viewport can read a pixel closer; the
-          // controller keeps the distance it asked for and compensates from that, so it never drifts.
+          // Compensation keeps the reader's distance from the bottom. It works from fractional
+          // layout measured after the rewrap, so the kept distance can land a fraction of a pixel
+          // away; pulling a reader toward the bottom moves them by at least a whole pixel.
           expect(
             view
               .scroll()
               .getUnroundedScrollDistanceFromBottomPx(
                 getThreadScrollDistanceFromBottomPx(viewport),
               ),
-          ).toBeGreaterThanOrEqual(beforeReflow);
+          ).toBeGreaterThan(beforeReflow - 1);
         }
       }
       expect(distances.at(-1)).toBeGreaterThan(50);
