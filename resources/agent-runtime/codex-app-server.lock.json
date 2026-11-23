@@ -1,35 +1,35 @@
 {
-  "appServerRuntimeVersion": "0.167.2",
+  "appServerRuntimeVersion": "0.171.0",
   "builds": {
     "darwin-arm64": {
-      "archiveSha256": "e791290651bce41938fb160b5de2bd9ff8bcf3401ca3e236c73f485fca4be1bb",
-      "archiveSize": 166599161,
-      "unpackedSize": 427569820,
+      "archiveSha256": "58c88032ec446e72922d911d8f03773102da20c16a6059cf21f6744bce57f210",
+      "archiveSize": 176190739,
+      "unpackedSize": 459844604,
       "artifactSizes": {
-        "bin/codex": 271027872,
-        "bin/codex-code-mode-host": 70309536,
-        "bin/codex-exec-server": 61038064,
+        "bin/codex": 298198944,
+        "bin/codex-code-mode-host": 70882304,
+        "bin/codex-exec-server": 64956560,
         "codex-package.json": 241,
         "codex-path/rg": 4030432,
-        "codex-resources/voice/bin/codex-voice-host": 9572528,
+        "codex-resources/voice/bin/codex-voice-host": 10118384,
         "codex-resources/voice/lib/libffi.8.dylib": 136768,
-        "codex-resources/voice/lib/libgio-2.0.0.dylib": 1902992,
-        "codex-resources/voice/lib/libglib-2.0.0.dylib": 1353984,
+        "codex-resources/voice/lib/libgio-2.0.0.dylib": 1903344,
+        "codex-resources/voice/lib/libglib-2.0.0.dylib": 1354064,
         "codex-resources/voice/lib/libgmodule-2.0.0.dylib": 68720,
-        "codex-resources/voice/lib/libgobject-2.0.0.dylib": 416896,
+        "codex-resources/voice/lib/libgobject-2.0.0.dylib": 417008,
         "codex-resources/voice/lib/libgstapp-1.0.0.dylib": 151984,
-        "codex-resources/voice/lib/libgstaudio-1.0.0.dylib": 560336,
-        "codex-resources/voice/lib/libgstbase-1.0.0.dylib": 520240,
+        "codex-resources/voice/lib/libgstaudio-1.0.0.dylib": 560384,
+        "codex-resources/voice/lib/libgstbase-1.0.0.dylib": 520256,
         "codex-resources/voice/lib/libgstnet-1.0.0.dylib": 115920,
-        "codex-resources/voice/lib/libgstpbutils-1.0.0.dylib": 323552,
-        "codex-resources/voice/lib/libgstreamer-1.0.0.dylib": 1341328,
-        "codex-resources/voice/lib/libgstrtp-1.0.0.dylib": 222176,
+        "codex-resources/voice/lib/libgstpbutils-1.0.0.dylib": 323568,
+        "codex-resources/voice/lib/libgstreamer-1.0.0.dylib": 1357856,
+        "codex-resources/voice/lib/libgstrtp-1.0.0.dylib": 222192,
         "codex-resources/voice/lib/libgsttag-1.0.0.dylib": 283280,
-        "codex-resources/voice/lib/libgstvideo-1.0.0.dylib": 932496,
+        "codex-resources/voice/lib/libgstvideo-1.0.0.dylib": 948944,
         "codex-resources/voice/lib/libintl.8.dylib": 50080,
-        "codex-resources/voice/lib/libopus.0.dylib": 504080,
-        "codex-resources/voice/lib/libpcre2-8.0.dylib": 456816,
-        "codex-resources/voice/lib/libz.1.dylib": 123312,
+        "codex-resources/voice/lib/libopus.0.dylib": 520480,
+        "codex-resources/voice/lib/libpcre2-8.0.dylib": 456832,
+        "codex-resources/voice/lib/libz.1.dylib": 139712,
         "codex-resources/voice/licenses/LGPL-2.1.txt": 26431,
         "codex-resources/voice/licenses/libffi.txt": 1132,
         "codex-resources/voice/licenses/Opus.txt": 1945,
@@ -42,40 +42,40 @@
         "codex-resources/voice/plugins/libgstapp.dylib": 49872,
         "codex-resources/voice/plugins/libgstaudioconvert.dylib": 93344,
         "codex-resources/voice/plugins/libgstaudioresample.dylib": 91696,
-        "codex-resources/voice/plugins/libgstcoreelements.dylib": 458768,
+        "codex-resources/voice/plugins/libgstcoreelements.dylib": 458832,
         "codex-resources/voice/plugins/libgstopus.dylib": 131120,
-        "codex-resources/voice/plugins/libgstrtp.dylib": 674896,
-        "codex-resources/voice/plugins/libgstrtpmanager.dylib": 538368,
+        "codex-resources/voice/plugins/libgstrtp.dylib": 674960,
+        "codex-resources/voice/plugins/libgstrtpmanager.dylib": 538400,
         "codex-resources/voice/runtime.json": 14915,
         "codex-resources/voice/sources.json": 4911
       },
       "assetName": "codex-package-aarch64-apple-darwin.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package-aarch64-apple-darwin.tar.gz",
-      "entrypointSha256": "97bc82fd46f117cf10efb95e6ff0c81dc4784f5797bcdc2cb75093ba09e4def0",
-      "runtimeMetadataSha256": "740467666e10aa84d3df6eb0d5447ccd409318f3fe29be9931b164d0057e9c14",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package-aarch64-apple-darwin.tar.gz",
+      "entrypointSha256": "fc8d77cf7585aded2b9bc487dad29c4ee2f066123e4e76dd3b17653a8322ce42",
+      "runtimeMetadataSha256": "669484adeb96919a8a37a882a4ba15b1c80a073d7c1d260759211dc3cac9ce73",
       "targetTriple": "aarch64-apple-darwin"
     },
     "linux-arm64": {
-      "archiveSha256": "56b08c1214e062a5b61684bacb5033c4372a01062a47c87c49a32be83af70695",
-      "archiveSize": 187980188,
+      "archiveSha256": "d8c43bee6cf11b01eb18b95f4d7961092bc40228180808859e70dabb7784c1c9",
+      "archiveSize": 199315347,
       "assetName": "codex-package-aarch64-unknown-linux-musl.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package-aarch64-unknown-linux-musl.tar.gz",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package-aarch64-unknown-linux-musl.tar.gz",
       "targetTriple": "aarch64-unknown-linux-musl"
     },
     "linux-x64": {
-      "archiveSha256": "3d77be1748d35a4bb0e7f8752cde3b11890c63338e8c599f01eafa4a59e17b3d",
-      "archiveSize": 200235673,
+      "archiveSha256": "8391d67757496bfd14893eca6cbf0c96994bf2627566ff1f018f70600c9ef6b3",
+      "archiveSize": 197763180,
       "assetName": "codex-package-x86_64-unknown-linux-musl.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package-x86_64-unknown-linux-musl.tar.gz",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package-x86_64-unknown-linux-musl.tar.gz",
       "targetTriple": "x86_64-unknown-linux-musl"
     },
     "win32-arm64": {
-      "archiveSha256": "61d852fb27769c76344a977cdcc5701bb0172606674e45addf0c12962ad6e8ef",
-      "archiveSize": 186789602,
+      "archiveSha256": "9715d5b310d05b0d878725763362b837857f5eb90fbe4ac57997f5e8656dc178",
+      "archiveSize": 198311042,
       "assetName": "codex-package-aarch64-pc-windows-msvc.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package-aarch64-pc-windows-msvc.tar.gz",
-      "entrypointSha256": "841746deb80cc07bce00d19d4d046070f8a89ef818518c454fb5fbbde0633dca",
-      "runtimeMetadataSha256": "cc7c5801dee189d0cdb3ee272a63353042fb8b14eedbf136143725a3f0e49bf9",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package-aarch64-pc-windows-msvc.tar.gz",
+      "entrypointSha256": "33a3248aa0f0b31b69a987658915517b0faed6498956ad823396353845033730",
+      "runtimeMetadataSha256": "7ef493df01f8c8b1c41d75f08ac4955c5858b1ed2f13d288f4c536648c446f2f",
       "requiredArtifacts": [
         "bin/codex-code-mode-host.exe",
         "bin/codex-exec-server.exe",
@@ -127,12 +127,12 @@
       "targetTriple": "aarch64-pc-windows-msvc"
     },
     "win32-x64": {
-      "archiveSha256": "20b0f94105f40b617bf209b1679b8674ab6d3d8f303e767ae43cf1860a8705da",
-      "archiveSize": 201559461,
+      "archiveSha256": "669941eff23dd8470fbf85d919a03d80c4e3d35b441e3fcd361c0f8630945be8",
+      "archiveSize": 214982795,
       "assetName": "codex-package-x86_64-pc-windows-msvc.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package-x86_64-pc-windows-msvc.tar.gz",
-      "entrypointSha256": "6f65c42e3769209976cce097a400720b5d877e1d24ec8bb6272bf0f02d5e0fd7",
-      "runtimeMetadataSha256": "67aa95dee2293b6c61295ebbcd19c26fde9eeab69b238246c15ff178f7172c0c",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package-x86_64-pc-windows-msvc.tar.gz",
+      "entrypointSha256": "cefea4ffee1fff04983a99c0dda99944d8b380e891e740a28b32f4b815a6e0b7",
+      "runtimeMetadataSha256": "2f751e7868481db2ff0f532032b3e604400840ba07a4477ff1e9be260cbf9950",
       "requiredArtifacts": [
         "bin/codex-code-mode-host.exe",
         "bin/codex-exec-server.exe",
@@ -197,17 +197,17 @@
     "pathDir": "codex-path",
     "resourcesDir": "codex-resources",
     "variant": "codex",
-    "version": "0.167.2"
+    "version": "0.171.0"
   },
   "protocolSchema": {
     "experimental": true,
-    "sha256": "6fa0fe27be2847f726cb5b4a361bf2033455ee22e52124751e7e18d079b0c4fd",
+    "sha256": "638e48fb7211e9391e375c357671ac4ded4b11735d584a3b1e1252852978771a",
     "tools": {
       "darwin-arm64": {
-        "archiveSha256": "7511163b7a0152bcf0e1229092bd2545fdccff64fc8d92ad7c6e01f0ca4681df",
-        "archiveSize": 108630744,
+        "archiveSha256": "9414c8c967f110b11e8324c0cfa2b20f012094ef890110a561c92ee535a2681a",
+        "archiveSize": 117221737,
         "assetName": "codex-aarch64-apple-darwin.tar.gz",
-        "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-aarch64-apple-darwin.tar.gz",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-aarch64-apple-darwin.tar.gz",
         "entrypoint": "codex-aarch64-apple-darwin",
         "targetTriple": "aarch64-apple-darwin"
       }
@@ -262,13 +262,13 @@
   "upstream": {
     "checksumManifest": {
       "assetName": "codex-package_SHA256SUMS",
-      "sha256": "4f19652c992601851ce08ffe522412e22a17c242e580358d1150a9c98f3e1986",
+      "sha256": "0161f93375b71a72f6fdb5c65f385578fc94462d390aecec0ed049aec10c77bf",
       "size": 1631,
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.167.2/codex-package_SHA256SUMS"
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-package_SHA256SUMS"
     },
-    "commit": "ce21072c90d32c40af7a55b60b2fb35c84a43a6a",
+    "commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e",
     "repository": "openai/codex",
     "signingTeamId": "2DC432GLL2",
-    "tag": "rust-v0.167.2"
+    "tag": "rust-v0.171.0"
   }
 }
