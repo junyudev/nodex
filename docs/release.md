@@ -273,9 +273,9 @@ and grants runner trust to the specific `junyudev/tap/nodex` cask before loading
 it for audit or smoke installation. Promotion runs Homebrew's own cask
 autocorrect inside that registered tap before its exact idempotency comparison,
 so recovery can safely normalize derived output from an immutable older release
-source without weakening version or checksum conflict rejection. It audits the
-registered cask by its fully qualified tap name because current Homebrew rejects
-file-path arguments to `brew audit`.
+source without weakening version or checksum conflict rejection. Both
+`brew style --cask` and `brew audit --cask` address the registered cask by its
+fully qualified tap name so Homebrew resolves it inside `junyudev/tap`.
 
 The Homebrew job supplies its read-only GitHub Actions token through
 `HOMEBREW_GITHUB_API_TOKEN` for authenticated API reads during both online audit

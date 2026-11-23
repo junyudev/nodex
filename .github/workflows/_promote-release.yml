@@ -187,7 +187,8 @@ jobs:
             --output "${generated}"
           gh auth setup-git
           brew tap "${HOMEBREW_TAP}" "https://github.com/${HOMEBREW_TAP_REPO}.git"
-          brew trust --cask "${HOMEBREW_TAP}/nodex"
+          cask="${HOMEBREW_TAP}/nodex"
+          brew trust --cask "${cask}"
           tap="$(brew --repository "${HOMEBREW_TAP}")"
           current="${tap}/Casks/nodex.rb"
           previous="${RUNNER_TEMP}/previous-nodex.rb"
@@ -198,8 +199,8 @@ jobs:
           # predates Homebrew's current canonical DSL. Normalize inside the
           # registered tap before comparing or validating the derived cask.
           cp "${generated}" "${current}"
-          brew style --fix --cask "${current}"
-          brew style --cask "${current}"
+          brew style --fix --cask "${cask}"
+          brew style --cask "${cask}"
           if [[ -f "${previous}" ]] && cmp -s "${current}" "${previous}"; then
             echo "Homebrew tap already contains Nodex ${{ inputs.version }}."
           else
@@ -210,7 +211,7 @@ jobs:
                 exit 1
               fi
             fi
-            brew audit --cask --online "${HOMEBREW_TAP}/nodex"
+            brew audit --cask --online "${cask}"
             git -C "${tap}" config user.name "github-actions[bot]"
             git -C "${tap}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git -C "${tap}" add Casks/nodex.rb
