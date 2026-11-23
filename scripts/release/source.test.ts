@@ -261,7 +261,7 @@ test("advances and recognizes the exact release metadata roll-forward", () => {
   );
   const released = git("rev-parse", "HEAD");
   git("commit", "-am", "append unreleased notes");
-  const notes = "### Added\n- Added a verified release flow.\n";
+  const notes = "### Added\n\n- Added a verified release flow.\n";
   expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(true);
   expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(false);
   const snapshot = inspectReleaseSource(fixture);
@@ -324,7 +324,7 @@ fi
         sourceSha,
         version: "0.1.10",
         date: "2026-11-11",
-        notes: "### Added\n- Added a verified release flow.\n",
+        notes: "### Added\n\n- Added a verified release flow.\n",
       };
       advanceMain(options);
       const head = git("rev-parse", "HEAD");

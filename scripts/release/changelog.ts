@@ -52,7 +52,8 @@ const omitEmptySubsections = (content: string): string => {
     .map((block) => {
       const body = trimBlankLines(block.lines);
       if (body.length === 0) return "";
-      return block.heading ? `${block.heading}\n${body.join("\n")}` : body.join("\n");
+      // A blank line after each heading keeps the rolled changelog in its formatted shape.
+      return block.heading ? `${block.heading}\n\n${body.join("\n")}` : body.join("\n");
     })
     .filter(Boolean)
     .join("\n\n");

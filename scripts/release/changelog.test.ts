@@ -9,7 +9,7 @@ test("release notes omit empty categories and retain multi-line entries", () => 
   const source =
     "# Changelog\n\n## [Unreleased]\n\n### Added\n\n- Released.\n  Detail.\n\n### Fixed\n";
   const notes = extractUnreleasedNotes(source);
-  expect(notes).toBe("### Added\n- Released.\n  Detail.\n");
+  expect(notes).toBe("### Added\n\n- Released.\n  Detail.\n");
   expect(
     advanceChangelog(
       source.replace("  Detail.", "  Detail.\n- New."),
@@ -17,7 +17,9 @@ test("release notes omit empty categories and retain multi-line entries", () => 
       "1.0.0",
       "2026-11-11",
     ),
-  ).toContain("### Added\n\n- New.\n\n### Changed\n\n### Fixed\n\n## [1.0.0] - 2026-11-11");
+  ).toContain(
+    "### Added\n\n- New.\n\n### Changed\n\n### Fixed\n\n## [1.0.0] - 2026-11-11\n\n### Added\n\n- Released.\n  Detail.\n",
+  );
 });
 
 test("requires Unreleased and prohibits a dated heading for the source version", () => {
