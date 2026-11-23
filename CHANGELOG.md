@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Antigravity chats open again. Every message to Antigravity failed with "Nodex application authority is unavailable for this request" while Nodex prepared its plugins. Antigravity now receives your installed plugins' skills and MCP servers like Claude Code and other ACP Agents, and an Agent that hits a problem Nodex can name now shows that problem instead of the same generic message.
 - Plugins no longer stop you from sending messages to Claude Code or ACP Agents. Opening several chats at once, or Codex being slow to list your installed plugins, could fail a reply with "Timed out preparing the Session's plugins" until you refreshed the Plugins page. Nodex now keeps the plugins it last read and rereads them in the background, so a reply waits at most a few seconds and starts with the plugins it has, picking up the rest at a later reply. A plugin that cannot be prepared is left out without holding up the others.
 
 ### Removed

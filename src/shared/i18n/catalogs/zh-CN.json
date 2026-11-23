@@ -7027,7 +7027,7 @@
   "plugins.pluginAgentSupport.needsSignIn": "{server}（需要登录）",
   "plugins.pluginAgentSupport.projectCount": "{count, plural, other {# 个项目}}",
   "plugins.pluginAgentSupport.serversNeedSignIn": "需要登录的服务器",
-  "plugins.pluginAgentSupport.supportedAgents": "Codex、Claude Code 和 ACP 智能体",
+  "plugins.pluginAgentSupport.supportedAgents": "Codex、Claude Code、Antigravity 和 ACP 智能体",
   "plugins.pluginAppView.openInPlugins": "在插件中打开",
   "plugins.pluginAppView.opening": "正在打开插件应用",
   "plugins.pluginAppView.plugin": "插件",

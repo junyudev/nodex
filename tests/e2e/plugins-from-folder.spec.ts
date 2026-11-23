@@ -60,7 +60,9 @@ test("adds a plugin from a folder, limits it to a Project and updates it", async
       const installation = page.locator("#plugin-installation");
       await expect(installation).toBeVisible();
       await expect(installation.getByText("All projects")).toBeVisible();
-      await expect(installation.getByText("Codex, Claude Code and ACP agents")).toBeVisible();
+      await expect(
+        installation.getByText("Codex, Claude Code, Antigravity and ACP agents"),
+      ).toBeVisible();
       await expect(
         installation.getByText("Servers that need a sign-in work only in Codex"),
       ).toBeVisible();

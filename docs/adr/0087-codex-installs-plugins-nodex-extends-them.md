@@ -67,9 +67,11 @@ need sign-in, connected apps and hooks stay Codex-only, because their credential
 and trust live in Codex. Customize states these limits on the plugin instead of
 showing per-Agent delivery status.
 
-ACP harnesses that advertise HTTP MCP receive plugin servers and the skill catalog
-through `mcpServers`. Others receive the skill catalog over the existing stdio
-bridge. Nodex makes no assumption about native skill discovery in ACP harnesses.
+Every Agent built on the ACP adapter, Antigravity included, receives the same ACP
+delivery: the adapter names the shape it consumes, and the Host decides only which
+plugins the Session's Project may use. ACP harnesses that advertise HTTP MCP receive
+plugin servers and the skill catalog through `mcpServers`. Others receive the skill
+catalog over the existing stdio bridge. Nodex makes no assumption about native skill discovery in ACP harnesses.
 OpenCode delivery waits until native discovery and Session refresh are verified.
 
 ### Views

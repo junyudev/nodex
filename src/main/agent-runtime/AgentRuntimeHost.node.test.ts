@@ -1,5 +1,6 @@
 import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import { assert, it } from "@effect/vitest";
+import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import type {
   AgentHostNativeSessionIdentity,
   AgentHostToolIdentity,
@@ -21,6 +22,10 @@ import { ScopedAgentCore, type ScopedAgentAdmission } from "../../host/ScopedAge
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "../app/MainConfig";
+import {
+  pluginCatalogSnapshot,
+  type PluginCatalogSnapshot,
+} from "../../host/agent-plugins/PluginCatalog";
 import type {
   AgentAttributionRequest,
   RecordAgentRunRequest,
@@ -103,9 +108,17 @@ const desktopTools = {
   pluginRoots: ["/materialized/browser"],
 };
 
-const makeFixture = Effect.fnUntraced(function* (
-  readThread?: (threadId: string) => Effect.Effect<null>,
-) {
+const makeFixture = Effect.fnUntraced(function* ({
+  readThread,
+  pluginCatalog,
+  checkClaudeCode,
+}: {
+  readonly readThread?: (
+    threadId: string,
+  ) => Effect.Effect<AgentRuntimeOperations["thread.read"]["output"]>;
+  readonly pluginCatalog?: PluginCatalogSnapshot;
+  readonly checkClaudeCode?: (instanceId: string) => Effect.Effect<string | null>;
+} = {}) {
   const events = yield* PubSub.unbounded<AgentRuntimeProcessDelivery>();
   const ended = yield* Deferred.make<never>();
   const calls: AgentRuntimeMethod[] = [];
@@ -226,7 +239,10 @@ const makeFixture = Effect.fnUntraced(function* (
       ? {
           plugins: {
             catalog: {
-              read: () => Effect.die("Unexpected plugin catalog read"),
+              read: () =>
+                pluginCatalog
+                  ? Effect.succeed(pluginCatalog)
+                  : Effect.die("Unexpected plugin catalog read"),
               published: Stream.empty,
             },
             broker: {
@@ -278,6 +294,7 @@ const makeFixture = Effect.fnUntraced(function* (
       return Effect.succeed({ content: [] });
     },
     agentInstructions: Effect.sync(() => agentInstructions),
+    ...(checkClaudeCode ? { checkClaudeCode } : {}),
   }).pipe(
     Scope.provide(scope),
     Effect.provideService(CoreModules, {
@@ -362,11 +379,12 @@ const fixture = makeFixture();
 it.effect("bounds both plugin thread lookups with one deadline", () =>
   Effect.gen(function* () {
     const sourceRead = yield* Deferred.make<void>();
-    const f = yield* makeFixture((threadId) =>
-      threadId === "thread:source"
-        ? Deferred.succeed(sourceRead, undefined).pipe(Effect.andThen(Effect.never))
-        : Effect.sleep("4 seconds").pipe(Effect.as(null)),
-    );
+    const f = yield* makeFixture({
+      readThread: (threadId) =>
+        threadId === "thread:source"
+          ? Deferred.succeed(sourceRead, undefined).pipe(Effect.andThen(Effect.never))
+          : Effect.sleep("4 seconds").pipe(Effect.as(null)),
+    });
     const opening = yield* f
       .execute({
         type: "host.request",
@@ -389,12 +407,62 @@ it.effect("bounds both plugin thread lookups with one deadline", () =>
   }),
 );
 
+it.effect("an ACP Agent's Session receives its plugins whatever its driver", () =>
+  Effect.gen(function* () {
+    const catalog = pluginCatalogSnapshot([]);
+    const f = yield* makeFixture({
+      readThread: (threadId) =>
+        Effect.succeed(
+          threadId === frame.threadId
+            ? ({
+                projectId: "projectless",
+                providerInstanceId: "antigravity",
+                providerDriver: "antigravity",
+              } as never)
+            : null,
+        ),
+      pluginCatalog: catalog,
+    });
+    const opened = yield* f.execute({
+      type: "host.request",
+      id: "plugins",
+      operation: "plugins.open",
+      identity: frame,
+      attachmentId: "attachment",
+      request: { threadId: frame.threadId, projectId: null, backend: "acp" },
+    });
+    assert.deepInclude(opened, {
+      plugins: {
+        revision: catalog.revision,
+        skillsRoot: null,
+        skills: [],
+        mcpServers: [],
+        pluginIds: [],
+        codexDisabledPluginIds: [],
+      },
+    });
+  }),
+);
+
 const prepareTurn = (identity = turn()): AgentHostRequest => ({
   type: "host.request",
   id: "prepare",
   operation: "turn.prepare",
   identity,
 });
+
+it.effect("a Host answer reaches the Runtime in its own words", () =>
+  Effect.gen(function* () {
+    const notice = "Claude Code is installing. Send again when it is ready.";
+    const f = yield* makeFixture({ checkClaudeCode: () => Effect.succeed(notice) });
+    const error = yield* f.execute(prepareTurn()).pipe(Effect.flip);
+    assert.include(error, {
+      operation: "turn.prepare",
+      message: notice,
+      code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
+    });
+  }).pipe(Effect.scoped),
+);
 
 it.effect("a delegated Turn receives its bound Project's current Sources", () =>
   Effect.gen(function* () {

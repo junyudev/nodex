@@ -274,7 +274,6 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       id,
       Effect.gen(function* () {
         const { backend, projectId } = request;
-        if (backend === "opencode" || backend === "antigravity") return null;
         yield* release(id);
         if (backend === "codex") return yield* codexOverrides(projectId);
         const snapshot = yield* input.catalog.read(projectId, replyCatalogWait);

@@ -11,7 +11,6 @@ export interface AgentCapabilities {
   readonly inbox?: { readonly suggestionEffort: "medium" | "high" };
   /** Whose conversation history a person can copy into Nodex. */
   readonly nativeHistory?: "codex" | ProfileNativeHistory;
-  readonly pluginDelivery?: "codex" | "claude" | "acp";
   readonly cliBootstrap?: true;
   readonly insightsLedger?: "codex" | "claude";
   readonly nativeSkillPrompts?: true;

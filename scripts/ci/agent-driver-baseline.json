@@ -35,10 +35,8 @@
   "src/host/agent-plugins/PluginSessions.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
-      "codex": 1,
       "acp": 2,
-      "opencode": 1,
-      "antigravity": 1
+      "codex": 1
     }
   },
   "src/host/agent-plugins/PluginSkills.ts": {

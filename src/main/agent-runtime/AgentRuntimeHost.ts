@@ -63,6 +63,8 @@ const unavailable = (operation: string) =>
     operation,
     message: "Nodex application authority is unavailable for this request",
   });
+const failed = (operation: string) =>
+  new AgentRuntimeHostError({ operation, message: "Nodex could not complete this request" });
 
 type ExecutionProof = AgentThreadAuthority | AgentNativeSessionAuthority;
 const isRevokedRun = (status: AgentThreadAuthority["status"] | null) =>
@@ -462,7 +464,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         }).pipe(
           Effect.timeoutOrElse({
             duration: "10 seconds",
-            orElse: () => Effect.fail(unavailable("plugins.open")),
+            orElse: () => Effect.fail(failed("plugins.open")),
           }),
         );
         if (
@@ -471,9 +473,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             projectIdOf(thread.projectId) !== projectIdOf(request.request.projectId))
         )
           return yield* unavailable(request.operation);
-        const backend = agentDefinition(thread.providerDriver).capabilities.pluginDelivery;
-        if (backend !== request.request.backend) return yield* unavailable(request.operation);
-        if (backend === "codex") {
+        // The Runtime adapter asks in the shape it consumes; the Host decides only the scope.
+        if (request.request.backend === "codex") {
           const provider = options.providers[thread.providerInstanceId]?.config;
           if (
             hasExternalProviderServer(provider) ||
@@ -654,11 +655,19 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       });
       return yield* options.execute(caller, request.tool, request.input as Record<string, unknown>);
     },
-    Effect.mapError((error) =>
-      error instanceof AgentRuntimeHostError && error.operation === "plugins.open"
-        ? error
-        : unavailable("host.request"),
-    ),
+    // A Host answer says what went wrong in its own words. Anything else stays in this log,
+    // and the Runtime is only told the request could not be served.
+    (effect, request) =>
+      effect.pipe(
+        Effect.catch((error) =>
+          error instanceof AgentRuntimeHostError
+            ? Effect.fail(error)
+            : Effect.logWarning("Agent Runtime host request failed", {
+                operation: request.operation,
+                cause: error,
+              }).pipe(Effect.andThen(Effect.fail(failed(request.operation)))),
+        ),
+      ),
   );
   return execute;
 });

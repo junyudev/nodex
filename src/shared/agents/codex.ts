@@ -21,7 +21,6 @@ export const codexAgent = {
   },
   capabilities: {
     automation: { modelSource: "appServer" },
-    pluginDelivery: "codex",
     insightsLedger: "codex",
     utilityModels: "codex",
     inbox: { suggestionEffort: "high" },

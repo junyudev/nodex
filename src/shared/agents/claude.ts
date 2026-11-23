@@ -178,7 +178,6 @@ export const claudeAgent = {
   },
   capabilities: {
     automation: { modelSource: "native" },
-    pluginDelivery: "claude",
     insightsLedger: "claude",
     cliBootstrap: true,
     utilityModels: "claude",

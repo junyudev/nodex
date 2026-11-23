@@ -9,5 +9,5 @@ export const acpRegistryAgent = {
   profileAnchorPrefix: "acp-agent-",
   profileBased: true,
   setup: { signIn: { via: "dialog" }, models: "discover" },
-  capabilities: { automation: { modelSource: "discovery" }, pluginDelivery: "acp" },
+  capabilities: { automation: { modelSource: "discovery" } },
 } as const satisfies AgentDefinition;

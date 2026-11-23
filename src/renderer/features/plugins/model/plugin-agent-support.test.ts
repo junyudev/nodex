@@ -14,7 +14,7 @@ const projects = [
 describe("describeAgentSupport", () => {
   it("names every Agent when the whole plugin reaches them", () => {
     expect(describeAgentSupport({ outsideCodex: "full", limitations: [] })).toEqual({
-      agents: "Codex, Claude Code and ACP agents",
+      agents: "Codex, Claude Code, Antigravity and ACP agents",
       codexOnly: null,
     });
   });

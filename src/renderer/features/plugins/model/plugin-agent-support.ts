@@ -7,7 +7,7 @@ import type {
 
 const OTHER_AGENTS = defineMessage({
   id: "plugins.pluginAgentSupport.supportedAgents",
-  defaultMessage: "Codex, Claude Code and ACP agents",
+  defaultMessage: "Codex, Claude Code, Antigravity and ACP agents",
 });
 
 function describeLimitation(limitation: PluginOutsideCodexLimitation): string {
