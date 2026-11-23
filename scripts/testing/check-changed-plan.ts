@@ -2,7 +2,12 @@ import { ownerOfTest, type SuiteId } from "../../config/test-suites.ts";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
 import type { CiGatePlan } from "../ci/ci-gate-plan.ts";
 import { selectStaticChecks, STATIC_CHECKS } from "../ci/verify-static.ts";
-import { CACHE_SUITES, isCacheSuite, type CacheSuite } from "./test-cache-policy.ts";
+import {
+  CACHE_SUITES,
+  isCacheSuite,
+  type CacheResultSuite,
+  type CacheSuite,
+} from "./test-cache-policy.ts";
 
 interface StepCommand {
   readonly args: readonly string[];
@@ -15,7 +20,11 @@ export type CheckStep = { readonly name: string; readonly lane?: "vitest" | "rus
       readonly commands: readonly StepCommand[];
       readonly budget?: boolean;
     }
-  | { readonly kind: "cached"; readonly suite: CacheSuite; readonly filters: readonly string[] }
+  | {
+      readonly kind: "cached";
+      readonly suite: CacheResultSuite;
+      readonly filters: readonly string[];
+    }
   | {
       readonly kind: "tests";
       readonly suite: SuiteId;
@@ -183,7 +192,7 @@ export function planCheckSteps(
         }))
       : CACHE_SUITES.map((suite) => skip(`app ${suite}`, "no application suites selected"))),
     ...(plan?.appTestSuites ?? [])
-      .filter((suite) => !isCacheSuite(suite))
+      .filter((suite) => !isCacheSuite(suite) && suite !== "browser")
       .map((suite): CheckStep => ({
         name: `app ${suite}`,
         kind: "tests",
@@ -192,6 +201,11 @@ export function planCheckSteps(
         related: plan?.testMode === "related",
         args: (plan?.relatedPaths ?? []).map((file) => "./" + file),
       })),
+    // Chromium shares one browser context across files, so the whole suite is one memoized
+    // unit that replays when nothing it loaded has changed.
+    plan?.appTestSuites.length
+      ? { name: "app browser", kind: "cached", lane: "vitest", suite: "browser", filters: [] }
+      : skip("app browser", "no application suites selected"),
     ...rustSteps(plan),
   ];
   return { steps, rustEnv: plan && rustGateEnvironment(plan, files) };

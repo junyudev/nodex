@@ -4,6 +4,7 @@ import { nativeRequirements } from "../../config/test-suites.ts";
 
 export const CACHE_SUITES = ["unit", "renderer"] as const;
 export type CacheSuite = (typeof CACHE_SUITES)[number];
+export type CacheResultSuite = CacheSuite | "browser";
 export const isCacheSuite = (value: string): value is CacheSuite =>
   CACHE_SUITES.some((suite) => suite === value);
 

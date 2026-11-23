@@ -80,7 +80,7 @@ interface SourceInputs {
   readonly customEnvironment?: boolean;
 }
 
-function readGlobs(file: string, parsed: ParseResult) {
+export function readGlobs(file: string, parsed: ParseResult) {
   const patterns: string[] = [];
   let unsupported = false;
   new Visitor({
@@ -126,7 +126,7 @@ function readGlobs(file: string, parsed: ParseResult) {
   return unsupported ? undefined : patterns;
 }
 
-function literalImports(source: string, imports: ParseResult["module"]["dynamicImports"]) {
+export function literalImports(source: string, imports: ParseResult["module"]["dynamicImports"]) {
   const requests: string[] = [];
   for (const {
     moduleRequest: { start, end },
@@ -237,7 +237,7 @@ export interface TestEvidence {
   readonly durationMs?: number;
 }
 
-function fullyPassed(module: TestModule) {
+export function fullyPassed(module: TestModule) {
   if (module.state() !== "passed") return false;
   const tests = [...module.children.allTests()];
   return (

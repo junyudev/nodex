@@ -21,18 +21,20 @@ import {
   type LocalInputs,
 } from "./test-cache-inputs.ts";
 import type { TestEvidence } from "./test-cache-graph.ts";
-import type { CacheSuite } from "./test-cache-policy.ts";
+import type { CacheResultSuite, CacheSuite } from "./test-cache-policy.ts";
 
 export interface CachedPass {
   readonly globalKey: string;
   readonly deps: Readonly<Record<string, string>>;
   readonly local?: LocalInputs;
+  readonly identity?: Readonly<Record<string, string>>;
+  readonly immutableUrls?: readonly string[];
 }
 
 export const digest = (content: string | Buffer) =>
   createHash("sha256").update(content).digest("hex");
 
-export function cacheDirectory(root: string, env: NodeJS.ProcessEnv, suite: CacheSuite) {
+export function cacheDirectory(root: string, env: NodeJS.ProcessEnv, suite: CacheResultSuite) {
   const override = env.NODEX_BUILD_CACHE_DIR?.trim();
   return path.join(
     override ? path.resolve(override) : path.join(resolvePrimaryCheckoutRoot(root), "cache.local"),
@@ -155,7 +157,7 @@ export async function workspaceInputs(root: string, resultsRoot?: string) {
 
 export async function globalCacheKey(
   root: string,
-  suite: CacheSuite,
+  suite: CacheResultSuite,
   env: NodeJS.ProcessEnv,
   epoch: string,
   workspace: Awaited<ReturnType<typeof workspaceInputs>>,
@@ -167,6 +169,7 @@ export async function globalCacheKey(
       file,
     ) ||
     (suite === "renderer" && file === "src/renderer/test/setup.ts") ||
+    (suite === "browser" && /(?:^|\/)\.gitignore$/u.test(file)) ||
     [".node-version", ".npmrc", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file);
   if ([...workspace.links].some(sharedInput)) return undefined;
   const globalFiles = [...workspace.files].filter(sharedInput).sort();
@@ -254,7 +257,7 @@ async function changedPassInputs(
   globalKey: string,
   file: string,
   hash: ReturnType<typeof fileHasher>,
-  workspace: { topology: string; reader: ReturnType<typeof localInputReader> },
+  workspace: PassWorkspace,
 ) {
   if (pass?.globalKey !== globalKey || typeof pass.deps?.[file] !== "string")
     throw new CorruptCachedPass(file);
@@ -263,6 +266,9 @@ async function changedPassInputs(
     if (typeof expected !== "string" || !portablePath(dependency))
       throw new CorruptCachedPass(file);
     if ((await hash(dependency)) !== expected) changed.push(dependency);
+  }
+  for (const [input, expected] of Object.entries(workspace.identity ?? {})) {
+    if (pass.identity?.[input] !== expected) changed.push(input);
   }
   if (pass.local?.topology !== undefined && pass.local.topology !== workspace.topology)
     changed.push("workspace file names");
@@ -291,12 +297,19 @@ const maxEntries = 4;
 
 export class CorruptCachedPass extends Error {}
 
+interface PassWorkspace {
+  readonly topology: string;
+  readonly reader: ReturnType<typeof localInputReader>;
+  readonly identity?: Readonly<Record<string, string>>;
+  readonly onHit?: (pass: CachedPass) => void;
+}
+
 export async function findPass(
   directory: string,
   file: string,
   key: string,
   hash: ReturnType<typeof fileHasher>,
-  workspace = { topology: "", reader: localInputReader(directory) },
+  workspace: PassWorkspace = { topology: "", reader: localInputReader(directory) },
 ): Promise<PassLookup> {
   const base = entriesForFile(directory, file);
   const entries = (await readdir(base).catch(() => [])).filter((name) => name.endsWith(".json"));
@@ -314,16 +327,12 @@ export async function findPass(
     });
     if (content === undefined) continue;
     if (name !== key + "-" + digest(content) + ".json") throw new CorruptCachedPass(file);
-    const changed = await changedPassInputs(
-      JSON.parse(content) as CachedPass,
-      key,
-      file,
-      hash,
-      workspace,
-    );
+    const pass = JSON.parse(content) as CachedPass;
+    const changed = await changedPassInputs(pass, key, file, hash, workspace);
     if (changed.length === 0) {
       const now = new Date();
       await utimes(record, now, now).catch(() => undefined);
+      workspace.onHit?.(pass);
       return { kind: "hit" };
     }
     // Compare against the closest retained pass so old edits are not counted again.

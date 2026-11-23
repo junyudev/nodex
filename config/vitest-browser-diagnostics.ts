@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import { errorMonitor, type EventEmitter } from "node:events";
-import type { Browser, Frame, Page } from "playwright";
+import type { Browser, BrowserContext, Frame, Page } from "playwright";
 import type { Plugin } from "vite-plus";
 import { playwright } from "vite-plus/test/browser-playwright";
 import { createDebugger, type BrowserProvider } from "vite-plus/test/node";
@@ -61,15 +61,37 @@ export function observeBrowserServer(
   );
 }
 
-export function ciPlaywrightProvider(): ReturnType<typeof playwright> {
+export function ciPlaywrightProvider(
+  attachContext?: (context: BrowserContext) => void,
+): ReturnType<typeof playwright> {
   // Keep browser contracts on the full Chromium implementation in headed and headless runs.
   const provider = playwright({ launchOptions: { channel: "chromium" } });
-  if (!process.env.CI) return provider;
+  if (!process.env.CI && !attachContext) return provider;
   return {
     ...provider,
     providerFactory(project) {
-      return observeBrowserProvider(provider.providerFactory(project));
+      const instance = provider.providerFactory(project);
+      if (attachContext) observeBrowserContexts(instance, attachContext);
+      return process.env.CI ? observeBrowserProvider(instance) : instance;
     },
+  };
+}
+
+/** Hook the pinned Playwright provider before it creates or navigates a Page. */
+function observeBrowserContexts(
+  provider: BrowserProvider,
+  attach: (context: BrowserContext) => void,
+) {
+  const instance = provider as BrowserProvider & {
+    createContext?: (...args: unknown[]) => Promise<BrowserContext>;
+  };
+  const createContext = instance.createContext?.bind(instance);
+  // The recorder will refuse a pass if the provider seam changes.
+  if (!createContext) return;
+  instance.createContext = async (...args) => {
+    const context = await createContext(...args);
+    attach(context);
+    return context;
   };
 }
 

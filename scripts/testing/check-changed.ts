@@ -34,6 +34,7 @@ import {
   validationConcurrency,
   type CachedSuiteReport,
 } from "./run-cached-tests.ts";
+import { runMemoizedBrowserSuite } from "./run-memoized-browser-suite.ts";
 import { runTests } from "./run-tests.ts";
 
 export { mergePathLists } from "./check-changed-record.ts";
@@ -86,7 +87,9 @@ async function runStepWork(file: string, signal: AbortSignal): Promise<number> {
         renameSync(pending, cacheReport);
       },
     };
-    return runCachedSuite(step.suite, step.filters, cachedContext);
+    return step.suite === "browser"
+      ? runMemoizedBrowserSuite(cachedContext)
+      : runCachedSuite(step.suite, step.filters, cachedContext);
   }
   if (step.kind === "tests") {
     return runTests(

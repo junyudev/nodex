@@ -13,6 +13,7 @@ import {
   chooseCacheAudits,
   isCacheSuite,
   partitionCacheFiles,
+  type CacheResultSuite,
   type CacheSuite,
 } from "./test-cache-policy.ts";
 import {
@@ -42,7 +43,7 @@ interface CacheExclusion {
 }
 
 export interface CachedSuiteReport {
-  readonly suite: CacheSuite;
+  readonly suite: CacheResultSuite;
   readonly selected: number;
   readonly hits: number;
   readonly ran: number;
@@ -54,7 +55,7 @@ export interface CachedSuiteReport {
   readonly lookupMs: number;
 }
 
-type SuiteContext = {
+export type CachedSuiteContext = {
   repositoryRoot: string;
   env: NodeJS.ProcessEnv;
   signal: AbortSignal;
@@ -113,7 +114,7 @@ function summarizeRun(suite: CacheSuite, run: CacheRun, lookupMs: number): Cache
 export async function runCachedSuite(
   suite: CacheSuite,
   filters: readonly string[],
-  context: SuiteContext,
+  context: CachedSuiteContext,
 ): Promise<number> {
   const { env, onReport } = context;
   const tier = resolveVitestTestTier(env.NODEX_TEST_TIER);
@@ -152,7 +153,7 @@ export async function runCachedSuite(
 async function runCachedFlow(
   suite: CacheSuite,
   filters: readonly string[],
-  { repositoryRoot: root, env, signal }: SuiteContext,
+  { repositoryRoot: root, env, signal }: CachedSuiteContext,
   run: CacheRun,
   started: number,
 ): Promise<number | undefined> {

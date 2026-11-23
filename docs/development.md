@@ -911,7 +911,8 @@ untracked paths all count.
 A frozen dependency install runs first. As slots become available, the runner
 starts changed-file format and lint, i18n, changed and sibling unit and
 renderer tests, the semantic gate, selected static groups, full cached unit and
-renderer suites, other selected application suites, and Rust. The static
+renderer suites, other selected application suites, the memoized Chromium suite,
+and Rust. The static
 `types` lane runs `vp run check`. The local `ui-contracts` lane compiles changed
 renderer files. Vitest steps and Rust steps each run serially within their own
 group. Checks finish even when another step fails.
@@ -1277,6 +1278,15 @@ The suite prints eligibility by file count and by the share of measured file
 time, including environment setup, collection, and test execution. The latest
 report under `node_modules/.cache/test-result-reports/` retains per-file timings
 across focused runs and cache hits.
+
+On macOS, browser memoization treats the default browser suite as one unit because
+its files share a Playwright context. A passing run records context requests,
+Vite client imports and watch files, and local resolution inputs. The complete
+suite runs again when an input changes, an unknown request or service worker
+prevents reuse, or a cached pass is sampled for audit. One of every 64 hits is sampled on average. The browser
+memoization runner can be exercised directly with
+`pnpm exec tsx scripts/testing/run-memoized-browser-suite.ts`; `check:changed`
+uses it whenever it runs application tests. `vp run test:browser` always runs Chromium.
 
 Passes live under the primary checkout's `cache.local/test-results/`.
 `NODEX_BUILD_CACHE_DIR` overrides the cache root. Each test keeps up to four

@@ -5,7 +5,7 @@ import type { Plugin } from "vite";
 export const TYPOGRAPHY_BOOTSTRAP_ANCHOR = "<!-- nodex-typography:bootstrap -->";
 
 /** The parser and React use one decoder and token scale without loading the renderer graph. */
-export function createTypographyBootstrapScript(): string {
+export function createTypographyBootstrapScript(onInputs?: (files: string[]) => void): string {
   const result = buildSync({
     entryPoints: [resolve("src/renderer/bootstrap/typography-bootstrap.ts")],
     bundle: true,
@@ -14,9 +14,15 @@ export function createTypographyBootstrapScript(): string {
     target: "es2020",
     minify: true,
     write: false,
+    metafile: onInputs !== undefined,
   });
   const script = result.outputFiles?.[0]?.text;
   if (script === undefined) throw new Error("Typography bootstrap compilation produced no script");
+  if (onInputs) {
+    if (!result.metafile)
+      throw new Error("Typography bootstrap compilation produced no input inventory");
+    onInputs(Object.keys(result.metafile.inputs).map((file) => resolve(file)));
+  }
   return script;
 }
 
