@@ -15,6 +15,7 @@ import type {
   ProtocolMcpResourceReadResponse,
 } from "../../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
+import { siteFaviconUrl } from "../../../../../components/shared/site-favicon";
 import { installWindowApi } from "../../../../../test/browser-globals";
 import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
 import {
@@ -278,12 +279,8 @@ describe("McpToolCall", () => {
     expect(JSON.parse(truncated.textContent ?? "").input).toBe('{"ids":[1,…');
     expect(view.getByText('{"reviews":[…')).toBeTruthy();
     const imageSources = [...view.container.querySelectorAll("img")].map((image) => image.src);
-    expect(imageSources).toContain(
-      "https://www.google.com/s2/favicons?domain=https%3A%2F%2Ftools.example&sz=32",
-    );
-    expect(imageSources).toContain(
-      "https://www.google.com/s2/favicons?domain=https%3A%2F%2Ffallback.example&sz=32",
-    );
+    expect(imageSources).toContain(siteFaviconUrl("https://tools.example"));
+    expect(imageSources).toContain(siteFaviconUrl("https://fallback.example"));
   });
 
   test("scopes MCP app resource reads to the originating tool call", async () => {
