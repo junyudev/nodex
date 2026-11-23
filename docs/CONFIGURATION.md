@@ -318,16 +318,20 @@ separate configuration directory for each connection.
 
 ## Antigravity instances
 
-Antigravity starts with no accounts. Each profile selects an authentication method:
-`oauth-personal` (default), `oauth-business`, `gemini-api-key` or `agent-platform`.
-`gcpProject` and `gcpLocation` specify the Google Cloud project and region when the method
-uses them. An empty executable selects the Nodex-managed runtime, then a compatible `agy`
-on PATH.
+Antigravity starts with one enabled profile whose authentication method is `computer`: agy's own
+sign-in on this computer. That profile runs agy with the person's `~/.gemini` as its Gemini
+folder and agy's sign-in in the OS keyring, or in agy's sign-in file where there is no keyring;
+Nodex keeps its chats in that folder's `antigravity-acp` data, apart from the `antigravity-cli`
+history of agy in a terminal, and writes no other files there. At most one profile uses
+`computer`. The other methods are `oauth-personal`, `oauth-business`, `gemini-api-key` and
+`agent-platform`; a profile using one of them keeps an isolated Gemini folder under the Nodex
+Profile, with its own credentials. `gcpProject` and `gcpLocation` specify the Google Cloud project
+and region when the method uses them. An empty executable selects the Nodex-managed runtime, then
+a compatible `agy` on PATH.
 
 Supply keys through Agent settings. A saved key stays with its account until it is replaced,
-cleared, or the sign-in method stops using it. Antigravity keeps isolated credentials per
-account, strips ambient Google credentials and loads the models available to that account.
-Those models default on under model policy.
+cleared, or the sign-in method stops using it. Antigravity strips ambient Google credentials and
+loads the models available to the profile's account. Those models default on under model policy.
 
 Nodex stores the managed download under
 `<Profile>/agent-runtime/tools/antigravity-acp/<os>-<arch>/`. All Antigravity profiles

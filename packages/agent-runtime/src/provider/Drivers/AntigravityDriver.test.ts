@@ -17,6 +17,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { HttpClient } from "effect/http";
 
@@ -66,6 +67,8 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     readonly enabled?: boolean;
     /** Extra instance variables, such as ones a parent Nodex turn already exported. */
     readonly environment?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
+    /** What this computer's keyring holds. Tests never read the real one. */
+    readonly keyring?: "oauth-personal" | "oauth-business";
   } = {},
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -80,7 +83,10 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
   );
   const requestLog = path.join(root, "requests.jsonl");
-  const directories = yield* resolveAntigravityInstanceDirectories(config.stateDir, instanceId);
+  const directories = yield* resolveAntigravityInstanceDirectories(config.stateDir, instanceId, {
+    authMethod: options.config?.authMethod ?? "oauth-personal",
+    userHome: path.join(root, "user-home"),
+  });
   const profileDirectory = directories.profile;
   const instancePath = `${path.join(root, "instance-bin")}:${baseEnv.PATH ?? ""}`;
 
@@ -210,10 +216,33 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
         return selected;
       }),
   });
+  const keyringReads: Array<string> = [];
   const observedSpawner = ChildProcessSpawner.make((command) =>
     Effect.gen(function* () {
       if (command._tag !== "StandardCommand")
         return yield* Effect.die("Unexpected process pipeline.");
+      if (command.command === "/usr/bin/security" || command.command === "secret-tool") {
+        keyringReads.push(command.command);
+        const stored = Buffer.from(
+          JSON.stringify({
+            token: {
+              access_token: "fixture-access-token",
+              refresh_token: "fixture-refresh-token",
+              expiry: "2999-01-01T00:00:00Z",
+            },
+            auth_method: options.keyring,
+            id_token_email: "person@example.com",
+          }),
+        ).toString("base64");
+        return yield* spawner.spawn(
+          ChildProcess.make("/bin/sh", [
+            "-c",
+            options.keyring === undefined
+              ? `exit ${command.command === "secret-tool" ? 1 : 44}`
+              : `printf '%s' ${shellQuote(`go-keyring-base64:${stored}`)}`,
+          ]),
+        );
+      }
       const handle = yield* spawner.spawn(command);
       const environment = command.options.env ?? {};
       const env = (name: string) => {
@@ -295,6 +324,8 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     releases,
     observedVersions,
     launches,
+    keyringReads,
+    root,
     readRequests,
     assertClosed,
   };
@@ -357,6 +388,87 @@ it.layer(layerTest)("AntigravityDriver", (it) => {
         yield* h.assertClosed;
       }
     }),
+  );
+
+  it.effect.skipIf(windowsHost)(
+    "runs this computer's sign-in in the person's own Gemini folder and loads its models",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness({
+          config: { authMethod: "computer" },
+          keyring: "oauth-business",
+        });
+        // Checks find the keyring signed in and load the account's models without a Nodex sign-in.
+        // Subscribe before reading, so a load that already finished is not missed.
+        const loaded = yield* Stream.toPull(
+          h.instance.snapshot.streamChanges.pipe(
+            Stream.filter((snapshot) => snapshot.models.length > 0),
+          ),
+        );
+        let snapshot = yield* h.instance.snapshot.getSnapshot;
+        if (snapshot.models.length === 0) snapshot = (yield* loaded)[0]!;
+        expect(snapshot.auth).toMatchObject({
+          status: "authenticated",
+          type: "computer",
+          email: "person@example.com",
+        });
+        const userGemini = h.path.join(h.root, "user-home", ".gemini");
+        expect(h.profileDirectory).toBe(userGemini);
+        const agentLaunches = h.launches.filter((launch) => launch.tempDirectory !== undefined);
+        expect(agentLaunches.length).toBeGreaterThan(0);
+        for (const launch of agentLaunches) {
+          expect(launch.args).toEqual([
+            "acp",
+            "--gemini-dir",
+            userGemini,
+            "--app-data-dir",
+            "antigravity-acp",
+          ]);
+          expect(launch.profileDirectory).toBe(userGemini);
+          expect(launch.environment.SSH_CONNECTION).toBeUndefined();
+          expect(launch.forceFileStorage).toBeUndefined();
+          expect(launch.credentialKeys).toEqual([]);
+        }
+        // The person's own folder keeps its configuration; Nodex writes no sign-in method there.
+        expect(
+          yield* h.fs.exists(h.path.join(userGemini, "antigravity-acp", "settings.json")),
+        ).toBe(false);
+        expect(yield* h.fs.exists(h.path.join(userGemini, "config", "skills"))).toBe(false);
+        expect(
+          (yield* h.readRequests)
+            .filter((request) => request.method === "auth/login")
+            .map((request) => request.params?.methodId),
+        ).toContain("oauth-business");
+        expect(h.keyringReads.length).toBeGreaterThan(0);
+      }),
+  );
+
+  it.effect.skipIf(windowsHost)(
+    "asks for this computer's sign-in without starting agy while it is signed out",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness({ config: { authMethod: "computer" } });
+        const workspace = yield* h.fs.makeTempDirectoryScoped({ prefix: "nodex-ag-signed-out-" });
+        const threadId = ThreadId.make("thread-antigravity-computer-signed-out");
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          cwd: workspace,
+        });
+        const modelSelection = { instanceId: h.instance.instanceId, model: "gemini-test-low" };
+        const opened = yield* Effect.gen(function* () {
+          const session = yield* h.instance.orchestrationAdapter.openSession({
+            threadId,
+            providerSessionId: ProviderSessionId.make("provider-session-computer-signed-out"),
+            modelSelection,
+            runtimePolicy,
+          });
+          yield* session.ensureThread({ threadId, modelSelection, runtimePolicy });
+        }).pipe(Effect.exit);
+        expect(opened._tag).toBe("Failure");
+        expect(h.launches.filter((launch) => launch.tempDirectory !== undefined)).toEqual([]);
+        expect((yield* h.instance.snapshot.getSnapshot).auth.status).toBe("unauthenticated");
+      }),
   );
 
   it.effect.skipIf(windowsHost)(
@@ -752,6 +864,7 @@ it.layer(layerTest)("AntigravityDriver", (it) => {
         const directories = yield* resolveAntigravityInstanceDirectories(
           config.stateDir,
           instanceId,
+          { authMethod: "oauth-personal", userHome: path.join(config.stateDir, "home") },
         );
         const legacyRoot = path.join(directories.profile, "antigravity-acp", "tmp");
         for (const root of [directories.runtimeTemp, legacyRoot]) {

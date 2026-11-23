@@ -11,10 +11,12 @@ import {
   nodeRuntimeUnavailableMessage,
 } from "@nodex/runtime-shared/nodeRuntime";
 import * as Crypto from "effect/Crypto";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FiberHandle from "effect/FiberHandle";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -35,6 +37,7 @@ import * as AntigravityInstallation from "../AntigravityInstallation.ts";
 import { brokenRuntimeError } from "../providerCompatibility.ts";
 import * as AntigravityUsage from "./AntigravityUsage.ts";
 import {
+  ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
   antigravityAuthConfigIssue,
   antigravityAuthLabel,
   antigravityAuthUsesBrowser,
@@ -67,6 +70,7 @@ import { makeAcpNativeLoggerFactory } from "@nodex/provider-acp/server/nativeLog
 import { ProviderDriverError } from "../Errors.ts";
 import { makeAntigravityProvider } from "../AntigravityProvider.ts";
 import { makeAntigravityUsageProbe } from "../antigravityUsageLimits.ts";
+import { readAntigravityStoredSignIn } from "../antigravityStoredSignIn.ts";
 import * as ProviderEventLoggers from "@nodex/provider-core/server/ProviderEventLoggers";
 import * as ModelCatalog from "@nodex/provider-core/server/ModelCatalog";
 import {
@@ -87,6 +91,7 @@ const isAcpErrorDetails = Schema.is(Schema.Struct({ details: Schema.String }));
 const REFRESH_FAILED =
   "Could not refresh Antigravity models. The previous model list is unchanged.";
 const PYTHON_SOCKS_REQUIRED = "python-socks is required to use a SOCKS proxy";
+const CATALOG_RETRY_MS = 5 * 60_000;
 
 // Keep provider diagnostics in cause; only recognized, fixed text reaches clients.
 function refreshFailureDetail(cause: unknown) {
@@ -156,14 +161,16 @@ export const AntigravityDriver: ProviderDriver<
     };
     const authConfigIssue = antigravityAuthConfigIssue(auth);
     const processEnvironment = yield* mergeProviderInstanceEnvironment(environment);
+    const platform = yield* HostProcess.Platform;
     const userHome = resolveAntigravityUserHome(
-      yield* HostProcess.Platform,
+      platform,
       processEnvironment,
       yield* HostProcess.HomeDirectory,
     );
     const directories = yield* resolveAntigravityInstanceDirectories(
       host.paths.stateDir,
       instanceId,
+      { authMethod: auth.authMethod, userHome },
     ).pipe(
       Effect.provideService(Crypto.Crypto, digest),
       Effect.provideService(Path.Path, path),
@@ -178,9 +185,10 @@ export const AntigravityDriver: ProviderDriver<
       ),
     );
     const profileDirectory = directories.profile;
+    // A private profile may still hold runtime files from before they moved beside it.
     for (const directory of [
       directories.runtimeTemp,
-      path.join(profileDirectory, "antigravity-acp", "tmp"),
+      ...(directories.shared ? [] : [path.join(profileDirectory, "antigravity-acp", "tmp")]),
     ]) {
       const removeRetired = yield* retireAntigravityRuntimeTempDirs(directory).pipe(
         Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -199,6 +207,14 @@ export const AntigravityDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
+    // Absent for a profile with its own sign-in: only this computer's can change outside Nodex.
+    const storedSignIn = directories.shared
+      ? readAntigravityStoredSignIn({ profileDirectory, shared: true, platform }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        )
+      : undefined;
     const classifyModels = (draft: ServerProviderDraft) =>
       currentCatalog.pipe(
         Effect.map((catalog) => stampIdentity(ModelCatalog.applyModelCatalog(draft, catalog))),
@@ -301,6 +317,16 @@ export const AntigravityDriver: ProviderDriver<
       // `buildAntigravityAcpSpawnInput` sets `extendEnv: false`, so thread variables only reach the
       // agent's shell through `baseEnv`.
       const { processEnvironment: threadEnvironment, ...runtimeInput } = input;
+      // Signed out, agy on this computer would open a browser for any session it starts. Only a
+      // sign-in may do that; everything else asks for one without starting agy.
+      const signIn = storedSignIn ? yield* storedSignIn : undefined;
+      if (signIn?.status === "signed-out" && runtimeInput.onAuthorizationUrl === undefined) {
+        yield* provider.onAuthRequired;
+        return yield* new AcpErrors.AcpTransportError({
+          detail: ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
+          cause: undefined,
+        });
+      }
       const { executable, spawn } = yield* prepareSpawn(
         runtimeInput.cwd,
         threadEnvironment === undefined
@@ -310,7 +336,13 @@ export const AntigravityDriver: ProviderDriver<
       const runtime = yield* makeAntigravityAcpRuntime({
         ...runtimeInput,
         runtimeVersion: executable.version,
-        authMethod: auth.authMethod,
+        // This computer's sign-in authenticates with the Google method agy signed in with.
+        authMethod:
+          auth.authMethod === "computer"
+            ? signIn?.status === "signed-in"
+              ? signIn.authMethod
+              : "oauth-personal"
+            : auth.authMethod,
         childProcessSpawner: spawner,
         spawn,
       }).pipe(Effect.provideService(Crypto.Crypto, random));
@@ -402,12 +434,14 @@ export const AntigravityDriver: ProviderDriver<
       };
     });
 
-    // The agy CLI ignores Nodex's browser helper during ACP `authenticate`, so Google sign-in runs its
-    // remote-friendly `--login`, which stores the sign-in where the ACP process reads it.
+    // The agy CLI ignores Nodex's browser helper during ACP `authenticate`, so a private Google
+    // sign-in runs its remote-friendly `--login`, which stores the sign-in where the ACP process
+    // reads it. This computer's sign-in is agy's own: `authenticate` opens the browser as agy in a
+    // terminal does, and stores the sign-in in this computer's keyring.
     const codeLogin = Effect.fn("AntigravityDriver.codeLogin")(function* (input: {
       readonly onAuthorizationUrl: (url: string) => Effect.Effect<void, AcpErrors.AcpError>;
     }) {
-      if (!antigravityAuthUsesBrowser(auth.authMethod)) return undefined;
+      if (directories.shared || !antigravityAuthUsesBrowser(auth.authMethod)) return undefined;
       const cwd = yield* fileSystem
         .makeTempDirectoryScoped({ prefix: "nodex-antigravity-login-" })
         .pipe(
@@ -561,15 +595,23 @@ export const AntigravityDriver: ProviderDriver<
 
     const usage = yield* makeAntigravityUsageProbe({
       profileDirectory,
+      shared: directories.shared,
       authMethod: auth.authMethod,
     }).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
       Effect.provideService(Crypto.Crypto, digest),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
+    // A sign-in made in a terminal loads the account's models once checks find it. A failed load
+    // waits before trying again, since each one starts agy.
+    const catalogLoader = yield* Deferred.make<Effect.Effect<void>>();
     const provider = yield* makeAntigravityProvider(settings, {
       environment: processEnvironment,
+      ...(storedSignIn
+        ? { storedSignIn, loadCatalog: Deferred.await(catalogLoader).pipe(Effect.flatten) }
+        : {}),
       stampIdentity: classifyModels,
       probe,
       probeUsage: usage.probe,
@@ -682,6 +724,29 @@ export const AntigravityDriver: ProviderDriver<
               cause,
             }),
       ),
+    );
+
+    const catalogLoad = yield* FiberHandle.make();
+    let catalogFailedAt = Number.NEGATIVE_INFINITY;
+    yield* Deferred.succeed(
+      catalogLoader,
+      Effect.gen(function* () {
+        if ((yield* Clock.currentTimeMillis) - catalogFailedAt < CATALOG_RETRY_MS) return;
+        yield* FiberHandle.run(
+          catalogLoad,
+          refreshModels().pipe(
+            Effect.tapError(() =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map((now) => {
+                  catalogFailedAt = now;
+                }),
+              ),
+            ),
+            Effect.ignore,
+          ),
+          { onlyIfMissing: true },
+        );
+      }),
     );
 
     return {

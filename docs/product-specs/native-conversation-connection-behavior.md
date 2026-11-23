@@ -88,8 +88,9 @@ be copied. Subagent histories are not independent import sources.
 The Antigravity source is Antigravity's own history under `~/.gemini`: the Antigravity app's
 conversations in `antigravity` and its command line's in `antigravity-cli`, listed together as one
 Agent. A conversation belongs to the app that holds its transcript. The separately installed
-Antigravity IDE and a profile's own history are not sources: profiles keep their sign-in and native
-sessions apart, and their chats are already Nodex chats. The first enabled Antigravity profile reads
+Antigravity IDE and a profile's own history are not sources: profiles keep their native sessions
+apart from agy's, even when they use agy's sign-in on this computer, and their chats are already
+Nodex chats. The first enabled Antigravity profile reads
 the history with its executable and continues each copy as its own account in a new native session;
 with several profiles enabled, rows name it. Reading uses the command line's own sign-in on this
 computer and never authenticates or prompts; when the command line isn't signed in, the source says

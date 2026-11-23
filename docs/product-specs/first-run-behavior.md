@@ -71,8 +71,9 @@ sign-in waits. If Codex is turned off, the row links to **Settings → General �
 
 Antigravity's built-in row recognizes a downloaded runtime or an `agy` on this computer,
 including installations on the login-shell PATH. An older command stays visible with the version
-needed to connect. Set up and Sign in open Settings → Agents → Antigravity, where each profile
-connects its own account.
+needed to connect. Its default profile uses agy's sign-in on this computer, so an `agy` already
+signed in is ready without a step, and a sign-in finished in a Terminal shows up by itself. Set up
+and Sign in open Settings → Agents → Antigravity, where other profiles connect their own accounts.
 
 First-run uses the [same readiness facts](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer)
 as the composer and picker. An installed Agent can name an unreachable account, a check that

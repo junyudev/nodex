@@ -31,6 +31,7 @@ import {
   buildAntigravityModelsFromSession,
   makeAntigravityProvider,
 } from "./AntigravityProvider.ts";
+import type { AntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
 
 const decodeSettings = Schema.decodeSync(AntigravitySettings);
 const instanceId = ProviderInstanceId.make("antigravity-test");
@@ -138,6 +139,8 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
     readonly enabled?: boolean;
     readonly safe?: boolean;
     readonly probeUsage?: Effect.Effect<ServerProviderUsageLimits>;
+    readonly storedSignIn?: Effect.Effect<AntigravityStoredSignIn>;
+    readonly loadCatalog?: Effect.Effect<void>;
   } = {},
 ) {
   const initialProbe = yield* Deferred.make<EffectAcpSchema.InitializeResponse, ProbeError>();
@@ -153,6 +156,8 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
       stampIdentity: (snapshot) => Effect.succeed({ ...snapshot, instanceId, driver }),
       ...(options.auth ? { auth: options.auth } : {}),
       ...(options.probeUsage ? { probeUsage: options.probeUsage } : {}),
+      ...(options.storedSignIn ? { storedSignIn: options.storedSignIn } : {}),
+      ...(options.loadCatalog ? { loadCatalog: options.loadCatalog } : {}),
       probe: Ref.update(probeCalls, (count) => count + 1).pipe(
         Effect.andThen(Ref.get(probe)),
         Effect.flatten,
@@ -462,6 +467,47 @@ it.layer(layerTest)("Antigravity provider snapshots", (it) => {
         "Connect with Gemini API key to use Antigravity and load models.",
       );
       expect(refreshed.supportsTextGeneration).toBe(false);
+    }),
+  );
+
+  it.effect("follows this computer's sign-in as agy in a terminal changes it", () =>
+    Effect.gen(function* () {
+      const auth = { type: "computer", label: "agy on this computer" };
+      const signIn = yield* Ref.make<AntigravityStoredSignIn>({
+        status: "signed-in",
+        accessToken: "access",
+        refreshToken: undefined,
+        expiry: undefined,
+        authMethod: "oauth-personal",
+        email: "person@example.com",
+      });
+      const catalogLoads = yield* Ref.make(0);
+      const harness = yield* makeHarness({
+        auth,
+        storedSignIn: Ref.get(signIn),
+        loadCatalog: Ref.update(catalogLoads, (count) => count + 1),
+      });
+      yield* harness.initialize;
+      // Signed in without models: checks load the account's catalog in the background.
+      for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+      expect(yield* Ref.get(catalogLoads)).toBeGreaterThan(0);
+      yield* harness.provider.onSessionStarted(started, "/workspace");
+      expect((yield* harness.provider.snapshot.getSnapshot).auth).toEqual({
+        status: "authenticated",
+        type: auth.type,
+        label: auth.label,
+        email: "person@example.com",
+      });
+      const loads = yield* Ref.get(catalogLoads);
+      yield* harness.provider.snapshot.refresh;
+      for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+      expect(yield* Ref.get(catalogLoads)).toBe(loads);
+
+      // Signing out in a terminal signs this profile out at the next check.
+      yield* Ref.set(signIn, { status: "signed-out" });
+      const refreshed = yield* harness.provider.snapshot.refresh;
+      expect(refreshed.auth).toEqual({ status: "unauthenticated" });
+      expect(refreshed.models).toEqual([]);
     }),
   );
 

@@ -65,7 +65,7 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
     userId?: string;
     userInfoAt?: number;
     missingToken?: boolean;
-    authMethod?: "oauth-personal" | "oauth-business" | "gemini-api-key";
+    authMethod?: "computer" | "oauth-personal" | "oauth-business" | "gemini-api-key";
     cliToken?: string;
   } = {},
 ) {
@@ -137,6 +137,7 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
   );
   const usage = yield* makeAntigravityUsageProbe({
     profileDirectory,
+    shared: options.authMethod === "computer",
     authMethod: options.authMethod ?? "oauth-personal",
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
   return { ...usage, requests, writeToken, tokenPath };
@@ -704,6 +705,30 @@ describe("Antigravity subscription limits", () => {
       });
       expect((yield* expired.probe).unavailable?.reason).toBe("probeFailed");
       expect(expired.requests).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+
+  it.effect("reads this computer's sign-in from the endpoint its Google method is metered on", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-21T10:16:04Z")));
+      const bucket = (remainingFraction: number) => ({
+        buckets: [
+          { bucketId: "3p-5h", window: "5h", remainingFraction, resetTime: "2026-10-21T13:16:04Z" },
+        ],
+      });
+      const { probe } = yield* fixture({
+        authMethod: "computer",
+        missingToken: true,
+        cliToken: JSON.stringify({
+          token: { access_token: "access-token", expiry: "2026-10-21T12:00:00Z" },
+          auth_method: "oauth-business",
+        }),
+        summaryByHost: {
+          "daily-cloudcode-pa.googleapis.com": bucket(1),
+          "cloudcode-pa.googleapis.com": bucket(0.5),
+        },
+      });
+      expect((yield* probe).windows.map((window) => window.usedPercent)).toEqual([50]);
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 

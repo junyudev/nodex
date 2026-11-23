@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
 import {
   ANTIGRAVITY_SUBAGENT_BATCH_TITLE,
@@ -96,6 +97,7 @@ const readChildren = (olderRun: string, rootThreadSession = ROOT) =>
             getThreadRecords: () => Effect.succeed(records(olderRun, rootThreadSession) as never),
           }),
         ),
+        Layer.provide(ServerSettings.layerTest()),
       ),
     ),
   );
@@ -112,7 +114,10 @@ it.layer(
   it.effect("weighs only batches from the same agent session", () =>
     Effect.gen(function* () {
       const { stateDir } = yield* ServerConfig.ServerConfig;
-      const { profile } = yield* resolveAntigravityInstanceDirectories(stateDir, instanceId);
+      const { profile } = yield* resolveAntigravityInstanceDirectories(stateDir, instanceId, {
+        authMethod: "oauth-personal",
+        userHome: stateDir,
+      });
       yield* makeProfile({
         profile,
         steps: (logUri) => [

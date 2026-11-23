@@ -1,4 +1,5 @@
 import {
+  AntigravitySettings,
   isProviderNativeSubagentThread,
   OrchestrationV2GetNativeChildWorkError,
   type OrchestrationV2GetNativeChildWorkInput,
@@ -8,11 +9,16 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 
 import * as ServerConfig from "../config.ts";
 import { readAntigravityChildWork } from "../provider/acp/AntigravityChildWork.ts";
 import { resolveAntigravityInstanceDirectories } from "../provider/antigravityAuthSupport.ts";
+import { resolveAntigravityUserHome } from "../provider/Drivers/AntigravitySkills.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 
 /** Reads what a provider-native subagent's children did, on demand. Other providers stream real child sessions. */
@@ -35,6 +41,10 @@ const make = Effect.gen(function* () {
   const { stateDir } = yield* ServerConfig.ServerConfig;
   const digest = yield* Crypto.Crypto;
   const path = yield* Path.Path;
+  const settings = yield* ServerSettings.ServerSettingsService;
+  const platform = yield* HostProcess.Platform;
+  const environment = yield* HostProcess.Environment;
+  const home = yield* HostProcess.HomeDirectory;
 
   const getNativeChildWork = Effect.fn("NativeChildWorkQuery.getNativeChildWork")(
     function* (input: OrchestrationV2GetNativeChildWorkInput) {
@@ -93,9 +103,17 @@ const make = Effect.gen(function* () {
       if (!rootSessionId || providerThread?.providerInstanceId !== subagent.providerInstanceId) {
         return NO_CHILDREN;
       }
+      // The instance's sign-in method decides whether its sessions live in a private folder.
+      const instance = (yield* settings.getSettings.pipe(Effect.orElseSucceed(() => undefined)))
+        ?.providerInstances?.[subagent.providerInstanceId];
+      const config = Schema.decodeUnknownOption(AntigravitySettings)(instance?.config ?? {});
       const directories = yield* resolveAntigravityInstanceDirectories(
         stateDir,
         subagent.providerInstanceId,
+        {
+          authMethod: Option.isSome(config) ? config.value.authMethod : "oauth-personal",
+          userHome: resolveAntigravityUserHome(platform, environment, home),
+        },
       ).pipe(Effect.provideService(Crypto.Crypto, digest), Effect.provideService(Path.Path, path));
       const children = yield* readAntigravityChildWork({
         profileDirectory: directories.profile,

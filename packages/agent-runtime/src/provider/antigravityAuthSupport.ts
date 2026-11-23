@@ -88,6 +88,8 @@ const removedEnvironmentKeys = new Set([
 export interface AntigravityProfile {
   readonly platform: NodeJS.Platform;
   readonly geminiHome: string;
+  /** `geminiHome` is the person's own Gemini folder, which Nodex never reshapes. */
+  readonly shared: boolean;
   readonly acpDirectory: string;
   readonly tokenPath: string;
   readonly tempDirectory: string;
@@ -109,12 +111,21 @@ const ANTIGRAVITY_PERSONAL_AUTH: AntigravityAuthConfig = {
   gcpLocation: "",
 };
 
+/** The instance uses agy's own sign-in on this computer, shared with agy in a terminal. */
+export function antigravityUsesComputerSignIn(authMethod: AntigravityAuthMethod): boolean {
+  return authMethod === "computer";
+}
+
 export function antigravityAuthUsesBrowser(authMethod: AntigravityAuthMethod): boolean {
-  return authMethod === "oauth-personal" || authMethod === "oauth-business";
+  return (
+    authMethod === "computer" || authMethod === "oauth-personal" || authMethod === "oauth-business"
+  );
 }
 
 export function antigravityAuthLabel(authMethod: AntigravityAuthMethod): string {
   switch (authMethod) {
+    case "computer":
+      return "agy on this computer";
     case "oauth-personal":
       return "Google account";
     case "oauth-business":
@@ -128,6 +139,7 @@ export function antigravityAuthLabel(authMethod: AntigravityAuthMethod): string 
 
 export function antigravityAuthConfigIssue(auth: AntigravityAuthConfig): string | null {
   switch (auth.authMethod) {
+    case "computer":
     case "oauth-personal":
       return null;
     case "oauth-business":
@@ -181,20 +193,35 @@ export function isAntigravitySignInRequiredError(error: unknown): boolean {
 }
 
 export interface AntigravityInstanceDirectories {
+  /** The instance's Gemini folder (`--gemini-dir`); its sessions live in `antigravity-acp` below it. */
   readonly profile: string;
+  /** The person's own Gemini folder, shared with agy in a terminal, rather than a private one. */
+  readonly shared: boolean;
   /** Keep beside the profile: 120-character archive members under its longer name would exceed Windows' 260-character limit. */
   readonly runtimeTemp: string;
 }
 
-/** Hashes the instance ID so case-only differences stay separate on case-insensitive filesystems. */
+/**
+ * Where an instance's agy keeps its configuration and sessions. This computer's sign-in runs in the
+ * person's own `~/.gemini`; every other method runs in a private folder named by the instance ID,
+ * hashed so case-only differences stay separate on case-insensitive filesystems.
+ */
 export const resolveAntigravityInstanceDirectories = Effect.fn(
   "resolveAntigravityInstanceDirectories",
-)(function* (stateDir: string, instanceId: ProviderInstanceId) {
+)(function* (
+  stateDir: string,
+  instanceId: ProviderInstanceId,
+  location: { readonly authMethod: AntigravityAuthMethod; readonly userHome: string },
+) {
   const digest = yield* Crypto.Crypto;
   const path = yield* Path.Path;
   const key = Hex.encode(yield* digest.digest("SHA-256", new TextEncoder().encode(instanceId)));
+  const shared = antigravityUsesComputerSignIn(location.authMethod);
   return {
-    profile: path.join(stateDir, "providers", "antigravity", key),
+    profile: shared
+      ? path.join(location.userHome, ".gemini")
+      : path.join(stateDir, "providers", "antigravity", key),
+    shared,
     runtimeTemp: path.join(stateDir, "antigravity-tmp", key.slice(0, 12)),
   } satisfies AntigravityInstanceDirectories;
 });
@@ -231,11 +258,16 @@ function antigravityEnvironment(
     baseEnv.SSL_CERT_DIR === undefined
       ? { SSL_CERT_FILE: profile.caBundlePath }
       : {}),
-    // The CLI's shared storage bypass detects SSH before touching the OS keyring. Force it for
-    // every auth method, including Enterprise and credential-chain fallbacks, to isolate sign-out.
-    SSH_CONNECTION: baseEnv.SSH_CONNECTION || "127.0.0.1 0 127.0.0.1 0",
+    // This computer's sign-in lives in the OS keyring, as agy in a terminal keeps it. Every other
+    // method stores its own: the CLI's shared storage bypass detects SSH before touching the
+    // keyring, so force it, including for Enterprise and credential-chain fallbacks.
+    ...(profile.shared
+      ? {}
+      : {
+          SSH_CONNECTION: baseEnv.SSH_CONNECTION || "127.0.0.1 0 127.0.0.1 0",
+          AGY_ACP_FORCE_FILE_STORAGE: "1",
+        }),
     GEMINI_HOME: profile.geminiHome,
-    AGY_ACP_FORCE_FILE_STORAGE: "1",
     AGY_CLI_DISABLE_AUTO_UPDATE: "1",
     BROWSER: profile.browserCommand,
     PYTHONUNBUFFERED: "1",
@@ -452,9 +484,11 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
       }
     }
   }
+  const shared = antigravityUsesComputerSignIn(auth.authMethod);
   const profile: AntigravityProfile = {
     platform,
     geminiHome,
+    shared,
     acpDirectory,
     tokenPath: path.join(acpDirectory, "acp_token.json"),
     tempDirectory,
@@ -500,7 +534,10 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
     ),
   );
 
-  for (const directory of [geminiHome, acpDirectory, tempDirectory]) {
+  // The person's own Gemini folder keeps its permissions; only Nodex's folders are narrowed.
+  for (const directory of shared
+    ? [acpDirectory, tempDirectory]
+    : [geminiHome, acpDirectory, tempDirectory]) {
     yield* fs
       .makeDirectory(directory, { recursive: true, mode: 0o700 })
       .pipe(
@@ -518,6 +555,8 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
         );
     }
   }
+  // agy on this computer already reads the person's skills, rules and sign-in from `~/.gemini`.
+  if (shared) return profile;
   yield* fs
     .writeFileString(path.join(acpDirectory, "settings.json"), antigravityProfileSettings(auth))
     .pipe(

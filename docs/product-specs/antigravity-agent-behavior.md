@@ -7,33 +7,46 @@ limits among the usage meters. Configuration and storage are in
 
 ## Profiles
 
-A profile is one account. The section starts empty; **Add profile** creates one, and each saved
-profile is a row with its own switch. Opening a profile shows, in order, its name, account,
-sign-in method, the credentials that method reads, and its executable. A link to a profile from a
-chat opens that profile.
+A profile is one account. The section starts with one profile that uses agy's sign-in on this
+computer; **Add profile** creates another, and each saved profile is a row with its own switch.
+Opening a profile shows, in order, its name, account, sign-in method, the credentials that method
+reads, and its executable. A link to a profile from a chat opens that profile.
 
 | Sign-in method             | The profile needs                                  |
 | -------------------------- | -------------------------------------------------- |
+| agy on this computer       | agy's own Google sign-in, shared with its terminal |
 | Google account             | A Google sign-in in the browser                    |
 | Gemini Enterprise          | A Google sign-in, a Google Cloud project, location |
 | Gemini API key             | An API key                                         |
 | Agent Platform (Vertex AI) | An API key; project and location are optional      |
 
-A Google account uses the plan it belongs to; API keys and Agent Platform bill for use. An API
-key is stored encrypted on the computer and never shown again. A profile whose method reads no
-key keeps none. Nodex keeps each profile's sign-in apart from Antigravity in a terminal or IDE
-and from other profiles, and credentials in the environment do not reach it, so a profile only
-ever runs as the account it was given.
+**agy on this computer** runs as agy does in a terminal: the same account, and the skills, rules,
+plugins and MCP servers in `~/.gemini`. Signing in or out on either side does the same for the
+other, and a sign-in or sign-out in a terminal reaches the profile at its next check. Only one
+profile can use it, since agy keeps one sign-in for the computer; a new profile starts with it
+while no other profile uses it, and other profiles name the one that does. Nodex's own chats stay
+out of agy's terminal history.
+
+Every other method gives the profile an account of its own, kept apart from agy in a terminal or
+IDE and from other profiles, so several accounts run side by side. A Google account uses the plan
+it belongs to; API keys and Agent Platform bill for use. An API key is stored encrypted on the
+computer and never shown again. A profile whose method reads no key keeps none. Credentials in the
+environment never reach a profile, so it only ever runs as the account its method gives it.
 
 Turning a profile off stops its chats and keeps its sign-in. Removing a profile keeps its chats'
 history.
 
 ## Account
 
-An enabled, saved Antigravity profile has an Account row in Settings. Google account and Gemini
-Enterprise profiles use **Sign in**. Open the sign-in page in a browser or copy its link, then paste
-the code from the final Antigravity page or that page's full URL. Gemini API key and Agent Platform
-profiles use **Connect** to verify their saved configuration directly.
+An enabled, saved Antigravity profile has an Account row in Settings. Profiles that use agy on
+this computer, a Google account or Gemini Enterprise use **Sign in**. For agy on this computer, agy
+opens Google in the browser as it does in a terminal. For the others, open the sign-in page in a
+browser or copy its link, then paste the code from the final Antigravity page or that page's full
+URL. Gemini API key and Agent Platform profiles use **Connect** to verify their saved configuration
+directly.
+
+A profile that uses agy on this computer is ready as soon as agy is signed in: its models load by
+themselves, and while agy is signed out its chats ask for a sign-in instead of opening a browser.
 
 Nodex shows the active sign-in or verification step and puts any failure in the Account row.
 The window that starts sign-in owns the response and can cancel it. Closing the last surface
@@ -42,7 +55,8 @@ idle. Completing sign-in refreshes the account and its models. When the Agent su
 email, the row shows **Signed in as** with that email.
 
 **Sign out** asks for confirmation. Confirming stops running chats on the profile and clears its
-account and model availability. Chat history and workspace files stay available.
+account and model availability; for agy on this computer, agy in a terminal signs out too. Chat
+history and workspace files stay available.
 
 ## Runtime
 

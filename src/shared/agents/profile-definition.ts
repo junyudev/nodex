@@ -34,7 +34,12 @@ export type AgentProfileField =
     })
   | (ProfileFieldCopy & {
       readonly control: "select";
-      readonly options: readonly { readonly value: string; readonly label: MessageDescriptor }[];
+      readonly options: readonly {
+        readonly value: string;
+        readonly label: MessageDescriptor;
+        /** At most one of the Agent's profiles can choose it, such as a sign-in they would share. */
+        readonly exclusive?: true;
+      }[];
       readonly defaultValue: string;
     })
   | {
@@ -64,6 +69,8 @@ export interface AgentProfileDefinition {
   };
   /** Declaration order is form order. Custom fields are rendered by the bespoke editor slot. */
   readonly fields: Readonly<Record<string, AgentProfileField>>;
+  /** Values a new profile starts with over the field defaults, given the Agent's other profiles. */
+  readonly initialSettings?: (others: readonly ProfileValues[]) => ProfileValues;
   readonly environment?: {
     readonly nameError: (
       name: string,

@@ -7,6 +7,15 @@ import type { AgentDefinition } from "./definition.ts";
 export type AntigravityAuthMethod = (typeof ANTIGRAVITY_AUTH_METHODS)[number]["value"];
 const SIGN_IN_METHODS = [
   {
+    value: "computer",
+    label: defineMessage({
+      id: "settings.antigravity.method.computer",
+      defaultMessage: "agy on this computer",
+    }),
+    // agy keeps one sign-in for this computer, so two profiles would be one account.
+    exclusive: true,
+  },
+  {
     value: "oauth-personal",
     label: defineMessage({
       id: "settings.antigravity.method.googleAccount",
@@ -37,6 +46,7 @@ const SIGN_IN_METHODS = [
 ] as const satisfies readonly {
   readonly value: AntigravityAuthMethod;
   readonly label: MessageDescriptor;
+  readonly exclusive?: true;
 }[];
 
 const methodLabels = Object.fromEntries(SIGN_IN_METHODS.map(({ value, label }) => [value, label]));
@@ -52,6 +62,16 @@ const gcpProjectOptional = defineMessage({
   id: "settings.antigravity.gcpProject.optional",
   defaultMessage: "Optional. The project your key's usage belongs to.",
 });
+const signInMethodDescription = defineMessage({
+  id: "settings.antigravity.signInMethod.description",
+  defaultMessage:
+    "A Google account uses your plan. API keys and Agent Platform bill for what you use.",
+});
+const computerSignInDescription = defineMessage({
+  id: "settings.antigravity.signInMethod.computer.description",
+  defaultMessage:
+    "Uses the account agy is signed in to on this computer. Signing in or out here does the same for agy.",
+});
 
 export const antigravityAgent = {
   driver: "antigravity",
@@ -65,6 +85,7 @@ export const antigravityAgent = {
   profileBased: true,
   profile: {
     defaultName: "Antigravity",
+    initialId: "antigravity_u0SfydHcHMn3hO6kKWtdp1fZbW1U6kFxeVq9pJbh2Ew",
     description: defineMessage({
       id: "settings.antigravity.description",
       defaultMessage:
@@ -73,7 +94,7 @@ export const antigravityAgent = {
     setupDescription: defineMessage({
       id: "settings.antigravity.setupDescription",
       defaultMessage:
-        "A profile is one account. Nodex keeps its sign-in apart from Antigravity in your terminal.",
+        "A profile is one account. The first uses agy's sign-in on this computer; add a profile for each other account.",
     }),
     executable: {
       defaultValue: "",
@@ -88,6 +109,9 @@ export const antigravityAgent = {
         defaultMessage: "Empty runs Nodex's download, or agy on this computer.",
       }),
     },
+    // The first profile uses this computer's sign-in; later ones sign in on their own.
+    initialSettings: (others) =>
+      others.some(({ authMethod }) => authMethod === "computer") ? {} : { authMethod: "computer" },
     fields: {
       authMethod: {
         control: "select",
@@ -97,11 +121,8 @@ export const antigravityAgent = {
           id: "settings.antigravity.signInMethod",
           defaultMessage: "Sign-in method",
         }),
-        description: defineMessage({
-          id: "settings.antigravity.signInMethod.description",
-          defaultMessage:
-            "A Google account uses your plan. API keys and Agent Platform bill for what you use.",
-        }),
+        description: (values) =>
+          values.authMethod === "computer" ? computerSignInDescription : signInMethodDescription,
         accessibleLabel: defineMessage({
           id: "settings.antigravity.signInMethod.label",
           defaultMessage: "Antigravity sign-in method",
@@ -205,15 +226,13 @@ export const antigravityAgent = {
           id: "settings.antigravity.signInMethod",
           defaultMessage: "Sign-in method",
         }),
-        description: defineMessage({
-          id: "settings.antigravity.signInMethod.description",
-          defaultMessage:
-            "A Google account uses your plan. API keys and Agent Platform bill for what you use.",
-        }),
+        description: signInMethodDescription,
         keywords: [
           "Account",
           "Sign in",
           "Sign out",
+          "agy",
+          "Terminal",
           "Google account",
           "Gemini Enterprise",
           "Gemini API key",
@@ -231,7 +250,7 @@ export const antigravityAgent = {
     label: "Antigravity",
     preferCredentialIdentity: true,
     keepWindowLabels: true,
-    accountTypes: ["oauth-personal", "oauth-business"],
+    accountTypes: ["computer", "oauth-personal", "oauth-business"],
     accountTypeSetting: "authMethod",
     deferredReadingMs: 32_000,
   },

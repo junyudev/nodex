@@ -41,9 +41,13 @@ describe("isolated scenario Profile", () => {
     // Read the way the app reads it: a disabled instance never probes the host's CLI.
     expect(
       getAgentProfiles({ settingsPath: profile.settingsPath, environment: {} }).map(
-        ({ enabled }) => enabled,
+        ({ driver, enabled }) => [driver, enabled],
       ),
-    ).toEqual([false, false]);
+    ).toEqual([
+      ["claudeAgent", false],
+      ["antigravity", false],
+      ["opencode", false],
+    ]);
     expect(JSON.parse(await readFile(profile.manifestPath, "utf8"))).toMatchObject({
       version: 1,
       runId: profile.runId,

@@ -14,6 +14,9 @@ import {
   makeUnavailableUsageLimits,
   makeUsageLimits,
 } from "@nodex/provider-core/server/usageLimits";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+
+import { readAntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
 
 export function antigravityUserAgent(platform: NodeJS.Platform, architecture: NodeJS.Architecture) {
   return `antigravity/hub/2.24.0 (aidev_client; os_type=${platform}; arch=${architecture}; cl=963137146)`;
@@ -37,15 +40,6 @@ const TokenFile = Schema.Struct({
   client_secret: Schema.NonEmptyString,
   refresh_token: Schema.NonEmptyString,
   project_id: Schema.optional(Schema.String),
-});
-// The 1.5.x CLI never writes acp_token.json: it keeps its sign-in in the OS keyring, or in
-// antigravity-oauth-token without one or when Nodex bypasses the keyring. It stores no OAuth client, so Nodex cannot refresh it.
-const CliToken = Schema.Struct({
-  token: Schema.Struct({
-    access_token: Schema.NonEmptyString,
-    refresh_token: Schema.optional(Schema.String),
-    expiry: Schema.optional(Schema.String),
-  }),
 });
 const TokenResponse = Schema.Struct({
   access_token: Schema.NonEmptyString,
@@ -87,7 +81,6 @@ const Models = Schema.Struct({
 });
 
 const decodeTokenFile = Schema.decodeEffect(Schema.fromJsonString(TokenFile));
-const decodeCliToken = Schema.decodeEffect(Schema.fromJsonString(CliToken));
 const decodeTokenResponse = Schema.decodeUnknownEffect(TokenResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfo);
 const decodeSummary = Schema.decodeUnknownEffect(Summary);
@@ -216,6 +209,8 @@ function modelWindows(models: typeof Models.Type) {
 
 export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(function* (input: {
   readonly profileDirectory: string;
+  /** The profile directory is the person's own Gemini folder, signed in like agy in a terminal. */
+  readonly shared: boolean;
   readonly authMethod: AntigravitySettings["authMethod"];
 }) {
   const fs = yield* FileSystem.FileSystem;
@@ -224,11 +219,16 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   const crypto = yield* Crypto.Crypto;
   const platform = yield* HostProcess.Platform;
   const architecture = yield* HostProcess.Architecture;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const tokenPath = path.join(input.profileDirectory, "antigravity-acp", "acp_token.json");
-  const cliTokenPath = path.join(
-    input.profileDirectory,
-    "antigravity-acp",
-    "antigravity-oauth-token",
+  const storedSignIn = readAntigravityStoredSignIn({
+    profileDirectory: input.profileDirectory,
+    shared: input.shared,
+    platform,
+  }).pipe(
+    Effect.provideService(FileSystem.FileSystem, fs),
+    Effect.provideService(Path.Path, path),
+    Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
   );
   let cached:
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
@@ -245,27 +245,42 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   const read = Effect.gen(function* () {
     const startedGeneration = generation;
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    if (input.authMethod !== "oauth-personal" && input.authMethod !== "oauth-business") {
+    if (
+      input.authMethod !== "computer" &&
+      input.authMethod !== "oauth-personal" &&
+      input.authMethod !== "oauth-business"
+    ) {
       return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
     }
     const now = yield* Clock.currentTimeMillis;
     let accessToken: string;
     let account: string;
     let projectId: string | undefined;
-    if (!(yield* fs.exists(tokenPath))) {
+    let tier: "oauth-personal" | "oauth-business" =
+      input.authMethod === "oauth-business" ? "oauth-business" : "oauth-personal";
+    if (input.shared || !(yield* fs.exists(tokenPath))) {
       cached = undefined;
-      // Each instance owns its sign-in. Native keyrings share one account across unrelated profiles.
-      const stored = (yield* fs.exists(cliTokenPath))
-        ? yield* fs.readFileString(cliTokenPath)
-        : undefined;
-      if (stored === undefined) {
+      const signIn = yield* storedSignIn;
+      if (signIn.status === "unknown") {
+        return makeUnavailableUsageLimits({
+          checkedAt,
+          reason: "unsupported",
+          message: "Antigravity limits can't be read from this computer's sign-in here.",
+        });
+      }
+      if (signIn.status === "signed-out") {
         return makeUnavailableUsageLimits({
           checkedAt,
           reason: "unsupported",
           message: "Sign in with Google to see Antigravity limits.",
         });
       }
-      const { token } = yield* decodeCliToken(stored);
+      if (input.authMethod === "computer") tier = signIn.authMethod;
+      const token = {
+        access_token: signIn.accessToken,
+        refresh_token: signIn.refreshToken,
+        expiry: signIn.expiry,
+      };
       if (!(Date.parse(token.expiry ?? "") > now + 60_000)) {
         return makeUnavailableUsageLimits({
           checkedAt,
@@ -324,7 +339,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
         account = cached.account;
       }
     }
-    const endpoints = ENDPOINTS[input.authMethod];
+    const endpoints = ENDPOINTS[tier];
     // Merge endpoints because quota groups differ; the metered host's reading of a bucket wins.
     const fetchWindows = Effect.fn("AntigravityUsageProbe.fetchWindows")(function* <E>(
       operation: string,

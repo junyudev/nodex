@@ -796,10 +796,14 @@ it("asks a new profile to be saved before it can sign in, and needs no executabl
   expect(view.queryByLabelText("Antigravity API key")).toBeNull();
   await click(view.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  // The first profile uses agy's sign-in on this computer; the next signs in on its own.
   expect(update.mock.calls[0]?.[0].instances[0]).toMatchObject({
     displayName: "Antigravity",
-    settings: { authMethod: "oauth-personal" },
+    settings: { authMethod: "computer" },
     binaryPath: "",
   });
   expect(await view.findByText("Account details")).toBeTruthy();
+  await click(view.getByRole("button", { name: "Add profile" }));
+  const methods = view.getAllByRole("button", { name: "Antigravity sign-in method" });
+  expect(methods.at(-1)?.textContent).toBe("Google account");
 });

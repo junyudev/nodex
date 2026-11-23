@@ -14,6 +14,7 @@ export const agentProfileInputClassName = "h-8 w-[min(28rem,45vw)] text-sm";
 export function AgentProfileFieldRow({
   field,
   value,
+  heldBy,
   settings,
   saved,
   disabled,
@@ -21,6 +22,8 @@ export function AgentProfileFieldRow({
 }: {
   readonly field: Exclude<AgentProfileField, { control: "custom" }>;
   readonly value: unknown;
+  /** Another profile's name for each exclusive option it already uses. */
+  readonly heldBy?: ReadonlyMap<string, string>;
   readonly settings: ProfileValues;
   readonly saved: boolean;
   readonly disabled: boolean;
@@ -55,15 +58,33 @@ export function AgentProfileFieldRow({
             </NodexSettingsDropdownTrigger>
           }
         >
-          {field.options.map((option) => (
-            <NodexDropdownItem
-              key={option.value}
-              onSelect={() => onChange(option.value)}
-              rightSlot={option.value === value ? <NodexDropdownSelectedIcon /> : null}
-            >
-              <span className="truncate">{intl.formatMessage(option.label)}</span>
-            </NodexDropdownItem>
-          ))}
+          {field.options.map((option) => {
+            const holder = option.value === value ? undefined : heldBy?.get(option.value);
+            return (
+              <NodexDropdownItem
+                key={option.value}
+                disabled={holder !== undefined}
+                onSelect={() => onChange(option.value)}
+                rightSlot={
+                  option.value === value ? (
+                    <NodexDropdownSelectedIcon />
+                  ) : holder ? (
+                    <span className="max-w-32 truncate text-xs text-token-description-foreground">
+                      {intl.formatMessage(
+                        {
+                          id: "settings.agentProfiles.optionUsedBy",
+                          defaultMessage: "Used by {profile}",
+                        },
+                        { profile: holder },
+                      )}
+                    </span>
+                  ) : null
+                }
+              >
+                <span className="truncate">{intl.formatMessage(option.label)}</span>
+              </NodexDropdownItem>
+            );
+          })}
         </NodexDropdownMenu>
       ) : (
         <Input

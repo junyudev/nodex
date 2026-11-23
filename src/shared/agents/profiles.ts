@@ -6,7 +6,11 @@ import {
   type AgentEnvironmentVariable,
 } from "../agent-environment.ts";
 import { newAgentInstanceId } from "./instance-id.ts";
-import type { AgentProfileDefinition, AgentProfileField } from "./profile-definition.ts";
+import type {
+  AgentProfileDefinition,
+  AgentProfileField,
+  ProfileValues,
+} from "./profile-definition.ts";
 import {
   profileAgentDefinition,
   profileAgentDefinitions,
@@ -215,12 +219,45 @@ export function parseAgentProfileDriver(value: unknown): ProfileAgentDriver {
   return definition.driver;
 }
 
+/** The label of the first exclusive option that more than one profile chooses. */
+function exclusiveConflict(
+  definition: AgentProfileDefinition,
+  profiles: readonly { readonly settings: ProfileValues }[],
+): string | null {
+  for (const [key, field] of Object.entries(definition.fields)) {
+    if (field.control !== "select") continue;
+    for (const { value, label, exclusive } of field.options)
+      if (exclusive && profiles.filter(({ settings }) => settings[key] === value).length > 1)
+        return typeof label.defaultMessage === "string" ? label.defaultMessage : value;
+  }
+  return null;
+}
+
+/** The other profile, if any, already holding each exclusive option of a select field. */
+export function agentProfileExclusiveHolders(
+  field: AgentProfileField,
+  key: string,
+  others: readonly { readonly displayName: string; readonly settings: ProfileValues }[],
+): ReadonlyMap<string, string> {
+  if (field.control !== "select") return new Map();
+  return new Map(
+    field.options.flatMap((option) => {
+      const holder = option.exclusive
+        ? others.find(({ settings }) => settings[key] === option.value)
+        : undefined;
+      return holder ? [[option.value, holder.displayName] as const] : [];
+    }),
+  );
+}
+
 export function parseAgentProfilesUpdate(input: unknown): AgentProfilesUpdate {
   const envelope = z.object({ driver: z.unknown() }).parse(input);
   const driver = parseAgentProfileDriver(envelope.driver);
   const parsed = updateSchemas.get(driver)?.safeParse(input);
-  if (!parsed?.success)
-    throw new Error(`Invalid ${profileAgentDefinition(driver)?.label} settings.`);
+  const definition = profileAgentDefinition(driver);
+  if (!parsed?.success || !definition) throw new Error(`Invalid ${definition?.label} settings.`);
+  const conflict = exclusiveConflict(definition.profile, parsed.data.instances);
+  if (conflict) throw new Error(`Only one ${definition.label} profile can use ${conflict}.`);
   // The schema and the discriminated wire type are built from the same fields.
   return parsed.data as unknown as AgentProfilesUpdate;
 }
@@ -236,6 +273,7 @@ export function agentProfilesFor<Driver extends ProfileAgentDriver>(
 export function createAgentProfile<Driver extends ProfileAgentDriver>(
   definition: ProfileAgentDefinition & { readonly driver: Driver },
   id = newAgentInstanceId(definition.driver),
+  others: readonly { readonly settings: ProfileValues }[] = [],
 ): AgentProfile<Driver> {
   const profile: AgentProfileDefinition = definition.profile;
   return {
@@ -244,9 +282,12 @@ export function createAgentProfile<Driver extends ProfileAgentDriver>(
     displayName: profile.defaultName,
     enabled: true,
     binaryPath: profile.executable.defaultValue,
-    settings: Object.fromEntries(
-      Object.entries(profile.fields).map(([key, field]) => [key, field.defaultValue]),
-    ),
+    settings: {
+      ...Object.fromEntries(
+        Object.entries(profile.fields).map(([key, field]) => [key, field.defaultValue]),
+      ),
+      ...profile.initialSettings?.(others.map(({ settings }) => settings)),
+    },
     ...(profile.environment ? { environment: [] } : {}),
     savedSecrets: [],
   } as unknown as AgentProfile<Driver>;

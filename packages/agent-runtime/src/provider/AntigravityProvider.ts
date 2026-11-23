@@ -43,6 +43,7 @@ import {
 import { resolveUsageLimitsAfterProbe } from "@nodex/provider-core/server/usageLimits";
 
 import { antigravityThinkingConfig } from "./acp/AntigravityAcpSupport.ts";
+import type { AntigravityStoredSignIn } from "./antigravityStoredSignIn.ts";
 
 const MAX_WORKSPACE_SNAPSHOTS = 32;
 const HEALTH_CHECK_TIMEOUT_MS = 90_000;
@@ -172,6 +173,13 @@ interface AntigravityProviderOptions {
   readonly clearUsage?: Effect.Effect<void>;
   readonly maintenanceCapabilities?: ProviderMaintenanceCapabilities;
   readonly auth?: { readonly type: string; readonly label: string };
+  /**
+   * This computer's sign-in, read with every check because agy in a terminal can sign in or out
+   * at any time. Absent for a profile that keeps its own sign-in.
+   */
+  readonly storedSignIn?: Effect.Effect<AntigravityStoredSignIn>;
+  /** Loads the account's models after it is found signed in outside a Nodex sign-in. */
+  readonly loadCatalog?: Effect.Effect<void>;
 }
 
 const RUNTIME_MODES_WITHOUT_AUTO = ["approval-required", "full-access"] as const;
@@ -252,6 +260,12 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
   // The quota read can take 30 seconds, so it never blocks readiness or a session start.
   // One read runs at a time; sign-in and sign-out interrupt it so a stale account never lands.
   const usageRead = yield* FiberHandle.make();
+  // The address this computer's sign-in reports; a private sign-in reports none.
+  let accountEmail: string | undefined;
+  const withEmail = (auth: ServerProviderDraft["auth"]): ServerProviderDraft["auth"] => {
+    const { email: _previous, ...rest } = auth;
+    return accountEmail ? { ...rest, email: accountEmail } : rest;
+  };
   const republish = yield* Deferred.make<Effect.Effect<ServerProvider>>();
   const scope = yield* Effect.scope;
   const refreshUsage = Effect.fn("AntigravityProvider.refreshUsage")(function* () {
@@ -290,8 +304,60 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     if (options.clearUsage) yield* options.clearUsage;
   });
 
+  const clearAccountMetadata = Effect.fn("AntigravityProvider.clearAccountMetadata")(function* () {
+    yield* resetUsage;
+    accountEmail = undefined;
+    if (!settings.enabled) return;
+    const updatedAt = DateTime.formatIso(yield* DateTime.now);
+    yield* SubscriptionRef.update(
+      metadata,
+      (state) =>
+        ({
+          authRevision: state.authRevision + 1,
+          draft: {
+            ...state.draft,
+            auth: {
+              status: "unauthenticated",
+              ...(usesCredentials ? options.auth : {}),
+            },
+            status: "warning",
+            message: signInMessage,
+            checkedAt: updatedAt,
+            models: [],
+            slashCommands: [],
+            skills: [],
+            workspaceSnapshots: [],
+            supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
+            supportsTextGeneration: false,
+            usageLimits: undefined,
+          },
+        }) satisfies AntigravityProviderState,
+    );
+    discoveredSkills.clear();
+    thinkingLevels.clear();
+  });
+
   const checkProvider = Effect.fn("checkAntigravityProvider")(function* () {
     if (!settings.enabled) return yield* getSnapshot;
+    if (options.storedSignIn) {
+      const signIn = yield* options.storedSignIn;
+      const { auth } = (yield* SubscriptionRef.get(metadata)).draft;
+      if (signIn.status === "signed-out" && auth.status !== "unauthenticated") {
+        yield* clearAccountMetadata();
+      } else if (signIn.status === "signed-in") {
+        accountEmail = signIn.email;
+        if (auth.status === "authenticated" && auth.email !== signIn.email) {
+          yield* SubscriptionRef.update(metadata, (state) => ({
+            ...state,
+            draft: { ...state.draft, auth: withEmail(state.draft.auth) },
+          }));
+        }
+        // Signed in outside a Nodex sign-in, or before this start: load the account's models.
+        if (auth.status !== "authenticated") {
+          yield* Effect.forkIn(options.loadCatalog ?? Effect.void, scope);
+        }
+      }
+    }
     const before = yield* SubscriptionRef.get(metadata);
     const timeoutMs = resolveProviderProbeTimeoutMs(
       "antigravity",
@@ -419,11 +485,11 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           installed: true,
           status: "ready",
           version: started.initializeResult.agentInfo?.version || draft.version,
-          auth: {
+          auth: withEmail({
             status: "authenticated",
             type: options.auth?.type ?? "oauth-personal",
             label: options.auth?.label ?? "Google account",
-          },
+          }),
           checkedAt: updatedAt,
           models: buildAntigravityModelsFromSession(
             started.sessionSetupResult,
@@ -501,38 +567,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
         },
       };
     });
-  });
-
-  const clearAccountMetadata = Effect.fn("AntigravityProvider.clearAccountMetadata")(function* () {
-    yield* resetUsage;
-    if (!settings.enabled) return;
-    const updatedAt = DateTime.formatIso(yield* DateTime.now);
-    yield* SubscriptionRef.update(
-      metadata,
-      (state) =>
-        ({
-          authRevision: state.authRevision + 1,
-          draft: {
-            ...state.draft,
-            auth: {
-              status: "unauthenticated",
-              ...(usesCredentials ? options.auth : {}),
-            },
-            status: "warning",
-            message: signInMessage,
-            checkedAt: updatedAt,
-            models: [],
-            slashCommands: [],
-            skills: [],
-            workspaceSnapshots: [],
-            supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
-            supportsTextGeneration: false,
-            usageLimits: undefined,
-          },
-        }) satisfies AntigravityProviderState,
-    );
-    discoveredSkills.clear();
-    thinkingLevels.clear();
   });
 
   const snapshotForCwd = Effect.fn("AntigravityProvider.snapshotForCwd")(function* (

@@ -555,6 +555,7 @@ const program = Effect.gen(function* () {
       if (antigravityProfile) {
         if (
           request.methodId !== "oauth-personal" &&
+          request.methodId !== "oauth-business" &&
           !(request.methodId === "gemini-api-key" && process.env.GEMINI_API_KEY)
         ) {
           return yield* AcpError.AcpRequestError.invalidParams(

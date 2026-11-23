@@ -54,7 +54,8 @@ export interface AntigravityAcpRuntimeInput extends Omit<
   readonly runtimeVersion?: string | null;
   /** Conversational sessions only; helpers and probes leave the system prompt untouched. */
   readonly sessionSystemPromptAppend?: string | (() => string | undefined);
-  readonly authMethod?: AntigravityAuthMethod;
+  /** The method `authenticate` names; this computer's sign-in passes the Google method agy used. */
+  readonly authMethod?: Exclude<AntigravityAuthMethod, "computer">;
 }
 
 function parseAntigravityVersion(version: string | null | undefined) {

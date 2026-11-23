@@ -28,7 +28,7 @@ flowchart LR
     Agent --> ACP["Capability-negotiated ACP Agents"]
     Agent --> Claude["Native Claude Code via Agent SDK"]
     Agent --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
-    Agent --> Antigravity["Isolated Antigravity accounts via agy"]
+    Agent --> Antigravity["Antigravity accounts via agy"]
     Phone["Nodex Mobile · Member Device"] --> TLS["Core pinned-TLS listener"]
     TLS --> Core
     Core --> Facade["Host phone façade · Member invocation"]

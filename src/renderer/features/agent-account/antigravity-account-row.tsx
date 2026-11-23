@@ -86,7 +86,8 @@ function AntigravityAccount({
   const [confirm, setConfirm] = useState(false);
   useEffect(() => owner.read(), [owner]);
 
-  const browser = authMethod === "oauth-personal" || authMethod === "oauth-business";
+  const computer = authMethod === "computer";
+  const browser = computer || authMethod === "oauth-personal" || authMethod === "oauth-business";
   const state = view?.state;
   const starting = view?.request === "start" || state?.phase === "starting";
   const signedIn =
@@ -209,10 +210,17 @@ function AntigravityAccount({
                   />
                 </NodexDialogTitle>
                 <NodexDialogDescription>
-                  <FormattedMessage
-                    id="agentAccount.signOutDescription"
-                    defaultMessage="Running chats on this profile will stop. Their history is kept."
-                  />
+                  {computer ? (
+                    <FormattedMessage
+                      id="agentAccount.signOutComputerDescription"
+                      defaultMessage="agy on this computer signs out too. Running chats on this profile will stop. Their history is kept."
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="agentAccount.signOutDescription"
+                      defaultMessage="Running chats on this profile will stop. Their history is kept."
+                    />
+                  )}
                 </NodexDialogDescription>
               </NodexDialogHeader>
               <NodexDialogFooter>

@@ -744,11 +744,13 @@ export const ClaudeSettings = makeProviderSettingsSchema(
 export type ClaudeSettings = typeof ClaudeSettings.Type;
 
 /**
- * Antigravity ACP auth methods. Personal and Enterprise open a Google sign-in
- * in the browser. The API key and Agent Platform methods take credentials from
- * the instance config and never open a browser.
+ * Antigravity ACP auth methods. `computer` uses the sign-in agy keeps on this
+ * computer, shared with agy in a terminal. Personal and Enterprise open a
+ * Google sign-in kept for the instance alone. The API key and Agent Platform
+ * methods take credentials from the instance config and never open a browser.
  */
 export const ANTIGRAVITY_AUTH_METHODS = [
+  { value: "computer", label: "agy on this computer" },
   { value: "oauth-personal", label: "Google account" },
   { value: "oauth-business", label: "Gemini Enterprise" },
   { value: "gemini-api-key", label: "Gemini API key" },

@@ -137,10 +137,10 @@ const ensureOwnedRootShape = async (
 };
 
 /**
- * The default Claude Code and OpenCode instances run the host's own CLIs. A scenario that fell
- * through to them would probe the developer's account (OpenCode even reaches hosted free models
- * without one), and every catalog read would wait for that probe. Scenarios configure their own
- * peers.
+ * The default Claude Code, OpenCode and Antigravity instances run the host's own CLIs and
+ * sign-ins. A scenario that fell through to them would probe the developer's account (OpenCode
+ * even reaches hosted free models without one), and every catalog read would wait for that probe.
+ * Scenarios configure their own peers.
  */
 const SCENARIO_PROFILE_SETTINGS = stringifyToml({
   server: {

@@ -46,11 +46,13 @@ const encode = (text: string) => new TextEncoder().encode(text);
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const privateSignIn = { authMethod: "oauth-personal", userHome: "/home/person" } as const;
 
 describe("Antigravity process environment", () => {
   const profile: AntigravityProfile = {
     platform: "linux",
     geminiHome: "/nodex/userdata/providers/antigravity/profile",
+    shared: false,
     acpDirectory: "/nodex/userdata/providers/antigravity/profile/antigravity-acp",
     tokenPath: "/nodex/userdata/providers/antigravity/profile/antigravity-acp/acp_token.json",
     tempDirectory: "/nodex/userdata/providers/antigravity/profile/antigravity-acp/tmp",
@@ -110,6 +112,32 @@ describe("Antigravity process environment", () => {
         TMPDIR: profile.tempDirectory,
       },
     });
+  });
+
+  it("runs this computer's sign-in from the OS keyring, as agy in a terminal does", () => {
+    const shared: AntigravityProfile = {
+      ...profile,
+      geminiHome: "/home/person/.gemini",
+      shared: true,
+    };
+    const spawn = buildAntigravityAcpSpawnInput({
+      installation: { executablePath: "/usr/bin/agy" },
+      profile: shared,
+      cwd: "/project",
+      baseEnv: { PATH: "/usr/bin", GEMINI_API_KEY: "ambient-key" },
+      auth: { authMethod: "computer", apiKey: "", gcpProject: "", gcpLocation: "" },
+    });
+    expect(spawn.args).toEqual([
+      "acp",
+      "--gemini-dir",
+      "/home/person/.gemini",
+      "--app-data-dir",
+      "antigravity-acp",
+    ]);
+    expect(spawn.env?.GEMINI_HOME).toBe("/home/person/.gemini");
+    expect(spawn.env?.SSH_CONNECTION).toBeUndefined();
+    expect(spawn.env?.AGY_ACP_FORCE_FILE_STORAGE).toBeUndefined();
+    expect(spawn.env?.GEMINI_API_KEY).toBeUndefined();
   });
 
   it("passes only the configured method's credential and keeps the GCP pair out of the environment", () => {
@@ -181,6 +209,7 @@ describe("Antigravity process environment", () => {
     const windowsProfile: AntigravityProfile = {
       platform: "win32",
       geminiHome: "C:\\state\\providers\\antigravity\\profile",
+      shared: false,
       acpDirectory: "C:\\state\\providers\\antigravity\\profile\\antigravity-acp",
       tokenPath: "C:\\state\\providers\\antigravity\\profile\\antigravity-acp\\acp_token.json",
       tempDirectory: "C:\\state\\providers\\antigravity\\profile\\antigravity-acp\\tmp",
@@ -208,16 +237,31 @@ describe("Antigravity process environment", () => {
       const first = yield* resolveAntigravityInstanceDirectories(
         "/userdata",
         ProviderInstanceId.make("antigravity"),
+        privateSignIn,
       );
       const second = yield* resolveAntigravityInstanceDirectories(
         "/userdata",
         ProviderInstanceId.make("Antigravity"),
+        privateSignIn,
       );
       expect(first.profile).toBe(
         "/userdata/providers/antigravity/ac0a3dfd6dddb20962cecff6ee5fe65e19d3923be20e52c5ab52ff877f7e4c32",
       );
       expect(first.profile.toLowerCase()).not.toBe(second.profile.toLowerCase());
       expect(first.runtimeTemp.toLowerCase()).not.toBe(second.runtimeTemp.toLowerCase());
+    }).pipe(Effect.provide(Layer.mergeAll(NodeCrypto.layer, NodePath.layerPosix))),
+  );
+
+  it.effect("runs this computer's sign-in in the person's own Gemini folder", () =>
+    Effect.gen(function* () {
+      const directories = yield* resolveAntigravityInstanceDirectories(
+        "/userdata",
+        ProviderInstanceId.make("antigravity"),
+        { authMethod: "computer", userHome: "/home/person" },
+      );
+      expect(directories.profile).toBe("/home/person/.gemini");
+      expect(directories.shared).toBe(true);
+      expect(directories.runtimeTemp.startsWith("/userdata/antigravity-tmp/")).toBe(true);
     }).pipe(Effect.provide(Layer.mergeAll(NodeCrypto.layer, NodePath.layerPosix))),
   );
 
@@ -230,6 +274,7 @@ describe("Antigravity process environment", () => {
       const directories = yield* resolveAntigravityInstanceDirectories(
         "C:\\Users\\a-twenty-char-person\\.nodex\\userdata",
         ProviderInstanceId.make("antigravity"),
+        privateSignIn,
       );
       const extracted = (tempDirectory: string) =>
         path.join(tempDirectory, "run-AbC123", "_MEI000012ab2", deepestMember);

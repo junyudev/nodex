@@ -18,9 +18,11 @@ import {
   claudeProfile,
   openCodeProfile,
 } from "../../shared/agents/profile.test-fixtures";
+import { antigravityAgent } from "../../shared/agents/antigravity";
 import {
   agentProfileInput,
   agentProfilesFor,
+  createAgentProfile,
   parseAgentProfilesUpdate,
   type AgentProfileInput,
 } from "../../shared/agents/profiles";
@@ -215,9 +217,30 @@ it.each([
   expect(() => parseAgentProfilesUpdate({ driver, instances: [profile] })).toThrow();
 });
 
+it("starts Antigravity with one profile that uses agy on this computer, and only one can", () => {
+  const source = fixture();
+  expect(read(source, "antigravity")).toEqual([
+    expect.objectContaining({
+      id: antigravityAgent.profile.initialId,
+      enabled: true,
+      settings: expect.objectContaining({ authMethod: "computer" }),
+    }),
+  ]);
+  const computer = agentProfileInput(antigravityProfile());
+  // A new profile beside it signs in on its own.
+  const second = createAgentProfile(antigravityAgent, "antigravity-second", [computer]);
+  expect(second.settings.authMethod).toBe("oauth-personal");
+  expect(() =>
+    save(source, "antigravity", [
+      computer,
+      { ...agentProfileInput(second), settings: { ...second.settings, authMethod: "computer" } },
+    ]),
+  ).toThrow("Only one Antigravity profile can use agy on this computer.");
+  expect(save(source, "antigravity", [computer, agentProfileInput(second)])).toHaveLength(2);
+});
+
 it("keeps a saved Antigravity key through edits and clears it when a method stops reading it", () => {
   const source = fixture();
-  expect(read(source, "antigravity")).toEqual([]);
   const profile = configWithKey("first-key");
   save(source, "antigravity", [profile]);
   expect(read(source, "antigravity")[0]).toMatchObject({

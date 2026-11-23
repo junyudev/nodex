@@ -15,6 +15,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import { resolveAntigravityInstanceDirectories } from "../antigravityAuthSupport.ts";
+import { resolveAntigravityUserHome } from "./AntigravitySkills.ts";
 import { makeAntigravityUsageCache, readAntigravityUsage } from "./antigravityUsageReader.ts";
 
 export class AntigravityUsage extends Context.Service<
@@ -63,11 +64,19 @@ const make = Effect.gen(function* () {
     windowStartMs,
   }) {
     const roots: Array<string> = [];
+    const home = yield* HostProcess.HomeDirectory;
+    const platform = yield* HostProcess.Platform;
     for (const instance of instances) roots.push(...(yield* dataRoots(instance.environment)));
-    for (const { instanceId } of instances.filter((instance) => instance.configured)) {
+    for (const { instanceId, config, environment } of instances.filter(
+      (instance) => instance.configured,
+    )) {
       const directories = yield* resolveAntigravityInstanceDirectories(
         host.paths.stateDir,
         instanceId,
+        {
+          authMethod: config?.authMethod ?? "oauth-personal",
+          userHome: resolveAntigravityUserHome(platform, environment, home),
+        },
       ).pipe(
         Effect.provideService(Crypto.Crypto, digest),
         Effect.provideService(Path.Path, path),

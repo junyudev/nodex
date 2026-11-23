@@ -1,6 +1,7 @@
 import {
   AGENT_PROFILE_LIMIT,
   agentProfileInput,
+  agentProfileExclusiveHolders,
   createAgentProfile,
   agentProfileEnvironment,
   type AgentProfile,
@@ -334,9 +335,14 @@ function AgentProfiles({
     dropDraft(profileId);
     if (expanded === profileId) setExpanded(null);
   };
+  /** Every profile but one, as its editor currently shows it. */
+  const othersThan = (profileId: string | null) =>
+    profiles.flatMap((profile) =>
+      profile.id === profileId ? [] : [current(profile.id)?.instance ?? profile],
+    );
   const add = () => {
     const instance = {
-      ...createAgentProfile(definition),
+      ...createAgentProfile(definition, undefined, othersThan(null)),
       displayName: nextProfileName(
         profileDefinition.defaultName,
         profiles.map((profile) => profile.displayName),
@@ -417,6 +423,7 @@ function AgentProfiles({
               key={key}
               field={field}
               value={values[key]}
+              heldBy={agentProfileExclusiveHolders(field, key, othersThan(profileId))}
               settings={values}
               saved={instance.savedSecrets.includes(key)}
               disabled={disabled}
