@@ -25,3 +25,19 @@ index 81fc8c5cc33dee120e5dd13356b910edfc3bb8af..ea88b7cd021cd7f516a0740fa6bd71a7
            ],
            "type": "string"
          },
+diff --git a/templates/nsis/include/extractAppPackage.nsh b/templates/nsis/include/extractAppPackage.nsh
+--- a/templates/nsis/include/extractAppPackage.nsh
++++ b/templates/nsis/include/extractAppPackage.nsh
+@@ -84,7 +84,11 @@
+       MessageBox MB_OK|MB_ICONEXCLAMATION "$(decompressionFailed)$\n$R0"
+       Quit
+   !else
+-    !insertmacro extractUsing7za "$PLUGINSDIR\app-$packageArch.7z"
++    !ifmacrodef customExtractAppPackage
++      !insertmacro customExtractAppPackage "$PLUGINSDIR\app-$packageArch.7z"
++    !else
++      !insertmacro extractUsing7za "$PLUGINSDIR\app-$packageArch.7z"
++    !endif
+   !endif
+ !macroend
+ 

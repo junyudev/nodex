@@ -56,8 +56,9 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
   regressions in `scripts/dependency-glob-runtime.test.ts` when upgrading these
   packages or removing their patches.
 - electron-builder `26.18` hands the DMG format straight to `dmgbuild`, but its
-  configuration schema rejects `ULMO`. The patch only adds that value to the schema
-  and option type; remove it when a stable release accepts `ULMO`.
+  configuration schema rejects `ULMO`. The patch adds that value to the schema
+  and option type. It also exposes the embedded NSIS payload extraction hook
+  used by the [Windows installer](release-windows.md#build-an-installer).
 - OpenCode's client declares an exact Effect peer. The workspace deliberately
   shares one Effect version with its protocol and schema packages; only that
   client version accepts it through `peerDependencyRules.allowedVersions`.

@@ -46,6 +46,11 @@ installers, so nothing consumes block-level differential downloads, and the arch
 settings those need (a 1 MiB dictionary and per-file blocks) would cost 61 MiB on the
 v0.5.1 arm64 payload. In exchange, compression takes about eight times longer in release
 builds and extraction needs a 256 MiB dictionary in memory.
+After releasing the previous installation, NSIS uses Windows' native `tar.exe`
+to extract the archive directly into the installation directory. This keeps
+deeply nested runtime paths out of the temporary extraction directory and
+Explorer's copy path. A nonzero extraction result stops installation before
+startup registration or relaunch.
 
 NSIS runs installation-scoped process shutdown before replacing or removing any
 payload files. Before install-over, it refreshes the installed maintenance
@@ -85,7 +90,7 @@ the new Desktop opens, subject to the normal ownership check and takeover consen
 Silent maintenance retains its latest stage and timed maintenance diagnostics in
 `%LOCALAPPDATA%\Nodex\installer-maintenance.log`, outside the Profile and installed
 payload. It records shutdown errors, the maintenance-uninstaller refresh, nested
-uninstaller failures, and an update relaunch failure before returning a failed
+uninstaller failures, payload extraction failures, and update relaunch failures before returning a failed
 installer status. The installer
 probe preserves this log for each operation and includes its failure reason in
 the probe result before cleanup can replace it. Probe results also record the

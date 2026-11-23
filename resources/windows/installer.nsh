@@ -16,6 +16,23 @@
   Pop $8
 !macroend
 
+!macro customExtractAppPackage archive
+  ; Extract directly after maintenance releases the old install. The temporary
+  ; extraction directory and shell copy can silently lose long payload paths.
+  StrCpy $R0 "$WINDIR\Sysnative\tar.exe"
+  ${IfNot} ${FileExists} "$R0"
+    StrCpy $R0 "$WINDIR\System32\tar.exe"
+  ${EndIf}
+  nsExec::ExecToLog '"$R0" -xf "${archive}" -C "$INSTDIR"'
+  Pop $R0
+  ${If} $R0 != 0
+    !insertmacro nodexMaintenanceLog "step=extract-payload failed exit=$R0"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(decompressionFailed)" /SD IDOK
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
+!macroend
+
 !macro customCheckAppRunning
   ; Stop installed jobs and return owned native-messaging registrations before
   ; an older uninstaller can move or remove the installed closure.
