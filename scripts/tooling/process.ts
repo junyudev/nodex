@@ -65,15 +65,20 @@ function descendantPids(
   return owned;
 }
 
+function readProcessTable(args: readonly string[]): string {
+  const snapshot = (timeout: number) =>
+    execFileSync("ps", args, { encoding: "utf8", timeout, killSignal: "SIGKILL" });
+  try {
+    return snapshot(1_000);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ETIMEDOUT") throw error;
+    // An overloaded computer can miss a short deadline while the descendants are still alive.
+    return snapshot(5_000);
+  }
+}
+
 function ownedProcessGroups(rootPid: number): readonly number[] {
-  // Bound the pre-cancellation snapshot so an overloaded system cannot stall cancellation.
-  const rows = parseProcessTable(
-    execFileSync("ps", processTableArguments, {
-      encoding: "utf8",
-      timeout: 1_000,
-      killSignal: "SIGKILL",
-    }),
-  );
+  const rows = parseProcessTable(readProcessTable(processTableArguments));
   const owned = descendantPids(rootPid, rows);
   return [
     ...new Set([
@@ -86,11 +91,7 @@ function ownedProcessGroups(rootPid: number): readonly number[] {
 }
 
 function liveProcessGroups(groups: readonly number[]): readonly number[] {
-  const output = execFileSync("ps", ["-axo", "pgid=,stat="], {
-    encoding: "utf8",
-    timeout: 1_000,
-    killSignal: "SIGKILL",
-  });
+  const output = readProcessTable(["-axo", "pgid=,stat="]);
   const live = new Set(
     output
       .trim()

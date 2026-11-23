@@ -156,6 +156,45 @@ test.skipIf(process.platform === "win32")(
 );
 
 test.skipIf(process.platform === "win32")(
+  "retries a process snapshot that times out before stopping detached descendants",
+  async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex slow process snapshot "));
+    const controller = new AbortController();
+    let pids: number[] = [];
+    try {
+      await writeFile(
+        path.join(root, "ps"),
+        `#!/bin/sh
+if [ "$2" = "pid=,ppid=,pgid=,rss=" ] && [ ! -e "$NODEX_SNAPSHOT_PROBE" ]; then
+  touch "$NODEX_SNAPSHOT_PROBE"
+  exec sleep 30
+fi
+exec /bin/ps "$@"
+`,
+        { mode: 0o755 },
+      );
+      vi.stubEnv("NODEX_SNAPSHOT_PROBE", path.join(root, "attempted"));
+      vi.stubEnv("PATH", root + path.delimiter + process.env.PATH);
+      const result = await runCommand({
+        command: process.execPath,
+        args: ["-e", detachedDescendant],
+        signal: controller.signal,
+        onStdout: (chunk) => {
+          pids = JSON.parse(chunk);
+          controller.abort();
+        },
+      });
+      expect(result.exitCode).toBe(130);
+      expectFixtureStopped(pids);
+    } finally {
+      vi.unstubAllEnvs();
+      stopFixtureGroups(pids);
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
   "refuses successful cancellation when the descendant snapshot fails",
   async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "nodex failed process snapshot "));
