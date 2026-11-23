@@ -200,7 +200,7 @@ describe("project session panel layout", () => {
     });
   });
 
-  test("reorders one leaf without changing sibling leaf order", () => {
+  test("reorders one leaf without changing sibling order or the active leaf", () => {
     const split = splitWorkbenchPanelLeaf(
       makeWorkbenchPanelLayout(["one", "two", "three"], "one"),
       {
@@ -217,6 +217,8 @@ describe("project session panel layout", () => {
     expect(JSON.stringify(flattenWorkbenchPanelTabIds(reordered))).toBe(
       JSON.stringify(["two", "one", "three"]),
     );
+    expect(reordered.activeLeafId).toBe(split.activeLeafId);
+    expect(reordered.mruLeafIds).toEqual(split.mruLeafIds);
   });
 
   test("resolves the top-right leaf for single and direct split trees", () => {

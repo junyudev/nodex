@@ -3,6 +3,7 @@ import { WorkbenchSceneSnapshotSchema } from "./schemas/workbench-scene";
 import {
   flattenWorkbenchPanelTabIds,
   getWorkbenchPanelActiveLeaf,
+  listWorkbenchPanelLeaves,
   moveWorkbenchPanelTab,
 } from "./workbench-panel-layout";
 import { LIBRARY_INBOX, projectInbox } from "./inbox";
@@ -754,6 +755,32 @@ describe("WorkbenchScene", () => {
     expect(maximized.panels.right.size.fullWidth).toBe(true);
     expect(collapsed.panels.right.collapsed).toBe(false);
     expect(collapsed.panels.right.size.fullWidth).toBe(true);
+  });
+
+  test("a Project keeps the group the person activates beside its Home group", () => {
+    const withBrowser = createWorkbenchSceneSurface(projectScene(), {
+      panelId: "right",
+      surface: browserSurface(),
+    });
+    const homeLeafId = withBrowser.panels.right.layout.activeLeafId;
+    const split = splitWorkbenchSceneLeaf(withBrowser, {
+      panelId: "right",
+      leafId: homeLeafId,
+      side: "right",
+      surfaceId: "browser-surface",
+    });
+    const siblingLeafId = listWorkbenchPanelLeaves(split.panels.right.layout).find(
+      (leaf) => leaf.id !== homeLeafId,
+    )!.id;
+
+    const home = activateWorkbenchSceneSurface(split, "right", homeLeafId);
+    const sibling = activateWorkbenchSceneSurface(home, "right", siblingLeafId);
+
+    expect(home.panels.right.layout.activeLeafId).toBe(homeLeafId);
+    expect(sibling.panels.right.layout.activeLeafId).toBe(siblingLeafId);
+    expect(sibling.panels.right.layout.root).toMatchObject({
+      first: { tabIds: [protectedPrimary(split).id] },
+    });
   });
 
   test("protects the Project root surface through panel mutations", () => {

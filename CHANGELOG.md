@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Menus keep up with the pointer. Moving across the rows of a menu opened from a Page, Inbox item or other panel tab used to stall each highlight for a moment, because every row the pointer crossed made the whole window redraw. Rows now highlight as soon as the pointer reaches them, and hovering a menu no longer adds Back steps or clears Forward.
+- Clicking the group beside a Project's or Inbox's Home tab makes that group active. It used to switch straight back to Home's group.
 - Claude Agent can use Nodex's tools again. Its current releases ask for them in a form Nodex did not answer, so Nodex's own tools, such as Pages and Desktop Tools, were missing from its chats. Nodex now hands its tools to Claude Agent the way it does to every other ACP Agent.
 - Claude Agent chats offer Claude's slash commands as soon as they open, and its work no longer lists "Unsupported ACP update" steps. Nodex now speaks the current Agent Client Protocol, so commands an Agent lists when a chat starts reach the `/` menu and its newer updates are understood.
 - Drafting a commit message or pull request description works again. The draft buttons in **Commit or push** and **Create pull request** failed on every attempt.

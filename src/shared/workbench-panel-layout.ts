@@ -653,29 +653,27 @@ export function insertWorkbenchPanelTabInBackground(
   });
 }
 
+/**
+ * Orders one group's tabs. Ordering is placement only: the active group, its selected tab and
+ * both recency orders stay as they are, so invariants that keep a Home tab first never pull
+ * activation back to Home's group.
+ */
 export function reorderWorkbenchPanelLeafTabs(
   layout: WorkbenchPanelLayout,
   leafId: string,
   orderedTabIds: readonly string[],
 ): WorkbenchPanelLayoutV2 {
-  const normalized = normalizeWorkbenchPanelLayout(layout, flattenWorkbenchPanelTabIds(layout), {
-    preferredActiveLeafId: leafId,
-  });
+  const normalized = normalizeWorkbenchPanelLayout(layout, flattenWorkbenchPanelTabIds(layout));
   const leaf = findWorkbenchPanelLeaf(normalized, leafId);
   if (!leaf) return normalized;
   const selected = orderedTabIds.filter((tabId) => leaf.tabIds.includes(tabId));
   const remaining = leaf.tabIds.filter((tabId) => !selected.includes(tabId));
-  const finalOrder = [...selected, ...remaining];
-  return activateWorkbenchPanelLeaf(
-    {
-      ...normalized,
-      root: updateLeafTabs(normalized.root, leaf.id, (current) =>
-        makeLeaf(current.id, finalOrder, current.activeTabId, current.mruTabIds),
-      ),
-    },
-    leaf.id,
-    leaf.activeTabId,
-  );
+  return {
+    ...normalized,
+    root: updateLeafTabs(normalized.root, leaf.id, (current) =>
+      makeLeaf(current.id, [...selected, ...remaining], current.activeTabId, current.mruTabIds),
+    ),
+  };
 }
 
 /** Selects the tab that occupies the closed tab's slot, falling back to its left neighbor. */
