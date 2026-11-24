@@ -183,6 +183,8 @@ export type OrchestrationV2ContextTransferResolution =
 export const OrchestrationV2ContextTransfer = Schema.Struct({
   id: ContextTransferId,
   type: OrchestrationV2ContextTransferType,
+  /** The task receiving this result from its child conversation, including completion wake Runs. */
+  subagentTaskId: Schema.optional(NodeId),
   sourceThreadId: ThreadId,
   targetThreadId: ThreadId,
   sourcePoint: OrchestrationV2ContextSourcePoint,
@@ -705,6 +707,11 @@ export const OrchestrationV2Run = Schema.Struct({
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   /** A queued message that should steer this specific Run when its provider Turn starts. */
   steerTargetRunId: Schema.optional(RunId),
+  /** Follow-up ownership to use if a deferred Steer starts its own turn instead. */
+  deferredDelegatedFollowup: Schema.optional(Schema.Struct({
+    commandId: CommandId,
+    senderRunId: Schema.NullOr(RunId),
+  })),
   /** Restart recovery holds the queue until the user explicitly resumes it. */
   queueHeld: Schema.optional(Schema.Boolean),
   requestedAt: Schema.DateTimeUtc,
@@ -3930,6 +3937,10 @@ const OrchestrationV2InternalCommand = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     reason: Schema.optional(Schema.String),
+    delegatedConversation: Schema.optional(Schema.Struct({
+      parentThreadId: ThreadId,
+      ownerRunId: Schema.optional(RunId),
+    })),
   }),
   /**
    * Records or updates a secret an agent asked the user for. Internal so no

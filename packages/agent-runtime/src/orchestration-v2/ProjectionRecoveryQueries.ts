@@ -13,6 +13,20 @@ export const OPEN_DELIVERY_RUN_PREDICATE = `CASE WHEN json_valid(payload_json)
 const UNRESOLVED_CHILD_TASK_PREDICATE = `origin = 'app_owned' AND child_thread_id IS NOT NULL
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.result') IS NULL ELSE 0 END`;
+export const HELD_QUEUED_RUN_PREDICATE =
+  "status = 'queued' AND COALESCE(json_extract(payload_json, '$.queueHeld'), 0) = 1";
+
+export const HELD_SUBAGENT_TASK_PREDICATE = `subagent.status = 'pending' AND subagent.origin = 'app_owned' AND EXISTS (
+    SELECT 1 FROM orchestration_v2_projection_runs AS held
+      INDEXED BY orchestration_v2_projection_runs_thread_status_idx
+    WHERE held.thread_id = subagent.child_thread_id
+      AND json_extract(held.payload_json, '$.delegatedTaskId') = subagent.subagent_id
+      AND (${HELD_QUEUED_RUN_PREDICATE})
+  )`;
+
+export const LIVE_SUBAGENT_TASK_PREDICATE = `subagent.status IN ('pending', 'running', 'waiting')
+  AND NOT (${HELD_SUBAGENT_TASK_PREDICATE})`;
+
 export const LIVE_PROVIDER_THREAD_PREDICATE = `status = 'active' OR CASE WHEN json_valid(payload_json)
       THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0 ELSE 0 END`;
 
@@ -122,18 +136,19 @@ export const recoveryCandidateThreadIds = (
                 AND json_extract(task.payload_json, '$.result') IS NULL
                 AND requested.status IN ('completed', 'interrupted', 'failed', 'cancelled', 'rolled_back')
             ) OR (
-              -- The original task still waits for the latest unheld work.
-              (SELECT status FROM orchestration_v2_projection_runs
-               WHERE thread_id = child.thread_id
-                 AND NOT (status = 'queued' AND json_extract(payload_json, '$.queueHeld') IS 1)
-               ORDER BY ordinal DESC LIMIT 1
+              -- Imported delegated roots can identify their first Run by lineage alone.
+              EXISTS (
+                SELECT 1 FROM orchestration_v2_projection_subagents AS task
+                WHERE task.subagent_id = json_extract(child.payload_json, '$.forkedFrom.nodeId')
+                  AND task.child_thread_id = child.thread_id AND task.origin = 'app_owned'
+                  AND json_extract(task.payload_json, '$.result') IS NULL
+              )
+              AND (
+                SELECT status FROM orchestration_v2_projection_runs
+                WHERE thread_id = child.thread_id
+                  AND ordinal = 1 AND json_extract(payload_json, '$.delegatedTaskId') IS NULL
               ) IN ('completed', 'interrupted', 'failed', 'cancelled', 'rolled_back')
-              AND NOT EXISTS (
-              SELECT 1 FROM orchestration_v2_projection_context_transfers
-              WHERE source_thread_id = child.thread_id
-                AND target_thread_id = json_extract(child.payload_json, '$.lineage.parentThreadId')
-                AND type = 'subagent_result'
-            )))
+            ))
             ELSE 0 END
         `;
     case "runtime":

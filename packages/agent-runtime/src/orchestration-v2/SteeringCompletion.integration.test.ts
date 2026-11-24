@@ -815,9 +815,94 @@ it.effect.each([false, true])(
           );
           if (!failStart) {
             const replay = yield* send("second");
-            assert.equal(replay.delivery, "queued");
-            assert.equal(replay.run.id, submitted[0]!.run.id);
+            assert.equal(replay.delivery, "steered");
+            assert.equal(replay.run.id, first.id);
           }
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+);
+
+it.effect(
+  "a deferred delegated Steer replays against the receiving task without a second task",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { layer, submitFirstTurn, steered } = yield* nextTurnSelectionHarness(
+          "delegated-steer-before-start",
+          { useThreadManagement: true },
+        );
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const threads = yield* ThreadManagementService;
+          const { threadId: parent, projectId } = yield* submitFirstTurn;
+          const owner = (yield* orchestrator.getThreadProjection(parent)).runs[0]!;
+          yield* orchestrator.dispatch({
+            type: "delegated_task.request",
+            commandId: CommandId.make("delegate:steer"),
+            parentThreadId: parent,
+            parentRunId: owner.id,
+            parentNodeId: owner.rootNodeId!,
+            task: "Investigate",
+            modelSelection: owner.modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdBy: "agent",
+            creationSource: "mcp",
+          });
+          const task = (yield* orchestrator.getThreadProjection(parent)).subagents[0]!;
+          const child = task.childThreadId!;
+          const receivingRun = (yield* orchestrator.getThreadProjection(child)).runs[0]!;
+          const messageId = MessageId.make("message:deferred-delegated-steer");
+          const send = () =>
+            threads.sendToThread({
+              projectId,
+              threadId: child,
+              commandId: CommandId.make("command:deferred-delegated-steer"),
+              messageId,
+              senderThreadId: parent,
+              senderRunId: owner.id,
+              text: "Check with updated input",
+              attachments: [],
+              mode: "steer",
+              createdBy: "agent",
+              creationSource: "mcp",
+            });
+          const queued = yield* send();
+          assert.equal(queued.delivery, "queued");
+          assert.equal(queued.steerTargetTaskId, task.id);
+          assert.isUndefined(queued.run.delegatedTaskId);
+
+          const promoted = yield* orchestrator.streamDomainEvents.pipe(
+            Stream.filter(
+              (event) =>
+                event.type === "turn-item.updated" &&
+                event.payload.type === "user_message" &&
+                event.payload.messageId === messageId &&
+                event.payload.inputIntent === "promoted_queued_to_steer",
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+            Effect.forkScoped,
+          );
+          yield* worker.drain();
+          yield* Fiber.join(promoted);
+          yield* worker.drain();
+          const replay = yield* send();
+          assert.equal(replay.delivery, "steered");
+          assert.equal(replay.run.id, receivingRun.id);
+          assert.equal(replay.run.delegatedTaskId, task.id);
+          assert.deepEqual(steered, ["Check with updated input"]);
+          const after = yield* orchestrator.getThreadProjection(parent);
+          assert.deepEqual(
+            after.subagents.map((row) => row.id),
+            [task.id],
+          );
+          assert.deepEqual(
+            after.turnItems.flatMap((row) => (row.type === "subagent" ? [row.subagentId] : [])),
+            [task.id],
+          );
         }).pipe(Effect.provide(layer));
       }),
     ),

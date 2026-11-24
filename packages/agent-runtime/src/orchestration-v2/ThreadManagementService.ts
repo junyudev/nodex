@@ -3,11 +3,7 @@ import {
   ModelPolicyError,
   RetainedModelPolicyOrigin,
 } from "../nodex/ModelPolicy.ts";
-import {
-  delegatedTaskExecutionState,
-  delegatedTaskRun,
-  isTerminalTaskStatus,
-} from "./DelegatedTaskState.ts";
+import { isTerminalTaskStatus, taskStatusForRun } from "./DelegatedTaskState.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -165,6 +161,8 @@ export interface ThreadManagementSendResult {
   >;
   readonly message: OrchestrationV2ConversationMessage;
   readonly run: OrchestrationV2Run;
+  /** A deferred Steer awaits this task until it joins the target or starts a separate turn. */
+  readonly steerTargetTaskId?: NodeId;
   /** Null for queued sends: the user turn item materializes when the queued turn starts. */
   readonly turnItem: Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }> | null;
   readonly delivery: "started" | "queued" | "steered" | "restarted";
@@ -506,6 +504,7 @@ export interface ThreadManagementServiceShape {
    */
   readonly stopDelegatedTasks: (input: {
     readonly threadId: ThreadId;
+    readonly cancelTurns?: boolean;
     readonly commandId: CommandId;
     readonly reason?: string | undefined;
   }) => Effect.Effect<
@@ -518,7 +517,7 @@ export interface ThreadManagementServiceShape {
   >;
   readonly getThreadEventSequence: Orchestrator.OrchestratorV2["Service"]["getThreadEventSequence"];
   readonly recoverDelegatedTask: Orchestrator.OrchestratorV2["Service"]["recoverDelegatedTask"];
-  readonly delegatedTaskResultPending: Orchestrator.OrchestratorV2["Service"]["delegatedTaskResultPending"];
+  readonly getDelegatedTaskResultRun: Orchestrator.OrchestratorV2["Service"]["getDelegatedTaskResultRun"];
   readonly streamStoredEvents: Orchestrator.OrchestratorV2["Service"]["streamStoredEvents"];
   readonly streamStoredEventsFrom: Orchestrator.OrchestratorV2["Service"]["streamStoredEventsFrom"];
   readonly streamDomainEvents: Orchestrator.OrchestratorV2["Service"]["streamDomainEvents"];
@@ -936,100 +935,101 @@ const make = Effect.gen(function* () {
         createdBy: input.createdBy,
         creationSource: input.creationSource,
       });
-      // A live Turn can promote this message as soon as the writer releases
-      // its lock. Report the original admission from its durable receipt.
       const dispatchEvents = dispatched.storedEvents.map(({ event }) => event);
-      const queuedSteer = dispatchEvents.find(
+      const queuedAtAdmission = dispatchEvents.some(
         (event) =>
           event.type === "run.created" &&
-          event.payload.userMessageId === input.messageId &&
-          event.payload.steerTargetRunId !== undefined,
+          event.payload.status === "queued" &&
+          event.payload.userMessageId === input.messageId,
       );
-      const submittedMessage = dispatchEvents.find(
-        (event) => event.type === "message.updated" && event.payload.id === input.messageId,
+      const wasDeferredSteer = dispatchEvents.some(
+        (event) => event.type === "run.created" && event.payload.steerTargetRunId !== undefined,
       );
-      if (queuedSteer?.type === "run.created" && submittedMessage?.type === "message.updated") {
-        const records = yield* getProjectThreadRecords(input, ["runs"], {
-          runIds: [queuedSteer.payload.id],
+      const readReceipt = Effect.gen(function* () {
+        // Receipt replay precedes delivery decisions; its response reads only this input's identities.
+        const messageRecords = yield* getProjectThreadRecords(input, ["messages"], {
+          messageIds: [input.messageId],
         });
-        const run = records.runs[0];
-        if (run === undefined)
+        const message = messageRecords.messages[0];
+        if (message?.runId == null)
           return yield* new ThreadManagementDurableRunProjectionError({
             threadId: input.threadId,
             messageId: input.messageId,
           });
-        const message = submittedMessage.payload;
+        const records = yield* getProjectThreadRecords(input, ["runs", "turnItems"], {
+          runIds: [message.runId],
+          turnItemIds: [
+            dispatched.storedEvents
+              .flatMap(({ event }) =>
+                event.type === "turn-item.updated" &&
+                event.payload.type === "user_message" &&
+                event.payload.messageId === input.messageId
+                  ? [event.payload.id]
+                  : [],
+              )
+              .at(-1) ?? derive.userTurnItem({ messageId: input.messageId }),
+          ],
+        });
+        const projection = { ...records, messages: messageRecords.messages };
+        const run = records.runs[0];
+        const turnItem =
+          projection.turnItems.find(
+            (
+              candidate,
+            ): candidate is Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }> =>
+              candidate.type === "user_message" && candidate.messageId === input.messageId,
+          ) ?? null;
+        // A queued message's user turn item is deliberately not emitted at
+        // dispatch time — it materializes when the queued turn actually starts,
+        // so it can map onto the provider turn. Every other dispatch mode still
+        // produces its turn item transactionally with the run.
+        if (
+          message === undefined ||
+          run === undefined ||
+          (turnItem === null && run.status !== "queued" && !queuedAtAdmission)
+        ) {
+          return yield* new ThreadManagementDurableRunProjectionError({
+            threadId: input.threadId,
+            messageId: input.messageId,
+          });
+        }
+        const delivery: ThreadManagementSendResult["delivery"] =
+          turnItem === null || turnItem.inputIntent === "queued_turn"
+            ? "queued"
+            : turnItem.inputIntent === "turn_start"
+              ? "started"
+              : input.mode === "restart" ||
+                  (input.mode === "steer" &&
+                    dispatchEvents.some(
+                      (event) =>
+                        event.type === "run-attempt.created" &&
+                        event.payload.reason === "steering_restart",
+                    ))
+                ? "restarted"
+                : "steered";
+        const steerTargetTaskId =
+          run.status === "queued" &&
+          run.deferredDelegatedFollowup !== undefined &&
+          run.steerTargetRunId !== undefined
+            ? (yield* getProjectThreadRecords(input, ["runs"], {
+                runIds: [run.steerTargetRunId],
+              })).runs[0]?.delegatedTaskId
+            : undefined;
         return {
           dispatch: dispatched,
-          projection: { ...records, messages: [message], turnItems: [] },
+          projection,
           message,
           run,
-          turnItem: null,
-          delivery: "queued",
-        } satisfies ThreadManagementSendResult;
-      }
-      // Receipt replay precedes delivery decisions; its response reads only this input's identities.
-      const messageRecords = yield* getProjectThreadRecords(input, ["messages"], {
-        messageIds: [input.messageId],
+          turnItem,
+          delivery,
+          ...(steerTargetTaskId === undefined ? {} : { steerTargetTaskId }),
+        };
       });
-      const message = messageRecords.messages[0];
-      if (message?.runId == null)
-        return yield* new ThreadManagementDurableRunProjectionError({
-          threadId: input.threadId,
-          messageId: input.messageId,
-        });
-      const records = yield* getProjectThreadRecords(input, ["runs", "turnItems"], {
-        runIds: [message.runId],
-        turnItemIds: [
-          dispatched.storedEvents
-            .flatMap(({ event }) =>
-              event.type === "turn-item.updated" &&
-              event.payload.type === "user_message" &&
-              event.payload.messageId === input.messageId
-                ? [event.payload.id]
-                : [],
-            )
-            .at(-1) ?? derive.userTurnItem({ messageId: input.messageId }),
-        ],
-      });
-      const projection = { ...records, messages: messageRecords.messages };
-      const run = records.runs[0];
-      const turnItem =
-        projection.turnItems.find(
-          (
-            candidate,
-          ): candidate is Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }> =>
-            candidate.type === "user_message" && candidate.messageId === input.messageId,
-        ) ?? null;
-      // A queued message's user turn item is deliberately not emitted at
-      // dispatch time — it materializes when the queued turn actually starts,
-      // so it can map onto the provider turn. Every other dispatch mode still
-      // produces its turn item transactionally with the run.
-      if (
-        message === undefined ||
-        run === undefined ||
-        (turnItem === null && run.status !== "queued")
-      ) {
-        return yield* new ThreadManagementDurableRunProjectionError({
-          threadId: input.threadId,
-          messageId: input.messageId,
-        });
-      }
-      const delivery: ThreadManagementSendResult["delivery"] =
-        turnItem === null || turnItem.inputIntent === "queued_turn"
-          ? "queued"
-          : turnItem.inputIntent === "turn_start"
-            ? "started"
-            : input.mode === "restart" ||
-                (input.mode === "steer" &&
-                  dispatchEvents.some(
-                    (event) =>
-                      event.type === "run-attempt.created" &&
-                      event.payload.reason === "steering_restart",
-                  ))
-              ? "restarted"
-              : "steered";
-      return { dispatch: dispatched, projection, message, run, turnItem, delivery };
+      // Promotion moves the message and retires its placeholder in one commit. The
+      // receipt must read the message and its current Run on the same side of that commit.
+      return yield* wasDeferredSteer
+        ? threadDispatch.withLock(input.threadId, readReceipt)
+        : readReceipt;
     });
 
   const waitForThread: ThreadManagementServiceShape["waitForThread"] = (input) =>
@@ -1277,13 +1277,19 @@ const make = Effect.gen(function* () {
         | ThreadManagementProviderInstanceDisabledError
         | ModelPolicyError
       > = [];
-      for (const task of subagents) {
-        if (task.origin !== "app_owned" || task.childThreadId === null) continue;
-        const threadId = task.childThreadId;
+      const childIds = new Set(
+        subagents.flatMap((task) =>
+          task.origin === "app_owned" && task.childThreadId !== null ? [task.childThreadId] : [],
+        ),
+      );
+      for (const threadId of childIds) {
         yield* dispatch({
           type: "thread.stop",
           commandId: CommandId.make(`${input.commandId}:stop:${threadId}`),
           threadId,
+          ...(input.cancelTurns
+            ? { delegatedConversation: { parentThreadId: input.threadId } }
+            : {}),
           ...(input.reason === undefined ? {} : { reason: input.reason }),
         }).pipe(
           Effect.andThen(stopDelegatedTasks({ ...input, threadId })),
@@ -1319,101 +1325,42 @@ const make = Effect.gen(function* () {
           reason: "not-found",
         });
       const childThreadId = task.childThreadId;
-      const taskRuns = yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
-        runDelegatedTaskId: task.id,
-        runOrder: "desc",
-        runLimit: 1,
-      });
-      const latest =
-        taskRuns.runs[0] ??
-        (yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
-          runOrder: "desc",
-          runLimit: 1,
-        })).runs[0];
-      const originalTask = yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
-        runDelegatedTaskId: task.id,
-        runOrder: "asc",
-        runLimit: 1,
-      });
-      const original =
-        originalTask.runs[0] ??
-        (yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
-          runOrder: "asc",
-          runLimit: 1,
-        })).runs[0];
-      const runs = [
-        ...new Map(
-          [original, latest]
-            .filter((run): run is OrchestrationV2Run => run !== undefined)
-            .map((run) => [run.id, run]),
-        ).values(),
-      ].toSorted((a, b) => a.ordinal - b.ordinal);
-      const transfers = yield* orchestrator.getThreadRecords(input.threadId, ["contextTransfers"], {
-        contextTransferThreadIds: [childThreadId],
-        contextTransferRunIds: runs.map((run) => run.id),
-        contextTransferLimit: 16,
-      });
-      const childRun = delegatedTaskRun(
-        { runs, contextTransfers: transfers.contextTransfers },
-        task,
-      );
-      const resultPending = yield* orchestrator.delegatedTaskResultPending(childThreadId, task.id);
-      const { status, workState } = delegatedTaskExecutionState({
-        task,
-        childRun,
-        latestRun: latest,
-        resultPending,
-      });
-      const terminalStatus = isTerminalTaskStatus(status) ? status : undefined;
-      const terminal = terminalStatus !== undefined;
-      if (!terminal && workState !== "waiting_for_children") {
-        const shell = yield* orchestrator.getThreadShell(childThreadId);
-        if (shell?.activeRunId == null)
-          return yield* new ThreadManagementTaskCancelError({
-            taskId: input.taskId,
-            reason: "not-cancellable",
-            cause: `Delegated task ${input.taskId} has no interruptible child run.`,
-          });
-      }
-      yield* dispatch({
+      const stopped = yield* dispatch({
         type: "thread.stop",
         commandId: input.commandId,
         threadId: childThreadId,
+        delegatedConversation: {
+          parentThreadId: input.threadId,
+          ...(input.runId === undefined ? {} : { ownerRunId: input.runId }),
+        },
         ...(input.reason === undefined ? {} : { reason: input.reason }),
       });
       yield* stopDelegatedTasks({
         threadId: childThreadId,
         commandId: input.commandId,
         reason: input.reason,
+        cancelTurns: true,
       });
-      if (task.completionDelivery?.state !== "disposed") {
-        const dispose = dispatch({
-          type: "delegated_task.completion-delivery.dispose",
-          commandId: CommandId.make(`${input.commandId}:completion-delivery`),
-          parentThreadId: input.threadId,
-          taskId: input.taskId,
-        });
-        yield* terminal
-          ? dispose.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ThreadManagementTaskCancelError({
-                    taskId: input.taskId,
-                    reason: "orchestration-error",
-                    cause,
-                  }),
-              ),
-            )
-          : dispose.pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("delegated-task.cancel.delivery-dispose-failed", {
-                  taskId: input.taskId,
-                  cause,
-                }),
-              ),
-            );
-      }
-      return { taskId: input.taskId, status: terminalStatus ?? "cancel_requested" } as const;
+      if (isTerminalTaskStatus(task.status)) return { taskId: task.id, status: task.status };
+      const ended = stopped.storedEvents.findLast(
+        ({ event }) =>
+          event.type === "run.updated" &&
+          event.threadId === childThreadId &&
+          event.payload.delegatedTaskId === task.id,
+      )?.event;
+      const status = taskStatusForRun(ended?.type === "run.updated" ? ended.payload : undefined);
+      if (isTerminalTaskStatus(status)) return { taskId: task.id, status };
+      const after = yield* orchestrator.getThreadRecords(input.threadId, ["subagents"], {
+        subagentIds: [task.id],
+      });
+      const resultingStatus = after.subagents.find((candidate) => candidate.id === task.id)?.status;
+      return {
+        taskId: task.id,
+        status:
+          resultingStatus !== undefined && isTerminalTaskStatus(resultingStatus)
+            ? resultingStatus
+            : "cancel_requested",
+      } as const;
     },
     (effect, input) =>
       effect.pipe(
@@ -1543,7 +1490,7 @@ const make = Effect.gen(function* () {
     stopWorkflow,
     getThreadEventSequence: orchestrator.getThreadEventSequence,
     recoverDelegatedTask: orchestrator.recoverDelegatedTask,
-    delegatedTaskResultPending: orchestrator.delegatedTaskResultPending,
+    getDelegatedTaskResultRun: orchestrator.getDelegatedTaskResultRun,
     streamStoredEvents: orchestrator.streamStoredEvents,
     streamStoredEventsFrom: orchestrator.streamStoredEventsFrom,
     streamDomainEvents: orchestrator.streamDomainEvents,

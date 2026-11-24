@@ -6,6 +6,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import {
   LIVE_PROVIDER_THREAD_PREDICATE,
+  LIVE_SUBAGENT_TASK_PREDICATE,
   OPEN_DELIVERY_RUN_PREDICATE,
 } from "./ProjectionRecoveryQueries.ts";
 import {
@@ -73,9 +74,9 @@ export interface RootActivityPage {
  * Live delegated tasks that wake their parent when they finish, whether or not the parent is
  * still running. Wait-mode tasks return through the blocking call and wake nothing.
  */
-const WAKING_LIVE_TASK_PREDICATE = `status IN ('pending', 'running', 'waiting') AND origin = 'app_owned'
-      AND CASE WHEN json_valid(payload_json)
-        THEN json_extract(payload_json, '$.completionWake') = 'always' ELSE 0 END`;
+const WAKING_LIVE_TASK_PREDICATE = `${LIVE_SUBAGENT_TASK_PREDICATE} AND subagent.origin = 'app_owned'
+      AND CASE WHEN json_valid(subagent.payload_json)
+        THEN json_extract(subagent.payload_json, '$.completionWake') = 'always' ELSE 0 END`;
 
 /** Route changes through execution roots and side-chat sources, or through direct delegation ancestry. */
 export const readActivityRootIds = Effect.fn("ExecutionActivity.readActivityRootIds")(function* (
@@ -169,7 +170,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           -- A provider-native task can write to its child Thread without creating a Runtime Run.
           LEFT JOIN orchestration_v2_projection_threads AS child
             ON child.thread_id = subagent.child_thread_id AND child.deleted_at IS NULL
-          WHERE subagent.status IN ('pending', 'running', 'waiting')
+          WHERE ${sql.literal(LIVE_SUBAGENT_TASK_PREDICATE)}
           UNION ALL
           SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value, NULL
           FROM orchestration_v2_projection_provider_threads AS provider
@@ -182,7 +183,8 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT thread_id, 'wake', NULL, 1, NULL, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(OPEN_DELIVERY_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'wake', updated_at, 1, NULL, NULL FROM orchestration_v2_projection_subagents
+          SELECT thread_id, 'wake', updated_at, 1, NULL, NULL
+          FROM orchestration_v2_projection_subagents AS subagent
           WHERE ${sql.literal(WAKING_LIVE_TASK_PREDICATE)}
         ), rooted AS MATERIALIZED (
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,

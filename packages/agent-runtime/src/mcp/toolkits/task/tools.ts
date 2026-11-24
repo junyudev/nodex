@@ -125,7 +125,16 @@ const TaskCancelInput = Schema.Struct({
 });
 export const TaskCancelResult = Schema.Struct({
   taskId: NodeId,
-  status: Schema.Literals(["cancel_requested", "completed", "failed", "cancelled", "interrupted"]),
+  status: Schema.Literals([
+    "cancel_requested",
+    "completed",
+    "failed",
+    "cancelled",
+    "interrupted",
+  ]).annotate({
+    description:
+      "Status of the addressed task after Stop was requested for its conversation. A settled task keeps its original status and result.",
+  }),
 });
 
 const TaskSendInput = Schema.Struct({
@@ -144,7 +153,7 @@ export const TaskSendResult = Schema.Struct({
   }),
   taskId: Schema.NullOr(NodeId).annotate({
     description:
-      "The task that carries this message's result: a new task for a started or queued follow-up, or the task owning the running turn a steered message joined. Null only when the message joined a Run that no delegated task owns.",
+      "The task carrying this message's result. A follow-up that starts a turn has its own task. A Steer uses the receiving turn's task, or null if that turn has no task. While a Steer is queued, this is the intended target's task.",
   }),
   status: OrchestrationV2RunStatus,
   delivery: Schema.Literals(["started", "queued", "steered", "restarted"]),
@@ -349,7 +358,7 @@ const TaskReadTool = Tool.make("task_read", {
 
 const TaskCancelTool = Tool.make("task_cancel", {
   description:
-    "Stop a delegated task like a user Stop: its running turn is interrupted, queued follow-ups are held and the tasks it delegated stop too. It no longer wakes you. A settled task keeps its result.",
+    "Stop a subagent's conversation by any of its task IDs. Its running turn stops, queued follow-ups are cancelled, and its delegated work stops. Those turns send no result or wake. The response reports the addressed task's status, which stays unchanged if it was already settled.",
   parameters: TaskCancelInput,
   success: TaskCancelResult,
   failure: OrchestratorMcpFailure,

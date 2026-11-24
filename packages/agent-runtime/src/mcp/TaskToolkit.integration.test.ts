@@ -515,38 +515,10 @@ describe("task tools", () => {
           ProviderContinuationRequests.ProviderContinuationRequests,
           { offer: () => Effect.void, take: Effect.never },
         );
-        const failingDisposals = new Set<string>();
-        let rejectedDisposals = 0;
-        const stoppedThreadIds: string[] = [];
-        const layerEngine = ProviderReplayHarness.layerWithRegistry(
+        const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
           { name: "mcp-task-tools", runtimePolicyOverride: { cwd } },
           layerRegistry,
         ).pipe(Layer.provide(layerContinuationProbe));
-        const layerOrchestrator = Layer.effect(
-          Orchestrator.OrchestratorV2,
-          Orchestrator.OrchestratorV2.use((engine) =>
-            Effect.succeed({
-              ...engine,
-              dispatch: (command: Parameters<typeof engine.dispatch>[0]) => {
-                if (command.type === "thread.stop") stoppedThreadIds.push(command.threadId);
-                if (
-                  command.type === "delegated_task.completion-delivery.dispose" &&
-                  failingDisposals.has(command.taskId)
-                ) {
-                  rejectedDisposals += 1;
-                  return Effect.fail(
-                    new Orchestrator.OrchestratorDispatchError({
-                      commandId: command.commandId,
-                      commandType: command.type,
-                      cause: "Completion delivery is not ready",
-                    }),
-                  );
-                }
-                return engine.dispatch(command);
-              },
-            }),
-          ),
-        ).pipe(Layer.provideMerge(layerEngine));
         const layerOrchestration = Layer.merge(
           layerOrchestrator,
           ThreadManagementService.layer.pipe(
@@ -1179,7 +1151,6 @@ describe("task tools", () => {
           expect(
             yield* decodeTaskView(yield* call("task_status", { taskId: restartCut.taskId })),
           ).toMatchObject({ status: "running", workState: "waiting_for_children" });
-          failingDisposals.add(restartCut.taskId);
           expect(
             yield* decodeTaskCancel(
               yield* call("task_cancel", {
@@ -1187,9 +1158,12 @@ describe("task tools", () => {
                 idempotencyKey: "cancel-restart-cut",
               }),
             ),
-          ).toEqual({ taskId: restartCut.taskId, status: "cancel_requested" });
-          expect(rejectedDisposals).toBe(1);
-          expect(stoppedThreadIds).toContain(cutChildId);
+          ).toEqual({ taskId: restartCut.taskId, status: "interrupted" });
+          expect(
+            (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+              (task) => task.id === restartCut.taskId,
+            )?.completionDelivery?.state,
+          ).toBe("disposed");
 
           const clamped = yield* decodeTaskRead(
             yield* call("task_read", { limit: 1000, maxCharsPerItem: 1000000 }),

@@ -366,7 +366,7 @@ it.effect("selects unfinished recovery work without reading settled thread histo
   }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("recovers terminal subagent results until their cross-thread transfer exists", () =>
+it.effect("recovers terminal subagent results until each turn's result is recorded", () =>
   Effect.gen(function* () {
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const sql = yield* SqlClient.SqlClient;
@@ -409,7 +409,9 @@ it.effect("recovers terminal subagent results until their cross-thread transfer 
         },
       });
       yield* createRun(child, name === "running" ? "running" : "completed");
-      // A wake queued behind the result: held by Stop or a restart, or still deliverable.
+      // A Run queued behind the task's own Run: held by Stop or a restart, or still
+      // deliverable. Neither carries the task, so its ended Run makes it a candidate; settlement
+      // decides whether completion wakes it caused must finish first.
       if (name === "held" || name === "queued") {
         yield* createRun(child, "queued", {
           ordinal: 2,
@@ -419,7 +421,7 @@ it.effect("recovers terminal subagent results until their cross-thread transfer 
       }
       children.push(child);
     }
-    const terminalChildren = new Set([children[0]!, children[1]!, children[4]!]);
+    const terminalChildren = new Set([children[0]!, children[1]!, children[4]!, children[5]!]);
     assert.deepEqual(
       new Set(yield* projections.getRecoveryThreadIds("subagent-results")),
       terminalChildren,
@@ -451,11 +453,39 @@ it.effect("recovers terminal subagent results until their cross-thread transfer 
         consumedAt: null,
       },
     });
+    // Settlement records the turn's result on its task together with the transfer.
+    yield* projections.apply({
+      id: EventId.make("event:task:terminal:settled"),
+      type: "subagent.updated",
+      threadId: parent,
+      occurredAt: now,
+      payload: {
+        id: NodeId.make("node:terminal"),
+        threadId: parent,
+        runId: null,
+        parentNodeId: NodeId.make("node:parent"),
+        origin: "app_owned",
+        createdBy: "agent",
+        driver,
+        providerInstanceId,
+        providerThreadId: null,
+        childThreadId: completed,
+        nativeTaskRef: null,
+        prompt: "Run terminal.",
+        title: null,
+        model: null,
+        status: "completed",
+        result: "Done.",
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      },
+    });
     const archivedChild = children[1];
     assert.isDefined(archivedChild);
     assert.deepEqual(
       new Set(yield* projections.getRecoveryThreadIds("subagent-results")),
-      new Set([archivedChild, children[4]!]),
+      new Set([archivedChild, children[4]!, children[5]!]),
     );
     assert.deepEqual(yield* projections.getUnreadableThreadIds(), []);
     yield* sql`

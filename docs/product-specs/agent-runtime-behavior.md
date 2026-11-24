@@ -936,8 +936,8 @@ The overview lists, counts and draws subagents, not their turns. A follow-up tha
 Run in a subagent's conversation is carried by a task of its own, yet the subagent still
 appears once: under Active while any of its turns runs or waits to run, under Done
 otherwise. It presents its current turn — the one it is executing, else the next one queued
-to run, else the one that settled last. A follow-up queued behind a person's Stop waits for
-them and does not count as running. Status, elapsed time, attention and Stop come from that
+to run, else the one that settled last. A follow-up held because a person stopped the
+subagent's own chat waits for them and does not count as running. Status, elapsed time, attention and Stop come from that
 turn; the name, avatar and place on the map come from its first delegation. The lead counts
 each subagent once in how many have reported back. In the parent's transcript every turn
 keeps its own card, status and result.
@@ -970,7 +970,11 @@ Presentation updates in place from the task's own item and metadata events; neit
 nor hover reads child history. Stop is available from the task's information surface when
 its owner permits it, shows Stopping immediately, and keeps that state until the subagent
 reports how it ended. A provider-native subagent is stopped through its owning parent Run.
-An application-owned subagent's own conversation ends with a Stopped marker.
+Stopping an application-owned subagent interrupts its executing turn, cancels its queued
+follow-ups and stops the work it delegated. Those turns send no result or wake to their
+delegator. Already-settled turns keep their results. Stop from inside the subagent's own chat
+holds its queued follow-ups for the person to resume. Held follow-ups count as work again
+when the queue resumes.
 
 An Antigravity subagent batch appears in the transcript and the Subagents tab. Opening
 it loads the children Antigravity can identify and their recent steps in the same
@@ -1162,7 +1166,17 @@ task's taskId as `taskId` and the conversation's delegated task as `conversation
 conversation task remains a valid handle for reads, follow-ups and cancellation. No task's result is
 replaced by a later follow-up. A message steered into a running
 Run joins that Run and returns the task that Run belongs to; a message that joins a Run no delegated
-task owns returns no taskId. A restart keeps the interrupted Run's task, which carries the restarted Run.
+task owns returns no taskId. A Steer waiting for the provider Turn to start names the intended
+receiving task. If the message starts a separate Run instead, that Run gets its own task and
+an exact retry returns that task. A restart keeps the interrupted Run's task, which carries
+the restarted Run. Each task also owns the Runs that wake its turn to read delegated results,
+including further wakes started by those Runs. The task settles after all of those Runs and the
+work they delegated have settled. The last of those Runs supplies the result. Later queued turns
+have their own results and can keep working independently.
+
+`task_cancel` stops the subagent conversation identified by any of its task IDs. Its response
+reports the addressed task's status. A Stop authorized for one Run requires separate authority
+if an unfinished follow-up belongs to another Run.
 
 `list_agent_models` reports whether the caller may delegate now and, if not, who decided.
 `delegate_task` accepts `mayDelegate: false` to keep that task from delegating or starting chats;

@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - A subagent that received a follow-up now appears once in the Subagents tab. Before, each follow-up added another row, the map kept showing the finished first turn while the follow-up was still running, and counts such as "4/5 back" counted turns instead of subagents. The subagent's row and card now show the turn it is working on and keep their place, and Stop stops that turn. The chat's Subagents summary and the Composer's agent mentions list it once too.
+- Stopping a subagent now stops all of it. Its running turn ends, follow-ups waiting behind it never run, and none of them reports back to the Agent that delegated it, while turns that already finished keep their results. A follow-up held after you stop a subagent's own chat no longer keeps the parent chat looking busy, and a message steered into a turn that was just starting no longer reports a separate, cancelled task.
+- A subagent's result arrives once its work is done. A follow-up that delegated more work no longer reports back before that work finishes, a result no longer waits for a follow-up queued behind it, and a subagent woken by its own subagents' results reports the answer it gave after reading them.
 
 ### Removed
 

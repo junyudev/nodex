@@ -139,6 +139,8 @@ import {
   recoveryCandidateThreadIds,
   liveRunLivenessCandidates,
   orphanedRunningProviderTurnThreadIds,
+  HELD_QUEUED_RUN_PREDICATE,
+  HELD_SUBAGENT_TASK_PREDICATE,
 } from "./ProjectionRecoveryQueries.ts";
 import {
   isThreadHistoryUserTurn,
@@ -456,6 +458,7 @@ export interface ProjectionRecordFilter {
   readonly pendingRequests?: boolean;
   readonly nodeIds?: ReadonlyArray<NodeId>;
   readonly subagentIds?: ReadonlyArray<NodeId>;
+  readonly subagentChildThreadId?: ThreadId;
   /** Tasks spawned by these Runs, through the thread/run task index. */
   readonly subagentRunIds?: ReadonlyArray<RunId>;
   readonly providerThreadIds?: ReadonlyArray<ProviderThreadId>;
@@ -482,6 +485,8 @@ export interface ProjectionRecordFilter {
   /** Runs whose delegated-completion cohort has an outstanding delivery (partial index). */
   readonly runOpenDelivery?: boolean;
   readonly excludeHeldRuns?: boolean;
+  /** Inputs that establish completion-wake ownership or identify monitor Runs. */
+  readonly taskLifecycleInputs?: boolean;
   readonly messageRoles?: ReadonlyArray<OrchestrationV2ConversationMessage["role"]>;
   readonly turnItemRunId?: RunId;
   readonly messageIds?: ReadonlyArray<MessageId>;
@@ -1507,30 +1512,19 @@ function needsRecovery(
           (task) =>
             task.origin === "app_owned" &&
             task.result === null &&
-            task.childThreadId === projection.thread.id,
-        ) &&
-        ((parent?.subagents ?? []).some(
-          (task) =>
-            task.origin === "app_owned" &&
-            task.result === null &&
             task.childThreadId === projection.thread.id &&
             projection.runs.some(
-              (run) =>
-                run.delegatedTaskId === task.id &&
+              (run, index) =>
+                (run.delegatedTaskId === task.id ||
+                  (index === 0 &&
+                    run.delegatedTaskId === undefined &&
+                    projection.thread.forkedFrom?.type === "node" &&
+                    projection.thread.forkedFrom.nodeId === task.id)) &&
                 ["completed", "interrupted", "failed", "cancelled", "rolled_back"].includes(
                   run.status,
                 ),
             ),
-        ) ||
-          (["completed", "interrupted", "failed", "cancelled", "rolled_back"].includes(
-            latestUnheldRun(projection.runs)?.status ?? "idle",
-          ) &&
-            ![...projection.contextTransfers, ...(parent?.contextTransfers ?? [])].some(
-              (transfer) =>
-                transfer.type === "subagent_result" &&
-                transfer.sourceThreadId === projection.thread.id &&
-                transfer.targetThreadId === parentThreadId,
-            )))
+        )
       );
     }
     case "runtime":
@@ -2648,6 +2642,7 @@ function secretRequestAsPendingInput(
 
 export function threadShellFromProjection(
   projection: OrchestrationV2ThreadProjection,
+  threads?: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection>,
 ): OrchestrationV2ThreadShell {
   const providerSession =
     projection.providerSessions
@@ -2695,10 +2690,27 @@ export function threadShellFromProjection(
         DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
     );
   const latestUserMessage = userMessages[0] ?? null;
+  const heldTaskIds = new Set(
+    projection.subagents.flatMap((task) =>
+      task.status === "pending" &&
+      task.origin === "app_owned" &&
+      task.childThreadId !== null &&
+      threads
+        ?.get(task.childThreadId)
+        ?.runs.some(
+          (run) =>
+            run.delegatedTaskId === task.id && run.status === "queued" && run.queueHeld === true,
+        )
+        ? [task.id]
+        : [],
+    ),
+  );
   const pendingBackgroundTasks = derivePendingBackgroundWork({
     latestRun,
     providerThreads: projection.providerThreads,
-    turnItems: projection.turnItems,
+    turnItems: projection.turnItems.filter(
+      (item) => item.type !== "subagent" || !heldTaskIds.has(item.subagentId),
+    ),
     activeProviderThreadId: projection.thread.activeProviderThreadId,
     runs: projection.runs,
     pullRequests: projection.thread.pullRequests,
@@ -4732,7 +4744,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ${filter?.runCheckpointId === undefined ? sql`` : sql`AND run_id = (SELECT run_id FROM orchestration_v2_projection_checkpoints WHERE thread_id = ${threadId} AND checkpoint_id = ${filter.runCheckpointId})`}
               ${filter?.runDelegatedTaskId === undefined ? sql`` : sql`AND json_extract(payload_json, '$.delegatedTaskId') = ${filter.runDelegatedTaskId}`}
               ${filter?.runOpenDelivery !== true ? sql`` : sql`AND ${sql.literal(OPEN_DELIVERY_RUN_PREDICATE)}`}
-              ${filter?.excludeHeldRuns !== true ? sql`` : sql`AND NOT (status = 'queued' AND COALESCE(json_extract(payload_json, '$.queueHeld'), 0) = 1)`}
+              ${filter?.excludeHeldRuns !== true ? sql`` : sql`AND NOT (${sql.literal(HELD_QUEUED_RUN_PREDICATE)})`}
               ${filter?.resultOriginalRunId === undefined ? sql`` : sql`AND (run_id = ${filter.resultOriginalRunId} OR json_extract(payload_json, '$.startedAt') IS NOT NULL)`}
               ${filter?.excludeMonitorRuns !== true ? sql`` : sql`AND NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_messages message WHERE message.message_id = json_extract(orchestration_v2_projection_runs.payload_json, '$.userMessageId') AND json_extract(message.payload_json, '$.notification.source.kind') = 'monitor')`}
             ORDER BY ${filter?.runOrder === "completed-desc" ? sql`(completed_at IS NULL) DESC, completed_at DESC, ordinal DESC` : filter?.runOrder === "desc" ? sql`ordinal DESC` : sql`ordinal ASC`}
@@ -4797,8 +4809,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_subagents
-            WHERE ${filter?.subagentIds === undefined ? sql`thread_id = ${threadId}` : sql`+thread_id = ${threadId}`}
+            WHERE ${filter?.subagentIds === undefined && filter?.subagentChildThreadId === undefined ? sql`thread_id = ${threadId}` : sql`+thread_id = ${threadId}`}
               ${filter?.subagentIds === undefined ? sql`` : sql`AND subagent_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentIds)}))`}
+              ${filter?.subagentChildThreadId === undefined ? sql`` : sql`AND child_thread_id = ${filter.subagentChildThreadId}`}
               ${filter?.subagentRunIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.subagentRunIds)}))`}
             ORDER BY COALESCE(started_at, ''), subagent_id ASC
           `
@@ -4915,11 +4928,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? Effect.succeed([])
             : window === undefined
               ? sql<PayloadRow>`
-                SELECT payload_json FROM orchestration_v2_projection_messages
+                SELECT ${
+                  filter?.taskLifecycleInputs === true
+                    ? sql`json_set(json_remove(payload_json, '$.providerText', '$.context', '$.delegatedCompletion.inlinedResults'), '$.text', '', '$.attachments', json('[]'))`
+                    : sql`payload_json`
+                } AS payload_json
+                FROM orchestration_v2_projection_messages
                 WHERE ${filter?.messageIds === undefined && filter?.messageRunIds === undefined ? sql`thread_id = ${threadId}` : sql`+thread_id = ${threadId}`}
                   ${filter?.messageIds === undefined ? sql`` : sql`AND message_id IN (SELECT value FROM json_each(${encodeIdList(filter.messageIds)}))`}
                   ${filter?.messageRoles === undefined ? sql`` : sql`AND role IN (SELECT value FROM json_each(${encodeIdList(filter.messageRoles)}))`}
                   ${filter?.messageRunIds === undefined ? sql`` : sql`AND run_id IN (SELECT value FROM json_each(${encodeIdList(filter.messageRunIds)}))`}
+                  ${
+                    filter?.taskLifecycleInputs !== true
+                      ? sql``
+                      : sql`AND (
+                    json_type(payload_json, '$.delegatedCompletion') = 'object'
+                    OR json_extract(payload_json, '$.notification.source.kind') = 'monitor'
+                  )`
+                  }
                 ORDER BY created_at ASC, message_id ASC
               `
               : sql<PayloadRow>`
@@ -7669,21 +7695,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   CASE
                     WHEN task.status IN ('running', 'waiting') THEN 0
                     WHEN task.status <> 'pending' THEN 2
-                    WHEN COALESCE(
-                      (SELECT run.status = 'queued' AND json_extract(run.payload_json, '$.queueHeld') IS 1
-                        FROM orchestration_v2_projection_runs AS run
-                        WHERE run.thread_id = task.child_thread_id
-                          AND json_extract(run.payload_json, '$.delegatedTaskId') = task.subagent_id
-                        ORDER BY run.ordinal DESC LIMIT 1),
-                      (SELECT run.status = 'queued' AND json_extract(run.payload_json, '$.queueHeld') IS 1
-                        FROM orchestration_v2_projection_runs AS run
-                        WHERE run.thread_id = task.child_thread_id AND task.subagent_id = (
-                          SELECT json_extract(child.payload_json, '$.forkedFrom.nodeId')
-                          FROM orchestration_v2_projection_threads AS child
-                          WHERE child.thread_id = task.child_thread_id)
-                        ORDER BY run.ordinal LIMIT 1),
-                      0
-                    ) = 1 THEN 3
+                    WHEN EXISTS (SELECT 1 FROM orchestration_v2_projection_subagents AS subagent
+                      WHERE subagent.subagent_id = task.subagent_id
+                        AND ${sql.literal(HELD_SUBAGENT_TASK_PREDICATE)}) THEN 3
                     ELSE 1
                   END AS rank
                 ${scopedTasks}
@@ -9527,29 +9541,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           `;
 
     const selectShellPendingTurnItemRows = (threadIds?: ReadonlyArray<ThreadId>) =>
-      threadIds === undefined
-        ? sql<PayloadRow & { readonly thread_id: string }>`
-            SELECT i.thread_id, ${sql.literal(turnItemPayloadSql("i"))} AS payload_json
-            FROM orchestration_v2_projection_turn_items i
-            LEFT JOIN orchestration_v2_projection_runs r
-              ON r.run_id = i.run_id
-            WHERE i.type IN ('command_execution', 'dynamic_tool', 'subagent')
-              AND i.status NOT IN ('completed', 'interrupted', 'failed', 'cancelled')
-              -- A rolled-back run's items are abandoned, not pending. Without
-              -- this the shell reports Waiting for work no one will finish,
-              -- matching the item_count query's exclusion above.
-              AND (i.run_id IS NULL OR r.status <> 'rolled_back')
-          `
-        : sql<PayloadRow & { readonly thread_id: string }>`
-            SELECT i.thread_id, ${sql.literal(turnItemPayloadSql("i"))} AS payload_json
-            FROM orchestration_v2_projection_turn_items i
-            LEFT JOIN orchestration_v2_projection_runs r
-              ON r.run_id = i.run_id
-            WHERE i.type IN ('command_execution', 'dynamic_tool', 'subagent')
-              AND i.status NOT IN ('completed', 'interrupted', 'failed', 'cancelled')
-              AND (i.run_id IS NULL OR r.status <> 'rolled_back')
-              AND i.thread_id IN ${sql.in(threadIds)}
-          `;
+      sql<PayloadRow & { readonly thread_id: string }>`
+        SELECT i.thread_id, ${sql.literal(turnItemPayloadSql("i"))} AS payload_json
+        FROM orchestration_v2_projection_turn_items i
+        LEFT JOIN orchestration_v2_projection_runs r ON r.run_id = i.run_id
+        WHERE i.type IN ('command_execution', 'dynamic_tool', 'subagent')
+          AND i.status NOT IN ('completed', 'interrupted', 'failed', 'cancelled')
+          -- A rolled-back Run's items are abandoned, so they never keep the shell waiting.
+          AND (i.run_id IS NULL OR r.status <> 'rolled_back')
+          AND NOT (i.type = 'subagent' AND i.status = 'pending' AND EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_subagents AS subagent
+            WHERE subagent.subagent_id = json_extract(i.payload_json, '$.subagentId')
+              AND (${sql.literal(HELD_SUBAGENT_TASK_PREDICATE)})
+          ))
+          ${threadIds === undefined ? sql`` : sql`AND i.thread_id IN ${sql.in(threadIds)}`}
+      `;
 
     const runMapsByThreadId = (input: {
       readonly runRows: ReadonlyArray<ShellRunRow>;
@@ -10427,7 +10433,9 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           const shells = yield* Effect.forEach(
             selectedThreadIds.toSorted((left, right) => String(left).localeCompare(String(right))),
             (threadId) =>
-              service.getThreadProjection(threadId).pipe(Effect.map(threadShellFromProjection)),
+              service
+                .getThreadProjection(threadId)
+                .pipe(Effect.map((projection) => threadShellFromProjection(projection, existing))),
           );
           const visible = shells.filter((thread) => thread.deletedAt === null);
           return {
@@ -10473,7 +10481,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           }
           const shell = yield* service
             .getThreadProjection(threadId)
-            .pipe(Effect.map(threadShellFromProjection));
+            .pipe(Effect.map((projection) => threadShellFromProjection(projection, existing)));
           return shell.deletedAt === null ? shell : null;
         }),
       getThread: (threadId) =>
@@ -10500,7 +10508,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 !runtimeRequests.some((request) => request.status === "pending"),
             )
             .map((projection) => {
-              const shell = threadShellFromProjection(projection);
+              const shell = threadShellFromProjection(projection, projections);
               return {
                 ...shell,
                 lastSnoozeWakeAt: projection.thread.lastSnoozeWakeAt ?? null,
@@ -10550,7 +10558,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   thread.archivedAt === null &&
                   thread.settledOverride !== "settled",
               )
-              .map(threadShellFromProjection)
+              .map((projection) => threadShellFromProjection(projection, state.projections))
               .filter(
                 (thread) =>
                   thread.status === "failed" &&
@@ -10772,7 +10780,10 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 (filter?.messageRunIds === undefined ||
                   (row.runId !== null && filter.messageRunIds.includes(row.runId))) &&
                 (filter?.messageIds === undefined || filter.messageIds.includes(row.id)) &&
-                (filter?.messageRoles === undefined || filter.messageRoles.includes(row.role)),
+                (filter?.messageRoles === undefined || filter.messageRoles.includes(row.role)) &&
+                (filter?.taskLifecycleInputs !== true ||
+                  row.delegatedCompletion !== undefined ||
+                  row.notification?.source.kind === "monitor"),
             ),
             runs: projection.runs
               .filter(
@@ -10827,6 +10838,8 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             subagents: projection.subagents.filter(
               (row) =>
                 (filter?.subagentIds === undefined || filter.subagentIds.includes(row.id)) &&
+                (filter?.subagentChildThreadId === undefined ||
+                  row.childThreadId === filter.subagentChildThreadId) &&
                 (filter?.subagentRunIds === undefined ||
                   (row.runId !== null && filter.subagentRunIds.includes(row.runId))),
             ),
@@ -12056,20 +12069,21 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   run.delegatedTaskId === undefined ? [] : [[run.delegatedTaskId, run] as const],
                 ),
               );
+              // Matches HELD_SUBAGENT_TASK_PREDICATE: a follow-up whose carrying Run is held.
               const { turn, phase } = currentSubagentTurn(
                 tasks.map((task) => {
-                  const run =
-                    task.status !== "pending" || task.childThreadId === null
-                      ? undefined
-                      : (runsByTask.get(task.id) ??
-                        (spawn?.type === "node" && spawn.nodeId === task.id ? runs[0] : undefined));
+                  const run = runsByTask.get(task.id);
                   return {
                     task,
                     id: task.id,
                     status: task.status,
                     startedAt: optionalIso(task.startedAt),
                     completedAt: optionalIso(task.completedAt),
-                    held: run?.status === "queued" && run.queueHeld === true,
+                    held:
+                      task.status === "pending" &&
+                      task.origin === "app_owned" &&
+                      run?.status === "queued" &&
+                      run.queueHeld === true,
                   };
                 }),
               )!;

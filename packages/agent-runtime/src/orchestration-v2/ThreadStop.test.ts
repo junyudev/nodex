@@ -5,6 +5,7 @@ import {
   EventId,
   MessageId,
   NodeId,
+  type OrchestrationV2Run,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -17,6 +18,8 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -28,6 +31,7 @@ import { CLAUDE_PROVIDER } from "./Adapters/ClaudeAdapterV2.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import { OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
+import { EventSinkV2 } from "./EventSink.ts";
 import { readRootActivity } from "./ExecutionActivity.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -189,6 +193,427 @@ const threadState = (threadId: ThreadId) =>
         .map((link) => link.number),
     };
   });
+
+it.effect.each(["original", "queued"] as const)(
+  "cancels the whole delegated conversation using its %s task",
+  (address) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const parent = ThreadId.make("thread:cancel-conversation");
+      yield* createWatchingThread(parent, 1);
+      yield* send(parent, "Delegate", "start_immediately");
+      const child = yield* delegate(parent, "Original turn");
+      const original = (yield* orchestrator.getThreadProjection(child)).runs[0]!;
+      const now = yield* DateTime.now;
+      yield* projections.apply({
+        type: "run.updated",
+        id: EventId.make("event:cancel-conversation:first-finished"),
+        threadId: child,
+        runId: original.id,
+        occurredAt: now,
+        payload: { ...original, status: "completed", startedAt: now, completedAt: now },
+      });
+      yield* orchestrator.recoverDelegatedTasks;
+      const before = yield* orchestrator.getThreadProjection(parent);
+      const settled = before.subagents[0]!;
+      assert.equal(settled.status, "completed");
+
+      yield* send(child, "Active follow-up", "start_immediately");
+      const grandchild = yield* delegate(child, "Delegated by the follow-up");
+      yield* send(grandchild, "Descendant follow-up", "queue_after_active");
+      yield* send(child, "Queued follow-up", "queue_after_active");
+      const [, active, queued] = (yield* orchestrator.getThreadProjection(child)).runs;
+      const taskId = address === "original" ? settled.id : queued!.delegatedTaskId!;
+      const stopped = yield* threads.cancelDelegatedTask({
+        threadId: parent,
+        taskId,
+        runId: settled.runId!,
+        commandId: CommandId.make("cancel-conversation"),
+      });
+      assert.deepEqual(stopped, {
+        taskId,
+        status: address === "original" ? "completed" : "cancelled",
+      });
+      assert.deepEqual((yield* threadState(child)).runs, ["completed", "interrupted", "cancelled"]);
+      assert.deepEqual((yield* threadState(grandchild)).runs, ["interrupted", "cancelled"]);
+
+      yield* orchestrator.resumeThreadQueue(child);
+      yield* orchestrator.recoverDelegatedTasks;
+      const after = yield* orchestrator.getThreadProjection(parent);
+      assert.deepEqual(
+        after.subagents.find((task) => task.id === settled.id),
+        settled,
+      );
+      const activeTask = after.subagents.find((task) => task.id === active!.delegatedTaskId);
+      const queuedTask = after.subagents.find((task) => task.id === queued!.delegatedTaskId);
+      assert.deepEqual([activeTask?.status, queuedTask?.status], ["interrupted", "cancelled"]);
+      assert.deepEqual(
+        [activeTask?.completionDelivery?.state, queuedTask?.completionDelivery?.state],
+        ["disposed", "disposed"],
+      );
+      assert.deepEqual(
+        after.runs.flatMap((run) => run.delegatedCompletion?.delivery?.taskIds ?? []),
+        before.runs.flatMap((run) => run.delegatedCompletion?.delivery?.taskIds ?? []),
+      );
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("refuses a Run-scoped stop when another Run owns an unfinished follow-up", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const parent = ThreadId.make("thread:cancel-other-owner");
+    yield* createWatchingThread(parent, 1);
+    yield* send(parent, "First owner", "start_immediately");
+    const child = yield* delegate(parent, "Original turn");
+    const before = yield* orchestrator.getThreadProjection(parent);
+    const original = before.subagents[0]!;
+    const owner = before.runs[0]!;
+    const now = yield* DateTime.now;
+    yield* projections.apply({
+      type: "run.updated",
+      id: EventId.make("event:cancel-other-owner:first-finished"),
+      threadId: parent,
+      runId: owner.id,
+      occurredAt: now,
+      payload: { ...owner, status: "completed", startedAt: now, completedAt: now },
+    });
+    yield* send(parent, "Second owner", "start_immediately");
+    const nextOwner = (yield* orchestrator.getThreadProjection(parent)).runs.at(-1)!;
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("cancel-other-owner:queued"),
+      threadId: child,
+      messageId: MessageId.make("message:cancel-other-owner"),
+      senderThreadId: parent,
+      senderRunId: nextOwner.id,
+      text: "Follow up",
+      attachments: [],
+      dispatchMode: { type: "queue_after_active" },
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    const stopped = yield* threads
+      .cancelDelegatedTask({
+        threadId: parent,
+        taskId: original.id,
+        runId: owner.id,
+        commandId: CommandId.make("cancel-other-owner"),
+      })
+      .pipe(Effect.result);
+    assert.equal(stopped._tag, "Failure");
+    assert.deepEqual((yield* threadState(child)).runs, ["starting", "queued"]);
+    assert.isTrue(
+      (yield* orchestrator.getThreadProjection(parent)).subagents.every(
+        (task) => task.completionDelivery?.state !== "disposed",
+      ),
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("materializes a deferred Steer task when the message starts a separate turn", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const parent = ThreadId.make("thread:deferred-fallback");
+    yield* createWatchingThread(parent, 1);
+    yield* send(parent, "Delegate", "start_immediately");
+    const child = yield* delegate(parent, "Original");
+    const original = (yield* orchestrator.getThreadProjection(child)).runs[0]!;
+    const owner = (yield* orchestrator.getThreadProjection(parent)).runs[0]!;
+    const steer = () =>
+      threads.sendToThread({
+        projectId: ProjectId.make("project:thread-stop"),
+        threadId: child,
+        commandId: CommandId.make("command:deferred-fallback"),
+        messageId: MessageId.make("message:deferred-fallback"),
+        senderThreadId: parent,
+        senderRunId: owner.id,
+        text: "Follow up",
+        attachments: [],
+        mode: "steer",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+    const deferred = yield* steer();
+    assert.equal(deferred.steerTargetTaskId, original.delegatedTaskId);
+    assert.isUndefined(deferred.run.delegatedTaskId);
+
+    const now = yield* DateTime.now;
+    yield* projections.apply({
+      type: "run.updated",
+      id: EventId.make("event:deferred-fallback:original-finished"),
+      threadId: child,
+      runId: original.id,
+      occurredAt: now,
+      payload: { ...original, status: "completed", startedAt: now, completedAt: now },
+    });
+    yield* orchestrator.resumeThreadQueue(child);
+    const replay = yield* steer();
+    assert.equal(replay.run.id, deferred.run.id);
+    assert.isDefined(replay.run.delegatedTaskId);
+    assert.notEqual(replay.run.delegatedTaskId, original.delegatedTaskId);
+    const parentTasks = (yield* orchestrator.getThreadProjection(parent)).subagents;
+    assert.equal(parentTasks.length, 2);
+    assert.equal(
+      parentTasks.find((task) => task.id === replay.run.delegatedTaskId)?.runId,
+      owner.id,
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("settles each delegated turn after its own work, even with another turn queued", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const parent = ThreadId.make("thread:turn-settlement");
+    yield* createWatchingThread(parent, 1);
+    yield* send(parent, "Delegate", "start_immediately");
+    const child = yield* delegate(parent, "Original");
+    yield* send(child, "Follow-up", "queue_after_active");
+    const [original, followup] = (yield* orchestrator.getThreadProjection(child)).runs;
+    const now = yield* DateTime.now;
+    const finish = (run: NonNullable<typeof original>) =>
+      projections.apply({
+        type: "run.updated",
+        id: EventId.make(`event:finish:${run.id}`),
+        threadId: run.threadId,
+        runId: run.id,
+        occurredAt: now,
+        payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+      });
+    const status = (taskId: NodeId) =>
+      orchestrator
+        .getThreadProjection(parent)
+        .pipe(Effect.map(({ subagents }) => subagents.find((task) => task.id === taskId)?.status));
+
+    yield* finish(original!);
+    yield* orchestrator.recoverDelegatedTasks;
+    assert.equal(yield* status(original!.delegatedTaskId!), "completed");
+    assert.equal(yield* status(followup!.delegatedTaskId!), "pending");
+    yield* orchestrator.resumeThreadQueue(child);
+
+    const grandchild = yield* delegate(child, "Work owned by follow-up");
+    const nested = (yield* orchestrator.getThreadProjection(grandchild)).runs[0]!;
+    const activeFollowup = (yield* orchestrator.getThreadProjection(child)).runs.find(
+      (run) => run.id === followup!.id,
+    )!;
+    yield* finish(activeFollowup);
+    yield* orchestrator.recoverDelegatedTasks;
+    assert.equal(yield* status(followup!.delegatedTaskId!), "pending");
+    assert.isUndefined(
+      yield* orchestrator.getDelegatedTaskResultRun(child, followup!.delegatedTaskId!),
+    );
+
+    yield* finish(nested);
+    yield* orchestrator.recoverDelegatedTasks;
+    const cursor = yield* orchestrator.getThreadEventSequence(parent);
+    yield* orchestrator.dispatch({
+      type: "delegated_task.completion-delivery.acknowledge",
+      commandId: CommandId.make("command:acknowledge-nested"),
+      parentThreadId: child,
+      taskId: nested.delegatedTaskId!,
+      observedByRunId: activeFollowup.id,
+    });
+    const settled = yield* orchestrator
+      .streamStoredEventsFrom({
+        threadId: parent,
+        afterSequence: cursor,
+        eventType: "subagent.updated",
+      })
+      .pipe(
+        Stream.filter(
+          ({ event }) =>
+            event.type === "subagent.updated" &&
+            event.payload.id === followup!.delegatedTaskId &&
+            event.payload.status === "completed",
+        ),
+        Stream.runHead,
+      );
+    assert.isTrue(Option.isSome(settled));
+    assert.equal(yield* status(original!.delegatedTaskId!), "completed");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["original turn", "follow-up turn", "Stop with a held wake"] as const)(
+  "settles the delegated result through %s",
+  (turn) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const stopHeldWake = turn === "Stop with a held wake";
+      const parent = ThreadId.make("thread:completion-wake-result");
+      yield* createWatchingThread(parent, 1);
+      yield* send(parent, "Delegate", "start_immediately");
+      const child = yield* delegate(parent, "Original");
+      const latestChildRun = orchestrator
+        .getThreadProjection(child)
+        .pipe(Effect.map(({ runs }) => runs.at(-1)!));
+      const finish = (run: OrchestrationV2Run, text: string) =>
+        Effect.gen(function* () {
+          const now = yield* DateTime.now;
+          yield* sink.write({
+            events: [
+              {
+                type: "message.updated",
+                id: EventId.make(`event:answer:${run.id}`),
+                threadId: run.threadId,
+                occurredAt: now,
+                payload: {
+                  id: MessageId.make(`message:answer:${run.id}`),
+                  threadId: run.threadId,
+                  runId: run.id,
+                  nodeId: run.rootNodeId,
+                  role: "assistant",
+                  text,
+                  attachments: [],
+                  streaming: false,
+                  createdBy: "agent",
+                  creationSource: "provider",
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              },
+              {
+                type: "run.updated",
+                id: EventId.make(`event:finish:${run.id}`),
+                threadId: run.threadId,
+                runId: run.id,
+                occurredAt: now,
+                payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+              },
+            ],
+          });
+          yield* orchestrator.recoverDelegatedTasks;
+        });
+      if (turn === "follow-up turn") {
+        yield* finish(yield* latestChildRun, "The original result.");
+        yield* send(child, "Follow-up", "start_immediately");
+      }
+      const carryingRun = yield* latestChildRun;
+      const taskId = carryingRun.delegatedTaskId!;
+      const task = orchestrator
+        .getThreadProjection(parent)
+        .pipe(
+          Effect.map(({ subagents }) => subagents.find((candidate) => candidate.id === taskId)!),
+        );
+      const finishAndWake = (owner: OrchestrationV2Run, interim: string) =>
+        Effect.gen(function* () {
+          const nested = yield* delegate(child, `Work from Run ${owner.ordinal}`);
+          const nestedRun = (yield* orchestrator.getThreadProjection(nested)).runs[0]!;
+          yield* finish(owner, interim);
+          assert.isNull((yield* task).result);
+          yield* finish(nestedRun, "Nested result.");
+          const currentOwner = (yield* orchestrator.getThreadProjection(child)).runs.find(
+            (run) => run.id === owner.id,
+          )!;
+          const delivery = currentOwner.delegatedCompletion?.delivery;
+          assert.isNotNull(delivery);
+          if (stopHeldWake) yield* send(child, "An independent follow-up", "start_immediately");
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`command:completion-wake:${owner.id}`),
+            threadId: child,
+            messageId: delivery!.messageId,
+            text: "Read the delegated result.",
+            attachments: [],
+            dispatchMode: { type: "queue_after_active" },
+            createdBy: "agent",
+            creationSource: "server",
+            delegatedCompletion: {
+              parentRunId: owner.id,
+              generation: delivery!.generation,
+              taskIds: delivery!.taskIds,
+            },
+          });
+          if (!stopHeldWake) yield* orchestrator.resumeThreadQueue(child);
+          const wake = yield* latestChildRun;
+          assert.notEqual(wake.id, owner.id);
+          assert.isUndefined(wake.delegatedTaskId);
+          if (stopHeldWake) return wake;
+          assert.equal(wake.status, "starting");
+
+          // The result may be acknowledged while the wake is still composing its answer.
+          yield* orchestrator.dispatch({
+            type: "delegated_task.completion-delivery.acknowledge",
+            commandId: CommandId.make(`command:read-result:${wake.id}`),
+            parentThreadId: child,
+            taskId: nestedRun.delegatedTaskId!,
+            observedByRunId: wake.id,
+          });
+          yield* orchestrator.recoverDelegatedTasks;
+          assert.isUndefined(yield* orchestrator.getDelegatedTaskResultRun(child, taskId));
+          assert.isNull((yield* task).result);
+          return wake;
+        });
+
+      const firstWake = yield* finishAndWake(
+        carryingRun,
+        "An interim answer before reading the result.",
+      );
+      if (stopHeldWake) {
+        assert.equal(firstWake.status, "queued");
+        yield* projections.apply({
+          type: "run.updated",
+          id: EventId.make("event:completion-wake:hold"),
+          threadId: child,
+          occurredAt: yield* DateTime.now,
+          payload: { ...firstWake, queueHeld: true },
+        });
+        assert.isUndefined(yield* orchestrator.getDelegatedTaskResultRun(child, taskId));
+        yield* threads.cancelDelegatedTask({
+          threadId: parent,
+          taskId,
+          commandId: CommandId.make("command:stop-held-wake"),
+        });
+        assert.equal((yield* latestChildRun).status, "cancelled");
+        assert.equal((yield* task).completionDelivery?.state, "disposed");
+        assert.equal(
+          (yield* orchestrator.getDelegatedTaskResultRun(child, taskId))?.id,
+          carryingRun.id,
+        );
+        return;
+      }
+      const finalWake = yield* finishAndWake(
+        firstWake,
+        "An interim answer before the next result.",
+      );
+      const cursor = yield* orchestrator.getThreadEventSequence(parent);
+      yield* finish(finalWake, "The final answer after both results.");
+      const settled = yield* orchestrator
+        .streamStoredEventsFrom({
+          threadId: parent,
+          afterSequence: cursor,
+          eventType: "subagent.updated",
+        })
+        .pipe(
+          Stream.filter(
+            ({ event }) =>
+              event.type === "subagent.updated" &&
+              event.payload.id === taskId &&
+              event.payload.status === "completed",
+          ),
+          Stream.runHead,
+        );
+      assert.isTrue(Option.isSome(settled));
+      assert.equal((yield* task).result, "The final answer after both results.");
+      assert.equal(
+        (yield* orchestrator.getDelegatedTaskResultRun(child, taskId))?.id,
+        finalWake.id,
+      );
+      const { contextTransfers } = yield* orchestrator.getThreadProjection(parent);
+      assert.include(
+        contextTransfers.find((transfer) => transfer.subagentTaskId === taskId)?.sourcePoint,
+        { runId: finalWake.id },
+      );
+    }).pipe(Effect.provide(layerTest)),
+);
 
 it.effect("Stop ends watches, holds queues, and stops the delegated tasks under the thread", () =>
   Effect.gen(function* () {

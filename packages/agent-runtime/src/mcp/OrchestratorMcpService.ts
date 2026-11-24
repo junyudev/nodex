@@ -317,7 +317,7 @@ export function hasPendingChildRuns(
   childProjection: Pick<OrchestrationV2ThreadProjection, "runs">,
   delegatedRun: OrchestrationV2Run | undefined,
 ): boolean {
-  // Held queued runs wait for the user to resume the child; task_cancel holds them.
+  // A chat Stop holds queued Runs until the user resumes the conversation.
   return childProjection.runs.some(
     (run) =>
       !ThreadManagementService.isTerminalRunStatus(run.status) &&
@@ -327,7 +327,7 @@ export function hasPendingChildRuns(
 }
 
 function directAppOwnedChildTasks(
-  parent: Pick<OrchestrationV2ThreadProjection, "thread" | "subagents">,
+  parent: Pick<OrchestrationV2ThreadProjection, "thread" | "subagents" | "contextTransfers">,
   target: Pick<OrchestrationV2ThreadProjection, "thread" | "runs">,
   returnedRunIds: ReadonlySet<RunId | null>,
 ): ReadonlyArray<OrchestrationV2Subagent> {
@@ -350,6 +350,18 @@ function directAppOwnedChildTasks(
       .filter((run) => returnedRunIds.has(run.id))
       .map((run) => run.delegatedTaskId ?? original?.id),
   );
+  for (const transfer of parent.contextTransfers) {
+    if (
+      transfer.type === "subagent_result" &&
+      transfer.sourceThreadId === target.thread.id &&
+      transfer.targetThreadId === parent.thread.id &&
+      transfer.sourcePoint.runId !== undefined &&
+      returnedRunIds.has(transfer.sourcePoint.runId) &&
+      transfer.subagentTaskId !== undefined
+    ) {
+      taskIds.add(transfer.subagentTaskId);
+    }
+  }
   return parent.subagents.filter(
     (task) =>
       taskIds.has(task.id) &&
@@ -379,8 +391,11 @@ function taskResultTransfer(
       transfer.type === "subagent_result" &&
       transfer.sourceThreadId === task.childThreadId &&
       transfer.targetThreadId === parent.thread.id &&
-      ((transfer.sourcePoint.runId !== undefined && resultRunIds.has(transfer.sourcePoint.runId)) ||
-        (transfer.sourcePoint.runId === undefined && originalRun?.delegatedTaskId === undefined)),
+      (transfer.subagentTaskId !== undefined
+        ? transfer.subagentTaskId === task.id
+        : (transfer.sourcePoint.runId !== undefined &&
+            resultRunIds.has(transfer.sourcePoint.runId)) ||
+          (transfer.sourcePoint.runId === undefined && originalRun?.delegatedTaskId === undefined)),
   );
 }
 
@@ -1020,9 +1035,12 @@ export const make = Effect.gen(function* () {
         runOrder: "desc",
         runLimit: 1,
       });
+      const settledRun = yield* threadManagement
+        .getDelegatedTaskResultRun(task.childThreadId, task.id)
+        .pipe(Effect.mapError(threadManagementFailure));
       const runs = [
         ...new Map(
-          [originalRun, latest, terminal.runs[0], pending.runs[0]]
+          [originalRun, latest, terminal.runs[0], pending.runs[0], settledRun]
             .filter((run): run is OrchestrationV2Run => run !== undefined)
             .map((run) => [run.id, run]),
         ).values(),
@@ -1067,10 +1085,7 @@ export const make = Effect.gen(function* () {
       };
       const childRun = delegatedTaskRun(childControls, task);
       const terminalRun = latestTerminalResultRun(childControls, childRun);
-      const resultPending = yield* threadManagement
-        .delegatedTaskResultPending(task.childThreadId, task.id)
-        .pipe(Effect.mapError(threadManagementFailure));
-      const taskResultRun = latest;
+      const taskResultRun = settledRun ?? latest;
       const resultRunIds = [
         ...new Set(
           [taskResultRun?.id, terminalRun?.id].filter((id): id is RunId => id !== undefined),
@@ -1093,7 +1108,7 @@ export const make = Effect.gen(function* () {
         task,
         childRun,
         latestRun: taskResultRun,
-        resultPending,
+        resultPending: settledRun === undefined,
       });
       const derivedResult =
         task.result !== null
@@ -1450,9 +1465,21 @@ export const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError(threadManagementFailure))),
     };
+    const { contextTransfers } = yield* threadManagement
+      .getThreadRecords(callerParent.thread.id, ["contextTransfers"], {
+        contextTransferThreadIds: [input.threadId],
+        contextTransferRunIds: runIds,
+        contextTransferLimit: 16,
+      })
+      .pipe(Effect.mapError(threadManagementFailure));
     const taskIds = [
       ...new Set([
         ...(target.thread.forkedFrom?.type === "node" ? [target.thread.forkedFrom.nodeId] : []),
+        ...contextTransfers.flatMap((transfer) =>
+          transfer.type === "subagent_result" && transfer.subagentTaskId !== undefined
+            ? [transfer.subagentTaskId]
+            : [],
+        ),
         ...target.runs.flatMap((run) =>
           run.delegatedTaskId === undefined ? [] : [run.delegatedTaskId],
         ),
@@ -1460,13 +1487,9 @@ export const make = Effect.gen(function* () {
     ];
     const parent = {
       ...callerParent,
+      contextTransfers,
       ...(yield* threadManagement
-        .getThreadRecords(callerParent.thread.id, ["subagents", "contextTransfers"], {
-          subagentIds: taskIds,
-          contextTransferThreadIds: [input.threadId],
-          contextTransferRunIds: runIds,
-          contextTransferLimit: 16,
-        })
+        .getThreadRecords(callerParent.thread.id, ["subagents"], { subagentIds: taskIds })
         .pipe(Effect.mapError(threadManagementFailure))),
     };
     const returnedRunIds = new Set<RunId | null>(
@@ -1804,7 +1827,6 @@ export const make = Effect.gen(function* () {
     }),
     cancelTask: (scope, input) =>
       Effect.gen(function* () {
-        yield* readTask(scope, input.taskId);
         const childThreadId = yield* taskThread(scope, input.taskId);
         const { defaults } = yield* loadControllableThread(scope, childThreadId);
         const key =
@@ -1991,13 +2013,12 @@ export const make = Effect.gen(function* () {
                 : dispatchFailure(error),
             ),
           );
+        const taskId = result.run.delegatedTaskId ?? result.steerTargetTaskId;
         return {
           threadId: input.threadId,
           messageId,
           runId: result.run.id,
-          ...(result.run.delegatedTaskId === undefined
-            ? {}
-            : { taskId: result.run.delegatedTaskId }),
+          ...(taskId === undefined ? {} : { taskId }),
           ...(conversationTaskId === null ? {} : { conversationTaskId }),
           status: result.run.status,
           delivery: result.delivery,

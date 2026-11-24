@@ -649,6 +649,65 @@ it.effect("follows nested side-chat sources through a delegated conversation's r
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("held delegated follow-ups stop contributing work and wake activity until resumed", () =>
+  Effect.gen(function* () {
+    const { thread, run, task, apply, now } = yield* fixture;
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const parent = yield* thread("root:held");
+    const parentRun = yield* run(parent, "completed");
+    const child = yield* thread("child:held", parent);
+    yield* run(child, "interrupted");
+    const followup = yield* task(parentRun, "task:held", {
+      childThreadId: child,
+      status: "pending",
+      completionWake: "always",
+    });
+    yield* apply({
+      type: "turn-item.updated",
+      threadId: parent,
+      runId: parentRun.id,
+      payload: {
+        id: TurnItemId.make("item:held"),
+        type: "subagent",
+        threadId: parent,
+        runId: parentRun.id,
+        nodeId: followup.id,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "pending",
+        title: "Follow up",
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        subagentId: followup.id,
+        origin: "app_owned",
+        driver,
+        providerInstanceId,
+        childThreadId: child,
+        prompt: followup.prompt,
+        result: null,
+      },
+    });
+    const queued = yield* run(child, "queued", {
+      ordinal: 2,
+      delegatedTaskId: followup.id,
+      queueHeld: true,
+    });
+    const read = readRootActivity({ rootThreadIds: [parent] });
+    assert.deepEqual((yield* read).items, []);
+    assert.deepEqual((yield* store.getThreadShell(parent))?.pendingBackgroundTasks, []);
+    yield* run(child, "queued", { ...queued, queueHeld: false });
+    assert.include((yield* read).items[0], { rootThreadId: parent, hasWork: true });
+    assert.include((yield* store.getThreadShell(parent))?.pendingBackgroundTasks?.[0], {
+      kind: "subagent",
+      childThreadId: child,
+    });
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("keeps a finished parent in the background until its delegated result wakes it", () =>
   Effect.gen(function* () {
     const { thread, run, task, now, advanceThread } = yield* fixture;

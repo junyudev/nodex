@@ -19,7 +19,6 @@ import * as Effect from "effect/Effect";
 
 import {
   makeSubagentChildThread,
-  delegatedTaskProgress,
   subagentResultForRun,
   makeSubagentConversationArtifacts,
   endOrphanedNativeSubagent,
@@ -168,119 +167,6 @@ function taskFixture() {
   };
   return { projection: { ...projection, runs: [run] }, run };
 }
-
-it("reports the run that ended last, not the highest ordinal", () => {
-  const { projection, run } = taskFixture();
-  // A restart continuation (ordinal 4) ran ahead of held queued runs 2 and 3.
-  const ended = (ordinal: number, completedAt: string): OrchestrationV2Run => ({
-    ...run,
-    id: RunId.make(`run:${ordinal}`),
-    ordinal,
-    completedAt: DateTime.makeUnsafe(completedAt),
-  });
-  const progress = delegatedTaskProgress({
-    ...projection,
-    runs: [
-      { ...run, status: "cancelled" },
-      ended(4, "2026-07-24T10:00:00.000Z"),
-      ended(2, "2026-07-24T10:05:00.000Z"),
-      ended(3, "2026-07-24T10:10:00.000Z"),
-    ],
-  });
-  assert.equal(progress.state, "result_available");
-  assert.equal(progress.resultRun?.ordinal, 3);
-});
-
-it("waits for nested work and retains the report across monitor acknowledgements", () => {
-  const { projection, run } = taskFixture();
-  assert.equal(
-    delegatedTaskProgress({ ...projection, subagents: [{ status: "running" }] }).state,
-    "waiting_for_children",
-  );
-  assert.equal(
-    delegatedTaskProgress({ ...projection, subagents: [{ status: "completed" }] }).state,
-    "result_available",
-  );
-  assert.equal(
-    delegatedTaskProgress({ ...projection, subagents: [{ status: "idle" }] }).state,
-    "result_available",
-  );
-  for (const state of ["pending", "claimed"] as const) {
-    assert.equal(
-      delegatedTaskProgress({
-        ...projection,
-        subagents: [{ status: "completed", completionDelivery: { state, observedByRunId: null } }],
-      }).state,
-      "waiting_for_children",
-    );
-  }
-  for (const state of ["acknowledged", "delivered", "disposed"] as const) {
-    assert.equal(
-      delegatedTaskProgress({
-        ...projection,
-        subagents: [{ status: "completed", completionDelivery: { state, observedByRunId: null } }],
-      }).state,
-      "result_available",
-    );
-  }
-  assert.equal(
-    delegatedTaskProgress({
-      ...projection,
-      providerThreads: [
-        { pendingBackgroundTasks: [{ taskId: "background-audit", kind: "command" }] },
-      ],
-    }).state,
-    "waiting_for_children",
-  );
-  const pending = {
-    ...run,
-    id: RunId.make("followup"),
-    ordinal: 2,
-    status: "queued" as const,
-    startedAt: null,
-  };
-  assert.equal(delegatedTaskProgress({ ...projection, runs: [run, pending] }).state, "working");
-  // Stop or a restart holds queued wakes for the user; they are not work the task owes.
-  const cancelled = { ...run, status: "cancelled" as const };
-  const held = delegatedTaskProgress({
-    ...projection,
-    runs: [cancelled, { ...pending, queueHeld: true }],
-  });
-  assert.equal(held.state, "result_available");
-  assert.equal(held.resultRun?.id, cancelled.id);
-  const report = { ...pending, status: "completed" as const, startedAt: parentCreatedAt };
-  const monitor = { ...report, id: RunId.make("monitor"), ordinal: 3 };
-  const artifacts = makeSubagentConversationArtifacts({
-    messageId: MessageId.make("monitor-message"),
-    turnItemId: TurnItemId.make("monitor-item"),
-    threadId: parentThreadId,
-    rootNodeId: NodeId.make("root"),
-    providerThreadId: null,
-    providerTurnId: null,
-    nativeItemRef: null,
-    role: "user",
-    text: "Monitor update",
-    ordinal: 3,
-    now: childCreatedAt,
-  });
-  const progress = delegatedTaskProgress({
-    ...projection,
-    runs: [run, report, monitor],
-    messages: [
-      {
-        ...artifacts.message,
-        runId: monitor.id,
-        notification: {
-          source: { kind: "monitor" },
-          outcome: "updated",
-          summary: "Monitor update",
-        },
-      },
-    ],
-  });
-  assert.equal(progress.state, "result_available");
-  assert.equal(progress.resultRun?.id, report.id);
-});
 
 it("exposes the provider failure rather than a progress message from the failed run", () => {
   const { projection, run } = taskFixture();

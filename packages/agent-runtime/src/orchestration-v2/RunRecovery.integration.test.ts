@@ -205,7 +205,7 @@ const withRecovery = <A, E>(
             dispatch: orchestrator.dispatch,
             getTaskOwner: orchestrator.getTaskOwner,
             getThreadRecords: orchestrator.getThreadRecords,
-            delegatedTaskResultPending: orchestrator.delegatedTaskResultPending,
+            getDelegatedTaskResultRun: orchestrator.getDelegatedTaskResultRun,
           });
         }),
       ).pipe(Layer.provide(runtime));

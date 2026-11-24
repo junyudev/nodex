@@ -14,7 +14,7 @@ import * as Runtime from "./Runtime.ts";
 import * as Service from "./Service.ts";
 
 it.live(
-  "tasks.cancel stops a restart-cut child awaiting continuation and returns cancel_requested",
+  "tasks.cancel settles a restart-cut child without waiting for its parked continuation",
   () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -121,16 +121,19 @@ it.live(
               },
             ],
           });
-          expect(yield* orchestrator.delegatedTaskResultPending(child.thread.id, task.id)).toBe(
-            true,
-          );
+          expect(
+            yield* orchestrator.getDelegatedTaskResultRun(child.thread.id, task.id),
+          ).toBeUndefined();
           expect(
             yield* request("tasks.cancel", {
               threadId: parentId,
               taskId: task.id,
               commandId: "command:cancel-restart-child",
             }),
-          ).toEqual({ taskId: task.id, status: "cancel_requested" });
+          ).toEqual({ taskId: task.id, status: "interrupted" });
+          expect(
+            yield* orchestrator.getDelegatedTaskResultRun(child.thread.id, task.id),
+          ).toBeDefined();
           const stopped = yield* orchestrator.getThreadRecords(child.thread.id, ["turnItems"], {
             turnItemTypes: ["run_interrupt_request"],
             turnItemRunIds: [run.id],
