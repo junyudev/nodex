@@ -19,7 +19,6 @@ import {
   selectComparisonBase,
 } from "./check-changed-record.ts";
 import { parseCheckArguments, runStep, runStepQueue } from "./check-changed.ts";
-import { findFileRestorations } from "./check-file-restorations.ts";
 
 const remote = "refs/remotes/origin/main";
 const local = "refs/heads/main";
@@ -37,7 +36,7 @@ function withRepository(
     root: string;
     git: (...args: string[]) => string;
     write: (name: string, content?: string | Buffer) => void;
-    commit: (subject?: string) => void;
+    commit: () => void;
   }) => void,
 ) {
   const generated = path.resolve(import.meta.dirname, "../../.generated");
@@ -50,15 +49,12 @@ function withRepository(
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, content);
   };
-  const commit = (subject = "test") => {
+  const commit = () => {
     git("add", ".");
-    git("commit", "-qm", subject);
+    git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "test");
   };
   try {
     git("init", "-q", "--initial-branch=main");
-    git("config", "user.name", "Test");
-    git("config", "user.email", "test@example.com");
-    git("config", "commit.gpgsign", "false");
     test({ root, git, write, commit });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -91,7 +87,7 @@ describe("changed-check comparison", () => {
       git("update-ref", remote, base);
       write("on-main.ts");
       commit();
-      expect(readChangedPaths(root)).toMatchObject({ base, ref: remote, files: ["on-main.ts"] });
+      expect(readChangedPaths(root)).toEqual({ base, ref: remote, files: ["on-main.ts"] });
 
       const localBase = git("rev-parse", "HEAD");
       git("switch", "-qc", "feature");
@@ -103,40 +99,11 @@ describe("changed-check comparison", () => {
       write("untracked.ts");
       rmSync(path.join(root, "deleted.ts"));
       const files = ["deleted.ts", "on-feature.ts", "staged.ts", "unstaged.ts", "untracked.ts"];
-      expect(readChangedPaths(root)).toMatchObject({ base: localBase, ref: local, files });
+      expect(readChangedPaths(root)).toEqual({ base: localBase, ref: local, files });
       expect(readChangedPaths(root, "origin/main").files).toEqual([...files, "on-main.ts"].sort());
       expect(() => readChangedPaths(root, "missing")).toThrow(
         "No merge base with HEAD for missing",
       );
-    });
-  });
-
-  it("skips restoration checks when Git history is shallow", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write("tracked.ts");
-      commit();
-      const shallowRoot = path.join(root, "shallow");
-      git("clone", "-q", "--depth", "1", "--no-local", root, shallowRoot);
-      const comparison = readChangedPaths(shallowRoot);
-      expect(comparison).toMatchObject({ ref: remote, shallow: true });
-      expect(planCheckSteps(comparison, [], noFocusedTests).steps[0]).toMatchObject({
-        kind: "skip",
-        reason: expect.stringContaining("shallow history"),
-      });
-    });
-  });
-
-  it("invalidates a cached pass when just the committed history changes", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write("tracked.ts");
-      commit();
-      git("update-ref", remote, "HEAD");
-      write("tracked.ts", "different");
-      commit();
-      const key = () => readPassKey(root, readChangedPaths(root), undefined, {});
-      const original = key();
-      git("commit", "--amend", "-qm", "same files with a new commit message");
-      expect(key()).not.toBe(original);
     });
   });
 
@@ -169,135 +136,9 @@ describe("changed-check comparison", () => {
   });
 });
 
-describe("committed file restorations", () => {
-  it("detects a stale soft-reset squash in a linked branch and on main before pushing", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write("modified.ts", "old main content");
-      write("deleted by main.ts");
-      commit();
-      git("branch", "feature");
-
-      write("modified.ts", "new main content");
-      write("added-by-main.ts");
-      git("rm", "-q", "deleted by main.ts");
-      commit("fix: update main's files");
-      const base = git("rev-parse", "HEAD");
-      git("update-ref", remote, base);
-
-      const linked = path.join(root, "linked");
-      git("worktree", "add", "-q", linked, "feature");
-      write("linked/feature.ts");
-      git("-C", linked, "add", "feature.ts");
-      git("-C", linked, "commit", "-qm", "feat: make a change from stale main");
-      git("-C", linked, "reset", "--soft", "main");
-      git("-C", linked, "commit", "-qm", "feat: squash the feature");
-
-      const expected = [
-        {
-          hash: base,
-          subject: "fix: update main's files",
-          paths: ["added-by-main.ts", "deleted by main.ts", "modified.ts"],
-        },
-      ];
-      const feature = readChangedPaths(linked);
-      expect(feature.base).toBe(base);
-      expect(findFileRestorations(linked, base, feature.head)).toEqual(expected);
-
-      git("merge", "-q", "--ff-only", "feature");
-      const beforePush = readChangedPaths(root);
-      expect(beforePush.base).toBe(base);
-      expect(findFileRestorations(root, base, beforePush.head)).toEqual(expected);
-    });
-  });
-
-  it.each(["rebase", "edit after main"])("accepts an ordinary %s", (scenario) => {
-    withRepository(({ root, git, write, commit }) => {
-      write("tracked.ts", "old main content");
-      commit();
-      git("branch", "feature");
-      write("tracked.ts", "new main content");
-      commit();
-      const base = git("rev-parse", "HEAD");
-
-      if (scenario === "rebase") {
-        git("switch", "-q", "feature");
-        write("feature.ts");
-        commit();
-        git("rebase", "main");
-      } else {
-        git("switch", "-qc", "edit");
-        write("tracked.ts", "old main content");
-        commit("try the old content");
-        write("tracked.ts", "new branch content");
-        commit("keep the branch content");
-      }
-      expect(findFileRestorations(root, base, "HEAD")).toEqual([]);
-    });
-  });
-
-  it.each(["git revert", "conventional revert"])("accepts an explicit %s", (scenario) => {
-    withRepository(({ root, git, write, commit }) => {
-      write("tracked.ts", "old content");
-      commit();
-      write("tracked.ts", "new content");
-      commit("fix: change main");
-      const base = git("rev-parse", "HEAD");
-
-      if (scenario === "git revert") {
-        git("revert", "--no-edit", base);
-      } else {
-        write("tracked.ts", "old content");
-        commit(`revert: restore content before ${base.slice(0, 12)}`);
-      }
-      write("feature.ts");
-      commit();
-      expect(findFileRestorations(root, base, "HEAD")).toEqual([]);
-    });
-  });
-
-  it("accepts a named revert when more than one main commit overwrote the same content", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write("tracked.ts", "old content");
-      commit();
-      write("tracked.ts", "new content");
-      commit("fix: change main");
-      const original = git("rev-parse", "HEAD");
-      git("revert", "--no-edit", original);
-      write("tracked.ts", "new content");
-      commit("fix: repeat the change");
-      const base = git("rev-parse", "HEAD");
-      git("revert", "--no-edit", original);
-      expect(findFileRestorations(root, base, "HEAD")).toEqual([]);
-    });
-  });
-
-  it("requires the commit restoring a path to name the undone commit", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write("first.ts", "old main content");
-      write("second.ts", "old main content");
-      commit();
-      write("first.ts", "new main content");
-      write("second.ts", "new main content");
-      commit("fix: change both files");
-      const base = git("rev-parse", "HEAD");
-
-      write("first.ts", "old main content");
-      commit(`revert: restore first.ts before ${base}`);
-      write("second.ts", "old main content");
-      commit("feat: change second.ts");
-      expect(findFileRestorations(root, base, "HEAD")).toEqual([
-        { hash: base, subject: "fix: change both files", paths: ["second.ts"] },
-      ]);
-    });
-  });
-});
-
-const noFocusedTests = { unit: [], renderer: [] };
-const range = { base: "base", head: "head", shallow: false };
-
 describe("changed-check steps", () => {
-  const plan = (...files: string[]) =>
-    planCheckSteps({ ...range, files }, files, noFocusedTests).steps;
+  const none = { unit: [], renderer: [] };
+  const plan = (...files: string[]) => planCheckSteps(files, files, none).steps;
 
   it("uses test ownership to find changed and sibling tests in the default tier", () => {
     const changed = [
@@ -328,7 +169,7 @@ describe("changed-check steps", () => {
 
   it("preserves every selected CI group and puts focused checks before slow gates", () => {
     const files = ["package.json", "src/renderer/widget.tsx"];
-    const { steps } = planCheckSteps({ ...range, files }, files, {
+    const { steps } = planCheckSteps(files, files, {
       unit: [],
       renderer: ["src/renderer/widget.test.tsx"],
     });
@@ -338,8 +179,7 @@ describe("changed-check steps", () => {
         .staticGroups.filter((group) => group !== "types")
         .map((group) => `static ${group}`),
     ]);
-    expect(steps.slice(0, 6).map(({ name }) => name)).toEqual([
-      "committed file restorations",
+    expect(steps.slice(0, 5).map(({ name }) => name)).toEqual([
       "changed-file format/lint",
       "i18n",
       "focused unit",
@@ -370,7 +210,7 @@ describe("changed-check steps", () => {
       plan("AGENTS.md")
         .filter(({ kind }) => kind !== "skip")
         .map(({ name }) => name),
-    ).toEqual(["committed file restorations", "changed-file format/lint", "semantic"]);
+    ).toEqual(["changed-file format/lint", "semantic"]);
     const workflow = plan(".github/workflows/_static-checks.yml");
     expect(workflow.find(({ name }) => name === "app unit")?.kind).toBe("skip");
     expect(workflow.find(({ name }) => name === "static repository-contracts")?.kind).toBe(

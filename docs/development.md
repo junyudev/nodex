@@ -910,17 +910,11 @@ closest merge base, preferring `origin/main` on ties. On `main` it compares with
 Pass a ref explicitly with `vp run check:changed <ref>`. Staged, unstaged, and
 untracked paths all count.
 
-A frozen dependency install runs first. The first planned check compares
-committed file states at `HEAD` and the comparison base. It flags paths that
-return to the exact content or absence before any of the last 200 first-parent
-commits at the base. The commit restoring a path can declare an intentional undo
-with `git revert` or a `revert:` commit naming the original commit hash. The
-runner skips this check when the history is shallow.
-
-As slots become available, the runner starts changed-file format and lint, i18n,
-changed and sibling unit and renderer tests, the semantic gate, selected static
-groups, full cached unit and renderer suites, other selected application suites,
-the memoized Chromium suite, and Rust. The static
+A frozen dependency install runs first. As slots become available, the runner
+starts changed-file format and lint, i18n, changed and sibling unit and
+renderer tests, the semantic gate, selected static groups, full cached unit and
+renderer suites, other selected application suites, the memoized Chromium suite,
+and Rust. The static
 `types` lane runs `vp run check`. The local `ui-contracts` lane compiles changed
 renderer files. Vitest steps and Rust steps each run serially within their own
 group. Checks finish even when another step fails.

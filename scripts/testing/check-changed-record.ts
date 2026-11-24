@@ -16,7 +16,7 @@ const localMain = "refs/heads/main";
 const git = (cwd: string, args: readonly string[]) =>
   spawnSync("git", args, { cwd, maxBuffer: 128 * 1024 * 1024 });
 
-export function gitOutput(cwd: string, ...args: string[]): Buffer {
+function gitOutput(cwd: string, ...args: string[]): Buffer {
   const result = git(cwd, args);
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -52,10 +52,6 @@ export function mergePathLists(...lists: readonly string[]): string[] {
 
 export function readChangedPaths(root: string, explicitRef?: string) {
   const branch = git(root, ["symbolic-ref", "--quiet", "HEAD"]).stdout.toString().trim();
-  const [shallow, head] = gitOutput(root, "rev-parse", "--is-shallow-repository", "HEAD")
-    .toString()
-    .trim()
-    .split("\n");
   const { base, ref } = selectComparisonBase(branch, explicitRef, (candidate) => {
     const rev = git(root, [
       "rev-parse",
@@ -65,22 +61,24 @@ export function readChangedPaths(root: string, explicitRef?: string) {
       candidate + "^{commit}",
     ]);
     if (rev.status !== 0) return undefined;
-    const result = git(root, ["merge-base", head, rev.stdout.toString().trim()]);
+    const result = git(root, ["merge-base", "HEAD", rev.stdout.toString().trim()]);
     if (result.status !== 0) return undefined;
     const base = result.stdout.toString().trim();
     const ahead = Number(
-      gitOutput(root, "rev-list", "--count", `${base}..${head}`).toString().trim(),
+      gitOutput(root, "rev-list", "--count", base + "..HEAD")
+        .toString()
+        .trim(),
     );
     return { base, ahead };
   });
   const diff = ["diff", "--name-only", "--no-renames", "-z"];
   const files = mergePathLists(
-    gitOutput(root, ...diff, base, head, "--").toString(),
-    gitOutput(root, ...diff, "--cached", head, "--").toString(),
+    gitOutput(root, ...diff, base, "HEAD", "--").toString(),
+    gitOutput(root, ...diff, "--cached", "HEAD", "--").toString(),
     gitOutput(root, ...diff, "--").toString(),
     gitOutput(root, "ls-files", "--others", "--exclude-standard", "-z", "--").toString(),
   );
-  return { base, ref, head, shallow: shallow === "true", files };
+  return { base, ref, files };
 }
 
 export const passKey = (inputs: readonly unknown[]) =>
@@ -104,7 +102,7 @@ const validationEnvironment =
 
 export function readPassKey(
   root: string,
-  { base, ref, head, shallow, files }: ReturnType<typeof readChangedPaths>,
+  { base, ref, files }: ReturnType<typeof readChangedPaths>,
   explicitRef: string | undefined,
   env: NodeJS.ProcessEnv,
 ) {
@@ -125,8 +123,6 @@ export function readPassKey(
     process.version,
     base,
     ref,
-    head,
-    shallow,
     explicitRef,
     digest(gitOutput(root, ...diff, base, "--")),
     digest(gitOutput(root, ...diff, "--cached", base, "--")),

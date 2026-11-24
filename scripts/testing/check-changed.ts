@@ -345,7 +345,7 @@ async function checkChanged(
     const focused = findFocusedTests(files, new Set(present), (directory) =>
       presentSiblings(root, directory),
     );
-    const { steps: plan, rustEnv } = planCheckSteps(comparison, present, focused);
+    const { steps: plan, rustEnv } = planCheckSteps(files, present, focused);
     const concurrency = validationConcurrency(availableParallelism(), process.availableMemory());
     steps.push(
       ...(await runStepQueue(plan, concurrency, signal, async (step, index) => {
