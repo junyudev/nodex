@@ -3,22 +3,15 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexCheckbox } from "@/components/ui/settings";
-import type { AutomationSourceFilter } from "@/lib/types";
+import type { AutomationEventFilter } from "@/lib/types";
 import { readSourceOptions } from "@/lib/sources";
 import { queryKeys } from "@/lib/query-keys";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { AutomationFieldRow, AutomationFieldTrigger } from "./automation-fields";
 
-export const DEFAULT_AUTOMATION_SOURCE_FILTER: AutomationSourceFilter = {
-  source_id: null,
-  repositories: [],
-  kinds: ["check_failed"],
-  labels: [],
-  actor_class: "any",
-};
 const NO_SOURCES: readonly { id: string; label: string }[] = [];
 const KINDS: readonly {
-  value: AutomationSourceFilter["kinds"][number];
+  value: AutomationEventFilter["events"][number];
   label: MessageDescriptor;
 }[] = [
   {
@@ -130,14 +123,14 @@ export function AutomationEventFields({
   onChange,
   sources = NO_SOURCES,
 }: {
-  value: AutomationSourceFilter;
+  value: AutomationEventFilter;
   disabled: boolean;
-  onChange: (value: AutomationSourceFilter) => void;
+  onChange: (value: AutomationEventFilter) => void;
   sources?: readonly { id: string; label: string }[];
 }) {
   const intl = useIntl();
   if (isRemoteSpace()) return <HostEventAutomations />;
-  const patch = (next: Partial<AutomationSourceFilter>) => onChange({ ...value, ...next });
+  const patch = (next: Partial<AutomationEventFilter>) => onChange({ ...value, ...next });
   return (
     <>
       <AutomationFieldRow
@@ -147,7 +140,7 @@ export function AutomationEventFields({
         })}
       >
         <NodexOptionPicker
-          value={value.source_id ?? "all"}
+          value={value.sourceId ?? "all"}
           options={[
             {
               value: "all",
@@ -164,7 +157,7 @@ export function AutomationEventFields({
             defaultMessage: "Source",
           })}
           disabled={disabled}
-          onValueChange={(v) => patch({ source_id: v === "all" ? null : v })}
+          onValueChange={(v) => patch({ sourceId: v === "all" ? null : v })}
           triggerButton={
             <AutomationFieldTrigger
               ariaLabel={intl.formatMessage({
@@ -173,7 +166,7 @@ export function AutomationEventFields({
               })}
               disabled={disabled}
             >
-              {sources.find((s) => s.id === value.source_id)?.label ??
+              {sources.find((s) => s.id === value.sourceId)?.label ??
                 intl.formatMessage({
                   id: "automations.automationEventFields.allGitHubSources",
                   defaultMessage: "All GitHub Sources",
@@ -218,13 +211,13 @@ export function AutomationEventFields({
           >
             <NodexCheckbox
               ariaLabel={intl.formatMessage(kind.label)}
-              checked={value.kinds.includes(kind.value)}
+              checked={value.events.includes(kind.value)}
               disabled={disabled}
               onCheckedChange={(checked) =>
                 patch({
-                  kinds: checked
-                    ? [...value.kinds, kind.value]
-                    : value.kinds.filter((v) => v !== kind.value),
+                  events: checked
+                    ? [...value.events, kind.value]
+                    : value.events.filter((v) => v !== kind.value),
                 })
               }
             />
@@ -239,7 +232,7 @@ export function AutomationEventFields({
         })}
       >
         <FilterText
-          key={(value.labels ?? []).join("\0")}
+          key={value.labels.join("\0")}
           label={intl.formatMessage({
             id: "automations.automationEventFields.labels",
             defaultMessage: "Labels",
@@ -248,7 +241,7 @@ export function AutomationEventFields({
             id: "automations.automationEventFields.anyLabel",
             defaultMessage: "Any label",
           })}
-          values={value.labels ?? []}
+          values={value.labels}
           disabled={disabled}
           onChange={(labels) => patch({ labels })}
         />
@@ -260,7 +253,7 @@ export function AutomationEventFields({
         })}
       >
         <NodexOptionPicker
-          value={value.actor_class ?? "any"}
+          value={value.actorClass}
           options={[
             {
               value: "any",
@@ -283,7 +276,7 @@ export function AutomationEventFields({
             defaultMessage: "Actors",
           })}
           disabled={disabled}
-          onValueChange={(v) => patch({ actor_class: v === "person" ? "person" : "any" })}
+          onValueChange={(v) => patch({ actorClass: v === "person" ? "person" : "any" })}
           triggerButton={
             <AutomationFieldTrigger
               ariaLabel={intl.formatMessage({
@@ -292,7 +285,7 @@ export function AutomationEventFields({
               })}
               disabled={disabled}
             >
-              {value.actor_class === "person"
+              {value.actorClass === "person"
                 ? intl.formatMessage({
                     id: "automations.automationEventFields.peopleOnly",
                     defaultMessage: "People only",

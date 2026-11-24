@@ -572,7 +572,7 @@ describe("Runtime application tool presentation", () => {
       status: "PAUSED",
       name: "Review the queue",
       prompt: "Review the queue before planning",
-      rrule: "FREQ=YEARLY",
+      trigger: { kind: "clock", rrule: "FREQ=YEARLY" },
       projectId: "project:chosen",
       cwds: ["/workspace"],
       executionEnvironment: "local",

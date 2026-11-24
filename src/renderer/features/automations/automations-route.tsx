@@ -292,7 +292,10 @@ function AutomationConversation({
               </ThreadMessageActionRow>
             </motion.div>
           </motion.div>
-          <AutomationRecentDecisions automationId={task.id} timezone={task.timezone} />
+          <AutomationRecentDecisions
+            automationId={task.id}
+            timezone={task.trigger.kind === "clock" ? task.trigger.timezone : undefined}
+          />
         </div>
       </div>
       <div className="mx-auto w-full max-w-(--thread-content-max-width) shrink-0 px-toolbar pb-4">

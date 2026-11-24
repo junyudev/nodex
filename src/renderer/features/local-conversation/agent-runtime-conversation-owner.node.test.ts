@@ -2294,7 +2294,7 @@ describe("Agent Runtime keyed transcript reads", () => {
       status: "PAUSED",
       name: "Follow up",
       prompt: "Check progress",
-      rrule: "FREQ=DAILY",
+      trigger: { kind: "clock", rrule: "FREQ=DAILY" },
       targetSessionId: "session:resolved",
     };
     const metadata: Extract<AgentTurnItem, { type: "dynamic_tool" }> = {

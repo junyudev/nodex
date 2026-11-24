@@ -16,7 +16,7 @@ describe("workbench automation templates", () => {
     expect(draft.projectId).toBeNull();
     expect(draft.name).toBe("Daily bug scan");
     expect(draft.prompt.includes("Scan recent commits")).toBe(true);
-    expect(draft.rrule).toBe("FREQ=DAILY;BYHOUR=9;BYMINUTE=0");
+    expect(draft.trigger).toMatchObject({ kind: "clock", rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0" });
     expect(draft.cwds.length).toBe(0);
   });
 

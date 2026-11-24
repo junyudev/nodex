@@ -22,7 +22,7 @@ describe("native Automation proposal card", () => {
       status: "PAUSED",
       name: "Follow up",
       prompt: "Check progress",
-      rrule: "FREQ=DAILY",
+      trigger: { kind: "clock", rrule: "FREQ=DAILY" },
       targetSessionId: "session:resolved",
     };
     const entry = (outputOmitted: boolean) => {
@@ -116,7 +116,7 @@ describe("native Automation proposal card", () => {
         kind: "heartbeat",
         name: "Follow up",
         prompt: "Check progress",
-        rrule: "FREQ=DAILY",
+        trigger: { kind: "clock", rrule: "FREQ=DAILY" },
         targetSessionId: "session:resolved",
         notificationPolicy: "failed_runs_only",
         ...(mode === "suggested_update"

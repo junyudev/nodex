@@ -2276,11 +2276,50 @@ export interface AutomationHeldDecision {
   missedCount: number;
 }
 
-export type AutomationSourceFilter =
-  import("@nodex/core-protocol").components["schemas"]["AutomationSourceFilter"];
+export type AutomationEventKind = CoreProtocolComponents["schemas"]["AutomationSourceEventKind"];
+export type AutomationActorClass = CoreProtocolComponents["schemas"]["AutomationActorFilter"];
+
+/** Selects GitHub Source Triggers. It never authorizes work or replaces the written condition. */
+export interface AutomationEventFilter {
+  /** null selects every Source in the Space. */
+  sourceId: string | null;
+  /** Empty selects every watched repository. */
+  repositories: string[];
+  events: AutomationEventKind[];
+  /** Empty leaves label evidence unfiltered. */
+  labels: string[];
+  /** `person` admits people only; `any` also admits bots and CI. */
+  actorClass: AutomationActorClass;
+}
+
+/** The clock of a clock Automation: an RRULE in an explicit IANA timezone. */
+export interface AutomationClockTrigger {
+  kind: "clock";
+  rrule: string;
+  timezone: string;
+  /** The next due instant; null while paused or deleted. */
+  nextRunAt: number | null;
+}
+
+/** The GitHub events an event Automation assesses. It has no schedule. */
+export interface AutomationEventTrigger {
+  kind: "event";
+  filter: AutomationEventFilter;
+}
+
+/** What starts an Automation: its clock, or matching GitHub events. Exactly one applies. */
+export type AutomationTrigger = AutomationClockTrigger | AutomationEventTrigger;
+
+export type AutomationTriggerInput =
+  | {
+      kind: "clock";
+      rrule: string;
+      /** Omitted keeps a saved clock's timezone on update, and otherwise uses the Host's. */
+      timezone?: string;
+    }
+  | AutomationEventTrigger;
 
 export interface Automation {
-  sourceCondition?: AutomationSourceFilter | null;
   id: string;
   scope: AutomationScope;
   automationRevision: number;
@@ -2292,7 +2331,7 @@ export interface Automation {
   mode: AutomationMode;
   ownerMemberId: string;
   conditionText: string;
-  timezone: string;
+  trigger: AutomationTrigger;
   /** A Page every run follows as standing instructions, and which each run's chat links to. */
   runbookPageId: string | null;
   /** The runbook Page's current title; null without a runbook or when the Page is gone. */
@@ -2300,7 +2339,6 @@ export interface Automation {
   heldDecision: AutomationHeldDecision | null;
   name: string;
   prompt: string;
-  rrule: string | null;
   model: string | null;
   reasoningEffort: AutomationReasoningEffort | null;
   serviceTier: string | null;
@@ -2308,7 +2346,6 @@ export interface Automation {
   cwds: string[];
   executionEnvironment: AutomationExecutionEnvironment;
   localEnvironmentConfigPath: string | null;
-  nextRunAt: number | null;
   lastRunAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -2337,7 +2374,7 @@ export interface AutomationDecisionsResponse {
 }
 
 export interface AutomationCreateInput {
-  sourceCondition?: AutomationSourceFilter | null;
+  trigger: AutomationTriggerInput;
   scope?: AutomationScope;
   kind: AutomationExecutionKind;
   projectId?: string | null;
@@ -2347,11 +2384,9 @@ export interface AutomationCreateInput {
   mode?: AutomationMode;
   ownerMemberId?: string;
   conditionText?: string;
-  timezone?: string;
   runbookPageId?: string | null;
   name: string;
   prompt?: string | null;
-  rrule?: string | null;
   model?: string | null;
   reasoningEffort?: AutomationReasoningEffort | null;
   serviceTier?: string | null;
@@ -3351,7 +3386,7 @@ export interface AutomationUpdateView {
     snapshot?: {
       kind: "cron" | "heartbeat";
       name: string;
-      rrule: string;
+      trigger: AutomationTrigger;
       mode?: AutomationMode;
       runbookPageId?: string | null;
     } | null;

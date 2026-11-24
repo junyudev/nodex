@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { z } from "zod";
 import { toolFailure, toolSuccess } from "../../main/app-tools/app-tool-result";
 import type { CodexCanonicalItem } from "../codex-conversation-state/codex-conversation-state";
+import { agentActivityV2DynamicAutomationUpdateItem } from "../codex-conversation-state/test-fixtures/agent-activity-v2-item-family-corpus";
 import { projectCodexCanonicalTurnItemViews } from "../codex-canonical-item-projector";
 import { projectNativeAutomationUpdate } from "./automation-projection";
 
@@ -14,7 +15,7 @@ const proposal = {
   status: "PAUSED",
   name: "Follow up",
   prompt: "Check progress",
-  rrule: "FREQ=DAILY",
+  trigger: { kind: "clock", rrule: "FREQ=DAILY" },
   targetSessionId: "session:resolved",
   notificationPolicy: null,
   mode: "run",
@@ -45,6 +46,17 @@ function item(overrides: Partial<McpItem> = {}): McpItem {
     ...overrides,
   };
 }
+
+const eventTrigger = {
+  kind: "event",
+  filter: {
+    sourceId: null,
+    repositories: [],
+    events: ["check_failed"],
+    labels: [],
+    actorClass: "any",
+  },
+};
 
 describe("native Automation result projection", () => {
   test("keeps canonical MCP identity and the validated result proposal", () => {
@@ -109,7 +121,7 @@ describe("native Automation result projection", () => {
             id: "automation-1",
             kind: "heartbeat",
             name: "Current task",
-            rrule: "FREQ=WEEKLY",
+            trigger: { kind: "clock", rrule: "FREQ=WEEKLY", timezone: "UTC", nextRunAt: null },
             mode: "ask_first",
             runbookPageId: "runbook-page",
           },
@@ -120,11 +132,55 @@ describe("native Automation result projection", () => {
       automationId: "automation-1",
       snapshot: {
         name: "Current task",
-        rrule: "FREQ=WEEKLY",
+        trigger: { kind: "clock", rrule: "FREQ=WEEKLY", timezone: "UTC", nextRunAt: null },
         mode: "ask_first",
         runbookPageId: "runbook-page",
       },
     });
     expect(projected?.proposal).toBeUndefined();
   });
+
+  test("projects event definitions and rejects mixed trigger fields", () => {
+    const trigger = eventTrigger;
+    const read = (value: unknown) =>
+      projectNativeAutomationUpdate(
+        item({
+          arguments: { operation: "view", id: "automation-1" },
+          result: nativeResult({
+            item: { id: "automation-1", kind: "cron", name: "Current task", trigger: value },
+          }),
+        }),
+      );
+
+    expect(read(trigger)?.result?.snapshot?.trigger).toEqual(trigger);
+    expect(read({ ...trigger, rrule: "FREQ=DAILY" })).toBeUndefined();
+  });
+});
+
+test("uses a deleted event Automation's trigger from the dynamic tool receipt", () => {
+  const snapshot = { kind: "cron", name: "Check failed builds", trigger: eventTrigger };
+  const receipt = { automationId: "automation-1", operation: "delete", deleteStatus: "deleted" };
+  const [view] = projectCodexCanonicalTurnItemViews({
+    threadId: "thread-1",
+    turnId: "turn-1",
+    items: [
+      {
+        ...agentActivityV2DynamicAutomationUpdateItem,
+        arguments: { operation: "delete", id: receipt.automationId },
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({ ...receipt, snapshot }),
+          },
+        ],
+      },
+    ],
+    observedAtMs: 1,
+    turnStatus: "completed",
+    commandExecutionStartedAtMsById: {},
+    interruptedCommandExecutionItemIds: [],
+  });
+
+  expect(view?.automationUpdate?.result).toEqual({ ...receipt, snapshot });
+  expect(view?.automationUpdate?.arguments).toMatchObject(snapshot);
 });

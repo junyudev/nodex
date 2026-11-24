@@ -33,11 +33,13 @@ beforeEach(() => {
 
 describe("Codex automation runtime", () => {
   test("returns complete automation mutation values without claiming LocalCommit evidence", async () => {
-    const created = await createAutomation({ kind: "cron", name: "Daily notes" });
+    const trigger = { kind: "clock", rrule: "FREQ=DAILY" } as const;
+    const created = await createAutomation({ kind: "cron", name: "Daily notes", trigger });
     const updated = await updateAutomation({
       id: "automation-created",
       kind: "cron",
       name: "Daily summary",
+      trigger,
       status: "ACTIVE",
     });
     const deleted = await deleteAutomation({ id: "automation-created" });
@@ -46,13 +48,14 @@ describe("Codex automation runtime", () => {
     expect(updated.item.id).toBe("automation-updated");
     expect(deleted).toMatchObject({ success: true, status: "deleted" });
     expect(invoke.mock.calls).toEqual([
-      ["automations:create", { kind: "cron", name: "Daily notes" }],
+      ["automations:create", { kind: "cron", name: "Daily notes", trigger }],
       [
         "automations:update",
         {
           id: "automation-created",
           kind: "cron",
           name: "Daily summary",
+          trigger,
           status: "ACTIVE",
         },
       ],

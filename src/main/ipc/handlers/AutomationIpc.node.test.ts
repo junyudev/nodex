@@ -17,7 +17,7 @@ const proposal: AutomationUpdateInput = {
   status: "ACTIVE",
   name: "Reviewed task",
   prompt: "Check progress",
-  rrule: "FREQ=DAILY",
+  trigger: { kind: "clock", rrule: "FREQ=DAILY" },
   targetSessionId: "session:original",
   notificationPolicy: null,
 };
@@ -27,7 +27,12 @@ function harness(revision: number, changeDuringPreparation = false) {
   const prepared: unknown[] = [];
   const updates: unknown[] = [];
   const committed: unknown[] = [];
-  const current = () => ({ ...proposal, automationRevision: currentRevision }) as Automation;
+  const current = () =>
+    ({
+      ...proposal,
+      trigger: { kind: "clock", rrule: "FREQ=DAILY", timezone: "UTC", nextRunAt: 100 },
+      automationRevision: currentRevision,
+    }) as Automation;
   const automations: Pick<AutomationApplication["Service"]["automations"], "get" | "update"> = {
     get: () => Effect.sync(current),
     update: (input, command) =>
@@ -69,6 +74,30 @@ function harness(revision: number, changeDuringPreparation = false) {
       ),
   };
 }
+
+it.effect("rejects an event trigger on a heartbeat before preparing it", () =>
+  Effect.gen(function* () {
+    const state = harness(4);
+    const result = yield* state
+      .run({
+        ...proposal,
+        trigger: {
+          kind: "event",
+          filter: {
+            sourceId: null,
+            repositories: [],
+            events: ["check_failed"],
+            labels: [],
+            actorClass: "any",
+          },
+        },
+      })
+      .pipe(Effect.flip);
+    expect(String(result.cause)).toMatch(/valid trigger/);
+    expect(state.prepared).toEqual([]);
+    expect(state.updates).toEqual([]);
+  }),
+);
 
 it.effect("rejects stale reviewed updates before preparation or mutation", () =>
   Effect.gen(function* () {

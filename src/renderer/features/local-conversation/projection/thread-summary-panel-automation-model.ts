@@ -31,10 +31,15 @@ export function buildThreadSummaryPanelAutomationRow({
   );
   if (!automation) return null;
 
+  // A heartbeat always continues its Session on a clock.
+  const { trigger } = automation;
   return {
     id: automation.id,
     name: automation.name,
-    scheduleSummary: formatAutomationRruleSummary(automation.rrule),
-    nextRunLabel: formatAutomationNextRunLabel(automation.nextRunAt, now),
+    scheduleSummary: trigger.kind === "clock" ? formatAutomationRruleSummary(trigger.rrule) : null,
+    nextRunLabel: formatAutomationNextRunLabel(
+      trigger.kind === "clock" ? trigger.nextRunAt : null,
+      now,
+    ),
   };
 }

@@ -13,6 +13,8 @@ import {
   parseWorkbenchAutomationCwds,
   resolveWorkbenchAutomationDraftModelSettings,
   validateWorkbenchAutomationDraft,
+  workbenchAutomationClockTrigger,
+  type WorkbenchAutomationDraft,
 } from "./workbench-automation-draft";
 
 const MODELS: CodexModelOption[] = [
@@ -52,6 +54,22 @@ const MODELS: CodexModelOption[] = [
   },
 ];
 
+const clockTrigger = {
+  ...workbenchAutomationClockTrigger("FREQ=DAILY"),
+  nextRunAt: new Date(2026, 6, 9, 9, 30).getTime(),
+} satisfies Automation["trigger"];
+
+const eventTrigger = {
+  kind: "event",
+  filter: {
+    sourceId: "source:github",
+    repositories: ["team/repo"],
+    events: ["check_failed"],
+    labels: ["ci"],
+    actorClass: "any",
+  },
+} satisfies Automation["trigger"];
+
 function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   return {
     id: "automation-1",
@@ -59,7 +77,7 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     scope: { kind: "space" },
     ownerMemberId: "member-owner",
     conditionText: "Every day",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    trigger: clockTrigger,
     projectId: null,
     notificationPolicy: null,
     mode: "run",
@@ -71,7 +89,6 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     targetSessionId: "thread-1",
     name: "Daily standup",
     prompt: "Check the daily standup thread.",
-    rrule: "FREQ=DAILY",
     model: null,
     reasoningEffort: null,
     serviceTier: null,
@@ -79,7 +96,6 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
-    nextRunAt: new Date(2026, 6, 9, 9, 30).getTime(),
     lastRunAt: null,
     createdAt: 100,
     updatedAt: 200,
@@ -87,7 +103,51 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   };
 }
 
+function makeEventAutomation(): Automation {
+  return makeAutomation({
+    kind: "cron",
+    targetSessionId: null,
+    projectId: "project",
+    cwds: ["/tmp/project"],
+    model: "gpt-5.5",
+    trigger: eventTrigger,
+    conditionText: "A check fails on main",
+  });
+}
+
 describe("workbench automation draft", () => {
+  test("builds event create and update inputs without clock fields", () => {
+    const draft = createWorkbenchAutomationDraft({ automation: makeEventAutomation() });
+
+    expect(draft.trigger).toEqual(eventTrigger);
+    for (const payload of [
+      buildAutomationCreateInput({ draft }),
+      buildAutomationUpdateInput({ draft }),
+    ]) {
+      expect(payload?.trigger).toEqual(eventTrigger);
+      const keys = new Set<string>();
+      JSON.stringify(payload, (key, value: unknown) => {
+        keys.add(key);
+        return value;
+      });
+      expect(
+        ["rrule", "timezone", "nextRunAt", "sourceCondition"].filter((key) => keys.has(key)),
+      ).toEqual([]);
+    }
+  });
+
+  test("a Heartbeat create input always starts with a clock draft", () => {
+    const draft = createWorkbenchAutomationDraftFromCreateInput({
+      kind: "heartbeat",
+      name: "Follow up",
+      prompt: "Check progress",
+      targetSessionId: "session:resolved",
+      trigger: eventTrigger,
+    });
+
+    expect(draft.trigger).toEqual(workbenchAutomationClockTrigger());
+  });
+
   test("editing a target retains the Automation's scope and observed revision", () => {
     const automation = makeAutomation({
       scope: { kind: "project", projectId: "scope-project" },
@@ -103,7 +163,7 @@ describe("workbench automation draft", () => {
     const automation = makeAutomation({
       mode: "ask_first",
       automationRevision: 7,
-      timezone: "Asia/Tokyo",
+      trigger: { ...clockTrigger, timezone: "Asia/Tokyo" },
     });
     const draft = createWorkbenchAutomationDraftFromUpdateInput({
       automation: automation,
@@ -114,14 +174,15 @@ describe("workbench automation draft", () => {
         status: "ACTIVE",
         name: automation.name,
         prompt: "Check the latest progress",
-        rrule: automation.rrule,
+        trigger: { kind: "clock", rrule: "FREQ=WEEKLY" },
         targetSessionId: automation.targetSessionId,
       },
     });
+    expect(draft.trigger).toEqual({ kind: "clock", rrule: "FREQ=WEEKLY", timezone: "Asia/Tokyo" });
     expect(buildAutomationUpdateInput({ draft })).toMatchObject({
       mode: "ask_first",
       ownerMemberId: automation.ownerMemberId,
-      timezone: "Asia/Tokyo",
+      trigger: { kind: "clock", rrule: "FREQ=WEEKLY", timezone: "Asia/Tokyo" },
       scope: automation.scope,
     });
   });
@@ -145,7 +206,7 @@ describe("workbench automation draft", () => {
       backendBinding: { driver: "claudeAgent", instanceId: "gateway" },
       name: "Review",
       prompt: "Check progress",
-      rrule: "FREQ=DAILY",
+      trigger: { kind: "clock", rrule: "FREQ=DAILY" },
       projectId: "project",
       cwds: ["/workspace"],
       executionEnvironment: "local",
@@ -190,7 +251,7 @@ describe("workbench automation draft", () => {
       targetSessionId: "session",
       name: "Follow up",
       prompt: "Check progress",
-      rrule: "FREQ=HOURLY",
+      trigger: { kind: "clock", rrule: "FREQ=HOURLY" },
       model: "unused",
     });
     expect(buildAutomationCreateInput({ draft })).toMatchObject({
@@ -213,7 +274,7 @@ describe("workbench automation draft", () => {
         executionEnvironment: "local",
         name: "Independent check",
         prompt: "Check progress",
-        rrule: "FREQ=DAILY",
+        trigger: { kind: "clock", rrule: "FREQ=DAILY" },
       },
       automation: makeAutomation({
         kind: "cron",
@@ -221,7 +282,6 @@ describe("workbench automation draft", () => {
         scope: { kind: "space" },
         ownerMemberId: "member-owner",
         conditionText: "Every day",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         projectId: "project:newer",
         cwds: ["/newer"],
         model: "newer-model",
@@ -246,7 +306,7 @@ describe("workbench automation draft", () => {
         kind: "heartbeat",
         name: "Follow up",
         prompt: "Check progress",
-        rrule: "FREQ=DAILY",
+        trigger: { kind: "clock", rrule: "FREQ=DAILY" },
         targetSessionId: "session:original",
         ...(notificationPolicy !== undefined ? { notificationPolicy } : {}),
       });
@@ -268,7 +328,7 @@ describe("workbench automation draft", () => {
         expectedRevision: 3,
         name: "Follow up",
         prompt: "Check progress",
-        rrule: "FREQ=DAILY",
+        trigger: { kind: "clock", rrule: "FREQ=DAILY" },
         targetSessionId: "session:original",
       },
       automation: makeAutomation({
@@ -276,7 +336,6 @@ describe("workbench automation draft", () => {
         scope: { kind: "space" },
         ownerMemberId: "member-owner",
         conditionText: "Every day",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         targetSessionId: "session:newer",
         notificationPolicy: "failed_runs_only",
       }),
@@ -295,7 +354,7 @@ describe("workbench automation draft", () => {
     draft.name = "  Weekly triage  ";
     draft.prompt = "  Triage the project queue.  ";
     draft.targetSessionId = " thread-alpha ";
-    draft.rrule = " FREQ=WEEKLY ";
+    draft.trigger = workbenchAutomationClockTrigger(" FREQ=WEEKLY ");
     draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     draft.model = "gpt-5.5";
@@ -306,7 +365,7 @@ describe("workbench automation draft", () => {
     expect(payload?.name).toBe("Weekly triage");
     expect(payload?.prompt).toBe("Triage the project queue.");
     expect(payload?.targetSessionId).toBe(null);
-    expect(payload?.rrule).toBe("FREQ=WEEKLY");
+    expect(payload?.trigger).toEqual(workbenchAutomationClockTrigger("FREQ=WEEKLY"));
     expect(JSON.stringify(payload?.cwds)).toBe(JSON.stringify(["/tmp/project"]));
     expect(payload?.model).toBe("gpt-5.5");
     expect(payload?.reasoningEffort).toBe("high");
@@ -382,12 +441,56 @@ describe("workbench automation draft", () => {
     expect(payload?.status).toBe("PAUSED");
   });
 
+  test("counts only editable clock trigger fields as draft changes", () => {
+    const clock = { ...workbenchAutomationClockTrigger("FREQ=DAILY"), timezone: "Asia/Tokyo" };
+    const trigger = { ...clock, nextRunAt: clockTrigger.nextRunAt };
+    const automation = makeAutomation({ trigger });
+    const draft = createWorkbenchAutomationDraft({ automation });
+
+    expect(isWorkbenchAutomationDraftDirty({ draft, existing: automation })).toBe(false);
+    expect(
+      isWorkbenchAutomationDraftDirty({
+        draft,
+        existing: { ...automation, trigger: { ...trigger, nextRunAt: null } },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkbenchAutomationDraftDirty({
+        draft: { ...draft, trigger: { ...clock, rrule: "FREQ=WEEKLY" } },
+        existing: automation,
+      }),
+    ).toBe(true);
+    expect(
+      isWorkbenchAutomationDraftDirty({
+        draft: { ...draft, trigger: { ...clock, timezone: "UTC" } },
+        existing: automation,
+      }),
+    ).toBe(true);
+  });
+
+  test("detects changes to a saved event filter", () => {
+    const automation = makeEventAutomation();
+    const draft = createWorkbenchAutomationDraft({ automation });
+
+    expect(isWorkbenchAutomationDraftDirty({ draft, existing: automation })).toBe(false);
+    const editedTrigger = {
+      ...eventTrigger,
+      filter: { ...eventTrigger.filter, labels: ["urgent"] },
+    };
+    expect(
+      isWorkbenchAutomationDraftDirty({
+        draft: { ...draft, trigger: editedTrigger },
+        existing: automation,
+      }),
+    ).toBe(true);
+  });
+
   test("accepts calendar RRULE text when building cron model updates", () => {
     const calendarRrule = "DTSTART;TZID=Asia/Shanghai:20260710T090000\nRRULE:FREQ=DAILY";
     const automation = makeAutomation({
       kind: "cron",
       targetSessionId: null,
-      rrule: calendarRrule,
+      trigger: { ...clockTrigger, rrule: calendarRrule },
       model: "gpt-5.5",
       reasoningEffort: "medium",
       projectId: "project",
@@ -405,12 +508,43 @@ describe("workbench automation draft", () => {
     });
 
     expect(validation.canSave).toBe(true);
-    expect(payload?.rrule).toBe(calendarRrule);
+    expect(payload?.trigger).toMatchObject({ kind: "clock", rrule: calendarRrule });
     expect(payload?.model).toBe("gpt-5.4");
     expect(payload?.reasoningEffort).toBe("high");
   });
 
-  test("validates required name, prompt, schedule, project, chat, and model", () => {
+  test.each(["", "INTERVAL=2"])("rejects a clock schedule without a frequency (%j)", (rrule) => {
+    const draft = createWorkbenchAutomationDraft({ automation: makeAutomation() });
+    draft.trigger = workbenchAutomationClockTrigger(rrule);
+
+    expect(validateWorkbenchAutomationDraft(draft)).toMatchObject({
+      canSave: false,
+      missingRequirements: ["schedule"],
+    });
+    expect(buildAutomationUpdateInput({ draft })).toBeNull();
+  });
+
+  test.each([
+    ["condition", { conditionText: " " }],
+    ["events", { trigger: { ...eventTrigger, filter: { ...eventTrigger.filter, events: [] } } }],
+    ["cwd", { projectId: null, cwds: [], executionEnvironment: "local" }],
+    ["cwd", { cwds: [] }],
+    ["workspace", { cwds: ["/tmp/first", "/tmp/second"] }],
+  ] satisfies Array<[string, Partial<WorkbenchAutomationDraft>]>)(
+    "requires %s for an event Automation (%j)",
+    (requirement, overrides) => {
+      const draft = createWorkbenchAutomationDraft({ automation: makeEventAutomation() });
+      const invalid = { ...draft, ...overrides };
+
+      expect(validateWorkbenchAutomationDraft(invalid)).toMatchObject({
+        canSave: false,
+        missingRequirements: [requirement],
+      });
+      expect(buildAutomationCreateInput({ draft: invalid })).toBeNull();
+    },
+  );
+
+  test("validates required name, prompt, project, chat, and model", () => {
     const draft = createWorkbenchAutomationDraft({ id: "automation-new" });
     draft.name = " ";
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
@@ -420,10 +554,6 @@ describe("workbench automation draft", () => {
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 
     draft.prompt = "Run the report.";
-    draft.rrule = "INTERVAL=2";
-    expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
-
-    draft.rrule = "FREQ=DAILY";
     draft.cwds = [];
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 
@@ -445,7 +575,7 @@ describe("workbench automation draft", () => {
 
   test("formats reference-style disabled save tooltips from missing requirements", () => {
     const draft = createWorkbenchAutomationDraft({ id: "automation-new" });
-    draft.rrule = "INTERVAL=2";
+    draft.trigger = workbenchAutomationClockTrigger("INTERVAL=2");
 
     expect(
       formatWorkbenchAutomationDraftSaveTooltip({
@@ -456,7 +586,7 @@ describe("workbench automation draft", () => {
 
     draft.name = "Weekly triage";
     draft.prompt = "Run the report.";
-    draft.rrule = "FREQ=DAILY";
+    draft.trigger = workbenchAutomationClockTrigger("FREQ=DAILY");
     draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     draft.model = "";
@@ -517,7 +647,7 @@ describe("workbench automation draft", () => {
     const initialDraft = createWorkbenchAutomationDraft({ id: "initial-id" });
     initialDraft.name = "Daily bug scan";
     initialDraft.prompt = "Scan recent commits.";
-    initialDraft.rrule = "FREQ=DAILY";
+    initialDraft.trigger = workbenchAutomationClockTrigger("FREQ=DAILY");
 
     const draft = {
       ...initialDraft,
@@ -551,6 +681,7 @@ test("an ACP task keeps its exact instance and sends only options its model adve
     backendBinding: { driver: "acpRegistry", instanceId: "qoder-work" },
     name: "Nightly triage",
     prompt: "Triage new issues",
+    trigger: { kind: "clock", rrule: "FREQ=DAILY" },
   });
   // No model is chosen for an ACP Agent; Codex's effort default never applies to it.
   expect(draft).toMatchObject({ model: "", reasoningEffort: "" });

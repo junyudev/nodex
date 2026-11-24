@@ -7,7 +7,7 @@ const heartbeat = {
   kind: "heartbeat",
   name: "Watch the build",
   prompt: "Check the build and report meaningful changes.",
-  rrule: "FREQ=MINUTELY;INTERVAL=30",
+  trigger: { kind: "clock", rrule: "FREQ=MINUTELY;INTERVAL=30" },
 };
 const cron = {
   ...heartbeat,
@@ -17,7 +17,55 @@ const cron = {
   cwds: ["/workspace/project-1"],
 };
 
+const eventTrigger = { kind: "event", filter: { events: ["check_failed"] } };
+
 describe("Automation tool input", () => {
+  it("accepts an event trigger without a schedule and fills the filter defaults", () => {
+    expect(
+      automationSchema.parse({
+        ...cron,
+        trigger: eventTrigger,
+        conditionText: "The failure is on main",
+        model: "reviewer",
+      }),
+    ).toMatchObject({
+      trigger: {
+        kind: "event",
+        filter: {
+          sourceId: null,
+          repositories: [],
+          events: ["check_failed"],
+          labels: [],
+          actorClass: "any",
+        },
+      },
+    });
+  });
+
+  it.each([
+    { ...cron, trigger: { ...eventTrigger, rrule: "FREQ=DAILY" } },
+    { ...cron, trigger: { ...eventTrigger, timezone: "UTC" } },
+    { ...cron, trigger: { kind: "clock", timezone: "UTC" } },
+    { ...heartbeat, trigger: eventTrigger },
+    { ...cron, rrule: "FREQ=DAILY" },
+    { ...cron, timezone: "UTC" },
+    { ...cron, sourceCondition: eventTrigger.filter },
+  ])("rejects invalid trigger combinations: %j", (input) => {
+    expect(automationSchema.safeParse(input).success).toBe(false);
+  });
+
+  it.each([
+    { field: "rrule", characters: 8192 },
+    { field: "timezone", characters: 256 },
+  ])("applies UTF-8 byte bounds to trigger.$field", ({ field, characters }) => {
+    const atLimit = { ...heartbeat.trigger, [field]: "é".repeat(characters) };
+    expect(automationSchema.safeParse({ ...heartbeat, trigger: atLimit }).success).toBe(true);
+
+    const overLimit = { ...atLimit, [field]: "é".repeat(characters + 1) };
+    const result = automationSchema.safeParse({ ...heartbeat, trigger: overLimit });
+    expect(result.error?.issues).toEqual([expect.objectContaining({ path: ["trigger", field] })]);
+  });
+
   it("separates Automation mode from the requested operation and retains clock authority", () => {
     for (const mode of ["dry_run", "ask_first", "run"] as const) {
       expect(
@@ -28,14 +76,14 @@ describe("Automation tool input", () => {
           ownerMemberId: "member:owner",
           scope: { kind: "space" },
           conditionText: "Every weekday at nine",
-          timezone: "Asia/Singapore",
+          trigger: { ...cron.trigger, timezone: "Asia/Singapore" },
         }),
       ).toMatchObject({
         operation: "suggested_create",
         mode,
         ownerMemberId: "member:owner",
         scope: { kind: "space" },
-        timezone: "Asia/Singapore",
+        trigger: { ...cron.trigger, timezone: "Asia/Singapore" },
       });
     }
     expect(automationSchema.safeParse({ ...cron, mode: "automatic" }).success).toBe(false);
@@ -152,7 +200,7 @@ describe("Automation tool input", () => {
       { ...heartbeat, name: "🦉".repeat(257) },
       { ...heartbeat, name: " " },
       { ...heartbeat, prompt: " " },
-      { ...heartbeat, rrule: " " },
+      { ...heartbeat, trigger: { ...heartbeat.trigger, rrule: " " } },
       { ...cron, model: "界".repeat(171) },
       { ...cron, scope: { kind: "project", projectId: "界".repeat(171) } },
       { ...cron, reasoningEffort: "界".repeat(22) },

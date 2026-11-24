@@ -960,10 +960,11 @@ _Avoid_: task, job, routing rule.
 ### Automation
 
 An Automation is a Core-owned standing instruction scoped to a Project or the Space.
-It has a Member Owner, a natural-language condition and action, an optional typed
-condition, execution target, mode, lifecycle and revision. A clock condition
-retains its schedule, explicit timezone and jitter salt. A heartbeat continues
-one stable Session; other clock Automations start new chats per configured folder.
+It has a Member Owner, a natural-language condition and action, a trigger, execution
+target, mode, lifecycle and revision. Its trigger is exactly one of a clock, which retains
+its schedule, explicit timezone and jitter salt and produces clock Triggers, or an event
+filter, which selects Source Triggers and has no schedule. A heartbeat continues one stable
+Session on a clock; other Automations start new chats per configured folder.
 
 Its mode is Dry run, Ask first or Run. Dry run records what Nodex would have
 done. Ask first holds an editable decision in the Owner's Inbox. Run starts under

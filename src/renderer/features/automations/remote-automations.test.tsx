@@ -5,11 +5,8 @@ import { installWindowApi } from "@/test/browser-globals";
 import { useAutomationsQuery } from "@/lib/use-automations-query";
 import { useAutomationRunsInbox } from "@/lib/use-automation-runs";
 import { WorkbenchAppRail } from "@/components/workbench/workbench-app-rail";
-import {
-  DEFAULT_AUTOMATION_SOURCE_FILTER,
-  AutomationEventFields,
-  AutomationSourceFields,
-} from "./automation-event-fields";
+import { DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER } from "@/components/workbench/workbench-automation-draft";
+import { AutomationEventFields, AutomationSourceFields } from "./automation-event-fields";
 
 vi.mock("@/lib/renderer-space", async (original) => ({
   ...(await original<typeof import("@/lib/renderer-space")>()),
@@ -61,7 +58,11 @@ test.each([
   await act(async () => {
     view = render(
       <TestQueryProvider>
-        <Fields value={DEFAULT_AUTOMATION_SOURCE_FILTER} disabled={false} onChange={vi.fn()} />
+        <Fields
+          value={DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER}
+          disabled={false}
+          onChange={vi.fn()}
+        />
       </TestQueryProvider>,
     );
     await Promise.resolve();

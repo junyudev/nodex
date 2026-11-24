@@ -324,7 +324,7 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         name: "Heartbeat",
         prompt: "Check for progress",
         mode: "run",
-        rrule: "FREQ=MINUTELY;INTERVAL=5",
+        trigger: { kind: "clock", rrule: "FREQ=MINUTELY;INTERVAL=5" },
         target_session_id: sessionId,
       } satisfies components["schemas"]["AutomationInput"];
       const heartbeatId = createUuidV7();
@@ -377,12 +377,15 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         projectId,
         cwds: [profile.projectsDirectory],
         executionEnvironment: "local",
-        sourceCondition: {
-          source_id: null,
-          repositories: ["nodex/scenario"],
-          kinds: ["check_failed"],
-          labels: [],
-          actor_class: "any",
+        trigger: {
+          kind: "event",
+          filter: {
+            sourceId: null,
+            repositories: ["nodex/scenario"],
+            events: ["check_failed"],
+            labels: [],
+            actorClass: "any",
+          },
         },
       });
       const coordinatorId = manifest.entityIdsByKey!.eventCoordinator!;
@@ -522,7 +525,21 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
           expect.arrayContaining([heartbeatId, clockId, eventId]),
         );
         for (const definition of definitions.window.items) {
-          expect(definition).toMatchObject({ status: "PAUSED", next_run_at_ms: null });
+          expect(definition.status).toBe("PAUSED");
+          if (definition.automation_id === eventId) {
+            expect(definition.trigger).toEqual({
+              kind: "event",
+              filter: {
+                source_id: null,
+                repositories: ["nodex/scenario"],
+                events: ["check_failed"],
+                labels: [],
+                actor_class: "any",
+              },
+            });
+          } else {
+            expect(definition.trigger).toMatchObject({ kind: "clock", next_run_at_ms: null });
+          }
         }
         expect((await core.automationRead(dueRead)).value).toMatchObject({
           plan: { due_now: false, work_token: null, next_wake_at_ms: null },

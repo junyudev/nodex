@@ -1,7 +1,21 @@
 import { getIntl } from "@/lib/i18n";
+import type { AutomationTrigger, AutomationTriggerInput } from "@/lib/types";
 import { parseAutomationRruleFields } from "./automation-rrule";
 
 const WEEKDAY_CODES = ["MO", "TU", "WE", "TH", "FR"];
+
+/** What starts an Automation, in a few words: its schedule or GitHub events. */
+export function formatAutomationTriggerSummary(
+  trigger: AutomationTrigger | AutomationTriggerInput | null | undefined,
+): string | null {
+  if (!trigger) return null;
+  if (trigger.kind === "event")
+    return getIntl().formatMessage({
+      id: "lib.automationDisplay.gitHubEvents",
+      defaultMessage: "GitHub events",
+    });
+  return formatAutomationRruleSummary(trigger.rrule);
+}
 
 export function formatAutomationRruleSummary(rrule: string | null): string | null {
   if (!rrule) return null;

@@ -11,11 +11,15 @@ import { CoreApplicationAgent } from "../../main/core-runtime/CoreApplicationAge
 import { CoreModules, type CoreModuleClients } from "../../main/core-runtime/CoreModules";
 import { coreRuntimeError } from "../../main/core-runtime/CoreRuntimeError";
 import { make } from "./AutomationApplication";
-import type {
-  CoreAutomation,
-  CoreAutomationRun,
-  CoreScheduledPageOccurrence,
+import {
+  projectAutomation,
+  toCoreAutomationInput,
+  type CoreAutomation,
+  type CoreAutomationRun,
+  type CoreScheduledPageOccurrence,
 } from "./AutomationProjection";
+
+const clockTrigger = { kind: "clock", rrule: "FREQ=DAILY;BYHOUR=9" } as const;
 
 const definition = (overrides: Partial<CoreAutomation> = {}): CoreAutomation => ({
   automation_id: "daily-report",
@@ -24,13 +28,12 @@ const definition = (overrides: Partial<CoreAutomation> = {}): CoreAutomation => 
   scope: { kind: "space" },
   owner_member_id: "member:owner",
   condition_text: "On the clock",
-  typed_condition: { kind: "clock", rrule: "FREQ=DAILY", timezone: "UTC", jitter_salt: "salt" },
   kind: "heartbeat",
   status: "ACTIVE",
   target_session_id: "session:source",
   name: "Daily Report",
   prompt: "Summarize the workspace.",
-  rrule: "FREQ=DAILY;BYHOUR=9",
+  trigger: { ...clockTrigger, timezone: "UTC", next_run_at_ms: 200 },
   model: "gpt-5",
   reasoning_effort: "medium",
   service_tier: null,
@@ -38,11 +41,70 @@ const definition = (overrides: Partial<CoreAutomation> = {}): CoreAutomation => 
   cwds: ["/workspace"],
   execution_environment: "worktree",
   local_environment_config_path: null,
-  next_run_at_ms: 200,
   last_run_at_ms: null,
   created_at_ms: 100,
   updated_at_ms: 100,
   ...overrides,
+});
+
+const scheduleKeys = new Set(["rrule", "timezone", "nextRunAt", "next_run_at_ms"]);
+const scheduleFields = (value: unknown): string[] => {
+  const keys: string[] = [];
+  const collectScheduleKeys = (key: string, field: unknown) => {
+    if (scheduleKeys.has(key)) keys.push(key);
+    return field;
+  };
+  JSON.stringify(value, collectScheduleKeys);
+  return keys;
+};
+
+it("projects an event Automation with default filters and no schedule fields", () => {
+  const automation = projectAutomation(
+    definition({
+      kind: "cron",
+      target_session_id: null,
+      trigger: { kind: "event", filter: { events: ["check_failed"] } },
+    }),
+  );
+  assert.deepStrictEqual(automation.trigger, {
+    kind: "event",
+    filter: {
+      sourceId: null,
+      repositories: [],
+      events: ["check_failed"],
+      labels: [],
+      actorClass: "any",
+    },
+  });
+  assert.deepStrictEqual(scheduleFields(automation), []);
+});
+
+it("sends an event filter to Core without schedule fields", () => {
+  const input = toCoreAutomationInput({
+    kind: "cron",
+    name: "Check failed builds",
+    trigger: {
+      kind: "event",
+      filter: {
+        sourceId: "source-1",
+        repositories: ["nodex/scenario"],
+        events: ["check_failed"],
+        labels: ["build"],
+        actorClass: "person",
+      },
+    },
+  });
+  assert.deepStrictEqual(input.trigger, {
+    kind: "event",
+    filter: {
+      source_id: "source-1",
+      repositories: ["nodex/scenario"],
+      events: ["check_failed"],
+      labels: ["build"],
+      actor_class: "person",
+    },
+  });
+  assert.deepStrictEqual(scheduleFields(input), []);
 });
 
 const run = (overrides: Partial<CoreAutomationRun> = {}): CoreAutomationRun => ({
@@ -305,6 +367,7 @@ it.effect(
           {
             id: task.automation_id,
             kind: "heartbeat",
+            trigger: clockTrigger,
             status: "ACTIVE",
             name: "Updated",
             targetSessionId: "session:source",
@@ -374,6 +437,7 @@ it.effect("returns duplicate creation receipts without restoring stale Heartbeat
     );
     const input = {
       kind: "heartbeat" as const,
+      trigger: clockTrigger,
       name: "Daily Report",
       targetSessionId: "session:source",
     };
@@ -423,6 +487,7 @@ it.effect("replays create identity across fresh owners without reading mutable D
     );
     const input = {
       kind: "heartbeat" as const,
+      trigger: clockTrigger,
       name: "Daily Report",
       targetSessionId: "session:source",
     };
@@ -476,6 +541,7 @@ it.effect("replays complete Definition replacements with the original revision a
     const input = {
       id: "daily-report",
       kind: "cron" as const,
+      trigger: clockTrigger,
       status: "ACTIVE" as const,
       name: "Replacement",
     };
@@ -503,12 +569,10 @@ it.effect("replays complete Definition replacements with the original revision a
             scope: null,
             owner_member_id: null,
             condition_text: null,
-            source_condition: null,
-            timezone: null,
+            trigger: { ...clockTrigger, timezone: null },
             runbook_page_id: null,
             name: "Replacement",
             prompt: null,
-            rrule: null,
             model: null,
             reasoning_effort: null,
             service_tier: null,
@@ -590,7 +654,7 @@ it.effect("requires explicit command identities for ambient Agent Definition mut
       ),
       Effect.provideService(AutomationRoutingIndex, routingIndex()),
     );
-    const input = { kind: "cron" as const, name: "Daily Report" };
+    const input = { kind: "cron" as const, trigger: clockTrigger, name: "Daily Report" };
     const commands = [
       application.automations.create(input).pipe(Effect.asVoid),
       application.automations
@@ -635,6 +699,7 @@ it.effect("requires canonical Sessions for stable Heartbeat create and update co
     );
     const input = {
       kind: "heartbeat" as const,
+      trigger: clockTrigger,
       name: "Daily Report",
     };
     const createError = yield* Effect.flip(
@@ -674,6 +739,7 @@ it.effect("commits Definition and Run routing before mutations return", () =>
 
     const created = yield* application.automations.create({
       kind: "heartbeat",
+      trigger: clockTrigger,
       name: "Daily Report",
       prompt: "Summarize the workspace.",
       targetSessionId: "session:source",
@@ -732,12 +798,19 @@ it.effect.each([
         Effect.provideService(AutomationRoutingIndex, routingIndex()),
       );
       const created = yield* application.automations.create(
-        { kind: "cron", name: "ACP report", prompt: "Report changes", backendBinding: binding },
+        {
+          kind: "cron",
+          trigger: clockTrigger,
+          name: "ACP report",
+          prompt: "Report changes",
+          backendBinding: binding,
+        },
         { operationId: "acp:create" },
       );
       const updated = yield* application.automations.update({
         id: created.id,
         kind: "cron",
+        trigger: clockTrigger,
         status: "PAUSED",
         name: "Paused ACP report",
         prompt: "Report changes",
@@ -787,6 +860,7 @@ it.effect(
         application.automations.create(
           {
             kind: "cron",
+            trigger: clockTrigger,
             name: "Missing instance",
             backendBinding: { driver: "acpRegistry", instanceId: "" },
           },
@@ -1036,6 +1110,7 @@ it.effect("preserves an omitted notification preference and clears an explicit n
       name: saved.name,
       prompt: saved.prompt,
       kind: "heartbeat" as const,
+      trigger: clockTrigger,
       status: "ACTIVE" as const,
       targetSessionId: "session:source",
     };
@@ -1084,6 +1159,7 @@ it.effect("preserves Cron Project identity and uses the execution validation rea
       id: saved.automation_id,
       name: saved.name,
       kind: "cron" as const,
+      trigger: clockTrigger,
       status: "ACTIVE" as const,
     };
     assert.strictEqual(

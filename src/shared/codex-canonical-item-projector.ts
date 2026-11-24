@@ -42,6 +42,7 @@ import { projectCodexParsedCommand } from "./codex-command-action-projection";
 import { projectCodexMcpToolCall } from "./codex-mcp-tool-call";
 import { readWebSearchSources } from "./codex-web-search";
 import { projectNativeAutomationUpdate } from "./nodex-app-tools/automation-projection";
+import { AutomationTriggerSchema } from "./schemas/automation";
 import { parseCodexDelegationText } from "./codex-delegation";
 import { decodeUntrustedAppMessage } from "./codex-untrusted-app-input";
 import { projectCodexReasoningSummary } from "./codex-reasoning-projection";
@@ -814,17 +815,18 @@ function parseAutomationResult(
           ? parsed.deleteStatus
           : undefined;
       const rawSnapshot = asJsonObject(parsed?.snapshot);
+      const trigger = AutomationTriggerSchema.safeParse(rawSnapshot?.trigger);
       const snapshot:
         | NonNullable<NonNullable<AutomationUpdateView["result"]>["snapshot"]>
         | undefined =
         rawSnapshot &&
         (rawSnapshot.kind === "cron" || rawSnapshot.kind === "heartbeat") &&
         typeof rawSnapshot.name === "string" &&
-        typeof rawSnapshot.rrule === "string"
+        trigger.success
           ? {
               kind: rawSnapshot.kind,
               name: rawSnapshot.name,
-              rrule: rawSnapshot.rrule,
+              trigger: trigger.data,
             }
           : undefined;
       return {
@@ -869,7 +871,7 @@ function projectAutomationUpdate(
         arguments: {
           ...args,
           ...(resolvedId ? { id: resolvedId } : {}),
-          ...(snapshot ? { kind: snapshot.kind, name: snapshot.name, rrule: snapshot.rrule } : {}),
+          ...snapshot,
         },
         result,
       },

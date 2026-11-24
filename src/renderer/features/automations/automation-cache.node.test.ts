@@ -12,7 +12,12 @@ const task: Automation = {
   scope: { kind: "space" },
   ownerMemberId: "member-owner",
   conditionText: "Every day",
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  trigger: {
+    kind: "clock",
+    rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    nextRunAt: 1,
+  },
   kind: "cron",
   status: "ACTIVE",
   projectId: "project",
@@ -24,7 +29,6 @@ const task: Automation = {
   heldDecision: null,
   name: "Bump dependency versions",
   prompt: "Follow the runbook.",
-  rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
   model: "gpt-6.1-sol",
   reasoningEffort: "high",
   serviceTier: null,
@@ -32,20 +36,47 @@ const task: Automation = {
   cwds: ["/repo"],
   executionEnvironment: "worktree",
   localEnvironmentConfigPath: null,
-  nextRunAt: 1,
   lastRunAt: null,
   createdAt: 0,
   updatedAt: 0,
 };
 
 describe("automation status updates", () => {
-  test("pausing restates the whole task, so it keeps its runbook and mode", () => {
+  test("pausing a clock task preserves its schedule and clears the optimistic next run", () => {
     const update = buildAutomationStatusUpdate(task, "PAUSED");
     expect(update).toMatchObject({ mode: "ask_first", runbookPageId: "page:runbook" });
+    expect(update.trigger).toStrictEqual({
+      kind: "clock",
+      rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
     expect(applyOptimisticAutomationUpdate([task], update)?.[0]).toMatchObject({
       status: "PAUSED",
+      trigger: { kind: "clock", nextRunAt: null },
       mode: "ask_first",
       runbookPageId: "page:runbook",
+    });
+  });
+
+  test("pausing an event task sends and retains its event filter", () => {
+    const trigger = {
+      kind: "event",
+      filter: {
+        sourceId: "source:github",
+        repositories: ["team/repo"],
+        events: ["check_failed"],
+        labels: ["ci"],
+        actorClass: "any",
+      },
+    } satisfies Automation["trigger"];
+    const eventTask: Automation = { ...task, trigger };
+
+    const update = buildAutomationStatusUpdate(eventTask, "PAUSED");
+
+    expect(update.trigger).toEqual(trigger);
+    expect(applyOptimisticAutomationUpdate([eventTask], update)?.[0]).toMatchObject({
+      status: "PAUSED",
+      trigger,
     });
   });
 });

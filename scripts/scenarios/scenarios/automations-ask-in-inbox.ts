@@ -75,7 +75,7 @@ const materializeAutomationsAskInInbox = async (
     projectId: project.id,
     cwds: [workspace],
     executionEnvironment: "worktree",
-    rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
+    trigger: { kind: "clock", rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0" },
     model: "gpt-6.1-sol",
     reasoningEffort: "high",
   } satisfies Omit<AutomationCreateInput, "name">;

@@ -128,7 +128,7 @@ function TaskActionsMenu({
               defaultMessage: "Pause",
             })}
       </NodexDropdownItem>
-      {!task.sourceCondition ? (
+      {task.trigger.kind === "clock" ? (
         <NodexDropdownItem
           disabled={busy}
           leftSlot={<AutomationRunNowIcon />}

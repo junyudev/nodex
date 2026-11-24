@@ -1,9 +1,6 @@
 import { agentDefinition } from "../../../shared/agents/registry";
 import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
-import {
-  DEFAULT_AUTOMATION_SOURCE_FILTER,
-  AutomationSourceFields,
-} from "./automation-event-fields";
+import { AutomationSourceFields } from "./automation-event-fields";
 import {
   useState,
   type Dispatch,
@@ -17,7 +14,7 @@ import { ChevronDownIcon } from "@/components/shared/icons";
 import { NodexSwitch } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import type { AgentModelOption, Project } from "@/lib/types";
+import type { AgentModelOption, AutomationEventFilter, Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLocalMember, useMembers } from "@/lib/members-runtime";
 import {
@@ -27,9 +24,12 @@ import {
 } from "@/components/workbench/workbench-automation-intelligence";
 import {
   defaultAutomationIntelligence,
+  defaultWorkbenchAutomationTrigger,
   DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
   resolveWorkbenchAutomationDraftModelSettings,
+  workbenchAutomationTriggerForKind,
   type WorkbenchAutomationDraft,
+  type WorkbenchAutomationTriggerDraft,
 } from "@/components/workbench/workbench-automation-draft";
 import {
   AutomationChatField,
@@ -100,7 +100,7 @@ function withNewChatEachRun(
     return {
       ...draft,
       kind: "heartbeat",
-      sourceCondition: null,
+      trigger: workbenchAutomationTriggerForKind("heartbeat", draft.trigger),
       projectId: null,
       cwds: [],
       model: "",
@@ -220,6 +220,31 @@ export function AutomationForm({
   const reducedMotion = useReducedMotion();
   const patch = (next: Partial<WorkbenchAutomationDraft>) =>
     onDraftChange((current) => ({ ...current, ...next }));
+  const patchClock = (next: { rrule?: string; timezone?: string }) =>
+    onDraftChange((current) =>
+      current.trigger.kind === "clock"
+        ? { ...current, trigger: { ...current.trigger, ...next } }
+        : current,
+    );
+  const patchEventFilter = (filter: AutomationEventFilter) =>
+    onDraftChange((current) =>
+      current.trigger.kind === "event"
+        ? { ...current, trigger: { kind: "event", filter } }
+        : current,
+    );
+  // Switching When keeps the other trigger's edits, so switching back restores them.
+  const [parkedTriggers, setParkedTriggers] = useState<
+    Partial<Record<WorkbenchAutomationTriggerDraft["kind"], WorkbenchAutomationTriggerDraft>>
+  >({});
+  const { trigger } = draft;
+  const switchTrigger = (kind: WorkbenchAutomationTriggerDraft["kind"]) => {
+    if (kind === trigger.kind) return;
+    setParkedTriggers((current) => ({ ...current, [trigger.kind]: trigger }));
+    patch({
+      trigger: parkedTriggers[kind] ?? defaultWorkbenchAutomationTrigger(kind),
+      mode: kind === "event" ? "dry_run" : draft.mode,
+    });
+  };
   const isCron = draft.kind === "cron";
   const submitOnModEnter = (event: KeyboardEvent) => {
     if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
@@ -295,7 +320,7 @@ export function AutomationForm({
             })}
           >
             <NodexOptionPicker
-              value={draft.sourceCondition ? "source" : "clock"}
+              value={trigger.kind}
               options={[
                 {
                   value: "clock",
@@ -305,7 +330,7 @@ export function AutomationForm({
                   }),
                 },
                 {
-                  value: "source",
+                  value: "event",
                   label: intl.formatMessage({
                     id: "automations.automationForm.somethingHappensOnGitHub",
                     defaultMessage: "Something happens on GitHub",
@@ -318,12 +343,7 @@ export function AutomationForm({
                 defaultMessage: "When",
               })}
               disabled={disabled}
-              onValueChange={(value) =>
-                patch({
-                  sourceCondition: value === "source" ? DEFAULT_AUTOMATION_SOURCE_FILTER : null,
-                  mode: value === "source" ? "dry_run" : draft.mode,
-                })
-              }
+              onValueChange={(value) => switchTrigger(value === "event" ? "event" : "clock")}
               triggerButton={
                 <AutomationFieldTrigger
                   ariaLabel={intl.formatMessage({
@@ -332,7 +352,7 @@ export function AutomationForm({
                   })}
                   disabled={disabled}
                 >
-                  {draft.sourceCondition
+                  {trigger.kind === "event"
                     ? intl.formatMessage({
                         id: "automations.automationForm.somethingHappensOnGitHub",
                         defaultMessage: "Something happens on GitHub",
@@ -346,19 +366,19 @@ export function AutomationForm({
             />
           </AutomationFieldRow>
         ) : null}
-        {draft.sourceCondition ? (
+        {trigger.kind === "event" ? (
           <AutomationSourceFields
-            value={draft.sourceCondition}
+            value={trigger.filter}
             disabled={disabled}
-            onChange={(sourceCondition) => patch({ sourceCondition })}
+            onChange={patchEventFilter}
           />
         ) : (
           <AutomationScheduleFields
-            rrule={draft.rrule}
-            timezone={draft.timezone}
+            rrule={trigger.rrule}
+            timezone={trigger.timezone}
             intervalStyle={isCron ? "default" : "heartbeat"}
             disabled={disabled}
-            onRruleChange={(rrule) => patch({ rrule })}
+            onRruleChange={(rrule) => patchClock({ rrule })}
           />
         )}
         <AutomationModeField
@@ -367,7 +387,7 @@ export function AutomationForm({
           canChooseRun={canChangeMode}
           onModeChange={(mode) => patch({ mode })}
         />
-        {!draft.sourceCondition ? (
+        {trigger.kind === "clock" ? (
           <AutomationFieldRow
             label={intl.formatMessage({
               id: "automations.automationForm.timeZone",
@@ -375,8 +395,8 @@ export function AutomationForm({
             })}
           >
             <NodexOptionPicker
-              value={draft.timezone}
-              options={[...new Set([draft.timezone, ...Intl.supportedValuesOf("timeZone")])].map(
+              value={trigger.timezone}
+              options={[...new Set([trigger.timezone, ...Intl.supportedValuesOf("timeZone")])].map(
                 (value) => ({ value, label: value.replaceAll("_", " ") }),
               )}
               search="filter"
@@ -386,7 +406,7 @@ export function AutomationForm({
               })}
               searchAriaLabel="Search time zones"
               disabled={disabled}
-              onValueChange={(timezone) => patch({ timezone })}
+              onValueChange={(timezone) => patchClock({ timezone })}
               triggerButton={
                 <AutomationFieldTrigger
                   ariaLabel={intl.formatMessage({
@@ -395,7 +415,7 @@ export function AutomationForm({
                   })}
                   disabled={disabled}
                 >
-                  {draft.timezone.replaceAll("_", " ")}
+                  {trigger.timezone.replaceAll("_", " ")}
                 </AutomationFieldTrigger>
               }
             />

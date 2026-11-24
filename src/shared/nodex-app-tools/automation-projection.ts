@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CodexCanonicalItem } from "../codex-conversation-state/codex-conversation-state";
 import type { AutomationUpdateView } from "../types";
+import { AutomationTriggerSchema } from "../schemas/automation";
 import { automationSchema } from "./automation-schema";
 
 const resultData = z.record(z.string(), z.unknown());
@@ -8,7 +9,7 @@ const definitionSnapshot = z.object({
   id: z.string().trim().min(1).max(512),
   kind: z.enum(["cron", "heartbeat"]),
   name: z.string(),
-  rrule: z.string().nullable(),
+  trigger: AutomationTriggerSchema,
   mode: z.enum(["dry_run", "ask_first", "run"]).optional(),
   runbookPageId: z.string().nullable().optional(),
 });
@@ -59,7 +60,7 @@ export function projectNativeAutomationUpdate(
       ...(operation === "delete" && (data.status === "deleted" || data.status === "not_found")
         ? { deleteStatus: data.status }
         : {}),
-      snapshot: { ...snapshot.data, rrule: snapshot.data.rrule ?? "" },
+      snapshot: snapshot.data,
     },
   };
 }

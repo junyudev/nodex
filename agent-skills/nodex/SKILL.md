@@ -69,7 +69,10 @@ result. Its origin address is fixed by the Page.
 ## Manage Automations
 
 Use `automations list` to discover Automations and `automations show <id>` before changing one.
-Clock Automations use an explicit timezone and an execution target. Dry run records
+Each Automation has one `trigger` and an execution target. A clock trigger
+`{"kind":"clock","rrule":…,"timezone":…}` runs on its schedule in an explicit timezone; an event
+trigger `{"kind":"event","filter":{…}}` assesses matching GitHub events and has no rrule,
+timezone or next run. Dry run records
 what would happen, Ask first waits in the Inbox, and Run starts work. Create or
 replace a definition with `automations create|update --file -`; consult that command's
 `--help-schema input` for its typed JSON. Updates, pause, resume and deletion
@@ -81,7 +84,7 @@ choose Run, or switch one to Run, only when the person asked for unattended runs
 wants them, and ask when unsure. Only an Automation's Owner can choose Run, change its mode,
 edit it while set to Run or run it now. For another Member's Automation, propose the change
 with `automations_update` using `suggested_create` or `suggested_update` for its Owner to
-review. Preserve scope, Owner, timezone and exact Agent binding in proposals.
+review. Preserve scope, Owner, trigger and exact Agent binding in proposals.
 `automations run <id>` creates one manual dispatch, or confirms an existing waiting
 Ask first decision; confirm a waiting decision only when the person asked you to. Reuse
 its idempotency key to retry the same dispatch.

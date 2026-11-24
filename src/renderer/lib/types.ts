@@ -499,4 +499,8 @@ export type PageCreateMutationResult =
       error: string;
     };
 
-export type { AutomationSourceFilter } from "../../shared/types";
+export type {
+  AutomationEventFilter,
+  AutomationTrigger,
+  AutomationTriggerInput,
+} from "../../shared/types";

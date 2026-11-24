@@ -1,6 +1,7 @@
 import { agentReadinessGuidance } from "../agent-runtime/AgentReadinessGuidance";
 import { agentDefinition, sameAgentDriver } from "../../shared/agents/registry";
 import { readModelPolicyFailure } from "../../shared/model-policy";
+import type { AutomationCreateInput } from "../../shared/types";
 import {
   captureAppToolAuthority,
   readHostedAppToolSessionContext,
@@ -40,7 +41,9 @@ const AGENT_UNAVAILABLE_MESSAGE =
 const TARGET_SESSION_AGENT_UNAVAILABLE_MESSAGE =
   "The target Session is unavailable or its Agent is off or removed. Ask the user to check that Agent in Settings, or target another Session.";
 
-const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
+const definitionInput = (
+  request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>,
+): AutomationCreateInput => {
   if (request.operation === "update" || request.operation === "suggested_update") {
     const {
       operation: _mode,
@@ -206,7 +209,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             AGENT_UNAVAILABLE,
             agentReadinessGuidance(provider) ?? AGENT_UNAVAILABLE_MESSAGE,
           );
-        const model = "model" in fields ? fields.model : null;
+        const model = fields.model;
         if (model && !provider.models.some((candidate) => candidate.slug === model))
           return toolFailure(
             "automation_model_unavailable",
@@ -214,7 +217,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           );
       }
       const policyInstanceId = backendBinding.instanceId;
-      const policyModel = ("model" in fields ? fields.model : null) ?? current?.model;
+      const policyModel = fields.model ?? current?.model;
       if (
         policyInstanceId &&
         Option.isSome(runtime) &&

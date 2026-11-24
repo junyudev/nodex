@@ -45,7 +45,7 @@ describe("automations/ask-in-inbox scenario", () => {
           mode: "ask_first",
           cwds: [context.profile.projectsDirectory.replaceAll("\\", "/")],
           executionEnvironment: "worktree",
-          rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
+          trigger: { kind: "clock", rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0" },
           runbookPageId: manifest.pageIdsByKey.dependencyPolicy,
           runbookTitle: "Dependency policy",
           heldDecision: { pageId: manifest.pageIdsByKey.bumpDependencies, missedCount: 2 },

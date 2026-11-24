@@ -1,6 +1,7 @@
 import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
-import { formatAutomationRruleSummary } from "../../../../lib/automation-display";
+import { formatAutomationTriggerSummary } from "../../../../lib/automation-display";
+import { automationTriggerInputSchema } from "../../../../../shared/nodex-app-tools/automation-schema";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
 import {
   readCreatedThreadActivityResult,
@@ -14,6 +15,7 @@ import type {
   AutomationExecutionKind,
   AutomationReasoningEffort,
   AutomationStatus,
+  AutomationTriggerInput,
   AutomationUpdateInput,
 } from "../../../../lib/types";
 import { humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
@@ -375,7 +377,7 @@ export interface AutomationUpdateToolResult {
   snapshot: {
     kind: AutomationExecutionKind | null;
     name: string | null;
-    rrule: string | null;
+    trigger: AutomationTriggerInput | null;
   } | null;
 }
 
@@ -506,7 +508,7 @@ function parseAutomationUpdateToolResultSnapshot(
   return {
     kind: normalizeAutomationKind(snapshot.kind),
     name: normalizeOptionalString(snapshot.name),
-    rrule: normalizeOptionalString(snapshot.rrule),
+    trigger: parseAutomationTriggerInput(snapshot.trigger),
   };
 }
 
@@ -607,14 +609,24 @@ function resolveAutomationUpdateDisplayMode(
   return result?.operation ?? argsMode;
 }
 
+/** A saved clock's read-only next run is not part of the trigger an Automation is given. */
+function parseAutomationTriggerInput(value: unknown): AutomationTriggerInput | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const { nextRunAt: _nextRunAt, ...trigger } = record;
+  const parsed = automationTriggerInputSchema.safeParse(trigger);
+  return parsed.success ? parsed.data : null;
+}
+
 function buildAutomationUpdateCreateInput(
   args: Record<string, unknown>,
 ): AutomationCreateInput | null {
   const kind = normalizeAutomationKind(args.kind);
   const name = normalizeOptionalString(args.name);
   const prompt = normalizeOptionalString(args.prompt);
-  const rrule = normalizeOptionalString(args.rrule);
-  if (!kind || !name || !prompt || !rrule) return null;
+  const trigger = parseAutomationTriggerInput(args.trigger);
+  if (!kind || !name || !prompt || !trigger) return null;
+  if (kind === "heartbeat" && trigger.kind !== "clock") return null;
   const scope = asRecord(args.scope);
   const projectId = normalizeOptionalString(scope?.projectId);
   const automationScope: AutomationCreateInput["scope"] =
@@ -634,7 +646,7 @@ function buildAutomationUpdateCreateInput(
     ...(mode ? { mode } : {}),
     ...(typeof args.ownerMemberId === "string" ? { ownerMemberId: args.ownerMemberId } : {}),
     ...(typeof args.conditionText === "string" ? { conditionText: args.conditionText } : {}),
-    ...(typeof args.timezone === "string" ? { timezone: args.timezone } : {}),
+    trigger,
     runbookPageId: normalizeOptionalString(args.runbookPageId) ?? null,
   };
 
@@ -646,7 +658,6 @@ function buildAutomationUpdateCreateInput(
       targetSessionId,
       name,
       prompt,
-      rrule,
       model: null,
       reasoningEffort: null,
       ...plan,
@@ -663,7 +674,6 @@ function buildAutomationUpdateCreateInput(
     kind,
     name,
     prompt,
-    rrule,
     projectId: normalizeOptionalString(args.projectId),
     cwds,
     executionEnvironment,
@@ -743,9 +753,10 @@ export function resolveAutomationUpdateRenderState(
       id: "conversation.dynamicToolCallUtils.untitledAutomation",
       defaultMessage: "Untitled automation",
     });
-  const rrule = normalizeOptionalString(args.rrule) ?? snapshot?.rrule ?? null;
   const schedule =
-    formatAutomationRruleSummary(rrule) ??
+    formatAutomationTriggerSummary(
+      parseAutomationTriggerInput(args.trigger) ?? snapshot?.trigger,
+    ) ??
     intl.formatMessage({
       id: "conversation.dynamicToolCallUtils.customSchedule",
       defaultMessage: "Custom schedule",

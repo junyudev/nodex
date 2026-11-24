@@ -23,7 +23,7 @@ it.effect(
             kind: "cron",
             name: "😀".repeat(256),
             prompt: "Update all dependencies",
-            rrule: "FREQ=DAILY",
+            trigger: { kind: "clock", rrule: "FREQ=DAILY" },
             mode: "ask_first",
             projectId: null,
             executionEnvironment: "local",

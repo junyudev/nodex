@@ -3,6 +3,7 @@ import type {
   AutomationRun,
   Automation,
   AutomationCreateInput,
+  AutomationTrigger,
   Estimate,
   PageOccurrence,
   PageOccurrenceUpdateInput,
@@ -46,6 +47,28 @@ export type CorePageOccurrenceSchedulePatch = Extract<
   { readonly kind: "update_page_occurrence" }
 >["updates"];
 
+const projectAutomationTrigger = (trigger: CoreAutomation["trigger"]): AutomationTrigger => {
+  if (trigger.kind === "clock") {
+    return {
+      kind: "clock",
+      rrule: trigger.rrule,
+      timezone: trigger.timezone,
+      nextRunAt: trigger.next_run_at_ms ?? null,
+    };
+  }
+  const { filter } = trigger;
+  return {
+    kind: "event",
+    filter: {
+      sourceId: filter.source_id ?? null,
+      repositories: [...(filter.repositories ?? [])],
+      events: [...filter.events],
+      labels: [...(filter.labels ?? [])],
+      actorClass: filter.actor_class ?? "any",
+    },
+  };
+};
+
 export const projectAutomation = (definition: CoreAutomation): Automation => {
   const backendBinding = definition.backend_binding;
   return {
@@ -63,10 +86,7 @@ export const projectAutomation = (definition: CoreAutomation): Automation => {
     mode: definition.mode,
     ownerMemberId: definition.owner_member_id,
     conditionText: definition.condition_text,
-    sourceCondition:
-      definition.typed_condition?.kind === "source" ? definition.typed_condition.filters : null,
-    timezone:
-      definition.typed_condition?.kind === "clock" ? definition.typed_condition.timezone : "UTC",
+    trigger: projectAutomationTrigger(definition.trigger),
     runbookPageId: definition.runbook_page_id ?? null,
     runbookTitle: definition.runbook_title ?? null,
     heldDecision: definition.held_decision
@@ -81,7 +101,6 @@ export const projectAutomation = (definition: CoreAutomation): Automation => {
       : null,
     name: definition.name,
     prompt: definition.prompt,
-    rrule: definition.rrule || null,
     model: definition.model ?? null,
     reasoningEffort: definition.reasoning_effort ?? null,
     serviceTier: normalizeCodexServiceTier(definition.service_tier),
@@ -89,7 +108,6 @@ export const projectAutomation = (definition: CoreAutomation): Automation => {
     cwds: [...definition.cwds],
     executionEnvironment: definition.execution_environment,
     localEnvironmentConfigPath: definition.local_environment_config_path ?? null,
-    nextRunAt: definition.next_run_at_ms ?? null,
     lastRunAt: definition.last_run_at_ms ?? null,
     createdAt: definition.created_at_ms,
     updatedAt: definition.updated_at_ms,
@@ -223,7 +241,28 @@ export const projectPageOccurrence = (occurrence: CoreScheduledPageOccurrence): 
   };
 };
 
-export const toCoreAutomationInput = (input: AutomationCreateInput) => {
+type CoreAutomationInput = Extract<AutomationIntent, { kind: "create_automation" }>["automation"];
+
+const toCoreAutomationTrigger = (
+  trigger: AutomationCreateInput["trigger"],
+): CoreAutomationInput["trigger"] => {
+  if (trigger.kind === "clock") {
+    return { kind: "clock", rrule: trigger.rrule, timezone: trigger.timezone ?? null };
+  }
+  const { filter } = trigger;
+  return {
+    kind: "event",
+    filter: {
+      source_id: filter.sourceId,
+      repositories: filter.repositories,
+      events: filter.events,
+      labels: filter.labels,
+      actor_class: filter.actorClass,
+    },
+  };
+};
+
+export const toCoreAutomationInput = (input: AutomationCreateInput): CoreAutomationInput => {
   const backendBinding = input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING;
   if (!AgentBackendBindingSchema.safeParse(backendBinding).success)
     throw new Error("Choose an available Agent for this Automation.");
@@ -236,8 +275,7 @@ export const toCoreAutomationInput = (input: AutomationCreateInput) => {
     mode: input.mode ?? null,
     owner_member_id: input.ownerMemberId ?? null,
     condition_text: input.conditionText ?? null,
-    source_condition: input.sourceCondition ?? null,
-    timezone: input.timezone ?? null,
+    trigger: toCoreAutomationTrigger(input.trigger),
     runbook_page_id: input.runbookPageId ?? null,
     project_id: input.projectId ?? null,
     target_session_id: input.targetSessionId ?? null,
@@ -247,7 +285,6 @@ export const toCoreAutomationInput = (input: AutomationCreateInput) => {
         : { kind: "set" as const, value: input.notificationPolicy },
     name: input.name,
     prompt: input.prompt ?? null,
-    rrule: input.rrule ?? null,
     model: input.model ?? null,
     reasoning_effort: input.reasoningEffort ?? null,
     service_tier: normalizeCodexServiceTier(input.serviceTier),

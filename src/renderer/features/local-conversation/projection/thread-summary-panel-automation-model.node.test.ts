@@ -2,6 +2,13 @@ import { describe, expect, test } from "vite-plus/test";
 import type { Automation } from "@/lib/types";
 import { buildThreadSummaryPanelAutomationRow } from "./thread-summary-panel-automation-model";
 
+const clockTrigger = {
+  kind: "clock",
+  rrule: "FREQ=DAILY",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  nextRunAt: new Date(2026, 6, 8, 9, 30).getTime(),
+} satisfies Automation["trigger"];
+
 function automation(overrides: Partial<Automation> = {}): Automation {
   return {
     id: "automation-1",
@@ -9,7 +16,7 @@ function automation(overrides: Partial<Automation> = {}): Automation {
     scope: { kind: "space" },
     ownerMemberId: "member-owner",
     conditionText: "Every day",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    trigger: clockTrigger,
     projectId: null,
     notificationPolicy: null,
     mode: "run",
@@ -21,7 +28,6 @@ function automation(overrides: Partial<Automation> = {}): Automation {
     targetSessionId: "thread-1",
     name: "Daily standup",
     prompt: "Check the daily standup thread.",
-    rrule: "FREQ=DAILY",
     model: null,
     reasoningEffort: null,
     serviceTier: null,
@@ -29,7 +35,6 @@ function automation(overrides: Partial<Automation> = {}): Automation {
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
-    nextRunAt: new Date(2026, 6, 8, 9, 30).getTime(),
     lastRunAt: null,
     createdAt: 10,
     updatedAt: 10,
@@ -73,12 +78,21 @@ describe("thread summary clock Automation projection", () => {
 
   test("summarizes common heartbeat schedules and falls back for custom rules", () => {
     const weekday = buildThreadSummaryPanelAutomationRow({
-      automations: [automation({ rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" })],
+      automations: [
+        automation({
+          trigger: { ...clockTrigger, rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" },
+        }),
+      ],
       sessionId: "thread-1",
       now: new Date(2026, 6, 7, 8, 0),
     });
     const custom = buildThreadSummaryPanelAutomationRow({
-      automations: [automation({ id: "custom", rrule: "FREQ=HOURLY", nextRunAt: null })],
+      automations: [
+        automation({
+          id: "custom",
+          trigger: { ...clockTrigger, rrule: "FREQ=HOURLY", nextRunAt: null },
+        }),
+      ],
       sessionId: "thread-1",
       now: new Date(2026, 6, 7, 8, 0),
     });

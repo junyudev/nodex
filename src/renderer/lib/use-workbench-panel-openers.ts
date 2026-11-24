@@ -1023,7 +1023,7 @@ export function useWorkbenchPanelOpeners({
           mode,
           input.updateInput?.id ?? automationId ?? "",
           input.createInput?.name ?? input.updateInput?.name ?? input.title,
-          input.createInput?.rrule ?? input.updateInput?.rrule ?? "",
+          JSON.stringify(input.createInput?.trigger ?? input.updateInput?.trigger ?? null),
         ].join(":");
       const tabId =
         mode === "suggested-create" || mode === "suggested-update"
