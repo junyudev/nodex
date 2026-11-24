@@ -12,6 +12,7 @@ import {
   verifyNightlyMacApplicationContracts,
   verifyPreMergeCiContract,
   verifyRustCacheOwnership,
+  verifyWindowsCiContracts,
 } from "./verify-ci-matrix-contracts";
 import { readWorkflow, repositoryRoot, requireRecord } from "./github-workflow-files";
 import { MAIN_CI_BASE_COMMAND } from "./main-ci-base";
@@ -32,6 +33,7 @@ const nightlyWorkflow = ({
     appTestSuites: APP_TEST_SUITES,
     dependencyKind: "source",
     docsOnly: false,
+    draft: false,
     landingOnly: false,
     protocolContracts: true,
     relatedPaths: [],
@@ -40,6 +42,7 @@ const nightlyWorkflow = ({
     rustMigration: true,
     staticGroups: STATIC_GROUPS,
     testMode: "full",
+    windowsChecks: false,
     ...gatePlanOverrides,
   };
   return {
@@ -57,13 +60,60 @@ const nightlyWorkflow = ({
 
 describe("CI matrix contracts", () => {
   test("rejects Main CI when its base resolver can be skipped", () => {
-    const base = { id: "base", run: MAIN_CI_BASE_COMMAND };
-    expect(() => verifyMainCiBaseContract({ jobs: { classify: { steps: [base] } } })).not.toThrow();
+    const workflow = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-main.yml"));
+    expect(() => verifyMainCiBaseContract(workflow)).not.toThrow();
+
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const classify = requireRecord(jobs.classify, "classify");
+    const base = { id: "base", run: MAIN_CI_BASE_COMMAND, if: "${{ inputs.full }}" };
     expect(() =>
       verifyMainCiBaseContract({
-        jobs: { classify: { steps: [{ ...base, if: "${{ inputs.full }}" }] } },
+        ...workflow,
+        jobs: { ...jobs, classify: { ...classify, steps: [base] } },
       }),
     ).toThrow("must always run the last-green comparison base resolver");
+
+    const concurrency = requireRecord(workflow.concurrency, "concurrency");
+    expect(() =>
+      verifyMainCiBaseContract({
+        ...workflow,
+        concurrency: { ...concurrency, "cancel-in-progress": true },
+      }),
+    ).toThrow("must let the active push finish");
+  });
+
+  test("requires Main CI to enforce Windows and publish failed verdicts", () => {
+    const workflow = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-main.yml"));
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const complete = requireRecord(jobs.complete, "complete");
+    expect(() =>
+      verifyMainCiBaseContract({
+        ...workflow,
+        jobs: {
+          ...jobs,
+          complete: {
+            ...complete,
+            needs: ["classify", "static-contracts", "rust-checks", "app-tests"],
+          },
+        },
+      }),
+    ).toThrow("Main CI complete dependencies");
+
+    const steps = complete.steps as Record<string, unknown>[];
+    expect(() =>
+      verifyMainCiBaseContract({
+        ...workflow,
+        jobs: {
+          ...jobs,
+          complete: {
+            ...complete,
+            steps: steps.map((step) =>
+              step.name === "Upload Main CI verdict" ? { ...step, if: "success()" } : step,
+            ),
+          },
+        },
+      }),
+    ).toThrow("must publish the verdict even when verification fails");
   });
 
   test("accepts exhaustive canonical nightly matrices", () => {
@@ -223,10 +273,30 @@ describe("pre-merge CI workflow", () => {
     expect(() =>
       verifyPreMergeCiContract({
         ...workflow,
-        jobs: { ...jobs, required: { ...required, needs: ["classify", "static-contracts"] } },
+        jobs: {
+          ...jobs,
+          required: {
+            ...required,
+            needs: ["classify", "static-contracts", "rust-checks", "app-tests"],
+          },
+        },
       }),
     ).toThrow("required dependencies");
   });
+});
+
+test("keeps the full Windows matrix off pull requests and main pushes", () => {
+  const full = readWorkflow(path.join(repositoryRoot, ".github/workflows/windows.yml"));
+  const slim = readWorkflow(path.join(repositoryRoot, ".github/workflows/_windows-checks.yml"));
+  expect(() => verifyWindowsCiContracts(full, slim)).not.toThrow();
+
+  const triggers = requireRecord(full.on, "Windows triggers");
+  expect(() =>
+    verifyWindowsCiContracts({ ...full, on: { ...triggers, pull_request: null } }, slim),
+  ).toThrow("Full Windows triggers");
+  expect(() =>
+    verifyWindowsCiContracts({ ...full, on: { ...triggers, push: { branches: ["main"] } } }, slim),
+  ).toThrow("Full Windows push branches");
 });
 
 describe("Nightly macOS application coverage", () => {

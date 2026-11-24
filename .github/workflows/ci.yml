@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -37,6 +38,7 @@ jobs:
         id: changes
         env:
           BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          DRAFT_PLAN: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'ci:full') }}
           FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
           HEAD_SHA: ${{ github.event_name != 'merge_group' && github.sha || github.event.merge_group.head_sha }}
         shell: bash
@@ -53,6 +55,9 @@ jobs:
           arguments=(--base "${base_sha}" --head "${HEAD_SHA}" --output "${RUNNER_TEMP}/classification.json")
           if [[ "${FORCE_FULL}" == "true" ]]; then
             arguments+=(--full)
+          fi
+          if [[ "${DRAFT_PLAN}" == "true" ]]; then
+            arguments+=(--draft)
           fi
           node --no-warnings scripts/ci/classify-change.ts "${arguments[@]}"
       - name: Publish typed gate plan
@@ -91,6 +96,12 @@ jobs:
       suites_json: ${{ toJSON(fromJSON(needs.classify.outputs.plan).appTestSuites) }}
       timing_prefix: pr-app
 
+  windows-checks:
+    name: windows checks
+    if: ${{ fromJSON(needs.classify.outputs.plan).windowsChecks }}
+    needs: classify
+    uses: ./.github/workflows/_windows-checks.yml
+
   required:
     name: required
     if: always()
@@ -99,6 +110,7 @@ jobs:
       - static-contracts
       - rust-checks
       - app-tests
+      - windows-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -56,9 +56,12 @@ const main = (): void => {
   appendFileSync(output, githubOutputForClassification(document), "utf8");
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (!summary) return;
+  const draftNotice = document.plan.draft
+    ? "Draft PR: only cheap static checks are eligible. Mark ready for review or add `ci:full` to run the full selected gate.\n\n"
+    : "";
   appendFileSync(
     summary,
-    `## Change classification\n\n${document.changedPaths.length} changed path(s).\n\n    ${JSON.stringify(document.plan)}\n`,
+    `## Change classification\n\n${document.changedPaths.length} changed path(s).\n\n${draftNotice}    ${JSON.stringify(document.plan)}\n`,
     "utf8",
   );
 };

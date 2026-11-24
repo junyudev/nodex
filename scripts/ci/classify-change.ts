@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   APP_TEST_SUITES,
   assertCiGatePlan,
+  DRAFT_STATIC_GROUPS,
   STATIC_GROUPS,
   type AppTestSuite,
   type CiGatePlan,
@@ -77,6 +78,89 @@ const isRustPath = (path: string): boolean =>
   path === "Cargo.lock" ||
   path === "rust-toolchain.toml" ||
   path.startsWith("crates/");
+
+// The native gate exercises MSVC, Core named pipes, Electron process/shell
+// boundaries and Windows installer maintenance. General application code keeps its Linux gates.
+const WINDOWS_RUNTIME_PATHS = [
+  "src/main/platform/",
+  "src/main/core-client/",
+  "src/main/terminal-runtime/",
+  "src/main/app/EffectProcessEntry.ts",
+  "src/main/browser-use/browser-use-peer-authorizer",
+  "src/main/browser-use/chrome/",
+  "src/main/codex/CodexExecutableProbe",
+  "src/main/codex/CodexPackage",
+  "src/main/git-worker/git-command-",
+  "src/main/host-runtime/HostShellEnvironment",
+  "src/shared/host-capabilities",
+  "src/host/host-paths.ts",
+  "src/host/ProviderPlatform.ts",
+  "packages/agent-runtime/src/platform/",
+  "packages/agent-runtime/src/nodex/",
+  "packages/agent-runtime/src/desktopTools/",
+  "packages/agent-runtime/src/processRunner",
+  "packages/agent-runtime/vendor/provider-core/src/server/processGroup",
+  "packages/agent-runtime/vendor/shared/src/shell",
+  "packages/agent-runtime/vendor/shared/src/path",
+  "packages/agent-runtime/vendor/shared/src/PtyAdapter",
+  "packages/agent-runtime/vendor/shared/src/HostProcess",
+  "packages/effect-codex-app-server/src/",
+  "scripts/tooling/process",
+  "scripts/testing/native-test-readiness",
+  "scripts/testing/windows-",
+] as const;
+
+const WINDOWS_BUILD_PATHS = [
+  ".cargo/",
+  ".github/actions/setup-vite-plus/",
+  ".github/actions/setup-windows-rust/",
+  "resources/windows/",
+  "resources/browser-runtime/",
+  "resources/agent-runtime/",
+  "resources/workspace-runtime/",
+  "resources/ripgrep/",
+  "agent-skills/",
+  "scripts/desktop-build",
+  "scripts/desktop-runtime-payload",
+  "scripts/agent-runtime-native",
+  "scripts/prepare-electron-runtime",
+  "scripts/prepared-electron-build",
+  "scripts/restore-packaged-runtime-closure",
+  "scripts/standalone-",
+  "scripts/verify-native-runtime",
+  "scripts/build-resources",
+  "scripts/generate-third-party-notices",
+  "resources/third-party/",
+  "scripts/stage-",
+  "scripts/materialize-",
+  "patches/app-builder-lib@",
+  "patches/@electron__asar@",
+] as const;
+
+const WINDOWS_BUILD_FILES = new Set([
+  ".gitattributes",
+  ".node-version",
+  ".github/workflows/windows.yml",
+  ".github/workflows/_windows-checks.yml",
+  ".github/workflows/_windows-distribution.yml",
+  ELECTRON_BUILDER_CONFIG,
+  ELECTRON_VITE_CONFIG,
+  "resources/icon.ico",
+  "scripts/ci/probe-windows-installer.ts",
+  "src/shared/build-resources.ts",
+]);
+
+const isWindowsCheckPath = (path: string): boolean =>
+  !isDocumentationPath(path) &&
+  (isRustPath(path) ||
+    WINDOWS_BUILD_FILES.has(path) ||
+    (isJavaScriptDependencyPath(path) && !path.startsWith("packages/landing/")) ||
+    WINDOWS_BUILD_PATHS.some((prefix) => path.startsWith(prefix)) ||
+    WINDOWS_RUNTIME_PATHS.some((prefix) => path.startsWith(prefix)) ||
+    (/^(?:src\/(?:main|host|shared)\/|packages\/agent-runtime\/|scripts\/)/u.test(path) &&
+      /windows|win32|powershell|(?:^|[\/-])(?:paths?|platform|shell|process(?:es)?|pty)(?:[.\/-]|$)/iu.test(
+        path,
+      )));
 
 const isMigrationPath = (path: string): boolean =>
   path === "crates/nodex-core/src/infrastructure/migration.rs" ||
@@ -290,6 +374,7 @@ const createPlan = (overrides: Partial<CiGatePlan>): CiGatePlan => {
     appTestSuites: [],
     dependencyKind: "none",
     docsOnly: false,
+    draft: false,
     landingOnly: false,
     protocolContracts: false,
     relatedPaths: [],
@@ -298,6 +383,7 @@ const createPlan = (overrides: Partial<CiGatePlan>): CiGatePlan => {
     rustMigration: false,
     staticGroups: [],
     testMode: "none",
+    windowsChecks: false,
     ...overrides,
   };
   assertCiGatePlan(candidate);
@@ -406,7 +492,11 @@ const sourcePlan = (
   });
 };
 
-type ClassificationOptions = { readonly full?: boolean; readonly forceFullTests?: boolean };
+type ClassificationOptions = {
+  readonly draft?: boolean;
+  readonly full?: boolean;
+  readonly forceFullTests?: boolean;
+};
 
 const classifyOtherPaths = (
   paths: readonly string[],
@@ -500,26 +590,35 @@ const classifyNormalizedPaths = (
 
 export function classifyChangedPaths(
   changedPaths: readonly string[],
-  options: { readonly full?: boolean; readonly forceFullTests?: boolean } = {},
+  options: ClassificationOptions = {},
 ): CiGatePlan {
   const paths = [...new Set(changedPaths.map(normalizePath))];
   const plan = classifyNormalizedPaths(paths, options);
-  if (!paths.some(requiresSourceTypeOwnership) || plan.staticGroups.includes("source-ownership")) {
-    return plan;
+  const staticGroups =
+    paths.some(requiresSourceTypeOwnership) && !plan.staticGroups.includes("source-ownership")
+      ? STATIC_GROUPS.filter(
+          (group) => group === "source-ownership" || plan.staticGroups.includes(group),
+        )
+      : plan.staticGroups;
+  if (options.draft) {
+    return createPlan({
+      dependencyKind: plan.dependencyKind,
+      docsOnly: plan.docsOnly,
+      draft: true,
+      landingOnly: plan.landingOnly,
+      staticGroups: staticGroups.filter((group) => DRAFT_STATIC_GROUPS.includes(group)),
+    });
   }
-  const coveredPlan = {
+  return createPlan({
     ...plan,
-    staticGroups: STATIC_GROUPS.filter(
-      (group) => group === "source-ownership" || plan.staticGroups.includes(group),
-    ),
-  };
-  assertCiGatePlan(coveredPlan);
-  return coveredPlan;
+    staticGroups,
+    windowsChecks: options.full === true || paths.some(isWindowsCheckPath),
+  });
 }
 
 export function buildChangeClassificationDocument(
   changedPaths: readonly string[],
-  options: { readonly full?: boolean; readonly forceFullTests?: boolean } = {},
+  options: ClassificationOptions = {},
 ): {
   readonly changedPaths: readonly string[];
   readonly plan: CiGatePlan;
@@ -545,11 +644,12 @@ const readOption = (args: readonly string[], name: string): string | undefined =
 const main = (): void => {
   const args = process.argv.slice(2);
   const full = args.includes("--full");
+  const draft = args.includes("--draft");
   const base = readOption(args, "--base");
   const head = readOption(args, "--head") ?? "HEAD";
   if (!base && !full) {
     throw new Error(
-      "Usage: classify-change --base <sha> [--head <sha>] [--full] [--output <path>].",
+      "Usage: classify-change --base <sha> [--head <sha>] [--full] [--draft] [--output <path>].",
     );
   }
   const cwd = resolve(import.meta.dirname, "../..");
@@ -566,6 +666,7 @@ const main = (): void => {
     (path) => !isDocumentationPath(path) && !existsSync(resolve(cwd, path)),
   );
   const document = buildChangeClassificationDocument(paths, {
+    draft,
     forceFullTests,
     full,
   });

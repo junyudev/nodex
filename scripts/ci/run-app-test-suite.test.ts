@@ -8,6 +8,7 @@ const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
   appTestSuites: APP_TEST_SUITES,
   dependencyKind: "source",
   docsOnly: false,
+  draft: false,
   landingOnly: false,
   protocolContracts: false,
   relatedPaths: [],
@@ -16,6 +17,7 @@ const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
   rustMigration: false,
   staticGroups: STATIC_GROUPS,
   testMode: "full",
+  windowsChecks: false,
   ...overrides,
 });
 

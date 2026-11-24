@@ -13,6 +13,8 @@ export const STATIC_GROUPS = [
 
 export type StaticGroup = (typeof STATIC_GROUPS)[number];
 
+export const DRAFT_STATIC_GROUPS: readonly StaticGroup[] = ["source-ownership", "ci-contracts"];
+
 export { APP_TEST_SUITES } from "../../config/test-suites.ts";
 export type { SuiteId as AppTestSuite } from "../../config/test-suites.ts";
 
@@ -33,6 +35,7 @@ export interface CiGatePlan {
   readonly appTestSuites: readonly AppTestSuite[];
   readonly dependencyKind: DependencyKind;
   readonly docsOnly: boolean;
+  readonly draft: boolean;
   readonly landingOnly: boolean;
   readonly protocolContracts: boolean;
   readonly relatedPaths: readonly string[];
@@ -41,6 +44,7 @@ export interface CiGatePlan {
   readonly rustMigration: boolean;
   readonly staticGroups: readonly StaticGroup[];
   readonly testMode: TestSelectionMode;
+  readonly windowsChecks: boolean;
 }
 
 const PLAN_KEYS = [
@@ -48,6 +52,7 @@ const PLAN_KEYS = [
   "appTestSuites",
   "dependencyKind",
   "docsOnly",
+  "draft",
   "landingOnly",
   "protocolContracts",
   "relatedPaths",
@@ -56,6 +61,7 @@ const PLAN_KEYS = [
   "rustMigration",
   "staticGroups",
   "testMode",
+  "windowsChecks",
 ] as const satisfies readonly (keyof CiGatePlan)[];
 
 const DEPENDENCY_KINDS = new Set<DependencyKind>([
@@ -107,7 +113,8 @@ const hasOrdinaryGates = (plan: CiGatePlan): boolean =>
   plan.appTestSuites.length > 0 ||
   plan.protocolContracts ||
   plan.rustFast ||
-  plan.rustMigration;
+  plan.rustMigration ||
+  plan.windowsChecks;
 
 const assertRelatedPaths: (value: unknown) => asserts value is readonly string[] = (value) => {
   if (
@@ -134,11 +141,13 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   for (const key of [
     "allGates",
     "docsOnly",
+    "draft",
     "landingOnly",
     "protocolContracts",
     "rustFast",
     "rustFull",
     "rustMigration",
+    "windowsChecks",
   ] as const) {
     assertBoolean(value[key], key);
   }
@@ -160,6 +169,18 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   const candidate = value as unknown as CiGatePlan;
   if (candidate.rustFull && !candidate.rustFast) {
     throw new Error("Full Rust selection requires the Rust fast lanes.");
+  }
+  if (
+    candidate.draft &&
+    (candidate.allGates ||
+      candidate.testMode !== "none" ||
+      candidate.protocolContracts ||
+      candidate.rustFast ||
+      candidate.rustMigration ||
+      candidate.windowsChecks ||
+      candidate.staticGroups.some((group) => !DRAFT_STATIC_GROUPS.includes(group)))
+  ) {
+    throw new Error("Draft plans may select only cheap static contracts.");
   }
   const narrowModes = [candidate.docsOnly, candidate.landingOnly].filter(Boolean);
   if (narrowModes.length > 1) throw new Error("CI gate plan narrow modes are mutually exclusive.");
@@ -186,7 +207,7 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   }
   if (
     candidate.landingOnly &&
-    (!candidate.staticGroups.includes("landing") ||
+    ((!candidate.draft && !candidate.staticGroups.includes("landing")) ||
       candidate.staticGroups.some(
         (group) =>
           group !== "landing" &&
@@ -197,7 +218,8 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
       candidate.appTestSuites.some((suite) => suite !== "unit" && suite !== "renderer") ||
       candidate.protocolContracts ||
       candidate.rustFast ||
-      candidate.rustMigration)
+      candidate.rustMigration ||
+      candidate.windowsChecks)
   ) {
     throw new Error(
       "Landing-only plans may select landing, source ownership, CI and repository contracts, and unit/renderer tests.",
@@ -215,5 +237,6 @@ export const requiredJobIdsForGatePlan = (plan: CiGatePlan): readonly string[] =
   if (plan.staticGroups.length > 0) jobs.push("static-contracts");
   if (plan.appTestSuites.length > 0) jobs.push("app-tests");
   if (plan.rustFast || plan.protocolContracts || plan.rustMigration) jobs.push("rust-checks");
+  if (plan.windowsChecks) jobs.push("windows-checks");
   return jobs;
 };
