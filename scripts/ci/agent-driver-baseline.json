@@ -758,12 +758,6 @@
       "codex": 1
     }
   },
-  "src/renderer/lib/conversation-identity.ts": {
-    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
-    "literals": {
-      "codex": 1
-    }
-  },
   "src/renderer/lib/created-thread-navigation.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {

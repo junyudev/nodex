@@ -18,6 +18,15 @@ to this Profile; delegated Threads remain inside their root Session. Sharing a C
 home never adds another client's root Chats implicitly; native history enters
 Nodex through an explicit import or attachment.
 
+Conversation references resolve through the selected Space's execution owner. A
+Runtime descendant keeps its own Thread identity and opens within the Session
+bound to its root, including descendants backed by Codex. Native references keep
+their explicit execution host even when they also have a Session. Naming a
+reference reads admitted identity only; an unknown reference never discovers or
+imports native history, and a failed Runtime lookup never tries another provider.
+Session mentions use the Session's existing title and execution metadata without
+requesting a provider's Thread summary.
+
 A Workspace-owned **Linked chat** edge may associate a Page with a durable
 Project Session. It records an explicit user action only: Open in new chat,
 Send to chat, a Prompt send, or New page in that Session's Scene, which

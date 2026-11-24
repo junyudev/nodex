@@ -456,9 +456,10 @@ describe("local-conversation request cards", () => {
 
   test("names another Agent that answered and opens its conversation without expanding", async () => {
     const { UserInputTranscriptView } = await import("./local-conversation-request-cards");
-    const { agentRuntimeRuntime } = await import("@/lib/agent-runtime-runtime");
-    const identify = vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue({
-      threadId: "nodex:thread:coordinator",
+    const rendererQueries = await import("@/lib/renderer-command");
+    const identify = vi.spyOn(rendererQueries, "invokeRendererQuery").mockResolvedValue({
+      execution: "agent-runtime",
+      threadId: "thread:task:coordinator",
       sessionId: "session-coordinator",
       title: "Release coordinator",
       role: "chat",
@@ -474,7 +475,7 @@ describe("local-conversation request cards", () => {
             userInputQuestions: optionRequest.questions,
             userInputAnswers: { q_1: ["2 (Recommended)"] },
             status: "completed",
-            respondedBy: { kind: "agent", senderThreadId: "nodex:thread:coordinator" },
+            respondedBy: { kind: "agent", senderThreadId: "thread:task:coordinator" },
           }}
           onOpenThread={(threadId) => {
             opened.push(threadId);
@@ -488,7 +489,11 @@ describe("local-conversation request cards", () => {
       fireEvent.click(open);
       await settleAsyncRender();
     });
-    expect(opened).toEqual(["nodex:thread:coordinator"]);
+    expect(opened).toEqual(["thread:task:coordinator"]);
+    expect(identify).toHaveBeenCalledExactlyOnceWith(
+      "conversation:identity:get",
+      "thread:task:coordinator",
+    );
     identify.mockRestore();
     expect(getByRole("button", { name: /Asked\s*1 question/i }).getAttribute("aria-expanded")).toBe(
       "false",

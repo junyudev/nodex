@@ -17,11 +17,9 @@ function openConversation(
 ) {
   return onOpenThread(
     identity.threadId,
-    identity.host
-      ? { hostId: identity.host.id }
-      : identity.sessionId
-        ? { runtimeSessionId: identity.sessionId }
-        : undefined,
+    identity.execution === "agent-runtime"
+      ? { runtimeSessionId: identity.sessionId }
+      : { hostId: identity.executionHostId },
   );
 }
 

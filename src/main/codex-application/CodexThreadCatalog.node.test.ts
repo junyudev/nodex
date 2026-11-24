@@ -385,51 +385,25 @@ it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () 
   ),
 );
 
-it.effect("resolves a mentioned Agent chat to its Session without the native directory", () =>
+it.effect("keeps Runtime roots and descendants out of the native summary catalog", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const reads: string[] = [];
-      const runtimeThread = "nodex:thread:agent-chat";
       const service = yield* catalog({
-        read: (request) =>
-          Effect.sync(() => {
-            reads.push(request.kind);
-            if (request.kind === "agent_runtime_session_binding_by_thread") {
-              return {
-                value: {
-                  kind: "agent_runtime_session_binding",
-                  binding: {
-                    session_id: "session-agent",
-                    project_id: "project-a",
-                    runtime_id: "runtime-1",
-                    runtime_thread_id: runtimeThread,
-                    launch_request_id: "launch",
-                    bound_at: "2026-10-17T00:00:00.000Z",
-                  },
-                },
-              };
-            }
-            if (request.kind === "session") {
-              return {
-                value: {
-                  kind: "session",
-                  session: { ...runtimeTask("session-agent").session, display_title: "Plan it" },
-                },
-              };
-            }
-            throw new Error(`Unexpected read: ${request.kind}`);
-          }),
+        read: (request) => Effect.die(`Unexpected Core read: ${request.kind}`),
       });
 
-      const summary = yield* service.resolve(runtimeThread);
-
-      assert.deepInclude(summary, {
-        threadId: runtimeThread,
-        sessionId: "session-agent",
-        projectId: "project-a",
-        threadName: "Plan it",
-      });
-      assert.deepEqual(reads, ["agent_runtime_session_binding_by_thread", "session"]);
+      for (const threadId of [
+        "nodex:thread:agent-chat",
+        "thread:task:delegated-child",
+        "thread:provider:codex:native-thread:0197a5d0-2c00-7000-8000-000000000001",
+        "thread:provider:claudeCode:native-thread:native-child",
+        "provider-thread:provider:codex:native-thread:native-child",
+        "session-agent",
+        "unknown-id",
+        "",
+      ]) {
+        assert.isNull(yield* service.resolve(threadId));
+      }
     }),
   ),
 );

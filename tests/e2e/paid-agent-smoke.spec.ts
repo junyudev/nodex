@@ -16,6 +16,10 @@ import {
 } from "../../scripts/paid-agent-smoke-contract";
 import { readPaidAgentRolloutEvidence } from "../../scripts/paid-agent-rollout-evidence";
 import type { CodexExecutionProfile } from "../../src/shared/codex-execution-profile";
+import {
+  readAgentRuntimeEffort,
+  readAgentRuntimeServiceTier,
+} from "../../src/shared/agent-runtime-provider";
 import type { CodexModelOption } from "../../src/shared/types";
 import { resolveInboxModel, type InboxItem } from "../../src/shared/inbox";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
@@ -31,6 +35,7 @@ import {
   sendAgentPromptWithEvidence,
   type AgentFirstSubmissionEvidence,
   waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker as waitForAgentFinalMarker,
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
@@ -181,8 +186,8 @@ const readRuntimeStateEvidence = async (
     rollout: threadId
       ? await readPaidAgentRolloutEvidence(codexHome, threadId).catch(() => null)
       : null,
-    summary: threadId
-      ? await invokeIpc(page, "codex:thread:summary:get", threadId).catch(() => null)
+    identity: threadId
+      ? await invokeTypedIpc(page, "conversation:identity:get", threadId).catch(() => null)
       : null,
     subagentOverview:
       threadId && caseId === "subagent"
@@ -208,23 +213,27 @@ const readRuntimeStateEvidence = async (
 
 const readCompletedThreadEvidence = async (
   page: Page,
+  sessionId: string,
   threadId: string,
   expectedProfile: CodexExecutionProfile,
-): Promise<{ snapshot: unknown; summary: Record<string, unknown>; turnId: string }> => {
-  await expect
-    .poll(
-      async () => {
-        const value = await invokeIpc(page, "codex:thread:summary:get", threadId);
-        return isRecord(value) ? value.statusType : null;
-      },
-      { timeout: 30_000 },
-    )
-    .toBe("idle");
-  const summary = requireRecord(
-    await invokeIpc(page, "codex:thread:summary:get", threadId),
-    "Paid smoke durable summary",
-  );
-  expect(summary.executionProfile).toEqual(expectedProfile);
+): Promise<{ snapshot: unknown; turnId: string }> => {
+  const identity = await invokeTypedIpc(page, "conversation:identity:get", threadId);
+  if (!identity || identity.execution !== "agent-runtime")
+    throw new Error("Paid smoke conversation has no Runtime execution identity");
+  expect(identity.threadId).toBe(threadId);
+  expect(identity.sessionId).toBe(sessionId);
+  expect(identity.archived).toBe(false);
+  await waitForRuntimeCompletedAgentTurn(page, { sessionId, threadId }, 30_000);
+  const inspection = await invokeTypedIpc(page, "agent-runtime:session:inspect", {
+    sessionId,
+    threadId,
+  });
+  const selection = inspection.thread.modelSelection;
+  expect({
+    modelId: selection.model,
+    reasoningEffort: readAgentRuntimeEffort(selection.options),
+    serviceTier: readAgentRuntimeServiceTier(selection.options) ?? null,
+  }).toEqual(expectedProfile);
   const snapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
   const snapshotRecord = requireRecord(snapshot, "Paid smoke thread snapshot");
   const turns = Array.isArray(snapshotRecord.turns) ? snapshotRecord.turns : [];
@@ -232,7 +241,7 @@ const readCompletedThreadEvidence = async (
   const turn = requireRecord(turns[0], "Paid smoke completed Turn");
   const turnId = typeof turn.id === "string" ? turn.id : turn.turnId;
   if (typeof turnId !== "string") throw new Error("Paid smoke completed Turn returned no id");
-  return { snapshot, summary, turnId };
+  return { snapshot, turnId };
 };
 
 const digest = (contents: Buffer | string): string =>
@@ -367,7 +376,12 @@ const runPaidCase = async (
     }
     await waitForCompletedAgentTurn(page, threadId, 150_000);
     await waitForAgentFinalMarker(page, marker, 10_000);
-    const completed = await readCompletedThreadEvidence(page, threadId, selectedProfile);
+    const completed = await readCompletedThreadEvidence(
+      page,
+      draft.projectSessionId,
+      threadId,
+      selectedProfile,
+    );
     const rollout = await readPaidAgentRolloutEvidence(harness.profile.codexHome, threadId);
     expect(rollout).not.toBeNull();
     expect(rollout?.modelProvider).toBe("openai");

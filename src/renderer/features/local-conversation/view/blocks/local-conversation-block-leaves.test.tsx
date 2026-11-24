@@ -10,7 +10,7 @@ import {
   installWindowApi,
 } from "../../../../test/browser-globals";
 import { renderWithMaitai } from "../../../../test/thread-maitai";
-import { agentRuntimeRuntime } from "../../../../lib/agent-runtime-runtime";
+import * as rendererQueries from "../../../../lib/renderer-command";
 import type { ConversationIdentity } from "../../../../../shared/conversation-identity";
 import { settleAsyncRender, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
@@ -484,7 +484,10 @@ describe("UserMessageBubble collapse", () => {
   });
 
   describe("names the conversation that sent or answered", () => {
-    const sender = (overrides: Partial<ConversationIdentity> = {}): ConversationIdentity => ({
+    const sender = (
+      overrides: Partial<Extract<ConversationIdentity, { execution: "agent-runtime" }>> = {},
+    ): ConversationIdentity => ({
+      execution: "agent-runtime",
       threadId: "nodex:thread:passkeys",
       sessionId: "session-passkeys",
       title: "Passkey sign-in",
@@ -518,11 +521,18 @@ describe("UserMessageBubble collapse", () => {
     };
     afterEach(() => vi.restoreAllMocks());
 
-    test("by its Agent's mark and title, and opens it in its own Session", async () => {
-      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
+    test.each([
+      "nodex:thread:passkeys",
+      "thread:task:nested-parent",
+      "thread:provider:codex:native-thread:child",
+      "thread:provider:claude:native-thread:child",
+    ])("names %s and opens it in its owning Session", async (threadId) => {
+      const identify = vi
+        .spyOn(rendererQueries, "invokeRendererQuery")
+        .mockResolvedValue(sender({ threadId }));
       const onOpenThread = vi.fn();
       const view = renderMessage((block) => {
-        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
+        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: threadId };
         block.entry.userInputIntent = "steer";
       }, onOpenThread);
       const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
@@ -533,9 +543,33 @@ describe("UserMessageBubble collapse", () => {
         fireEvent.click(open);
         await Promise.resolve();
       });
-      expect(onOpenThread).toHaveBeenCalledWith("nodex:thread:passkeys", {
+      expect(onOpenThread).toHaveBeenCalledWith(threadId, {
         runtimeSessionId: "session-passkeys",
       });
+      expect(
+        identify.mock.calls.filter(([channel]) => channel === "conversation:identity:get"),
+      ).toEqual([["conversation:identity:get", threadId]]);
+      expect(identify).not.toHaveBeenCalledWith("codex:thread:summary:get", threadId);
+    });
+
+    test("opens registered local Codex history through its native host even when it has a Session", async () => {
+      const threadId = "019a0000-0000-7000-8000-000000000001";
+      vi.spyOn(rendererQueries, "invokeRendererQuery").mockResolvedValue({
+        ...sender({ threadId }),
+        execution: "native-codex",
+        executionHostId: "local",
+        sessionId: "native-session",
+      });
+      const onOpenThread = vi.fn();
+      const view = renderMessage((block) => {
+        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: threadId };
+      }, onOpenThread);
+      const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
+      await act(async () => {
+        fireEvent.click(open);
+        await Promise.resolve();
+      });
+      expect(onOpenThread).toHaveBeenCalledWith(threadId, { hostId: "local" });
     });
 
     test("reads a message delivered from the queue as an ordinary message", async () => {
@@ -592,13 +626,15 @@ describe("UserMessageBubble collapse", () => {
       expect(marker.querySelector("button")).toBeNull();
     });
 
-    test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
-      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
+    test("names a child Agent that answered a question reply", async () => {
+      vi.spyOn(rendererQueries, "invokeRendererQuery").mockResolvedValue(
+        sender({ threadId: "thread:task:answering-parent", role: "subagent" }),
+      );
       const view = renderMessage((block) => {
         block.entry.questionReplies = [
           { questionItemId: "ask:0", question: "Which scope?", answer: "Local" },
         ];
-        block.entry.respondedBy = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
+        block.entry.respondedBy = { kind: "agent", senderThreadId: "thread:task:answering-parent" };
       });
       await view.findByRole("button", { name: "Open Passkey sign-in" });
       const marker = view.container.querySelector('[data-user-message-origin="answering-agent"]')!;
@@ -607,7 +643,7 @@ describe("UserMessageBubble collapse", () => {
 
     test("keeps an archived sender named without opening it, and an unknown one anonymous", async () => {
       const identify = vi
-        .spyOn(agentRuntimeRuntime, "identify")
+        .spyOn(rendererQueries, "invokeRendererQuery")
         .mockResolvedValue(sender({ archived: true }));
       const archived = renderMessage((block) => {
         block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
@@ -624,7 +660,9 @@ describe("UserMessageBubble collapse", () => {
       const unknown = renderMessage((block) => {
         block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:gone" };
       });
-      await waitFor(() => expect(identify).toHaveBeenCalledWith("nodex:thread:gone"));
+      await waitFor(() =>
+        expect(identify).toHaveBeenCalledWith("conversation:identity:get", "nodex:thread:gone"),
+      );
       const marker = unknown.container.querySelector('[data-user-message-origin="agent"]')!;
       expect(marker.textContent).toBe("Sent byanother agent");
       expect(marker.querySelector("button")).toBeNull();
@@ -2153,7 +2191,7 @@ describe("fork origin presentation", () => {
   ])(
     "keeps a compact origin for $sourceConversationTitle when the source is unknown",
     async ({ sourceConversationTitle, expectedLabel }) => {
-      const identify = vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(null);
+      const identify = vi.spyOn(rendererQueries, "invokeRendererQuery").mockResolvedValue(null);
       const { container, queryByRole } = renderFork(sourceConversationTitle);
       await waitFor(() => expect(identify).toHaveBeenCalled());
       expect(container.querySelector("[data-conversation-attribution]")?.textContent).toBe(
@@ -2165,7 +2203,8 @@ describe("fork origin presentation", () => {
   );
 
   test("names a known source chat by its Agent's mark and current title", async () => {
-    vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue({
+    vi.spyOn(rendererQueries, "invokeRendererQuery").mockResolvedValue({
+      execution: "agent-runtime",
       threadId: "nodex:thread:source",
       sessionId: "session-source",
       title: "Passkey sign-in",

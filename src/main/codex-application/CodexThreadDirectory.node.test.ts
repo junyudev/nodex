@@ -53,6 +53,25 @@ type CoreThread = Extract<
 type RequestOnHost = CodexGateway["Service"]["requestOnHost"];
 type RequestForThread = CodexGateway["Service"]["requestForThread"];
 
+// Native success fixtures obey the same UUID contract as the app-server.
+const nativeThreadIds = {
+  main: "00000000-0000-4000-8000-000000000001",
+  started: "00000000-0000-4000-8000-000000000002",
+  legacy: "00000000-0000-4000-8000-000000000003",
+  unversioned: "00000000-0000-4000-8000-000000000004",
+  inline: "00000000-0000-4000-8000-000000000005",
+  imported: "00000000-0000-4000-8000-000000000006",
+  source: "00000000-0000-4000-8000-000000000007",
+  fork: "00000000-0000-4000-8000-000000000008",
+  foreign: "00000000-0000-4000-8000-000000000009",
+  projectless: "00000000-0000-4000-8000-000000000010",
+  moving: "00000000-0000-4000-8000-000000000011",
+  durable: "00000000-0000-4000-8000-000000000012",
+  other: "00000000-0000-4000-8000-000000000013",
+  child: "00000000-0000-4000-8000-000000000014",
+  root: "00000000-0000-4000-8000-000000000015",
+} as const;
+
 const coreThread = (threadId: string, overrides: Partial<CoreThread> = {}): CoreThread =>
   ({
     thread_id: threadId,
@@ -126,9 +145,11 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
 });
 
 it("preserves explicit settings and known settings when model metadata is unavailable", () => {
-  const existing = projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "flex" }));
+  const existing = projectCoreWorkspaceThread(
+    coreThread(nativeThreadIds.main, { service_tier: "flex" }),
+  );
   const input = {
-    thread: appThread("thread-a"),
+    thread: appThread(nativeThreadIds.main),
     existing,
     parent: null,
     nowMs: 120000,
@@ -150,8 +171,10 @@ it("preserves explicit settings and known settings when model metadata is unavai
 
 it("uses configured model metadata and treats null effort as unset without changing service tier", () => {
   const materialized = projectCodexThreadDirectoryMaterialization({
-    thread: { ...appThread("thread-a"), model: "gpt-observed", reasoningEffort: null },
-    existing: projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "flex" })),
+    thread: { ...appThread(nativeThreadIds.main), model: "gpt-observed", reasoningEffort: null },
+    existing: projectCoreWorkspaceThread(
+      coreThread(nativeThreadIds.main, { service_tier: "flex" }),
+    ),
     parent: null,
     nowMs: 120000,
   });
@@ -315,6 +338,134 @@ const directoryFoundations = directoryWithRequestSettings.pipe(
   ),
 );
 
+const boundaryDirectory = Effect.fn("CodexThreadDirectory.testBoundary")(function* (
+  threads = new Map<string, CoreThread>(),
+) {
+  const conversations = makeConversations();
+  const requests: string[] = [];
+  const directory = yield* directoryFoundations.pipe(
+    Effect.provideService(
+      CodexApplicationEventHub,
+      CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+    ),
+    Effect.provideService(
+      CodexConversationProjection,
+      CodexConversationProjection.of({
+        hydrate: () => Effect.die("Unexpected hydration"),
+      } as never),
+    ),
+    Effect.provideService(
+      CodexGateway,
+      makeGateway(((hostId, method) => {
+        requests.push(`${hostId}:${method}`);
+        return Effect.die("A foreign identity reached the native Codex gateway");
+      }) as RequestOnHost),
+    ),
+    Effect.provideService(ConversationEntityMap, conversations),
+    Effect.provideService(CoreModules, makeCore(threads)),
+  );
+  return { directory, conversations, requests, threads };
+});
+
+const nonNativeThreadIds = [
+  { label: "Runtime root", threadId: "nodex:thread:root" },
+  { label: "delegated task", threadId: "thread:task:abcdefghijklmnopqrstuv" },
+  {
+    label: "Codex provider child",
+    threadId: `thread:provider:codex:native-thread:${nativeThreadIds.child}`,
+  },
+  {
+    label: "Claude provider child",
+    threadId: "thread:provider:claudeAgent:native-thread:parent%3Atask-1",
+  },
+  {
+    label: "ACP provider child",
+    threadId: "thread:provider:acpRegistry:provider-instance:kimi:native-thread:session%3Atask-1",
+  },
+  { label: "unknown identity", threadId: "thread:missing" },
+  { label: "Session identity", threadId: "session:chat" },
+  { label: "ProviderThread identity", threadId: "provider-thread:provider:codex:native-thread:id" },
+  { label: "blank identity", threadId: " " },
+];
+
+it.effect.each(nonNativeThreadIds)(
+  "keeps $label out of every native read path when Core has no Thread",
+  ({ threadId }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { directory, requests, threads } = yield* boundaryDirectory();
+        const results = yield* Effect.forEach(
+          ["durable", "metadata", "tail", "live"] as const,
+          (fidelity) => directory.resolve({ threadId, fidelity, hostId: "local" }),
+        );
+        assert.deepEqual(results, [null, null, null, null]);
+        assert.isNull(yield* directory.materializeInCurrentLane({ threadId, hostId: "local" }));
+        assert.isNull(yield* directory.refreshMetadataInCurrentLane({ threadId, hostId: "local" }));
+        assert.strictEqual((yield* Effect.exit(directory.prepareResume(threadId)))._tag, "Failure");
+        assert.strictEqual(
+          (yield* Effect.exit(directory.prepareHistoryHydration(threadId)))._tag,
+          "Failure",
+        );
+        assert.deepEqual(requests, []);
+        assert.strictEqual(threads.size, 0);
+      }),
+    ),
+);
+
+it.effect(
+  "rejects a Runtime identity in accepted native results before persistence or history reads",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { directory, conversations, requests, threads } = yield* boundaryDirectory();
+        const threadId = "thread:task:abcdefghijklmnopqrstuv";
+        const thread = appThread(threadId);
+        const response = { thread, cwd: "/repo" };
+        const starts = {
+          response: response as never,
+          capability: localCapabilitySnapshot,
+          projectId: null,
+          executionProfile: null,
+          runtimeWorkspaceRoots: ["/repo"],
+          fallbackCwd: "/repo",
+          managedWorktreePath: null,
+        };
+        const operations = [
+          directory.observeMetadata({ thread, inferredInitialProjectId: null }),
+          directory.acceptSessionStart({ ...starts, sessionId: "session-chat" }),
+          directory.acceptStandaloneStart(starts),
+          directory.acceptImportResult({
+            response: response as never,
+            capability: localCapabilitySnapshot,
+            fallbackCwd: "/repo",
+          }),
+          directory.acceptForkResult({
+            sourceThreadId: nativeThreadIds.source,
+            response: response as never,
+          }),
+          directory.acceptResumeResult({
+            response: response as never,
+            requestedCwd: "/repo",
+            capability: localCapabilitySnapshot,
+            executionHostId: "local",
+            fallbackCwd: "/repo",
+          }),
+          directory.acceptRendererResume({
+            threadId,
+            response: response as never,
+            capability: localCapabilitySnapshot,
+            requestedCwd: "/repo",
+          }),
+        ];
+        for (const operation of operations)
+          assert.strictEqual((yield* Effect.exit(operation))._tag, "Failure");
+        assert.deepEqual(requests, []);
+        assert.strictEqual(threads.size, 0);
+        assert.isNull(conversations.current(threadId));
+      }),
+    ),
+);
+
 it.effect.each([
   {
     label: "obsolete cwd",
@@ -331,7 +482,7 @@ it.effect.each([
 ])("prepareResume captures the physical projectless workspace for $label", (scenario) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threadId = "projectless-resume";
+      const threadId = nativeThreadIds.projectless;
       const threads = new Map([
         [
           threadId,
@@ -416,7 +567,7 @@ it.effect.each([
 it.effect("prepareResume keeps the applied workspace until the pending move is accepted", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threadId = "moving-resume";
+      const threadId = nativeThreadIds.moving;
       const threads = new Map([
         [
           threadId,
@@ -560,7 +711,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
         directory.acceptStandaloneStart({
           response: {
             cwd: "/repo",
-            thread: appThread("thread-started", [poisonTurn]),
+            thread: appThread(nativeThreadIds.started, [poisonTurn]),
             model: "gpt-test",
             modelProvider: "openai",
             serviceTier: null,
@@ -585,7 +736,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
         directory.acceptStandaloneStart({
           response: {
             cwd: "/repo",
-            thread: { ...appThread("thread-legacy"), historyMode: "legacy", turns: [] },
+            thread: { ...appThread(nativeThreadIds.legacy), historyMode: "legacy", turns: [] },
             model: "gpt-test",
             modelProvider: "openai",
             serviceTier: null,
@@ -609,7 +760,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
       const unversioned = yield* directory.acceptStandaloneStart({
         response: {
           cwd: "/repo",
-          thread: appThread("thread-unversioned"),
+          thread: appThread(nativeThreadIds.unversioned),
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
@@ -636,10 +787,10 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
       assert.isTrue(Exit.isFailure(accepted));
       assert.isTrue(Exit.isFailure(legacy));
       assert.strictEqual(unversioned.historyMode, "paginated");
-      assert.deepEqual([...threads.keys()], ["thread-unversioned"]);
-      assert.isNull(conversations.current("thread-started"));
-      assert.isNull(conversations.current("thread-legacy"));
-      assert.isNotNull(conversations.current("thread-unversioned"));
+      assert.deepEqual([...threads.keys()], [nativeThreadIds.unversioned]);
+      assert.isNull(conversations.current(nativeThreadIds.started));
+      assert.isNull(conversations.current(nativeThreadIds.legacy));
+      assert.isNotNull(conversations.current(nativeThreadIds.unversioned));
     }),
   ),
 );
@@ -679,7 +830,7 @@ it.effect("rejects inline history from metadata observations before durable pers
 
       const observed = yield* Effect.exit(
         directory.observeMetadata({
-          thread: appThread("thread-inline", [poisonTurn]),
+          thread: appThread(nativeThreadIds.inline, [poisonTurn]),
           inferredInitialProjectId: "project-a",
           executionHostId: "remote-a",
         }),
@@ -687,7 +838,7 @@ it.effect("rejects inline history from metadata observations before durable pers
 
       assert.isTrue(Exit.isFailure(observed));
       assert.deepEqual([...threads.keys()], []);
-      assert.isNull(conversations.current("thread-inline"));
+      assert.isNull(conversations.current(nativeThreadIds.inline));
     }),
   ),
 );
@@ -779,7 +930,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         Effect.provideService(ConversationEntityMap, conversations),
         Effect.provideService(CoreModules, core),
       );
-      const thread = appThread("thread-imported");
+      const thread = appThread(nativeThreadIds.imported);
 
       const accepted = yield* directory.acceptImportResult({
         response: { cwd: "/repo", thread } as never,
@@ -793,7 +944,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
       assert.strictEqual(accepted.durable.executionHostId, "local");
       assert.strictEqual(accepted.durable.managedWorktreePath, null);
       assert.strictEqual(accepted.durable.cwd, "/repo");
-      assert.strictEqual(accepted.canonical?.id, "thread-imported");
+      assert.strictEqual(accepted.canonical?.id, nativeThreadIds.imported);
       assert.deepEqual(
         accepted.canonical?.turns.map((turn) => turn.turnId),
         ["turn-tail"],
@@ -802,7 +953,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         {
           method: "thread/turns/list",
           params: {
-            threadId: "thread-imported",
+            threadId: nativeThreadIds.imported,
             cursor: null,
             limit: 5,
             itemsView: "notLoaded",
@@ -812,7 +963,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         {
           method: "thread/items/list",
           params: {
-            threadId: "thread-imported",
+            threadId: nativeThreadIds.imported,
             turnId: "turn-tail",
             cursor: null,
             limit: 100,
@@ -829,7 +980,10 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         loadedTurnCount: 1,
         itemsView: "full",
       });
-      assert.deepEqual(conversations.current("thread-imported")?.readSnapshot(), accepted.snapshot);
+      assert.deepEqual(
+        conversations.current(nativeThreadIds.imported)?.readSnapshot(),
+        accepted.snapshot,
+      );
     }),
   ),
 );
@@ -873,7 +1027,10 @@ it.effect("rejects inline history from an import before it persists or pages", (
 
       const result = yield* Effect.exit(
         directory.acceptImportResult({
-          response: { cwd: "/repo", thread: appThread("thread-imported", [inlineTurn]) } as never,
+          response: {
+            cwd: "/repo",
+            thread: appThread(nativeThreadIds.imported, [inlineTurn]),
+          } as never,
           capability: capabilitySnapshot,
           executionHostId: "remote-a",
           fallbackCwd: "/repo",
@@ -882,7 +1039,7 @@ it.effect("rejects inline history from an import before it persists or pages", (
 
       assert.isTrue(Exit.isFailure(result));
       assert.deepEqual([...threads.keys()], []);
-      assert.isNull(conversations.current("thread-imported"));
+      assert.isNull(conversations.current(nativeThreadIds.imported));
     }),
   ),
 );
@@ -890,14 +1047,14 @@ it.effect("rejects inline history from an import before it persists or pages", (
 it.effect("accepts a metadata-only fork shell with inherited durable authority", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const source = coreThread("thread-source", {
+      const source = coreThread(nativeThreadIds.source, {
         project_id: "project-fork",
         execution_host_id: "remote-fork",
         managed_worktree_path: "/repo",
         dynamic_tool_catalogs: [{ namespace: "nodex", toolset_revision: 7 }],
         writable_roots: ["/repo", "/shared"],
       });
-      const threads = new Map([["thread-source", source]]);
+      const threads = new Map([[nativeThreadIds.source, source]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -934,12 +1091,12 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
       );
 
       const accepted = yield* directory.acceptForkResult({
-        sourceThreadId: "thread-source",
+        sourceThreadId: nativeThreadIds.source,
         destinationSessionId: "reserved-fork",
         response: {
           thread: {
-            ...appThread("thread-child"),
-            forkedFromId: "thread-source",
+            ...appThread(nativeThreadIds.fork),
+            forkedFromId: nativeThreadIds.source,
           },
           model: "gpt-fork",
           modelProvider: "openai",
@@ -960,10 +1117,10 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
         } as never,
       });
 
-      const persisted = threads.get("thread-child");
+      const persisted = threads.get(nativeThreadIds.fork);
       assert.strictEqual(accepted.durable.sessionId, "reserved-fork");
       assert.strictEqual(accepted.durable.projectId, "project-fork");
-      assert.strictEqual(accepted.durable.forkedFromId, "thread-source");
+      assert.strictEqual(accepted.durable.forkedFromId, nativeThreadIds.source);
       assert.strictEqual(accepted.durable.executionHostId, "remote-fork");
       assert.strictEqual(accepted.durable.managedWorktreePath, "/repo");
       assert.strictEqual(accepted.durable.executionProfile?.modelId, "gpt-fork");
@@ -985,11 +1142,11 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
 it.effect("keeps an excluded paginated fork lazy until the child is opened", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const source = coreThread("thread-source", {
+      const source = coreThread(nativeThreadIds.source, {
         execution_host_id: "remote-a",
         writable_roots: ["/repo"],
       });
-      const threads = new Map([["thread-source", source]]);
+      const threads = new Map([[nativeThreadIds.source, source]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -1031,11 +1188,11 @@ it.effect("keeps an excluded paginated fork lazy until the child is opened", () 
       );
 
       const accepted = yield* directory.acceptForkResult({
-        sourceThreadId: "thread-source",
+        sourceThreadId: nativeThreadIds.source,
         response: {
           thread: {
-            ...appThread("thread-child"),
-            forkedFromId: "thread-source",
+            ...appThread(nativeThreadIds.fork),
+            forkedFromId: nativeThreadIds.source,
             turns: [],
           },
           model: "gpt-test",
@@ -1070,10 +1227,63 @@ it.effect("keeps an excluded paginated fork lazy until the child is opened", () 
   ),
 );
 
+it.effect("discovers a native UUID on its selected host without a durable Core row", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const threads = new Map<string, CoreThread>();
+      const requests: Array<{ hostId: string; method: string; params: unknown }> = [];
+      const gateway = makeGateway(((hostId, method, params) => {
+        requests.push({ hostId, method, params });
+        return Effect.succeed({ thread: appThread(nativeThreadIds.main) });
+      }) as RequestOnHost);
+      const directory = yield* directoryFoundations.pipe(
+        Effect.provideService(
+          CodexApplicationEventHub,
+          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+        ),
+        Effect.provideService(
+          CodexConversationProjection,
+          CodexConversationProjection.of({
+            hydrate: () => Effect.die("Unexpected hydration"),
+          } as never),
+        ),
+        Effect.provideService(CodexGateway, gateway),
+        Effect.provideService(ConversationEntityMap, makeConversations()),
+        Effect.provideService(CoreModules, makeCore(threads)),
+      );
+
+      assert.isNull(
+        yield* directory.resolve({ threadId: nativeThreadIds.main, fidelity: "durable" }),
+      );
+      const discovered = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "durable",
+        hostId: "remote-a",
+      });
+      assert.strictEqual(discovered?.summary.threadId, nativeThreadIds.main);
+      assert.strictEqual(discovered?.durable.executionHostId, "remote-a");
+      assert.deepEqual(requests, [
+        {
+          hostId: "remote-a",
+          method: "thread/read",
+          params: { threadId: nativeThreadIds.main, includeTurns: false },
+        },
+      ]);
+      const retained = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "durable",
+        hostId: "local",
+      });
+      assert.strictEqual(retained?.durable.executionHostId, "remote-a");
+      assert.strictEqual(requests.length, 1);
+    }),
+  ),
+);
+
 it.effect("resolves remote metadata without reading or materializing the transcript", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a")]]);
+      const threads = new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const events: unknown[] = [];
@@ -1089,9 +1299,16 @@ it.effect("resolves remote metadata without reading or materializing the transcr
       const gateway = makeGateway(((hostId, method, params) => {
         assert.strictEqual(hostId, "remote-a");
         assert.strictEqual(method, "thread/read");
-        assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: false });
+        assert.deepEqual(params as unknown, {
+          threadId: nativeThreadIds.main,
+          includeTurns: false,
+        });
         return Effect.succeed({
-          thread: { ...appThread("thread-a"), model: "gpt-observed", reasoningEffort: "medium" },
+          thread: {
+            ...appThread(nativeThreadIds.main),
+            model: "gpt-observed",
+            reasoningEffort: "medium",
+          },
         });
       }) as RequestOnHost);
       const directory = yield* directoryFoundations.pipe(
@@ -1102,7 +1319,10 @@ it.effect("resolves remote metadata without reading or materializing the transcr
         Effect.provideService(CoreModules, core),
       );
 
-      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "metadata" });
+      const resolved = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "metadata",
+      });
 
       assert.strictEqual(resolved?.fidelity, "metadata");
       assert.strictEqual(resolved?.durable.threadName, "Hydrated Thread");
@@ -1118,7 +1338,9 @@ it.effect("resolves remote metadata without reading or materializing the transcr
 it.effect("refreshes an unarchived Thread into a resumed metadata-only canonical shell", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a", { archived: false })]]);
+      const threads = new Map([
+        [nativeThreadIds.main, coreThread(nativeThreadIds.main, { archived: false })],
+      ]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -1133,8 +1355,11 @@ it.effect("refreshes an unarchived Thread into a resumed metadata-only canonical
       const gateway = makeGateway(((hostId, method, params) => {
         assert.strictEqual(hostId, "remote-a");
         assert.strictEqual(method, "thread/read");
-        assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: false });
-        return Effect.succeed({ thread: appThread("thread-a") });
+        assert.deepEqual(params as unknown, {
+          threadId: nativeThreadIds.main,
+          includeTurns: false,
+        });
+        return Effect.succeed({ thread: appThread(nativeThreadIds.main) });
       }) as RequestOnHost);
       const directory = yield* directoryFoundations.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
@@ -1144,7 +1369,9 @@ it.effect("refreshes an unarchived Thread into a resumed metadata-only canonical
         Effect.provideService(CoreModules, core),
       );
 
-      const refreshed = yield* directory.refreshMetadataInCurrentLane({ threadId: "thread-a" });
+      const refreshed = yield* directory.refreshMetadataInCurrentLane({
+        threadId: nativeThreadIds.main,
+      });
 
       assert.strictEqual(refreshed?.fidelity, "materialized");
       assert.deepEqual(refreshed?.canonical?.turns, []);
@@ -1162,50 +1389,64 @@ it.effect("refreshes an unarchived Thread into a resumed metadata-only canonical
   ),
 );
 
-it.effect("never admits an ACP Thread to any Codex directory fidelity", () =>
+it.effect.each([
+  { label: "ACP", binding: { driver: "acpRegistry", instanceId: "claude-code" } },
+  { label: "Claude", binding: { driver: "claudeAgent", instanceId: "claude" } },
+  { label: "another Codex instance", binding: { driver: "codex", instanceId: "another-account" } },
+])("keeps a UUID owned by $label out of native Codex reads and acceptance", ({ binding }) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([
-        [
-          "thread-acp",
-          coreThread("thread-acp", {
-            backend_binding: { driver: "acpRegistry", instanceId: "claude-code" },
-          }),
-        ],
-      ]);
-      const conversations = makeConversations();
-      let gatewayRequests = 0;
-      const gateway = makeGateway((() =>
-        Effect.sync(() => {
-          gatewayRequests += 1;
-          return { thread: appThread("thread-acp") };
-        })) as RequestOnHost);
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(
-          CodexApplicationEventHub,
-          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-        ),
-        Effect.provideService(
-          CodexConversationProjection,
-          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
-        ),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, makeCore(threads)),
+      const threadId = nativeThreadIds.foreign;
+      const original = coreThread(threadId, { backend_binding: binding });
+      const { directory, requests, threads, conversations } = yield* boundaryDirectory(
+        new Map([[threadId, original]]),
       );
-
       const results = yield* Effect.forEach(
         ["durable", "metadata", "tail", "live"] as const,
-        (fidelity) =>
-          directory.resolve({
-            threadId: "thread-acp",
-            fidelity,
-            hostId: "local",
-          }),
+        (fidelity) => directory.resolve({ threadId, fidelity, hostId: "local" }),
       );
-
       assert.deepEqual(results, [null, null, null, null]);
-      assert.strictEqual(gatewayRequests, 0);
+      assert.isNull(yield* directory.materializeInCurrentLane({ threadId, hostId: "local" }));
+      assert.isNull(yield* directory.refreshMetadataInCurrentLane({ threadId, hostId: "local" }));
+      assert.strictEqual((yield* Effect.exit(directory.prepareResume(threadId)))._tag, "Failure");
+      assert.strictEqual(
+        (yield* Effect.exit(directory.prepareHistoryHydration(threadId)))._tag,
+        "Failure",
+      );
+      assert.strictEqual(
+        (yield* Effect.exit(
+          directory.observeMetadata({
+            thread: appThread(threadId),
+            inferredInitialProjectId: null,
+          }),
+        ))._tag,
+        "Failure",
+      );
+      assert.strictEqual(
+        (yield* Effect.exit(
+          directory.acceptSessionStart({
+            response: {
+              thread: appThread(threadId),
+              cwd: "/repo",
+              model: "gpt-test",
+              reasoningEffort: "high",
+              serviceTier: null,
+            } as never,
+            sessionId: "session-native",
+            projectId: original.project_id,
+            durableOnly: true,
+            capability: localCapabilitySnapshot,
+            executionProfile: null,
+            runtimeWorkspaceRoots: ["/repo"],
+            fallbackCwd: "/repo",
+            managedWorktreePath: null,
+          }),
+        ))._tag,
+        "Failure",
+      );
+      assert.deepEqual(requests, []);
+      assert.strictEqual(threads.get(threadId), original);
+      assert.isNull(conversations.readThreadMetadata(threadId));
     }),
   ),
 );
@@ -1213,7 +1454,7 @@ it.effect("never admits an ACP Thread to any Codex directory fidelity", () =>
 it.effect("hydrates an inactive paginated Thread from a bounded tail without resuming it", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a")]]);
+      const threads = new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -1233,7 +1474,7 @@ it.effect("hydrates an inactive paginated Thread from a bounded tail without res
       const gateway = makeGateway(((hostId, method, params, scheduling) => {
         assert.strictEqual(hostId, "remote-a");
         gatewayRequests.push({ method, params, scheduling });
-        return Effect.succeed({ thread: appThread("thread-a") });
+        return Effect.succeed({ thread: appThread(nativeThreadIds.main) });
       }) as RequestOnHost);
       const tailTurn: Turn = {
         rootTurnId: null,
@@ -1289,20 +1530,23 @@ it.effect("hydrates an inactive paginated Thread from a bounded tail without res
         Effect.provideService(CoreModules, core),
       );
 
-      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "tail" });
+      const resolved = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "tail",
+      });
 
       assert.strictEqual(resolved?.fidelity, "tail");
       assert.deepEqual(gatewayRequests, [
         {
           method: "thread/read",
-          params: { threadId: "thread-a", includeTurns: false },
+          params: { threadId: nativeThreadIds.main, includeTurns: false },
           scheduling: { expectedHostId: "remote-a", expectedGeneration: 1 },
         },
       ]);
       assert.deepEqual(pageInputs, [
         {
           capability: capabilitySnapshot,
-          threadId: "thread-a",
+          threadId: nativeThreadIds.main,
           cursor: null,
           initialItemsCursor: null,
           purpose: "initial",
@@ -1320,7 +1564,7 @@ it.effect("hydrates an inactive paginated Thread from a bounded tail without res
 it.effect("keeps legacy tail reads metadata-only instead of loading unbounded history", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a")]]);
+      const threads = new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -1338,7 +1582,7 @@ it.effect("keeps legacy tail reads metadata-only instead of loading unbounded hi
         assert.strictEqual(method, "thread/read");
         requests.push(params);
         return Effect.succeed({
-          thread: { ...appThread("thread-a"), historyMode: "legacy", turns: [] },
+          thread: { ...appThread(nativeThreadIds.main), historyMode: "legacy", turns: [] },
         });
       }) as RequestOnHost);
       const legacyCapability = createCodexAppServerCapabilitySnapshot({
@@ -1369,15 +1613,18 @@ it.effect("keeps legacy tail reads metadata-only instead of loading unbounded hi
         Effect.provideService(CoreModules, core),
       );
 
-      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "tail" });
-      assert.deepEqual(requests, [{ threadId: "thread-a", includeTurns: false }]);
+      const resolved = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "tail",
+      });
+      assert.deepEqual(requests, [{ threadId: nativeThreadIds.main, includeTurns: false }]);
       const live = yield* Effect.exit(
-        directory.resolve({ threadId: "thread-a", fidelity: "live" }),
+        directory.resolve({ threadId: nativeThreadIds.main, fidelity: "live" }),
       );
 
       assert.deepEqual(requests, [
-        { threadId: "thread-a", includeTurns: false },
-        { threadId: "thread-a", includeTurns: false },
+        { threadId: nativeThreadIds.main, includeTurns: false },
+        { threadId: nativeThreadIds.main, includeTurns: false },
       ]);
       assert.strictEqual(resolved?.historyMode, "legacy");
       assert.deepEqual(resolved?.canonical?.turns, []);
@@ -1456,7 +1703,9 @@ it.effect.each([
   ({ nativeMcp, selectedCwd, metadataCwd, responseCwd, requestCwd, finalCwd }) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const threads = new Map([["thread-a", coreThread("thread-a", { cwd: selectedCwd })]]);
+        const threads = new Map([
+          [nativeThreadIds.main, coreThread(nativeThreadIds.main, { cwd: selectedCwd })],
+        ]);
         const core = makeCore(threads);
         const conversations = makeConversations();
         const eventHub = CodexApplicationEventHub.of({
@@ -1476,13 +1725,18 @@ it.effect.each([
           ((hostId, method, params, scheduling) => {
             assert.strictEqual(hostId, "remote-a");
             if (method === "thread/read") {
-              assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: false });
-              return Effect.succeed({ thread: { ...appThread("thread-a"), cwd: metadataCwd } });
+              assert.deepEqual(params as unknown, {
+                threadId: nativeThreadIds.main,
+                includeTurns: false,
+              });
+              return Effect.succeed({
+                thread: { ...appThread(nativeThreadIds.main), cwd: metadataCwd },
+              });
             }
             assert.strictEqual(method, "thread/resume");
             resumeRequests.push({ params, scheduling });
             return Effect.succeed({
-              thread: appThread("thread-a"),
+              thread: appThread(nativeThreadIds.main),
               model: "gpt-test",
               modelProvider: "openai",
               serviceTier: null,
@@ -1565,12 +1819,15 @@ it.effect.each([
           Effect.provideService(CoreModules, core),
         );
 
-        const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
+        const resolved = yield* directory.resolve({
+          threadId: nativeThreadIds.main,
+          fidelity: "live",
+        });
 
         assert.lengthOf(resumeRequests, 1);
         const resumeRequest = resumeRequests[0]!;
         assert.deepInclude(resumeRequest.params as Record<string, unknown>, {
-          threadId: "thread-a",
+          threadId: nativeThreadIds.main,
           excludeTurns: true,
           history: null,
           path: null,
@@ -1603,11 +1860,11 @@ it.effect.each([
           finalCwd,
         );
         assert.strictEqual(residentConversationTurns(resolved?.canonical)[0]?.params.cwd, finalCwd);
-        assert.strictEqual(threads.get("thread-a")?.cwd, finalCwd);
+        assert.strictEqual(threads.get(nativeThreadIds.main)?.cwd, finalCwd);
         assert.deepEqual(pageInputs, [
           {
             capability: scenarioCapability,
-            threadId: "thread-a",
+            threadId: nativeThreadIds.main,
             cursor: "turns:tail",
             initialItemsCursor: "items:tail",
             purpose: "initial",
@@ -1625,15 +1882,18 @@ it.effect.each([
         assert.deepEqual(resolved?.canonical?.turns[0]?.params.input, [
           { type: "text", text: "opening prompt", text_elements: [] },
         ]);
-        assert.deepEqual(conversations.current("thread-a")?.readTurnItemsPagination("turn-tail"), {
-          olderCursor: "items:older",
-          isLoadingOlder: false,
-          hasLoadedOldest: false,
-          oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
-          openingUserMessageId: "item-opening",
-          itemsView: "summary",
-        });
-        const aggregate = conversations.entity("thread-a");
+        assert.deepEqual(
+          conversations.current(nativeThreadIds.main)?.readTurnItemsPagination("turn-tail"),
+          {
+            olderCursor: "items:older",
+            isLoadingOlder: false,
+            hasLoadedOldest: false,
+            oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
+            openingUserMessageId: "item-opening",
+            itemsView: "summary",
+          },
+        );
+        const aggregate = conversations.entity(nativeThreadIds.main);
         const residentItem = { type: "plan" as const, id: "resident-item", text: "local work" };
         aggregate.mutateCanonicalState((draft) => {
           const entry = residentConversationTurnEntries(draft)[0];
@@ -1648,7 +1908,10 @@ it.effect.each([
         });
         tailTurn.items = [{ type: "plan", id: "snapshot-item", text: "new work" }];
         tailTurn.status = "inProgress";
-        const resumed = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
+        const resumed = yield* directory.resolve({
+          threadId: nativeThreadIds.main,
+          fidelity: "live",
+        });
         assert.deepEqual(
           resumed?.canonical?.turns[0]?.items.map((item) => item.id),
           ["resident-item", "snapshot-item"],
@@ -1666,7 +1929,7 @@ it.effect.each([
 it.effect("reads authoritative history when an unversioned resume omits its page", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a")]]);
+      const threads = new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]);
       const core = makeCore(threads);
       const conversations = makeConversations();
       const eventHub = CodexApplicationEventHub.of({
@@ -1692,16 +1955,22 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         if (method === "thread/read") {
           assert.deepEqual(scheduling, { expectedHostId: "remote-a", expectedGeneration: 2 });
           if (!(params as { includeTurns?: boolean }).includeTurns) {
-            assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: false });
-            return Effect.succeed({ thread: appThread("thread-a") });
+            assert.deepEqual(params as unknown, {
+              threadId: nativeThreadIds.main,
+              includeTurns: false,
+            });
+            return Effect.succeed({ thread: appThread(nativeThreadIds.main) });
           }
-          assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: true });
-          return Effect.succeed({ thread: appThread("thread-a", [residentTurn]) });
+          assert.deepEqual(params as unknown, {
+            threadId: nativeThreadIds.main,
+            includeTurns: true,
+          });
+          return Effect.succeed({ thread: appThread(nativeThreadIds.main, [residentTurn]) });
         }
         assert.strictEqual(method, "thread/resume");
         resumeRequests.push({ params, scheduling });
         return Effect.succeed({
-          thread: appThread("thread-a"),
+          thread: appThread(nativeThreadIds.main),
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
@@ -1758,19 +2027,22 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         completedAt: 2,
         durationMs: 1,
       };
-      const resident = conversations.entity("thread-a");
+      const resident = conversations.entity(nativeThreadIds.main);
       resident.acceptCanonicalState(
-        createCodexCanonicalHydratedConversationState(appThread("thread-a", [residentTurn]), {
-          hostId: "remote-a",
-          model: "gpt-test",
-          reasoningEffort: "high",
-          cwd: "/repo",
-          approvalPolicy: "on-request",
-          approvalsReviewer: "user",
-          sandboxPolicy: { type: "readOnly", networkAccess: false },
-          activePermissionProfile: null,
-          runtimeWorkspaceRoots: ["/repo"],
-        }),
+        createCodexCanonicalHydratedConversationState(
+          appThread(nativeThreadIds.main, [residentTurn]),
+          {
+            hostId: "remote-a",
+            model: "gpt-test",
+            reasoningEffort: "high",
+            cwd: "/repo",
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "readOnly", networkAccess: false },
+            activePermissionProfile: null,
+            runtimeWorkspaceRoots: ["/repo"],
+          },
+        ),
       );
       resident.initializeHistory(
         {
@@ -1785,12 +2057,15 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         120_000,
       );
 
-      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
+      const resolved = yield* directory.resolve({
+        threadId: nativeThreadIds.main,
+        fidelity: "live",
+      });
 
       assert.lengthOf(resumeRequests, 1);
       const resumeRequest = resumeRequests[0]!;
       assert.deepInclude(resumeRequest.params as Record<string, unknown>, {
-        threadId: "thread-a",
+        threadId: nativeThreadIds.main,
         excludeTurns: true,
         initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" },
         history: null,
@@ -1831,7 +2106,7 @@ it.effect.each([false, true])(
   (supportsPagination) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const threadId = "durable-thread";
+        const threadId = nativeThreadIds.durable;
         const core = makeCore(
           new Map([[threadId, coreThread(threadId, { execution_host_id: "durable" })]]),
         );
@@ -2019,7 +2294,9 @@ it.effect.each([false, true])(
       Effect.gen(function* () {
         let capabilityCurrent = true;
         let invalidateAfterPersistence = false;
-        const storage = makeCore(new Map([["thread-a", coreThread("thread-a")]]));
+        const storage = makeCore(
+          new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]),
+        );
         const core = CoreModules.of({
           ...storage,
           workspace: {
@@ -2063,7 +2340,9 @@ it.effect.each([false, true])(
             );
           if (readMode === "stale") capabilityCurrent = false;
           return Effect.succeed({
-            thread: appThread(readMode === "wrong-thread" ? "another-thread" : "thread-a"),
+            thread: appThread(
+              readMode === "wrong-thread" ? nativeThreadIds.other : nativeThreadIds.main,
+            ),
           });
         }) as RequestOnHost);
         const history = yield* makeHistoryPageAdapter.pipe(
@@ -2086,7 +2365,7 @@ it.effect.each([false, true])(
           Effect.provideService(CoreModules, core),
         );
         const response = {
-          thread: { ...appThread("thread-a"), historyMode: "legacy" as const },
+          thread: { ...appThread(nativeThreadIds.main), historyMode: "legacy" as const },
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
@@ -2116,7 +2395,7 @@ it.effect.each([false, true])(
         };
         const fallback = yield* directory.acceptResumeResult(input);
         assert.deepEqual(historyReads, [
-          { hostId: "remote-a", params: { threadId: "thread-a", includeTurns: true } },
+          { hostId: "remote-a", params: { threadId: nativeThreadIds.main, includeTurns: true } },
         ]);
         assert.deepEqual(fallback.snapshot?.turns, []);
         assert.strictEqual(fallback.snapshot?.turnPagination?.hasLoadedOldest, true);
@@ -2156,14 +2435,15 @@ it.effect.each([false, true])(
         assert.strictEqual(restored.snapshot?.turnPagination?.hasLoadedOldest, false);
         assert.strictEqual(restored.snapshot?.turnPagination?.olderCursor, page.nextCursor);
         assert.strictEqual(
-          conversations.current("thread-a")?.readCanonicalState()?.turnsPagination?.olderCursor,
+          conversations.current(nativeThreadIds.main)?.readCanonicalState()?.turnsPagination
+            ?.olderCursor,
           page.nextCursor,
         );
 
-        const resident = conversations.entity("thread-a").readCanonicalState()!;
+        const resident = conversations.entity(nativeThreadIds.main).readCanonicalState()!;
         const oldest = residentConversationTurns(resident)[0]!;
         const correlatedParams = { ...oldest.params, clientUserMessageId: "opening-client" };
-        conversations.entity("thread-a").mutateCanonicalState((draft) => {
+        conversations.entity(nativeThreadIds.main).mutateCanonicalState((draft) => {
           const entry = residentConversationTurnEntries(draft)[0];
           if (!entry) throw new Error("Expected a resident turn");
           conversationTurnDraft(draft, entry.address)!.params = castDraft(correlatedParams);
@@ -2172,7 +2452,7 @@ it.effect.each([false, true])(
           ...input,
           response: {
             ...response,
-            thread: appThread("thread-a"),
+            thread: appThread(nativeThreadIds.main),
             initialTurnsPage: { ...page, data: [{ ...turn("oldest"), items: [] }] },
           },
         });
@@ -2253,7 +2533,7 @@ it.effect.each([false, true])(
           responsesapiClientMetadata: null,
           input: queuedInput,
         };
-        conversations.entity("thread-a").mutateCanonicalState((draft) => {
+        conversations.entity(nativeThreadIds.main).mutateCanonicalState((draft) => {
           const entry = residentConversationTurnEntries(draft)[0];
           if (!entry) throw new Error("Expected a resident turn");
           conversationTurnDraft(draft, entry.address)!.items.push({
@@ -2304,7 +2584,7 @@ it.effect.each([false, true])(
           responsesapiClientMetadata: null,
           input: ackInput,
         };
-        conversations.entity("thread-a").mutateCanonicalState((draft) => {
+        conversations.entity(nativeThreadIds.main).mutateCanonicalState((draft) => {
           const entry = residentConversationTurnEntries(draft)[0];
           if (!entry) throw new Error("Expected a resident turn");
           conversationTurnDraft(draft, entry.address)!.items.push({
@@ -2349,18 +2629,24 @@ it.effect.each([false, true])(
           ackReceipt,
         ]);
         const installedAck = residentConversationTurns(
-          conversations.current("thread-a")!.readCanonicalState(),
+          conversations.current(nativeThreadIds.main)!.readCanonicalState(),
         )[0]?.items.find((item) => item.id === "pending-ack-row");
         assert.ok(installedAck?.type === "steeringUserMessage");
         assert.strictEqual(installedAck.serverUserMessageId, "ack-echo");
         assert.deepEqual(installedAck.acceptedInput, ackInput);
-        const baseline = yield* directory.resolve({ threadId: "thread-a", fidelity: "durable" });
+        const baseline = yield* directory.resolve({
+          threadId: nativeThreadIds.main,
+          fidelity: "durable",
+        });
         for (const mode of ["wrong-thread", "stale", "failure"] as const) {
           readMode = mode;
           capabilityCurrent = true;
           const failed = yield* directory.acceptResumeResult(input).pipe(Effect.flip);
           assert.strictEqual(failed.operation, "read");
-          const retained = yield* directory.resolve({ threadId: "thread-a", fidelity: "durable" });
+          const retained = yield* directory.resolve({
+            threadId: nativeThreadIds.main,
+            fidelity: "durable",
+          });
           assert.strictEqual(retained?.canonical, baseline?.canonical);
         }
         capabilityCurrent = true;
@@ -2373,7 +2659,7 @@ it.effect.each([false, true])(
           .pipe(Effect.exit);
         assert.isTrue(Exit.isFailure(staleAcceptance));
         assert.strictEqual(
-          conversations.current("thread-a")?.readCanonicalState(),
+          conversations.current(nativeThreadIds.main)?.readCanonicalState(),
           baseline?.canonical,
         );
       }),
@@ -2383,7 +2669,7 @@ it.effect.each([false, true])(
 it.effect("owner Scope close interrupts an in-flight remote hydration", () =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.make();
-    const core = makeCore(new Map([["thread-a", coreThread("thread-a")]]));
+    const core = makeCore(new Map([[nativeThreadIds.main, coreThread(nativeThreadIds.main)]]));
     const conversations = makeConversations();
     let interrupted = false;
     const gateway = makeGateway((() =>
@@ -2405,7 +2691,7 @@ it.effect("owner Scope close interrupts an in-flight remote hydration", () =>
       Effect.provideService(Scope.Scope, ownerScope),
     );
     const resolve = yield* Effect.forkChild(
-      directory.resolve({ threadId: "thread-a", fidelity: "live" }),
+      directory.resolve({ threadId: nativeThreadIds.main, fidelity: "live" }),
       { startImmediately: true },
     );
     yield* Effect.yieldNow;
@@ -2419,7 +2705,12 @@ it.effect("owner Scope close interrupts an in-flight remote hydration", () =>
 it.effect("strict selected target rejects a foreign durable host before any native hydration", () =>
   Effect.gen(function* () {
     const core = makeCore(
-      new Map([["child", coreThread("child", { execution_host_id: "foreign" })]]),
+      new Map([
+        [
+          nativeThreadIds.child,
+          coreThread(nativeThreadIds.child, { execution_host_id: "foreign" }),
+        ],
+      ]),
     );
     let requests = 0;
     const directory = yield* directoryFoundations.pipe(
@@ -2446,7 +2737,11 @@ it.effect("strict selected target rejects a foreign durable host before any nati
     assert.isTrue(
       Exit.isFailure(
         yield* directory
-          .resolve({ threadId: "child", fidelity: "tail", expectedHostId: "remote-a" })
+          .resolve({
+            threadId: nativeThreadIds.child,
+            fidelity: "tail",
+            expectedHostId: "remote-a",
+          })
           .pipe(Effect.exit),
       ),
     );
@@ -2457,13 +2752,13 @@ it.effect("strict selected target rejects a foreign durable host before any nati
 for (const race of ["host", "link", "parent"] as const)
   it.effect(`strict hydration sends its pre-request binding to Core after a ${race} race`, () =>
     Effect.gen(function* () {
-      const original = coreThread("child", {
-        parent_thread_id: "root",
+      const original = coreThread(nativeThreadIds.child, {
+        parent_thread_id: nativeThreadIds.root,
         session_id: "original-session",
       });
       const threads = new Map([
-        ["child", original],
-        ["root", coreThread("root")],
+        [nativeThreadIds.child, original],
+        [nativeThreadIds.root, coreThread(nativeThreadIds.root)],
       ]);
       const base = makeCore(threads);
       let writes = 0;
@@ -2482,7 +2777,7 @@ for (const race of ["host", "link", "parent"] as const)
               project_id: "project-a",
               session_id: "original-session",
             });
-            assert.strictEqual(input.intent.expected_parent_thread_id, "root");
+            assert.strictEqual(input.intent.expected_parent_thread_id, nativeThreadIds.root);
             return Effect.fail(
               new CoreRuntimeError({
                 message: "Binding changed",
@@ -2503,7 +2798,7 @@ for (const race of ["host", "link", "parent"] as const)
       const request = ((_host: string, method: string) =>
         Effect.sync(() => {
           assert.strictEqual(method, "thread/read");
-          threads.set("child", {
+          threads.set(nativeThreadIds.child, {
             ...original,
             ...(race === "host"
               ? { execution_host_id: "foreign" }
@@ -2511,7 +2806,9 @@ for (const race of ["host", "link", "parent"] as const)
                 ? { session_id: "new-session" }
                 : { parent_thread_id: "new-parent" }),
           });
-          return { thread: { ...appThread("child"), parentThreadId: "root" } };
+          return {
+            thread: { ...appThread(nativeThreadIds.child), parentThreadId: nativeThreadIds.root },
+          };
         })) as RequestOnHost;
       const directory = yield* directoryFoundations.pipe(
         Effect.provideService(
@@ -2531,12 +2828,16 @@ for (const race of ["host", "link", "parent"] as const)
       assert.isTrue(
         Exit.isFailure(
           yield* directory
-            .resolve({ threadId: "child", fidelity: "tail", expectedHostId: "remote-a" })
+            .resolve({
+              threadId: nativeThreadIds.child,
+              fidelity: "tail",
+              expectedHostId: "remote-a",
+            })
             .pipe(Effect.exit),
         ),
       );
       assert.strictEqual(writes, 1);
-      assert.notStrictEqual(threads.get("child"), original);
-      assert.notStrictEqual(threads.get("child")?.thread_name, "Hydrated Thread");
+      assert.notStrictEqual(threads.get(nativeThreadIds.child), original);
+      assert.notStrictEqual(threads.get(nativeThreadIds.child)?.thread_name, "Hydrated Thread");
     }),
   );

@@ -51,7 +51,6 @@ import type {
   AgentRuntimeOperations,
   AgentTurnItem,
 } from "@nodex/agent-runtime/contracts";
-import type { ConversationIdentity } from "../../shared/conversation-identity";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   defineRendererCommand,
@@ -238,8 +237,6 @@ export interface AgentRuntimeRendererTransport {
   readonly read: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
   readonly control: (target: AgentRuntimeControlInput) => Promise<AgentRuntimeConversation>;
   readonly inspect: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeInspection>;
-  /** Names any execution Thread, root or delegated, with its Session and current Agent. */
-  readonly identify: (threadId: string) => Promise<ConversationIdentity | null>;
   readonly overview: (
     input: AgentRuntimeOverviewInput,
   ) => Promise<AgentRuntimeOperations["tasks.overview"]["output"]>;
@@ -351,7 +348,6 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   read: (input) => invokeRendererQuery("agent-runtime:session:read", input),
   control: (input) => invokeRendererQuery("agent-runtime:session:control", input),
   inspect: (input) => invokeRendererQuery("agent-runtime:session:inspect", input),
-  identify: (threadId) => invokeRendererQuery("agent-runtime:thread:identity", { threadId }),
   overview: (input) => invokeRendererQuery("agent-runtime:session:overview", input),
   message: (input) => invokePlainCommand(message, input),
   queueMessage: (input) => invokePlainCommand(queueMessage, input),

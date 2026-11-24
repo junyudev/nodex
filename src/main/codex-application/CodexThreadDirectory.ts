@@ -39,6 +39,7 @@ import {
   mergeCodexCanonicalTurnStates,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
+import { isNativeCodexThreadId } from "../../shared/agent-runtime-api";
 import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
 import type {
@@ -353,6 +354,16 @@ export const make: Effect.Effect<
     cause: unknown,
   ) => new CodexThreadDirectoryError({ operation, threadId, cause });
 
+  const requireNativeThreadId = (
+    threadId: string,
+    operation: CodexThreadDirectoryError["operation"] = "read",
+  ): Effect.Effect<void, CodexThreadDirectoryError> =>
+    isNativeCodexThreadId(threadId)
+      ? Effect.void
+      : Effect.fail(
+          error(operation, threadId, new Error("A native Codex Thread identity is required")),
+        );
+
   /**
    * A mutation or metadata read is not a transcript transport. Validate the raw wire object
    * before copying it, so a non-compliant endpoint cannot be made safe by overwriting `turns`.
@@ -525,14 +536,20 @@ export const make: Effect.Effect<
     }): Effect.fn.Return<DurableThread, CodexThreadDirectoryError> {
       const record = input.thread as unknown as Record<string, unknown>;
       const threadId = typeof record.id === "string" ? record.id.trim() : "";
-      if (!threadId) {
+      if (!isNativeCodexThreadId(threadId) || threadId !== record.id) {
         return yield* error(
           "materialize",
-          "unknown",
-          new Error("App-server Thread identity is missing"),
+          threadId || "unknown",
+          new Error("App-server Thread identity is not a native Codex Thread id"),
         );
       }
       const previous = yield* readDurable(threadId);
+      if (previous && !isCodexAgentBackendBinding(previous.thread.backendBinding))
+        return yield* error(
+          "materialize",
+          threadId,
+          new Error("Thread belongs to another Agent backend"),
+        );
       const parentThreadId =
         input.parentThreadId ?? extractCodexThreadSubagentMetadata(record).parentThreadId;
       const parent = parentThreadId ? yield* readDurable(parentThreadId) : null;
@@ -882,6 +899,7 @@ export const make: Effect.Effect<
       readonly operation: CodexThreadDirectoryError["operation"];
       readonly stage: string;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
+      yield* requireNativeThreadId(input.expectedThreadId, input.operation);
       const rawThread = input.response.thread;
       const durableHost = input.capability.hostId === "durable";
       const paginated =
@@ -1181,10 +1199,12 @@ export const make: Effect.Effect<
     overrides?: CanonicalResumeOverrides,
     options?: ConversationResumePreparationOptions,
   ) {
+    yield* requireNativeThreadId(threadId);
     if (metadata && metadata.id !== threadId)
       return yield* error("read", threadId, new Error("Resume metadata belongs to another thread"));
     const durable = yield* readDurable(threadId);
-    if (!durable) return yield* error("read", threadId, new Error("Thread is not registered"));
+    if (!durable || !isCodexAgentBackendBinding(durable.thread.backendBinding))
+      return yield* error("read", threadId, new Error("Native Codex Thread is not registered"));
     const capability = yield* capabilities
       .forHost(durable.thread.executionHostId)
       .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
@@ -1207,6 +1227,7 @@ export const make: Effect.Effect<
     metadataScheduling?: { readonly conversationId: string; readonly widgetId: string },
     targetGuard?: CodexThreadDirectoryTargetGuard,
   ): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
+    yield* requireNativeThreadId(threadId);
     const readMetadata = (capability: CodexAppServerCapabilitySnapshot) =>
       gateway
         .requestOnHost(
@@ -1412,7 +1433,7 @@ export const make: Effect.Effect<
     };
   }): Effect.fn.Return<CodexThreadDirectoryEntry | null, CodexThreadDirectoryError> {
     const threadId = input.threadId.trim();
-    if (!threadId) return null;
+    if (!isNativeCodexThreadId(threadId)) return null;
     const durable = yield* readDurable(threadId);
     if (durable && !isCodexAgentBackendBinding(durable.thread.backendBinding)) return null;
     const expectedHostId = input.expectedHostId?.trim();
@@ -1485,7 +1506,11 @@ export const make: Effect.Effect<
   }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
     const sourceThreadId = input.sourceThreadId.trim();
     const childThreadId = input.response.thread.id.trim();
-    if (!sourceThreadId || !childThreadId || childThreadId !== input.response.thread.id) {
+    if (
+      !isNativeCodexThreadId(sourceThreadId) ||
+      !isNativeCodexThreadId(childThreadId) ||
+      childThreadId !== input.response.thread.id
+    ) {
       return yield* error(
         "materialize",
         childThreadId || sourceThreadId,
@@ -1515,7 +1540,7 @@ export const make: Effect.Effect<
       );
     }
     const source = yield* readDurable(sourceThreadId);
-    if (!source) {
+    if (!source || !isCodexAgentBackendBinding(source.thread.backendBinding)) {
       return yield* error(
         "materialize",
         sourceThreadId,
@@ -1627,7 +1652,7 @@ export const make: Effect.Effect<
       readonly executionHostId?: string;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
       const threadId = input.response.thread.id.trim();
-      if (!threadId || threadId !== input.response.thread.id) {
+      if (!isNativeCodexThreadId(threadId) || threadId !== input.response.thread.id) {
         return yield* error(
           "materialize",
           threadId,
@@ -1717,13 +1742,20 @@ export const make: Effect.Effect<
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
       const rawThread = input.response.thread as unknown as Thread;
       const threadId = rawThread.id.trim();
-      if (!threadId || threadId !== rawThread.id) {
+      if (!isNativeCodexThreadId(threadId) || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
           new Error("Thread start did not return a valid Thread id"),
         );
       }
+      const existing = yield* readDurable(threadId);
+      if (existing && !isCodexAgentBackendBinding(existing.thread.backendBinding))
+        return yield* error(
+          "materialize",
+          threadId,
+          new Error("Thread belongs to another Agent backend"),
+        );
       yield* requireDurableStartContract({
         threadId,
         thread: rawThread,
@@ -1766,11 +1798,11 @@ export const make: Effect.Effect<
         })
         .pipe(Effect.mapError((cause) => error("materialize", threadId, cause)));
       const durable = yield* readDurable(threadId);
-      if (!durable) {
+      if (!durable || !isCodexAgentBackendBinding(durable.thread.backendBinding)) {
         return yield* error(
           "materialize",
           threadId,
-          new Error("Core did not return the Session-linked Thread"),
+          new Error("Core did not return the native Session-linked Thread"),
         );
       }
       if (input.durableOnly) return entry(durable, "metadata", thread.historyMode);
@@ -1801,7 +1833,7 @@ export const make: Effect.Effect<
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
       const rawThread = input.response.thread as unknown as Thread;
       const threadId = rawThread.id.trim();
-      if (!threadId || threadId !== rawThread.id) {
+      if (!isNativeCodexThreadId(threadId) || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
@@ -1869,7 +1901,7 @@ export const make: Effect.Effect<
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
       const rawThread = input.response.thread;
       const threadId = rawThread.id.trim();
-      if (!threadId || threadId !== rawThread.id) {
+      if (!isNativeCodexThreadId(threadId) || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
@@ -1897,8 +1929,10 @@ export const make: Effect.Effect<
   return CodexThreadDirectory.of({
     prepareHistoryHydration: (threadId) =>
       Effect.gen(function* () {
+        yield* requireNativeThreadId(threadId);
         const durable = yield* readDurable(threadId);
-        if (!durable) return yield* error("read", threadId, new Error("Thread is not registered"));
+        if (!durable || !isCodexAgentBackendBinding(durable.thread.backendBinding))
+          return yield* error("read", threadId, new Error("Native Codex Thread is not registered"));
         const permissions = createCodexCanonicalWorkspacePermissionContext(
           durable.raw.writable_roots,
         );
@@ -1920,9 +1954,11 @@ export const make: Effect.Effect<
     prepareResume,
     acceptRendererResume: (input) =>
       Effect.gen(function* () {
+        yield* requireNativeThreadId(input.threadId, "materialize");
         const durable = yield* readDurable(input.threadId);
         if (
           !durable ||
+          !isCodexAgentBackendBinding(durable.thread.backendBinding) ||
           durable.thread.executionHostId !== input.capability.hostId ||
           input.response.thread.id !== input.threadId
         )
@@ -1961,8 +1997,9 @@ export const make: Effect.Effect<
     materializeInCurrentLane: (input) =>
       Effect.gen(function* () {
         const threadId = input.threadId.trim();
-        if (!threadId) return null;
+        if (!isNativeCodexThreadId(threadId)) return null;
         const durable = yield* readDurable(threadId);
+        if (durable && !isCodexAgentBackendBinding(durable.thread.backendBinding)) return null;
         const hostId = durable?.thread.executionHostId ?? input.hostId?.trim();
         if (!hostId) return null;
         return yield* readRemote(threadId, "live", hostId);
@@ -1970,8 +2007,9 @@ export const make: Effect.Effect<
     refreshMetadataInCurrentLane: (input) =>
       Effect.gen(function* () {
         const threadId = input.threadId.trim();
-        if (!threadId) return null;
+        if (!isNativeCodexThreadId(threadId)) return null;
         const previous = yield* readDurable(threadId);
+        if (previous && !isCodexAgentBackendBinding(previous.thread.backendBinding)) return null;
         const hostId = previous?.thread.executionHostId ?? input.hostId?.trim();
         if (!hostId) return null;
         const capability = yield* capabilities
@@ -2012,13 +2050,14 @@ export const make: Effect.Effect<
     observeMetadata: (input) =>
       runOwned(
         Effect.gen(function* () {
-          conversations.registerThreadMetadata(input.thread);
+          yield* requireNativeThreadId(input.thread.id, "materialize");
           yield* requireMetadataShell("materialize", input.thread.id, input.thread, false);
           const durable = yield* persistObservation({
             thread: normalizeThread(input.thread),
             inferredInitialProjectId: input.inferredInitialProjectId,
             executionHostId: input.executionHostId,
           });
+          conversations.registerThreadMetadata(input.thread);
           return entry(durable, "metadata");
         }),
       ),

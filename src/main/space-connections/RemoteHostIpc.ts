@@ -121,9 +121,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:session:inspect", (_, input) =>
       call<"agent-runtime:session:inspect">("session_inspect", input),
     );
-    // A transcript names its senders, forks and answering chats by their host's current title.
-    yield* ipc.handleQuery("agent-runtime:thread:identity", (_, input) =>
-      call<"agent-runtime:thread:identity">("thread_identity", input),
+    // Conversation ownership belongs to this Space's host, never this desktop's native history.
+    yield* ipc.handleQuery("conversation:identity:get", (_, threadId) =>
+      call<"conversation:identity:get">("thread_identity", { threadId }),
     );
     yield* ipc.handleQuery("agent-runtime:session:native-child-work", (_, input) =>
       call<"agent-runtime:session:native-child-work">("session_native_child_work", input),

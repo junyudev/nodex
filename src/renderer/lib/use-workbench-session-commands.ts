@@ -112,9 +112,9 @@ import type {
   WorkbenchTabCreateInput,
   WorkbenchTabProjection,
 } from "./types";
-import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
-import { readCodexThreadSummary } from "./codex-thread-summary";
+import { readConversationIdentity } from "./conversation-identity";
 import { resolveChatSessionForThreadId } from "./chat-session-for-thread";
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 
 function requirePresentedPage(
   result: Awaited<ReturnType<WorkbenchSceneNavigator["presentPanelSurface"]>>,
@@ -491,7 +491,7 @@ export function useWorkbenchSessionCommands({
     async (threadId: string): Promise<ProjectSessionDomain | ProjectSession> =>
       await resolveChatSessionForThreadId<ProjectSessionDomain | ProjectSession>(threadId, {
         knownSessions,
-        readAgentThreadSessionId: async (id) => (await readCodexThreadSummary(id))?.sessionId,
+        readConversationIdentity,
         resolveSessionById: resolveChatSessionById,
         ensureThreadSession: (id) => sessionCatalog.ensureThreadSession(id),
       }),
@@ -1270,23 +1270,60 @@ export function useWorkbenchSessionCommands({
       requested?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
     ): Promise<boolean> => {
       if (requested?.isSourceCurrent?.() === false) return false;
-      // A reference names an Agent chat by its execution root Thread; its Session opens it.
+      const navigationRequest = ++runtimeNavigationRequestRef.current;
+      const known = knownSessions.find(
+        (session) =>
+          !session.archived &&
+          (session.executionRef?.threadId ?? session.thread?.threadId) === threadId,
+      );
+      // Bare references resolve through their execution owner, including descendants of a chat.
       let context = requested;
-      if (!requested?.runtimeSessionId && isAgentExecutionThreadId(threadId)) {
-        const runtimeSessionId =
-          knownSessions.find((session) => session.executionRef?.threadId === threadId)?.id ??
-          (await readCodexThreadSummary(threadId))?.sessionId;
-        if (!runtimeSessionId)
-          throw new Error(
-            getIntl().formatMessage({
-              id: "lib.useWorkbenchSessionCommands.chatUnavailable",
-              defaultMessage: "This chat is no longer available",
-            }),
-          );
-        context = { ...requested, runtimeSessionId };
+      // A native parent's own Subagent action already carries an execution owner. Its directory
+      // may discover the child on that host; a bare reference cannot make the same claim.
+      if (
+        context?.subagent &&
+        !context.runtimeSessionId &&
+        !context.createdTarget &&
+        !context.hostId &&
+        activeSession?.thread &&
+        !activeSession.executionRef &&
+        isCodexAgentBackendBinding(activeSession.thread.backendBinding)
+      ) {
+        return context.subagent.canInteract
+          ? openBackgroundAgentTab(activeSession.thread.threadId, context.subagent, activeSession)
+          : openSubagentsPanelTab(activeSession.thread.threadId, context.subagent, activeSession);
+      }
+      if (
+        !context?.runtimeSessionId &&
+        !context?.createdTarget &&
+        !context?.hostId &&
+        !threadId.startsWith(CODEX_CLIENT_THREAD_ID_PREFIX)
+      ) {
+        if (known?.executionRef) {
+          context = { ...requested, runtimeSessionId: known.id };
+        } else if (!known) {
+          const identity = await readConversationIdentity(threadId);
+          if (
+            navigationRequest !== runtimeNavigationRequestRef.current ||
+            context?.isSourceCurrent?.() === false
+          )
+            return false;
+          if (!identity || identity.archived)
+            throw new Error(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchSessionCommands.chatUnavailable",
+                defaultMessage: "This chat is no longer available",
+              }),
+            );
+          context = {
+            ...requested,
+            ...(identity.execution === "agent-runtime"
+              ? { runtimeSessionId: identity.sessionId }
+              : { hostId: identity.executionHostId }),
+          };
+        }
       }
       if (context?.runtimeSessionId) {
-        const navigationRequest = ++runtimeNavigationRequestRef.current;
         const session = await sessionCatalog.readCurrent(context.runtimeSessionId);
         if (
           navigationRequest !== runtimeNavigationRequestRef.current ||
@@ -1357,55 +1394,15 @@ export function useWorkbenchSessionCommands({
         setPendingWorktreeClientThreadId(threadId);
         return true;
       }
-      if (context?.subagent) {
-        const rootThreadId = activeSession?.thread?.threadId ?? null;
-        if (rootThreadId) {
-          return context.subagent.canInteract
-            ? openBackgroundAgentTab(rootThreadId, context.subagent)
-            : openSubagentsPanelTab(rootThreadId, context.subagent);
-        }
-      }
-
-      const session =
-        knownSessions.find(
-          (candidate) =>
-            (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === threadId,
-        ) ?? null;
-      if (session) {
+      if (known) {
         closePendingWorktreeRoute();
-        selectSession(session);
+        selectSession(known);
         return true;
       }
-
-      try {
-        const ensured = await sessionCatalog.ensureThreadSession(threadId);
-        if (!ensured) {
-          toast.info(
-            getIntl().formatMessage({
-              id: "lib.useWorkbenchSessionCommands.toast.chatUnavailable",
-              defaultMessage: "That chat is not available",
-            }),
-            {
-              id: `thread-open-unattached-${threadId}`,
-            },
-          );
-          return false;
-        }
-        closePendingWorktreeRoute();
-        selectSession(ensured);
-        return true;
-      } catch {
-        toast.danger(
-          getIntl().formatMessage({
-            id: "lib.useWorkbenchSessionCommands.toast.openChatFailed",
-            defaultMessage: "Failed to open chat",
-          }),
-        );
-        return false;
-      }
+      return false;
     },
     [
-      activeSession?.thread?.threadId,
+      activeSession,
       closePendingWorktreeRoute,
       knownSessions,
       openSubagentsPanelTab,

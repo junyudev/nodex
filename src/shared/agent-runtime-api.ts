@@ -110,10 +110,11 @@ const AGENT_EXECUTION_THREAD_PREFIX = "nodex:thread:";
 export const agentExecutionThreadId = (digest: string): string =>
   `${AGENT_EXECUTION_THREAD_PREFIX}${digest}`;
 
-export const isAgentExecutionThreadId = (threadId: string): boolean =>
+/** Recognizes generated root IDs only; descendants are resolved through their Runtime lineage. */
+export const isAgentExecutionRootThreadId = (threadId: string): boolean =>
   threadId.startsWith(AGENT_EXECUTION_THREAD_PREFIX);
 
-/** Only a native app-server conversation is a UUID; no Agent execution Thread, root or child, is. */
+/** UUID syntax required by native Codex; this does not establish execution ownership. */
 export const isNativeCodexThreadId = (threadId: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(threadId);
 
@@ -467,10 +468,6 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:inspect": {
     args: [target: AgentRuntimeSessionTarget];
     result: AgentRuntimeInspection;
-  };
-  "agent-runtime:thread:identity": {
-    args: [input: { readonly threadId: string }];
-    result: import("./conversation-identity").ConversationIdentity | null;
   };
   "agent-runtime:session:overview": {
     args: [input: AgentRuntimeOverviewInput];

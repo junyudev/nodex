@@ -108,7 +108,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:read"
   | "agent-runtime:session:control"
   | "agent-runtime:session:inspect"
-  | "agent-runtime:thread:identity"
+  | "conversation:identity:get"
   | "agent-runtime:session:overview"
   | "agent-runtime:session:delegation"
   | "agent-runtime:session:background-output"
