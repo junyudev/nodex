@@ -43,6 +43,48 @@ function buildSegmentsFromMatchedIndexes(
   return segments;
 }
 
+/** Segments for UTF-16 ranges a search reported; ranges past the text are ignored. */
+export function buildCommandPaletteRangeHighlightSegments(
+  text: string,
+  ranges: readonly { readonly start: number; readonly end: number }[],
+): CommandPaletteHighlightSegment[] {
+  const segments: CommandPaletteHighlightSegment[] = [];
+  const push = (value: string, highlight: boolean) => {
+    if (value) segments.push({ text: value, highlight });
+  };
+  let position = 0;
+  for (const range of ranges) {
+    const start = Math.max(position, Math.min(range.start, text.length));
+    const end = Math.max(start, Math.min(range.end, text.length));
+    push(text.slice(position, start), false);
+    push(text.slice(start, end), true);
+    position = end;
+  }
+  push(text.slice(position), false);
+  return segments.length > 0 ? segments : [{ text, highlight: false }];
+}
+
+/** Keeps at most `limit` characters, ending a shortened text with an ellipsis. */
+export function limitCommandPaletteHighlightSegments(
+  segments: readonly CommandPaletteHighlightSegment[],
+  limit: number,
+): CommandPaletteHighlightSegment[] {
+  const total = segments.reduce((sum, segment) => sum + Array.from(segment.text).length, 0);
+  if (total <= limit) return [...segments];
+  const limited: CommandPaletteHighlightSegment[] = [];
+  let remaining = limit - 1;
+  for (const segment of segments) {
+    if (remaining <= 0) break;
+    const characters = Array.from(segment.text).slice(0, remaining);
+    remaining -= characters.length;
+    limited.push({ text: characters.join(""), highlight: segment.highlight });
+  }
+  const last = limited.at(-1);
+  if (last) last.text = last.text.trimEnd();
+  limited.push({ text: "…", highlight: false });
+  return limited;
+}
+
 export function buildCommandPaletteCharacterHighlightSegments(
   text: string,
   query: string,

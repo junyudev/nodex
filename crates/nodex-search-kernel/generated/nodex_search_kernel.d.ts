@@ -1,6 +1,17 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export interface IndexedFileMatch {
+    readonly root_slot: number;
+    readonly path: string;
+    readonly match_type: "file" | "directory";
+    readonly file_name: string;
+    readonly score: number;
+    readonly indices: readonly number[];
+}
+
+
+
 export type SearchTextKind = "metadata" | "long_text";
 export type SearchField = readonly [text: string, kind: SearchTextKind];
 export interface SearchRowMatch { index: number; rank: number; }
@@ -32,6 +43,50 @@ export class ChatMetadataSearchIndex {
     evidence(query: string, ids: string[]): ChatMetadataEvidence[];
     constructor();
     strongMatches(query: string): [string, number, boolean][];
+}
+
+export class FileNameIndex {
+    free(): void;
+    [Symbol.dispose](): void;
+    addBatch(paths: string, entries: number, path_units: number): boolean;
+    finishBuilding(): void;
+    hasDirectory(path: string): boolean;
+    hasFile(path: string): boolean;
+    indexedAncestor(path: string): string;
+    constructor(windows_paths: boolean);
+    removeTree(path: string): void;
+    remove(path: string): boolean;
+    subdirectories(path: string): string[];
+    readonly pathUnits: number;
+    readonly size: number;
+}
+
+export class FileNameRanking {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    addRoot(root_slot: number, index: FileNameIndex): void;
+    advance(root_slot: number, batch: number): boolean;
+    results(): IndexedFileMatch[];
+    readonly dirty: boolean;
+    readonly hasMatches: boolean;
+}
+
+export class FileNameRefresh {
+    free(): void;
+    [Symbol.dispose](): void;
+    apply(index: FileNameIndex, directory: string, tree: boolean, entries: number, path_units: number): boolean;
+    collect(index: FileNameIndex, paths: string, entries: number, path_units: number): boolean;
+    constructor();
+}
+
+export class FileNameSearch {
+    free(): void;
+    [Symbol.dispose](): void;
+    clear(): void;
+    constructor();
+    reparse(query: string): void;
+    start(): FileNameRanking;
 }
 
 export class PageSearchPreviewIndex {
@@ -75,6 +130,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_chatmetadatasearchindex_free: (a: number, b: number) => void;
+    readonly __wbg_filenameindex_free: (a: number, b: number) => void;
+    readonly __wbg_filenameranking_free: (a: number, b: number) => void;
+    readonly __wbg_filenamerefresh_free: (a: number, b: number) => void;
+    readonly __wbg_filenamesearch_free: (a: number, b: number) => void;
     readonly __wbg_pagesearchpreviewindex_free: (a: number, b: number) => void;
     readonly __wbg_searchtextquery_free: (a: number, b: number) => void;
     readonly analyzerVersion: () => number;
@@ -83,6 +142,29 @@ export interface InitOutput {
     readonly chatmetadatasearchindex_evidence: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly chatmetadatasearchindex_new: () => number;
     readonly chatmetadatasearchindex_strongMatches: (a: number, b: number, c: number, d: number) => void;
+    readonly filenameindex_addBatch: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly filenameindex_finishBuilding: (a: number) => void;
+    readonly filenameindex_hasDirectory: (a: number, b: number, c: number) => number;
+    readonly filenameindex_hasFile: (a: number, b: number, c: number) => number;
+    readonly filenameindex_indexedAncestor: (a: number, b: number, c: number, d: number) => void;
+    readonly filenameindex_new: (a: number) => number;
+    readonly filenameindex_pathUnits: (a: number) => number;
+    readonly filenameindex_remove: (a: number, b: number, c: number) => number;
+    readonly filenameindex_removeTree: (a: number, b: number, c: number) => void;
+    readonly filenameindex_size: (a: number) => number;
+    readonly filenameindex_subdirectories: (a: number, b: number, c: number, d: number) => void;
+    readonly filenameranking_addRoot: (a: number, b: number, c: number) => void;
+    readonly filenameranking_advance: (a: number, b: number, c: number) => number;
+    readonly filenameranking_dirty: (a: number) => number;
+    readonly filenameranking_hasMatches: (a: number) => number;
+    readonly filenameranking_results: (a: number, b: number) => void;
+    readonly filenamerefresh_apply: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+    readonly filenamerefresh_collect: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly filenamerefresh_new: () => number;
+    readonly filenamesearch_clear: (a: number) => void;
+    readonly filenamesearch_new: () => number;
+    readonly filenamesearch_reparse: (a: number, b: number, c: number) => void;
+    readonly filenamesearch_start: (a: number) => number;
     readonly findLiteralRanges: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly foldText: (a: number, b: number, c: number) => void;
     readonly indexText: (a: number, b: number, c: number) => void;

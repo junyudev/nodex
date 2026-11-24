@@ -11,8 +11,6 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { vi } from "vite-plus/test";
-import { createFuzzyQueryScorer } from "../../shared/fuzzy-query-match";
 import type { FileSearchResult } from "../../shared/file-search";
 import { FileWatchError, type FileWatchEvent, type FileWatchHost } from "../file-watch-host";
 import {
@@ -22,32 +20,14 @@ import {
   type WorkspaceFileListingRequest,
 } from "../platform/node/WorkspaceFileListing";
 import {
-  FILE_INDEX_TIMINGS,
   makeFileIndexModule,
   type FileIndexModuleOptions,
   type FileIndexRootState,
 } from "./file-index-module";
+import { FILE_INDEX_TIMINGS } from "./file-index-timings";
 import type { FileIndexWorkerThreadMessage } from "./file-index-worker-protocol";
 
 type Listing = WorkspaceFileListing["Service"];
-
-/** Ranking work per query: how many names each scorer was asked to score. */
-const scorers = vi.hoisted(() => [] as { readonly query: string; calls: number }[]);
-vi.mock("../../shared/fuzzy-query-match", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../shared/fuzzy-query-match")>();
-  return {
-    ...actual,
-    createFuzzyQueryScorer: (query: string) => {
-      const scorer = { query, calls: 0 };
-      scorers.push(scorer);
-      const score = actual.createFuzzyQueryScorer(query);
-      return (candidate: string) => {
-        scorer.calls++;
-        return score(candidate);
-      };
-    },
-  };
-});
 
 const writeFiles = (root: string, files: Record<string, string>) =>
   Effect.promise(async () => {
@@ -178,7 +158,7 @@ const makeHarness = (
   });
 
 it.effect(
-  "lists real files and inferred directories using repository ignores and the shared name matcher",
+  "lists real files and inferred directories using repository ignores and file-name ranking",
   () =>
     Effect.gen(function* () {
       const root = yield* temporaryRoot({
@@ -191,24 +171,23 @@ it.effect(
         "ignored-alpha.ts": "",
         "ignored-by-dot-alpha.ts": "",
         "normal.txt": "",
+        "src/main/file-index-worker/file-index-module.ts": "",
         "node_modules/alpha/index.js": "",
       });
       const { index, search } = yield* makeHarness();
       yield* index.open("local-fixture", [root]);
       const result = yield* search("local-fixture", 1, "alpha");
       assert.equal(result.outcome, "completed");
-      const score = createFuzzyQueryScorer("alpha");
-      const visible = result.files.filter((file) => score(file.file_name) > 0);
-      const names = ["Alpha.ts", "alpha-guide.md", "RemoteAlpha.ts", "folder-alpha"].sort(
-        (left, right) => score(right) - score(left) || (left < right ? -1 : 1),
-      );
+      const visible = result.files;
       assert.deepEqual(
-        visible.map((file) => file.file_name),
-        names,
-      );
-      assert.deepEqual(
-        visible.map((file) => file.score),
-        names.map(score),
+        visible.map((file) => file.path),
+        [
+          ".hidden/Alpha.ts",
+          "docs/alpha-guide.md",
+          "docs/RemoteAlpha.ts",
+          "folder-alpha",
+          "folder-alpha/index.ts",
+        ],
       );
       assert.isTrue(visible.every((file) => file.root === root));
       assert.deepEqual(
@@ -224,6 +203,8 @@ it.effect(
           (file) => file.path.includes("ignored") || file.path.includes("node_modules"),
         ),
       );
+      const fuzzy = yield* search("local-fixture", 2, "fileindxmod");
+      assert.equal(fuzzy.files[0]?.path, "src/main/file-index-worker/file-index-module.ts");
     }),
 );
 
@@ -294,7 +275,7 @@ it.effect(
               path: "Alpha.ts",
               file_name: "Alpha.ts",
               match_type: "file",
-              score: createFuzzyQueryScorer("alpha")("Alpha.ts"),
+              score: 65_536 + 134,
               indices: [0, 1, 2, 3, 4],
             },
           ],
@@ -326,7 +307,6 @@ it.effect("stops ranking superseded queries and closed sessions", () =>
     yield* index.open("search", ["/repo"]);
     assert.equal((yield* search("search", 1, "file")).outcome, "completed");
 
-    const mark = scorers.length;
     yield* index.query("search", 2, "file");
     const latest = yield* search("search", 3, "file-7");
     yield* index.query("search", 4, "file");
@@ -335,14 +315,6 @@ it.effect("stops ranking superseded queries and closed sessions", () =>
     yield* index.open("later", ["/repo"]);
     assert.equal((yield* search("later", 1, "file")).outcome, "completed");
 
-    const [superseded, replacement, closed, later] = scorers.slice(mark);
-    assert.deepEqual(
-      [superseded, replacement, closed, later].map((scorer) => scorer?.query),
-      ["file", "file-7", "file", "file"],
-    );
-    assert.isAtLeast(later!.calls, files.length);
-    assert.isBelow(superseded!.calls, files.length / 4);
-    assert.isBelow(closed!.calls, files.length / 4);
     assert.include(latest.files[0]?.path ?? "", "file-7");
     const answered = log.flatMap((message) =>
       message.type === "session" ? [`${message.seq}:${message.outcome.kind}`] : [],

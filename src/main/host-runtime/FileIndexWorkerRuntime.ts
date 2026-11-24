@@ -1,7 +1,9 @@
 import { Worker } from "node:worker_threads";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FiberHandle from "effect/FiberHandle";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -9,6 +11,7 @@ import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import type { FileSearchEvent, FileSearchIncomplete } from "../../shared/file-search";
 import { MainConfig } from "../app/MainConfig";
+import { FILE_INDEX_TIMINGS } from "../file-index-worker/file-index-timings";
 import {
   isFileIndexWorkerThreadMessage,
   type FileIndexWorkerData,
@@ -17,6 +20,7 @@ import {
 import { RipgrepExecutionRuntime } from "../platform/node/RipgrepExecutionRuntime";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 1_500;
+const WORKER_IDLE_RETIREMENT = Duration.sum(FILE_INDEX_TIMINGS.idleRelease, Duration.minutes(1));
 
 export interface LocalFileSearchSession {
   readonly update: (query: string) => Effect.Effect<void>;
@@ -91,8 +95,8 @@ const createNodeProcess: FileIndexWorkerProcessFactory = (input) => {
   const worker = new Worker(input.workerPath, {
     name: "file-index",
     workerData: input.workerData,
-    // Indexes stay within their entry bounds (about 70 MiB when full); this ceiling stops a
-    // runaway worker without touching Main, which can resume the search in a new one.
+    // The worker bounds Rust index storage separately. This ceiling applies to the
+    // JavaScript heap, including directory checks and search sessions.
     resourceLimits: { maxOldGenerationSizeMb: 512 },
   });
   return {
@@ -134,10 +138,43 @@ export const live = (
       const startLock = yield* Semaphore.make(1);
       const callbacks = yield* FiberSet.make();
       const runCallback = yield* FiberSet.runtime(callbacks)();
+      const retiring = yield* FiberSet.make();
+      const idleRetirement = yield* FiberHandle.make();
       const searches = new Map<string, SearchSession>();
       let current: WorkerSession | null = null;
       let nextEpoch = 1;
       let closed = false;
+
+      const stopWorker = Effect.fnUntraced(function* (worker: WorkerSession) {
+        yield* Effect.try(() => worker.process.send({ type: "shutdown" })).pipe(Effect.ignore);
+        yield* Effect.raceFirst(
+          Deferred.await(worker.exit).pipe(Effect.asVoid),
+          Effect.sleep(options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS).pipe(
+            Effect.andThen(Effect.tryPromise(() => worker.process.terminate())),
+            Effect.ignore,
+          ),
+        );
+        worker.releaseListeners();
+      }, Effect.uninterruptible);
+
+      const retireWorker = Effect.fnUntraced(function* (worker: WorkerSession) {
+        if (closed || searches.size > 0 || current !== worker) return;
+        // Detach before stopping so a new search can start a worker immediately.
+        current = null;
+        yield* FiberSet.run(retiring, stopWorker(worker));
+      }, Effect.uninterruptible);
+
+      const scheduleIdleRetirement = Effect.fnUntraced(function* () {
+        const worker = current;
+        if (closed || searches.size > 0 || !worker) return;
+        yield* FiberHandle.run(
+          idleRetirement,
+          Effect.sleep(WORKER_IDLE_RETIREMENT).pipe(
+            Effect.andThen(retireWorker(worker)),
+            Effect.interruptible,
+          ),
+        );
+      });
 
       const isPending = (search: SearchSession, query: SearchQuery) =>
         searches.get(search.id) === search && search.pending === query;
@@ -285,7 +322,10 @@ export const live = (
             catch: (cause) =>
               new FileIndexWorkerUnavailable({ message: "Could not start file search", cause }),
           });
-        }),
+        }).pipe(
+          // A session can close while startup still awaits ripgrep.
+          Effect.tap(scheduleIdleRetirement),
+        ),
       );
 
       const dispatch = Effect.fnUntraced(function* (
@@ -346,7 +386,7 @@ export const live = (
         onEvent: (event: FileSearchEvent) => Effect.Effect<void>,
       ) =>
         Effect.acquireRelease(
-          Effect.sync(() => {
+          Effect.gen(function* () {
             const search: SearchSession = {
               id: input.sessionId,
               roots: [...input.roots],
@@ -356,6 +396,7 @@ export const live = (
               pending: null,
             };
             searches.set(search.id, search);
+            yield* FiberHandle.clear(idleRetirement);
             return search;
           }),
           (search) =>
@@ -364,6 +405,7 @@ export const live = (
               searches.delete(search.id);
               if (search.openedIn && search.openedIn === current)
                 yield* send(current, { type: "close", sessionId: search.id });
+              yield* scheduleIdleRetirement();
             }),
         ).pipe(
           Effect.map((search): LocalFileSearchSession => ({
@@ -379,16 +421,7 @@ export const live = (
           for (const search of searches.values()) {
             if (search.pending) yield* settle(search, search.pending, UNAVAILABLE);
           }
-          if (!worker) return;
-          yield* Effect.try(() => worker.process.send({ type: "shutdown" })).pipe(Effect.ignore);
-          yield* Effect.raceFirst(
-            Deferred.await(worker.exit).pipe(Effect.asVoid),
-            Effect.sleep(options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS).pipe(
-              Effect.andThen(Effect.tryPromise(() => worker.process.terminate())),
-              Effect.ignore,
-            ),
-          );
-          worker.releaseListeners();
+          if (worker) yield* stopWorker(worker);
         }),
       );
 

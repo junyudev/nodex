@@ -68,6 +68,8 @@ export function useFileSearch(input: {
     setSessionIdentity({ enabled, scopeKey });
     if (enabled) setBatch(null);
   }
+  // A cleared query starts over; the next one never shows matches from before it.
+  if (!query && batch !== null) setBatch(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -82,7 +84,7 @@ export function useFileSearch(input: {
           setBatch({
             query: event.params.query,
             scopeKey,
-            matches: projectFileSearchResults(event.params.files, event.params.query, roots),
+            matches: projectFileSearchResults(event.params.files, roots),
             completed: false,
             incomplete: null,
           });
@@ -120,8 +122,11 @@ export function useFileSearch(input: {
 
   if (!enabled || !query)
     return { matches: EMPTY_MATCHES, loading: false, incomplete: null, retry: null };
-  if (batch?.query !== query || batch.scopeKey !== scopeKey)
+  if (batch?.scopeKey !== scopeKey)
     return { matches: EMPTY_MATCHES, loading: true, incomplete: null, retry: null };
+  // While an edited query runs, the previous query's matches stay until its first answer.
+  if (batch.query !== query)
+    return { matches: batch.matches, loading: true, incomplete: null, retry: null };
   const incomplete = batch.completed ? batch.incomplete : null;
   return {
     matches: batch.matches,

@@ -71,6 +71,8 @@ import {
 } from "../../lib/command-palette";
 import {
   buildCommandPaletteCharacterHighlightSegments,
+  buildCommandPaletteRangeHighlightSegments,
+  limitCommandPaletteHighlightSegments,
   type CommandPaletteHighlightSegment,
 } from "../../lib/command-palette-highlight";
 import { chatFieldHighlightSegments, chatHighlightSegments } from "../../lib/chat-search";
@@ -536,16 +538,22 @@ function ChatRow({
   );
 }
 
-function fileRowText(value: string): string {
-  const characters = Array.from(value);
-  return characters.length > 100 ? `${characters.slice(0, 99).join("").trimEnd()}…` : value;
-}
+const FILE_ROW_TEXT_LIMIT = 100;
 
 function FileRow({ item, query }: { item: CommandPaletteFile; query: string }) {
-  const title = fileRowText(item.file.label);
   const explicitPath = isAbsoluteSearchPath(query.trim()) || /^~[\\/]/u.test(query.trim());
-  const description = fileRowText(explicitPath ? item.file.fsPath : item.file.directoryPath);
-  const segments = buildCommandPaletteCharacterHighlightSegments(title, query, "fuzzy");
+  const matched = explicitPath ? undefined : item.file.matched;
+  const segments = limitCommandPaletteHighlightSegments(
+    matched
+      ? buildCommandPaletteRangeHighlightSegments(item.file.label, matched.label)
+      : buildCommandPaletteCharacterHighlightSegments(item.file.label, query, "fuzzy"),
+    FILE_ROW_TEXT_LIMIT,
+  );
+  const description = explicitPath ? item.file.fsPath : item.file.directoryPath;
+  const descriptionSegments = limitCommandPaletteHighlightSegments(
+    buildCommandPaletteRangeHighlightSegments(description, matched?.directory ?? []),
+    FILE_ROW_TEXT_LIMIT,
+  );
   const hasMatch = segments.some((segment) => segment.highlight);
   return (
     <div className="flex w-full min-w-0 items-center gap-2">
@@ -574,7 +582,18 @@ function FileRow({ item, query }: { item: CommandPaletteFile; query: string }) {
             </span>
           </div>
           {description ? (
-            <span className="min-w-0 flex-1 truncate text-sm text-tertiary">{description}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-tertiary">
+              {descriptionSegments.some((segment) => segment.highlight)
+                ? descriptionSegments.map((segment, index) => (
+                    <span
+                      key={index}
+                      className={segment.highlight ? "text-token-text-secondary" : undefined}
+                    >
+                      {segment.text}
+                    </span>
+                  ))
+                : descriptionSegments.map((segment) => segment.text).join("")}
+            </span>
           ) : null}
         </div>
       </div>

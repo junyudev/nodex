@@ -104,6 +104,293 @@ export class ChatMetadataSearchIndex {
 }
 if (Symbol.dispose) ChatMetadataSearchIndex.prototype[Symbol.dispose] = ChatMetadataSearchIndex.prototype.free;
 
+export class FileNameIndex {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        FileNameIndexFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_filenameindex_free(ptr, 0);
+    }
+    /**
+     * @param {string} paths
+     * @param {number} entries
+     * @param {number} path_units
+     * @returns {boolean}
+     */
+    addBatch(paths, entries, path_units) {
+        const ptr0 = passStringToWasm0(paths, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenameindex_addBatch(this.__wbg_ptr, ptr0, len0, entries, path_units);
+        return ret !== 0;
+    }
+    finishBuilding() {
+        wasm.filenameindex_finishBuilding(this.__wbg_ptr);
+    }
+    /**
+     * @param {string} path
+     * @returns {boolean}
+     */
+    hasDirectory(path) {
+        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenameindex_hasDirectory(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
+     * @param {string} path
+     * @returns {boolean}
+     */
+    hasFile(path) {
+        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenameindex_hasFile(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
+     * @param {string} path
+     * @returns {string}
+     */
+    indexedAncestor(path) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.filenameindex_indexedAncestor(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred2_0 = r0;
+            deferred2_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export4(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {boolean} windows_paths
+     */
+    constructor(windows_paths) {
+        const ret = wasm.filenameindex_new(windows_paths);
+        this.__wbg_ptr = ret;
+        FileNameIndexFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    get pathUnits() {
+        const ret = wasm.filenameindex_pathUnits(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {string} path
+     */
+    removeTree(path) {
+        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.filenameindex_removeTree(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {string} path
+     * @returns {boolean}
+     */
+    remove(path) {
+        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenameindex_remove(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get size() {
+        const ret = wasm.filenameindex_size(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {string} path
+     * @returns {string[]}
+     */
+    subdirectories(path) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.filenameindex_subdirectories(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v2 = getArrayJsValueFromWasm0(r0, r1);
+            wasm.__wbindgen_export4(r0, r1 * 4, 4);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) FileNameIndex.prototype[Symbol.dispose] = FileNameIndex.prototype.free;
+
+export class FileNameRanking {
+    static __wrap(ptr) {
+        const obj = Object.create(FileNameRanking.prototype);
+        obj.__wbg_ptr = ptr;
+        FileNameRankingFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        FileNameRankingFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_filenameranking_free(ptr, 0);
+    }
+    /**
+     * @param {number} root_slot
+     * @param {FileNameIndex} index
+     */
+    addRoot(root_slot, index) {
+        _assertClass(index, FileNameIndex);
+        wasm.filenameranking_addRoot(this.__wbg_ptr, root_slot, index.__wbg_ptr);
+    }
+    /**
+     * @param {number} root_slot
+     * @param {number} batch
+     * @returns {boolean}
+     */
+    advance(root_slot, batch) {
+        const ret = wasm.filenameranking_advance(this.__wbg_ptr, root_slot, batch);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    get dirty() {
+        const ret = wasm.filenameranking_dirty(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    get hasMatches() {
+        const ret = wasm.filenameranking_hasMatches(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {IndexedFileMatch[]}
+     */
+    results() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.filenameranking_results(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) FileNameRanking.prototype[Symbol.dispose] = FileNameRanking.prototype.free;
+
+export class FileNameRefresh {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        FileNameRefreshFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_filenamerefresh_free(ptr, 0);
+    }
+    /**
+     * @param {FileNameIndex} index
+     * @param {string} directory
+     * @param {boolean} tree
+     * @param {number} entries
+     * @param {number} path_units
+     * @returns {boolean}
+     */
+    apply(index, directory, tree, entries, path_units) {
+        _assertClass(index, FileNameIndex);
+        const ptr0 = passStringToWasm0(directory, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenamerefresh_apply(this.__wbg_ptr, index.__wbg_ptr, ptr0, len0, tree, entries, path_units);
+        return ret !== 0;
+    }
+    /**
+     * @param {FileNameIndex} index
+     * @param {string} paths
+     * @param {number} entries
+     * @param {number} path_units
+     * @returns {boolean}
+     */
+    collect(index, paths, entries, path_units) {
+        _assertClass(index, FileNameIndex);
+        const ptr0 = passStringToWasm0(paths, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.filenamerefresh_collect(this.__wbg_ptr, index.__wbg_ptr, ptr0, len0, entries, path_units);
+        return ret !== 0;
+    }
+    constructor() {
+        const ret = wasm.filenamerefresh_new();
+        this.__wbg_ptr = ret;
+        FileNameRefreshFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) FileNameRefresh.prototype[Symbol.dispose] = FileNameRefresh.prototype.free;
+
+export class FileNameSearch {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        FileNameSearchFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_filenamesearch_free(ptr, 0);
+    }
+    clear() {
+        wasm.filenamesearch_clear(this.__wbg_ptr);
+    }
+    constructor() {
+        const ret = wasm.filenamesearch_new();
+        this.__wbg_ptr = ret;
+        FileNameSearchFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {string} query
+     */
+    reparse(query) {
+        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.filenamesearch_reparse(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @returns {FileNameRanking}
+     */
+    start() {
+        const ret = wasm.filenamesearch_start(this.__wbg_ptr);
+        return FileNameRanking.__wrap(ret);
+    }
+}
+if (Symbol.dispose) FileNameSearch.prototype[Symbol.dispose] = FileNameSearch.prototype.free;
+
 export class PageSearchPreviewIndex {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -415,6 +702,13 @@ function __wbg_get_imports() {
             const ret = Number(getObject(arg0));
             return ret;
         },
+        __wbg_String_8564e559799eccda: function(arg0, arg1) {
+            const ret = String(getObject(arg1));
+            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len1 = WASM_VECTOR_LEN;
+            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+        },
         __wbg___wbindgen_bigint_get_as_i64_a2383202b9353e4c: function(arg0, arg1) {
             const v = getObject(arg1);
             const ret = typeof(v) === 'bigint' ? v : undefined;
@@ -631,6 +925,18 @@ function __wbg_get_imports() {
 const ChatMetadataSearchIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_chatmetadatasearchindex_free(ptr, 1));
+const FileNameIndexFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_filenameindex_free(ptr, 1));
+const FileNameRankingFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_filenameranking_free(ptr, 1));
+const FileNameRefreshFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_filenamerefresh_free(ptr, 1));
+const FileNameSearchFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_filenamesearch_free(ptr, 1));
 const PageSearchPreviewIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_pagesearchpreviewindex_free(ptr, 1));
@@ -645,6 +951,12 @@ function addHeapObject(obj) {
 
     heap[idx] = obj;
     return idx;
+}
+
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
 }
 
 function debugString(val) {

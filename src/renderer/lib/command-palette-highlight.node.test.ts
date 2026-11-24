@@ -2,7 +2,9 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   buildCommandPaletteCharacterHighlightSegments,
   buildCommandPaletteQueryHighlightPreview,
+  buildCommandPaletteRangeHighlightSegments,
   buildCommandPaletteTokenHighlightSegments,
+  limitCommandPaletteHighlightSegments,
   type CommandPaletteHighlightSegment,
 } from "./command-palette-highlight";
 
@@ -102,4 +104,32 @@ describe("command palette character highlighting", () => {
     expect(preview?.excerpt.indexOf("ca")).toBeLessThanOrEqual(24);
     expect(highlightedText(preview?.segments ?? [])).toBe("ca");
   });
+});
+
+test("reported match ranges become segments, and long text keeps its highlights up to the ellipsis", () => {
+  expect(
+    buildCommandPaletteRangeHighlightSegments("file-index-module.ts", [
+      { start: 0, end: 4 },
+      { start: 5, end: 8 },
+      { start: 40, end: 41 },
+    ]),
+  ).toEqual([
+    { text: "file", highlight: true },
+    { text: "-", highlight: false },
+    { text: "ind", highlight: true },
+    { text: "ex-module.ts", highlight: false },
+  ]);
+  expect(
+    limitCommandPaletteHighlightSegments(
+      [
+        { text: "ab", highlight: true },
+        { text: "cd  ef", highlight: false },
+      ],
+      5,
+    ),
+  ).toEqual([
+    { text: "ab", highlight: true },
+    { text: "cd", highlight: false },
+    { text: "…", highlight: false },
+  ]);
 });
