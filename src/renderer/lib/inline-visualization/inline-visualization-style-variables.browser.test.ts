@@ -109,7 +109,14 @@ beforeEach(() => {
           guest.document.open();
           const html = record(value).html;
           if (typeof html !== "string") throw new Error("Expected an authored document");
-          guest.document.write(html);
+          // This sandbox stand-in exercises the authored inline bootstrap and styles.
+          // Its fixture widgets do not use the third-party script libraries.
+          guest.document.write(
+            html.replace(
+              /<script\b[^>]*\s+src="https:\/\/unpkg\.com\/[^"]+"[^>]*><\/script>/gu,
+              "",
+            ),
+          );
           guest.document.close();
           yield { type: "environment_status", status: 2 };
         })(),

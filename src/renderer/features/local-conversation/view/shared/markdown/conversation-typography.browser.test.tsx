@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { waitFor } from "@testing-library/react";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
-import { beforeAll, describe, expect, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import "@/globals.css";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
 import {
@@ -15,10 +15,6 @@ import { ThreadActivityHeader } from "../tools/tool-primitives";
 import { CodexMcpElicitationRequestCard } from "../../composer/request-cards/codex-mcp-elicitation-request-card";
 
 installRendererThemeFixture();
-const codeBodies = import.meta.glob("/node_modules/streamdown/dist/highlighted-body-*.js");
-beforeAll(async () => {
-  await Promise.all(Object.values(codeBodies).map((load) => load()));
-});
 
 const source = [
   "# First heading",
