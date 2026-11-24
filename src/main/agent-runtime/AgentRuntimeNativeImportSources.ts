@@ -1,5 +1,5 @@
 import { agentDefinition } from "../../shared/agents/registry";
-import { dirname, join, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
 import type { InsightsUsageSource } from "../../shared/insights";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import type { NativeSessionSource } from "../../shared/native-session-catalog";
 import { antigravityAgent } from "../../shared/agents/antigravity";
 import { CODEX_BINDING } from "../../shared/agents/codex";
 import { antigravityHistoryHome } from "../agent-backend/antigravity/AntigravityHistoryHome";
+import { hostEnvironmentValue } from "../platform/node/HostExecutableSearch";
 
 /** The Runtime instance whose history holds a native conversation; Codex has one shared home. */
 export const nativeImportProviderId = (source: NativeSessionSource): string =>
@@ -19,17 +20,49 @@ interface NativeImportSource {
   readonly homePath: string | null;
 }
 
-/** Resolves native import locations from the exact physical provider configuration. */
-export function nativeImportSources(input: {
-  readonly configuration: AgentRuntimeConfiguration;
+interface NativeHistoryHost {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly platform: string;
   readonly homeDirectory: string;
-  readonly codexHome: string;
-}): readonly NativeImportSource[] {
-  const home = input.environment.HOME ?? input.homeDirectory;
-  const directory = (value: string) =>
-    resolve(value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value);
+}
+
+function nativeHistoryPaths({ environment, platform, homeDirectory }: NativeHistoryHost) {
+  const windows = platform === "win32";
+  const path = windows ? win32 : posix;
+  // Match Claude's native account home. A shell may supply a different HOME on Windows.
+  const home =
+    hostEnvironmentValue(environment, windows ? "USERPROFILE" : "HOME", platform) || homeDirectory;
+  const configuredDirectory = (value: string) =>
+    path.resolve(
+      value === "~"
+        ? home
+        : value.startsWith("~/") || (windows && value.startsWith("~\\"))
+          ? path.join(home, value.slice(2))
+          : value,
+    );
+  // A provider's variables are typed into Nodex, where no shell expands `~`.
+  const claudeEnvironmentDirectory = (scope: NativeHistoryHost["environment"]) => {
+    const value = hostEnvironmentValue(scope, "CLAUDE_CONFIG_DIR", platform)?.trim();
+    return value ? configuredDirectory(value) : undefined;
+  };
+  return {
+    path,
+    configuredDirectory,
+    instanceClaudeDirectory: (configured: string, variables: NativeHistoryHost["environment"]) =>
+      configured ? configuredDirectory(configured) : claudeEnvironmentDirectory(variables),
+    defaultClaudeDirectory:
+      claudeEnvironmentDirectory(environment) ?? path.resolve(path.join(home, ".claude")),
+  };
+}
+
+/** Resolves native import locations from the exact physical provider configuration. */
+export function nativeImportSources(
+  input: NativeHistoryHost & {
+    readonly configuration: AgentRuntimeConfiguration;
+    readonly codexHome: string;
+  },
+): readonly NativeImportSource[] {
+  const paths = nativeHistoryPaths(input);
   return Object.entries(input.configuration.providers).map(([providerInstanceId, provider]) => {
     // Managed providers do not expose user-account conversations for import.
     if (provider.source === "nodex")
@@ -42,11 +75,7 @@ export function nativeImportSources(input: {
       return {
         providerInstanceId,
         driver: provider.driver,
-        homePath: antigravityHistoryHome({
-          platform: input.platform,
-          environment: input.environment,
-          homeDirectory: input.homeDirectory,
-        }),
+        homePath: antigravityHistoryHome(input),
       };
     if (history !== "claude")
       return { providerInstanceId, driver: provider.driver, homePath: null };
@@ -59,12 +88,8 @@ export function nativeImportSources(input: {
     return {
       providerInstanceId,
       driver: provider.driver,
-      homePath: directory(
-        configured ||
-          variables.CLAUDE_CONFIG_DIR ||
-          input.environment.CLAUDE_CONFIG_DIR ||
-          join(home, ".claude"),
-      ),
+      homePath:
+        paths.instanceClaudeDirectory(configured, variables) ?? paths.defaultClaudeDirectory,
     };
   });
 }
@@ -74,15 +99,13 @@ export function nativeImportSources(input: {
  * even without a configured provider, since that history predates Nodex. Homes only Nodex writes
  * to, managed accounts and the Profile's own Agent home, hold nothing but Nodex's work.
  */
-export function insightsUsageSources(input: {
-  readonly configuration: AgentRuntimeConfiguration;
-  readonly environment: Readonly<Record<string, string | undefined>>;
-  readonly homeDirectory: string;
-  readonly codexHome: string;
-}): readonly InsightsUsageSource[] {
-  const home = input.environment.HOME ?? input.homeDirectory;
-  const directory = (value: string) =>
-    resolve(value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value);
+export function insightsUsageSources(
+  input: NativeHistoryHost & {
+    readonly configuration: AgentRuntimeConfiguration;
+    readonly codexHome: string;
+  },
+): readonly InsightsUsageSource[] {
+  const paths = nativeHistoryPaths(input);
   const sources = new Map<string, InsightsUsageSource>();
   const add = (source: InsightsUsageSource) => {
     const key = `${source.provider}\u0000${source.home}`;
@@ -90,13 +113,13 @@ export function insightsUsageSources(input: {
   };
   add({
     provider: "claude",
-    home: directory(input.environment.CLAUDE_CONFIG_DIR || join(home, ".claude")),
+    home: paths.defaultClaudeDirectory,
     origin: "external",
   });
   add({ provider: "codex", home: input.codexHome, origin: "external" });
   add({
     provider: "codex",
-    home: join(dirname(input.configuration.home), "agent"),
+    home: paths.path.join(paths.path.dirname(input.configuration.home), "agent"),
     origin: "nodex",
   });
   for (const provider of Object.values(input.configuration.providers)) {
@@ -107,11 +130,11 @@ export function insightsUsageSources(input: {
     const origin = provider.source === "nodex" ? "nodex" : "external";
     const ledger = agentDefinition(provider.driver).capabilities.insightsLedger;
     if (ledger === "claude") {
-      const value = configured || variables.CLAUDE_CONFIG_DIR;
-      if (value) add({ provider: "claude", home: directory(value), origin });
+      const home = paths.instanceClaudeDirectory(configured, variables);
+      if (home) add({ provider: "claude", home, origin });
     } else if (ledger === "codex") {
       const value = configured || variables.CODEX_HOME;
-      if (value) add({ provider: "codex", home: directory(value), origin });
+      if (value) add({ provider: "codex", home: paths.configuredDirectory(value), origin });
     }
   }
   return [...sources.values()];

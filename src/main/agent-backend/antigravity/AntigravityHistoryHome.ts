@@ -1,4 +1,4 @@
-import { join, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { hostEnvironmentValue } from "../../platform/node/HostExecutableSearch";
 
 /**
@@ -18,5 +18,5 @@ export function antigravityHistoryHome(input: {
     const home = profile || (drive && path ? drive + path : homeDirectory);
     return win32.join(home, ".gemini");
   }
-  return join(environment.HOME || homeDirectory, ".gemini");
+  return posix.join(environment.HOME || homeDirectory, ".gemini");
 }

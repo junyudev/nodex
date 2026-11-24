@@ -1,0 +1,1 @@
+On Windows, Nodex finds Claude Code conversations in your Windows user profile even when your shell sets a different home directory. Import and Insights also recognize Claude configuration paths written with Windows home-relative separators.

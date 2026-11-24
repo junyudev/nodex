@@ -1,51 +1,80 @@
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { insightsUsageSources, nativeImportSources } from "./AgentRuntimeNativeImportSources";
 
 describe("native conversation import sources", () => {
-  it("uses the physical account home, instance-specific Claude directory and shared Antigravity history without credentials", () => {
-    const sources = nativeImportSources({
-      configuration: {
-        home: "/profile/agent-runtime",
-        cwd: "/repo",
-        providers: {
-          codex: { driver: "codex", enabled: true, config: { homePath: "/shared/codex" } },
-          claude: {
-            driver: "claudeAgent",
-            enabled: true,
-            config: { homePath: "~/work" },
-            environment: [
-              { name: "ANTHROPIC_API_KEY", value: "private", sensitive: true },
-              { name: "CLAUDE_CONFIG_DIR", value: "/ignored", sensitive: false },
-            ],
-          },
-          acp: { driver: "acpRegistry", enabled: true, config: {} },
-          agy: {
-            driver: "antigravity",
-            enabled: true,
-            config: {},
-            environment: [{ name: "GEMINI_HOME", value: "/profile/agy", sensitive: false }],
-          },
-          remote: {
-            driver: "opencode",
-            enabled: true,
-            config: { serverUrl: "https://service", serverPassword: "private" },
+  it.each([
+    {
+      platform: "darwin",
+      environment: { HOME: "/user" },
+      fallback: "/fallback",
+      codexHome: "/physical/shared-home",
+      claudeHome: "~/work",
+      expectedClaude: "/user/work",
+      expectedAntigravity: "/user/.gemini",
+    },
+    {
+      platform: "win32",
+      environment: { HOME: "C:/shell-home", UserProfile: "D:/User" },
+      fallback: "C:/Fallback",
+      codexHome: "C:/physical/shared-home",
+      claudeHome: "~\\work",
+      expectedClaude: "D:\\User\\work",
+      expectedAntigravity: "D:\\User\\.gemini",
+    },
+  ])(
+    "uses the physical account home, instance-specific Claude directory and shared Antigravity history without credentials on $platform",
+    ({
+      platform,
+      environment,
+      fallback,
+      codexHome,
+      claudeHome,
+      expectedClaude,
+      expectedAntigravity,
+    }) => {
+      const sources = nativeImportSources({
+        configuration: {
+          home: "/profile/agent-runtime",
+          cwd: "/repo",
+          providers: {
+            codex: { driver: "codex", enabled: true, config: { homePath: "/shared/codex" } },
+            claude: {
+              driver: "claudeAgent",
+              enabled: true,
+              config: { homePath: claudeHome },
+              environment: [
+                { name: "ANTHROPIC_API_KEY", value: "private", sensitive: true },
+                { name: "CLAUDE_CONFIG_DIR", value: "/ignored", sensitive: false },
+              ],
+            },
+            acp: { driver: "acpRegistry", enabled: true, config: {} },
+            agy: {
+              driver: "antigravity",
+              enabled: true,
+              config: {},
+              environment: [{ name: "GEMINI_HOME", value: "/profile/agy", sensitive: false }],
+            },
+            remote: {
+              driver: "opencode",
+              enabled: true,
+              config: { serverUrl: "https://service", serverPassword: "private" },
+            },
           },
         },
-      },
-      environment: { HOME: "/user", CLAUDE_CONFIG_DIR: "/global", ANTHROPIC_API_KEY: "private" },
-      platform: "darwin",
-      homeDirectory: "/fallback",
-      codexHome: "/physical/shared-home",
-    });
-    expect(sources).toEqual([
-      { providerInstanceId: "codex", driver: "codex", homePath: "/physical/shared-home" },
-      { providerInstanceId: "claude", driver: "claudeAgent", homePath: path.resolve("/user/work") },
-      { providerInstanceId: "acp", driver: "acpRegistry", homePath: null },
-      { providerInstanceId: "agy", driver: "antigravity", homePath: "/user/.gemini" },
-      { providerInstanceId: "remote", driver: "opencode", homePath: null },
-    ]);
-  });
+        environment: { ...environment, CLAUDE_CONFIG_DIR: "/global", ANTHROPIC_API_KEY: "private" },
+        platform,
+        homeDirectory: fallback,
+        codexHome,
+      });
+      expect(sources).toEqual([
+        { providerInstanceId: "codex", driver: "codex", homePath: codexHome },
+        { providerInstanceId: "claude", driver: "claudeAgent", homePath: expectedClaude },
+        { providerInstanceId: "acp", driver: "acpRegistry", homePath: null },
+        { providerInstanceId: "agy", driver: "antigravity", homePath: expectedAntigravity },
+        { providerInstanceId: "remote", driver: "opencode", homePath: null },
+      ]);
+    },
+  );
 
   it("honors Claude's instance environment before inherited and default homes", () => {
     const read = (instanceDirectory?: string, inheritedDirectory?: string) =>
@@ -61,23 +90,24 @@ describe("native conversation import sources", () => {
               ...(instanceDirectory
                 ? {
                     environment: [
-                      { name: "CLAUDE_CONFIG_DIR", value: instanceDirectory, sensitive: false },
+                      { name: "Claude_Config_Dir", value: instanceDirectory, sensitive: false },
                     ],
                   }
                 : {}),
             },
           },
         },
-        environment: { CLAUDE_CONFIG_DIR: inheritedDirectory },
-        platform: "darwin",
-        homeDirectory: "/fallback",
-        codexHome: "/codex",
+        environment: {
+          HOME: "C:/shell-home",
+          Claude_Config_Dir: inheritedDirectory,
+        },
+        platform: "win32",
+        homeDirectory: "D:/Account",
+        codexHome: "D:/Account/.codex",
       })[0]?.homePath;
-    expect(read(path.resolve("/instance"), path.resolve("/inherited"))).toBe(
-      path.resolve("/instance"),
-    );
-    expect(read(undefined, path.resolve("/inherited"))).toBe(path.resolve("/inherited"));
-    expect(read()).toBe(path.resolve("/fallback/.claude"));
+    expect(read("D:/instance", "D:/inherited")).toBe("D:\\instance");
+    expect(read(undefined, "D:/inherited")).toBe("D:\\inherited");
+    expect(read()).toBe("D:\\Account\\.claude");
   });
 });
 
@@ -119,21 +149,26 @@ describe("Insights usage sources", () => {
     insightsUsageSources({
       configuration: { home: "/profile/agent-runtime", cwd: "/repo", providers },
       environment,
+      platform: "darwin",
       homeDirectory: "/user",
       codexHome: "/user/.codex",
     });
 
   it("reads a person's own homes even with no provider configured", () => {
     expect(read({})).toEqual([
-      { provider: "claude", home: path.resolve("/user/.claude"), origin: "external" },
+      { provider: "claude", home: "/user/.claude", origin: "external" },
       { provider: "codex", home: "/user/.codex", origin: "external" },
-      { provider: "codex", home: path.join("/profile", "agent"), origin: "nodex" },
+      { provider: "codex", home: "/profile/agent", origin: "nodex" },
     ]);
   });
 
   it("follows an inherited Claude home", () => {
     expect(read({}, { HOME: "/user", CLAUDE_CONFIG_DIR: "/elsewhere" })[0]?.home).toBe(
-      path.resolve("/elsewhere"),
+      "/elsewhere",
+    );
+    // A home-relative value, as typed into a provider's variables, lives in the account home.
+    expect(read({}, { HOME: "/user", CLAUDE_CONFIG_DIR: "~/work-claude" })[0]?.home).toBe(
+      "/user/work-claude",
     );
   });
 
@@ -159,17 +194,15 @@ describe("Insights usage sources", () => {
     });
     expect(sources).toContainEqual({
       provider: "claude",
-      home: path.resolve("/profile/models/claude"),
+      home: "/profile/models/claude",
       origin: "nodex",
     });
     expect(sources).toContainEqual({
       provider: "codex",
-      home: path.resolve("/profile/models/codex"),
+      home: "/profile/models/codex",
       origin: "nodex",
     });
-    expect(sources.filter((source) => source.home === path.resolve("/user/.claude"))).toHaveLength(
-      1,
-    );
+    expect(sources.filter((source) => source.home === "/user/.claude")).toHaveLength(1);
     expect(sources.some((source) => source.home.includes("remote"))).toBe(false);
   });
 });

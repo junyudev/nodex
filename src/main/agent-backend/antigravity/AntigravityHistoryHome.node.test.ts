@@ -7,7 +7,7 @@ it("resolves Antigravity's history root from the host home", () => {
   expect(onWindows({ USERPROFILE: "D:\\Person", HOMEDRIVE: "E:", HOMEPATH: "\\Other" })).toBe(
     "D:\\Person\\.gemini",
   );
-  expect(onWindows({ HOMEDRIVE: "E:", HOMEPATH: "\\Person", HOME: "/ignored" })).toBe(
+  expect(onWindows({ HomeDrive: "E:", HomePath: "\\Person", HOME: "/ignored" })).toBe(
     "E:\\Person\\.gemini",
   );
   expect(onWindows({ HOME: "/ignored" })).toBe("C:\\Fallback\\.gemini");

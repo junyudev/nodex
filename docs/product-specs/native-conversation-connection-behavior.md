@@ -74,7 +74,9 @@ affecting its source. To start over after deleting an unfinished copy, reopen th
 A changed active history home invalidates preview
 and admission. Before creating the destination, Nodex verifies that the Runtime's physical
 history home matches the previewed home. Claude capture uses the exact selected native directory
-without launching or resuming the source session. A restored Profile using its captured Codex
+without launching or resuming the source session. On Windows, Claude's default history is under the
+user profile. A configured Claude directory can use either `~/` or `~\` to refer to that profile.
+A restored Profile using its captured Codex
 history cannot import from a different active history home. Completed-import retries remain
 independent of that source check. Codex conversations identified as Runtime-owned are not offered
 as import sources. Catalog candidates are verified against current native conversation metadata

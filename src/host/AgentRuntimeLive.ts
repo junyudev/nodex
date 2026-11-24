@@ -433,6 +433,7 @@ const supervisor = Layer.effectContext(
           return insightsUsageSources({
             configuration,
             environment,
+            platform: config.platform,
             homeDirectory: config.homeDirectory,
             codexHome: platform.accountHome.sharedHome,
           });
