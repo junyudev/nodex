@@ -5,6 +5,7 @@ mod actors_migration;
 pub(crate) mod agent_identity_migration;
 pub mod agent_operations;
 pub(crate) mod authorized_delivery;
+pub(crate) mod automation_trigger_migration;
 pub mod collection_window;
 pub mod cursor;
 pub(crate) mod delivery_atom;

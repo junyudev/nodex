@@ -194,8 +194,8 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('auto',?1,'Clock','UTC','salt','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'run')",[&owner]).unwrap();
-        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('ask',?1,'Clock','UTC','salt','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'ask_first')",[&owner]).unwrap();
+        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,trigger_kind,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('auto',?1,'Clock','UTC','salt','clock','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'run')",[&owner]).unwrap();
+        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,trigger_kind,kind,status,name,prompt,rrule,model,cwds_json,execution_environment,created_at,updated_at,mode) VALUES('ask',?1,'Clock','UTC','salt','clock','cron','ACTIVE','Automation','Saved action','FREQ=MINUTELY;INTERVAL=5','model','[]','local',1,1,'ask_first')",[&owner]).unwrap();
         let context = BoundModuleContext {
             actor: nodex_core_contracts::Actor::Service {
                 kind: nodex_core_contracts::ServiceKind::Maintenance,
@@ -213,7 +213,7 @@ mod tests {
         (c, context, owner)
     }
     fn input() -> AutomationInput {
-        serde_json::from_value(serde_json::json!({"kind":"cron","name":"Automation","prompt":"Changed action","rrule":"FREQ=MINUTELY;INTERVAL=5"})).unwrap()
+        serde_json::from_value(serde_json::json!({"kind":"cron","name":"Automation","prompt":"Changed action","trigger":{"kind":"clock","rrule":"FREQ=MINUTELY;INTERVAL=5"}})).unwrap()
     }
     fn update(id: &str, automation: AutomationInput) -> AutomationIntent {
         AutomationIntent::UpdateAutomation {

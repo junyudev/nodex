@@ -2,7 +2,7 @@ pub(crate) fn local_timezone() -> Result<String, crate::infrastructure::sqlite::
     iana_time_zone::get_timezone().map_err(|_| {
         crate::infrastructure::sqlite::StoreError::new(
             crate::infrastructure::sqlite::StoreErrorCode::InvalidInput,
-            "The local timezone is unavailable; choose an Automation timezone",
+            "The local timezone is unavailable; choose an explicit clock trigger timezone",
             false,
         )
     })
@@ -15,7 +15,6 @@ use sha2::{Digest, Sha256};
 
 use nodex_core_contracts::automation::AutomationExecutionKind;
 
-pub(super) const DEFAULT_RRULE: &str = "FREQ=HOURLY;INTERVAL=24;BYMINUTE=0";
 const JITTER_MAX_SECONDS: u32 = 120;
 const HEARTBEAT_SPREAD_SECONDS: u32 = 300;
 const HEARTBEAT_SPREAD_MIN_INTERVAL_MS: i64 = 60 * 60_000;
@@ -29,9 +28,11 @@ struct ParsedRule {
     options: BTreeMap<String, String>,
 }
 
-pub(super) fn normalize_rrule(value: Option<&str>) -> Result<String, ScheduleError> {
-    let normalized = value.map(str::trim).filter(|value| !value.is_empty());
-    let rule = normalized.unwrap_or(DEFAULT_RRULE);
+pub(super) fn normalize_rrule(value: &str) -> Result<String, ScheduleError> {
+    let rule = value.trim();
+    if rule.is_empty() {
+        return Err(ScheduleError("RRULE is required"));
+    }
     if rule.len() > 16 * 1024 {
         return Err(ScheduleError("RRULE exceeds its bound"));
     }

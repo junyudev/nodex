@@ -45,7 +45,7 @@ pub enum AutomationsCommand {
         /// Stable Automation ID returned by list.
         id: String,
     },
-    /// Create a clock Automation from its complete typed JSON definition.
+    /// Create an Automation from a clock or event trigger definition.
     Create(AutomationCreateArgs),
     /// Replace an Automation's definition using its observed revision.
     Update(AutomationUpdateArgs),
@@ -55,7 +55,7 @@ pub enum AutomationsCommand {
     Resume(AutomationWriteArgs),
     /// Delete an Automation and withdraw its unstarted decisions.
     Delete(AutomationWriteArgs),
-    /// Dispatch an Automation now, or confirm its waiting Ask first decision.
+    /// Dispatch a clock Automation now, or confirm its waiting Ask first decision.
     Run(AutomationRunArgs),
 }
 

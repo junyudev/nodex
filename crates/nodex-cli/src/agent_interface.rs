@@ -1962,6 +1962,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Clears only the named scope; parent holds still apply. Resume work the person paused only when they ask you to.",
         ],
         ["automations", "create" | "update"] => vec![
+            r#"A clock definition specifies "trigger": {"kind":"clock","rrule":"FREQ=DAILY;BYHOUR=9","timezone":"Asia/Singapore"}. An event definition specifies "trigger": {"kind":"event","filter":{"events":["check_failed"]}}."#,
             "You act with the authority of the person you work for. Create Automations as Ask first; choose Run, or switch one to Run, only when the person asked for unattended runs or clearly wants them, and ask when unsure.",
             "Only an Automation's Owner can choose Run, change its mode, edit it while set to Run, run it now or transfer it.",
         ],

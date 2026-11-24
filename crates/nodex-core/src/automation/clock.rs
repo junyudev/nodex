@@ -1,6 +1,6 @@
 //! Clock occurrences are immutable evidence; decisions own admission and retries.
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
-use nodex_core_contracts::automation::{Automation, AutomationMode};
+use nodex_core_contracts::automation::{Automation, AutomationMode, AutomationTrigger};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub(super) fn record_occurrence(
@@ -118,6 +118,13 @@ pub(crate) fn attach_hold(
     automation: &Automation,
     due: i64,
 ) -> Result<(), StoreError> {
+    if !matches!(automation.trigger, AutomationTrigger::Clock { .. }) {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "This Automation no longer has a clock trigger",
+            false,
+        ));
+    }
     let frozen = serde_json::to_string(automation)
         .map_err(|_| invalid("Automation action cannot be frozen"))?;
     connection.execute("UPDATE automation_decisions SET automation_revision=?2,mode='ask_first',frozen_action_json=?3,frozen_authority_json=?4,automation_name=CASE WHEN automation_name='' THEN ?5 ELSE automation_name END WHERE dispatch_id=?1 AND frozen_action_json='{}'",params![dispatch,automation.automation_revision,frozen,serde_json::json!({"owner_member_id":automation.owner_member_id,"mode":automation.mode,"automation_revision":automation.automation_revision}).to_string(),automation.name])?;

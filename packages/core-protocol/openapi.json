@@ -5619,6 +5619,7 @@
           "scope",
           "owner_member_id",
           "condition_text",
+          "trigger",
           "automation_id",
           "automation_revision",
           "kind",
@@ -5626,7 +5627,6 @@
           "mode",
           "name",
           "prompt",
-          "rrule",
           "backend_binding",
           "cwds",
           "execution_environment",
@@ -5699,13 +5699,6 @@
           "name": {
             "type": "string"
           },
-          "next_run_at_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
           "notification_policy": {
             "oneOf": [
               {
@@ -5733,9 +5726,6 @@
               "string",
               "null"
             ]
-          },
-          "rrule": {
-            "type": "string"
           },
           "runbook_page_id": {
             "type": [
@@ -5768,15 +5758,8 @@
               "null"
             ]
           },
-          "typed_condition": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AutomationCondition"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "trigger": {
+            "$ref": "#/components/schemas/AutomationTrigger"
           },
           "updated_at_ms": {
             "type": "integer",
@@ -6283,55 +6266,6 @@
           "decisions"
         ]
       },
-      "AutomationCondition": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "rrule",
-              "timezone",
-              "jitter_salt",
-              "kind"
-            ],
-            "properties": {
-              "jitter_salt": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "clock"
-                ]
-              },
-              "rrule": {
-                "type": "string"
-              },
-              "timezone": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "filters",
-              "kind"
-            ],
-            "properties": {
-              "filters": {
-                "$ref": "#/components/schemas/AutomationSourceFilter"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "source"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "A typed condition narrows an Automation's natural-language condition. Clock schedules\nretain their own zone and jitter seed, independent of the execution Host."
-      },
       "AutomationDecisionStatus": {
         "type": "string",
         "description": "Lifecycle of a decision that went through the Inbox.",
@@ -6444,6 +6378,46 @@
           }
         }
       },
+      "AutomationEventFilter": {
+        "type": "object",
+        "description": "Event filters select evidence, never authorize work or replace the written condition.",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "actor_class": {
+            "$ref": "#/components/schemas/AutomationActorFilter"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationSourceEventKind"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty leaves label evidence unfiltered."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty selects every watched repository."
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "None selects every Source in the Space."
+          }
+        },
+        "additionalProperties": false
+      },
       "AutomationEventKind": {
         "type": "string",
         "enum": [
@@ -6552,6 +6526,7 @@
       "AutomationInput": {
         "type": "object",
         "required": [
+          "trigger",
           "kind",
           "name"
         ],
@@ -6640,12 +6615,6 @@
               "null"
             ]
           },
-          "rrule": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "runbook_page_id": {
             "type": [
               "string",
@@ -6669,29 +6638,18 @@
               "null"
             ]
           },
-          "source_condition": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AutomationSourceFilter"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "target_session_id": {
             "type": [
               "string",
               "null"
             ]
           },
-          "timezone": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "trigger": {
+            "$ref": "#/components/schemas/AutomationTriggerInput",
+            "description": "What starts the Automation: a clock schedule or matching Source events."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "AutomationIntent": {
         "oneOf": [
@@ -7943,51 +7901,6 @@
           "label_removed"
         ]
       },
-      "AutomationSourceFilter": {
-        "type": "object",
-        "description": "Event filters select evidence, never authorize work or replace the written condition.",
-        "required": [
-          "repositories",
-          "kinds"
-        ],
-        "properties": {
-          "actor_class": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AutomationActorFilter"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kinds": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AutomationSourceEventKind"
-            }
-          },
-          "labels": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "repositories": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "source_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "AutomationStatus": {
         "type": "string",
         "enum": [
@@ -7995,6 +7908,109 @@
           "PAUSED",
           "DELETED"
         ]
+      },
+      "AutomationTrigger": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "rrule",
+              "timezone",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "clock"
+                ]
+              },
+              "next_run_at_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "None while the Automation is paused or deleted."
+              },
+              "rrule": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "filter",
+              "kind"
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/AutomationEventFilter"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "event"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A saved trigger. A clock retains its schedule, explicit timezone and next due instant;\nan event trigger has none of them."
+      },
+      "AutomationTriggerInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Falls due on an RRULE interpreted in an IANA timezone.",
+            "required": [
+              "rrule",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "clock"
+                ]
+              },
+              "rrule": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Omitted keeps a saved clock's timezone on replacement, and otherwise uses the\nHost's timezone."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Selects matching Source Triggers for assessment. It has no schedule.",
+            "required": [
+              "filter",
+              "kind"
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/AutomationEventFilter"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "event"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "What starts an Automation. Its written condition and action still govern judgement;\nthe trigger only decides when that judgement happens."
       },
       "BackupCapacity": {
         "type": "object",
@@ -8662,6 +8678,7 @@
                 "scope",
                 "owner_member_id",
                 "condition_text",
+                "trigger",
                 "automation_id",
                 "automation_revision",
                 "kind",
@@ -8669,7 +8686,6 @@
                 "mode",
                 "name",
                 "prompt",
-                "rrule",
                 "backend_binding",
                 "cwds",
                 "execution_environment",
@@ -8742,13 +8758,6 @@
                 "name": {
                   "type": "string"
                 },
-                "next_run_at_ms": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64"
-                },
                 "notification_policy": {
                   "oneOf": [
                     {
@@ -8776,9 +8785,6 @@
                     "string",
                     "null"
                   ]
-                },
-                "rrule": {
-                  "type": "string"
                 },
                 "runbook_page_id": {
                   "type": [
@@ -8811,15 +8817,8 @@
                     "null"
                   ]
                 },
-                "typed_condition": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/AutomationCondition"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                "trigger": {
+                  "$ref": "#/components/schemas/AutomationTrigger"
                 },
                 "updated_at_ms": {
                   "type": "integer",

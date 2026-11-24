@@ -10,21 +10,32 @@ pub(super) fn validate(
     c: &Connection,
     library: &str,
     input: &AutomationInput,
-    f: &AutomationSourceFilter,
+    f: &AutomationEventFilter,
 ) -> Result<(), StoreError> {
     let invalid = |message| StoreError::new(StoreErrorCode::InvalidInput, message, false);
+    if input.kind == AutomationExecutionKind::Heartbeat {
+        return Err(invalid(
+            "A heartbeat continues its Session on a clock trigger",
+        ));
+    }
     if input.cwds.as_ref().is_some_and(|roots| roots.len() > 1) {
-        return Err(invalid("An event Automation selects one workspace root"));
+        return Err(invalid(
+            "An event trigger accepts at most one workspace root in cwds",
+        ));
     }
     if input.model.as_deref().is_none_or(|v| v.trim().is_empty()) {
-        return Err(invalid("An event Automation requires an exact Agent model"));
+        return Err(invalid("An event trigger requires an exact Agent model"));
     }
-    if input.kind != AutomationExecutionKind::Cron
-        || input.project_id.is_none()
-        || input.target_session_id.is_some()
+    if input
+        .project_id
+        .as_deref()
+        .is_none_or(|id| id.trim().is_empty())
     {
+        return Err(invalid("An event trigger requires a project_id"));
+    }
+    if input.target_session_id.is_some() {
         return Err(invalid(
-            "An event Automation requires a Project and starts a new Page",
+            "An event trigger starts a new Page and cannot set target_session_id",
         ));
     }
     if input
@@ -34,7 +45,7 @@ pub(super) fn validate(
         || input.prompt.as_deref().is_none_or(|v| v.trim().is_empty())
     {
         return Err(invalid(
-            "An event Automation requires its written condition and action",
+            "An event trigger requires condition_text and a prompt",
         ));
     }
     if input
@@ -44,7 +55,7 @@ pub(super) fn validate(
         || input.prompt.as_ref().is_some_and(|v| v.len() > 16384)
     {
         return Err(invalid(
-            "Event condition and action are each limited to 16 KiB",
+            "An event trigger limits condition_text and prompt to 16 KiB each",
         ));
     }
     if serde_json::to_vec(input)
@@ -54,9 +65,30 @@ pub(super) fn validate(
     {
         return Err(invalid("Event Automation configuration exceeds 48 KiB"));
     }
-    if f.kinds.is_empty() || f.kinds.len() > 8 || f.repositories.len() > 100 || f.labels.len() > 100
+    validate_filter(f).map_err(invalid)?;
+    if let Some(source) = &f.source_id {
+        let present: bool = c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sources WHERE id=?1 AND library_id=?2)",
+            params![source, library],
+            |r| r.get(0),
+        )?;
+        if !present {
+            return Err(invalid(
+                "An event trigger filter source_id must name a Source in this Space",
+            ));
+        }
+    }
+    Ok(())
+}
+pub(super) fn validate_filter(f: &AutomationEventFilter) -> Result<(), &'static str> {
+    if f.events.is_empty()
+        || f.events.len() > 8
+        || f.repositories.len() > 100
+        || f.labels.len() > 100
     {
-        return Err(invalid("Invalid event filter size"));
+        return Err(
+            "An event trigger filter needs 1–8 events and at most 100 repositories and 100 labels",
+        );
     }
     if f.repositories.iter().any(|v| {
         v.len() > 512
@@ -68,51 +100,13 @@ pub(super) fn validate(
         .iter()
         .any(|v| v.trim().is_empty() || v.len() > 100)
     {
-        return Err(invalid("Invalid repository or label filter"));
-    }
-    if let Some(source) = &f.source_id {
-        let present: bool = c.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sources WHERE id=?1 AND library_id=?2)",
-            params![source, library],
-            |r| r.get(0),
-        )?;
-        if !present {
-            return Err(invalid("Source is outside this Space"));
-        }
+        return Err("An event trigger filter has invalid repositories or labels");
     }
     Ok(())
 }
-pub(super) fn save(
-    c: &Connection,
-    automation: &str,
-    filter: Option<&AutomationSourceFilter>,
-) -> Result<(), StoreError> {
-    c.execute(
-        "DELETE FROM automation_event_filters WHERE automation_id=?1",
-        [automation],
-    )?;
-    let Some(filter) = filter else {
-        return Ok(());
-    };
-    c.execute(
-        "INSERT INTO automation_event_filters(automation_id,filter_json) VALUES(?1,?2)",
-        params![
-            automation,
-            serde_json::to_string(filter).map_err(|_| StoreError::new(
-                StoreErrorCode::InvalidInput,
-                "Invalid filter",
-                false
-            ))?
-        ],
-    )?;
-    c.execute(
-        "UPDATE automations SET next_run_at=NULL WHERE automation_id=?1",
-        [automation],
-    )?;
-    Ok(())
-}
+
 pub(crate) fn matches(
-    f: &AutomationSourceFilter,
+    f: &AutomationEventFilter,
     source: &str,
     thread: &ExternalThread,
     event: &SourceTriggerInput,
@@ -123,7 +117,7 @@ pub(crate) fn matches(
                 .repositories
                 .iter()
                 .any(|r| r.eq_ignore_ascii_case(&thread.repository)))
-        || (f.actor_class == Some(AutomationActorFilter::Person)
+        || (f.actor_class == AutomationActorFilter::Person
             && event.actor_class != SourceActorClass::Person)
     {
         return false;
@@ -150,7 +144,7 @@ pub(crate) fn matches(
         "unlabeled" => AutomationSourceEventKind::LabelRemoved,
         _ => return false,
     };
-    if !f.kinds.contains(&kind) {
+    if !f.events.contains(&kind) {
         return false;
     }
     if f.labels.is_empty() {

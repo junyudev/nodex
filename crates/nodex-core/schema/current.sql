@@ -5353,39 +5353,46 @@ SELECT page.block_id AS page_id,page.library_id,binding.project_id
 FROM pages page LEFT JOIN data_sources source ON page.parent_kind='data_source' AND source.id=page.parent_id
 LEFT JOIN project_database_bindings binding ON binding.database_block_id=source.home_database_block_id AND binding.lifecycle='active';
 CREATE TABLE automations (
-           automation_id TEXT PRIMARY KEY,
-           owner_member_id TEXT NOT NULL REFERENCES members(id),
-           scope_project_id TEXT REFERENCES projects(id),
-           condition_text TEXT NOT NULL,
-           timezone TEXT NOT NULL,
-           jitter_salt TEXT NOT NULL,
-           schedule_revision INTEGER NOT NULL DEFAULT 1 CHECK(schedule_revision>=1),
-           kind TEXT NOT NULL,
-           status TEXT NOT NULL,
-           target_session_id TEXT,
-           name TEXT NOT NULL,
-           prompt TEXT NOT NULL DEFAULT '',
-           rrule TEXT,
-           model TEXT,
-           reasoning_effort TEXT,
-           service_tier TEXT,
-           cwds_json TEXT NOT NULL DEFAULT '[]',
-           execution_environment TEXT NOT NULL DEFAULT 'worktree',
-           local_environment_config_path TEXT,
-           next_run_at INTEGER,
-           last_run_at INTEGER,
-           created_at INTEGER NOT NULL,
-           updated_at INTEGER NOT NULL,
-           automation_revision INTEGER NOT NULL DEFAULT 1 CHECK (automation_revision >= 1),
-           notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'), project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)), agent_backend_driver TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_driver = trim(agent_backend_driver) AND length(agent_backend_driver) BETWEEN 1 AND 64), agent_backend_instance_id TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_instance_id = trim(agent_backend_instance_id) AND length(agent_backend_instance_id) BETWEEN 1 AND 64),
-  mode TEXT NOT NULL DEFAULT 'run' CHECK (mode IN ('dry_run','ask_first','run')), runbook_page_id TEXT,
-           CHECK (kind IN ('cron', 'heartbeat')),
-           CHECK (status IN ('ACTIVE', 'PAUSED', 'DELETED')),
-           CHECK (execution_environment IN ('local', 'worktree')),
-           CHECK (model IS NULL OR length(trim(model)) BETWEEN 1 AND 512),
-           CHECK (reasoning_effort IS NULL OR length(trim(reasoning_effort)) BETWEEN 1 AND 64),
-           CHECK (service_tier IS NULL OR length(trim(service_tier)) BETWEEN 1 AND 64)
-         ) WITHOUT ROWID;
+  automation_id TEXT PRIMARY KEY,
+  owner_member_id TEXT NOT NULL REFERENCES members(id),
+  scope_project_id TEXT REFERENCES projects(id),
+  condition_text TEXT NOT NULL,
+  trigger_kind TEXT NOT NULL CHECK (trigger_kind IN ('clock','event')),
+  timezone TEXT,
+  jitter_salt TEXT,
+  schedule_revision INTEGER NOT NULL DEFAULT 1 CHECK (schedule_revision >= 1),
+  kind TEXT NOT NULL CHECK (kind IN ('cron','heartbeat')),
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE','PAUSED','DELETED')),
+  target_session_id TEXT,
+  name TEXT NOT NULL,
+  prompt TEXT NOT NULL DEFAULT '',
+  rrule TEXT,
+  event_filter_json TEXT CHECK (event_filter_json IS NULL OR json_valid(event_filter_json)),
+  model TEXT CHECK (model IS NULL OR length(trim(model)) BETWEEN 1 AND 512),
+  reasoning_effort TEXT CHECK (reasoning_effort IS NULL OR length(trim(reasoning_effort)) BETWEEN 1 AND 64),
+  service_tier TEXT CHECK (service_tier IS NULL OR length(trim(service_tier)) BETWEEN 1 AND 64),
+  cwds_json TEXT NOT NULL DEFAULT '[]',
+  execution_environment TEXT NOT NULL DEFAULT 'worktree' CHECK (execution_environment IN ('local','worktree')),
+  local_environment_config_path TEXT,
+  next_run_at INTEGER,
+  last_run_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  automation_revision INTEGER NOT NULL DEFAULT 1 CHECK (automation_revision >= 1),
+  notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'),
+  project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)),
+  agent_backend_driver TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_driver = trim(agent_backend_driver) AND length(agent_backend_driver) BETWEEN 1 AND 64),
+  agent_backend_instance_id TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_instance_id = trim(agent_backend_instance_id) AND length(agent_backend_instance_id) BETWEEN 1 AND 64),
+  mode TEXT NOT NULL DEFAULT 'run' CHECK (mode IN ('dry_run','ask_first','run')),
+  runbook_page_id TEXT,
+  CHECK (
+    (trigger_kind = 'clock' AND rrule IS NOT NULL AND timezone IS NOT NULL
+      AND jitter_salt IS NOT NULL AND event_filter_json IS NULL)
+    OR
+    (trigger_kind = 'event' AND kind = 'cron' AND event_filter_json IS NOT NULL
+      AND rrule IS NULL AND timezone IS NULL AND jitter_salt IS NULL AND next_run_at IS NULL)
+  )
+) WITHOUT ROWID;
 CREATE TABLE automation_execution_leases (
   lease_id TEXT PRIMARY KEY,
   automation_id TEXT NOT NULL REFERENCES automations(automation_id) ON DELETE CASCADE,
@@ -5705,10 +5712,6 @@ BEGIN
   LEFT JOIN inbox_note_saves note ON note.page_id=entry.page_id
   WHERE link.proposal_id=NEW.proposal_id;
 END;
-CREATE TABLE automation_event_filters (
- automation_id TEXT PRIMARY KEY REFERENCES automations(automation_id) ON DELETE CASCADE,
- filter_json TEXT NOT NULL CHECK(json_valid(filter_json))
-) WITHOUT ROWID, STRICT;
 CREATE TABLE automation_assessment_requests (
  request_id TEXT PRIMARY KEY,
  library_id TEXT NOT NULL REFERENCES libraries(id),
@@ -6114,4 +6117,4 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=217;
+PRAGMA user_version=218;
