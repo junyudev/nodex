@@ -18,6 +18,7 @@ import { nfmCodeBlockActionsScenario } from "./scenarios/nfm-code-block-actions"
 import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-mermaid";
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
+import { sidebarAttentionScenario } from "./scenarios/sidebar-attention";
 import { sidebarChatStatusScenario } from "./scenarios/sidebar-chat-status";
 import { sidebarPaginationScenario } from "./scenarios/sidebar-pagination";
 import { sidebarLinkedPageStatusScenario } from "./scenarios/sidebar-linked-page-status";
@@ -49,6 +50,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [nfmCodeBlockActionsScenario.id, nfmCodeBlockActionsScenario],
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
+  [sidebarAttentionScenario.id, sidebarAttentionScenario],
   [sidebarChatStatusScenario.id, sidebarChatStatusScenario],
   [sidebarPaginationScenario.id, sidebarPaginationScenario],
   [sidebarLinkedPageStatusScenario.id, sidebarLinkedPageStatusScenario],
