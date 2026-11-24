@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +8,6 @@ import { TESTFLIGHT_DIRECTORY, assembleReleaseBundle } from "./bundle";
 import {
   appStoreConnect,
   publishTestFlight,
-  testerNotes,
   type AppStoreConnect,
   type AppStoreConnectCredentials,
 } from "./testflight";
@@ -116,6 +115,10 @@ test("a stable release uploads once, waits for processing, and opens to the publ
   const inputs = makeReleaseFixture(root);
   const output = join(root, "bundle");
   assembleReleaseBundle({ ...inputs, outputDirectory: output });
+  writeFileSync(
+    join(output, "release-notes.md"),
+    "A quicker way to resume chats\n\n### Added\n\n- Resume chats from Home.\n",
+  );
   const asc = fakeAppStoreConnect({ processing: 2 });
   const receipt = await publishTestFlight({
     bundlePath: join(output, "release-bundle.json"),
@@ -130,7 +133,9 @@ test("a stable release uploads once, waits for processing, and opens to the publ
     externalState: "WAITING_FOR_BETA_REVIEW",
     app: { version: "0.2.2", build: "1.0.1" },
   });
-  expect(asc.notes()).toBe(testerNotes("0.2.2"));
+  expect(asc.notes()).toBe(
+    "A quicker way to resume chats\nNodex 0.2.2. Use it with Nodex 0.2.2 on your computer.\nWhat's new: https://nodex.jyu.app/changelog/#v0.2.2",
+  );
   expect(asc.calls).toContain("POST /v1/betaGroups/public/relationships/builds");
   expect(asc.calls.filter((call) => call === "POST /v1/betaAppReviewSubmissions")).toHaveLength(1);
 });

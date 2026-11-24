@@ -559,8 +559,8 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
 
 ## Ship a stable release
 
-1. Land the candidate on `main` with the intended next version and meaningful
-   entries under `Unreleased`. To choose a non-patch version, run
+1. Land the candidate on `main` with the intended next version, a headline and
+   meaningful entries under `Unreleased`. To choose a non-patch version, run
    `vp run release:version -- <x.y.z>` and commit the three version sources
    through the ordinary source workflow. `vp run release:check` validates the
    version sources and changelog.
@@ -592,8 +592,9 @@ retained iOS build. For internal testers, run the mobile package's
 `ios:testflight` command with the retained Nightly Bundle's
 `release-bundle.json` path. Use the same App Store Connect team credentials.
 
-The advance job rolls the exact released notes into a dated heading using the
-GitHub publication date. Entries added on `main` remain in `Unreleased`.
+The advance job rolls the exact released notes, headline included, into a dated
+heading using the GitHub publication date. Entries added on `main` remain in
+`Unreleased`, which starts without a headline until the next release's is written.
 The job advances the version sources by one patch, or keeps a higher version
 already chosen on `main`, and retries on a fresh parent if a push races.
 It dispatches **Deploy Landing Site** after the push. A pages-only deploy

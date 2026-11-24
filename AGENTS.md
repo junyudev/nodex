@@ -157,6 +157,7 @@ Replace stale architectural statements and link to the narrow owner instead of a
 Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** user-visible changes:
 
 - Keep an `Unreleased` section at the top.
+- Keep its headline current: the plain line under `## [Unreleased]`, before the first category, sums up the one or two changes people will care about most in the next release. What's new, the changelog page and release notes lead with it, so write a short phrase in product words, about 36 characters and never more than 48, with no Markdown and no closing period (`Google Antigravity and a smaller Nodex`). Rewrite it when a bigger change lands; fixes and polish rarely change it. Releasing requires one, and every dated release keeps its own.
 - Write for humans, not commit-log style.
 - Only include externally relevant changes:
   - Added

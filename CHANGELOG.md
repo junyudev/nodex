@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.12] - 2026-11-24
 
+Plugin tools for Claude Code and ACP
+
 ### Fixed
 
 - Claude Code chats can use your plugins' MCP tools. Each plugin server turned Claude Code away with "Invalid lease" as it connected, because Claude Code checks a server before it initializes and Nodex tied the credential to that first check. Plugin servers now accept the chat's credential on every request until the plugin changes or the chat closes.
@@ -32,6 +34,8 @@ All notable changes to this project will be documented in this file.
 - Plugins no longer stop you from sending messages to Claude Code or ACP Agents. Opening several chats at once, or Codex being slow to list your installed plugins, could fail a reply with "Timed out preparing the Session's plugins" until you refreshed the Plugins page. Nodex now keeps the plugins it last read and rereads them in the background, so a reply waits at most a few seconds and starts with the plugins it has, picking up the rest at a later reply. Chats with the same plugins now share one prepared copy of their skills instead of each copying all of them, and a plugin's skills or servers that cannot be prepared are left out without holding up the rest.
 
 ## [0.5.11] - 2026-11-23
+
+Google Antigravity and a smaller Nodex
 
 ### Added
 
@@ -87,6 +91,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.10] - 2026-11-18
 
+A search-first command palette
+
 ### Changed
 
 - The command palette opens on the search field, with its scope tabs at the bottom next to each scope's options: Everywhere or one Project, a folder, or file types. Each result is one line, with the title on the left and its Project on the right. A second line appears only to show why it matched. A spinner in the corner shows while a search is still running.
@@ -102,6 +108,8 @@ All notable changes to this project will be documented in this file.
 - Starting a chat from your phone while work is paused asks you to resume work, instead of reporting that the request could not be completed.
 
 ## [0.5.9] - 2026-11-18
+
+GPT-6.2 Ultrafast and sharper search
 
 ### Added
 
@@ -132,6 +140,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.8] - 2026-11-17
 
+Simplified Chinese and your own API keys
+
 ### Added
 
 - Use Nodex in Simplified Chinese. **Settings > General > Language** follows your system language by default, or you can choose English or 简体中文. Open windows and menus switch at once, without a restart, and dialogs and notifications follow. Your Pages, chats and Agent replies stay in the language they were written in.
@@ -148,6 +158,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.7] - 2026-11-16
 
+Send Browser annotations to Agents
+
 ### Added
 
 - Send a Browser annotation straight to the Agent. In the annotation editor, ⌘↵ sends the note as its own message, steering a working Agent or queueing as a typed message would, and leaves what you were typing in the chat alone; **Quick annotate** in a page's context menu sends on Enter. The Browser toolbar sends every saved annotation at once, ⌘⇧. turns annotating on and off, and holding Space lets you use the page without leaving it.
@@ -163,6 +175,8 @@ All notable changes to this project will be documented in this file.
 - A terminal or background helper that loses its connection no longer leaves Nodex in a broken state, which happened most often on Windows. The affected terminal or operation now ends cleanly, and you can start it again without restarting Nodex.
 
 ## [0.5.6] - 2026-11-15
+
+Plugins in every Agent chat
 
 ### Added
 
@@ -225,6 +239,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.5] - 2026-11-11
 
+Team Spaces and coordinated Agent work
+
 ### Added
 
 - Open and edit skills as pages. Customize groups skills by folder and shows which Agents read each one. Open a skill from a chat or the command palette, edit its instructions with changes saved directly to disk, or duplicate a read-only skill to make your own copy.
@@ -277,6 +293,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.3] - 2026-11-08
 
+Nodex Mobile beta and a Dock badge
+
 ### Added
 
 - Nodex's Dock icon now shows how many chats are unread. It counts the same chats the sidebar marks unread across every Project, updates as soon as you read one anywhere, including on your phone, and clears when Nodex closes. Turn it off with Badges in Nodex's notification settings in System Settings.
@@ -294,6 +312,8 @@ All notable changes to this project will be documented in this file.
 - Your phone no longer says a chat finished while it is about to continue with a queued message or delegated results, and no longer sends a finish and a question for the same moment. Phone notifications now follow exactly the same rules as desktop notifications.
 
 ## [0.5.2] - 2026-11-08
+
+Mobile apps, Insights and quick setup
 
 ### Added
 
@@ -358,6 +378,8 @@ All notable changes to this project will be documented in this file.
 - Pasting into a Terminal on Windows and Linux uses bracketed paste, so a multi-line paste no longer runs line by line in shells that support it.
 
 ## [0.5.1] - 2026-11-04
+
+Nodex for Windows
 
 ### Added
 
@@ -469,6 +491,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.0] - 2026-10-29
 
+Plugins, ACP Registry and a smarter Inbox
+
 ### Added
 
 - Scheduled tasks can ask in the Inbox before each run. The run waits as a message you can run, edit for that run, give another model, or skip. Tasks can also follow a Page as a runbook that every run reads and keeps current.
@@ -572,6 +596,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.4.0] - 2026-10-22
 
+An Inbox, and Agents that work together
+
 ### Added
 
 - Home and Space separate chats and Projects from content browsing while remembering each destination. The navigation rail remains available with the sidebar hidden, and each split panel has an Open tabs chooser with live titles and counts.
@@ -632,6 +658,8 @@ All notable changes to this project will be documented in this file.
 - Intel Mac builds. macOS releases and automatic updates now support Apple Silicon only.
 
 ## [0.3.0] - 2026-09-20
+
+ACP Agents and Sidebar Sections
 
 ### Added
 
@@ -698,6 +726,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.2.2] - 2026-08-18
 
+Linked Pages, MCP Apps and Nightly
+
 ### Added
 
 - Added an opt-in Nightly update channel with signed, notarized mainline builds, isolated Sparkle feeds, and an in-app Stable/Nightly selector.
@@ -738,6 +768,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.2.1] - 2026-08-02
 
+Picture-in-Picture for background work
+
 ### Added
 
 - Added Window Session-owned Project and Session Scenes with one fixed owner-root primary and shared right/bottom panel surfaces. Projects can open with zero chats, while Database, Page, Canvas, Files, Browser, Review, and Terminal surfaces no longer need a chat as their panel host.
@@ -757,6 +789,8 @@ All notable changes to this project will be documented in this file.
 - Fixed background Browser tabs so agent requests with hidden presentation remain available without opening the right panel or changing the active tab, split, focus history, or maximized surface.
 
 ## [0.2.0] - 2026-08-01
+
+Library, nodex CLI and more Agents
 
 ### Added
 
@@ -957,6 +991,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.10] - 2026-05-03
 
+Calendar views and agent config chips
+
 ### Added
 
 - Added Show more/Show less controls for long Thread user-message bubbles.
@@ -981,6 +1017,8 @@ All notable changes to this project will be documented in this file.
 - Fixed Calendar `Shift+Wheel` navigation so wheel input shows a horizontal visual roll immediately, settles after a 500ms idle pause, and accumulated gestures can move across multiple days without the old one-day cap.
 
 ## [0.1.9] - 2026-04-24
+
+Dictation, workspaces and Auto-review
 
 ### Added
 
@@ -1043,6 +1081,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.8] - 2026-03-30
 
+Full Codex threads and Diff review
+
 ### Added
 
 - Added full-feature Codex thread.
@@ -1072,6 +1112,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.7] - 2026-03-19
 
+Codex bundled with Nodex for Mac
+
 ### Changed
 
 - Packaged macOS builds now bundle a pinned Codex CLI runtime and its bundled `rg`, keeping the shipped app-server binary version aligned with the committed generated `codex_schemas` instead of depending on a separately installed `codex` binary.
@@ -1085,6 +1127,8 @@ All notable changes to this project will be documented in this file.
 - Fixed the Cards sidebar `Recents` section so clicking a recent card now keeps the newly opened card active instead of briefly reselecting the card you just left, and the active highlight now follows the actual open card even while the history overlay is shown.
 
 ## [0.1.6] - 2026-03-18
+
+Automatic updates on macOS
 
 ### Added
 
@@ -1113,17 +1157,23 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.5] - 2026-03-16
 
+Smaller macOS packages
+
 ### Fixed
 
 - Fixed oversized macOS release packages by keeping renderer-only libraries out of shipped runtime dependencies and pruning dead test/source-map/source-tree files from packaged Node modules.
 
 ## [0.1.4] - 2026-03-16
 
+Steadier macOS release builds
+
 ### Fixed
 
 - Fixed release automation so macOS packaging now gets a larger CI-only Node heap budget, and the version commit/tag are pushed only after both release builds succeed.
 
 ## [0.1.3] - 2026-03-16
+
+Full-text card search and Homebrew
 
 ### Added
 
@@ -1148,6 +1198,8 @@ All notable changes to this project will be documented in this file.
 - Fixed DB view toolbar filter, sort, and display settings resetting after a full window close; they now persist durably per project and per supported view across reopen.
 
 ## [0.1.2] - 2026-03-14
+
+Command palette and back/forward
 
 ### Added
 
@@ -1180,6 +1232,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.1] - 2026-03-12
 
+Paste large text and files as chips
+
 ### Added
 
 - Added pasted attachment chips for oversized text, pasted files, and pasted folders, with save-in-Nodex support for text/files and local-path linking for files/folders.
@@ -1203,11 +1257,15 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.0] - 2026-03-10
 
+First public release
+
 ### Added
 
 - Initial public release.
 
 ## [0.0.9] - 2026-03-09
+
+Card context menu and deep links
 
 ### Added
 
@@ -1227,6 +1285,8 @@ All notable changes to this project will be documented in this file.
 - Fixed project edit form seeding, restored a missing BlockNote utility source, tightened collapsed-toggle keyboard behavior, sped up local installs, and restored editor autolinking.
 
 ## [0.0.8] - 2026-03-08
+
+A grouped card navigator
 
 ### Added
 
@@ -1250,6 +1310,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.7] - 2026-03-07
 
+Plan mode and message editing
+
 ### Added
 
 - Added collaboration Plan-mode UI, including required-input cards, multi-question navigation, answered-state rendering, and post-plan implementation flow.
@@ -1265,6 +1327,8 @@ All notable changes to this project will be documented in this file.
 - Fixed steered-thread active-status resets.
 
 ## [0.0.6] - 2026-03-05
+
+Multiple windows
 
 ### Added
 
@@ -1290,6 +1354,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.5] - 2026-03-04
 
+Cards that run in their own worktree
+
 ### Added
 
 - Added card run-targets with managed worktree startup, reusable per-card worktree paths, environment setup selection, auto-generated thread titles, and title-derived branch naming.
@@ -1305,6 +1371,8 @@ All notable changes to this project will be documented in this file.
 - Fixed run-target sync after thread start, thread reads before materialization, managed-worktree deduping and deletion semantics, stop-button state, CLI TOML parsing, and setup buffer and symlink validation.
 
 ## [0.0.4] - 2026-03-02
+
+Codex controls in every thread
 
 ### Added
 
@@ -1324,6 +1392,8 @@ All notable changes to this project will be documented in this file.
 - Fixed NFM code-fence round-tripping.
 
 ## [0.0.3] - 2026-02-27
+
+Weekly calendar and Codex threads
 
 ### Added
 
@@ -1348,6 +1418,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.2] - 2026-02-17
 
+Inline cards, terminal and canvas
+
 ### Added
 
 - Added richer projected inline-card workflows, including drag-handle send actions, cross-project drag/drop, childless embed normalization, and persisted projected-chip edits.
@@ -1365,6 +1437,8 @@ All notable changes to this project will be documented in this file.
 - Fixed NFM color parsing edge cases and isolated side-peek undo handling so editor undo stays scoped correctly.
 
 ## [0.0.1] - 2026-02-13
+
+A local-first board for coding agents
 
 ### Added
 

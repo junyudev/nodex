@@ -16,6 +16,7 @@ import { motionValue } from "motion/react";
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parse } from "node-html-parser";
+import { decodeChangelogFeed } from "../../../src/shared/changelog-feed";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test, vi } from "vite-plus/test";
 import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
@@ -475,6 +476,20 @@ test("every release in the changelog rail jumps to that release", () => {
   for (const link of links) {
     expect(releases.has(link.getAttribute("href")?.slice(1) ?? "")).toBe(true);
   }
+});
+
+test("the published changelog JSON uses the same headlines and anchors as the page", () => {
+  const feed = decodeChangelogFeed(
+    JSON.parse(readFileSync(join(outputDir, "changelog.json"), "utf8")),
+  );
+  const datedReleases = readPage("changelog")
+    .querySelectorAll("article[data-release]")
+    .filter(({ id }) => id !== "unreleased");
+  expect(feed.releases.map(({ url, headline }) => [new URL(url).hash.slice(1), headline])).toEqual(
+    datedReleases
+      .slice(0, 12)
+      .map((release) => [release.id, release.querySelector("h2")?.textContent.trim()]),
+  );
 });
 
 test("the build preserves the custom domain and public asset bytes", () => {

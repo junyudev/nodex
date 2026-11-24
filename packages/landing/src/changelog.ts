@@ -1,7 +1,18 @@
+import {
+  CHANGELOG_PAGE_URL,
+  CHANGELOG_SECTION_KINDS,
+  type ChangelogFeed,
+} from "../../../src/shared/changelog-feed";
+import {
+  readChangelogHeadline,
+  splitChangelogReleaseBody,
+} from "../../../src/shared/changelog-headline";
+import { changelogInlineTokens } from "../../../src/shared/changelog-inline";
+
 /**
  * The root CHANGELOG.md as data for the changelog page: releases in source order, Unreleased
- * first, each with its categories and entries. Entries keep their Markdown; the page renders their
- * code spans with `inlineHtml` and leads each one with its first sentence (`splitEntry`).
+ * first, each with its headline, categories and entries. Entries keep their inline Markdown and
+ * lead with their first sentence (`splitEntry`).
  */
 export type ChangelogItem = {
   text: string;
@@ -15,6 +26,7 @@ export type ChangelogCategory = {
 export type ChangelogRelease = {
   categories: ChangelogCategory[];
   date: string | null;
+  headline: string | null;
   label: string;
   version: string | null;
 };
@@ -35,38 +47,14 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** An entry's Markdown as HTML: text escaped, code spans kept. */
+/** Escapes entry text and renders the inline Markdown shared with the desktop. */
 export function inlineHtml(value: string): string {
-  let output = "";
-  let cursor = 0;
-
-  while (cursor < value.length) {
-    const openingIndex = value.indexOf("`", cursor);
-
-    if (openingIndex === -1) {
-      output += escapeHtml(value.slice(cursor));
-      break;
-    }
-
-    output += escapeHtml(value.slice(cursor, openingIndex));
-
-    const delimiterLength = countBacktickRun(value, openingIndex);
-    const closingIndex = findMatchingBacktickRun(
-      value,
-      openingIndex + delimiterLength,
-      delimiterLength,
-    );
-
-    if (closingIndex === -1) {
-      output += escapeHtml(value.slice(openingIndex));
-      break;
-    }
-
-    output += `<code>${escapeHtml(value.slice(openingIndex + delimiterLength, closingIndex))}</code>`;
-    cursor = closingIndex + delimiterLength;
-  }
-
-  return output;
+  return changelogInlineTokens(value)
+    .map(({ kind, text }) => {
+      const escaped = escapeHtml(text);
+      return kind === "text" ? escaped : `<${kind}>${escaped}</${kind}>`;
+    })
+    .join("");
 }
 
 function countBacktickRun(value: string, start: number): number {
@@ -165,7 +153,7 @@ function parseReleaseHeading(
     throw new Error(`Release heading "${heading}" must include a YYYY-MM-DD date.`);
   }
 
-  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(label)) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(label)) {
     throw new Error(`Release heading "${heading}" must use a semver version label.`);
   }
 
@@ -185,7 +173,7 @@ export function parseChangelog(content: string): ChangelogRelease[] {
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
 
-    if (line.startsWith("## ")) {
+    if (line.startsWith("## [") || (!activeSection && line.startsWith("## "))) {
       activeSection = {
         heading: line,
         bodyLines: [],
@@ -194,15 +182,11 @@ export function parseChangelog(content: string): ChangelogRelease[] {
       continue;
     }
 
-    if (line.startsWith("# ")) {
-      continue;
-    }
-
     if (!activeSection) {
       continue;
     }
 
-    activeSection.bodyLines.push(line);
+    activeSection.bodyLines.push(rawLine);
   }
 
   if (releaseSections.length === 0) {
@@ -211,20 +195,21 @@ export function parseChangelog(content: string): ChangelogRelease[] {
 
   return releaseSections.map((section) => {
     const release = parseReleaseHeading(section.heading);
-    const categories = readMeaningfulReleaseCategories(
+    const { beforeCategories, categories } = splitChangelogReleaseBody(
       section.bodyLines.join("\n"),
-      section.heading,
     );
-
     return {
       ...release,
-      categories,
+      headline: readChangelogHeadline(beforeCategories, release.version ?? release.label),
+      categories: readMeaningfulReleaseCategories(categories, section.heading),
     };
   });
 }
 
 /** Kinds of change in the order the changelog page reads them, whatever order a release uses. */
-export const CHANGE_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
+export const CHANGE_ORDER = CHANGELOG_SECTION_KINDS.map(
+  (kind) => kind.charAt(0).toUpperCase() + kind.slice(1),
+);
 
 /** Each kind of change keeps the color its status has in the app. */
 export const CHANGE_TONE: Record<string, string> = {
@@ -253,6 +238,28 @@ export function releasesToShow(content: string): ChangelogRelease[] {
     }));
 }
 
+/** The dated changelog releases published for Nodex's What's new. */
+export function changelogFeed(
+  content: string,
+  { limit = 12 }: { readonly limit?: number } = {},
+): ChangelogFeed {
+  const releases = releasesToShow(content).flatMap(({ version, date, headline, categories }) => {
+    if (version === null || date === null || headline === null) return [];
+    const sections = categories.flatMap((category) => {
+      const kind = CHANGELOG_SECTION_KINDS[CHANGE_ORDER.indexOf(category.title)];
+      if (!kind) return [];
+      const entries = category.items.map(({ text }) => {
+        const { lead, rest: detail } = splitEntry(text);
+        return { lead, detail };
+      });
+      return [{ kind, entries }];
+    });
+    if (sections.length === 0) return [];
+    return [{ version, date, url: `${CHANGELOG_PAGE_URL}#v${version}`, headline, sections }];
+  });
+  return { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases: releases.slice(0, limit) };
+}
+
 /**
  * Splits an entry after its first sentence or the clause before its first colon, so the page can
  * set that lead apart from the detail after it. Code spans are never split.
@@ -275,7 +282,7 @@ export function splitEntry(text: string): { lead: string; rest: string } {
       (character === "." || character === "!" || character === "?") &&
       text[cursor + 1] === " " &&
       next !== undefined &&
-      /[A-Z`"“(]/.test(next);
+      /[A-Z`"“(*]/.test(next);
     const endsClause = character === ":" && text[cursor + 1] === " ";
 
     if (endsSentence || endsClause) {

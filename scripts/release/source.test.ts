@@ -57,7 +57,7 @@ const writeFixture = (version = "0.1.10"): void => {
   );
   writeFileSync(
     join(fixture, "CHANGELOG.md"),
-    `# Changelog\n\n## [Unreleased]\n\n### Added\n- Added a verified release flow.\n\n## [${version}] - 2026-05-03\n\n### Added\n- Previous release.\n`,
+    `# Changelog\n\n## [Unreleased]\n\nVerified releases\n\n### Added\n- Added a verified release flow.\n\n## [${version}] - 2026-05-03\n\nPrevious release\n\n### Added\n- Previous release.\n`,
   );
 };
 
@@ -254,6 +254,7 @@ test("advances and recognizes the exact release metadata roll-forward", () => {
     changelog,
     readFileSync(changelog, "utf8")
       .replace("[0.1.10]", "[0.1.9]")
+      .replace("Verified releases", "A newer draft headline")
       .replace(
         "- Added a verified release flow.",
         "- Added a verified release flow.\n- Added after the Nightly.",
@@ -261,7 +262,7 @@ test("advances and recognizes the exact release metadata roll-forward", () => {
   );
   const released = git("rev-parse", "HEAD");
   git("commit", "-am", "append unreleased notes");
-  const notes = "### Added\n\n- Added a verified release flow.\n";
+  const notes = "Verified releases\n\n### Added\n\n- Added a verified release flow.\n";
   expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(true);
   expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(false);
   const snapshot = inspectReleaseSource(fixture);
@@ -324,7 +325,7 @@ fi
         sourceSha,
         version: "0.1.10",
         date: "2026-11-11",
-        notes: "### Added\n\n- Added a verified release flow.\n",
+        notes: "Verified releases\n\n### Added\n\n- Added a verified release flow.\n",
       };
       advanceMain(options);
       const head = git("rev-parse", "HEAD");

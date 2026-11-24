@@ -4,6 +4,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import {
+  readChangelogHeadline,
+  splitChangelogReleaseBody,
+} from "../../src/shared/changelog-headline";
 import { TESTFLIGHT_DIRECTORY, parseReleaseBundleManifest } from "./bundle";
 import {
   APP_STORE_CONNECT_APP_ID,
@@ -220,10 +224,26 @@ const findGroup = async (client: AppStoreConnect, name: string): Promise<string>
   return groups[0].id;
 };
 
-/** What testers read in TestFlight: which desktop release this build belongs with. */
-export const testerNotes = (version: string): string =>
-  `Nodex ${version}. Use it with Nodex ${version} on your computer.\n` +
-  `What's new: https://nodex.jyu.app/changelog/#v${version}`;
+/**
+ * What testers read in TestFlight: the release's headline when the bundle carries its notes, which
+ * desktop release this build belongs with, and where to read the rest.
+ */
+function testerNotes(bundlePath: string, version: string): string {
+  const notesPath = join(dirname(resolve(bundlePath)), "release-notes.md");
+  const headline = existsSync(notesPath)
+    ? readChangelogHeadline(
+        splitChangelogReleaseBody(readFileSync(notesPath, "utf8")).beforeCategories,
+        version,
+      )
+    : null;
+  return [
+    headline,
+    `Nodex ${version}. Use it with Nodex ${version} on your computer.`,
+    `What's new: https://nodex.jyu.app/changelog/#v${version}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 const setTesterNotes = async (client: AppStoreConnect, buildId: string, text: string) => {
   const existing = list(
@@ -302,6 +322,7 @@ export async function publishTestFlight(options: {
 }): Promise<TestFlightReceipt> {
   const { app, publicBeta, artifactPath } = certifiedBuild(options.bundlePath);
   if (app.id !== MOBILE_APP_ID) throw new Error("The iOS build is not Nodex Mobile.");
+  const notes = publicBeta ? testerNotes(options.bundlePath, app.version) : null;
   const credentials = options.credentials ?? credentialsFromEnvironment();
   const client = options.client ?? appStoreConnect(credentials);
 
@@ -326,8 +347,8 @@ export async function publishTestFlight(options: {
   }
   let build = await waitForProcessedBuild(client, app, options.poll);
 
-  if (publicBeta) {
-    await setTesterNotes(client, build.id, testerNotes(app.version));
+  if (notes !== null) {
+    await setTesterNotes(client, build.id, notes);
     const group = await findGroup(client, TESTFLIGHT_PUBLIC_GROUP);
     await client.request("POST", `/v1/betaGroups/${group}/relationships/builds`, {
       data: [{ type: "builds", id: build.id }],

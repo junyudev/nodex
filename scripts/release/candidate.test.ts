@@ -70,7 +70,7 @@ describe("release candidate identity", () => {
       );
       writeFileSync(
         join(repository, "CHANGELOG.md"),
-        "# Changelog\n\n## [Unreleased]\n\n## [0.4.0] - 2026-10-29\n\n- Release fixture.\n",
+        "# Changelog\n\n## [Unreleased]\n\n## [0.4.0] - 2026-10-29\n\nSample release\n\n### Added\n\n- Release fixture.\n",
       );
       git(repository, "init", "--initial-branch=main");
       git(repository, "config", "user.name", "Nodex Test");
