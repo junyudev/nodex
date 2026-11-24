@@ -82,16 +82,23 @@ const fixture = async (root: string) => {
 it.effect("uses the installed version, then the local or highest cached version", () =>
   Effect.gen(function* () {
     const home = yield* withHome;
-    const plugin = join(home, "plugins/cache/nodex-local/example");
+    const canonicalHome = yield* Effect.promise(() => realpath(home));
+    const plugin = join(canonicalHome, "plugins", "cache", "nodex-local", "example");
     yield* Effect.promise(() =>
       Promise.all(
         ["1.9.0", "1.12.0", "local"].map((v) => mkdir(join(plugin, v), { recursive: true })),
       ),
     );
-    expect(yield* resolvePluginCache(home, "example@nodex-local", "1.9.0")).toContain("/1.9.0");
-    expect(yield* resolvePluginCache(home, "example@nodex-local", "2.0.0")).toContain("/local");
+    expect(yield* resolvePluginCache(home, "example@nodex-local", "1.9.0")).toBe(
+      join(plugin, "1.9.0"),
+    );
+    expect(yield* resolvePluginCache(home, "example@nodex-local", "2.0.0")).toBe(
+      join(plugin, "local"),
+    );
     yield* Effect.promise(() => rm(join(plugin, "local"), { recursive: true }));
-    expect(yield* resolvePluginCache(home, "example@nodex-local", null)).toContain("/1.12.0");
+    expect(yield* resolvePluginCache(home, "example@nodex-local", null)).toBe(
+      join(plugin, "1.12.0"),
+    );
     expect(yield* resolvePluginCache(home, "../example@nodex-local", null)).toBeNull();
   }),
 );
@@ -125,7 +132,7 @@ it.effect(
         pluginId: "example@nodex-local",
         selector: { marketplacePath: market.catalogPath, pluginName: "example" },
       });
-      expect((yield* market.sources).example).toContain("/source");
+      expect((yield* market.sources).example).toBe(yield* Effect.promise(() => realpath(root)));
       yield* Effect.promise(() => fixture(root));
       const spare = yield* market.prepare(root, new Set(["example@nodex-local"]));
       if (spare.status !== "ready") throw new Error(spare.reasons.join(" "));

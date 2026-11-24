@@ -1,5 +1,5 @@
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as PubSub from "effect/PubSub";
@@ -2241,7 +2241,9 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const profile = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-folders-manager-"))),
+        Effect.promise(async () =>
+          realpath(await mkdtemp(join(tmpdir(), "nodex-folders-manager-"))),
+        ),
         (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
       );
       const codex = join(profile, "codex");
@@ -2251,9 +2253,9 @@ it.effect(
         Effect.sync(() => vi.spyOn(pluginReader, "read")),
         (spy) => Effect.sync(() => spy.mockRestore()),
       );
+      const cache = join(codex, "plugins", "cache", "nodex-local", "local-plugin", "local");
       // The review also uses the reader. Count only reads from Codex's installed copy.
-      const installedReads = () =>
-        reader.mock.calls.filter(([path]) => path.includes("/plugins/cache/nodex-local/")).length;
+      const installedReads = () => reader.mock.calls.filter(([path]) => path === cache).length;
       yield* Effect.promise(async () => {
         await mkdir(dirname(manifest), { recursive: true });
         await writeFile(
@@ -2276,7 +2278,7 @@ it.effect(
           const row = (yield* manager.query("installed", context)).rows.find(
             (row) => row.nativeId === pluginId,
           );
-          assert.isTrue(row?.localFolder?.endsWith("/source"));
+          assert.equal(row?.localFolder, source);
           const { snapshot: original } = yield* manager.loadCatalog(null);
           assert.equal(installedReads(), 1);
           assert.equal(
