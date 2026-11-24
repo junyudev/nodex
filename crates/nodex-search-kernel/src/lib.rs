@@ -1,6 +1,8 @@
 mod analyzer;
 #[cfg(any(test, feature = "wasm"))]
 mod chat_metadata;
+#[cfg(any(test, feature = "wasm"))]
+mod file_name_search;
 mod text_match;
 
 use analyzer::fold;

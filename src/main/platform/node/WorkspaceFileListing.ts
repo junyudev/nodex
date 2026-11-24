@@ -79,8 +79,8 @@ const SEGMENT_EXCLUSIONS = FILE_SEARCH_EXCLUDED_SEGMENTS.flatMap((segment) => [
 
 const DIRECTORY_CHECK_CONCURRENCY = 16;
 const MAX_ALIAS_RESTARTS = 4;
-const LISTING_TIMEOUT_MS = 30_000;
-const LISTING_MAX_BYTES = 32 * 1024 * 1024;
+const LISTING_TIMEOUT_MS = 90_000;
+const LISTING_MAX_BYTES = 192 * 1024 * 1024;
 
 const exclusionGlob = (directory: string) => `!/${escapeWorkspaceTextSearchGlob(directory)}`;
 const exclusionCost = (glob: string) => glob.length + 8;
@@ -154,13 +154,17 @@ const insideRoot = (root: string, target: string) => {
 };
 
 function makeDirectoryFilter(root: string, realRoot: string, aliases: Set<string>) {
-  const checked = new Map<string, Promise<boolean>>();
-  const check = (directory: string): Promise<boolean> => {
-    if (!directory) return Promise.resolve(true);
+  const checked = new Map<string, boolean | Promise<boolean>>([["", true]]);
+  const check = (directory: string): boolean | Promise<boolean> => {
     const cached = checked.get(directory);
-    if (cached) return cached;
-    const pending = inspect(directory);
-    checked.set(directory, pending);
+    if (cached !== undefined) return cached;
+    // A parent sliced from stdout may retain its entire ripgrep chunk on V8.
+    const key = Buffer.from(directory).toString();
+    const pending = inspect(key).then((allowed) => {
+      checked.set(key, allowed);
+      return allowed;
+    });
+    checked.set(key, pending);
     return pending;
   };
   const inspect = async (directory: string): Promise<boolean> => {
@@ -179,7 +183,13 @@ function makeDirectoryFilter(root: string, realRoot: string, aliases: Set<string
       return false;
     }
   };
-  return (directory: string) => Effect.promise(() => check(directory));
+  return {
+    check: (directory: string) => Effect.promise(async () => check(directory)),
+    cached: (directory: string) => {
+      const allowed = checked.get(directory);
+      return typeof allowed === "boolean" ? allowed : undefined;
+    },
+  };
 }
 
 export const layer = (input: {
@@ -197,9 +207,9 @@ export const layer = (input: {
         if (opened._tag === "Failure")
           return { kind: "failed", aliases: request.knownAliases ?? [], error: opened.failure };
         const aliases = new Set<string>();
-        const checkDirectory = makeDirectoryFilter(request.root, opened.success, aliases);
+        const directories = makeDirectoryFilter(request.root, opened.success, aliases);
         // Recheck earlier aliases so replacing a link does not leave its new contents hidden.
-        yield* Effect.forEach(request.knownAliases ?? [], checkDirectory, {
+        yield* Effect.forEach(request.knownAliases ?? [], directories.check, {
           concurrency: DIRECTORY_CHECK_CONCURRENCY,
           discard: true,
         });
@@ -209,7 +219,7 @@ export const layer = (input: {
           );
           if (target._tag === "Failure")
             return { kind: "failed", aliases: [...aliases], error: target.failure };
-          if (!(yield* checkDirectory(request.directory)))
+          if (!(yield* directories.check(request.directory)))
             return { kind: "completed", aliases: [...aliases] };
         }
 
@@ -228,16 +238,24 @@ export const layer = (input: {
             timeoutMs: Math.max(1, deadline - (yield* Clock.currentTimeMillis)),
             onPaths: Effect.fnUntraced(function* (paths: readonly string[]) {
               const parents = paths.map(listedParent);
-              const rejected = new Set(
+              const rejected = new Set<string>();
+              const unchecked: string[] = [];
+              for (const directory of new Set(parents)) {
+                const allowed = directories.cached(directory);
+                if (allowed === undefined) unchecked.push(directory);
+                else if (!allowed) rejected.add(directory);
+              }
+              if (unchecked.length)
                 yield* Effect.forEach(
-                  new Set(parents),
+                  unchecked,
                   Effect.fnUntraced(function* (directory: string) {
-                    return (yield* checkDirectory(directory)) ? null : directory;
+                    if (!(yield* directories.check(directory))) rejected.add(directory);
                   }),
-                  { concurrency: DIRECTORY_CHECK_CONCURRENCY },
-                ),
-              );
-              const files = paths.filter((_, index) => !rejected.has(parents[index]!));
+                  { concurrency: DIRECTORY_CHECK_CONCURRENCY, discard: true },
+                );
+              const files = rejected.size
+                ? paths.filter((_, index) => !rejected.has(parents[index]!))
+                : paths;
               if (files.length > 0) {
                 delivered = true;
                 stopped = !(yield* request.onPaths(files));

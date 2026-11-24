@@ -14,6 +14,11 @@ export interface FileSearchUpdateInput extends FileSearchSessionRef {
   readonly query: string;
 }
 
+/**
+ * One ranked match. Results arrive in their final order: higher score first, then path.
+ * `indices` are ascending, unique positions in `path` counted in grapheme clusters, the
+ * unit the matcher compares, so a highlight never splits a character.
+ */
 export interface FileSearchResult {
   readonly root: string;
   readonly path: string;
@@ -67,6 +72,11 @@ export const FILE_SEARCH_EXCLUDED_SEGMENTS = [
   "node_modules",
 ] as const;
 
+export interface FileSearchTextRange {
+  readonly start: number;
+  readonly end: number;
+}
+
 /** Presentation of one native result; fsPath is its identity across multiple roots. */
 export interface FileSearchMatch {
   readonly root: string;
@@ -76,4 +86,9 @@ export interface FileSearchMatch {
   readonly label: string;
   readonly directoryPath: string;
   readonly kind: "file" | "directory";
+  /** The characters the search matched, as UTF-16 ranges in `label` and `directoryPath`. */
+  readonly matched?: {
+    readonly label: readonly FileSearchTextRange[];
+    readonly directory: readonly FileSearchTextRange[];
+  };
 }

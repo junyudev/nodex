@@ -47,7 +47,9 @@ test("reuses the native session across edits and fences old roots and late dispo
   await act(async () => {
     callbacks[0]!(updated("a"));
   });
-  expect(result.current).toEqual(PENDING);
+  // The previous query's matches stay visible until the current query answers.
+  expect(result.current.matches.map((match) => match.fsPath)).toEqual(["/first/src/abc.ts"]);
+  expect(result.current.loading).toBe(true);
   await act(async () => {
     callbacks[0]!(updated("abc"));
   });
@@ -146,5 +148,16 @@ test("a search that could not run keeps its matches and can run again", async ()
   });
   expect(update.mock.calls).toEqual([["abc"], ["abc"]]);
   expect(result.current).toMatchObject({ loading: true, incomplete: null, retry: null });
+  unmount();
+});
+
+test("a cleared query never shows matches from before it", async () => {
+  const { result, rerender, emit, unmount } = mountSession();
+  await act(async () => {
+    emit(updated("abc"));
+  });
+  rerender({ enabled: true, query: "", scope: { hostId: "local", roots: ["/first"] } });
+  rerender({ enabled: true, query: "x", scope: { hostId: "local", roots: ["/first"] } });
+  expect(result.current).toEqual(PENDING);
   unmount();
 });

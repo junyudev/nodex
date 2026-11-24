@@ -10,7 +10,7 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
-wasm = ["dep:serde-wasm-bindgen", "dep:wasm-bindgen"]
+wasm = ["dep:hashbrown", "dep:nucleo-matcher", "dep:serde-wasm-bindgen", "dep:wasm-bindgen"]
 
 [dependencies]
 nodex-core-contracts = { path = "../nodex-core-contracts" }
@@ -22,6 +22,13 @@ serde-wasm-bindgen = { version = "0.6.5", optional = true }
 wasm-bindgen = { version = "=0.2.129", optional = true }
 icu_properties = "2.2.0"
 rust-stemmers = "1.2.0"
+
+hashbrown = { version = "0.17.1", default-features = false, optional = true }
+nucleo-matcher = { git = "https://github.com/helix-editor/nucleo.git", rev = "4253de9faabb4e5c6d81d946a5e35a90f87347ee", optional = true }
+
+[dev-dependencies]
+hashbrown = { version = "0.17.1", default-features = false }
+nucleo-matcher = { git = "https://github.com/helix-editor/nucleo.git", rev = "4253de9faabb4e5c6d81d946a5e35a90f87347ee" }
 
 [lints]
 workspace = true

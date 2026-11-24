@@ -13,4 +13,8 @@ export function compileSearchQuery(query: string): SearchTextQuery {
   return new (searchKernel().SearchTextQuery)(query);
 }
 
-export type { SearchTextQuery };
+export type {
+  FileNameIndex,
+  FileNameSearch,
+  SearchTextQuery,
+} from "./generated/nodex_search_kernel.js";

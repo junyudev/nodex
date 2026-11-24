@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { assert, it } from "@effect/vitest";
@@ -17,6 +17,7 @@ import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import type { FileSearchEvent, FileSearchResult } from "../../shared/file-search";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
+import { FILE_INDEX_TIMINGS } from "../file-index-worker/file-index-timings";
 import type { FileIndexWorkerHostMessage } from "../file-index-worker/file-index-worker-protocol";
 import { RipgrepExecutionRuntime } from "../platform/node/RipgrepExecutionRuntime";
 import {
@@ -283,10 +284,10 @@ it.effect("settles as unavailable when a query cannot be sent", () =>
   }),
 );
 
-it.effect("does not open a session in the worker once it closed while the worker started", () =>
+it.effect("retires a worker that starts after the search session closed", () =>
   Effect.gen(function* () {
     const resolved = yield* Deferred.make<string>();
-    const { workers, open } = yield* makeHarness({ ripgrep: Deferred.await(resolved) });
+    const { workers, open, sent } = yield* makeHarness({ ripgrep: Deferred.await(resolved) });
     const search = yield* open("search");
     const updating = yield* Effect.forkChild(search.session.update("a"));
     yield* Effect.yieldNow;
@@ -296,6 +297,56 @@ it.effect("does not open a session in the worker once it closed while the worker
     assert.lengthOf(workers, 1);
     assert.deepEqual(workers[0]!.sent, []);
     assert.lengthOf(yield* Queue.clear(search.events), 0);
+    yield* TestClock.adjust("6 minutes");
+    assert.deepEqual(yield* Queue.take(sent), { type: "shutdown" });
+    workers[0]!.events.emit("exit", 0);
+  }),
+);
+
+it.effect("retires the worker after six idle minutes and replaces it while it shuts down", () =>
+  Effect.gen(function* () {
+    const { workers, open, sent } = yield* makeHarness();
+    const first = yield* open("first");
+    yield* first.session.update("first");
+    const worker = workers[0]!;
+    yield* TestClock.adjust("6 minutes");
+    assert.equal(worker.sent.at(-1)?.type, "query");
+    yield* first.close;
+
+    yield* TestClock.adjust(FILE_INDEX_TIMINGS.idleRelease);
+    assert.equal(worker.sent.at(-1)?.type, "close");
+    const reopened = yield* open("reopened");
+    yield* TestClock.adjust("6 minutes");
+    assert.equal(worker.sent.at(-1)?.type, "close");
+    yield* reopened.session.update("reopened");
+    assert.lengthOf(workers, 1);
+    assert.equal(worker.sent.at(-1)?.type, "query");
+    yield* reopened.close;
+
+    yield* Queue.clear(sent);
+    yield* TestClock.adjust("6 minutes");
+    assert.deepEqual(yield* Queue.take(sent), { type: "shutdown" });
+    assert.isFalse(worker.terminated);
+    assert.lengthOf(yield* Queue.clear(reopened.events), 0);
+
+    // The old worker has not exited yet.
+    const next = yield* open("next");
+    yield* next.session.update("next");
+    assert.lengthOf(workers, 2);
+    assert.deepEqual(workers[1]!.sent, [
+      { type: "open", sessionId: "next", roots: ["/repo"] },
+      { type: "query", sessionId: "next", seq: 1, query: "next" },
+    ]);
+    worker.events.emit("exit", 0);
+    yield* TestClock.adjust("500 millis");
+    assert.isFalse(worker.terminated);
+    assert.lengthOf(yield* Queue.clear(next.events), 0);
+
+    workers[1]!.reply("next", 1, { kind: "completed" });
+    assert.deepEqual(yield* Queue.take(next.events), {
+      method: "fuzzyFileSearch/sessionCompleted",
+      params: { sessionId: "next", query: "next" },
+    });
   }),
 );
 
@@ -328,7 +379,7 @@ it.live.skipIf(process.platform === "win32")(
         (created) => Effect.promise(() => rm(created, { recursive: true, force: true })),
       );
       const root = path.join(directory, "repo");
-      const workerPath = path.join(directory, "file-index-worker.js");
+      const workerPath = path.join(directory, "file-index-worker.mjs");
       const ripgrep = path.join(directory, "rg");
       const invocations = path.join(directory, "invocations.log");
       yield* Effect.promise(async () => {
@@ -340,14 +391,22 @@ it.live.skipIf(process.platform === "win32")(
           `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\nexec ${JSON.stringify(rgPath)} "$@"\n`,
         );
         await chmod(ripgrep, 0o700);
+        await mkdir(path.join(directory, "generated"));
+        await copyFile(
+          path.resolve("crates/nodex-search-kernel/generated/nodex_search_kernel_bg.wasm"),
+          path.join(directory, "generated/nodex_search_kernel_bg.wasm"),
+        );
         await build({
           entryPoints: [path.resolve("src/main/file-index-worker/entry.ts")],
           outfile: workerPath,
           bundle: true,
           platform: "node",
-          format: "cjs",
+          format: "esm",
           target: "node24",
           logLevel: "silent",
+          banner: {
+            js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+          },
         });
       });
       const scope = yield* Scope.make();

@@ -1,3 +1,4 @@
+import { searchKernel, type FileNameIndex, type FileNameSearch } from "@nodex/search-kernel/node";
 import path from "node:path";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -18,38 +19,30 @@ import {
   WorkspaceFileListing,
   WorkspaceFileListingError,
 } from "../platform/node/WorkspaceFileListing";
+import { FILE_INDEX_TIMINGS } from "./file-index-timings";
 import type {
   FileIndexSessionOutcome,
   FileIndexWorkerThreadMessage,
 } from "./file-index-worker-protocol";
-import { FileSearchRanking } from "./file-search-ranking";
-import {
-  parentDirectory,
-  WorkspaceFileIndex,
-  type FileIndexCapacity,
-} from "./workspace-file-index";
+
+interface FileIndexCapacity {
+  readonly entries: number;
+  readonly pathUnits: number;
+}
+
+const parentDirectory = (relative: string) =>
+  relative.slice(0, Math.max(0, relative.lastIndexOf("/")));
 
 /**
- * One root holds at most what one search scope could hold before indexes were shared; all
- * resident roots together hold at most twice that. Idle roots make room first.
+ * Bound both the number of matcher columns and the path text retained by the worker.
+ * Idle roots make room first.
  */
 export const FILE_INDEX_LIMITS = {
-  root: { entries: 150_000, pathUnits: 16 * 1024 * 1024 },
-  resident: { entries: 300_000, pathUnits: 32 * 1024 * 1024 },
+  root: { entries: 1_050_000, pathUnits: 112 * 1024 * 1024 },
+  resident: { entries: 1_150_000, pathUnits: 120 * 1024 * 1024 },
 } as const satisfies Record<"root" | "resident", FileIndexCapacity>;
 
-export const FILE_INDEX_TIMINGS = {
-  /** How long a root with no open search stays indexed and watched. */
-  idleRelease: Duration.minutes(5),
-  /** File changes are applied once they have been quiet this long... */
-  changeSettle: Duration.millis(100),
-  /** ...or once they have waited this long. */
-  changeMaxDelay: Duration.seconds(1),
-  watchRetry: Duration.seconds(5),
-  publishInterval: Duration.millis(32),
-} as const;
-
-const RANKING_BATCH_SIZE = 512;
+const RANKING_BATCH_SIZE = 2_048;
 /** Beyond these, applying individual changes costs more than listing the root again. */
 const MAX_CHANGED_PATHS = 1_024;
 const MAX_REFRESHED_DIRECTORIES = 64;
@@ -60,7 +53,7 @@ type RootStatus = "building" | "ready" | "failed";
 
 interface RootIndex {
   readonly root: string;
-  readonly index: WorkspaceFileIndex;
+  readonly index: FileNameIndex;
   readonly scope: Scope.Closeable;
   readonly wake: Queue.Queue<void>;
   status: RootStatus;
@@ -76,6 +69,8 @@ interface RootIndex {
 }
 
 interface Session {
+  readonly scope: Scope.Closeable;
+  readonly search: FileNameSearch;
   roots: readonly RootIndex[];
   seq: number;
 }
@@ -151,6 +146,7 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
 ) {
   const listing = yield* WorkspaceFileListing;
   const moduleScope = yield* Scope.Scope;
+  const kernel = yield* Effect.sync(searchKernel);
   const limits = options.limits ?? FILE_INDEX_LIMITS;
   const timings = { ...FILE_INDEX_TIMINGS, ...options.timings };
   const settleMillis = Duration.toMillis(timings.changeSettle);
@@ -176,8 +172,11 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
   const capacityFor = (root: RootIndex): FileIndexCapacity => {
     const others = resident(root);
     return {
-      entries: Math.min(limits.root.entries, limits.resident.entries - others.entries),
-      pathUnits: Math.min(limits.root.pathUnits, limits.resident.pathUnits - others.pathUnits),
+      entries: Math.max(0, Math.min(limits.root.entries, limits.resident.entries - others.entries)),
+      pathUnits: Math.max(
+        0,
+        Math.min(limits.root.pathUnits, limits.resident.pathUnits - others.pathUnits),
+      ),
     };
   };
 
@@ -279,7 +278,10 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     const kindOf = (directory: string) =>
       kinds.get(directory.slice(directory.lastIndexOf("/") + 1));
     const subdirectories = target.depth === "direct" ? index.subdirectories(target.directory) : [];
-    const listed = new Set<string>();
+    const refresh = yield* Effect.acquireRelease(
+      Effect.sync(() => new kernel.FileNameRefresh()),
+      (pending) => Effect.sync(() => pending.free()),
+    );
     const result = yield* listing.list({
       root: root.root,
       directory: target.directory,
@@ -292,12 +294,12 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       knownAliases: root.aliases,
       onPaths: (paths) =>
         Effect.sync(() => {
-          for (const raw of paths) {
-            const normalized = index.normalize(raw);
-            if (normalized !== null) listed.add(normalized);
-            if (listed.size > limits.root.entries) return false;
-          }
-          return true;
+          return refresh.collect(
+            index,
+            paths.join("\0"),
+            limits.root.entries,
+            limits.root.pathUnits,
+          );
         }),
     });
     root.aliases = result.aliases;
@@ -312,16 +314,18 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       const kind = kindOf(directory);
       if (kind === undefined || kind === "file") index.removeTree(directory);
     }
-    const { full } = index.reconcile(
+    const capacity = capacityFor(root);
+    const full = refresh.apply(
+      index,
       target.directory,
-      target.depth,
-      [...listed],
-      capacityFor(root),
+      target.depth === "tree",
+      capacity.entries,
+      capacity.pathUnits,
     );
     if (full) root.incomplete = "too-large";
     else if (target.directory === "" && target.depth === "tree") delete root.incomplete;
     return null;
-  });
+  }, Effect.scoped);
 
   const planRefreshes = Effect.fnUntraced(function* (
     root: RootIndex,
@@ -418,15 +422,11 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
         onPaths: (paths) =>
           Effect.gen(function* () {
             const capacity = capacityFor(root);
-            let room = true;
-            for (const raw of paths) {
-              const normalized = root.index.normalize(raw);
-              if (normalized === null) continue;
-              if (root.index.add(normalized, capacity) === "full") {
-                room = false;
-                break;
-              }
-            }
+            const room = root.index.addBatch(
+              paths.join("\0"),
+              capacity.entries,
+              capacity.pathUnits,
+            );
             yield* signal(root);
             return room;
           }),
@@ -470,10 +470,15 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       return existing;
     }
     yield* makeRoom();
+    const scope = yield* Scope.fork(moduleScope);
+    const index = yield* Effect.acquireRelease(
+      Effect.sync(() => new kernel.FileNameIndex(windowsPaths)),
+      (opened) => Effect.sync(() => opened.free()),
+    ).pipe(Scope.provide(scope));
     const root: RootIndex = {
       root: rootPath,
-      index: new WorkspaceFileIndex(windowsPaths),
-      scope: yield* Scope.fork(moduleScope),
+      index,
+      scope,
       wake: yield* Queue.sliding<void>(1),
       status: "building",
       aliases: [],
@@ -508,47 +513,49 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     );
   });
 
-  const rank = Effect.fnUntraced(function* (
-    sessionId: string,
-    session: Session,
-    seq: number,
-    query: string,
-  ) {
-    const ranking = new FileSearchRanking(query);
+  const rank = Effect.fnUntraced(function* (sessionId: string, session: Session, seq: number) {
+    const ranking = yield* Effect.acquireRelease(
+      Effect.sync(() => session.search.start()),
+      (started) => Effect.sync(() => started.free()),
+    );
+    const roots = session.roots;
     let publishedAt = -Infinity;
     const publish = (outcome: FileIndexSessionOutcome) =>
       Effect.sync(() => {
         if (session.seq === seq) options.publish({ type: "session", sessionId, seq, outcome });
       });
     const publishMatches = Effect.gen(function* () {
-      yield* publish({ kind: "updated", files: ranking.results() });
+      const files = ranking.results().map(({ root_slot, ...match }) => ({
+        ...match,
+        root: roots[root_slot]!.root,
+      }));
+      yield* publish({ kind: "updated", files });
       publishedAt = yield* Clock.currentTimeMillis;
     });
     const publishProgress = Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
-      if (ranking.dirty && ranking.size > 0 && now - publishedAt >= publishMillis)
+      if (ranking.dirty && now - publishedAt >= publishMillis && ranking.hasMatches)
         yield* publishMatches;
     });
     let incomplete: FileSearchIncomplete | undefined;
-    for (const root of session.roots) {
-      // A finished listing is never edited in place, so this list stays consistent.
-      const entries = root.index.entries();
-      let offset = 0;
-      while (true) {
-        const progress = root.progress;
-        const end = Math.min(entries.length, offset + RANKING_BATCH_SIZE);
-        ranking.scan(root.root, entries, offset, end);
-        offset = end;
-        if (offset === entries.length && root.status !== "building") break;
-        yield* publishProgress;
-        if (offset < entries.length) yield* Effect.yieldNow;
-        else yield* Deferred.await(progress);
+    for (const [slot, root] of roots.entries()) {
+      if (root.status !== "failed") {
+        ranking.addRoot(slot, root.index);
+        // The snapshot grows during the first listing. Once ready, refreshes fork it.
+        while (true) {
+          const progress = root.progress;
+          const caughtUp = ranking.advance(slot, RANKING_BATCH_SIZE);
+          if (caughtUp && root.status !== "building") break;
+          yield* publishProgress;
+          if (caughtUp) yield* Deferred.await(progress);
+          else yield* Effect.yieldNow;
+        }
       }
       if (!incomplete && root.incomplete) incomplete = { reason: root.incomplete, root: root.root };
     }
     if (ranking.dirty) yield* publishMatches;
     yield* publish({ kind: "completed", ...(incomplete ? { incomplete } : {}) });
-  });
+  }, Effect.scoped);
 
   const open = Effect.fn("FileIndexModule.open")(function* (
     sessionId: string,
@@ -557,7 +564,12 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     if (sessions.has(sessionId)) return;
     const acquired: RootIndex[] = [];
     for (const rootPath of new Set(rootPaths)) acquired.push(yield* acquire(rootPath));
-    sessions.set(sessionId, { roots: acquired, seq: -1 });
+    const scope = yield* Scope.fork(moduleScope);
+    const search = yield* Effect.acquireRelease(
+      Effect.sync(() => new kernel.FileNameSearch()),
+      (opened) => Effect.sync(() => opened.free()),
+    ).pipe(Scope.provide(scope));
+    sessions.set(sessionId, { roots: acquired, seq: -1, scope, search });
   });
 
   const query = Effect.fn("FileIndexModule.query")(function* (
@@ -578,7 +590,12 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     }
     const retryFailedRoots = session.seq >= 0;
     session.seq = seq;
-    if (!text) return yield* FiberMap.remove(rankings, sessionId);
+    // Interrupt and finalize the old ranker before using its scanned candidates.
+    yield* FiberMap.remove(rankings, sessionId);
+    if (!text) {
+      session.search.clear();
+      return;
+    }
     if (retryFailedRoots && session.roots.some((root) => root.status === "failed"))
       session.roots = yield* Effect.forEach(
         session.roots,
@@ -588,7 +605,8 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
           return yield* acquire(root.root);
         }),
       );
-    yield* FiberMap.run(rankings, sessionId, rank(sessionId, session, seq, text));
+    session.search.reparse(text);
+    yield* FiberMap.run(rankings, sessionId, rank(sessionId, session, seq));
   });
 
   const close = Effect.fn("FileIndexModule.close")(function* (sessionId: string) {
@@ -597,6 +615,7 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     sessions.delete(sessionId);
     session.seq = -1;
     yield* FiberMap.remove(rankings, sessionId);
+    yield* Scope.close(session.scope, Exit.void);
     for (const root of session.roots) yield* release(root);
   });
 

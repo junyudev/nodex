@@ -1,2 +1,9 @@
 Nodex
 Copyright (c) 2026 Jun Yu
+
+The file-name ranking includes code derived from OpenAI Codex.
+Copyright (c) 2025 OpenAI
+Licensed under the Apache License, Version 2.0.
+
+Nucleo Matcher is available under the Mozilla Public License, Version 2.0.
+Corresponding source: https://github.com/helix-editor/nucleo/tree/4253de9faabb4e5c6d81d946a5e35a90f87347ee
