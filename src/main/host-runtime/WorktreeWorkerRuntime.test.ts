@@ -359,7 +359,12 @@ it.effect("rejects protocol drift before spawning a worker", () =>
       }),
     );
     assert.isTrue(Result.isFailure(invalid));
-    if (Result.isFailure(invalid)) assert.match(invalid.failure.message, /protocol version/u);
+    if (Result.isFailure(invalid)) {
+      assert.include(
+        invalid.failure.message,
+        'Nodex built an invalid worktree "create" request: input.localEnvironmentConfigPath:',
+      );
+    }
     assert.strictEqual(infrastructureErrors, 0);
 
     const result = yield* runtime.request({

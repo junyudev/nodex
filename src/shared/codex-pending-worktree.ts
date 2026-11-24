@@ -15,6 +15,7 @@ import type {
 import type { CodexExecutionProfile } from "./codex-execution-profile";
 import type { BrowserUsePresentationOrigin } from "./browser-sidebar";
 import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
+import type { WorktreeStartingState } from "./schemas/worktree-starting-state";
 
 export type CodexPendingWorktreePhase =
   | "queued"
@@ -23,14 +24,7 @@ export type CodexPendingWorktreePhase =
   | "worktree-ready"
   | "failed";
 
-export type CodexPendingWorktreeStartingState =
-  | {
-      readonly type: "branch";
-      readonly branchName: string;
-      readonly remoteRef?: string;
-      readonly onMissing?: "error" | "create-branch";
-    }
-  | { readonly type: "working-tree" };
+export type CodexPendingWorktreeStartingState = WorktreeStartingState;
 
 interface CodexPendingWorktreeRequestBase {
   readonly id: string;

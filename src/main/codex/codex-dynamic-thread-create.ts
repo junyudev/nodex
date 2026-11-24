@@ -1,5 +1,6 @@
 import type { CodexModelOption } from "../../shared/types";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2";
+import { AgentWorktreeStartingStateSchema } from "../../shared/schemas/worktree-starting-state";
 
 export const CODEX_DYNAMIC_CREATE_REASONING_EFFORTS = [
   "none",
@@ -68,11 +69,12 @@ function isCodexDynamicCreateReasoningEffort(
   return CODEX_DYNAMIC_CREATE_REASONING_EFFORTS.some((effort) => effort === value);
 }
 
+/** Shares the worker's starting-state schema, so an accepted branch is never rejected later. */
 function parseStartingState(value: unknown): CodexDynamicCreateStartingState | null {
-  if (!isRecord(value)) return null;
-  if (value.type === "working-tree") return { type: "working-tree" };
-  if (value.type !== "branch" || !isNonemptyString(value.branchName)) return null;
-  return { type: "branch", branchName: value.branchName };
+  const parsed = AgentWorktreeStartingStateSchema.safeParse(value);
+  if (!parsed.success) return null;
+  if (parsed.data.type === "working-tree") return { type: "working-tree" };
+  return { type: "branch", branchName: parsed.data.branchName };
 }
 
 function parseTarget(value: unknown): CodexDynamicCreateTarget | null {

@@ -274,3 +274,73 @@ it.effect("owns transport admission and release with the worker Scope", () =>
     assert.strictEqual(closeCount, 1);
   }),
 );
+
+it.effect("rejects a malformed request body and serves the next request", () =>
+  Effect.gen(function* () {
+    const results: Extract<CodexWorktreeWorkerThreadMessage, { type: "result" }>[] = [];
+    let listener: ((message: unknown) => void) | undefined;
+    const request = {
+      type: "request",
+      protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+      id: "valid",
+      request: {
+        operation: "git-root",
+        input: { requestId: "valid", hostId: "local", cwd: "/repo/workspace" },
+      },
+    } as const;
+    const success = { operation: "git-root", value: { root: "/repo" } } as const;
+    vi.mocked(executeCodexWorktreeWorkerOperation).mockResolvedValueOnce(success);
+    const transport: WorktreeWorkerTransport = {
+      close: () => undefined,
+      subscribe: (next) => {
+        listener = next;
+        return () => {
+          listener = undefined;
+        };
+      },
+      post: (message) => {
+        if (message.type === "ready") {
+          listener?.({
+            ...request,
+            id: "invalid",
+            request: {
+              ...request.request,
+              input: { ...request.request.input, cwd: "relative/path" },
+            },
+          });
+          listener?.(request);
+        }
+        if (message.type !== "result") return;
+        results.push(message);
+        if (message.id === request.id) {
+          listener?.({
+            type: "shutdown",
+            protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+          });
+        }
+      },
+    };
+
+    yield* runWorktreeWorkerApplication({ epoch: 1, hostId: "local", transport });
+
+    assert.deepStrictEqual(results, [
+      {
+        type: "result",
+        id: "invalid",
+        operation: "git-root",
+        result: {
+          type: "error",
+          code: "invalid-request",
+          message: "request.input.cwd: Must be an absolute POSIX or Windows path",
+          retryable: false,
+        },
+      },
+      {
+        type: "result",
+        id: request.id,
+        operation: "git-root",
+        result: { type: "ok", success },
+      },
+    ]);
+  }),
+);

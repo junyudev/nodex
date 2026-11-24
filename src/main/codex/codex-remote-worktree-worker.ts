@@ -9,7 +9,7 @@ import {
   WorktreeWorkerProcessStartError,
 } from "../host-runtime/WorktreeWorkerRuntime";
 import {
-  assertCodexWorktreeWorkerHostMessage,
+  validateOutgoingCodexWorktreeWorkerHostMessage,
   type CodexWorktreeWorkerHostMessage,
 } from "../worktree-worker/worktree-worker-protocol";
 
@@ -56,10 +56,10 @@ const makeProcess = (
   child.stderr.resume();
   return {
     send: (message: CodexWorktreeWorkerHostMessage) => {
-      assertCodexWorktreeWorkerHostMessage(message);
+      const validated = validateOutgoingCodexWorktreeWorkerHostMessage(message);
       if (failure) throw failure;
       if (child.stdin.destroyed) throw new CodexRemoteExecutionUnknownStateError(hostId);
-      child.stdin.write(`${JSON.stringify(message)}\n`);
+      child.stdin.write(`${JSON.stringify(validated)}\n`);
     },
     onMessage: (listener) => {
       let buffer = "";

@@ -213,6 +213,14 @@ same mutation that uses them; client lookup followed by mutation creates a
 TOCTOU race. Rejected input must not partially mutate authority or produce a
 misleading empty UI shell.
 
+A seam's validator and the type it guards are one definition: derive the type
+from the schema instead of maintaining an interface and a hand-written guard
+side by side. When a value crosses several seams, such as an Agent tool, a launch
+API and a worker protocol, each reuses the same schema, so a value the first seam
+accepts is never rejected later. A later rejection of a message Nodex built itself
+is an internal defect; report it as one, naming the field, rather than blaming
+the caller's input.
+
 ### 12. Reproducibility includes the whole artifact closure
 
 Pin Node, pnpm, runner images, and relevant build conditions. Native addons are

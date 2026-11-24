@@ -20,7 +20,7 @@ import type {
 import {
   CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
   createCodexWorktreeWorkerRequestMessage,
-  isCodexWorktreeWorkerThreadMessage,
+  decodeCodexWorktreeWorkerThreadMessage,
   type CodexWorktreeWorkerHostMessage,
   type CodexWorktreeWorkerThreadMessage,
 } from "../worktree-worker/worktree-worker-protocol";
@@ -269,8 +269,21 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
         ),
       );
 
-    const handleFailure = Effect.fnUntraced(function* (error: Error, session: WorkerSession) {
-      const retiring = failure("worker-retirement", "Worktree worker is being stopped", error);
+    const handleFailure = Effect.fnUntraced(function* (
+      error: Error,
+      session: WorkerSession,
+      protocolIssue?: string,
+    ) {
+      const cleanupMessage = protocolIssue
+        ? `Worktree cleanup was not confirmed: ${protocolIssue}`
+        : "Worktree cleanup was not confirmed";
+      const retiring = failure(
+        "worker-retirement",
+        protocolIssue
+          ? `Worktree worker is being stopped: ${protocolIssue}`
+          : "Worktree worker is being stopped",
+        error,
+      );
       const snapshot = yield* stateLock.withPermits(1)(
         Effect.gen(function* () {
           if ((yield* Ref.get(current)) !== session || session.retirement) return null;
@@ -280,11 +293,7 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
           // Endpoint exit cannot acknowledge native work that never sent a terminal result.
           yield* retainAdmissionFailure(
             pending.size > 0
-              ? failure(
-                  canceling ? "cancel-worker" : "worker-cleanup",
-                  "Worktree cleanup was not confirmed",
-                  error,
-                )
+              ? failure(canceling ? "cancel-worker" : "worker-cleanup", cleanupMessage, error)
               : retiring,
           );
           return pending;
@@ -341,7 +350,7 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
                   : workerFailure;
                 const cleanupFailure = failure(
                   entry.canceling ? "cancel-worker" : "worker-cleanup",
-                  "Worktree cleanup was not confirmed",
+                  cleanupMessage,
                   entryFailure,
                 );
                 yield* takePendingIf(id, entry);
@@ -477,19 +486,23 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
     const handleMessage = (raw: unknown, session: WorkerSession): Effect.Effect<void> =>
       Effect.gen(function* () {
         if ((yield* Ref.get(current)) !== session || session.retirement) return;
-        if (!isCodexWorktreeWorkerThreadMessage(raw)) {
+        const decoded = decodeCodexWorktreeWorkerThreadMessage(raw);
+        if (!decoded.ok) {
           return yield* handleFailure(
-            new Error("Worktree worker sent an invalid message"),
+            new Error(`Worktree worker sent an invalid message: ${decoded.error}`),
             session,
+            decoded.error,
           );
         }
-        if (raw.type === "ready") {
-          if (raw.epoch === expectedReadyEpoch(session.epoch) && raw.hostId === hostId) return;
+        const message = decoded.value;
+        if (message.type === "ready") {
+          if (message.epoch === expectedReadyEpoch(session.epoch) && message.hostId === hostId)
+            return;
           return yield* handleFailure(new Error("Worktree worker identity mismatch"), session);
         }
-        const pending = (yield* Ref.get(requests)).get(raw.id);
+        const pending = (yield* Ref.get(requests)).get(message.id);
         if (!pending) return;
-        if (raw.operation !== pending.operation) {
+        if (message.operation !== pending.operation) {
           return yield* handleFailure(new Error("Worktree worker operation mismatch"), session);
         }
         const bytes = messageBytes(raw);
@@ -500,7 +513,7 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
           );
         }
         pending.queuedBytes += bytes;
-        const accepted = yield* Queue.offer(pending.messages, { bytes, value: raw });
+        const accepted = yield* Queue.offer(pending.messages, { bytes, value: message });
         if (accepted) return;
         pending.queuedBytes = Math.max(0, pending.queuedBytes - bytes);
         return yield* handleFailure(

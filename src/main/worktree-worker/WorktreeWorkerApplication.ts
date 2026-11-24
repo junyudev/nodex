@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as FiberSet from "effect/FiberSet";
 import * as Schema from "effect/Schema";
+import type { CodexWorktreeWorkerOperation } from "../codex/codex-worktree-worker-protocol";
 import { executeCodexWorktreeWorkerOperation } from "../codex/codex-worktree-worker-operation";
 import { LocalThreadHandoffPreparationError } from "../codex/codex-local-thread-handoff-git";
 import { isCodexRequestCanceledError } from "../codex/codex-git-command";
@@ -18,7 +19,7 @@ import {
 import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import {
   CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
-  isCodexWorktreeWorkerHostMessage,
+  decodeCodexWorktreeWorkerHostMessage,
   type CodexWorktreeWorkerHostMessage,
   type CodexWorktreeWorkerThreadMessage,
 } from "./worktree-worker-protocol";
@@ -51,7 +52,7 @@ export const runWorktreeWorkerApplication = (
     Effect.gen(function* () {
       const { transport } = options;
       let closing = false;
-      const activeOperations = new Map<string, string>();
+      const activeOperations = new Map<string, CodexWorktreeWorkerOperation>();
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
           closing = true;
@@ -174,44 +175,60 @@ export const runWorktreeWorkerApplication = (
             Effect.asVoid,
           ),
         );
+      const rejectRequest = (
+        id: string,
+        operation: CodexWorktreeWorkerOperation,
+        message: string,
+      ): void => {
+        transport.post({
+          type: "result",
+          id,
+          operation,
+          result: { type: "error", code: "invalid-request", message, retryable: false },
+        });
+      };
+      const canAdmitRequest = (id: string): boolean => {
+        if (closing) return false;
+        if (!activeOperations.has(id)) return true;
+        fail(new Error("Worktree worker received a duplicate request id"));
+        return false;
+      };
       const onMessage = (raw: unknown): void => {
-        if (!isCodexWorktreeWorkerHostMessage(raw)) {
-          fail(new Error("Worktree worker received an invalid host message"));
+        const decoded = decodeCodexWorktreeWorkerHostMessage(raw);
+        if (!decoded.ok) {
+          if (!decoded.envelope) {
+            fail(new Error(`Worktree worker received an invalid host message: ${decoded.error}`));
+            return;
+          }
+          const { id, request } = decoded.envelope;
+          if (canAdmitRequest(id)) rejectRequest(id, request.operation, decoded.error);
           return;
         }
-        if (raw.type === "shutdown") {
+        const message = decoded.value;
+        if (message.type === "shutdown") {
           if (closing) return;
           closing = true;
           runControl(Deferred.succeed(shutdown, undefined));
           return;
         }
-        if (raw.type === "cancel") {
-          if (activeOperations.get(raw.id) === raw.operation) {
-            runControl(FiberMap.remove(requests, raw.id));
+        if (message.type === "cancel") {
+          if (activeOperations.get(message.id) === message.operation) {
+            runControl(FiberMap.remove(requests, message.id));
           }
           return;
         }
-        if (closing) return;
-        if (activeOperations.has(raw.id)) {
-          fail(new Error("Worktree worker received a duplicate request id"));
+        const { id, request } = message;
+        if (!canAdmitRequest(id)) return;
+        if (request.input.hostId !== options.hostId) {
+          rejectRequest(
+            id,
+            request.operation,
+            "Worktree request does not belong to this execution host",
+          );
           return;
         }
-        if (raw.request.input.hostId !== options.hostId) {
-          transport.post({
-            type: "result",
-            id: raw.id,
-            operation: raw.request.operation,
-            result: {
-              type: "error",
-              code: "invalid-request",
-              message: "Worktree request does not belong to this execution host",
-              retryable: false,
-            },
-          });
-          return;
-        }
-        activeOperations.set(raw.id, raw.request.operation);
-        runRequest(raw.id, execute(raw), { onlyIfMissing: true });
+        activeOperations.set(id, request.operation);
+        runRequest(id, execute(message), { onlyIfMissing: true });
       };
       const onTransportClose = (): void => {
         if (closing) return;
