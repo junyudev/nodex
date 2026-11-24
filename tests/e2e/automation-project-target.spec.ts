@@ -39,7 +39,7 @@ test("selects one Automation Project and records a Dry run without starting work
           kind: "cron",
           name: "Project target review",
           prompt: "Review this workspace",
-          rrule: "FREQ=YEARLY",
+          trigger: { kind: "clock", rrule: "FREQ=YEARLY" },
           projectId: null,
           cwds: [],
           executionEnvironment: "local",

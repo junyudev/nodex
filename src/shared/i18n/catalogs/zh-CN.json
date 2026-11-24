@@ -5930,6 +5930,7 @@
   "lib.automationDisplay.everyMonths": "每 {interval} 个月",
   "lib.automationDisplay.everyWeeks": "每 {interval} 周",
   "lib.automationDisplay.everyYears": "每 {interval} 年",
+  "lib.automationDisplay.gitHubEvents": "GitHub 事件",
   "lib.automationDisplay.monthly": "每月",
   "lib.automationDisplay.noUpcomingRun": "暂无计划运行",
   "lib.automationDisplay.today": "今天 {time}",

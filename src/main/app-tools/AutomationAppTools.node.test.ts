@@ -63,7 +63,7 @@ const cron = {
   kind: "cron",
   name: "Check release builds",
   prompt: "Check release builds and report failed jobs.",
-  rrule: "FREQ=HOURLY;INTERVAL=24",
+  trigger: { kind: "clock", rrule: "FREQ=HOURLY;INTERVAL=24" },
   projectId: "project:a",
   executionEnvironment: "local",
   cwds: ["/workspace/project-a"],
@@ -76,7 +76,6 @@ const item: Automation = {
   scope: { kind: "project", projectId: "project:a" },
   ownerMemberId: "member:a",
   conditionText: "Daily",
-  timezone: "UTC",
   mode: "run",
   runbookPageId: null,
   runbookTitle: null,
@@ -90,7 +89,7 @@ const item: Automation = {
   notificationPolicy: "failed_runs_only",
   name: "Check release builds",
   prompt: "Check release builds and report failed jobs.",
-  rrule: "FREQ=HOURLY;INTERVAL=24",
+  trigger: { kind: "clock", rrule: "FREQ=HOURLY;INTERVAL=24", timezone: "UTC", nextRunAt: 60_000 },
   model: "chosen-model",
   reasoningEffort: "ultra",
   serviceTier: "priority",
@@ -98,7 +97,6 @@ const item: Automation = {
   cwds: ["/workspace/project-a"],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
-  nextRunAt: 60_000,
   lastRunAt: null,
   createdAt: 1_000,
   updatedAt: 1_000,
@@ -318,7 +316,7 @@ it.effect(
         mode: "dry_run",
         conditionText: "Each weekday at nine",
         scope: { kind: "space" as const },
-        timezone: "Asia/Singapore",
+        trigger: { ...cron.trigger, timezone: "Asia/Singapore" },
         ownerMemberId: "member:a",
       } satisfies AutomationCreateInput;
       const result = yield* execute(input({ ...fields, operation: "create" }));
@@ -540,7 +538,7 @@ it.effect("defaults Heartbeats to the caller's stable Session and preserves expl
       kind: "heartbeat",
       name: "Watch the build",
       prompt: "Report build changes.",
-      rrule: "FREQ=MINUTELY;INTERVAL=30",
+      trigger: { kind: "clock", rrule: "FREQ=MINUTELY;INTERVAL=30" },
     };
     assert.isUndefined((yield* execute(input({ ...definition, operation: "create" }))).isError);
     assert.isUndefined(
@@ -595,7 +593,7 @@ it.effect("rejects a caller withdrawn during target lookup before committing a H
       kind: "heartbeat",
       name: "Build",
       prompt: "Check builds.",
-      rrule: "FREQ=MINUTELY;INTERVAL=30",
+      trigger: { kind: "clock", rrule: "FREQ=MINUTELY;INTERVAL=30" },
     });
     const result = yield* execute({ ...call, caller: { ...call.caller, isActive: () => active } });
     assert.isTrue(result.isError);
@@ -737,7 +735,7 @@ it.effect(
           kind: "heartbeat",
           name: "Watch",
           prompt: "Report changes",
-          rrule: "FREQ=HOURLY;INTERVAL=1",
+          trigger: { kind: "clock", rrule: "FREQ=HOURLY;INTERVAL=1" },
         },
       });
       assert.isUndefined(result.isError);
@@ -843,7 +841,7 @@ it.effect(
           kind: "heartbeat",
           name: "Watch",
           prompt: "Report changes",
-          rrule: "FREQ=HOURLY;INTERVAL=1",
+          trigger: { kind: "clock", rrule: "FREQ=HOURLY;INTERVAL=1" },
         })).isError,
       );
       assert.deepEqual(
@@ -854,7 +852,7 @@ it.effect(
       const heartbeat = {
         kind: "heartbeat",
         prompt: "Report changes",
-        rrule: "FREQ=HOURLY;INTERVAL=1",
+        trigger: { kind: "clock", rrule: "FREQ=HOURLY;INTERVAL=1" },
       };
       const failureBody = (result: { content: unknown }) =>
         JSON.parse((result.content as [{ text: string }])[0].text) as unknown;

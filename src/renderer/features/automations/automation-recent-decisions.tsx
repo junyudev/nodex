@@ -7,7 +7,8 @@ export function AutomationRecentDecisions({
   timezone,
 }: {
   automationId: string;
-  timezone: string;
+  /** A clock Automation's own timezone; times otherwise read in the local zone. */
+  timezone?: string;
 }) {
   const intl = useIntl();
   const decisions = useQuery(automationDecisionsQueryOptions(automationId));

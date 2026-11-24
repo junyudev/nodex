@@ -1808,7 +1808,7 @@ describe("Electron native data authority", () => {
             name: "Electron Automation Application",
             projectId,
             prompt: "Exercise the native Automation boundary.",
-            rrule: "FREQ=DAILY;BYHOUR=9",
+            trigger: { kind: "clock", rrule: "FREQ=DAILY;BYHOUR=9" },
             cwds: [nodexHome],
             executionEnvironment: "worktree",
           });

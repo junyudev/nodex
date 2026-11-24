@@ -17,7 +17,7 @@ const mutationResult = z.object({
     item: z.object({
       automation_id: z.string(),
       held_decision: z.null(),
-      next_run_at_ms: z.number().nullable(),
+      trigger: z.object({ kind: z.literal("clock"), next_run_at_ms: z.number().nullable() }),
     }),
   }),
 });
@@ -34,7 +34,8 @@ describe("Automations CLI over the clock and Inbox owners", () => {
           const id = context.manifest.entityIdsByKey?.[key];
           const pageId = context.manifest.pageIdsByKey[key];
           const automation = automations.find((candidate) => candidate.id === id);
-          if (!automation?.heldDecision || !pageId) throw new Error("Missing waiting Automation");
+          if (!automation?.heldDecision || automation.trigger.kind !== "clock" || !pageId)
+            throw new Error("Missing waiting Automation");
           const message = (await context.seed.readInbox(scope)).items.find(
             (item) => item.pageId === pageId,
           );
@@ -69,7 +70,7 @@ describe("Automations CLI over the clock and Inbox owners", () => {
           const first = await run();
           expect(first.duplicate).toBe(false);
           expect(first.item.automation_id).toBe(automation.id);
-          expect(first.item.next_run_at_ms).toBe(automation.nextRunAt);
+          expect(first.item.trigger.next_run_at_ms).toBe(automation.trigger.nextRunAt);
           const replay = await run();
           expect(replay.duplicate).toBe(true);
           expect(replay.item).toEqual(first.item);

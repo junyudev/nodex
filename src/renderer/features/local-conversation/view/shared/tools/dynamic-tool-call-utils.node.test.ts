@@ -156,38 +156,79 @@ describe("dynamic tool registry", () => {
     ).toBe(cases.map(([name, , label]) => `${name}:${label}`).join("|"));
   });
 
-  test("keeps automations_update rendering separate from dynamic standalone policy", () => {
-    const call = dynamicCall({
-      tool: "automations_update",
-      arguments: {
-        operation: "suggested_create",
-        scope: { kind: "project", projectId: "scope-project" },
-        kind: "cron",
-        status: "ACTIVE",
-        name: "Review release notes",
-        prompt: "Review release notes and summarize risks.",
-        rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
-        projectId: "project:nodex",
-        cwds: "/repo/nodex",
-        executionEnvironment: "worktree",
-        localEnvironmentConfigPath: null,
-        model: "gpt-5-codex",
-        reasoningEffort: "medium",
+  test.each([
+    {
+      trigger: { kind: "clock", rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0" },
+      subtitle: "Daily",
+    },
+    {
+      trigger: {
+        kind: "event",
+        filter: {
+          sourceId: "source:github",
+          repositories: ["team/nodex"],
+          events: ["check_failed"],
+          labels: ["ci"],
+          actorClass: "any",
+        },
       },
-    });
-    const entry = getDynamicToolRegistryEntry(call);
-    const state = resolveAutomationUpdateRenderState(call);
+      subtitle: "GitHub events",
+    },
+  ])(
+    "renders an automation proposal for $subtitle separately from standalone policy",
+    ({ trigger, subtitle }) => {
+      const call = dynamicCall({
+        tool: "automations_update",
+        arguments: {
+          operation: "suggested_create",
+          scope: { kind: "project", projectId: "scope-project" },
+          kind: "cron",
+          status: "ACTIVE",
+          name: "Review release notes",
+          prompt: "Review release notes and summarize risks.",
+          conditionText: "Release validation needs attention.",
+          trigger: trigger.kind === "clock" ? { ...trigger, nextRunAt: 123 } : trigger,
+          projectId: "project:nodex",
+          cwds: "/repo/nodex",
+          executionEnvironment: "worktree",
+          localEnvironmentConfigPath: null,
+          model: "gpt-5-codex",
+          reasoningEffort: "medium",
+        },
+      });
+      const entry = getDynamicToolRegistryEntry(call);
+      const state = resolveAutomationUpdateRenderState(call);
 
-    expect(entry?.rendererKind ?? "").toBe("automationUpdate");
-    expect(isDynamicToolStandaloneInConversation(call)).toBe(false);
-    expect(state?.statusLabel ?? "").toBe("Proposed");
-    expect(state?.title ?? "").toBe("Review release notes");
-    expect(state?.subtitle ?? "").toBe("Daily");
-    expect(state?.canAccept ?? false).toBe(true);
-    expect(state?.createInput?.projectId).toBe("project:nodex");
-    expect(state?.createInput?.scope).toEqual({ kind: "project", projectId: "scope-project" });
-    expect(state?.createInput?.cwds?.join(",") ?? "").toBe("/repo/nodex");
-    expect(state?.createInput?.executionEnvironment ?? "").toBe("worktree");
+      expect(entry?.rendererKind ?? "").toBe("automationUpdate");
+      expect(isDynamicToolStandaloneInConversation(call)).toBe(false);
+      expect(state?.statusLabel ?? "").toBe("Proposed");
+      expect(state?.title ?? "").toBe("Review release notes");
+      expect(state?.subtitle).toBe(subtitle);
+      expect(state?.createInput?.trigger).toEqual(trigger);
+      expect(state?.canAccept ?? false).toBe(true);
+      expect(state?.createInput?.projectId).toBe("project:nodex");
+      expect(state?.createInput?.scope).toEqual({ kind: "project", projectId: "scope-project" });
+      expect(state?.createInput?.cwds?.join(",") ?? "").toBe("/repo/nodex");
+      expect(state?.createInput?.executionEnvironment ?? "").toBe("worktree");
+    },
+  );
+
+  test("a proposal with only a top-level RRULE cannot be accepted", () => {
+    const state = resolveAutomationUpdateRenderState(
+      dynamicCall({
+        tool: "automations_update",
+        arguments: {
+          operation: "suggested_create",
+          kind: "cron",
+          name: "Review release notes",
+          prompt: "Summarize release risks.",
+          rrule: "FREQ=DAILY",
+        },
+      }),
+    );
+
+    expect(state?.createInput).toBeNull();
+    expect(state?.canAccept).toBe(false);
   });
 
   test("resolves registry metadata namespace-first without tool-name fallback", () => {
@@ -225,7 +266,12 @@ describe("dynamic tool registry", () => {
             snapshot: {
               kind: "cron",
               name: "Release notes",
-              rrule: "FREQ=WEEKLY",
+              trigger: {
+                kind: "clock",
+                rrule: "FREQ=WEEKLY",
+                timezone: "UTC",
+                nextRunAt: null,
+              },
             },
           }),
         },
@@ -239,6 +285,11 @@ describe("dynamic tool registry", () => {
     expect(result?.deleteStatus ?? "").toBe("not_found");
     expect(state?.statusLabel ?? "").toBe("Missing");
     expect(state?.title ?? "").toBe("Release notes");
+    expect(result?.snapshot?.trigger).toEqual({
+      kind: "clock",
+      rrule: "FREQ=WEEKLY",
+      timezone: "UTC",
+    });
   });
 
   test("keeps omitted automations_update local environment paths out of update payloads", () => {
@@ -252,7 +303,7 @@ describe("dynamic tool registry", () => {
           status: "ACTIVE",
           name: "Release notes",
           prompt: "Review release notes.",
-          rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+          trigger: { kind: "clock", rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0" },
           cwds: ["/repo/nodex"],
           executionEnvironment: "worktree",
           model: "gpt-5-codex",
@@ -272,7 +323,7 @@ describe("dynamic tool registry", () => {
       kind: "heartbeat",
       name: "Follow up",
       prompt: "Check progress",
-      rrule: "FREQ=HOURLY",
+      trigger: { kind: "clock", rrule: "FREQ=HOURLY" },
     };
     const unresolved = resolveAutomationUpdateRenderState(
       dynamicCall({

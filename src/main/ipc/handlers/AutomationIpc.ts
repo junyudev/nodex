@@ -15,6 +15,10 @@ import { AutomationApplication } from "../../../host/automation-application/Auto
 import { AutomationExecution } from "../../../host/automation-application/AutomationExecution";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
+import {
+  AutomationClockTriggerInputSchema,
+  AutomationTriggerInputSchema,
+} from "../../../shared/schemas/automation";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ClockAutomationRuntime } from "../../host-runtime/ClockAutomationRuntime";
 import { safeBroadcastToPersonalWindows } from "../../ipc-safe-send";
@@ -31,6 +35,12 @@ export class AutomationIpcError extends Schema.TaggedError<AutomationIpcError>()
 const validateTaskOptions = (input: AutomationCreateInput) =>
   Effect.try({
     try: () => {
+      const triggerSchema =
+        input.kind === "heartbeat"
+          ? AutomationClockTriggerInputSchema
+          : AutomationTriggerInputSchema;
+      if (!triggerSchema.safeParse(input.trigger).success)
+        throw new Error("Choose a valid trigger for this Automation.");
       if (input.mode !== undefined && !["dry_run", "ask_first", "run"].includes(input.mode))
         throw new Error("Choose Dry run, Ask first, or Run.");
       if (
@@ -259,7 +269,7 @@ export const live: Layer.Layer<
             : Effect.fail(
                 new AutomationIpcError({
                   operation: "automations:update",
-                  cause: new Error("Clock Automation update failed."),
+                  cause: new Error("Automation update failed."),
                 }),
               ),
         ),

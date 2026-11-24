@@ -271,6 +271,26 @@ describe("workbench session shell / automations-conversation", () => {
     );
   });
 
+  test("switching When to GitHub selects Dry run and switching back restores the schedule", async () => {
+    const screen = renderWorkbench({ clockAutomations: [] });
+    await openAutomations(screen);
+    await click(screen.getByRole("button", { name: "New automation" }));
+
+    const dialog = within(await screen.findByRole("dialog", { name: "New automation" }));
+    await pick(screen, dialog.getByRole("button", { name: "Repeat" }), "Weekly");
+    await pick(screen, dialog.getByRole("button", { name: "Time" }), "10:30 AM", "option");
+    await pick(screen, dialog.getByRole("button", { name: "Mode" }), "Ask first");
+
+    const when = () => dialog.getByRole("button", { name: "When" });
+    await pick(screen, when(), "Something happens on GitHub");
+    expect(dialog.queryByRole("button", { name: "Repeat" })).toBeNull();
+    expect(dialog.getByRole("button", { name: "Mode" }).textContent).toBe("Dry run");
+
+    await pick(screen, when(), "On a schedule");
+    expect(dialog.getByRole("button", { name: "Repeat" }).textContent).toBe("Weekly");
+    expect(dialog.getByRole("button", { name: "Time" }).textContent).toMatch(/^10:30 AM\b/u);
+  });
+
   test("creates a Dry run Automation with its condition, then edits and deletes it from the sidebar", async () => {
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
@@ -329,7 +349,7 @@ describe("workbench session shell / automations-conversation", () => {
       cwds: ["/tmp/project"],
       executionEnvironment: "worktree",
       localEnvironmentConfigPath: ".codex/environments/environment.toml",
-      rrule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=30",
+      trigger: { kind: "clock", rrule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=30" },
       model: "gpt-5.5-high",
       reasoningEffort: "high",
     });
@@ -419,7 +439,12 @@ describe("workbench session shell / automations-conversation", () => {
       name: "Paused task",
       status: "PAUSED",
       targetSessionId: "session:alpha:automation-row-paused",
-      nextRunAt: null,
+      trigger: {
+        kind: "clock",
+        rrule: "FREQ=DAILY",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        nextRunAt: null,
+      },
     });
     const screen = renderWorkbench({
       sessionsByProject: {

@@ -1,6 +1,6 @@
 import { defineMessages, getIntl } from "@/lib/i18n";
 import type { CodexConversationItem, AutomationUpdateView } from "../../../../../shared/types";
-import { formatAutomationRruleSummary } from "../../../../lib/automation-display";
+import { formatAutomationTriggerSummary } from "../../../../lib/automation-display";
 import type { AutomationUpdateRenderState } from "./dynamic-tool-call-utils";
 
 /** Native identity exposes an Automation card before its bounded detail read has supplied the action. */
@@ -74,7 +74,7 @@ export function resolveNativeAutomationUpdateRenderState(
       : null,
     statusLabel: getIntl().formatMessage(statusLabels[displayMode]),
     subtitle:
-      formatAutomationRruleSummary(proposal?.rrule ?? result?.snapshot?.rrule ?? null) ??
+      formatAutomationTriggerSummary(proposal?.trigger ?? result?.snapshot?.trigger) ??
       getIntl().formatMessage({
         id: "conversation.nativeAutomationUpdate.customSchedule",
         defaultMessage: "Custom schedule",

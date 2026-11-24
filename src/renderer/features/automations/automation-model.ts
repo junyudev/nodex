@@ -53,19 +53,26 @@ export interface AutomationRowModel {
 }
 
 export function formatAutomationScheduleLabel(
-  automation: Pick<Automation, "kind" | "rrule" | "sourceCondition">,
+  automation: Pick<Automation, "kind" | "trigger">,
   intl = getIntl(),
 ): string {
-  if (automation.sourceCondition)
+  if (automation.trigger.kind === "event")
     return intl.formatMessage({
       id: "automations.automationModel.gitHubEvents",
       defaultMessage: "GitHub events",
     });
   const config = resolveWorkbenchAutomationScheduleConfig({
-    rrule: automation.rrule,
+    rrule: automation.trigger.rrule,
     intervalStyle: automation.kind === "heartbeat" ? "heartbeat" : "default",
   });
   return formatWorkbenchAutomationScheduleLabel(config, intl);
+}
+
+/** When a clock Automation next falls due; event Automations have no next run. */
+function automationNextRunAt(automation: Pick<Automation, "trigger">): number {
+  return automation.trigger.kind === "clock"
+    ? (automation.trigger.nextRunAt ?? Number.POSITIVE_INFINITY)
+    : Number.POSITIVE_INFINITY;
 }
 
 /** The date part of a next run: Today, Tomorrow, or a short month and day. */
@@ -129,21 +136,24 @@ export function formatAutomationSubtitle(
       { id: "automations.automationModel.pausedValue", defaultMessage: "Paused · {value1}" },
       { value1: scheduleLabel },
     );
-  if (automation.nextRunAt === null || !Number.isFinite(automation.nextRunAt)) return scheduleLabel;
-  return `${formatAutomationNextRunDate(automation.nextRunAt, now, automation.timezone, intl)} · ${scheduleLabel}`;
+  const { trigger } = automation;
+  if (trigger.kind === "event" || trigger.nextRunAt === null || !Number.isFinite(trigger.nextRunAt))
+    return scheduleLabel;
+  return `${formatAutomationNextRunDate(trigger.nextRunAt, now, trigger.timezone, intl)} · ${scheduleLabel}`;
 }
 
 /** What the Automations page answers after a task's instructions. */
 export function formatAutomationConfirmation(
-  automation: Pick<Automation, "status" | "nextRunAt" | "mode" | "heldDecision" | "timezone">,
+  automation: Pick<Automation, "status" | "trigger" | "mode" | "heldDecision">,
   intl = getIntl(),
 ): string {
+  const { trigger } = automation;
   if (automation.heldDecision)
     return intl.formatMessage({
       id: "automations.automationModel.aDecisionFromThisAutomation",
       defaultMessage: "A decision from this automation is waiting in the Inbox.",
     });
-  if (automation.status !== "ACTIVE" || automation.nextRunAt === null) {
+  if (automation.status !== "ACTIVE" || trigger.kind === "event" || trigger.nextRunAt === null) {
     return automation.status === "PAUSED"
       ? intl.formatMessage({
           id: "automations.automationModel.thisAutomationIsPaused",
@@ -160,8 +170,8 @@ export function formatAutomationConfirmation(
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
-    timeZone: automation.timezone,
-  }).format(new Date(automation.nextRunAt));
+    timeZone: trigger.timezone,
+  }).format(new Date(trigger.nextRunAt));
   if (automation.mode === "dry_run")
     return intl.formatMessage(
       {
@@ -265,8 +275,8 @@ function compareAutomations(left: Automation, right: Automation) {
   const leftPaused = left.status === "PAUSED";
   const rightPaused = right.status === "PAUSED";
   if (leftPaused !== rightPaused) return leftPaused ? 1 : -1;
-  const leftNextRun = leftPaused ? Number.POSITIVE_INFINITY : (left.nextRunAt ?? Infinity);
-  const rightNextRun = rightPaused ? Number.POSITIVE_INFINITY : (right.nextRunAt ?? Infinity);
+  const leftNextRun = leftPaused ? Number.POSITIVE_INFINITY : automationNextRunAt(left);
+  const rightNextRun = rightPaused ? Number.POSITIVE_INFINITY : automationNextRunAt(right);
   if (leftNextRun !== rightNextRun) return leftNextRun - rightNextRun;
   return left.name.localeCompare(right.name);
 }

@@ -1,6 +1,7 @@
 import type { AutomationMode } from "@/lib/types";
 import {
   createWorkbenchAutomationDraft,
+  workbenchAutomationClockTrigger,
   type WorkbenchAutomationDraft,
 } from "./workbench-automation-draft";
 
@@ -189,7 +190,7 @@ export function createWorkbenchAutomationDraftFromTemplate(
     ...draft,
     name: template.name,
     prompt: template.prompt,
-    rrule: template.rrule,
+    trigger: workbenchAutomationClockTrigger(template.rrule),
     mode: template.mode ?? draft.mode,
   };
 }

@@ -46,6 +46,7 @@ import type {
   CodexPromptImageInput,
   Automation,
   AutomationCreateInput,
+  AutomationTriggerInput,
   AutomationUpdateInput,
   CodexSidebarSyncResult,
   CodexSidebarThreadItem,
@@ -151,6 +152,24 @@ import {
   PageTitleProjectionPublisher,
   type PageTitleResourceIdentity,
 } from "@/lib/page-title-projection-context";
+
+/** What Core would save for a requested trigger: a clock keeps its zone and next run. */
+const savedTestAutomationTrigger = (
+  trigger: AutomationTriggerInput,
+  existing?: Automation["trigger"],
+): Automation["trigger"] =>
+  trigger.kind === "event"
+    ? trigger
+    : {
+        kind: "clock",
+        rrule: trigger.rrule,
+        timezone:
+          trigger.timezone ??
+          (existing?.kind === "clock"
+            ? existing.timezone
+            : Intl.DateTimeFormat().resolvedOptions().timeZone),
+        nextRunAt: existing?.kind === "clock" ? existing.nextRunAt : null,
+      };
 
 export let invokeCalls: unknown[][] = [];
 /** Whether a recorded call read a scope's chat list, one lane or several at once. */
@@ -3677,7 +3696,7 @@ export function renderWorkbench({
         scope: input.scope ?? { kind: "space" },
         ownerMemberId: input.ownerMemberId ?? "member-owner",
         conditionText: input.conditionText ?? "Every day",
-        timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        trigger: savedTestAutomationTrigger(input.trigger),
         projectId: input.projectId ?? null,
         notificationPolicy: null,
         mode: input.mode ?? "run",
@@ -3689,7 +3708,6 @@ export function renderWorkbench({
         targetSessionId: input.targetSessionId ?? null,
         name: input.name,
         prompt: input.prompt ?? "",
-        rrule: input.rrule ?? null,
         model: input.model ?? null,
         reasoningEffort: input.reasoningEffort ?? null,
         serviceTier: input.serviceTier ?? null,
@@ -3697,7 +3715,6 @@ export function renderWorkbench({
         cwds: input.cwds ?? [],
         executionEnvironment: input.executionEnvironment ?? "worktree",
         localEnvironmentConfigPath: input.localEnvironmentConfigPath ?? null,
-        nextRunAt: null,
         lastRunAt: null,
         createdAt: 300,
         updatedAt: 400,
@@ -3714,7 +3731,7 @@ export function renderWorkbench({
         scope: input.scope ?? { kind: "space" },
         ownerMemberId: input.ownerMemberId ?? "member-owner",
         conditionText: input.conditionText ?? "Every day",
-        timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        trigger: savedTestAutomationTrigger(input.trigger, existing?.trigger),
         projectId: input.projectId === undefined ? (existing?.projectId ?? null) : input.projectId,
         notificationPolicy: null,
         mode: input.mode ?? existing?.mode ?? "run",
@@ -3726,7 +3743,6 @@ export function renderWorkbench({
         targetSessionId: input.targetSessionId ?? null,
         name: input.name,
         prompt: input.prompt ?? "",
-        rrule: input.rrule ?? null,
         model: input.model ?? null,
         reasoningEffort: input.reasoningEffort ?? null,
         serviceTier: input.serviceTier ?? null,
@@ -3734,7 +3750,6 @@ export function renderWorkbench({
         cwds: input.cwds ?? [],
         executionEnvironment: input.executionEnvironment ?? "worktree",
         localEnvironmentConfigPath: input.localEnvironmentConfigPath ?? null,
-        nextRunAt: existing?.nextRunAt ?? null,
         lastRunAt: existing?.lastRunAt ?? null,
         createdAt: existing?.createdAt ?? 300,
         updatedAt: 400,

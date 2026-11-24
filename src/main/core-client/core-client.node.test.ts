@@ -876,7 +876,7 @@ describe("CoreClient over a private local endpoint", () => {
             kind: "cron" as const,
             name: "Node daily report",
             prompt: "Prepare the report",
-            rrule: "FREQ=MINUTELY;INTERVAL=5",
+            trigger: { kind: "clock" as const, rrule: "FREQ=MINUTELY;INTERVAL=5" },
             cwds: [],
             execution_environment: "local" as const,
           },
@@ -888,7 +888,7 @@ describe("CoreClient over a private local endpoint", () => {
           automation_id: "node-daily-report",
           automation_revision: 1,
           status: "ACTIVE",
-          next_run_at_ms: expect.any(Number),
+          trigger: { kind: "clock", next_run_at_ms: expect.any(Number) },
         },
       ]);
       const automationReplay = await client.automationApply(automationInput);

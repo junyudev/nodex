@@ -17,6 +17,25 @@ export function removeAutomation(
   return (automations ?? []).filter((automation) => automation.id !== automationId);
 }
 
+/** A clock keeps its next run until Core recomputes it; pausing clears it. */
+function optimisticTrigger(
+  current: Automation["trigger"],
+  update: AutomationUpdateInput,
+): Automation["trigger"] {
+  const { trigger } = update;
+  if (trigger.kind === "event") return trigger;
+  return {
+    kind: "clock",
+    rrule: trigger.rrule,
+    timezone:
+      trigger.timezone ??
+      (current.kind === "clock"
+        ? current.timezone
+        : Intl.DateTimeFormat().resolvedOptions().timeZone),
+    nextRunAt: update.status === "PAUSED" || current.kind !== "clock" ? null : current.nextRunAt,
+  };
+}
+
 /** The list as it will read once an update is saved, so the UI does not wait for the round trip. */
 export function applyOptimisticAutomationUpdate(
   automations: Automation[] | undefined,
@@ -34,14 +53,13 @@ export function applyOptimisticAutomationUpdate(
       scope: update.scope ?? automation.scope,
       ownerMemberId: update.ownerMemberId ?? automation.ownerMemberId,
       conditionText: update.conditionText ?? automation.conditionText,
-      timezone: update.timezone ?? automation.timezone,
+      trigger: optimisticTrigger(automation.trigger, update),
       runbookPageId:
         update.runbookPageId === undefined ? automation.runbookPageId : update.runbookPageId,
       projectId: isCron ? (update.projectId ?? null) : null,
       targetSessionId: isCron ? null : (update.targetSessionId ?? null),
       name: update.name,
       prompt: update.prompt ?? "",
-      rrule: update.rrule ?? null,
       model: isCron ? (update.model ?? null) : null,
       reasoningEffort: isCron ? (update.reasoningEffort ?? null) : null,
       cwds: isCron ? [...(update.cwds ?? [])] : [],
@@ -53,7 +71,6 @@ export function applyOptimisticAutomationUpdate(
           ? automation.localEnvironmentConfigPath
           : update.localEnvironmentConfigPath
         : null,
-      nextRunAt: update.status === "PAUSED" ? null : automation.nextRunAt,
     };
   });
 }
@@ -75,7 +92,10 @@ export function buildAutomationStatusUpdate(
     scope: automation.scope,
     ownerMemberId: automation.ownerMemberId,
     conditionText: automation.conditionText,
-    timezone: automation.timezone,
+    trigger:
+      automation.trigger.kind === "clock"
+        ? { kind: "clock", rrule: automation.trigger.rrule, timezone: automation.trigger.timezone }
+        : automation.trigger,
     backendBinding: automation.backendBinding,
     notificationPolicy: automation.notificationPolicy,
     expectedRevision: automation.automationRevision,
@@ -83,7 +103,6 @@ export function buildAutomationStatusUpdate(
     targetSessionId: automation.targetSessionId,
     name: automation.name,
     prompt: automation.prompt,
-    rrule: automation.rrule,
     model: automation.model,
     reasoningEffort: automation.reasoningEffort,
     serviceTier: automation.serviceTier,

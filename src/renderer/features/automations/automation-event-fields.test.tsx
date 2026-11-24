@@ -2,11 +2,8 @@ import { useState } from "react";
 import { act } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import {
-  DEFAULT_AUTOMATION_SOURCE_FILTER,
-  AutomationEventFields,
-  AutomationSourceFields,
-} from "./automation-event-fields";
+import { AutomationEventFields, AutomationSourceFields } from "./automation-event-fields";
+import { DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER } from "@/components/workbench/workbench-automation-draft";
 import { TestQueryProvider } from "@/test/query";
 import { installWindowApi } from "@/test/browser-globals";
 
@@ -17,7 +14,7 @@ describe("event Automation filters", () => {
     render(
       <TestQueryProvider>
         <AutomationSourceFields
-          value={{ ...DEFAULT_AUTOMATION_SOURCE_FILTER, source_id: "github" }}
+          value={{ ...DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER, sourceId: "github" }}
           disabled={false}
           onChange={vi.fn()}
         />
@@ -31,7 +28,7 @@ describe("event Automation filters", () => {
   test("commits repository and label lists while retaining typed separators, and toggles event kinds", async () => {
     const changed = vi.fn();
     function Editor() {
-      const [value, setValue] = useState(DEFAULT_AUTOMATION_SOURCE_FILTER);
+      const [value, setValue] = useState(DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER);
       return (
         <AutomationEventFields
           value={value}
@@ -76,7 +73,7 @@ describe("event Automation filters", () => {
       expect(changed).toHaveBeenLastCalledWith(
         expect.objectContaining({
           labels: ["bug", "typo"],
-          kinds: ["check_failed", "check_passed"],
+          events: ["check_failed", "check_passed"],
         }),
       ),
     );

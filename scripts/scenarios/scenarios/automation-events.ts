@@ -19,12 +19,15 @@ export const automationEventsScenario: ScenarioDomainRecipe = {
       executionEnvironment: "local",
       model: "gpt-6.1-sol",
       reasoningEffort: "high",
-      sourceCondition: {
-        source_id: null,
-        repositories: ["nodex/scenario"],
-        kinds: ["check_failed"],
-        labels: [],
-        actor_class: "any",
+      trigger: {
+        kind: "event",
+        filter: {
+          sourceId: null,
+          repositories: ["nodex/scenario"],
+          events: ["check_failed"],
+          labels: [],
+          actorClass: "any",
+        },
       },
     });
     await port.assessAutomationCheck(coordinator, 1);

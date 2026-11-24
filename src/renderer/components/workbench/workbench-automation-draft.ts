@@ -3,6 +3,7 @@ import { agentDefinition } from "../../../shared/agents/registry";
 import { getIntl } from "@/lib/i18n";
 import type {
   Automation,
+  AutomationEventFilter,
   AutomationExecutionEnvironment,
   AutomationExecutionKind,
   AutomationMode,
@@ -10,6 +11,8 @@ import type {
   AutomationCreateInput,
   AutomationReasoningEffort,
   AutomationStatus,
+  AutomationTrigger,
+  AutomationTriggerInput,
   AutomationUpdateInput,
 } from "@/lib/types";
 import { getVisibleCodexModels, resolveCodexModelSelection } from "@/lib/codex-thread-settings";
@@ -18,6 +21,73 @@ import type { AgentBackendBinding } from "../../../shared/agent-backend";
 
 export const DEFAULT_WORKBENCH_AUTOMATION_RRULE = "FREQ=DAILY;BYHOUR=9;BYMINUTE=0";
 export const DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT = "medium";
+export const DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER: AutomationEventFilter = {
+  sourceId: null,
+  repositories: [],
+  events: ["check_failed"],
+  labels: [],
+  actorClass: "any",
+};
+
+/** The trigger being edited. A clock always carries its explicit timezone; an event has none. */
+export type WorkbenchAutomationTriggerDraft =
+  | { kind: "clock"; rrule: string; timezone: string }
+  | { kind: "event"; filter: AutomationEventFilter };
+
+function localTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/** A clock in the Host's own timezone. */
+export function workbenchAutomationClockTrigger(
+  rrule: string = DEFAULT_WORKBENCH_AUTOMATION_RRULE,
+): Extract<WorkbenchAutomationTriggerDraft, { kind: "clock" }> {
+  return { kind: "clock", rrule, timezone: localTimezone() };
+}
+
+export function defaultWorkbenchAutomationTrigger(
+  kind: WorkbenchAutomationTriggerDraft["kind"],
+): WorkbenchAutomationTriggerDraft {
+  return kind === "clock"
+    ? workbenchAutomationClockTrigger()
+    : { kind, filter: cloneEventFilter(DEFAULT_WORKBENCH_AUTOMATION_EVENT_FILTER) };
+}
+
+function cloneEventFilter(filter: AutomationEventFilter): AutomationEventFilter {
+  return {
+    ...filter,
+    repositories: [...filter.repositories],
+    events: [...filter.events],
+    labels: [...filter.labels],
+  };
+}
+
+/** Saved and requested triggers become drafts; a clock without a timezone keeps `timezone`. */
+function draftTrigger(
+  trigger: AutomationTrigger | AutomationTriggerInput,
+  timezone: string = localTimezone(),
+): WorkbenchAutomationTriggerDraft {
+  return trigger.kind === "clock"
+    ? { kind: "clock", rrule: trigger.rrule, timezone: trigger.timezone ?? timezone }
+    : { kind: "event", filter: cloneEventFilter(trigger.filter) };
+}
+
+function triggerSignature(trigger: AutomationTrigger | WorkbenchAutomationTriggerDraft): string {
+  if (trigger.kind === "clock")
+    return JSON.stringify([trigger.kind, trigger.rrule.trim(), trigger.timezone]);
+  const { sourceId, repositories, events, labels, actorClass } = trigger.filter;
+  return JSON.stringify([trigger.kind, sourceId, repositories, events, labels, actorClass]);
+}
+
+/** A heartbeat continues its chat on a clock; an event trigger only starts new chats. */
+export function workbenchAutomationTriggerForKind(
+  kind: AutomationExecutionKind,
+  trigger: WorkbenchAutomationTriggerDraft,
+): WorkbenchAutomationTriggerDraft {
+  return kind === "heartbeat" && trigger.kind === "event"
+    ? defaultWorkbenchAutomationTrigger("clock")
+    : trigger;
+}
 
 function isAutomationReasoningEffort(value: string): value is AutomationReasoningEffort {
   return value.length > 0 && value.length <= 64 && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
@@ -36,8 +106,7 @@ export interface WorkbenchAutomationDraft {
   ownerMemberId: string | null;
   scope?: Automation["scope"];
   conditionText: string;
-  sourceCondition?: import("@/lib/types").AutomationSourceFilter | null;
-  timezone: string;
+  trigger: WorkbenchAutomationTriggerDraft;
   /** A Page every run follows as standing instructions. */
   runbookPageId: string | null;
   /** The runbook's title when it was chosen, for display only; never saved. */
@@ -45,7 +114,6 @@ export interface WorkbenchAutomationDraft {
   expectedRevision?: number;
   name: string;
   prompt: string;
-  rrule: string;
   model: string;
   reasoningEffort: AutomationReasoningEffort | "";
   serviceTier: string;
@@ -140,13 +208,13 @@ export function createWorkbenchAutomationDraft(
     ownerMemberId: automation?.ownerMemberId ?? null,
     scope: automation?.scope,
     conditionText: automation?.conditionText ?? "",
-    sourceCondition: automation?.sourceCondition ?? null,
-    timezone: automation?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    trigger: automation
+      ? draftTrigger(automation.trigger)
+      : defaultWorkbenchAutomationTrigger("clock"),
     runbookPageId: automation?.runbookPageId ?? null,
     runbookTitle: automation?.runbookTitle ?? null,
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
-    rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
     model: kind === "cron" ? (automation?.model ?? defaults.model) : "",
     reasoningEffort:
       kind === "cron" ? (automation?.reasoningEffort ?? defaults.reasoningEffort) : "",
@@ -176,13 +244,11 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     ownerMemberId: input.ownerMemberId ?? null,
     scope: input.scope,
     conditionText: input.conditionText ?? "",
-    sourceCondition: input.sourceCondition ?? null,
-    timezone: input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    trigger: workbenchAutomationTriggerForKind(kind, draftTrigger(input.trigger)),
     runbookPageId: input.runbookPageId ?? null,
     runbookTitle: null,
     name: input.name ?? "",
     prompt: input.prompt ?? "",
-    rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
     model: kind === "cron" ? (input.model ?? defaults.model) : "",
     reasoningEffort: kind === "cron" ? (input.reasoningEffort ?? defaults.reasoningEffort) : "",
     serviceTier: kind === "cron" ? (input.serviceTier ?? "") : "",
@@ -214,8 +280,13 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     ownerMemberId: update.ownerMemberId ?? automation?.ownerMemberId ?? base.ownerMemberId,
     scope: update.scope ?? automation?.scope ?? base.scope,
     conditionText: update.conditionText ?? automation?.conditionText ?? base.conditionText,
-    sourceCondition: update.sourceCondition ?? automation?.sourceCondition ?? null,
-    timezone: update.timezone ?? automation?.timezone ?? base.timezone,
+    trigger: workbenchAutomationTriggerForKind(
+      kind,
+      draftTrigger(
+        update.trigger,
+        automation?.trigger.kind === "clock" ? automation.trigger.timezone : undefined,
+      ),
+    ),
     runbookPageId: update.runbookPageId === undefined ? base.runbookPageId : update.runbookPageId,
     runbookTitle:
       update.runbookPageId === undefined || update.runbookPageId === base.runbookPageId
@@ -228,7 +299,6 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     targetSessionId: kind === "heartbeat" ? (update.targetSessionId ?? base.targetSessionId) : "",
     name: update.name ?? base.name,
     prompt: update.prompt ?? base.prompt,
-    rrule: update.rrule ?? base.rrule,
     model: kind === "cron" ? (update.model ?? base.model) : "",
     reasoningEffort:
       kind === "cron"
@@ -365,14 +435,12 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
     missingRequirements.push("model");
   }
 
-  if (draft.sourceCondition) {
+  if (draft.trigger.kind === "event") {
     if (draft.cwds.length > 1) missingRequirements.push("workspace");
     if (!draft.projectId && !missingRequirements.includes("cwd")) missingRequirements.push("cwd");
     if (!draft.conditionText.trim()) missingRequirements.push("condition");
-    if (!draft.sourceCondition.kinds.length) missingRequirements.push("events");
-  }
-  const rrule = normalizeOptionalText(draft.rrule);
-  if (!draft.sourceCondition && rrule && !hasAutomationRruleFrequency(rrule)) {
+    if (!draft.trigger.filter.events.length) missingRequirements.push("events");
+  } else if (!hasAutomationRruleFrequency(draft.trigger.rrule.trim())) {
     missingRequirements.push("schedule");
   }
 
@@ -559,7 +627,7 @@ function buildAutomationDraftPayload(
 
   const kind = normalizeKind(draft.kind);
   const isHeartbeat = kind === "heartbeat";
-  const rrule = normalizeOptionalText(draft.rrule);
+  const trigger = workbenchAutomationTriggerForKind(kind, draft.trigger);
 
   return {
     kind,
@@ -574,12 +642,13 @@ function buildAutomationDraftPayload(
     ...(draft.scope ? { scope: draft.scope } : {}),
     ...(draft.ownerMemberId ? { ownerMemberId: draft.ownerMemberId } : {}),
     ...(draft.conditionText.trim() ? { conditionText: draft.conditionText.trim() } : {}),
-    timezone: draft.timezone,
-    sourceCondition: draft.sourceCondition ?? null,
+    trigger:
+      trigger.kind === "clock"
+        ? { kind: "clock", rrule: trigger.rrule.trim(), timezone: trigger.timezone }
+        : { kind: "event", filter: cloneEventFilter(trigger.filter) },
     runbookPageId: draft.runbookPageId,
     name,
     prompt,
-    rrule,
     model: isHeartbeat ? null : normalizeOptionalText(draft.model),
     reasoningEffort: isHeartbeat ? null : draft.reasoningEffort || null,
     serviceTier: isHeartbeat ? null : normalizeOptionalText(draft.serviceTier),
@@ -610,12 +679,10 @@ export function buildAutomationCreateInput(input: {
     ...(payload.scope ? { scope: payload.scope } : {}),
     ...(payload.ownerMemberId ? { ownerMemberId: payload.ownerMemberId } : {}),
     ...(payload.conditionText ? { conditionText: payload.conditionText } : {}),
-    timezone: payload.timezone,
-    sourceCondition: payload.sourceCondition ?? null,
+    trigger: payload.trigger,
     runbookPageId: payload.runbookPageId,
     name: payload.name,
     prompt: payload.prompt,
-    rrule: payload.rrule,
     model: payload.model,
     reasoningEffort: payload.reasoningEffort,
     serviceTier: payload.serviceTier,
@@ -648,9 +715,8 @@ export function isWorkbenchAutomationDraftDirty(input: {
 }): boolean {
   const { draft, existing } = input;
   if (!existing) return true;
-  const nativeCron =
-    draft.kind === "cron" &&
-    agentDefinition(draft.backendBinding.driver).capabilities.automation?.modelSource === "native";
+  const defaults =
+    draft.kind === "cron" ? defaultAutomationIntelligence(existing.backendBinding) : null;
 
   return (
     JSON.stringify(draft.backendBinding) !== JSON.stringify(existing.backendBinding) ||
@@ -664,18 +730,15 @@ export function isWorkbenchAutomationDraftDirty(input: {
     draft.mode !== existing.mode ||
     JSON.stringify(draft.scope) !== JSON.stringify(existing.scope) ||
     draft.ownerMemberId !== existing.ownerMemberId ||
-    JSON.stringify(draft.sourceCondition ?? null) !==
-      JSON.stringify(existing.sourceCondition ?? null) ||
+    triggerSignature(draft.trigger) !== triggerSignature(existing.trigger) ||
     draft.conditionText.trim() !== existing.conditionText ||
-    draft.timezone !== existing.timezone ||
     draft.runbookPageId !== existing.runbookPageId ||
     normalizeOptionalText(draft.name) !== existing.name ||
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
-    normalizeOptionalText(draft.rrule) !== existing.rrule ||
     (draft.kind === "cron" ? normalizeOptionalText(draft.model) : null) !==
-      (nativeCron ? (existing.model ?? "default") : existing.model) ||
+      (existing.model ?? (defaults?.model || null)) ||
     (draft.kind === "cron" ? draft.reasoningEffort || null : null) !==
-      (nativeCron ? (existing.reasoningEffort ?? "default") : existing.reasoningEffort) ||
+      (existing.reasoningEffort ?? (defaults?.reasoningEffort || null)) ||
     (draft.kind === "cron" ? normalizeOptionalText(draft.serviceTier) : null) !==
       existing.serviceTier ||
     (draft.kind === "cron"
@@ -703,14 +766,11 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       draft.mode !== initialDraft.mode ||
       JSON.stringify(draft.scope) !== JSON.stringify(initialDraft.scope) ||
       draft.ownerMemberId !== initialDraft.ownerMemberId ||
-      JSON.stringify(draft.sourceCondition ?? null) !==
-        JSON.stringify(initialDraft.sourceCondition ?? null) ||
+      triggerSignature(draft.trigger) !== triggerSignature(initialDraft.trigger) ||
       draft.conditionText.trim() !== initialDraft.conditionText.trim() ||
-      draft.timezone !== initialDraft.timezone ||
       draft.runbookPageId !== initialDraft.runbookPageId ||
       normalizeOptionalText(draft.name) !== normalizeOptionalText(initialDraft.name) ||
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
-      normalizeOptionalText(draft.rrule) !== normalizeOptionalText(initialDraft.rrule) ||
       normalizeOptionalText(draft.model) !== normalizeOptionalText(initialDraft.model) ||
       (draft.reasoningEffort || "") !== (initialDraft.reasoningEffort || "") ||
       normalizeOptionalText(draft.serviceTier) !==
@@ -732,13 +792,12 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     normalizeOptionalText(draft.targetSessionId) !== null ||
     draft.mode !== "run" ||
     draft.ownerMemberId !== null ||
-    draft.sourceCondition != null ||
+    triggerSignature(draft.trigger) !==
+      triggerSignature(defaultWorkbenchAutomationTrigger("clock")) ||
     draft.conditionText.trim() !== "" ||
-    draft.timezone !== Intl.DateTimeFormat().resolvedOptions().timeZone ||
     draft.runbookPageId !== null ||
     normalizeOptionalText(draft.name) !== null ||
     normalizeOptionalText(draft.prompt) !== null ||
-    normalizeOptionalText(draft.rrule) !== DEFAULT_WORKBENCH_AUTOMATION_RRULE ||
     normalizeOptionalText(draft.model) !== null ||
     (draft.reasoningEffort !== "" &&
       draft.reasoningEffort !== DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT) ||

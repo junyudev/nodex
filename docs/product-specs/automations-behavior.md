@@ -8,11 +8,9 @@ executes admitted work and publishes desktop notifications. The renderer owns
 drafts and presentation.
 
 An Automation belongs to a Project or the Space and has a Member Owner, a
-natural-language condition and action, an optional typed condition, mode,
-execution target, enabled or paused state, lifecycle and revision. Clock Automations
-store an RRULE, explicit IANA timezone and jitter salt. A heartbeat is a clock
-Automation that continues a stable Session; other clock Automations start new chats per
-configured folder. Source conditions select GitHub events for bounded judgement in the Coordinator conversation.
+natural-language condition and action, a trigger, mode, execution target, enabled or
+paused state, lifecycle and revision. A heartbeat is a clock Automation that continues a
+stable Session; other Automations start new chats per configured folder.
 
 - Dry run records a decision and reason without creating a Page, proposal, chat
   or execution lease.
@@ -36,17 +34,34 @@ Reviewed Ask first and manual admissions retain their frozen action; accepted Tu
 are reconciled without a replacement launch after an Automation edit.
 
 New Automations created in the desktop default to Run; an Agent's new Automation defaults
-to Ask first when it names no mode. An omitted mode, Owner or timezone on replacement retains its saved value.
+to Ask first when it names no mode. An omitted mode, Owner, or clock condition or timezone on replacement retains its saved value.
 The active Automation collection is bounded to 200. Event condition and action text are
 each limited to 16 KiB; the complete event configuration is limited to 48 KiB. Read and history windows are
 bounded; search filters before its limit. Mutations retain a stable operation
 identity and the observed revision. A changed Automation cannot be overwritten by a
 stale editor or proposal.
 
+## Triggers
+
+Every Automation has exactly one trigger, which decides when its written condition is
+judged. The condition and action still govern what happens.
+
+- A **clock trigger** has an RRULE and an explicit IANA timezone. A new clock trigger
+  without a timezone uses the Host's timezone, and a replacement that omits it keeps the
+  saved one. Core keeps the clock's jitter salt to itself and reports the next due time while
+  the Automation is enabled. A heartbeat always has a clock trigger.
+- An **event trigger** has an event filter and no schedule. Core stores and returns no RRULE,
+  timezone or next run for it, and Run now is unavailable. Only an Automation that starts a
+  new chat in a Project, with an exact Agent model and a written condition, can have one.
+
+Input that mixes the two is refused rather than ignored: an event trigger carrying an RRULE
+or timezone, a clock trigger without an RRULE, or a trigger field outside `trigger`.
+Replacing an Automation may change its trigger kind; a new clock schedule starts afresh.
+
 ## Event conditions and assessment
 
-Event Automations select an optional Source, repositories, event kinds and labels, and
-people only or anyone including bots and CI. Kinds are new issue, new pull request,
+An event filter selects an optional Source, repositories, events and labels, and
+people only or anyone including bots and CI, which is the default. Events are new issue, new pull request,
 comment, review, failed check, passed check, label added and label removed. An
 empty repository list selects all watched repositories; labels narrow relevant
 label evidence. These typed filters only select Triggers. The written condition
@@ -87,7 +102,8 @@ rechecks the current standing grant and revision. External actors, including
 bots and CI, supply evidence only; they never grant work or change Automations.
 
 The editor's When selector switches between On a schedule and When something
-happens on GitHub. Event Automations begin in Dry run. Recent decisions show matched
+happens on GitHub; switching back restores the trigger edited before. Event Automations
+begin in Dry run. Recent decisions show matched
 and unmatched judgements and their reasons; Inbox Activity includes them under
 Decisions. This lets a person watch an Automation's judgement before choosing Run.
 
@@ -247,12 +263,14 @@ run. Saved `/scheduled` routes and locations redirect to `/automations`. They do
 ## CLI and Agent interface
 
 `nodex automations list|show|create|update|pause|resume|delete|run` uses Core directly.
-Create and update accept `--file <path|->` Automation JSON. Update requires
+Create and update accept `--file <path|->` Automation JSON whose `trigger` is
+`{"kind":"clock","rrule":…,"timezone":…}` or `{"kind":"event","filter":{…}}`. Update requires
 `--if-revision` and `--status active|paused`; pause, resume and delete require
 `--if-revision`. Writes accept `--idempotency-key`. Run records a manual dispatch.
 `automations_update` provides Agent list, view and direct edits under the same Owner and
 revision checks as the Agent's Member, and proposals for a change only the Automation's Owner
-may make. Proposed changes remain unsaved until the Owner selects Create or Apply changes.
+may make. Its `trigger` takes the same two shapes in camelCase; a clock's `nextRunAt` from view
+is read-only. Proposed changes remain unsaved until the Owner selects Create or Apply changes.
 
 Page recurrence and reminders remain schedules for human work; they never start
 Agent execution. See [ADR 0082](../adr/0082-automations-replace-scheduled-tasks.md).

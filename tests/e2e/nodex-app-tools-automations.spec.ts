@@ -67,14 +67,14 @@ test("an Agent changes Automations for its person, its proposals are reviewed as
             expect(tool).not.toBeNull();
             const initialScript = [
               "text({projects:unwrap(await app.list_projects({}))});",
-              `const cronArgs = {operation:"create",kind:"cron",name:"MCP clock review",prompt:"Review the selected Project",rrule:"FREQ=YEARLY",projectId:${JSON.stringify(selectedProjectId)},cwds:[${JSON.stringify(workspaceRoot)}],executionEnvironment:"local",notificationPolicy:"failed_runs_only",idempotencyKey:${JSON.stringify(cronCreateKey)}};`,
+              `const cronArgs = {operation:"create",kind:"cron",name:"MCP clock review",prompt:"Review the selected Project",trigger:{kind:"clock",rrule:"FREQ=YEARLY"},projectId:${JSON.stringify(selectedProjectId)},cwds:[${JSON.stringify(workspaceRoot)}],executionEnvironment:"local",notificationPolicy:"failed_runs_only",idempotencyKey:${JSON.stringify(cronCreateKey)}};`,
               "const created = unwrap(await app.automations_update(cronArgs)); text({created});",
               "text({createReplay:unwrap(await app.automations_update(cronArgs))});",
               "const viewed = unwrap(await app.automations_update({operation:'view',id:created.item.id})); text({viewed});",
               "const {idempotencyKey: _createKey,...definition} = cronArgs; const updated = unwrap(await app.automations_update({...definition,operation:'update',id:viewed.item.id,expectedRevision:viewed.item.automationRevision,status:'ACTIVE',name:'MCP direct review'})); text({updated});",
               "text({proposed:unwrap(await app.automations_update({...definition,operation:'suggested_update',id:viewed.item.id,expectedRevision:updated.item.automationRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null}))});",
               "text({afterProposal:unwrap(await app.automations_update({operation:'view',id:created.item.id}))});",
-              `const heartbeatArgs = {operation:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',rrule:'FREQ=YEARLY',notificationPolicy:'failed_runs_only',idempotencyKey:${JSON.stringify(heartbeatCreateKey)}};`,
+              `const heartbeatArgs = {operation:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',trigger:{kind:'clock',rrule:'FREQ=YEARLY'},notificationPolicy:'failed_runs_only',idempotencyKey:${JSON.stringify(heartbeatCreateKey)}};`,
               "const heartbeat = unwrap(await app.automations_update(heartbeatArgs)); text({heartbeat});",
               "text({heartbeatReplay:unwrap(await app.automations_update(heartbeatArgs))});",
               "text({retained:{cronCreateArgs:cronArgs,cronId:created.item.id,cronRevision:created.item.automationRevision,cronOperationId:created.operationId,heartbeatCreateArgs:heartbeatArgs,heartbeatId:heartbeat.item.id,heartbeatRevision:heartbeat.item.automationRevision,heartbeatOperationId:heartbeat.operationId}});",
