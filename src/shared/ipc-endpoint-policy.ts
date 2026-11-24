@@ -145,6 +145,7 @@ type QueryEndpointPolicy =
   | "app:await-initialization"
   | "app:get-core-authority-status"
   | "app:update:status"
+  | "app:changelog:read"
   | "asset:image:read"
   | "asset:resolve-path"
   | "backup:capacity:get"

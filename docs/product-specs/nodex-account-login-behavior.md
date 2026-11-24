@@ -30,12 +30,40 @@ account menu beside the rail. Its first group switches and joins Spaces, as
 [Team Spaces](team-space-behavior.md) describes. Below it, a remembered identity
 opens Account settings, then Settings and **Feedback & community**, which remain
 available in every account state, including an unconfigured or offline build.
-Feedback & community opens beside the menu with the Nodex QQ group, whose
-number stays readable in its row and is copied when chosen, with a confirmation
-that says to search for it in QQ, then the Nodex Discord server, which opens in
-the system browser so Discord can take over. The account actions follow
+Feedback & community opens beside the menu with [What's new](#whats-new), then,
+below a separator, the Nodex QQ group, whose number stays readable in its row
+and is copied when chosen, with a confirmation that says to search for it in QQ,
+then the Nodex Discord server, which opens in the system browser so Discord can
+take over. The account actions follow
 the current connection: sign in, cancel the pending browser login, sign in
 again, or sign out. These actions only affect the Nodex connection.
+
+### What's new
+
+What's new lists the three newest releases on a timeline: each row shows the
+release's headline, the changelog's one-line summary of what people will care
+about most in it, and its release day, and a final Full changelog row opens the
+changelog page in the system browser. A headline cut short shows in full in a
+tooltip. Choosing a release opens its notes in place: its version, headline and
+day, then each kind of change, from Added to Security, with every entry's first
+sentence set apart from its detail, and a link to the release on the changelog
+page.
+
+A filled accent dot marks a release published since the person last opened What's
+new; other releases and Full changelog carry a ring. Opening What's new records
+its releases as seen for the Profile, while the dots keep what was new until the
+menu closes. The first time What's new opens, its releases become the baseline,
+so nothing is marked new until the next release.
+
+The website publishes the feed at `https://nodex.jyu.app/changelog.json` with
+the changelog page: the twelve newest dated releases of `CHANGELOG.md`, each
+with its headline, sections and entries. Every dated release in `CHANGELOG.md`
+carries its headline on the line under its heading; the changelog page and
+GitHub release notes lead with the same line. Main fetches and validates it, reuses a
+read for five minutes and keeps the last good feed for the session when a later
+read fails. The account menu starts the read when it opens. Placeholder rows hold
+the timeline's place while it loads; without the feed, only Full changelog
+remains. Release notes are published in English whatever the display language.
 
 The menu and Account page use the same identity and avatar presentation. An
 available HTTPS profile image is preferred; an unavailable image falls back to

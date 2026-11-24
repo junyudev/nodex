@@ -1,5 +1,5 @@
 import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy";
 import {
   spaceAvailabilityMessage,
@@ -175,7 +175,11 @@ function NodexAccountMenuContent({
 }) {
   const intl = useIntl();
   const openJoin = useOpenJoinSpace();
-  const [joinPending, setJoinPending] = useState(false);
+  // A dialog chosen from the menu opens once the menu has closed, so the dialog keeps focus.
+  const afterClose = useRef<(() => void) | null>(null);
+  const openAfterClose = (open: () => void) => {
+    afterClose.current = open;
+  };
   const detail = view.reauthentication ? (
     <span className="text-token-warning-foreground">
       <FormattedMessage id="account.nodexAccountMenu.sessionEnded" defaultMessage="Session ended" />
@@ -194,14 +198,14 @@ function NodexAccountMenuContent({
       alignOffset={-4}
       className="w-[240px]"
       finalFocus={() => {
-        if (!joinPending) return true;
-        // Join a Space opens its dialog once the menu has closed; the dialog takes focus.
-        setJoinPending(false);
-        openJoin();
+        const open = afterClose.current;
+        if (!open) return true;
+        afterClose.current = null;
+        open();
         return false;
       }}
     >
-      <SpaceMenuItems spaces={spaces} current={current} onJoin={() => setJoinPending(true)} />
+      <SpaceMenuItems spaces={spaces} current={current} onJoin={() => openAfterClose(openJoin)} />
       <NodexDropdownSeparator />
       {view.identity ? (
         <AccountMenuItem
@@ -225,7 +229,7 @@ function NodexAccountMenuContent({
       >
         <FormattedMessage id="account.nodexAccountMenu.settings" defaultMessage="Settings" />
       </AccountMenuItem>
-      <CommunityMenu />
+      <CommunityMenu openAfterClose={openAfterClose} />
       <AccountMenuActions account={account} view={view} />
     </NodexDropdownContent>
   );

@@ -24,6 +24,10 @@ import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
+import * as ChangelogFeedIpc from "../ipc/handlers/ChangelogFeedIpc";
+import * as ChangelogFeedRuntime from "../host-runtime/ChangelogFeedRuntime";
+import { electronUpdateFetch } from "../electron-update-fetch";
+import { makeChangelogFeedRequest } from "../platform/electron/ChangelogFeedNetwork";
 import * as ProductAnalyticsIpc from "../ipc/handlers/ProductAnalyticsIpc";
 import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
 import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
@@ -98,6 +102,7 @@ const fileIndexWorker = FileIndexWorkerRuntime.live({
 }).pipe(Layer.provide(ripgrep));
 
 const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProjectAdmission.live));
+const changelogFeed = ChangelogFeedRuntime.layer(makeChangelogFeedRequest(electronUpdateFetch));
 
 /** Electron callback ingress that translates platform events into typed application capabilities. */
 export const live = Layer.mergeAll(
@@ -105,6 +110,7 @@ export const live = Layer.mergeAll(
   WorkIpc.live,
   WorkbenchAgentIpc.live,
   AppUpdateIpc.live,
+  ChangelogFeedIpc.live.pipe(Layer.provide(changelogFeed)),
   ProductAnalyticsIpc.live,
   WindowsStartupIpc.live,
   NodexAccountIpc.live,

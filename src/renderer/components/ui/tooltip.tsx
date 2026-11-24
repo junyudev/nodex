@@ -244,9 +244,11 @@ export function NodexTooltip({
  */
 export function NodexOverflowTooltip({
   content,
+  side,
   children,
 }: {
   readonly content: ReactNode;
+  readonly side?: NodexTooltipProps["side"];
   readonly children: ReactElement;
 }) {
   const [open, setOpen] = useState(false);
@@ -254,6 +256,7 @@ export function NodexOverflowTooltip({
   return (
     <NodexTooltip
       tooltipContent={content}
+      side={side}
       triggerRef={triggerRef}
       open={open}
       delayOpen

@@ -1,11 +1,17 @@
 import { defineMessage, defineMessages, getIntl, useIntl } from "@/lib/i18n";
 import { CopyIcon, OpenExternalIcon, SlashFeedbackIcon } from "@/components/shared/icons";
 import { DiscordMarkIcon, QqMarkIcon } from "@/components/shared/icons/community-icons";
-import { NodexDropdownFlyoutSubmenuItem, NodexDropdownItem } from "@/components/ui/dropdown";
+import {
+  NodexDropdownFlyoutSubmenuItem,
+  NodexDropdownItem,
+  NodexDropdownSeparator,
+} from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
+import { WhatsNewMenuSection } from "@/features/whats-new/whats-new-menu-section";
+import { useChangelogFeed } from "@/lib/changelog-feed";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { toastFailure } from "@/lib/failure-toast";
-import { openExternalUrl } from "@/lib/file-system-operations";
+import { openInBrowser } from "@/lib/open-in-browser";
 import { AccountMenuLeading } from "./account-menu-item";
 
 /** The Nodex server on Discord. */
@@ -40,13 +46,11 @@ const COPY_QQ_GROUP = defineMessage<{ number: string }>({
 });
 
 /** Discord invites open in the system browser, which hands them to the Discord app when present. */
-async function joinDiscord(): Promise<void> {
-  const failed = getIntl().formatMessage(MESSAGES.discordOpenFailed);
-  try {
-    if (!(await openExternalUrl(NODEX_DISCORD_INVITE_URL))) toastFailure(failed);
-  } catch (error) {
-    toastFailure(failed, error);
-  }
+function joinDiscord(): Promise<void> {
+  return openInBrowser(
+    NODEX_DISCORD_INVITE_URL,
+    getIntl().formatMessage(MESSAGES.discordOpenFailed),
+  );
 }
 
 async function copyQqGroupNumber(): Promise<void> {
@@ -62,16 +66,28 @@ async function copyQqGroupNumber(): Promise<void> {
 }
 
 /**
- * The account menu's way to reach the people who make Nodex: its QQ group, whose number stays
- * readable in the row and is copied when chosen, and its Discord server.
+ * The account menu's way to keep up with and reach the people who make Nodex: what is new in
+ * recent releases, then its QQ group, whose number stays readable in the row and is copied when
+ * chosen, and its Discord server.
  */
-export function CommunityMenu() {
+export function CommunityMenu({
+  openAfterClose,
+}: {
+  /** Opens a dialog once the menu has closed, so the dialog keeps focus. */
+  readonly openAfterClose: (open: () => void) => void;
+}) {
   const intl = useIntl();
+  // Read with the account menu, so recent releases are there by the time this menu opens.
+  useChangelogFeed();
   return (
     <NodexDropdownFlyoutSubmenuItem
       leftSlot={<AccountMenuLeading icon={<SlashFeedbackIcon />} />}
       label={intl.formatMessage(MESSAGES.title)}
+      // Wide enough for a release's headline beside its date.
+      contentClassName="w-[340px] max-w-none"
     >
+      <WhatsNewMenuSection openAfterClose={openAfterClose} />
+      <NodexDropdownSeparator />
       <NodexDropdownItem
         aria-label={intl.formatMessage(COPY_QQ_GROUP, { number: NODEX_QQ_GROUP_NUMBER })}
         leftSlot={<QqMarkIcon />}

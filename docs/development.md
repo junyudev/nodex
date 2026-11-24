@@ -300,6 +300,10 @@ Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
 underlying Electron or electron-vite entrypoints directly; the launcher owns
 Profile isolation and supplies the required environment.
 
+Set `NODEX_CHANGELOG_FEED_URL` to test What's new against a different endpoint in
+an unpackaged Desktop process. The URL must use HTTPS or loopback HTTP and must
+omit credentials. Packaged builds use `https://nodex.jyu.app/changelog.json`.
+
 The launcher's no-argument default remains `<worktree>/runs.local/default`, and
 relative `--home` paths resolve from the worktree root. Agent launches pass an
 absolute `--home`, using the shared-directory convention for new environments

@@ -1,4 +1,5 @@
 import type { AgentProfile, AgentProfilesUpdate } from "./agents/profiles";
+import type { ChangelogFeed } from "./changelog-feed";
 import type { ProfileAgentDriver } from "./agents/registry";
 import type { CodexExecutableSettings } from "./codex-executable-settings";
 import type { FindPhase, FindRequest, FindResponse } from "./find";
@@ -1843,6 +1844,7 @@ export interface IpcApi
     result: import("./global-dictation").GlobalDictationContextMenuAction;
   };
   "app:update:status": { args: []; result: AppUpdateStatus };
+  "app:changelog:read": { args: []; result: ChangelogFeed };
   "app:update:check": { args: []; result: AppUpdateStatus };
   "app:update:install": { args: []; result: boolean };
   "shell:open-file-link": {

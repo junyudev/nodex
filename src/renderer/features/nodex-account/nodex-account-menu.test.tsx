@@ -15,6 +15,7 @@ const modelStatusFixture = {
     ],
   },
 };
+import type { ChangelogFeed } from "../../../shared/changelog-feed";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import {
   DEFAULT_USAGE_METER_SETTINGS,
@@ -22,6 +23,8 @@ import {
 } from "../../../shared/usage-meter-settings";
 import { WorkbenchRailAccountControls } from "@/components/workbench/workbench-rail-account-controls";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { createMaitaiStore } from "@/lib/maitai/maitai-store";
+import { TestMaitaiRoot } from "@/test/app-maitai";
 import { installWindowApi } from "@/test/browser-globals";
 import { hoverWithMouse, openNodexMenu } from "@/test/dom";
 import type { SpaceConnectionSummary } from "../../../shared/space-connection";
@@ -101,6 +104,12 @@ const signedIn: NodexAccountSnapshot = {
   },
 };
 
+const EMPTY_CHANGELOG: ChangelogFeed = {
+  schemaVersion: 1,
+  url: "https://nodex.jyu.app/changelog/",
+  releases: [],
+};
+
 function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutLabel?: string) {
   const listeners = new Set<(value: unknown) => void>();
   let observed = snapshot;
@@ -118,9 +127,14 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
           ? Promise.resolve(observed)
           : channel === "app-components:read"
             ? Promise.resolve(EMPTY_APP_COMPONENTS_STATE)
-            : invoke(channel, ...args),
+            : channel === "app:changelog:read"
+              ? Promise.resolve(EMPTY_CHANGELOG)
+              : channel === "persisted-atom:sync-request"
+                ? Promise.resolve({ revision: 0, values: {} })
+                : invoke(channel, ...args),
     on: (channel: string, listener: (value: unknown) => void) => {
       if (channel === USAGE_METER_SETTINGS_CHANGED_CHANNEL) return () => undefined;
+      if (channel === "persisted-atom:updated") return () => undefined;
       if (channel !== "nodex-account:changed") throw new Error(`Unexpected event ${channel}`);
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -130,28 +144,30 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
   const view = render(
-    <QueryClientProvider client={client}>
-      <NodexTooltipProvider>
-        <WorkbenchRailAccountControls
-          onOpenSettings={settings}
-          onOpenAccountSettings={accountSettings}
-          settingsShortcutLabel={settingsShortcutLabel}
-          account={{
-            status: "ready",
-            account: null,
-            requiresOpenAiAuth: true,
-            pendingLogin: null,
-            rateLimits: null,
-          }}
-          connection={{ status: "connected", retries: 0 }}
-          onStartChatGptLogin={nativeAction}
-          onStartApiKeyLogin={nativeAction}
-          onCancelLogin={nativeAction}
-          onLogout={nativeAction}
-        />
-        <AccountSettingsPage open />
-      </NodexTooltipProvider>
-    </QueryClientProvider>,
+    <TestMaitaiRoot store={createMaitaiStore()}>
+      <QueryClientProvider client={client}>
+        <NodexTooltipProvider>
+          <WorkbenchRailAccountControls
+            onOpenSettings={settings}
+            onOpenAccountSettings={accountSettings}
+            settingsShortcutLabel={settingsShortcutLabel}
+            account={{
+              status: "ready",
+              account: null,
+              requiresOpenAiAuth: true,
+              pendingLogin: null,
+              rateLimits: null,
+            }}
+            connection={{ status: "connected", retries: 0 }}
+            onStartChatGptLogin={nativeAction}
+            onStartApiKeyLogin={nativeAction}
+            onCancelLogin={nativeAction}
+            onLogout={nativeAction}
+          />
+          <AccountSettingsPage open />
+        </NodexTooltipProvider>
+      </QueryClientProvider>
+    </TestMaitaiRoot>,
   );
   return {
     ...view,

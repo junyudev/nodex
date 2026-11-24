@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+What's new, right in the app
+
 ### Added
+
+- See what's new in Nodex without leaving the app. **Feedback & community** in the account menu now opens on the three newest releases, each with its headline and date, and a filled dot marks the ones released since you last looked. Choose one to read its release notes in place, or open the full changelog on the website.
 
 ### Changed
 
