@@ -11,6 +11,7 @@ describe("required CI gate verification", () => {
         results: {
           "app-tests": "success",
           "rust-checks": "skipped",
+          "windows-checks": "skipped",
         },
         selectedGates: ["app-tests"],
       }),
@@ -18,15 +19,18 @@ describe("required CI gate verification", () => {
   });
 
   test.each(["failure", "cancelled", "skipped"] as const)(
-    "rejects a selected gate with %s result",
+    "rejects a selected Windows gate with %s result",
     (result) => {
       expect(() =>
         verifyRequiredGates({
           classifierResult: "success",
-          results: { "app-tests": result },
-          selectedGates: ["app-tests"],
+          results: { "static-contracts": "success", "windows-checks": result },
+          selectedGates: requiredGateNames(
+            [],
+            classifyChangedPaths([".github/workflows/windows.yml"]),
+          ),
         }),
-      ).toThrow(`app-tests finished with ${result}`);
+      ).toThrow(`windows-checks finished with ${result}`);
     },
   );
 

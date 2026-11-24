@@ -1,0 +1,31 @@
+name: Reusable Windows Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: native x64
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-vite-plus
+      - uses: ./.github/actions/setup-windows-rust
+      - name: Test native platform boundary
+        run: cargo test --locked -p nodex-platform --all-features
+      - run: vp install --frozen-lockfile
+      - name: Test Windows runtime staging and installer process boundaries
+        run: >-
+          vp run test:unit
+          scripts/stage-windows-runtime.test.ts
+          scripts/windows-installation-processes.test.ts
+      - name: Test installed Core maintenance over a named pipe
+        run: vp run test:core-client src/main/core-client/core-client.node.test.ts -t 'Windows maintenance gracefully drains installed Core'
+      - name: Test Desktop Tools through Electron Main
+        run: vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts

@@ -4,27 +4,6 @@ on:
   push:
     branches:
       - "codex/windows-**"
-  pull_request:
-    paths:
-      - ".gitattributes"
-      - ".node-version"
-      - ".cargo/**"
-      - "agent-skills/**"
-      - "crates/**"
-      - "Cargo.*"
-      - "rust-toolchain.toml"
-      - "src/**"
-      - "packages/**"
-      - "scripts/**"
-      - "resources/**"
-      - "config/**"
-      - "*config*"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/windows.yml"
-      - ".github/workflows/_windows-distribution.yml"
-      - ".github/actions/**"
   schedule:
     - cron: "20 4 * * *"
   workflow_dispatch:
@@ -39,8 +18,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: windows-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   rust:
@@ -117,6 +96,7 @@ jobs:
           --name app-desktop-tools-native
           -- vp run test:integration src/main/platform/node/WindowsDesktopTools.integration.ts
       - name: Verify staged Desktop Tool conformance
+        shell: pwsh
         if: matrix.suite == 'integration'
         env:
           NODEX_REQUIRE_STAGED_DESKTOP_TOOLS: "1"
@@ -190,7 +170,6 @@ jobs:
 
   package:
     name: native Windows distribution
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/_windows-distribution.yml
     with:
       source_sha: ${{ github.sha }}

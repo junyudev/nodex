@@ -62,16 +62,13 @@ function main(): void {
     throw new Error("GITHUB_REPOSITORY and a full commit SHA in GITHUB_SHA are required.");
   }
 
-  const decision =
-    process.env.FORCE_FULL === "true"
-      ? { baseSha: null, reason: "Full coverage requested by workflow dispatch" }
-      : resolveMainCiBase({
-          headSha: GITHUB_SHA,
-          currentRunId: GITHUB_RUN_ID,
-          runs: readSuccessfulRuns(GITHUB_REPOSITORY),
-          usesLastGreenRule,
-          isAncestor,
-        });
+  const decision = resolveMainCiBase({
+    headSha: GITHUB_SHA,
+    currentRunId: GITHUB_RUN_ID,
+    runs: readSuccessfulRuns(GITHUB_REPOSITORY),
+    usesLastGreenRule,
+    isAncestor,
+  });
   const summary = decision.baseSha
     ? `Main CI comparison base: \`${decision.baseSha}\`. ${decision.reason}.\n`
     : `Main CI runs every gate. ${decision.reason}.\n`;

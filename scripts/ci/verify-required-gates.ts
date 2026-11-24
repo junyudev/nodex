@@ -51,7 +51,7 @@ export const requiredGateNames = (
 ): readonly string[] =>
   rawPlan === undefined ? availableGateNames : requiredJobIdsForGatePlan(parseCiGatePlan(rawPlan));
 
-const parseNeeds = (value: string): Readonly<Record<string, GitHubNeedsJob>> => {
+export const parseNeeds = (value: string): Readonly<Record<string, GitHubNeedsJob>> => {
   const parsed: unknown = JSON.parse(value);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("CI_NEEDS_JSON must be a JSON object.");

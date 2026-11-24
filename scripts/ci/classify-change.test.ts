@@ -10,6 +10,7 @@ describe("CI change classification", () => {
       appTestSuites: [],
       dependencyKind: "none",
       docsOnly: true,
+      draft: false,
       landingOnly: false,
       protocolContracts: false,
       relatedPaths: [],
@@ -18,6 +19,7 @@ describe("CI change classification", () => {
       rustMigration: false,
       staticGroups: [],
       testMode: "none",
+      windowsChecks: false,
     });
   });
 
@@ -32,6 +34,7 @@ describe("CI change classification", () => {
       appTestSuites: [],
       dependencyKind: "none",
       docsOnly: false,
+      draft: false,
       landingOnly: false,
       protocolContracts: false,
       relatedPaths: [],
@@ -40,6 +43,7 @@ describe("CI change classification", () => {
       rustMigration: false,
       staticGroups: ["repository-contracts"],
       testMode: "none",
+      windowsChecks: false,
     });
   });
 
@@ -271,6 +275,69 @@ describe("CI change classification", () => {
       staticGroups: ["types", "source-ownership", "ci-contracts"],
       testMode: "full",
     });
+  });
+
+  test.each([
+    "crates/nodex-core-server/src/lib.rs",
+    "crates/nodex-search-kernel/src/lib.rs",
+    ".cargo/config.toml",
+    "src/main/core-client/core-client.ts",
+    "src/main/platform/node/NodexCliShell.ts",
+    "src/main/terminal-runtime/TerminalSessions.ts",
+    "src/shared/codex-workspace-paths.ts",
+    "src/shared/runtime-platform.ts",
+    "src/main/browser-use/browser-use-peer-authorizer.ts",
+    "scripts/desktop-runtime-payload.mjs",
+    "packages/agent-runtime/src/provider/CodexWindowsSandbox.ts",
+    "scripts/tooling/process.ts",
+    "resources/windows/installer.nsh",
+    "config/electron-builder.yml",
+    ".github/actions/setup-windows-rust/action.yml",
+    ".github/workflows/_windows-distribution.yml",
+    ".github/workflows/_windows-checks.yml",
+    ".github/workflows/windows.yml",
+  ])("selects Windows for native runtime and distribution inputs: %s", (path) => {
+    expect(classifyChangedPaths([path, "docs/CI.md"]).windowsChecks).toBe(true);
+  });
+
+  test.each([
+    "src/renderer/components/app.tsx",
+    "src/shared/card-title.ts",
+    "src/main/boards/board-queries.ts",
+    "packages/landing/package.json",
+    ".github/workflows/ci-nightly.yml",
+    "novel-build-input.xyz",
+    "docs/windows-verification.md",
+  ])("keeps Windows out of unrelated plans: %s", (path) => {
+    expect(classifyChangedPaths([path]).windowsChecks).toBe(false);
+  });
+
+  test("keeps draft plans to cheap static groups even for a full native change", () => {
+    const paths = ["src/main/core-client/core-client.ts", "crates/nodex-platform/src/lib.rs"];
+    expect(classifyChangedPaths(paths, { draft: true })).toMatchObject({
+      draft: true,
+      appTestSuites: [],
+      protocolContracts: false,
+      rustFast: false,
+      staticGroups: ["source-ownership"],
+      testMode: "none",
+      windowsChecks: false,
+    });
+    expect(classifyChangedPaths(paths)).toMatchObject({
+      draft: false,
+      rustFast: true,
+      protocolContracts: true,
+      windowsChecks: true,
+    });
+    expect(classifyChangedPaths(["packages/landing/src/App.tsx"], { draft: true })).toMatchObject({
+      draft: true,
+      landingOnly: true,
+      staticGroups: ["source-ownership"],
+    });
+  });
+
+  test("includes Windows in explicit full runs", () => {
+    expect(classifyChangedPaths(["docs/CI.md"], { full: true }).windowsChecks).toBe(true);
   });
 
   test("keeps Electron E2E outside PR and Main test selection", () => {

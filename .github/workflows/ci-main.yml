@@ -14,11 +14,12 @@ permissions:
   actions: read
   contents: read
 
-# A newer push supersedes a running one. Its run compares against the last green commit, so it
-# re-checks everything the cancelled run would have. Manual runs are never cancelled or queued.
+# Let the active push finish and keep only the newest pending push. Comparing against the last
+# green commit covers intervening changes even when GitHub replaces a pending run. Manual runs
+# have independent groups.
 concurrency:
   group: ${{ github.event_name == 'push' && format('main-ci-{0}', github.ref) || format('main-ci-run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  cancel-in-progress: false
 
 jobs:
   classify:
@@ -36,18 +37,18 @@ jobs:
       - name: Resolve comparison base
         id: base
         env:
-          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
           GH_TOKEN: ${{ github.token }}
         run: node --no-warnings scripts/ci/resolve-main-ci-base.ts
       - name: Classify the landed change
         env:
           BASE_SHA: ${{ steps.base.outputs.base_sha }}
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
           HEAD_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
           arguments=(--head "${HEAD_SHA}" --output "${RUNNER_TEMP}/classification.json")
-          if [[ -n "${BASE_SHA}" ]]; then
+          if [[ -n "${BASE_SHA}" && "${FORCE_FULL}" != "true" ]]; then
             arguments+=(--base "${BASE_SHA}")
           else
             arguments+=(--full)
@@ -89,6 +90,12 @@ jobs:
       suites_json: ${{ toJSON(fromJSON(needs.classify.outputs.plan).appTestSuites) }}
       timing_prefix: main-app
 
+  windows-checks:
+    name: main windows checks
+    if: ${{ fromJSON(needs.classify.outputs.plan).windowsChecks }}
+    needs: classify
+    uses: ./.github/workflows/_windows-checks.yml
+
   complete:
     name: main complete
     if: always()
@@ -97,13 +104,33 @@ jobs:
       - static-contracts
       - rust-checks
       - app-tests
+      - windows-checks
     runs-on: ubuntu-latest
+    env:
+      CI_GATE_PLAN_JSON: ${{ needs.classify.outputs.plan }}
+      CI_NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Require every selected main gate
-        env:
-          CI_GATE_PLAN_JSON: ${{ needs.classify.outputs.plan }}
-          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+        id: verify
         run: node --no-warnings scripts/ci/verify-required-gates.ts
+      - name: Write Main CI verdict
+        if: always()
+        env:
+          CI_BASE_SHA: ${{ needs.classify.outputs.base_sha }}
+          CI_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CI_GATE_OUTCOME: ${{ steps.verify.outcome }}
+          GH_TOKEN: ${{ github.token }}
+        run: node --no-warnings scripts/ci/write-main-ci-verdict.ts
+      - name: Upload Main CI verdict
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: main-ci-verdict
+          path: ${{ runner.temp }}/main-ci-verdict.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14

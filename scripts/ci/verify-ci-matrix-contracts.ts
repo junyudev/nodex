@@ -114,8 +114,36 @@ export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
   }
 };
 
+const SELECTED_GATE_DEPENDENCIES = [
+  "app-tests",
+  "classify",
+  "rust-checks",
+  "static-contracts",
+  "windows-checks",
+] as const;
+
+const verifySelectedWindowsGate = (jobs: UnknownRecord, workflowName: string): void => {
+  const windows = requireRecord(jobs["windows-checks"], `${workflowName} Windows job`);
+  if (
+    windows.needs !== "classify" ||
+    windows.if !== "${{ fromJSON(needs.classify.outputs.plan).windowsChecks }}" ||
+    windows.uses !== "./.github/workflows/_windows-checks.yml"
+  ) {
+    throw new Error(`${workflowName} must run Windows checks exactly when the plan selects them.`);
+  }
+};
+
 export const verifyMainCiBaseContract = (workflow: UnknownRecord): void => {
+  const concurrency = requireRecord(workflow.concurrency, "Main CI concurrency");
+  if (
+    concurrency.group !==
+      "${{ github.event_name == 'push' && format('main-ci-{0}', github.ref) || format('main-ci-run-{0}', github.run_id) }}" ||
+    concurrency["cancel-in-progress"] !== false
+  ) {
+    throw new Error("Main CI must let the active push finish and isolate manual runs.");
+  }
   const jobs = requireRecord(workflow.jobs, "Main CI jobs");
+  verifySelectedWindowsGate(jobs, "Main CI");
   const classify = requireRecord(jobs.classify, "Main CI classify job");
   const base = Array.isArray(classify.steps)
     ? classify.steps.filter(isRecord).find((step) => step.id === "base")
@@ -123,6 +151,41 @@ export const verifyMainCiBaseContract = (workflow: UnknownRecord): void => {
   // The command also identifies successful runs eligible to certify a comparison base.
   if (base?.run !== MAIN_CI_BASE_COMMAND || base.if !== undefined) {
     throw new Error("Main CI classify must always run the last-green comparison base resolver.");
+  }
+
+  const complete = requireRecord(jobs.complete, "Main CI complete job");
+  requireExactEntries(
+    [...declaredNeeds(complete.needs, "Main CI complete")].sort(),
+    SELECTED_GATE_DEPENDENCIES,
+    "Main CI complete dependencies",
+  );
+  const env = requireRecord(complete.env, "Main CI complete environment");
+  const steps = Array.isArray(complete.steps) ? complete.steps.filter(isRecord) : [];
+  const verify = steps.find((step) => step.id === "verify");
+  if (
+    complete.if !== "always()" ||
+    complete["continue-on-error"] !== undefined ||
+    env.CI_GATE_PLAN_JSON !== "${{ needs.classify.outputs.plan }}" ||
+    env.CI_NEEDS_JSON !== "${{ toJSON(needs) }}" ||
+    verify?.run !== "node --no-warnings scripts/ci/verify-required-gates.ts" ||
+    verify.if !== undefined ||
+    verify["continue-on-error"] !== undefined
+  ) {
+    throw new Error("Main CI complete must always enforce the selected gate results.");
+  }
+
+  const report = steps.find(
+    (step) => step.run === "node --no-warnings scripts/ci/write-main-ci-verdict.ts",
+  );
+  const reportEnv = requireRecord(report?.env, "Main CI verdict environment");
+  const upload = steps.find((step) => isRecord(step.with) && step.with.name === "main-ci-verdict");
+  if (
+    report?.if !== "always()" ||
+    reportEnv.CI_GATE_OUTCOME !== "${{ steps.verify.outcome }}" ||
+    reportEnv.CI_BASE_SHA !== "${{ needs.classify.outputs.base_sha }}" ||
+    upload?.if !== "always()"
+  ) {
+    throw new Error("Main CI must publish the verdict even when verification fails.");
   }
 };
 
@@ -158,9 +221,20 @@ const declaredNeeds = (value: unknown, label: string): ReadonlySet<string> => {
 
 export const verifyPreMergeCiContract = (workflow: UnknownRecord): void => {
   const triggers = requireRecord(workflow.on, "Pre-merge CI triggers");
-  if (triggers.pull_request !== null) {
+  const pullRequest = requireRecord(triggers.pull_request, "Pre-merge CI pull_request trigger");
+  const activities = pullRequest.types;
+  if (
+    Object.keys(pullRequest).length !== 1 ||
+    !Array.isArray(activities) ||
+    !activities.every((activity): activity is string => typeof activity === "string")
+  ) {
     throw new Error("Pre-merge CI must run on unfiltered pull requests.");
   }
+  requireExactEntries(
+    [...activities].sort(),
+    ["labeled", "opened", "ready_for_review", "reopened", "synchronize"],
+    "Pre-merge CI pull request activities",
+  );
   const mergeGroup = requireRecord(triggers.merge_group, "Pre-merge CI merge_group trigger");
   if (
     Object.keys(mergeGroup).length !== 1 ||
@@ -188,19 +262,26 @@ export const verifyPreMergeCiContract = (workflow: UnknownRecord): void => {
   const diff = requireRecord(changes?.env, "Pre-merge CI comparison range");
   if (
     classify.if !== undefined ||
-    changes?.if !== undefined ||
+    changes === undefined ||
+    changes.if !== undefined ||
+    diff.DRAFT_PLAN !==
+      "${{ github.event_name == 'pull_request' && github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'ci:full') }}" ||
+    typeof changes.run !== "string" ||
+    !changes.run.includes("arguments+=(--draft)") ||
     diff.BASE_SHA !==
       "${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}" ||
     diff.HEAD_SHA !==
       "${{ github.event_name != 'merge_group' && github.sha || github.event.merge_group.head_sha }}"
   ) {
-    throw new Error("Pre-merge CI must classify the PR or merge-group comparison range.");
+    throw new Error("Pre-merge CI must classify the event range and honor the draft opt-in.");
   }
+
+  verifySelectedWindowsGate(jobs, "Pre-merge CI");
 
   const required = requireRecord(jobs.required, "Pre-merge CI required job");
   requireExactEntries(
     [...declaredNeeds(required.needs, "Pre-merge CI required")].sort(),
-    ["app-tests", "classify", "rust-checks", "static-contracts"],
+    SELECTED_GATE_DEPENDENCIES,
     "Pre-merge CI required dependencies",
   );
   const verifier = Array.isArray(required.steps)
@@ -219,6 +300,41 @@ export const verifyPreMergeCiContract = (workflow: UnknownRecord): void => {
     env.CI_CLASSIFIER_RESULT !== undefined
   ) {
     throw new Error("Pre-merge CI required must always enforce the selected gate results.");
+  }
+};
+
+export const verifyWindowsCiContracts = (full: UnknownRecord, slim: UnknownRecord): void => {
+  const triggers = requireRecord(full.on, "Full Windows triggers");
+  requireExactEntries(
+    Object.keys(triggers).sort(),
+    ["push", "schedule", "workflow_dispatch"],
+    "Full Windows triggers",
+  );
+  const push = requireRecord(triggers.push, "Full Windows push trigger");
+  requireExactEntries(
+    Array.isArray(push.branches) ? push.branches : [],
+    ["codex/windows-**"],
+    "Full Windows push branches",
+  );
+  const dispatch = requireRecord(triggers.workflow_dispatch, "Full Windows dispatch");
+  const inputs = requireRecord(dispatch.inputs, "Full Windows dispatch inputs");
+  const reprobe = requireRecord(inputs.installer_run_id, "Full Windows installer re-probe");
+  if (reprobe.type !== "string" || reprobe.default !== "") {
+    throw new Error("Full Windows must allow an optional installer re-probe on dispatch.");
+  }
+
+  const slimTriggers = requireRecord(slim.on, "Slim Windows triggers");
+  requireExactEntries(Object.keys(slimTriggers), ["workflow_call"], "Slim Windows triggers");
+  const jobs = requireRecord(slim.jobs, "Slim Windows jobs");
+  const native = requireRecord(jobs.native, "Slim Windows native job");
+  if (
+    Object.keys(jobs).length !== 1 ||
+    native["runs-on"] !== "windows-latest" ||
+    native.strategy !== undefined ||
+    native.if !== undefined ||
+    native["continue-on-error"] !== undefined
+  ) {
+    throw new Error("Slim Windows must require one native x64 job.");
   }
 };
 
@@ -377,6 +493,10 @@ const main = (): void => {
   );
   verifyPreMergeCiContract(readWorkflow(path.join(repositoryRoot, ".github/workflows/ci.yml")));
   verifyMainCiBaseContract(readWorkflow(path.join(repositoryRoot, MAIN_CI_WORKFLOW_PATH)));
+  verifyWindowsCiContracts(
+    readWorkflow(path.join(repositoryRoot, ".github/workflows/windows.yml")),
+    readWorkflow(path.join(repositoryRoot, ".github/workflows/_windows-checks.yml")),
+  );
   for (const workflowPath of workflowFiles()) {
     const workflow = readWorkflow(workflowPath);
     const workflowName = relativeRepositoryPath(workflowPath);

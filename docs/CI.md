@@ -7,30 +7,32 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
 
 ## Workflow tiers
 
-- `.github/workflows/ci.yml` owns the `required` check for pull requests and
-  merge groups. Both events use the same classifier and gates for the tested
-  merge commit. Pull requests compare against the PR base. Merge groups compare
-  the event's `base_sha` and `head_sha`, so the gates cover the combined queued
-  changes. New PR updates supersede earlier runs for that PR. Each merge-group
-  run has its own concurrency key. The workflow selects static groups, affected
-  Vitest suites, affected Rust crates, protocol verification, and Store
-  migration contracts. It leaves stress, macOS runtime, Electron E2E, and UI
-  performance to their dedicated workflows.
-- `.github/workflows/ci-main.yml` applies the same targeted classifier to the
-  diff from the newest ancestor with a successful Main CI run on `main`. Push
-  and manual runs using this rule can establish a base, so a failed gate stays
-  selected until its affected changes pass or are reverted. Main CI runs every
-  deterministic source gate when GitHub history is unavailable or the latest
-  100 successful runs contain no eligible ancestor. The first run under this
-  rule also needs full coverage to establish a trusted base. A newer push cancels a Main CI
-  run still in progress; because the newer run compares against the last green commit, it
-  re-checks everything the cancelled run covered. Manual runs are never cancelled.
+- `.github/workflows/ci-main.yml` verifies landed changes after the fast local
+  check. It selects static groups, application suites, affected Rust crates,
+  protocol and Store migration contracts, and native Windows x64 coverage from
+  the newest green Main CI ancestor to the tested `main` commit. One push run
+  stays active while GitHub keeps the newest push pending. Comparing against
+  the last green commit covers intervening changes even when a pending run is
+  replaced. Main CI runs the full plan when it cannot find a trusted green
+  ancestor. Manual runs have independent concurrency groups.
+- `.github/workflows/ci.yml` offers the same selected gates on optional pull
+  requests and merge groups, with `required` as their aggregate result.
+  Pull requests compare against their PR base. Merge groups compare
+  `base_sha` and `head_sha` to cover combined changes. New PR updates supersede
+  earlier runs for that PR. Each merge group has its own concurrency key.
+  Drafts without `ci:full` select only relevant source-ownership and CI
+  contracts. The run summary marks the reduced plan. Marking the PR ready or
+  adding `ci:full` reruns classification with the ordinary selection.
 - `.github/workflows/ci-nightly.yml` runs every deterministic static and Rust
   gate, and all default application suites including browser on Linux and
   standard `macos-26`. Two macOS application suites can run at once, leaving
   three macOS slots for stress, runtime contracts, and curated Electron E2E.
   The `nightly complete` aggregate requires all of these jobs. Paid-agent and
   UI performance tests remain excluded.
+- `.github/workflows/codeql.yml` scans GitHub Actions and JavaScript/TypeScript
+  for ready or opted-in PRs, merge groups, and pushes to `main`. The weekly and
+  manual runs also scan Rust. Switch off CodeQL default setup when adopting this
+  workflow so GitHub accepts its uploads.
 - `.github/workflows/performance.yml` is the weekly owner for Core runtime
   benchmarks and explicitly ignored scale contracts. Performance regressions
   are diagnosed below Electron rather than through UI timings.
@@ -59,21 +61,41 @@ cancelled, missing, and failed results are rejected. Manual PR/Main dispatch
 can request full deterministic source coverage, but still cannot select
 Electron E2E, stress, performance, or macOS runtime in the merge loop.
 
+## Main CI verdict
+
+The `main complete` summary and the `main-ci-verdict` artifact carry the same
+JSON. Version 1 contains `runId`, `runAttempt`, `status` (`success` or `failure`),
+`range`, `commits` (oldest first, each with `sha` and `subject`), `failingGates`
+(each with `id` and `result`), and `failingJobs` (each with `name`, `result`,
+`url`, `failedSteps`, and `failedTests`). Read the named artifact from the
+current run attempt. It is replaced on reruns.
+
+A `range` has `baseSha`, `headSha` and `basis`. Use `last-green` for complete
+range attribution. When GitHub history cannot identify a trusted base,
+`push-before` records the available push range, or `head-only` records just
+the tested commit. Both fallbacks trigger full verification. Use the range
+basis before routing failures automatically. A null `failingJobs` or
+`failedTests` means GitHub evidence could not be read. An empty list means
+that no matching job or named test failure was found. Test names come from
+recognized Vitest, Cargo and nextest failure lines.
+
 ## Windows tier
 
-`.github/workflows/windows.yml` runs Rust workspace and application unit, Core-client, Main, renderer and integration
-suites natively on `windows-latest` (x64) and `windows-11-arm` (arm64). Pull requests
-with affected Rust, application, build, runtime, dependency, or Windows workflow
-paths select this deterministic tier. It is independent of the existing `required`
-aggregate while Windows support is being qualified.
+For Main CI, optional PRs, and merge groups, the classifier selects one x64 job for
+changes to native Rust, Windows platform boundaries, process, path or shell
+handling, packaged runtime and installer inputs, or the Windows workflows.
+The job checks the native platform library, packaged runtime staging,
+installer maintenance and Core named pipes, and Windows Desktop Tools under
+Electron.
 
-The daily Windows schedule and manual dispatch also build and stage each native
-runtime, package an unsigned per-user NSIS installer, silently install and probe
-it, then upload its verified architecture bundle. They call the same reusable
-Windows distribution as Nightly and Rehearsal, with
-updates disabled for validation builds. Pushes to `codex/windows-**` run this
-full tier for platform development feedback. PR runs omit packaging. These jobs
-use no signing credentials and do not publish a Release or update feed.
+`.github/workflows/windows.yml` runs the Rust workspace and application unit,
+Core-client, Main, renderer and integration suites on `windows-latest` (x64) and
+`windows-11-arm` (arm64). The nightly schedule, `codex/windows-**` pushes, and
+manual runs also build, silently install, and probe the unsigned NSIS
+installers through the reusable Windows distribution, with updates disabled.
+A manual run with `installer_run_id` re-probes its installers without rebuilding.
+These jobs use no signing credentials and publish neither a Release nor an
+update feed.
 
 The packaged probe requires the exact Electron host's ready isolated-run claim,
 a compatible Core descriptor with a named-pipe endpoint, the installed Core's

@@ -13,6 +13,7 @@ const fullPlan: CiGatePlan = {
   appTestSuites: APP_TEST_SUITES,
   dependencyKind: "source",
   docsOnly: false,
+  draft: false,
   landingOnly: false,
   protocolContracts: true,
   relatedPaths: [],
@@ -21,6 +22,7 @@ const fullPlan: CiGatePlan = {
   rustMigration: true,
   staticGroups: STATIC_GROUPS,
   testMode: "full",
+  windowsChecks: true,
 };
 
 describe("CI gate plan contract", () => {
@@ -29,6 +31,7 @@ describe("CI gate plan contract", () => {
       "static-contracts",
       "app-tests",
       "rust-checks",
+      "windows-checks",
     ]);
   });
 
@@ -41,5 +44,9 @@ describe("CI gate plan contract", () => {
     );
   });
 
-  test("keeps release transition isolated from ordinary jobs", () => {});
+  test("rejects a reduced draft plan with any heavy gate", () => {
+    expect(() => assertCiGatePlan({ ...fullPlan, draft: true })).toThrow(
+      "Draft plans may select only cheap static contracts",
+    );
+  });
 });
