@@ -134,6 +134,31 @@ const withoutDeclaredDialect = (schema: unknown): unknown => {
   return constraints;
 };
 
+/**
+ * What a utility request reads of the installation's configuration. A Nodex-managed installation
+ * owns all of it, so it reads no settings files. On a person's own installation an isolated
+ * request runs in Claude Code's safe mode, which leaves out their customizations (CLAUDE.md,
+ * skills, plugins, hooks, MCP servers, commands, agents and output styles) but keeps what reaches
+ * the model: account, endpoint, and the proxy or certificates in their settings' `env`. Reading no
+ * settings files would drop those too, and a request that needs them could not connect.
+ */
+const claudeUtilityIsolation = (managed: boolean, isolated: boolean) => {
+  const settingSources = managed ? { settingSources: [] } : {};
+  const flags: Record<string, null> = isolated
+    ? { ...(managed ? {} : { "safe-mode": null }), "disable-slash-commands": null }
+    : {};
+  return {
+    /** The settings Claude Code merges for this request, so its model policy is checked there. */
+    settingSources,
+    sdk: { ...settingSources, ...(isolated ? { strictMcpConfig: true, extraArgs: flags } : {}) },
+    cli: [
+      ...(managed ? ["--setting-sources", ""] : []),
+      ...(isolated ? ["--strict-mcp-config"] : []),
+      ...Object.keys(flags).map((flag) => `--${flag}`),
+    ],
+  };
+};
+
 export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(function* (
   claudeSettings: ClaudeSettings,
   environment?: NodeJS.ProcessEnv,
@@ -272,6 +297,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
       ),
     );
+    const isolation = claudeUtilityIsolation(claudeSettings.isolated === true, isolated === true);
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       const policySdk = yield* Effect.tryPromise({
@@ -288,7 +314,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           verifyClaudeModelPolicy(
             {
               cwd,
-              ...(isolated || claudeSettings.isolated ? { settingSources: [] } : {}),
+              ...isolation.settingSources,
               managedSettings: nativeModelPolicy,
             },
             policySdk.resolveSettings,
@@ -339,13 +365,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                   cwd,
                   managedSettings: nativeModelPolicy,
                   env: claudeEnvironment,
-                  ...(isolated || claudeSettings.isolated ? { settingSources: [] } : {}),
-                  ...(isolated
-                    ? {
-                        strictMcpConfig: true,
-                        extraArgs: { "disable-slash-commands": null },
-                      }
-                    : {}),
+                  ...isolation.sdk,
                   model: requestedModel,
                   permissionMode: "dontAsk",
                   tools: readTools,
@@ -405,9 +425,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         claudeSettings.binaryPath || "claude",
         [
           "-p",
-          ...(isolated
-            ? ["--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"]
-            : []),
+          ...isolation.cli,
           "--output-format",
           "json",
           "--verbose",

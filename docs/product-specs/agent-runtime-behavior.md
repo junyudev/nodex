@@ -311,6 +311,11 @@ Provider utility processes for titles, Git drafts and change-request guides run 
 with no approval prompts: Codex uses a read-only sandbox and Claude Code allows only reading and
 searching tools. Their task prompts and output schemas remain specific to their purpose;
 investigation can read the workspace but cannot change it or reach the network.
+Structured generation that Nodex writes, such as chat titles, leaves out the person's agent
+customizations: project instructions, skills, plugins, hooks, MCP servers and commands. It keeps
+what reaches the model, so it connects the way the person's chats do: their account, endpoint,
+and the proxy or certificates their Agent's settings define. On a person's own Claude Code this
+is Claude Code's safe mode; a Nodex-managed installation reads none of its settings files.
 OpenCode utility requests run in temporary sessions that refuse every tool and answer in the JSON
 their prompt asks for. They still load OpenCode's own configuration and project instructions, stop
 at the caller's time limit, and are removed once they settle, so they never join OpenCode's history.

@@ -168,14 +168,16 @@ for (const driver of ["codex", "claude"] as const) {
                 "skills.include_instructions=false",
                 "project_doc_max_bytes=0",
               ]
-            : ["--setting-sources", "--strict-mcp-config", "--disable-slash-commands"];
+            : ["--safe-mode", "--strict-mcp-config", "--disable-slash-commands"];
         for (const [index, { args, cwd }] of accepted.entries()) {
           const isolated = index >= 1;
           for (const flag of isolationFlags) assert.strictEqual(args.includes(flag), isolated);
           if (!isolated) continue;
           assert.strictEqual(cwd, yield* fs.realPath(directory));
           if (driver === "codex") continue;
-          assert.strictEqual(args[args.indexOf("--setting-sources") + 1], "");
+          // The person's settings still apply: they carry the account, endpoint and proxy that
+          // reach the model. Safe mode is what leaves their customizations out.
+          assert.isFalse(args.includes("--setting-sources"));
           assert.strictEqual(
             JSON.parse(args[args.indexOf("--settings") + 1]!).disableAllHooks,
             true,

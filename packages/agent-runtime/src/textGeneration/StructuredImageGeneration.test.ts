@@ -123,9 +123,16 @@ it.live.each([false, true])(
       assert.deepEqual(options?.allowedTools, readTools);
       assert.strictEqual(options?.persistSession, false);
       assert.strictEqual(options?.pathToClaudeCodeExecutable, isolated ? undefined : binaryPath);
-      assert.deepEqual(options?.settingSources, []);
+      // A Nodex-managed installation reads no settings files; a person's own runs in safe mode,
+      // keeping the settings that reach the model and leaving their customizations out.
+      assert.deepEqual(options?.settingSources, isolated ? [] : undefined);
       assert.strictEqual(options?.strictMcpConfig, true);
-      assert.deepEqual(options?.extraArgs, { "disable-slash-commands": null });
+      assert.deepEqual(
+        options?.extraArgs,
+        isolated
+          ? { "disable-slash-commands": null }
+          : { "safe-mode": null, "disable-slash-commands": null },
+      );
       assert.strictEqual(options?.env?.NATIVE_TEST, "claude");
       assert.strictEqual(close.mock.calls.length, 1);
       const error = yield* runtime
