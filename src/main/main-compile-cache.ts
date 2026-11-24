@@ -18,14 +18,14 @@ export function mainCompileCacheDirectory(input: MainCompileCacheInput): string 
   const { environment, home, appName } = input;
   switch (input.platform) {
     case "darwin":
-      return path.join(home, "Library", "Caches", appName, "compile-cache");
+      return path.posix.join(home, "Library", "Caches", appName, "compile-cache");
     case "win32":
       return environment.LOCALAPPDATA
         ? path.win32.join(environment.LOCALAPPDATA, appName, "compile-cache")
         : null;
     default:
-      return path.join(
-        environment.XDG_CACHE_HOME?.trim() || path.join(home, ".cache"),
+      return path.posix.join(
+        environment.XDG_CACHE_HOME?.trim() || path.posix.join(home, ".cache"),
         appName,
         "compile-cache",
       );

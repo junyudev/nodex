@@ -1,31 +1,24 @@
-import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { Writable } from "node:stream";
 import { expect, it } from "vitest";
 import { execFile, observeChildStdioErrors } from "./child-stdio-errors";
 
 it("reports a broken child input pipe to the owner even when the write has a callback", async () => {
-  const child = spawn(
-    process.execPath,
-    [
-      "-e",
-      "require('node:fs').closeSync(0); process.stdout.write('ready'); setInterval(() => {}, 1000)",
-    ],
-    { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["pipe", "pipe", "pipe"] },
+  const failure = Object.assign(new Error("Broken pipe"), { code: "EPIPE" });
+  // Feed the stream an actual write failure. Closing fd 0 in a Windows child can
+  // leave the inherited pipe handle open, so that fixture can accept writes.
+  const stdin = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback(failure);
+    },
+  });
+  const observed = new Promise<Error>((resolve) =>
+    observeChildStdioErrors({ stdin, stdout: null, stderr: null }, resolve),
   );
-  const closed = once(child, "close");
-  try {
-    const failure = new Promise<Error>((resolve) => observeChildStdioErrors(child, resolve));
-    await once(child.stdout, "data");
-    const writeError = new Promise<Error | null | undefined>((resolve) =>
-      child.stdin.write("request\n", resolve),
-    );
-    const error = await writeError;
-    expect(error).toBeInstanceOf(Error);
-    expect(await failure).toBe(error);
-  } finally {
-    child.kill();
-    await closed;
-  }
+  const writeError = await new Promise<Error | null | undefined>((resolve) =>
+    stdin.write("request\n", resolve),
+  );
+  expect(writeError).toBe(failure);
+  expect(await observed).toBe(failure);
 });
 
 it("fails an exec request when its captured output pipe errors", async () => {
