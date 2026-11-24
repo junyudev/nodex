@@ -22,7 +22,8 @@ export default defineConfig({
     include: testFiles.include.map(localGlob),
     exclude: testFiles.exclude.map(localGlob),
     passWithNoTests: testFiles.isStress,
-    fileParallelism: false,
+    pool: "forks",
+    maxWorkers: 4,
     reporters: [
       "default",
       [
