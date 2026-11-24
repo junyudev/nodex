@@ -930,8 +930,7 @@ The full Chromium suite runs in CI and with `--full`.
 Selected Node, jsdom, and Electron tests go through the result cache. Tests
 requiring a native executable use a current build prepared by the test runner
 in this worktree. The fast tier builds missing executables when the change
-touches their Rust inputs and reports other native tests as left to CI. CI is
-the merge authority.
+touches their Rust inputs and reports other native tests as left to CI.
 
 Use `vp run check:changed --full` for a complete local run when CI is
 unavailable or for macOS-specific changes. It checks all default Vitest suites,
@@ -951,12 +950,11 @@ with `--timeout <seconds>` or `CHECK_CHANGED_TIMEOUT`. Queue time does not count
 Each run appends a record to `cache.local/check-changed/runs.jsonl` in the
 primary checkout.
 
-Branch new worktrees from `origin/main` and keep local `main` in sync with it.
-After the fast check, fetch and rebase onto `origin/main`, push the branch, and
-open a pull request with `gh pr create`. End the turn so Nodex can return the
-workspace pull request's CI results. Enable auto-merge with
-`gh pr merge --auto --rebase`; the pull request merges once the required CI check
-passes. Fix any failures and push the fixes.
+Changes land on `main` after the fast check: rebase onto `origin/main` and push,
+or use a pull request when the change should be recorded or verified before it
+merges (the root `AGENTS.md` describes when). Main CI then runs the complete gate
+on pushes to `main`, and Nightly builds only commits whose Main CI passed, so the
+complete check happens after merge without holding up the next change.
 
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,

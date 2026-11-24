@@ -167,14 +167,17 @@ Release notes are a required deliverable only for **release-note-worthy** user-v
 
 ## Verification
 
-Branch worktrees from `origin/main`. Keep local `main` as a mirror of `origin/main`.
+`main` moves fast: changes land after a fast local check, Main CI verifies every push to `main`, and Nightly ships only commits whose Main CI passed ([Releases](docs/release.md)). Every parallel Agent branches from `main`, so a red `main` costs all of them: keep breakage rare and short.
 
-1. Run `vp run check:changed` for local feedback. Use `--full` when CI is unavailable or the change needs macOS coverage.
-2. Fetch `origin`, rebase onto `origin/main`, push the branch, and open a pull request with `gh pr create`.
-3. End the turn. Nodex follows workspace pull requests and returns CI results.
-4. Enable auto-merge with `gh pr merge --auto --rebase`; the pull request merges once the required check passes. Fix any failures and push the fixes.
+1. Branch worktrees from `origin/main`. Run `vp run check:changed`, plus the focused tests or E2E the change needs.
+2. Land the change one of three ways:
+   - **Ship** (default): rebase onto `origin/main` and push to `main`. Never force-push `main`; it can erase commits other Agents just pushed.
+   - **Show**: open a pull request and merge it right away when the change deserves a record for later review.
+   - **Ask**: for risky changes (migrations, release and installer paths, protocol changes, broad refactors), open a pull request and end the turn; Nodex returns the CI result. Merge with `gh pr merge --rebase` once the `required` check passes, or push fixes.
+3. Keep local `main` a mirror of `origin/main`.
+4. If Main CI fails on commits you pushed, fix forward right away. Before chasing a failure your change cannot explain, check whether `main` is already red: `gh run list --workflow ci-main.yml --branch main --limit 3`.
 
-See [Choosing checks](docs/development.md#choosing-checks) for local coverage.
+Use `vp run check:changed --full` for complete local results when CI is unavailable, the change needs macOS coverage, or you are reproducing a CI failure. See [Choosing checks](docs/development.md#choosing-checks).
 
 You decide what to verify. Aim for confidence that matches the change's risk: read the diff and the commits it lands on, skip checks the change cannot affect, and go deeper where it is risky, cross-cutting, or unfamiliar. One strong real-world check can replace a stack of broader suites.
 
