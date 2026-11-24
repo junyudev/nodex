@@ -125,7 +125,8 @@ function DelegatedTaskDetails({
       }
       agent={delegatedTaskAgent(task, membership)}
       path={task.agentPath ?? membership?.agentPath}
-      startedAtMs={membership?.createdAtMs}
+      // A card describes its own turn, never a later turn of the same subagent.
+      startedAtMs={task.startedAtMs ?? null}
       action={
         onStop ? (
           <button
@@ -305,16 +306,19 @@ function reportedSubagents(
   notice: SubagentReport,
   memberships: readonly CodexConversationChildMembership[],
 ): readonly CodexConversationChildMembership[] | null {
+  // A report can name several turns of one subagent; each subagent appears once.
   const reported =
     notice.taskIds.length > 0
-      ? notice.taskIds.map((taskId) => memberships.find((child) => child.taskId === taskId))
+      ? notice.taskIds.map((taskId) =>
+          memberships.find((child) => (child.taskIds ?? [child.taskId]).includes(taskId)),
+        )
       : notice.childThreadId
         ? [memberships.find((child) => child.threadId === notice.childThreadId)]
         : [];
   const known = reported.filter(
     (child): child is CodexConversationChildMembership => child !== undefined,
   );
-  return known.length > 0 && known.length === reported.length ? known : null;
+  return known.length > 0 && known.length === reported.length ? [...new Set(known)] : null;
 }
 
 /**

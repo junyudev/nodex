@@ -4579,8 +4579,10 @@ export interface CodexConversationChildThreadMetadata {
 export interface CodexConversationChildMembership {
   /** Native task observation; this ID does not acquire Core Thread authority. */
   task?: import("./agent-conversation").AgentConversationTask;
-  /** The delegated task this child runs, where its execution owner tracks tasks. */
+  /** The delegated task carrying this child's current turn, where its execution owner tracks tasks. */
   taskId?: string;
+  /** Every resident task that carried one of this child's turns, in arrival order. */
+  taskIds?: readonly string[];
   /** The Agent that runs this child, where its execution owner reports it. */
   agent?: import("./conversation-identity").ConversationAgent | null;
   /** Undefined means unavailable; null authoritatively clears the selected pending request. */

@@ -4,10 +4,11 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import {
+  groupAgentRuntimeSubagentTurns,
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
-  applyAgentRuntimeOverviewTask,
+  applyAgentRuntimeOverviewReport,
   projectAgentRuntimeSubagent,
   projectAgentRuntimeSubagentOverview,
   reconcileAgentRuntimeOverview,
@@ -15,24 +16,23 @@ import {
 
 const task: AgentSubagentOverviewItem = {
   id: "task",
+  taskId: "task",
+  delegatedAt: "2026-10-13T20:00:00Z",
   threadId: "root",
   runId: "parent-run",
   parentTaskId: null,
   parentTaskChildThreadId: null,
-  parentNodeId: "node",
   origin: "app_owned",
   driver: "codex",
   providerInstanceId: "codex",
   providerThreadId: null,
   childThreadId: "child",
-  childRunId: "child-run",
   title: "Review",
   model: "model",
   status: "running",
   startedAt: "2026-10-13T20:00:00Z",
   completedAt: null,
   updatedAt: "2026-10-13T20:00:05Z",
-  resultAvailable: false,
   attention: null,
 };
 const page = (
@@ -60,7 +60,7 @@ describe("Runtime subagent overview", () => {
       active: page([task, nested]),
       terminal: page([], "off-page", 12),
     };
-    const updated = applyAgentRuntimeOverviewTask(source, {
+    const updated = applyAgentRuntimeOverviewReport(source, {
       ...nested,
       id: "native",
       childThreadId: null,
@@ -139,7 +139,7 @@ describe("Runtime subagent overview", () => {
       providerInstanceId: "antigravity_work",
       status: "idle",
     };
-    const updated = applyAgentRuntimeOverviewTask(
+    const updated = applyAgentRuntimeOverviewReport(
       { active: page([{ ...batch, status: "running" }]), terminal: page([]) },
       batch,
     );
@@ -154,7 +154,26 @@ describe("Runtime subagent overview", () => {
     });
   });
 
-  it("offers Stop on a subagent only to whoever may stop the Run that started it", () => {
+  it("presents a subagent's current turn while keeping the date and name it was delegated with", () => {
+    const followUp = {
+      ...task,
+      taskId: "follow-up",
+      runId: "sender-run",
+      startedAt: "2026-10-13T20:05:00Z",
+      updatedAt: "2026-10-13T20:05:01Z",
+    };
+    const row = projectAgentRuntimeSubagent(followUp, (runId) => runId === "sender-run");
+    expect(row).toMatchObject({
+      threadId: "child",
+      displayName: "Review",
+      status: "active",
+      startedAtMs: Date.parse("2026-10-13T20:05:00Z"),
+      delegatedAtMs: Date.parse("2026-10-13T20:00:00Z"),
+      canStop: true,
+    });
+  });
+
+  it("offers Stop on a subagent only to whoever may stop the Run that owns its current turn", () => {
     const live = { ...task, status: "running" as const, runId: "bob-run" };
     const bobMayStop = (runId: string | null) => runId === "bob-run";
     const view = projectAgentRuntimeSubagentOverview(
@@ -257,14 +276,16 @@ describe("Runtime subagent overview events", () => {
       active: page([task]),
       terminal: page([{ ...task, id: "old", childThreadId: "old-child", status: "completed" }]),
     };
-    const settled = applyAgentRuntimeOverviewTask(
+    const settled = applyAgentRuntimeOverviewReport(
       loaded,
       record({ status: "interrupted", updatedAt: "2026-10-13T20:01:00Z" }),
     );
     expect(settled.active.items).toEqual([]);
-    expect(settled.terminal.items.map((item) => [item.id, item.status, item.childRunId])).toEqual([
-      ["task", "interrupted", "child-run"],
-      ["old", "completed", "child-run"],
+    expect(
+      settled.terminal.items.map((item) => [item.id, item.status, item.childThreadId]),
+    ).toEqual([
+      ["task", "interrupted", "child"],
+      ["old", "completed", "old-child"],
     ]);
     expect([settled.active.totalCount, settled.terminal.totalCount]).toEqual([0, 2]);
   });
@@ -275,7 +296,7 @@ describe("Runtime subagent overview events", () => {
       terminal: page([{ ...task, id: "done", status: "completed" }], "after-done", 30),
     };
     const unseen = record({ id: "unseen", status: "running", updatedAt: "2026-10-13T21:00:00Z" });
-    const patched = applyAgentRuntimeOverviewTask(loaded, unseen);
+    const patched = applyAgentRuntimeOverviewReport(loaded, unseen);
     expect([patched.active.totalCount, patched.terminal.totalCount]).toEqual([1, 30]);
     const read = { active: page([], null, 2), terminal: page([], null, 29) };
     const recounted = reconcileAgentRuntimeOverview(patched, read);
@@ -297,7 +318,7 @@ describe("Runtime subagent overview events", () => {
     };
 
     const reconciled = reconcileAgentRuntimeOverview(loaded, read);
-    const late = applyAgentRuntimeOverviewTask(reconciled, record(settled));
+    const late = applyAgentRuntimeOverviewReport(reconciled, record(settled));
 
     expect([late.active.totalCount, late.terminal.totalCount]).toEqual([1, 1]);
     expect(late.active.items.map((item) => item.id)).toEqual(["other"]);
@@ -337,11 +358,11 @@ describe("Runtime subagent overview events", () => {
     const before = { active: page([]), terminal: page([idle]) };
     const after = { active: page([running]), terminal: page([]) };
 
-    const reported = applyAgentRuntimeOverviewTask(before, running);
+    const reported = applyAgentRuntimeOverviewReport(before, running);
     expect(reported).toEqual(after);
     expect(reconcileAgentRuntimeOverview(reported, before)).toEqual(after);
     expect(
-      applyAgentRuntimeOverviewTask(reconcileAgentRuntimeOverview(before, after), running),
+      applyAgentRuntimeOverviewReport(reconcileAgentRuntimeOverview(before, after), running),
     ).toEqual(after);
   });
 
@@ -351,17 +372,17 @@ describe("Runtime subagent overview events", () => {
       terminal: page([]),
     };
     expect(
-      applyAgentRuntimeOverviewTask(
+      applyAgentRuntimeOverviewReport(
         loaded,
         record({ status: "completed", updatedAt: "2026-10-13T19:00:00Z" }),
       ),
     ).toBe(loaded);
-    const older = applyAgentRuntimeOverviewTask(
+    const older = applyAgentRuntimeOverviewReport(
       loaded,
       record({ id: "older", updatedAt: "2026-10-13T19:00:00Z" }),
     );
     expect(older.active.items.map((item) => item.id)).toEqual(["task"]);
-    const newer = applyAgentRuntimeOverviewTask(
+    const newer = applyAgentRuntimeOverviewReport(
       loaded,
       record({ id: "newer", childThreadId: "newer-child", updatedAt: "2026-10-13T21:00:00Z" }),
     );
@@ -377,7 +398,7 @@ describe("Runtime subagent overview events", () => {
       terminal: page([]),
     };
 
-    const updated = applyAgentRuntimeOverviewTask(
+    const updated = applyAgentRuntimeOverviewReport(
       loaded,
       record({ id: "older", title: "Updated review", updatedAt: "2026-10-13T20:00:06Z" }),
     );
@@ -398,7 +419,7 @@ describe("Runtime subagent overview events", () => {
     };
     const shown = agentRuntimeOverviewWindow({ active: 0, terminal: 0 }, loaded);
     expect(agentRuntimeOverviewSectionsToRefill(loaded, shown)).toEqual([]);
-    const settled = applyAgentRuntimeOverviewTask(
+    const settled = applyAgentRuntimeOverviewReport(
       loaded,
       record({
         id: "b",
@@ -444,5 +465,74 @@ it("names the cause of a live child's automatic recovery and drops it once settl
   expect(projectAgentRuntimeSubagent({ ...task, status: "failed", recovery })).toMatchObject({
     status: "done",
     statusSummary: "Failed",
+  });
+});
+
+describe("Resident subagent turns", () => {
+  const turn = (
+    id: string,
+    overrides: Partial<{
+      childThreadId: string | null;
+      status: AgentSubagentOverviewItem["status"];
+      startedAt: string | null;
+      completedAt: string | null;
+    }> = {},
+  ) => ({
+    id,
+    childThreadId: "child",
+    status: "completed" as AgentSubagentOverviewItem["status"],
+    startedAt: "2026-10-13T20:00:00Z",
+    completedAt: "2026-10-13T20:01:00Z",
+    ...overrides,
+  });
+
+  it("groups each child conversation's turns and keeps a native task on its own", () => {
+    const groups = groupAgentRuntimeSubagentTurns([
+      turn("first"),
+      turn("native", { childThreadId: null, status: "running", completedAt: null }),
+      turn("follow-up", {
+        status: "running",
+        startedAt: "2026-10-13T20:02:00Z",
+        completedAt: null,
+      }),
+    ]);
+    expect(
+      groups.map(({ key, first, current, turns }) => [
+        key,
+        first.id,
+        current.id,
+        turns.map((entry) => entry.id),
+      ]),
+    ).toEqual([
+      ["child", "first", "follow-up", ["first", "follow-up"]],
+      ["native", "native", "native", ["native"]],
+    ]);
+  });
+
+  it("presents a running turn before a queued one, and else the turn that settled last", () => {
+    const running = turn("running", {
+      status: "running",
+      startedAt: "2026-10-13T20:02:00Z",
+      completedAt: null,
+    });
+    const queued = turn("queued", {
+      status: "pending",
+      startedAt: "2026-10-13T20:03:00Z",
+      completedAt: null,
+    });
+    expect(groupAgentRuntimeSubagentTurns([queued, running, turn("first")])[0]?.current.id).toBe(
+      "running",
+    );
+    // A turn that started later can settle first; the latest outcome wins.
+    const late = turn("late", {
+      startedAt: "2026-10-13T20:02:00Z",
+      completedAt: "2026-10-13T20:04:00Z",
+    });
+    const early = turn("early", {
+      status: "cancelled",
+      startedAt: "2026-10-13T20:03:00Z",
+      completedAt: "2026-10-13T20:03:30Z",
+    });
+    expect(groupAgentRuntimeSubagentTurns([late, early])[0]?.current.id).toBe("late");
   });
 });

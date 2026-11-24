@@ -67,6 +67,7 @@ import {
   agentRuntimeSubagentAgent,
   projectAgentRuntimeSubagentDisplay,
 } from "../../../shared/agent-runtime-subagent-display";
+import { groupAgentRuntimeSubagentTurns } from "./agent-runtime-subagent-overview";
 import {
   CODEX_INTERRUPTED_STEER_REASON,
   EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
@@ -2535,45 +2536,57 @@ export class AgentRuntimeConversationOwner {
       this.#publishView();
     }
   }
+  /** One membership per subagent, presenting its current turn as the Subagents overview does. */
   #updateChildren(changedTaskIds?: ReadonlySet<string>): void {
     const previous = new Map(this.#children.map((child) => [child.threadId, child]));
-    this.#children = (this.#state.conversation?.snapshot.projection.subagents ?? []).map((task) => {
-      const retained = previous.get(task.childThreadId ?? task.id);
-      if (changedTaskIds && !changedTaskIds.has(task.id) && retained) return retained;
-      const { displayName } = projectAgentRuntimeSubagentDisplay(task);
+    const tasks = this.#state.conversation?.snapshot.projection.subagents ?? [];
+    this.#children = groupAgentRuntimeSubagentTurns(tasks).map(({ key, first, current, turns }) => {
+      const retained = previous.get(key);
+      if (changedTaskIds && retained && !turns.some((task) => changedTaskIds.has(task.id)))
+        return retained;
+      // A subagent keeps the name it was delegated with across its turns.
+      const { displayName } = projectAgentRuntimeSubagentDisplay({
+        ...current,
+        title: first.title ?? current.title,
+      });
+      const updatedAt = turns.reduce(
+        (latest, task) => (task.updatedAt > latest ? task.updatedAt : latest),
+        first.updatedAt,
+      );
       return {
-        threadId: task.childThreadId ?? task.id,
+        threadId: key,
         parentThreadId: this.#target.threadId,
         role: "backgroundChild",
-        taskId: task.id,
-        agent: agentRuntimeSubagentAgent(task),
+        taskId: current.id,
+        taskIds: turns.map((task) => task.id),
+        agent: agentRuntimeSubagentAgent(current),
         displayName,
         actorName: displayName ?? "Agent",
-        thread: { displayName, model: task.model },
+        thread: { displayName, model: current.model },
         statusType:
-          task.status === "failed"
+          current.status === "failed"
             ? "systemError"
-            : agentRuntimeItemStatus(task.status) === "inProgress"
+            : agentRuntimeItemStatus(current.status) === "inProgress"
               ? "active"
               : "idle",
-        createdAtMs: agentRuntimeTime(task.startedAt),
-        updatedAtMs: agentRuntimeTime(task.updatedAt),
-        showInlineActivity: task.childThreadId !== null,
-        ...(task.childThreadId === null
+        createdAtMs: agentRuntimeTime(first.startedAt),
+        updatedAtMs: agentRuntimeTime(updatedAt),
+        showInlineActivity: current.childThreadId !== null,
+        ...(current.childThreadId === null
           ? {
               task: {
-                id: task.id,
+                id: current.id,
                 bornTurnSequence: null,
                 description: displayName ?? "Agent",
                 status:
-                  task.status === "waiting"
+                  current.status === "waiting"
                     ? ("paused" as const)
-                    : task.status === "interrupted"
+                    : current.status === "interrupted"
                       ? ("cancelled" as const)
-                      : task.status === "idle"
+                      : current.status === "idle"
                         ? ("pending" as const)
-                        : task.status,
-                ...(task.model === null ? {} : { model: task.model }),
+                        : current.status,
+                ...(current.model === null ? {} : { model: current.model }),
                 backgrounded: true,
               },
             }

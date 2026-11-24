@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A subagent that received a follow-up now appears once in the Subagents tab. Before, each follow-up added another row, the map kept showing the finished first turn while the follow-up was still running, and counts such as "4/5 back" counted turns instead of subagents. The subagent's row and card now show the turn it is working on and keep their place, and Stop stops that turn. The chat's Subagents summary and the Composer's agent mentions list it once too.
+
 ### Removed
 
 ## [0.5.12] - 2026-11-24

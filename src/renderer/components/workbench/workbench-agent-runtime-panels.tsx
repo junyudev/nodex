@@ -27,7 +27,8 @@ import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
-  applyAgentRuntimeOverviewTask,
+  applyAgentRuntimeOverviewReport,
+  findAgentRuntimeOverviewSubagent,
   reconcileAgentRuntimeOverview,
   type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
@@ -332,8 +333,9 @@ export function AgentRuntimeSideChatPanel(input: {
 }
 
 /**
- * The overview observes only task metadata, independently of transcript ownership. Task
- * events patch the loaded pages in place; a delivery gap or Runtime restart attaches again.
+ * The overview observes only subagent metadata, independently of transcript ownership. Each
+ * report carries one subagent as it stands now and patches the loaded pages in place; a delivery
+ * gap or Runtime restart attaches again.
  */
 export function AgentRuntimeSubagentsOverviewPanel(input: {
   readonly sessionId: string;
@@ -343,7 +345,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const [state, setState] = useState<{
     source: AgentSubagentOverview | null;
     error: string | null;
-    /** Advances when task metadata invalidates derived attention or section totals. */
+    /** Advances when a subagent report invalidates derived attention or section totals. */
     recount: number;
   }>({ source: null, error: null, recount: 0 });
   const queryClient = useQueryClient();
@@ -351,10 +353,10 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const refreshDelegation = useEffectEvent(
     () => void queryClient.invalidateQueries(subagentDelegationQueryOptions(input.sessionId)),
   );
-  // Each subagent answers for the Run that started it, as Core admits its stop.
+  // Each subagent answers for the Run that owns its current turn, as Core admits its stop.
   const canStopRun = useRunStopCapabilities(
     input.sessionId,
-    state.source?.active.items.map((task) => task.runId) ?? [],
+    state.source?.active.items.map((subagent) => subagent.runId) ?? [],
   );
   const [attachment, setAttachment] = useState(0);
   const isCurrentAttachment = useEffectEvent(
@@ -412,16 +414,16 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
             refreshDelegation();
             return;
           }
-          const task = notification.event.overviewTask;
-          if (task === undefined) return;
+          const subagent = notification.event.overviewSubagent;
+          if (subagent === undefined) return;
           reports.current += 1;
-          if (pending) pending.push(task);
+          if (pending) pending.push(subagent);
           else
             setState((current) =>
               current.source
                 ? {
                     ...current,
-                    source: applyAgentRuntimeOverviewTask(current.source, task),
+                    source: applyAgentRuntimeOverviewReport(current.source, subagent),
                     recount: current.recount + 1,
                   }
                 : current,
@@ -441,9 +443,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
         if (!active) return;
         let source = read;
         let recount = false;
-        for (const task of pending ?? []) {
+        for (const subagent of pending ?? []) {
           recount = true;
-          source = applyAgentRuntimeOverviewTask(source, task);
+          source = applyAgentRuntimeOverviewReport(source, subagent);
         }
         pending = null;
         setState((current) => ({
@@ -487,9 +489,10 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       window.clearTimeout(timer);
     };
   }, [input.sessionId, input.threadId, state.recount]);
+  // A settled turn ends its Stop request.
   useEffect(() => {
-    for (const task of state.source?.terminal.items ?? [])
-      agentRuntimeDelegatedTasks.settle(input.sessionId, task.id);
+    for (const subagent of state.source?.terminal.items ?? [])
+      agentRuntimeDelegatedTasks.settle(input.sessionId, subagent.taskId);
   }, [input.sessionId, state.source]);
   const loadMore = async (section: "active" | "done") => {
     const key = section === "active" ? "active" : "terminal";
@@ -567,8 +570,10 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       )
     );
   const source = state.source;
-  const taskForRow = (row: CodexSubagentOverviewRow) =>
-    source.active.items.find((task) => (task.childThreadId ?? task.id) === row.threadId);
+  const liveSubagent = (row: CodexSubagentOverviewRow) => {
+    const subagent = findAgentRuntimeOverviewSubagent(source, row);
+    return subagent && source.active.items.includes(subagent) ? subagent : undefined;
+  };
   return (
     <div className="flex h-full min-h-0 flex-col">
       {error}
@@ -578,23 +583,25 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
           delegation={<SubagentDelegationConversationControl sessionId={input.sessionId} />}
           overview={projectAgentRuntimeSubagentOverview(input.threadId, source, canStopRun)}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
+          // Stop addresses the subagent's current turn, which stops the subagent.
           isStopping={(row) => {
-            const task = taskForRow(row);
+            const subagent = liveSubagent(row);
             return (
-              task !== undefined && isAgentRuntimeTaskStopping(stopping, input.sessionId, task.id)
+              subagent !== undefined &&
+              isAgentRuntimeTaskStopping(stopping, input.sessionId, subagent.taskId)
             );
           }}
           // A row offers Stop only where its own `canStop` says this reader may.
           onStop={(row) => {
-            const task = taskForRow(row);
-            if (!task) return;
+            const subagent = liveSubagent(row);
+            if (!subagent) return;
             void requestAgentRuntimeTaskStop(
               input.sessionId,
               {
-                taskId: task.id,
-                parentThreadId: task.threadId,
-                ownerRunId: task.runId,
-                childThreadId: task.childThreadId,
+                taskId: subagent.taskId,
+                parentThreadId: subagent.threadId,
+                ownerRunId: subagent.runId,
+                childThreadId: subagent.childThreadId,
               },
               agentRuntimeRuntime,
             ).catch((cause: unknown) =>

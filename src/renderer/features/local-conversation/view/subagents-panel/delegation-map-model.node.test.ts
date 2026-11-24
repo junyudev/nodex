@@ -63,6 +63,16 @@ describe("projectDelegationMap", () => {
     ]);
   });
 
+  test("keeps a card in place when a follow-up turn starts after its siblings", () => {
+    const map = project([
+      row("routes", { startedAtMs: 2_000 }),
+      // A follow-up turn started last, but the subagent was delegated first.
+      row("migration", { startedAtMs: 9_000, delegatedAtMs: 1_000 }),
+    ]);
+    expect(keys(map)).toEqual(["migration", "routes"]);
+    expect(map.nodes.map((node) => node.edge)).toEqual(["flowing", "flowing"]);
+  });
+
   test("hangs each subagent under whoever delegated it", () => {
     const map = project([
       row("b", { startedAtMs: 2_000 }),

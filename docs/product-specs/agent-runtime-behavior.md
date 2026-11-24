@@ -932,13 +932,25 @@ that moment. An Antigravity batch that went idle is back the same way, and its c
 because the batch reports only its own state. Work that failed, was stopped or was cancelled leaves a faint dashed neutral line.
 With reduced motion nothing travels.
 
+The overview lists, counts and draws subagents, not their turns. A follow-up that starts a
+Run in a subagent's conversation is carried by a task of its own, yet the subagent still
+appears once: under Active while any of its turns runs or waits to run, under Done
+otherwise. It presents its current turn — the one it is executing, else the next one queued
+to run, else the one that settled last. A follow-up queued behind a person's Stop waits for
+them and does not count as running. Status, elapsed time, attention and Stop come from that
+turn; the name, avatar and place on the map come from its first delegation. The lead counts
+each subagent once in how many have reported back. In the parent's transcript every turn
+keeps its own card, status and result.
+
 Cards keep the order their subagents were delegated in, so a card holds its place as its
-status changes. Up to six subagents each keep a full card; beyond that, settled ones fold to
+status changes and as later turns start. Up to six subagents each keep a full card; beyond that, settled ones fold to
 one line. The map draws the subagents the overview has loaded, and one control above the first
 card brings in the rest. In a wide tab the lead sits beside its subagents and its edges fan out
 to them; in a narrow tab the lead sits above them and they branch from one line.
 
-Names, avatars and overview entries share the same task identity. Provider-supplied names
+Names, avatars and overview entries share the same subagent identity, whichever of its turns
+is current. The chat's Subagents summary and the Composer's agent mentions list each subagent
+once as well. Provider-supplied names
 and user titles retain their wording; a Codex-native agent path supplies a readable final
 segment while the full path stays in details. Names never change merely because a task's
 status changes. The row reports running, retrying, waiting, stopping, stopped, cancelled,

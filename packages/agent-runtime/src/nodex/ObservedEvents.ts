@@ -18,7 +18,7 @@ const encodeEvent = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2Stored
  * What one observer is sent for each stored event, in order: the event's public wire projection,
  * encoded and held to the transport budget, delivered whole or, on a transcript subscription, as
  * a patch of a live item the subscriber already holds. A subagent tree observer's task update
- * also carries the task's overview row. Null for an event the subscriber skips. The host receives
+ * also carries the subagent's overview row. Null for an event the subscriber skips. The host receives
  * each notification as one JSON line.
  */
 export function makeObservedEventDelivery(
@@ -26,7 +26,7 @@ export function makeObservedEventDelivery(
   delivery: "transcript" | "events",
 ): (
   stored: OrchestrationV2StoredEvent,
-  overviewTask?: AgentSubagentOverviewItem,
+  overviewSubagent?: AgentSubagentOverviewItem,
 ) => Effect.Effect<AgentRuntimeNotification | null, unknown> {
   const deliver =
     delivery === "transcript"
@@ -36,15 +36,15 @@ export function makeObservedEventDelivery(
           subscriptionId,
           event: assertPublicWirePayloadBudget(event),
         });
-  return (stored, overviewTask) =>
+  return (stored, overviewSubagent) =>
     Effect.try(() => projectStoredEventForWire(stored)).pipe(
       Effect.flatMap(encodeEvent),
       Effect.flatMap((encoded) =>
         Effect.try(() =>
           deliver(
-            overviewTask === undefined
+            overviewSubagent === undefined
               ? (encoded as AgentEvent)
-              : { ...(encoded as AgentEvent), overviewTask },
+              : { ...(encoded as AgentEvent), overviewSubagent },
           ),
         ),
       ),

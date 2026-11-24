@@ -880,6 +880,7 @@ describe("Runtime delegated task rows", () => {
       agentKind: "claudeAgent",
       status: "running",
       prompt: "Review the auth module\nand report findings",
+      startedAtMs: Date.parse(at),
       summary: "Reading files",
     });
     expect(

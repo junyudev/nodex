@@ -2664,6 +2664,77 @@ test("native observations without child Threads never acquire navigable child me
   release();
 });
 
+test("a subagent's follow-up turns share one child membership that follows its current turn", async () => {
+  const initial = conversation([]);
+  const first: AgentSnapshot["projection"]["subagents"][number] = {
+    id: "first-turn",
+    threadId: target.threadId,
+    runId: "run",
+    parentNodeId: "node",
+    origin: "app_owned",
+    createdBy: "agent",
+    driver: "codex",
+    providerInstanceId: "codex",
+    providerThreadId: null,
+    childThreadId: "child",
+    nativeTaskRef: null,
+    prompt: "Review the routes",
+    title: "Review",
+    model: "gpt",
+    status: "completed",
+    result: "Done",
+    startedAt: at,
+    completedAt: "2026-10-14T00:01:00.000Z",
+    updatedAt: "2026-10-14T00:01:00.000Z",
+  };
+  const followUp = {
+    ...first,
+    id: "follow-up",
+    prompt: "Also check the tests",
+    title: "Routes review",
+    status: "running" as const,
+    result: null,
+    startedAt: "2026-10-14T00:02:00.000Z",
+    completedAt: null,
+    updatedAt: "2026-10-14T00:02:00.000Z",
+  };
+  const { owner, wire, release } = await open({
+    ...initial,
+    snapshot: {
+      ...initial.snapshot,
+      projection: { ...initial.snapshot.projection, subagents: [first, followUp] },
+    },
+  });
+  expect(owner.children()).toHaveLength(1);
+  expect(owner.children()[0]).toMatchObject({
+    threadId: "child",
+    taskId: "follow-up",
+    taskIds: ["first-turn", "follow-up"],
+    displayName: "Review",
+    statusType: "active",
+    createdAtMs: Date.parse(at),
+  });
+  wire.emit({
+    sequence: 2,
+    commandId: null,
+    event: {
+      id: "follow-up-settled",
+      threadId: target.threadId,
+      occurredAt: at,
+      type: "subagent.updated",
+      payload: {
+        ...followUp,
+        status: "completed",
+        completedAt: "2026-10-14T00:03:00.000Z",
+        updatedAt: "2026-10-14T00:03:00.000Z",
+      },
+    },
+  });
+  expect(owner.children()).toHaveLength(1);
+  expect(owner.children()[0]).toMatchObject({ taskId: "follow-up", statusType: "idle" });
+  release();
+});
+
 test("child navigation uses readable native names and follows later nickname metadata", async () => {
   const initial = conversation([]);
   const task: AgentSnapshot["projection"]["subagents"][number] = {

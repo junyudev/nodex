@@ -878,6 +878,7 @@ export function projectAgentRuntimeItem(
             ? "idle"
             : agentRuntimeDelegatedTaskStatus(item.status),
         prompt: item.prompt,
+        startedAtMs: agentRuntimeTime(item.startedAt),
         summary:
           (isLive(item.status)
             ? (item.progress ?? item.result)

@@ -77,7 +77,9 @@ export function delegationEdgeState(row: SubagentOverviewRow): DelegationEdgeSta
   return "paused";
 }
 
-const delegatedAt = (row: SubagentOverviewRow) => row.startedAtMs ?? row.recencyAtMs ?? 0;
+/** When the subagent was first delegated; a later turn never moves its card. */
+const delegatedAt = (row: SubagentOverviewRow) =>
+  row.delegatedAtMs ?? row.startedAtMs ?? row.recencyAtMs ?? 0;
 
 /**
  * Places a conversation's subagents as a tree under their lead. Subagents keep the order they

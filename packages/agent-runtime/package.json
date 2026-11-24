@@ -34,6 +34,7 @@
     "./markdown-images": "./src/nodex/MarkdownImages.ts",
     "./markdown-image-paths": "./src/nodex/MarkdownImagePaths.ts",
     "./native-attachment-resource": "./src/nodex/NativeAttachmentResource.ts",
+    "./subagent-turns": "./src/nodex/SubagentTurns.ts",
     "./rewind": "./vendor/shared/src/orchestrationV2Rewind.ts",
     "./item-patch": "./src/nodex/ItemPatch.ts"
   },

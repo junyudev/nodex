@@ -8112,16 +8112,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       })).runs.find((row) => row.id === message.runId);
     if (run === undefined || run.delegatedTaskId !== undefined) return;
     if (child.forkedFrom?.type !== "node") return;
-    const tasks = yield* projectionStore
-      .getThreadSubagentOverview({
-        threadId: parentThreadId,
-        taskId: child.forkedFrom.nodeId,
-      })
+    // The original task owns person and Session-only follow-ups.
+    const {
+      subagents: [original],
+    } = yield* projectionStore
+      .getThreadRecords(parentThreadId, ["subagents"], { subagentIds: [child.forkedFrom.nodeId] })
       .pipe(mapDispatchError(command));
-    // The overview is filtered to the chain's first task, which names the parent
-    // Run that owns the conversation. Its progress does not gate a follow-up.
-    const original = [...tasks.active.items, ...tasks.terminal.items][0];
-    // A Session-only or human follow-up retains the task's original owner, never a foreground guess.
     if (
       original?.origin !== "app_owned" ||
       original.threadId !== parentThreadId ||

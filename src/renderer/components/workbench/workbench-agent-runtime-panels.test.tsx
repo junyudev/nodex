@@ -226,24 +226,23 @@ it("keeps a child header unknown until its own settings load, independently of F
 
 const task = (id: string): AgentSubagentOverviewItem => ({
   id,
+  taskId: id,
+  delegatedAt: null,
   threadId: "root",
   runId: "parent-run",
   parentTaskId: null,
   parentTaskChildThreadId: null,
-  parentNodeId: "node",
   origin: "app_owned",
   driver: "codex",
   providerInstanceId: "codex",
   providerThreadId: null,
   childThreadId: `child:${id}`,
-  childRunId: `run:${id}`,
   title: `Review ${id}`,
   model: "model",
   status: "running",
   startedAt: null,
   completedAt: null,
   updatedAt: "2026-10-13T20:00:00Z",
-  resultAvailable: false,
   attention: null,
 });
 beforeEach(() => {
@@ -288,7 +287,7 @@ function observe() {
       event: {
         sequence,
         commandId: null,
-        overviewTask: item,
+        overviewSubagent: item,
         event: {
           id: `event:${sequence}`,
           threadId: "root",
@@ -458,6 +457,51 @@ it("cancels an application-owned subagent through its parent and settles from ev
   await waitFor(() => expect(screen.queryByText("Stopping…")).toBeNull());
   expect(screen.queryByRole("button", { name: "Stop Review one" })).toBeNull();
   expect(screen.getByText("Done · 1")).toBeTruthy();
+  view.unmount();
+});
+
+it("reopens a settled subagent in place for its follow-up turn and stops that turn", async () => {
+  vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
+    active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+    terminal: {
+      items: [{ ...task("one"), status: "completed", completedAt: "2026-10-13T20:01:00Z" }],
+      nextCursor: null,
+      hasMore: false,
+      totalCount: 1,
+    },
+  });
+  const { update } = observe();
+  const cancelTask = vi
+    .spyOn(agentRuntimeRuntime, "cancelTask")
+    .mockResolvedValue({ taskId: "one-follow-up", status: "cancelled" });
+  const view = render(
+    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
+  );
+  expect(await screen.findByText("Done · 1")).toBeTruthy();
+  await act(async () => {
+    update(
+      {
+        ...task("one"),
+        taskId: "one-follow-up",
+        startedAt: "2026-10-13T20:02:00Z",
+        updatedAt: "2026-10-13T20:02:00Z",
+      },
+      2,
+    );
+    await Promise.resolve();
+  });
+  expect(await screen.findByText("Active · 1")).toBeTruthy();
+  expect(screen.queryByText(/^Done ·/)).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Open subagent Review one" })).toHaveLength(1);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Stop Review one" }));
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(cancelTask).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "root", taskId: "one-follow-up", runId: "parent-run" }),
+    ),
+  );
   view.unmount();
 });
 

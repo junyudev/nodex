@@ -261,6 +261,15 @@ A Session binds one root Thread. A delegated Thread belongs to that root's execu
 lineage and does not require a separate sidebar Session. Successive Runs of one Thread may
 use different Agent Instances.
 
+### Subagent
+
+A Subagent is delegated work as the delegating conversation sees it: a delegated Thread
+with all of its turns, or a provider-native task that has no Thread of its own. Every turn
+that starts a Run in a delegated Thread is carried by a delegated task of its own, which
+owns that turn's result delivery and wake. Lists, counts and maps of delegated work show
+each Subagent once, presenting its current turn; transcript cards and results stay per task.
+_Avoid_: delegated task, when the Subagent is meant.
+
 ### Context Handoff
 
 A Context Handoff carries a Thread's bounded portable history to the Agent that runs its

@@ -1179,6 +1179,64 @@ it.effect("answers asynchronous questions after the delegated child finishes", (
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("keeps a person follow-up on the original delegation's owner Run", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const childThreadId = f.task.childThreadId!;
+    yield* f.settleChild();
+    yield* f.settleParent();
+    const dispatch = { type: "message.dispatch", attachments: [] } as const;
+    yield* f.orchestrator.dispatch({
+      ...dispatch,
+      commandId: CommandId.make("owner-run:new"),
+      threadId: parentId,
+      messageId: MessageId.make("owner-run:new"),
+      text: "Start another parent turn",
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const newerOwner = (yield* f.projections.getThreadRecords(parentId, ["runs"])).runs.at(-1)!;
+    expect(newerOwner.id).not.toBe(f.parentRun.id);
+    yield* f.orchestrator.dispatch({
+      ...dispatch,
+      commandId: CommandId.make("owner-run:agent-follow-up"),
+      threadId: childThreadId,
+      messageId: MessageId.make("owner-run:agent-follow-up"),
+      text: "Continue from the newer parent Run",
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: parentId,
+      senderRunId: newerOwner.id,
+    });
+    const current = yield* f.projections.getThreadSubagentOverview({
+      threadId: parentId,
+      taskId: f.task.id,
+    });
+    expect(current.active.items[0]).toMatchObject({ id: f.task.id, runId: newerOwner.id });
+
+    yield* f.orchestrator.dispatch({
+      ...dispatch,
+      commandId: CommandId.make("owner-run:person-follow-up"),
+      threadId: childThreadId,
+      messageId: MessageId.make("owner-run:person-follow-up"),
+      text: "Check another source",
+      dispatchMode: { type: "queue_after_active" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const child = yield* f.projections.getThreadRecords(childThreadId, ["runs"]);
+    const personTask = child.runs.at(-1)?.delegatedTaskId;
+    expect(personTask).toBeDefined();
+    const parent = yield* f.projections.getThreadRecords(parentId, ["subagents"]);
+    expect(parent.subagents.find((task) => task.id === personTask)).toMatchObject({
+      runId: f.parentRun.id,
+      prompt: "Check another source",
+    });
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("routes follow-up questions to their current task and leaves older results settled", () =>
   Effect.gen(function* () {
     const f = yield* setup();

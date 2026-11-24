@@ -1,6 +1,10 @@
 import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
 import { makeSubagentChildThread } from "@nodex/provider-core/server/subagentProjection";
-import { assert, it } from "@effect/vitest";
+import { assert, expect, it } from "@effect/vitest";
+import {
+  currentSubagentTurn,
+  type SubagentTurnCandidate,
+} from "@nodex/agent-runtime/subagent-turns";
 import {
   EventId,
   MessageId,
@@ -1299,8 +1303,8 @@ it.effect.each(storageCases)(
       assert.deepEqual([settled.active.totalCount, settled.terminal.totalCount], [0, 1]);
       const item = settled.terminal.items[0]!;
       assert.deepEqual(
-        [item.id, item.threadId, item.runId, item.parentNodeId, item.childThreadId],
-        [nested.id, child.id, childRun.id, childRun.rootNodeId, nested.childThreadId],
+        [item.id, item.threadId, item.runId, item.taskId, item.childThreadId],
+        [nested.id, child.id, childRun.id, nested.id, nested.childThreadId],
       );
       assert.deepEqual([item.parentTaskId, item.parentTaskChildThreadId], [delegationId, child.id]);
       const tree = yield* store.getThreadSubagentOverview({ threadId });
@@ -1313,7 +1317,7 @@ it.effect.each(storageCases)(
       const reopened = yield* store.getThreadSubagentOverview(addressed);
       assert.deepEqual([reopened.active.totalCount, reopened.terminal.totalCount], [1, 0]);
       const reopenedTree = yield* store.getThreadSubagentOverview({ threadId });
-      assert.deepEqual([reopenedTree.active.totalCount, reopenedTree.terminal.totalCount], [2, 1]);
+      assert.deepEqual([reopenedTree.active.totalCount, reopenedTree.terminal.totalCount], [2, 0]);
       assert.deepEqual(reopenedTree.active.items[0], reopened.active.items[0]);
       assert.equal(reopened.active.items[0]?.parentTaskId, delegationId);
       const liveControl = yield* store.getThreadSnapshotWindow(child.id, control);
@@ -1321,6 +1325,196 @@ it.effect.each(storageCases)(
         liveControl.projection.subagents.map(({ id }) => id),
         [nested.id],
       );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it("ranks subagent turns by execution, queue, settlement, and hold", () => {
+  const at = (n: number) => `2026-04-20T00:00:0${n}.000Z`;
+  const turn = (
+    id: string,
+    status: SubagentTurnCandidate["status"],
+    startedAt: string,
+    completedAt: string | null = null,
+    held = false,
+  ): SubagentTurnCandidate => ({ id, status, startedAt, completedAt, held });
+  const running = turn("running", "running", at(4));
+  const waiting = turn("waiting", "waiting", at(5));
+  const tied = turn("z-waiting", "waiting", at(5));
+  const queuedEarly = turn("early", "pending", at(1));
+  const queuedLate = turn("late", "pending", at(2));
+  const oldSettlement = turn("old", "completed", at(3), at(4));
+  const lateSettlement = turn("new", "idle", at(1), at(5));
+  const tiedSettlement = turn("new-start", "failed", at(2), at(5));
+  const held = turn("held", "pending", at(0), null, true);
+
+  expect(currentSubagentTurn([running, tied, queuedEarly, held, waiting])).toEqual({
+    turn: tied,
+    phase: "active",
+  });
+  expect(currentSubagentTurn([lateSettlement, queuedLate, held, queuedEarly])).toEqual({
+    turn: queuedEarly,
+    phase: "active",
+  });
+  expect(currentSubagentTurn([held, lateSettlement, oldSettlement, tiedSettlement])).toEqual({
+    turn: tiedSettlement,
+    phase: "terminal",
+  });
+  expect(currentSubagentTurn([held])).toEqual({ turn: held, phase: "active" });
+  expect(currentSubagentTurn([])).toBeUndefined();
+});
+
+it.effect.each(storageCases)(
+  "$storage: selects one current turn and keeps the subagent's identity and update version",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const at = (seconds: number) => DateTime.add(now, { seconds });
+      const events = fixtureEvents(now);
+      const root = events.find((event) => event.type === "thread.created")!;
+      const run = events.find((event) => event.type === "run.created")!;
+      const childId = ThreadId.make("child:turns");
+      const identityId = NodeId.make("task:identity");
+      const runningId = NodeId.make("task:follow-up-running");
+      const queuedId = NodeId.make("task:follow-up-queued");
+      const original: OrchestrationV2Subagent = {
+        id: identityId,
+        threadId,
+        runId,
+        parentNodeId: nodeId,
+        origin: "app_owned",
+        createdBy: "agent",
+        driver,
+        providerInstanceId,
+        providerThreadId: null,
+        childThreadId: childId,
+        nativeTaskRef: null,
+        prompt: "Initial delegation",
+        title: "Original name",
+        model: null,
+        status: "pending",
+        result: null,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+      };
+      const writeTask = (payload: OrchestrationV2Subagent) =>
+        store.apply({
+          id: EventId.make(`${payload.id}:${payload.status}`),
+          type: "subagent.updated",
+          threadId,
+          occurredAt: payload.updatedAt,
+          payload,
+        });
+      const childRun = {
+        ...run.payload,
+        id: RunId.make("run:child-first"),
+        threadId: childId,
+        status: "queued" as const,
+        queueHeld: true,
+      };
+      const queuedRun = {
+        ...childRun,
+        id: RunId.make("run:child-queued"),
+        ordinal: 3,
+        delegatedTaskId: queuedId,
+        queueHeld: false,
+      };
+      yield* store.apply(root);
+      yield* store.apply({
+        ...root,
+        id: EventId.make(childId),
+        threadId: childId,
+        payload: {
+          ...root.payload,
+          id: childId,
+          lineage: {
+            rootThreadId: threadId,
+            parentThreadId: threadId,
+            relationshipToParent: "subagent",
+          },
+          forkedFrom: { type: "node", nodeId: identityId },
+        },
+      });
+      yield* store.apply({
+        ...run,
+        id: EventId.make(childRun.id),
+        threadId: childId,
+        payload: childRun,
+      });
+      yield* writeTask(original);
+      const initial = yield* store.getThreadSubagentOverview({ threadId });
+      assert.deepEqual([initial.active.totalCount, initial.terminal.totalCount], [1, 0]);
+      assert.equal(initial.active.items[0]?.taskId, identityId);
+      assert.equal(initial.active.items[0]?.status, "pending");
+
+      yield* writeTask({
+        ...original,
+        status: "interrupted",
+        completedAt: at(1),
+        updatedAt: at(1),
+      });
+      const running = {
+        ...original,
+        id: runningId,
+        runId: RunId.make("run:parent-follow-up"),
+        title: "Name from follow-up",
+        status: "running" as const,
+        startedAt: at(2),
+        updatedAt: at(2),
+      };
+      yield* writeTask(running);
+      const active = yield* store.getThreadSubagentOverview({ threadId });
+      assert.deepEqual([active.active.totalCount, active.terminal.totalCount], [1, 0]);
+      assert.deepInclude(active.active.items[0]!, {
+        id: identityId,
+        taskId: runningId,
+        runId: running.runId,
+        delegatedAt: now,
+        startedAt: at(2),
+        title: original.title,
+      });
+
+      const queued = { ...original, id: queuedId, startedAt: at(3), updatedAt: at(3) };
+      yield* store.apply({
+        ...run,
+        id: EventId.make(queuedRun.id),
+        threadId: childId,
+        payload: queuedRun,
+      });
+      yield* writeTask(queued);
+      const addressed = yield* store.getThreadSubagentOverview({ threadId, taskId: queuedId });
+      assert.deepEqual([addressed.active.totalCount, addressed.terminal.totalCount], [1, 0]);
+      assert.deepEqual(addressed.active.items, [{ ...active.active.items[0]!, updatedAt: at(3) }]);
+
+      yield* writeTask({ ...running, status: "interrupted", completedAt: at(4), updatedAt: at(4) });
+      const beforeHold = yield* store.getThreadSubagentOverview({ threadId, taskId: runningId });
+      assert.equal(beforeHold.active.items[0]?.taskId, queuedId);
+      yield* store.apply({
+        type: "run.updated",
+        id: EventId.make("run:child-queued:held"),
+        threadId: childId,
+        occurredAt: at(5),
+        payload: { ...queuedRun, queueHeld: true },
+      });
+      const held = yield* store.getThreadSubagentOverview({ threadId, taskId: queuedId });
+      assert.deepEqual([held.active.totalCount, held.terminal.totalCount], [0, 1]);
+      assert.deepInclude(held.terminal.items[0]!, {
+        id: identityId,
+        taskId: runningId,
+        status: "interrupted",
+        updatedAt: at(4),
+      });
+
+      yield* writeTask({ ...queued, status: "completed", completedAt: at(6), updatedAt: at(6) });
+      const done = yield* store.getThreadSubagentOverview({ threadId, taskId: identityId });
+      assert.deepEqual([done.active.totalCount, done.terminal.totalCount], [0, 1]);
+      assert.deepInclude(done.terminal.items[0]!, {
+        id: identityId,
+        taskId: queuedId,
+        completedAt: at(6),
+        updatedAt: at(6),
+      });
     }).pipe(Effect.provide(storeLayer)),
 );
 
@@ -1437,15 +1631,25 @@ it.effect.each(storageCases)(
           task("codex-nested", codexChild, { childThreadId: codexGrandchild }),
           task("codex-deep", codexGrandchild, { updatedAt: DateTime.add(now, { seconds: 1 }) }),
           task("fork-task", fork),
-          ...Array.from({ length: 10 }, (_, i) =>
-            task("z-done-" + i, threadId, { status: "completed" }),
-          ),
+          ...Array.from({ length: 10 }, (_, i) => {
+            const identity = "z-done-" + i;
+            const childId = ThreadId.make("done-child-" + i);
+            return [
+              child(childId, threadId, identity),
+              task(identity, threadId, { childThreadId: childId, status: "completed" }),
+              task("turn:" + identity, threadId, {
+                childThreadId: childId,
+                status: "completed",
+                completedAt: now,
+              }),
+            ];
+          }).flat(),
         ],
         (event) => store.apply(event),
         { discard: true },
       );
       const first = yield* store.getThreadSubagentOverview({ threadId });
-      assert.deepEqual([first.active.totalCount, first.terminal.totalCount], [5, 13]);
+      assert.deepEqual([first.active.totalCount, first.terminal.totalCount], [5, 12]);
       assert.deepEqual(
         first.active.items.map((task) => [
           task.id,
@@ -1465,6 +1669,7 @@ it.effect.each(storageCases)(
         options: [{ id: "reasoningEffort", value: "xhigh" }],
       });
       assert.equal(first.terminal.items.length, 10);
+      assert.isTrue(first.terminal.items.every((task) => task.taskId === "turn:" + task.id));
       assert.isTrue(first.terminal.items.every((task) => task.id.startsWith("z-done-")));
 
       const next = yield* store.getThreadSubagentOverview({
@@ -1483,9 +1688,11 @@ it.effect.each(storageCases)(
       assert.deepEqual(done.active, first.active);
       assert.deepEqual(
         done.terminal.items.map((task) => task.id),
-        ["original", "claude", "again"],
+        ["original", "claude"],
       );
-      assert.deepEqual([next.active.totalCount, done.terminal.totalCount], [5, 13]);
+      assert.deepEqual([next.active.totalCount, done.terminal.totalCount], [5, 12]);
+      const paged = [...first.terminal.items, ...done.terminal.items];
+      assert.equal(new Set(paged.map(({ id }) => id)).size, done.terminal.totalCount);
 
       const addressed = yield* store.getThreadSubagentOverview({
         threadId,
@@ -1549,7 +1756,6 @@ it.effect(
         addressed.terminal.items.map((task) => task.id),
         ["task:00002"],
       );
-      assert.isTrue(addressed.terminal.items[0]!.resultAvailable);
       assert.isBelow(JSON.stringify(addressed).length, 2048);
       const first = yield* store.getThreadSubagentOverview({ threadId });
       assert.equal(first.active.items.length, 4);
@@ -1557,7 +1763,6 @@ it.effect(
       // Each section counts every task, not only the loaded page.
       assert.deepEqual([first.active.totalCount, first.terminal.totalCount], [5000, 5000]);
       assert.equal(first.terminal.items[0]?.id, "task:10000");
-      assert.isTrue(first.terminal.items[0]!.resultAvailable);
       assert.isBelow(JSON.stringify(first).length, 16 * 1024);
       const second = yield* store.getThreadSubagentOverview({
         threadId,
@@ -1584,6 +1789,18 @@ it.effect(
       ORDER BY updated_at DESC,subagent_id DESC LIMIT 5`;
       assert.isTrue(plan.some((row) => row.detail.includes("subagent_overview_idx")));
       assert.isFalse(plan.some((row) => row.detail.includes("TEMP B-TREE")));
+      const addressedPlan = yield* sql<{
+        detail: string;
+      }>`EXPLAIN QUERY PLAN SELECT task.subagent_id
+        FROM orchestration_v2_projection_subagents AS addressed
+        CROSS JOIN orchestration_v2_projection_subagents AS task
+        ON task.thread_id = addressed.thread_id
+          AND (task.child_thread_id = addressed.child_thread_id
+            OR (addressed.child_thread_id IS NULL AND task.subagent_id = addressed.subagent_id))
+        WHERE addressed.subagent_id = 'task:00002'`;
+      // One subagent's turns come from the child or primary-key indexes, never an owner scan.
+      assert.isFalse(addressedPlan.some((row) => /\bSCAN task\b/u.test(row.detail)));
+      assert.isTrue(addressedPlan.some((row) => /\bSEARCH task\b/u.test(row.detail)));
     }).pipe(
       Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
     ),

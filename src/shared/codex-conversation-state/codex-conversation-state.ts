@@ -472,6 +472,8 @@ export interface CodexCanonicalDelegatedTaskItem {
   readonly summary: string | null;
   /** Present while the running task waits to recover from a transient provider failure. */
   readonly recovery?: ConversationRecovery;
+  /** When this task's turn started; a subagent's later turns each carry their own. */
+  readonly startedAtMs?: number | null;
 }
 
 /** Who sent user-role input that the user did not type. */

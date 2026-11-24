@@ -4,6 +4,8 @@ import { makeSubagentChildThread } from "@nodex/provider-core/server/subagentPro
 import {
   EventId,
   NodeId,
+  MessageId,
+  RunId,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
@@ -283,13 +285,13 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
 
       const firstThree = yield* Queue.takeN(updates, 3);
       const routed = firstThree.filter((event) => event.subscriptionId === "work-tree");
-      expect(routed.map((event) => event.event.overviewTask?.id)).toEqual([
+      expect(routed.map((event) => event.event.overviewSubagent?.id)).toEqual([
         "deep:task",
         "direct:task",
       ]);
       expect(routed[0]?.event).toMatchObject({
         event: { threadId: grandchild.id },
-        overviewTask: {
+        overviewSubagent: {
           threadId: grandchild.id,
           parentTaskId: "grandchild:task",
           parentTaskChildThreadId: grandchild.id,
@@ -303,12 +305,12 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
       });
       yield* observe("replay", true, afterSequence);
       const replayed = yield* Queue.takeN(updates, 2);
-      expect(replayed.map((event) => [event.subscriptionId, event.event.overviewTask?.id])).toEqual(
-        [
-          ["replay", "deep:task"],
-          ["replay", "direct:task"],
-        ],
-      );
+      expect(
+        replayed.map((event) => [event.subscriptionId, event.event.overviewSubagent?.id]),
+      ).toEqual([
+        ["replay", "deep:task"],
+        ["replay", "direct:task"],
+      ]);
 
       const overview = yield* runtime.handle({
         id: "overview",
@@ -355,11 +357,137 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
           "work-tree",
         ]);
         for (const report of reports) {
-          expect(report.event.overviewTask).toMatchObject({
+          expect(report.event.overviewSubagent).toMatchObject({
             id: deep.payload.id,
             status,
             parentTaskId: "grandchild:task",
             parentTaskChildThreadId: grandchild.id,
+          });
+        }
+      }
+      yield* runtime.handle({
+        id: "unobserve-direct",
+        method: "events.unobserve",
+        input: { subscriptionId: "direct" },
+      });
+      const original = task(rootId, "child", child.id).payload;
+      const at = (seconds: number) => DateTime.add(now, { seconds });
+      const applyTask = Effect.fnUntraced(function* (payload: typeof original) {
+        yield* sink.write({
+          events: [
+            {
+              type: "subagent.updated",
+              id: EventId.make(`${payload.id}:${payload.status}`),
+              threadId: rootId,
+              occurredAt: payload.updatedAt,
+              payload,
+            },
+          ],
+        });
+        return yield* Queue.takeN(updates, 2);
+      });
+      yield* applyTask({
+        ...original,
+        origin: "app_owned",
+        status: "interrupted",
+        completedAt: at(3),
+        updatedAt: at(3),
+      });
+      const followup: typeof original = {
+        ...original,
+        origin: "app_owned",
+        id: NodeId.make("task:child-follow-up"),
+        title: "Changed name",
+        status: "running",
+        startedAt: at(4),
+        updatedAt: at(4),
+      };
+      const started = yield* applyTask(followup);
+      for (const report of started) {
+        expect(report.event.overviewSubagent).toMatchObject({
+          id: original.id,
+          taskId: followup.id,
+          delegatedAt: DateTime.formatIso(now),
+          title: original.title,
+          status: "running",
+        });
+      }
+
+      const settled = yield* applyTask({
+        ...followup,
+        status: "completed",
+        completedAt: at(5),
+        updatedAt: at(5),
+      });
+      for (const report of settled) {
+        expect(report.event.overviewSubagent).toMatchObject({
+          id: original.id,
+          taskId: followup.id,
+          status: "completed",
+          updatedAt: DateTime.formatIso(at(5)),
+        });
+      }
+
+      const queuedId = NodeId.make("task:child-queued");
+      const queued = {
+        id: RunId.make("run:child-queued"),
+        threadId: child.id,
+        ordinal: 1,
+        providerInstanceId: child.providerInstanceId,
+        modelSelection: child.modelSelection,
+        providerThreadId: null,
+        userMessageId: MessageId.make("message:child-queued"),
+        rootNodeId: null,
+        activeAttemptId: null,
+        status: "queued" as const,
+        requestedAt: at(6),
+        startedAt: null,
+        completedAt: null,
+        checkpointId: null,
+        contextHandoffId: null,
+        delegatedTaskId: queuedId,
+      };
+      yield* sink.write({
+        events: [
+          {
+            type: "run.created",
+            id: EventId.make("run:child-queued:created"),
+            threadId: child.id,
+            occurredAt: at(6),
+            payload: queued,
+          },
+        ],
+      });
+      yield* applyTask({
+        ...followup,
+        id: queuedId,
+        status: "pending",
+        startedAt: at(6),
+        updatedAt: at(6),
+      });
+      for (const [held, taskId, status] of [
+        [true, followup.id, "completed"],
+        [false, queuedId, "pending"],
+      ] as const) {
+        yield* sink.write({
+          events: [
+            {
+              type: "run.updated",
+              id: EventId.make(`run:child-queued:held:${held}`),
+              threadId: child.id,
+              occurredAt: at(held ? 7 : 8),
+              payload: { ...queued, queueHeld: held },
+            },
+          ],
+        });
+        const reports = yield* Queue.takeN(updates, 2);
+        for (const report of reports) {
+          expect(report.event.event.type).toBe("run.updated");
+          expect(report.event.overviewSubagent).toMatchObject({
+            id: original.id,
+            taskId,
+            status,
+            updatedAt: DateTime.formatIso(at(6)),
           });
         }
       }

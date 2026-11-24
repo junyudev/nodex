@@ -3,6 +3,7 @@ import type {
   AgentSubagentOverview,
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
+import { currentSubagentTurn } from "@nodex/agent-runtime/subagent-turns";
 import type { CodexSubagentOverviewRow, CodexSubagentOverviewWindow } from "../../../shared/types";
 import {
   agentRuntimeSubagentAgent,
@@ -22,6 +23,11 @@ export type SubagentOutcome = "completed" | "failed" | "stopped" | "cancelled" |
 export interface SubagentOverviewRow extends CodexSubagentOverviewRow {
   readonly attentionKind?: SubagentAttentionKind;
   readonly outcome?: SubagentOutcome;
+  /**
+   * When the subagent was first delegated. A follow-up turn starts later and moves `startedAtMs`,
+   * but never the subagent's place among its siblings.
+   */
+  readonly delegatedAtMs?: number | null;
 }
 
 const ATTENTION_MESSAGES = defineMessages({
@@ -45,6 +51,55 @@ export function subagentAttentionLabel(kind: SubagentAttentionKind, intl: IntlSh
 
 type Section = "active" | "terminal";
 
+/**
+ * A subagent's key among its delegator's rows: its child conversation, or the provider-native
+ * task that has none. Every turn of one child conversation shares it.
+ */
+export const agentRuntimeSubagentKey = (task: {
+  readonly id: string;
+  readonly childThreadId: string | null;
+}): string => task.childThreadId ?? task.id;
+
+interface SubagentTurnTask {
+  readonly id: string;
+  readonly childThreadId: string | null;
+  readonly status: AgentSubagentOverviewItem["status"];
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+}
+
+/** One subagent's turns, as a conversation's resident delegated tasks hold them. */
+export interface AgentRuntimeSubagentTurns<T extends SubagentTurnTask> {
+  readonly key: string;
+  /** The task that delegated the subagent; it names the subagent and dates it. */
+  readonly first: T;
+  /** The turn the subagent shows now, chosen as the Runtime overview chooses it. */
+  readonly current: T;
+  /** Every resident turn, in the order the tasks arrived. */
+  readonly turns: readonly T[];
+}
+
+/**
+ * Groups delegated tasks into subagents, in the order each subagent first appears. Resident
+ * tasks carry no queue holds, so a queued follow-up counts as queued.
+ */
+export function groupAgentRuntimeSubagentTurns<T extends SubagentTurnTask>(
+  tasks: readonly T[],
+): readonly AgentRuntimeSubagentTurns<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const task of tasks) {
+    const key = agentRuntimeSubagentKey(task);
+    groups.set(key, [...(groups.get(key) ?? []), task]);
+  }
+  return [...groups].map(([key, turns]) => {
+    const first = turns.reduce((earliest, task) =>
+      (task.startedAt ?? "") < (earliest.startedAt ?? "") ? task : earliest,
+    );
+    const current = currentSubagentTurn(turns.map((task) => ({ ...task, held: false })))?.turn.id;
+    return { key, first, current: turns.find((task) => task.id === current) ?? first, turns };
+  });
+}
+
 const outcomeOf = (status: AgentSubagentOverviewItem["status"]): SubagentOutcome | null =>
   status === "completed"
     ? "completed"
@@ -63,23 +118,26 @@ const isLive = (status: AgentSubagentOverviewItem["status"]) =>
 const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOverviewItem) =>
   right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id);
 
-/** Execution metadata is enough for the overview; task bodies stay behind explicit detail reads. */
+/**
+ * One row per subagent, presenting its current turn. Execution metadata is enough for the
+ * overview; task bodies stay behind explicit detail reads.
+ */
 export const projectAgentRuntimeSubagent = (
-  task: AgentSubagentOverviewItem,
-  /** Whether this reader may stop work of the Run that started the subagent. */
+  subagent: AgentSubagentOverviewItem,
+  /** Whether this reader may stop work of the Run that owns the subagent's current turn. */
   canStopRun: (runId: string | null) => boolean = () => true,
-  rootThreadId = task.threadId,
+  rootThreadId = subagent.threadId,
 ): SubagentOverviewRow => {
-  const { displayName } = projectAgentRuntimeSubagentDisplay(task);
-  const outcome = outcomeOf(task.status);
+  const { displayName } = projectAgentRuntimeSubagentDisplay(subagent);
+  const outcome = outcomeOf(subagent.status);
   return {
-    threadId: task.childThreadId ?? task.id,
-    identityThreadId: task.childThreadId,
+    threadId: agentRuntimeSubagentKey(subagent),
+    identityThreadId: subagent.childThreadId,
     parentThreadId:
-      task.parentTaskId === null
+      subagent.parentTaskId === null
         ? rootThreadId
-        : (task.parentTaskChildThreadId ?? task.parentTaskId),
-    parentTurnKey: task.runId,
+        : (subagent.parentTaskChildThreadId ?? subagent.parentTaskId),
+    parentTurnKey: subagent.runId,
     displayName:
       displayName ??
       getIntl().formatMessage({
@@ -88,68 +146,69 @@ export const projectAgentRuntimeSubagent = (
       }),
     actorName: displayName,
     agentRole: null,
-    agent: agentRuntimeSubagentAgent(task),
-    spawnModel: task.modelSelection?.model ?? task.model,
+    agent: agentRuntimeSubagentAgent(subagent),
+    spawnModel: subagent.modelSelection?.model ?? subagent.model,
     objective: null,
     status:
-      task.status === "waiting"
+      subagent.status === "waiting"
         ? "waiting"
-        : ["pending", "running"].includes(task.status)
+        : ["pending", "running"].includes(subagent.status)
           ? "active"
           : "done",
-    ...(task.attention !== null ? { attentionKind: task.attention } : {}),
+    ...(subagent.attention !== null ? { attentionKind: subagent.attention } : {}),
     ...(outcome !== null ? { outcome } : {}),
     statusSummary:
-      task.attention !== null
-        ? subagentAttentionLabel(task.attention, getIntl())
-        : isLive(task.status) && task.recovery
+      subagent.attention !== null
+        ? subagentAttentionLabel(subagent.attention, getIntl())
+        : isLive(subagent.status) && subagent.recovery
           ? recoveryStatusLabel({
               state: "retrying",
-              reason: task.recovery.kind,
-              attempt: task.recovery.attempt,
-              maxAttempts: task.recovery.maxAttempts,
+              reason: subagent.recovery.kind,
+              attempt: subagent.recovery.attempt,
+              maxAttempts: subagent.recovery.maxAttempts,
               retryAt: null,
               updatedAt: null,
             })
-          : task.status === "failed"
+          : subagent.status === "failed"
             ? getIntl().formatMessage({
                 id: "conversation.agentRuntimeSubagentOverview.failed",
                 defaultMessage: "Failed",
               })
-            : task.status === "interrupted"
+            : subagent.status === "interrupted"
               ? getIntl().formatMessage({
                   id: "conversation.agentRuntimeSubagentOverview.stopped",
                   defaultMessage: "Stopped",
                 })
-              : task.status === "cancelled"
+              : subagent.status === "cancelled"
                 ? getIntl().formatMessage({
                     id: "conversation.agentRuntimeSubagentOverview.cancelled",
                     defaultMessage: "Cancelled",
                   })
-                : task.driver === "antigravity" &&
-                    task.origin === "provider_native" &&
-                    task.status === "idle"
+                : subagent.driver === "antigravity" &&
+                    subagent.origin === "provider_native" &&
+                    subagent.status === "idle"
                   ? getIntl().formatMessage({
                       id: "conversation.delegatedTaskPresentation.idle",
                       defaultMessage: "Idle",
                     })
                   : null,
-    startedAtMs: agentRuntimeTime(task.startedAt),
-    lastActivityAtMs: agentRuntimeTime(task.updatedAt),
-    completedAtMs: agentRuntimeTime(task.completedAt),
-    recencyAtMs: agentRuntimeTime(task.updatedAt) ?? 0,
+    startedAtMs: agentRuntimeTime(subagent.startedAt),
+    delegatedAtMs: agentRuntimeTime(subagent.delegatedAt),
+    lastActivityAtMs: agentRuntimeTime(subagent.updatedAt),
+    completedAtMs: agentRuntimeTime(subagent.completedAt),
+    recencyAtMs: agentRuntimeTime(subagent.updatedAt) ?? 0,
     diffStats: null,
-    canOpen: task.childThreadId !== null,
+    canOpen: subagent.childThreadId !== null,
     // An application-owned child stops through its own conversation; a native one through its Run.
-    // Either answers for the Run that started it.
+    // Either answers for the Run that owns its current turn.
     canStop:
-      isLive(task.status) &&
-      (task.childThreadId !== null || task.runId !== null) &&
-      canStopRun(task.runId),
-    canInteract: task.origin === "app_owned" && task.childThreadId !== null,
+      isLive(subagent.status) &&
+      (subagent.childThreadId !== null || subagent.runId !== null) &&
+      canStopRun(subagent.runId),
+    canInteract: subagent.origin === "app_owned" && subagent.childThreadId !== null,
     showInlineActivity:
-      task.childThreadId !== null &&
-      !(task.driver === "antigravity" && task.origin === "provider_native"),
+      subagent.childThreadId !== null &&
+      !(subagent.driver === "antigravity" && subagent.origin === "provider_native"),
   };
 };
 
@@ -158,8 +217,8 @@ export function projectAgentRuntimeSubagentOverview(
   source: AgentSubagentOverview,
   canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewWindow {
-  const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(task, canStopRun, rootThreadId);
+  const project = (subagent: AgentSubagentOverviewItem) =>
+    projectAgentRuntimeSubagent(subagent, canStopRun, rootThreadId);
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),
@@ -187,7 +246,7 @@ function find(overview: AgentSubagentOverview, id: string) {
 const sectionOf = (item: AgentSubagentOverviewItem): Section =>
   isLive(item.status) ? "active" : "terminal";
 
-/** Places one item by recency, keeping a newer report of the same item. */
+/** Places one subagent by recency, keeping a newer report of the same subagent. */
 function upsert(
   overview: AgentSubagentOverview,
   item: AgentSubagentOverviewItem,
@@ -223,12 +282,22 @@ function upsert(
   return next;
 }
 
-/** Applies one task metadata event to the loaded window without re-reading any page. */
-export function applyAgentRuntimeOverviewTask(
+/** Applies one subagent report to the loaded window without re-reading any page. */
+export function applyAgentRuntimeOverviewReport(
   overview: AgentSubagentOverview,
-  task: AgentSubagentOverviewItem,
+  subagent: AgentSubagentOverviewItem,
 ): AgentSubagentOverview {
-  return upsert(overview, task, true);
+  return upsert(overview, subagent, true);
+}
+
+/** The loaded subagent a row presents, by the row's own key. */
+export function findAgentRuntimeOverviewSubagent(
+  overview: AgentSubagentOverview,
+  row: Pick<CodexSubagentOverviewRow, "threadId">,
+): AgentSubagentOverviewItem | undefined {
+  return [...overview.active.items, ...overview.terminal.items].find(
+    (subagent) => agentRuntimeSubagentKey(subagent) === row.threadId,
+  );
 }
 
 export type AgentRuntimeOverviewWindow = Readonly<Record<Section, number>>;
@@ -288,7 +357,7 @@ export function reconcileAgentRuntimeOverview(
   };
 }
 
-/** Merges an explicitly loaded page into the current window, keeping newer task reports. */
+/** Merges an explicitly loaded page into the current window, keeping newer subagent reports. */
 export function appendAgentRuntimeOverviewPage(
   current: AgentSubagentOverview,
   page: AgentSubagentOverview,

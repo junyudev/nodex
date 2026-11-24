@@ -56,7 +56,6 @@ import {
   ProviderInstanceConfigMap,
   ProviderInstanceId,
   ProviderSessionId,
-  OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionLocation,
 } from "@nodex/runtime-contracts";
@@ -89,8 +88,7 @@ import {
 import {
   ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
   ProjectionStoreV2,
-  SubagentOverviewAttention,
-  type ProjectionSubagentOverviewItem,
+  SubagentOverviewItem,
 } from "../orchestration-v2/ProjectionStore.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
@@ -886,47 +884,13 @@ const encodeQueuedMessage = Schema.encodeEffect(
   Schema.toCodecJson(Schema.NullOr(OrchestrationV2ConversationMessage)),
 );
 const encodeAttachments = Schema.encodeEffect(Schema.toCodecJson(PersistChatAttachmentsResult));
-const overviewFields = OrchestrationV2Subagent.fields;
-const OverviewItem = Schema.Struct({
-  id: overviewFields.id,
-  threadId: overviewFields.threadId,
-  runId: overviewFields.runId,
-  parentNodeId: overviewFields.parentNodeId,
-  origin: overviewFields.origin,
-  driver: overviewFields.driver,
-  providerInstanceId: overviewFields.providerInstanceId,
-  providerThreadId: overviewFields.providerThreadId,
-  childThreadId: overviewFields.childThreadId,
-  title: overviewFields.title,
-  model: overviewFields.model,
-  modelSelection: overviewFields.modelSelection,
-  recovery: overviewFields.recovery,
-  status: overviewFields.status,
-  startedAt: overviewFields.startedAt,
-  completedAt: overviewFields.completedAt,
-  updatedAt: overviewFields.updatedAt,
-  parentTaskId: Schema.NullOr(NodeId),
-  parentTaskChildThreadId: Schema.NullOr(ThreadId),
-  childRunId: Schema.NullOr(RunId),
-  resultAvailable: Schema.Boolean,
-  attention: SubagentOverviewAttention,
-});
-// Encoding drops fields the served schema omits; every projected overview field must be served.
-type UnservedOverviewFields = Exclude<
-  keyof ProjectionSubagentOverviewItem,
-  keyof typeof OverviewItem.fields
->;
-const overviewServesEveryField: [UnservedOverviewFields] extends [never]
-  ? true
-  : UnservedOverviewFields = true;
-void overviewServesEveryField;
 const OverviewPage = Schema.Struct({
-  items: Schema.Array(OverviewItem),
+  items: Schema.Array(SubagentOverviewItem),
   nextCursor: Schema.NullOr(Schema.String),
   hasMore: Schema.Boolean,
   totalCount: Schema.Int,
 });
-const encodeOverviewItem = Schema.encodeEffect(Schema.toCodecJson(OverviewItem));
+const encodeOverviewItem = Schema.encodeEffect(Schema.toCodecJson(SubagentOverviewItem));
 const encodeOverview = Schema.encodeEffect(
   Schema.toCodecJson(Schema.Struct({ active: OverviewPage, terminal: OverviewPage })),
 );
@@ -2142,7 +2106,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               ]
             : treeLead !== undefined
               ? // The lead's metadata carries the conversation's delegation choice.
-                (["subagent.updated", "thread.metadata-updated"] as const)
+                (["subagent.updated", "run.updated", "thread.metadata-updated"] as const)
               : input.input.eventTypes;
         // Type-specific channels filter before retaining live events or decoding SQL replay.
         const stream =
@@ -2212,28 +2176,35 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             : stream.pipe(
                 Stream.runForEach((stored) =>
                   Effect.gen(function* () {
-                    let overviewTask: AgentSubagentOverviewItem | undefined;
+                    const event = stored.event;
                     if (
-                      treeLead !== undefined &&
-                      stored.event.type === "thread.metadata-updated" &&
-                      stored.event.threadId !== treeLead
-                    )
+                      treeLead === undefined ||
+                      (event.type === "thread.metadata-updated" && event.threadId === treeLead)
+                    ) {
+                      const notification = yield* observe(stored);
+                      if (notification !== null) yield* notify(notification);
                       return;
-                    if (treeLead !== undefined && stored.event.type === "subagent.updated") {
-                      const delegates = yield* observationRootsOf(
-                        stored.event.threadId,
-                        "delegation",
-                      );
-                      if (!delegates.includes(treeLead)) return;
-                      const overview = yield* projections.getThreadSubagentOverview({
-                        threadId: treeLead,
-                        taskId: stored.event.payload.id,
-                      });
-                      const task = overview.active.items[0] ?? overview.terminal.items[0];
-                      if (task === undefined) return;
-                      overviewTask = (yield* encodeOverviewItem(task)) as AgentSubagentOverviewItem;
                     }
-                    const notification = yield* observe(stored, overviewTask);
+                    // Queue controls update the carrying Run while the task stays pending.
+                    const taskId =
+                      event.type === "subagent.updated"
+                        ? event.payload.id
+                        : event.type === "run.updated" && event.payload.status === "queued"
+                          ? event.payload.delegatedTaskId
+                          : undefined;
+                    if (taskId === undefined) return;
+                    const delegates = yield* observationRootsOf(event.threadId, "delegation");
+                    if (!delegates.includes(treeLead)) return;
+                    const overview = yield* projections.getThreadSubagentOverview({
+                      threadId: treeLead,
+                      taskId,
+                    });
+                    const subagent = overview.active.items[0] ?? overview.terminal.items[0];
+                    if (subagent === undefined) return;
+                    const notification = yield* observe(
+                      stored,
+                      (yield* encodeOverviewItem(subagent)) as AgentSubagentOverviewItem,
+                    );
                     if (notification !== null) yield* notify(notification);
                   }),
                 ),
