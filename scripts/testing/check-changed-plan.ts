@@ -7,7 +7,7 @@ import {
   type NativeExecutableId,
   type SuiteId,
 } from "../../config/test-suites.ts";
-import { classifyChangedPaths } from "../ci/classify-change.ts";
+import { classifyChangedPaths, shouldCheckSearchKernelWasm } from "../ci/classify-change.ts";
 import type { CiGatePlan } from "../ci/ci-gate-plan.ts";
 import { selectStaticChecks, STATIC_CHECKS } from "../ci/verify-static.ts";
 import type { CachedPass, SelectionEvidence } from "./test-cache-store.ts";
@@ -348,6 +348,11 @@ export function planFastCheckSteps(
           resource: "rust-budget",
         }
       : skip("rust", "no Rust crates changed"),
+    // The committed WASM digest covers every crate the search kernel compiles, including
+    // contracts it shares with Core, and checking it only reads Cargo metadata.
+    ...(files.some(shouldCheckSearchKernelWasm)
+      ? [command("search kernel WASM freshness", ["run", "search-kernel:wasm:check"])]
+      : []),
   ];
   return { steps, rustEnv: { CARGO_BUILD_JOBS: "4" } };
 }

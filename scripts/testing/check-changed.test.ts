@@ -366,6 +366,15 @@ describe("fast check selection", () => {
         commands: [{ args: ["exec", "cargo", "check", "--locked", "--package", "nodex-platform"] }],
       },
     ]);
+    // A Rust change can move the search kernel's committed WASM digest, so the fast check
+    // catches a stale digest before CI does; a change without Rust inputs leaves it to CI.
+    const wasmFreshness = ({ name }: { name: string }) => name === "search kernel WASM freshness";
+    expect(steps.find(wasmFreshness)).toMatchObject({
+      commands: [{ args: ["run", "search-kernel:wasm:check"] }],
+    });
+    expect(planFastCheckSteps([catalog], [catalog], {}, []).steps.find(wasmFreshness)).toBe(
+      undefined,
+    );
   });
 
   it("reads retained evidence and remembers when a later run could not observe a test", async () => {

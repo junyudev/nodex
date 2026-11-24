@@ -919,7 +919,8 @@ display state model. Fixture classes and runtime commands are detailed below.
 Run `vp run check:changed` for fast local feedback. It checks changed-file
 formatting and lint warnings, validates i18n for changes under `src/`, runs
 incremental TypeScript checks, and compiles changed renderer files with the
-React Compiler. For Rust changes it runs `cargo check` for the touched crates.
+React Compiler. For Rust changes it runs `cargo check` for the touched crates and
+checks that the search kernel's committed WASM digest is still current.
 
 The fast tier reads the test result store before starting Vitest. It selects
 files that recorded a changed input, as well as changed, new, and sibling

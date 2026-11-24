@@ -145,7 +145,7 @@ const isSearchKernelPath = (path: string): boolean =>
   path.startsWith("crates/nodex-search-kernel/");
 
 // Include Rust paths so newly added local dependencies also trigger the freshness check.
-const shouldCheckSearchKernelWasm = (path: string): boolean =>
+export const shouldCheckSearchKernelWasm = (path: string): boolean =>
   isRustPath(path) || path.startsWith(".cargo/") || path === "scripts/build-search-kernel-wasm.ts";
 
 // Rust and fixture files are external inputs that Vitest's module graph cannot follow.
