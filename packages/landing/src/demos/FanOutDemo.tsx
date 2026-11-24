@@ -22,15 +22,16 @@ interface Child {
 
 /** How each of the passkey chat's subagents is called and how its run plays out here. */
 const RUNS = [
-  { call: "gpt-6.1-sol · xhigh", diff: "+412 −38", start: 900, done: 4700 },
-  { call: "gpt-6.1-sol · high", diff: "+186 −4", start: 1250, done: 5400 },
-  { call: "gpt-6.1-sol · high", diff: "+298", start: 1600, done: 6100 },
+  { call: "gpt-6.2-sol · xhigh", diff: "+412 −38", start: 900, done: 4700 },
+  { call: "gpt-6.2-sol · high", diff: "+186 −4", start: 1250, done: 5400 },
+  { call: "gpt-6.2-sol · high", diff: "+298", start: 1600, done: 6100 },
   { call: "glm-5.3-flash-free", diff: "+64 −12", start: 1950, done: 3900 },
 ] as const;
 
 const EDGE_COLOR: Record<AgentChoice["provider"], string> = {
   claude: "#d97757",
   codex: "#8e9bff",
+  antigravity: "#3186ff",
   opencode: "#e7b549",
 };
 

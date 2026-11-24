@@ -2,6 +2,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "
 import { useEffect, type ReactNode } from "react";
 import { useReplicaCopy } from "./copy";
 import {
+  AntigravityMark,
   ArrowLeftIcon,
   ArrowRightIcon,
   ClaudeMark,
@@ -19,7 +20,13 @@ import {
   SidebarIcon,
   SidebarSearchIcon,
 } from "./icons";
-import { WEEKLY_LEFT, type AgentChoice, type ProviderKind } from "../demos/lumen";
+import {
+  WEEKLY_LEFT,
+  type AgentChoice,
+  type MeteredProvider,
+  type ProviderKind,
+  type UsageLeft,
+} from "../demos/lumen";
 
 const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(" ");
 export { cx };
@@ -67,7 +74,7 @@ export function AppWindow({
   /** Drawn above everything, in window coordinates, such as a demo's pointer. */
   readonly overlay?: ReactNode;
   /** Remaining share of each account's tightest window, shown on the rail's meters. */
-  readonly usage?: { readonly claude: number; readonly codex: number };
+  readonly usage?: UsageLeft;
   readonly children: ReactNode;
   readonly className?: string;
 }) {
@@ -201,7 +208,7 @@ function Rail({
   usage,
   focused,
 }: {
-  readonly usage: { readonly claude: number; readonly codex: number };
+  readonly usage: UsageLeft;
   readonly focused: ProviderKind | null;
 }) {
   const copy = useReplicaCopy();
@@ -232,18 +239,15 @@ function Rail({
         </span>
       </div>
       <div className="flex flex-col items-center gap-[6.56px] text-app-faint">
-        <span
-          data-cursor-target="usage:claude"
-          className={cx(controlClass, focused === "claude" && "bg-app-hover text-app-fg")}
-        >
-          <UsageRing left={usage.claude} kind="claude" />
-        </span>
-        <span
-          data-cursor-target="usage:codex"
-          className={cx(controlClass, focused === "codex" && "bg-app-hover text-app-fg")}
-        >
-          <UsageRing left={usage.codex} kind="codex" />
-        </span>
+        {RAIL_METERS.map((kind) => (
+          <span
+            key={kind}
+            data-cursor-target={`usage:${kind}`}
+            className={cx(controlClass, focused === kind && "bg-app-hover text-app-fg")}
+          >
+            <UsageRing left={usage[kind]} kind={kind} />
+          </span>
+        ))}
         <span aria-label={copy.account} className={controlClass}>
           <NodexMarkIcon className="size-[16.4px]" />
         </span>
@@ -252,17 +256,24 @@ function Rail({
   );
 }
 
-/** UsageRingGlyph geometry and severity thresholds from workbench-rail-usage-meter.tsx. */
+/** The rail's meters, in the app's order. */
+const RAIL_METERS: readonly MeteredProvider[] = ["claude", "codex", "antigravity"];
+
+/**
+ * UsageRingGlyph geometry and severity thresholds from workbench-rail-usage-meter.tsx. An Agent
+ * that reports no usage, `left` null, draws a dotted track and no arc.
+ */
 export function UsageRing({
   left,
   kind,
   className = "size-[19.68px]",
 }: {
-  readonly left: number;
+  readonly left: number | null;
   readonly kind: ProviderKind;
   readonly className?: string;
 }) {
-  const remaining = Math.max(0, Math.min(1, left));
+  const reported = left !== null;
+  const remaining = Math.max(0, Math.min(1, left ?? 0));
   const exhausted = remaining === 0;
   const tone =
     remaining <= 0.15
@@ -284,8 +295,9 @@ export function UsageRing({
           r="12"
           strokeWidth="2.25"
           strokeLinecap="round"
-          stroke={exhausted ? tone : "currentColor"}
-          strokeOpacity={exhausted ? 0.45 : 0.16}
+          stroke={exhausted && reported ? tone : "currentColor"}
+          strokeOpacity={exhausted && reported ? 0.45 : reported ? 0.16 : 0.4}
+          strokeDasharray={reported ? undefined : "0.01 3.75"}
         />
         {remaining > 0 ? (
           <circle
@@ -301,7 +313,10 @@ export function UsageRing({
           />
         ) : null}
       </svg>
-      <ProviderMark kind={kind} className="size-[9.84px] fill-current" />
+      <ProviderMark
+        kind={kind}
+        className={cx("size-[9.84px] fill-current", !reported && "opacity-60")}
+      />
     </span>
   );
 }
@@ -515,6 +530,7 @@ export function ProviderMark({
   readonly className?: string;
 }) {
   if (kind === "claude") return <ClaudeMark className={className} />;
+  if (kind === "antigravity") return <AntigravityMark className={className} />;
   if (kind === "opencode") return <OpenCodeMark className={className} />;
   return <OpenAIMark className={className} />;
 }

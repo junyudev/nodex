@@ -82,7 +82,7 @@ export const SCRIPTS = byLocale((locale): Schedule => {
   // The first keystroke lands a beat after the demo appears.
   const burst = buildInboxBurstTimeline(inbox, 200);
   const cues: Cue[] = [...burst.cues];
-  // Once the passkey fan-out has landed and been read, the reader takes its lead off GPT-6.1 Sol
+  // Once the passkey fan-out has landed and been read, the reader takes its lead off GPT-6.2 Sol
   // and gives it to Claude Opus before starting it: open the model menu, search, pick.
   const menu = burst.plannedAt + 1900;
   const modelQueryAt = menu + 300;
@@ -105,7 +105,7 @@ export const SCRIPTS = byLocale((locale): Schedule => {
   const clear = decisions.clearAt;
 
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
-  // the reader points at before opening one of its GPT-6.1 Sol subagents to watch it work in
+  // the reader points at before opening one of its GPT-6.2 Sol subagents to watch it work in
   // Codex, beside the chat that sent it.
   const chat = clear + 2500;
   const subagent = chat + 3300;

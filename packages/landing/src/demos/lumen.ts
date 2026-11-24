@@ -8,7 +8,13 @@ import { byLocale, localizer } from "../lib/locale";
 import type { BoardCard, Status } from "../replica/Board";
 import type { PageFolder } from "../replica/Page";
 
-export type ProviderKind = "codex" | "claude" | "opencode";
+export type ProviderKind = "codex" | "claude" | "antigravity" | "opencode";
+
+/** The Agents whose plans report a weekly budget; OpenCode reports none. */
+export type MeteredProvider = Exclude<ProviderKind, "opencode">;
+
+/** What is left of each metered plan, as a share of its tightest window. */
+export type UsageLeft = Readonly<Record<MeteredProvider, number>>;
 
 export interface AgentChoice {
   readonly provider: ProviderKind;
@@ -20,8 +26,8 @@ export interface AgentChoice {
 
 export const AGENTS = {
   opus: { provider: "claude", model: "Claude Opus 5.5", effort: "High" },
-  sol: { provider: "codex", model: "GPT-6.1 Sol", effort: "Extra High" },
-  solHigh: { provider: "codex", model: "GPT-6.1 Sol", effort: "High" },
+  sol: { provider: "codex", model: "GPT-6.2 Sol", effort: "Extra High" },
+  solHigh: { provider: "codex", model: "GPT-6.2 Sol", effort: "High" },
   deepseek: { provider: "opencode", model: "DeepSeek V4.1 Flash Free", effort: "High", free: true },
   glm: { provider: "opencode", model: "GLM-5.3-Flash Free", effort: "High", free: true },
 } as const satisfies Record<string, AgentChoice>;
@@ -34,17 +40,17 @@ export interface CatalogModel {
 }
 
 export const MODEL_CATALOG: readonly CatalogModel[] = [
+  { name: "GPT-6.2 Sol", provider: "codex" },
+  { name: "GPT-6.2 Astra", provider: "codex" },
+  { name: "GPT-6.1 Terra", provider: "codex" },
   { name: "GPT-6.1 Sol", provider: "codex" },
   { name: "GPT-6 Astra", provider: "codex" },
-  { name: "GPT-6.1 Terra", provider: "codex" },
   { name: "GPT-6 Sol", provider: "codex" },
   { name: "GPT-6 Luna", provider: "codex" },
-  { name: "GPT-5.6 Sol", provider: "codex" },
-  { name: "GPT-5.6 Terra", provider: "codex" },
-  { name: "GPT-5.6 Luna", provider: "codex" },
   { name: "Claude Opus 5.5", provider: "claude" },
   { name: "Claude Sonnet 5.5", provider: "claude" },
-  { name: "Claude Fable 5.1", provider: "claude" },
+  { name: "Claude Fable 5.2", provider: "claude" },
+  { name: "Claude Haiku 5.5", provider: "claude" },
   { name: "Beam Free", provider: "opencode", free: true },
   { name: "DeepSeek V4.1 Flash Free", provider: "opencode", free: true },
   { name: "Flint 40B Free", provider: "opencode", free: true },
@@ -53,14 +59,19 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
   { name: "Nemotron 3 Ultra Free", provider: "opencode", free: true },
   { name: "Nemotron 3.5 Lightning Free", provider: "opencode", free: true },
   { name: "Nemotron 3.5 Super VL Free", provider: "opencode", free: true },
+  { name: "Gemini 4 Neon", provider: "antigravity" },
+  { name: "Gemini 4 Argon", provider: "antigravity" },
+  { name: "Gemini 4 Hydrogen", provider: "antigravity" },
+  { name: "Gemini 3.8 Flash", provider: "antigravity" },
 ];
 
 /** What is left of each paid plan's weekly budget, as the rail's meters and the Inbox read it. */
-export const WEEKLY_LEFT = { claude: 0.62, codex: 0.71 } as const;
+export const WEEKLY_LEFT: UsageLeft = { claude: 0.62, codex: 0.71, antigravity: 0.84 };
 
 export const PROVIDER_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
   claude: "Claude Code",
+  antigravity: "Antigravity",
   opencode: "OpenCode",
 };
 
@@ -481,8 +492,8 @@ export const lumen = byLocale((locale) => {
       InboxMessage
     >,
     passkeyIntro: t(
-      "I’ll build the sign-in UI and the session flow myself and hand the rest out in parallel: three parts to GPT-6.1 Sol, the docs to a free model.",
-      "我来做登录界面和会话流程，其余并行委派：三项交给 GPT-6.1 Sol，文档交给免费模型。",
+      "I’ll build the sign-in UI and the session flow myself and hand the rest out in parallel: three parts to GPT-6.2 Sol, the docs to a free model.",
+      "我来做登录界面和会话流程，其余并行委派：三项交给 GPT-6.2 Sol，文档交给免费模型。",
     ),
     wiringPasskeys: t(
       "Wiring the passkey ceremony into the session",

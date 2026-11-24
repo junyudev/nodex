@@ -8,7 +8,7 @@ export const SOCIAL_CARD_SCALE = 2;
 export const SOCIAL_CARDS = {
   home: {
     file: "og.png",
-    alt: "Nodex: One inbox. Every agent. All local. The Inbox sends each message to its own place: a new chat on GPT-6.1 Sol, a chat already running, a free GLM model, and a Claude Opus lead that fans its work out. Works with Claude Code, Codex and OpenCode.",
+    alt: "Nodex: One inbox. Every agent. All local. The Inbox sends each message to its own place: a new chat on GPT-6.2 Sol, a chat already running, a free GLM model, and a Claude Opus lead that fans its work out. Works with Claude Code, Codex, Antigravity and OpenCode.",
   },
   download: {
     file: "og-download.png",

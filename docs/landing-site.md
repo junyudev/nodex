@@ -211,7 +211,7 @@ production custom-domain contract and must remain in the generated Pages tree;
 
 The homepage tells one story in order. The hero headline's three lines are also the hero demo's
 chapters and jump to them: **One inbox.** captures a burst of messages and plans each one, the
-reader moves one plan's lead from GPT-6.1 Sol to Claude Opus before starting it, and the
+reader moves one plan's lead from GPT-6.2 Sol to Claude Opus before starting it, and the
 cleared Inbox shows how it plans; **Every agent.** opens that chat, where the reader points at
 its Claude lead, then opens one of its GPT subagents in the Subagents tab beside it and watches it
 finish in Codex; **All local.** opens a chat with its Page
@@ -240,9 +240,10 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   there becomes a preview tab right after its Page, with the path back to the Page above it:
   HTML renders as the page it is and an image shows in its viewer.
 - The cleared Inbox copies the app's own summary of how it plans: the model it is Suggested by,
-  each Model guide family beside what is left of its plan's weekly budget, and the reader's
-  Routing preferences, in the app's labels and with the guide's one-line notes from
-  `src/shared/inbox-model-guide.ts`; change the replica when the app changes them.
+  each Model guide family the reader's Agents offer and then each other Agent by name, beside
+  what is left of its plan's weekly budget, and the reader's Routing preferences, in the app's
+  labels and with the guide's one-line notes from `src/shared/inbox-model-guide.ts`; change the
+  replica when the app changes them.
 - Pointing at a chat's model button shows the model that leads it.
 - A plan's delegated parts read as one tree: a quiet rail runs beside them and curves into each
   part, with no arrowheads, because the parts branch from one plan rather than point somewhere.

@@ -66,8 +66,6 @@ const replicaCopy = byLocale((locale) => {
     refreshModels: t("Refresh models", "刷新模型"),
     manageProviders: t("Manage providers", "管理提供商"),
     showAllModels: t("Show all models", "显示所有模型"),
-    openCodeFreeFamily: t("OpenCode free models", "OpenCode 免费模型"),
-    free: t("Free", "免费"),
     freeBadge: t("FREE", "免费"),
     settings: t("Settings", "设置"),
     showHandledMessages: t("Show handled messages", "显示已处理消息"),
@@ -104,10 +102,11 @@ const replicaCopy = byLocale((locale) => {
       "Frontend, UI and copy, with real taste. Spends the Claude budget faster.",
       "擅长前端、界面设计和文案，设计判断力出色。消耗 Claude 额度较快。",
     ),
-    openCodeNote: t(
-      "Docs, notes and simple changes. Weaker at hard problems.",
-      "适合文档、笔记和简单改动。处理复杂问题的能力较弱。",
+    geminiNote: t(
+      "Frontend and UI, with real taste. Spends a Gemini budget, not Claude's.",
+      "擅长前端和界面设计，设计判断力出色。消耗 Gemini 额度，不占用 Claude 额度。",
     ),
+    notReported: t("Not reported", "未报告"),
     suggestionCriteria: t(
       "Each suggestion follows your routing preferences first, then weighs what a model does well and how much of its weekly budget is left.",
       "每条建议会先遵循你的分流偏好，再考虑模型的优势和每周剩余用量。",

@@ -53,11 +53,11 @@ effort for a new chat, or the chat that's already on it. Nothing runs until you 
 <picture>
   <source srcset=".github/assets/readme/fanout-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/fanout-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/fanout-light.avif" alt="A Claude Code chat delegating three parts to GPT-6.1 Sol in Codex and one to a free OpenCode model" width="100%">
+  <img src=".github/assets/readme/fanout-light.avif" alt="A Claude Code chat delegating three parts to GPT-6.2 Sol in Codex and one to a free OpenCode model" width="100%">
 </picture>
 
 Any chat can hand parts of its work to another provider. A Claude Code session fans out to
-GPT-6.1 Sol in Codex, watches every task and merges what comes back. Each subagent keeps a
+GPT-6.2 Sol in Codex, watches every task and merges what comes back. Each subagent keeps a
 conversation you can open, follow up on or stop.
 
 <details>
@@ -93,12 +93,12 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 <picture>
   <source srcset=".github/assets/readme/agents-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/agents-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude and Codex usage meters" width="100%">
+  <img src=".github/assets/readme/agents-light.avif" alt="The Nodex model menu filtered to free OpenCode models, beside Claude, Codex and Antigravity usage meters" width="100%">
 </picture>
 
-Codex, Claude Code and OpenCode are built in, 40+ more agents install from the ACP Registry, and
-OpenCode's free models sit in the same menu. Usage meters show what's left of each plan, and the
-Inbox weighs it before it picks a model.
+Codex, Claude Code, Antigravity and OpenCode are built in, 40+ more agents install from the ACP
+Registry, and OpenCode's free models sit in the same menu. Usage meters show what's left of each
+plan, and the Inbox weighs it before it picks a model.
 
 ### The work lands in Pages you both edit
 
@@ -144,12 +144,12 @@ over your local network or Tailscale, encrypted end to end, with no Nodex server
 - **Scheduled** runs cron tasks and heartbeats on your computer.
 - **Canvas, the command palette, split panes and multiple windows** keep a busy workspace navigable.
 - **Page history and whole-workspace snapshots** let you restore anything.
-- **Conversation import** brings your existing Codex and Claude Code chats along.
+- **Conversation import** brings your existing Codex, Claude Code and Antigravity chats along.
 
 ## Install
 
-Nodex is in beta. Sign in with the Codex, Claude Code or OpenCode account you already have, or start
-with OpenCode's free models.
+Nodex is in beta. Sign in with the Codex, Claude Code, Antigravity or OpenCode account you
+already have, or start with OpenCode's free models.
 
 - **macOS 15+** on Apple silicon: `brew install --cask junyudev/tap/nodex`, or the
   [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg).

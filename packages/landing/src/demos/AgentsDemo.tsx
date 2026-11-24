@@ -9,7 +9,7 @@ import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { byLocale } from "../lib/locale";
-import { AGENTS, lumen, MODEL_CATALOG, type ProviderKind } from "./lumen";
+import { AGENTS, lumen, MODEL_CATALOG, WEEKLY_LEFT, type ProviderKind } from "./lumen";
 import { useTimeline, useTyped, type TimelineScript } from "./timeline";
 
 const SEARCH = "free";
@@ -107,7 +107,7 @@ function AgentsPlayback() {
           <AppWindow
             key={timeline.loop}
             rail
-            usage={{ claude: 0.38, codex: 0.71 }}
+            usage={{ ...WEEKLY_LEFT, claude: 0.38 }}
             focusedUsage={card}
             tabs={<Tab label={story.titles.coldstart} titleOnly />}
             overlay={

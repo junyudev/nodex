@@ -2,8 +2,15 @@ import { motion, useTransform, type MotionValue } from "motion/react";
 import type { ReactNode } from "react";
 import { useLumen } from "../demos/demo-locale";
 import { useReplicaCopy } from "./copy";
-import { type AgentChoice, type Dispatch, type InboxMessage } from "../demos/lumen";
-import { AgentLabel, ProviderMark, UsageRing, cx } from "./Window";
+import {
+  PROVIDER_NAMES,
+  type AgentChoice,
+  type Dispatch,
+  type InboxMessage,
+  type ProviderKind,
+  type UsageLeft,
+} from "../demos/lumen";
+import { AgentLabel, UsageRing, cx } from "./Window";
 import {
   ArchiveIcon,
   ArrowUpIcon,
@@ -306,41 +313,34 @@ function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
 
 /**
  * The cleared Inbox, and how it plans the next burst, as the app shows it: the model that
- * suggests, each family of Nodex's model guide beside what is left of its plan this week, and the
- * reader's own routing preferences, which suggestions follow first.
+ * suggests, each family of Nodex's model guide beside what is left of its plan this week, then
+ * each other Agent by name, and the reader's own routing preferences, which suggestions follow
+ * first. Antigravity is not a branded runtime, so its family names it.
  */
 export function InboxAllClear({
   usage,
   suggestedBy,
 }: {
-  readonly usage: { readonly claude: number; readonly codex: number };
+  readonly usage: UsageLeft;
   readonly suggestedBy: AgentChoice;
 }) {
   const copy = useReplicaCopy();
   const story = useLumen();
-  const guide = [
+  const guide: readonly {
+    readonly kind: ProviderKind;
+    readonly title: string;
+    readonly left: number | null;
+    readonly note?: string;
+  }[] = [
+    { kind: "codex", title: "GPT-6.2 Sol", left: usage.codex, note: copy.gptNote },
+    { kind: "claude", title: "Claude Opus 5.5", left: usage.claude, note: copy.opusNote },
     {
-      icon: <UsageRing left={usage.codex} kind="codex" className="size-[22px]" />,
-      model: "GPT-6.1",
-      note: copy.gptNote,
-      detail: copy.budgetLeft(Math.round(usage.codex * 100)),
+      kind: "antigravity",
+      title: `Gemini 4 Neon · ${PROVIDER_NAMES.antigravity}`,
+      left: usage.antigravity,
+      note: copy.geminiNote,
     },
-    {
-      icon: <UsageRing left={usage.claude} kind="claude" className="size-[22px]" />,
-      model: "Claude Opus 5.5",
-      note: copy.opusNote,
-      detail: copy.budgetLeft(Math.round(usage.claude * 100)),
-    },
-    {
-      icon: (
-        <span className="flex size-[22px] items-center justify-center">
-          <ProviderMark kind="opencode" className="size-3.5" />
-        </span>
-      ),
-      model: copy.openCodeFreeFamily,
-      note: copy.openCodeNote,
-      detail: copy.free,
-    },
+    { kind: "opencode", title: PROVIDER_NAMES.opencode, left: null },
   ];
   return (
     <motion.div
@@ -378,16 +378,20 @@ export function InboxAllClear({
           <dt className="pt-[3px] text-app-faint">{copy.modelGuide}</dt>
           <dd className="flex min-w-0 flex-col gap-2">
             {guide.map((entry) => (
-              <div key={entry.model} className="flex min-w-0 items-start gap-2.5">
-                <span className="text-app-fg">{entry.icon}</span>
+              <div key={entry.title} className="flex min-w-0 items-start gap-2.5">
+                <span className="text-app-fg">
+                  <UsageRing left={entry.left} kind={entry.kind} className="size-[22px]" />
+                </span>
                 <span className="flex min-w-0 flex-1 flex-col pt-[2px]">
                   <span className="flex items-baseline gap-2">
-                    <span className="truncate font-medium text-app-fg">{entry.model}</span>
+                    <span className="truncate font-medium text-app-fg">{entry.title}</span>
                     <span className="ml-auto shrink-0 text-[11px] text-app-faint tabular-nums">
-                      {entry.detail}
+                      {entry.left === null
+                        ? copy.notReported
+                        : copy.budgetLeft(Math.round(entry.left * 100))}
                     </span>
                   </span>
-                  <span className="text-app-muted">{entry.note}</span>
+                  {entry.note ? <span className="text-app-muted">{entry.note}</span> : null}
                 </span>
               </div>
             ))}

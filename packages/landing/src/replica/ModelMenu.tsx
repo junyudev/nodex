@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, type MotionValue } from "motion/react";
 import type { ReactNode } from "react";
 import { useReplicaCopy } from "./copy";
-import type { CatalogModel } from "../demos/lumen";
+import { PROVIDER_NAMES, type CatalogModel } from "../demos/lumen";
 import { ProviderMark, cx } from "./Window";
 import { CheckIcon, FastModeIcon, RefreshIcon, SearchIcon, SettingsIcon } from "./icons";
 
@@ -95,9 +95,10 @@ export function ModelMenu({
               <ProviderMark kind={model.provider} className="size-3.5" />
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span className="truncate">{model.name}</span>
-                {model.provider === "opencode" ? (
+                {/* Codex and Claude are known by their marks; other Agents are named. */}
+                {model.provider === "opencode" || model.provider === "antigravity" ? (
                   <span className="min-w-0 truncate text-[12px] leading-4 text-app-muted">
-                    OpenCode
+                    {PROVIDER_NAMES[model.provider]}
                   </span>
                 ) : null}
               </span>

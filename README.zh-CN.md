@@ -52,10 +52,10 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 <picture>
   <source srcset=".github/assets/readme/fanout-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/fanout-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/fanout-zh-light.avif" alt="一个 Claude Code 对话把三部分工作交给 Codex 里的 GPT-6.1 Sol，另一部分交给 OpenCode 的免费模型" width="100%">
+  <img src=".github/assets/readme/fanout-zh-light.avif" alt="一个 Claude Code 对话把三部分工作交给 Codex 里的 GPT-6.2 Sol，另一部分交给 OpenCode 的免费模型" width="100%">
 </picture>
 
-任何对话都可以把一部分工作交给另一家的模型。Claude Code 对话派出几个 Codex 里的 GPT-6.1 Sol，
+任何对话都可以把一部分工作交给另一家的模型。Claude Code 对话派出几个 Codex 里的 GPT-6.2 Sol，
 盯着每个任务，再把结果合并回来。每个子 Agent 都有自己的对话，可以随时打开、追问或叫停。
 
 <details>
@@ -91,11 +91,11 @@ yourself and spawning sparingly. Outside Nodex, ignore this section.
 <picture>
   <source srcset=".github/assets/readme/agents-zh-dark.avif" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/agents-zh-light.avif" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/agents-zh-light.avif" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude 和 Codex 的用量表" width="100%">
+  <img src=".github/assets/readme/agents-zh-light.avif" alt="Nodex 模型菜单筛选出 OpenCode 免费模型，旁边是 Claude、Codex 和 Antigravity 的用量表" width="100%">
 </picture>
 
-内置 Codex、Claude Code 和 OpenCode，还能从 ACP Registry 安装 40 多个 Agent，OpenCode 的免费模型
-就在同一个菜单里。用量表显示每个订阅还剩多少，收件箱挑模型时会把余量考虑进去。
+内置 Codex、Claude Code、Antigravity 和 OpenCode，还能从 ACP Registry 安装 40 多个 Agent，OpenCode
+的免费模型就在同一个菜单里。用量表显示每个订阅还剩多少，收件箱挑模型时会把余量考虑进去。
 
 ### 工作成果落在你们共同编辑的 Pages 里
 
@@ -139,12 +139,12 @@ Nodex Mobile 能看到所有对话，需要你处理的排在最前。可以批�
 - **Scheduled**：在你的电脑上运行定时任务和 heartbeat。
 - **Canvas、命令面板、分屏和多窗口**：再忙的工作区也能理得清。
 - **Page 历史版本和整个工作区的快照**：什么都能恢复。
-- **导入对话**：把已有的 Codex 和 Claude Code 对话一起带过来。
+- **导入对话**：把已有的 Codex、Claude Code 和 Antigravity 对话一起带过来。
 
 ## 安装
 
-Nodex 目前为 Beta。直接登录你已有的 Codex、Claude Code 或 OpenCode 账号；什么都没有，也可以先用
-OpenCode 的免费模型。
+Nodex 目前为 Beta。直接登录你已有的 Codex、Claude Code、Antigravity 或 OpenCode 账号；什么都
+没有，也可以先用 OpenCode 的免费模型。
 
 - **macOS 15+**（Apple 芯片）：`brew install --cask junyudev/tap/nodex`，或下载
   [磁盘映像](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)。
