@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { APP_TEST_SUITES } from "../../config/test-suites.ts";
 import { describe, expect, it } from "vite-plus/test";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
 import { STATIC_GROUPS } from "../ci/ci-gate-plan.ts";
@@ -13,12 +14,12 @@ import {
 } from "./check-changed-plan.ts";
 import {
   formatSummary,
+  idleQueueTime,
   queueTime,
   readChangedPaths,
-  readPassKey,
   selectComparisonBase,
 } from "./check-changed-record.ts";
-import { parseCheckArguments, runStep, runStepQueue } from "./check-changed.ts";
+import { parseCheckArguments, runStep, runStepQueue, validationLanes } from "./check-changed.ts";
 
 const remote = "refs/remotes/origin/main";
 const local = "refs/heads/main";
@@ -106,34 +107,6 @@ describe("changed-check comparison", () => {
       );
     });
   });
-
-  it("fingerprints binary edits, ignored env files, install state, staged bytes and validation env", () => {
-    withRepository(({ root, git, write, commit }) => {
-      write(".gitignore", ".env*\nnode_modules/\n");
-      write("tracked.bin", Buffer.from([0, 1]));
-      commit();
-      const key = (env: NodeJS.ProcessEnv = {}, ref = "HEAD") =>
-        readPassKey(root, readChangedPaths(root, ref), ref, env);
-      const distinct = [key()];
-      write("tracked.bin", Buffer.from([0, 2]));
-      distinct.push(key());
-      git("add", "tracked.bin");
-      distinct.push(key());
-      write("untracked.bin", Buffer.from([0, 3]));
-      distinct.push(key());
-      write("untracked.bin", Buffer.from([0, 4]));
-      distinct.push(key());
-      write("packages/example/.env.local", "ENABLED=1");
-      distinct.push(key());
-      write("node_modules/.modules.yaml", "build: version");
-      distinct.push(key());
-      write("node_modules/.pnpm/lock.yaml", "installed: version");
-      distinct.push(key());
-      distinct.push(key({ NODEX_TEST_TIER: "stress" }), key({ CI: "1" }), key({}, "main"));
-      expect(new Set(distinct).size).toBe(distinct.length);
-      expect(key({ PWD: "/a/different/shell" })).toBe(key());
-    });
-  });
 });
 
 describe("changed-check steps", () => {
@@ -164,10 +137,11 @@ describe("changed-check steps", () => {
         "src/renderer/widget.test.ts",
       ],
       renderer: ["src/renderer/widget.jsdom.test.ts", "src/renderer/widget.test.tsx"],
+      browser: ["src/renderer/widget.browser.test.tsx"],
     });
   });
 
-  it("preserves every selected CI group and puts focused checks before slow gates", () => {
+  it("preserves every selected CI group and prioritizes feedback and focused suites", () => {
     const files = ["package.json", "src/renderer/widget.tsx"];
     const { steps } = planCheckSteps(files, files, {
       unit: [],
@@ -182,9 +156,9 @@ describe("changed-check steps", () => {
     expect(steps.slice(0, 5).map(({ name }) => name)).toEqual([
       "changed-file format/lint",
       "i18n",
-      "focused unit",
-      "focused renderer",
       "static types",
+      "app renderer",
+      "app unit",
     ]);
     expect(steps.find(({ name }) => name === "static ui-contracts")).toMatchObject({
       commands: expect.arrayContaining([
@@ -199,22 +173,21 @@ describe("changed-check steps", () => {
         }),
       ]),
     });
-    expect(steps.find(({ name }) => name === "app renderer")).toMatchObject({ filters: [] });
+    expect(steps.find(({ name }) => name === "app renderer")).toMatchObject({
+      priority: ["src/renderer/widget.test.tsx"],
+    });
     expect(plan("package.json").filter(({ name }) => name.startsWith("static "))).toHaveLength(
       STATIC_GROUPS.length,
     );
   });
 
-  it("keeps just the applicable lanes for docs and workflow changes", () => {
-    expect(
-      plan("AGENTS.md")
-        .filter(({ kind }) => kind !== "skip")
-        .map(({ name }) => name),
-    ).toEqual(["changed-file format/lint", "semantic"]);
-    const workflow = plan(".github/workflows/_static-checks.yml");
-    expect(workflow.find(({ name }) => name === "app unit")?.kind).toBe("skip");
-    expect(workflow.find(({ name }) => name === "static repository-contracts")?.kind).toBe(
-      "command",
+  it.each([
+    { files: [] },
+    { files: ["AGENTS.md"] },
+    { files: [".github/workflows/_static-checks.yml"] },
+  ])("includes every Vitest suite for %j", ({ files }) => {
+    expect(plan(...files).flatMap((step) => (step.kind === "cached" ? [step.suite] : []))).toEqual(
+      APP_TEST_SUITES,
     );
   });
 
@@ -251,56 +224,127 @@ describe("changed-check steps", () => {
     });
   });
 
-  it("admits in order, keeps each lane exclusive, and continues after failure and timeout", async () => {
-    const step = (name: string, lane?: CheckStep["lane"]): CheckStep => ({
+  it("keeps feedback and local slots available while budgeted work waits", async () => {
+    const cmd = (name: string, resource?: "semantic" | "rust-budget"): CheckStep => ({
       kind: "command",
       commands: [],
       name,
-      lane,
+      resource,
+      lane: resource === "rust-budget" ? "rust" : undefined,
     });
-    const gates = [
-      step("changed"),
-      step("unit", "vitest"),
-      step("renderer", "vitest"),
-      step("rust", "rust"),
+    const steps: CheckStep[] = [
+      cmd("changed"),
+      cmd("i18n"),
+      cmd("semantic", "semantic"),
+      ...APP_TEST_SUITES.map((suite): CheckStep => ({
+        name: suite,
+        kind: "cached",
+        suite,
+        priority: [],
+      })),
+      cmd("clippy", "rust-budget"),
+      cmd("rust tests", "rust-budget"),
+      cmd("static"),
     ];
-    const lightFinished = deferred();
-    const unitFinished = deferred();
-    const laterStarted = deferred();
-    const admissions: string[] = [];
-    const running = runStepQueue(gates, 2, new AbortController().signal, async ({ name }) => {
-      admissions.push(name);
-      if (name === "changed") await lightFinished.promise;
-      if (name === "unit") await unitFinished.promise;
-      if (name === "renderer") laterStarted.resolve();
+    const admission: string[] = [];
+    const claims: string[] = [];
+    const changed = deferred();
+    const semanticGrant = deferred();
+    const semanticFinish = deferred();
+    const focusedDone = deferred();
+    const rustGrant = deferred();
+    const staticStarted = deferred();
+    const signal = new AbortController().signal;
+    const lanes = validationLanes(semanticGrant.promise);
+    const running = runStepQueue(steps, 1, signal, async (step) => {
+      admission.push(step.name);
+      if (step.name === "changed") await changed.promise;
+      if (step.name === "semantic") {
+        claims.push("semantic");
+        await semanticFinish.promise;
+      }
+      if (step.kind === "cached") {
+        const focused = step.suite === "renderer";
+        await lanes.suite(
+          step.suite,
+          {},
+          signal,
+          async () => {
+            claims.push(step.suite);
+          },
+          focused ? undefined : focusedDone.promise,
+        );
+        if (focused) focusedDone.resolve();
+      }
+      if (step.name === "clippy") await rustGrant.promise;
+      if (step.name === "static") staticStarted.resolve();
       return {
-        name,
-        outcome: name === "changed" ? "FAIL" : name === "unit" ? "TIMEOUT" : "pass",
+        name: step.name,
+        outcome: step.name === "changed" ? "FAIL" : step.name === "clippy" ? "TIMEOUT" : "pass",
         runMs: 0,
         queueMs: 0,
       };
     });
-    expect(admissions).toEqual(["changed", "unit"]);
-    lightFinished.resolve();
-    await Promise.resolve();
-    expect(admissions).toEqual(["changed", "unit"]);
-    unitFinished.resolve();
-    await laterStarted.promise;
-    expect((await running).map(({ outcome }) => outcome)).toEqual([
+    expect(admission).toEqual(["changed", "semantic", ...APP_TEST_SUITES]);
+    expect(claims).toEqual(["semantic"]);
+    changed.resolve();
+    await staticStarted.promise;
+    expect(admission).toContain("i18n");
+    expect(admission).toContain("clippy");
+    expect(admission).not.toContain("rust tests");
+    expect(claims).toEqual(["semantic"]);
+    semanticGrant.resolve();
+    semanticFinish.resolve();
+    rustGrant.resolve();
+    const results = await running;
+    expect(claims).toEqual([
+      "semantic",
+      "renderer",
+      ...APP_TEST_SUITES.filter((suite) => suite !== "renderer"),
+    ]);
+    expect(results.map(({ outcome }) => outcome).filter((outcome) => outcome !== "pass")).toEqual([
       "FAIL",
       "TIMEOUT",
-      "pass",
-      "pass",
     ]);
-    expect(admissions).toEqual(["changed", "unit", "renderer", "rust"]);
+    expect(admission).toContain("rust tests");
+  });
+  it("serializes writes to Cargo outputs with suites that launch them", async () => {
+    const lanes = validationLanes(Promise.resolve());
+    const signal = new AbortController().signal;
+    const rustStarted = deferred();
+    const rustDone = deferred();
+    const execution: string[] = [];
+    const rust = lanes.cargo({}, signal, async () => {
+      execution.push("rust started");
+      rustStarted.resolve();
+      await rustDone.promise;
+      execution.push("rust finished");
+    });
+    await rustStarted.promise;
+    try {
+      await lanes.suite("renderer", {}, signal, async () => {
+        execution.push("renderer");
+      });
+      const core = lanes.suite("core-client", {}, signal, async () => {
+        execution.push("core-client");
+      });
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      expect(execution).toEqual(["rust started", "renderer"]);
+      rustDone.resolve();
+      await Promise.all([rust, core]);
+      expect(execution).toEqual(["rust started", "renderer", "rust finished", "core-client"]);
+    } finally {
+      rustDone.resolve();
+    }
   });
 });
 
 it("accepts an explicit ref and gives the timeout flag precedence over the environment", () => {
   expect(
     parseCheckArguments(["feature", "--timeout", "2"], { CHECK_CHANGED_TIMEOUT: "3" }),
-  ).toEqual({ ref: "feature", timeoutMs: 2000 });
+  ).toEqual({ ref: "feature", timeoutMs: 2000, suiteTimeoutMs: 2000 });
   expect(parseCheckArguments([], { CHECK_CHANGED_TIMEOUT: "3" }).timeoutMs).toBe(3000);
+  expect(parseCheckArguments([], {}).suiteTimeoutMs).toBe(3_600_000);
   expect(() => parseCheckArguments(["--timeout", "-1"], {})).toThrow("positive number");
 });
 
@@ -317,6 +361,28 @@ it("accounts for an unfinished budget wait and overlapping claims", () => {
       150,
     ),
   ).toBe(40);
+});
+
+it("excludes wall-clock time only when every active step is waiting", () => {
+  const step = (start: number, end: number, waits: readonly (readonly [number, number])[]) => ({
+    name: "step",
+    outcome: "pass" as const,
+    runMs: 0,
+    queueMs: 0,
+    activity: { start, end, waits },
+  });
+  expect(
+    idleQueueTime([
+      step(1, 30, [
+        [5, 15],
+        [20, 25],
+      ]),
+      step(7, 24, [
+        [10, 13],
+        [21, 22],
+      ]),
+    ]),
+  ).toBe(7);
 });
 
 it("summarizes cache reach, top causes, skipped steps, and total time", () => {
@@ -350,9 +416,7 @@ it("summarizes cache reach, top causes, skipped steps, and total time", () => {
     ],
   });
   expect(output).toContain("5/10 hits · 80.0% cacheable · misses: source.ts (3)");
-  expect(output).toContain(
-    "WARNING: app unit was 80.0% cacheable. untracked file read: generated.json (2)",
-  );
+  expect(output).toContain("always run: untracked file read (2)");
   expect(output).toContain("no Rust paths changed");
   expect(output).toContain("Total wall time: 4.00s");
 });

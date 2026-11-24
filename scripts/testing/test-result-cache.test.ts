@@ -4,8 +4,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   readdir,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -13,25 +15,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { TestModule } from "vite-plus/test/node";
-import { mergePathLists } from "./check-changed.ts";
-import { validationConcurrency } from "./run-cached-tests.ts";
-import { discoverSuiteManifest } from "./runtime.ts";
-import {
-  CACHE_SUITES,
-  cacheReach,
-  chooseCacheAudits,
-  partitionCacheFiles,
-} from "./test-cache-policy.ts";
-import {
-  builtinReason,
-  dependencyReader,
-  graphInputs,
-  sourceReason,
-  virtualModuleReason,
-  type TestEvidence,
-} from "./test-cache-graph.ts";
+import { mergePathLists, validationConcurrency } from "./check-changed.ts";
+import { chooseCacheAudits } from "./test-cache-policy.ts";
+import { dependencyReader, graphInputs, virtualModuleReason } from "./test-cache-graph.ts";
+import type { TestEvidence } from "./test-cache-evidence.ts";
+import { pathSnapshot } from "./test-observation.mts";
 import { localInputReader } from "./test-cache-inputs.ts";
 import {
   CorruptCachedPass,
@@ -39,6 +29,7 @@ import {
   findPass,
   globalCacheKey,
   savePass,
+  stampDigests,
   workspaceInputs,
 } from "./test-cache-store.ts";
 
@@ -129,17 +120,26 @@ describe("test result cache", () => {
 
   it("reruns with the new resolution and invalidates only the recorded fixture inputs", async () => {
     const repository = path.resolve(import.meta.dirname, "../..");
-    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-fixture-"));
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "nodex-cache-fixture-")));
     const testFile = "sample.test.ts";
     const existingSnapshotTest = "snapshot.test.ts";
     const usesLazyJson = "opens-catalog.test.ts";
+    const usesRealModule = "uses-real-module.test.ts";
     const lazyJson = "locale.json";
+    const fixture = "read.fixture";
+    const spawns = "spawns.test.ts";
+    const observationSetup = "./tooling/setup-test-observation.ts";
+    const observationRunner = "./tooling/test-observation-runner.ts";
+    const recorderSource = path.join(import.meta.dirname, "test-observation.mts");
+    const observationPreload = pathToFileURL(recorderSource).href;
+    const observations = path.join(root, "batch.local", "observations");
     const existingSnapshot = "__snapshots__/snapshot.test.ts.snap";
     const asset = "crates/nodex-search-kernel/generated/nodex_search_kernel_bg.wasm";
     const staging = path.join(root, "batch.local");
     const store = path.join(root, "store.local");
     const batchModule = pathToFileURL(path.join(import.meta.dirname, "run-cache-batch.mts")).href;
     async function run(files: readonly string[]) {
+      await rm(observations, { recursive: true, force: true });
       const workspace = await workspaceInputs(root);
       await writeFile(
         path.join(staging, "batch.json"),
@@ -156,13 +156,21 @@ describe("test result cache", () => {
           "--eval",
           `
           import { runCacheBatch } from ${JSON.stringify(batchModule)};
-          const evidence = await runCacheBatch("renderer", process.cwd(), ${JSON.stringify(staging)}, {
+          const evidence = await runCacheBatch(process.cwd(), ${JSON.stringify(staging)}, {
             config: "./fixture.config.ts", reporters: ["default"],
           });
           console.log("CACHE_EVIDENCE=" + JSON.stringify(evidence));
         `,
         ],
-        { cwd: root, env: { ...process.env, NODE_ENV: "test" } },
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            NODEX_TEST_OBSERVATIONS: observations,
+            NODEX_TEST_OBSERVATION_ROOT: root,
+          },
+        },
       );
       const line = stdout.split("\n").find((value) => value.startsWith("CACHE_EVIDENCE="));
       const evidence = JSON.parse(line!.slice("CACHE_EVIDENCE=".length)) as TestEvidence[];
@@ -176,14 +184,29 @@ describe("test result cache", () => {
     try {
       await mkdir(staging);
       await symlink(path.join(repository, "node_modules"), path.join(root, "node_modules"), "dir");
+      const describeObservation = async (filename: string) =>
+        (await readFile(path.join(import.meta.dirname, path.basename(filename)), "utf8")).replace(
+          'require("./test-observation.mts")',
+          () => `require(${JSON.stringify(recorderSource)})`,
+        );
       await writeInputs(root, {
+        [observationSetup]: await describeObservation(observationSetup),
+        [observationRunner]: await describeObservation(observationRunner),
         "package.json": JSON.stringify({
           name: "cache-fixture",
           type: "module",
           exports: { "./schema/*.json": "./fixtures/*.json" },
         }),
-        "fixture.config.ts":
-          'export default { test: { maxWorkers: 1, environment: "jsdom", setupFiles: ["./config/setup-search-kernel.ts"] } };',
+        "fixture.config.ts": `export default { test: { maxWorkers: 2, environment: "node", pool: "threads",
+          runner: ${JSON.stringify(observationRunner)}, sequence: { setupFiles: "list" },
+          execArgv: ["--import", ${JSON.stringify(observationPreload)}],
+          setupFiles: [${JSON.stringify(observationSetup)}, "./config/setup-search-kernel.ts"] } };`,
+        [fixture]: "fixture bytes",
+        [spawns]: `
+          import { spawnSync } from "node:child_process";
+          import { expect, test } from "vite-plus/test";
+          test("spawns", () => expect(spawnSync(process.execPath, ["--version"]).status).toBe(0));
+        `,
         [lazyJson]: '{"label":"hello"}',
         "catalog.ts": `
           export async function label(translated: boolean) {
@@ -195,17 +218,32 @@ describe("test result cache", () => {
           import { label } from "./catalog";
           test("reads the requested catalog", async () => expect(await label(true)).toBe("hello"));
         `,
+        "service.ts": 'export { value } from "./real-service";',
+        "real-service.ts": 'export const value = "implementation";',
+        [usesRealModule]: `
+          import { expect, test } from "vite-plus/test";
+          import { value } from "./service";
+          test("uses the real module", () => expect(value).toBe("implementation"));
+        `,
         "foo/index.ts": 'export const value = "index";',
         "fixtures/package.json": '{"name":"nested-cache-fixture"}',
         "fixtures/first.ts": "export const first = 1;",
         "fixtures/schema.json": '{"version":1}',
         [testFile]: `
           import { expect, test } from "vite-plus/test";
+          import { spawnSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          import { vi } from "vite-plus/test";
+          import { value as service } from "./service";
+          vi.mock("./service", () => ({ value: "mock" }));
           import { value } from "./foo";
           import schema from "cache-fixture/schema/schema.json";
           import { label } from "./catalog";
           const inputs = import.meta.glob("./fixtures/*.ts");
           test("runs the selected module", async () => {
+            expect(spawnSync).toBeTypeOf("function");
+            expect(service).toBe("mock");
+            expect(readFileSync("./read.fixture", "utf8")).toBe("fixture bytes");
             expect(await label(false)).toBe("default");
             expect(schema.version).toBe(1);
             expect(Object.keys(inputs)).toContain("./fixtures/first.ts");
@@ -228,18 +266,40 @@ describe("test result cache", () => {
         await mkdir(path.dirname(path.join(root, file)), { recursive: true });
         await copyFile(path.join(repository, file), path.join(root, file));
       }
-      const initial = await run([testFile, existingSnapshotTest, usesLazyJson]);
+      const initial = await run([
+        testFile,
+        existingSnapshotTest,
+        usesLazyJson,
+        usesRealModule,
+        spawns,
+      ]);
       expect(initial.stdout).toContain("CACHE_RESOLUTION=index");
-      expect(initial.evidence).toHaveLength(3);
-      for (const entry of initial.evidence) {
-        expect(entry).toMatchObject({ passed: true, broadTopology: false });
+      expect(initial.evidence).toHaveLength(5);
+      const alone = (await run([testFile])).evidence[0];
+      const alongsideRealModule = initial.evidence.find(({ file }) => file === testFile);
+      expect(alone?.deps).toBeDefined();
+      expect(alone?.deps).not.toContain("real-service.ts");
+      expect(alongsideRealModule).toMatchObject({ deps: alone?.deps, local: alone?.local });
+      expect(initial.evidence.find(({ file }) => file === usesRealModule)?.deps).toContain(
+        "real-service.ts",
+      );
+      expect(initial.evidence.find(({ file }) => file === spawns)?.exclusions).toEqual([
+        { reason: "subprocess", input: process.execPath },
+      ]);
+      for (const entry of initial.evidence.filter(({ file }) => file !== spawns)) {
+        expect(entry).toMatchObject({ passed: true });
         expect(entry.reason).toBeUndefined();
+        expect(entry.exclusions).toBeUndefined();
         await savePass(store, entry.file, {
           ...(await passFor(root, entry.deps)),
           local: entry.local,
         });
       }
       expect(await lookup()).toEqual({ kind: "hit" });
+
+      await writeInputs(root, { [fixture]: "edited fixture" });
+      expect(await lookup()).toEqual({ kind: "changed", inputs: [fixture] });
+      await writeInputs(root, { [fixture]: "fixture bytes" });
 
       await writeInputs(root, { "elsewhere.ts": "export const unrelated = true;" });
       expect(await lookup()).toEqual({ kind: "hit" });
@@ -276,19 +336,75 @@ describe("test result cache", () => {
     }
   });
 
-  it.each(CACHE_SUITES)("keeps every %s setup file eligible for caching", async (suite) => {
-    const root = path.resolve(import.meta.dirname, "../..");
-    const { setupFiles } = await discoverSuiteManifest(suite, [], false, {
-      cwd: root,
-      env: process.env,
-    });
-    const rejected = [];
-    for (const setup of setupFiles) {
-      const file = path.relative(root, setup);
-      const reason = sourceReason(file, await readFile(setup, "utf8"), suite === "renderer");
-      if (reason) rejected.push(`${file}: ${reason}`);
+  it("persists stable content stamps and rehashes fresh writes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-stamps-"));
+    const source = path.join(root, "source.ts");
+    const filename = path.join(root, "digest-cache.json");
+    try {
+      await writeFile(source, "first");
+      const before = await stat(source, { bigint: true });
+      const clock = vi.spyOn(Date, "now").mockReturnValue(Number(before.ctimeNs / 1_000_000n));
+      let initial: string | undefined;
+      try {
+        const fresh = stampDigests(filename);
+        initial = await fresh.hash(source, before);
+        await fresh.flush();
+        await expect(readFile(filename)).rejects.toMatchObject({ code: "ENOENT" });
+
+        clock.mockReturnValue(Number(before.ctimeNs / 1_000_000n) + 2_000);
+        const stable = stampDigests(filename);
+        expect(await stable.hash(source, before)).toBe(initial);
+        await stable.flush();
+        const reopened = stampDigests(filename);
+        expect(await reopened.hash(source, before)).toBe(initial);
+      } finally {
+        clock.mockRestore();
+      }
+
+      // A same-size edit needs a new digest even if the inode is unchanged.
+      await writeFile(source, "other");
+      expect(await fileHasher(root, stampDigests(filename))("source.ts")).not.toBe(initial);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
-    expect(rejected, `Ineligible ${suite} setup files disable test result caching`).toEqual([]);
+  });
+
+  it("replays observed directory listings and absent paths", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-observed-"));
+    const file = "sample.test.ts";
+    const observed = (name: string, kind: "readdir" | "exists") => ({
+      path: name,
+      kind,
+      evidence: pathSnapshot(path.join(root, name), kind, undefined),
+    });
+    const find = () =>
+      findPass(path.join(root, "cache"), file, "key", fileHasher(root), {
+        topology: "",
+        reader: localInputReader(root),
+      });
+    try {
+      await writeInputs(root, { [file]: "test", "fixtures/first.txt": "first" });
+      const local = {
+        probes: {},
+        globs: {},
+        observed: [observed("fixtures", "readdir"), observed("absent.txt", "exists")],
+      };
+      await savePass(path.join(root, "cache"), file, { ...(await passFor(root, [file])), local });
+      expect(await find()).toEqual({ kind: "hit" });
+      const reader = localInputReader(root);
+      const transient = observed("transient.txt", "exists");
+      const rejected = { probes: {}, globs: {}, observed: [transient] };
+      expect(await reader.matches(transient)).toBe(true);
+      await writeInputs(root, { "transient.txt": "written after lookup" });
+      expect(await reader.unchanged([local])).toBe(true);
+      expect(await reader.unchanged([local, rejected])).toBe(false);
+      await writeInputs(root, { "fixtures/first.txt": "new bytes" });
+      expect(await find()).toEqual({ kind: "hit" });
+      await writeInputs(root, { "fixtures/second.txt": "second", "absent.txt": "present" });
+      expect(await find()).toEqual({ kind: "changed", inputs: ["fixtures", "absent.txt"] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("shares workspace identity across checkouts with different local artifacts", async () => {
@@ -308,26 +424,6 @@ describe("test result cache", () => {
     }
   });
 
-  it("excludes I/O and opaque module loading from the cache", () => {
-    for (const builtin of [
-      "fs/promises",
-      "node:module",
-      "node:sqlite",
-      "https",
-      "worker_threads",
-    ]) {
-      expect(builtinReason(builtin)).toBeDefined();
-    }
-    expect(sourceReason("source.ts", 'export { readFile } from "node:fs";')).toBe(
-      "Node builtin fs",
-    );
-    expect(sourceReason("source.ts", 'await import("node:child_process");')).toBe(
-      "Node builtin child_process",
-    );
-    expect(sourceReason("source.ts", "await import(name);")).toBe("computed import");
-    expect(sourceReason("source.ts", 'import path from "node:path";')).toBeUndefined();
-  });
-
   it("keeps watched and static inputs without borrowing another file's lazy imports", () => {
     const imports = [
       { id: "/repo/eager.ts", url: "/eager.ts" },
@@ -340,23 +436,6 @@ describe("test result cache", () => {
     ]);
   });
 
-  it("checks tooling inputs through the graph and keeps native preparation uncached", () => {
-    const pure = "scripts/generated-code-string.test.ts";
-    const native = "packages/mobile/src/native-tests/pinned-http.test.ts";
-    expect(partitionCacheFiles("unit", [pure, native])).toEqual({
-      cacheable: [pure],
-      uncached: [native],
-    });
-    expect(
-      sourceReason(pure, 'import { serialize } from "./generated-code-string.mjs";'),
-    ).toBeUndefined();
-    expect(sourceReason("config/tool.test.ts", 'import { build } from "vite";')).toBe(
-      "tooling dependency",
-    );
-    expect(sourceReason(pure, 'import { readFileSync } from "node:fs";')).toBe("Node builtin fs");
-    expect(sourceReason(pure, "const root = process.env.PROFILE;")).toBe("ambient tooling inputs");
-  });
-
   it("recognizes only the locked Oxc virtual helper", () => {
     expect(
       virtualModuleReason("\0@oxc-project+runtime@0.155.0/helpers/esm/usingCtx.js"),
@@ -365,60 +444,6 @@ describe("test result cache", () => {
       "virtual module",
     );
     expect(virtualModuleReason("virtual:unknown")).toBe("virtual module");
-  });
-
-  it("records a jsdom worker URL, its entry and transitive static imports", async () => {
-    const owner = "src/renderer/lib/highlight-pool.tsx";
-    const worker = "src/renderer/lib/highlight.worker.ts";
-    const helper = "src/renderer/lib/worker-helper.ts";
-    const dependent = "src/renderer/lib/highlight.test.tsx";
-    const unrelated = "src/renderer/lib/other.test.tsx";
-    const files = {
-      [dependent]: "",
-      [unrelated]: "",
-      [owner]:
-        'import highlightWorkerUrl from "./highlight.worker.ts?worker&url"; new Worker(highlightWorkerUrl, { type: "module", name: profile.name });',
-      [worker]: 'export { run } from "./worker-helper";',
-      [helper]: "export const run = 1;",
-    };
-    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-cache-worker-"));
-    try {
-      await writeInputs(root, files);
-      const module = testModule(root, dependent, {
-        resolveId: (request, importer) =>
-          path.resolve(
-            path.dirname(importer),
-            request === "./worker-helper" ? "worker-helper.ts" : request,
-          ),
-      });
-      const workerDependencies = [path.join(root, owner)];
-      const workspace = new Set(Object.keys(files));
-      const read = dependencyReader(root, workspace, true);
-      const evidence = await read(module, workerDependencies);
-      expect(evidence.deps).toEqual([worker, dependent, owner, helper].sort());
-      expect((await dependencyReader(root, workspace)(module, workerDependencies)).reason).toBe(
-        "external execution",
-      );
-      expect(
-        (await read(testModule(root, dependent, { state: "failed" }), workerDependencies)).deps,
-      ).toBeUndefined();
-      expect(
-        (await read(testModule(root, dependent, { result: "skipped" }), workerDependencies)).deps,
-      ).toBeUndefined();
-
-      const unrelatedEvidence = await read(testModule(root, unrelated), []);
-      await savePass(root, dependent, await passFor(root, evidence.deps));
-      await savePass(root, unrelated, await passFor(root, unrelatedEvidence.deps));
-      expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({ kind: "hit" });
-      await writeFile(path.join(root, helper), "export const run = 2;");
-      expect(await findPass(root, dependent, "key", fileHasher(root))).toEqual({
-        kind: "changed",
-        inputs: [helper],
-      });
-      expect(await findPass(root, unrelated, "key", fileHasher(root))).toEqual({ kind: "hit" });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
   });
 
   it.each([
@@ -478,7 +503,16 @@ describe("test result cache", () => {
         ),
       );
       const key = async () =>
-        globalCacheKey(root, "renderer", {}, "", await workspaceInputs(root), fileHasher(root));
+        globalCacheKey(
+          root,
+          "renderer",
+          {},
+          "",
+          await workspaceInputs(root),
+          fileHasher(root),
+          { versions: process.versions, platform: process.platform, arch: process.arch },
+          undefined,
+        );
       const original = await key();
       expect(original).toBeDefined();
       await writeFile(path.join(root, "unrelated.ts"), "export {};");
@@ -511,15 +545,6 @@ describe("test result cache", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
-
-  it("weights cache reach by elapsed file time and counts only measured files", () => {
-    expect(
-      cacheReach(["slow", "fast", "unknown"], new Set(["fast"]), { slow: 90, fast: 10 }),
-    ).toEqual({
-      timed: 2,
-      timeShare: 0.1,
-    });
   });
 
   it("selects unique hits reproducibly for one run and rotates the selection", () => {

@@ -13,7 +13,7 @@ const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
 
 describe("test execution", () => {
-  test("does not hand an ambient Agent shell binding to the test processes", async () => {
+  test("isolates test processes from the launcher's Agent shell", async () => {
     const commands: Command[] = [];
     await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {
       repositoryRoot: root,
@@ -23,6 +23,9 @@ describe("test execution", () => {
         NODEX_AGENT_CREDENTIAL: "secret",
         NODEX_CLI_TASK_ID: "task",
         NODEX_AGENT_PROFILE_HOME: "/profile",
+        CODEX_TOOL_CALL_ID: "call",
+        SHLVL: "3",
+        NODE_EXTRA_CA_CERTS: "/certs.pem",
       },
       signal: new AbortController().signal,
       prepare: async () => ({ executables: {} }),
@@ -37,6 +40,9 @@ describe("test execution", () => {
     expect(env.NODEX_AGENT_CREDENTIAL).toBeUndefined();
     expect(env.NODEX_CLI_TASK_ID).toBeUndefined();
     expect(env.NODEX_AGENT_PROFILE_HOME).toBeUndefined();
+    expect(env.CODEX_TOOL_CALL_ID).toBeUndefined();
+    expect(env.SHLVL).toBe("1");
+    expect(env.NODE_EXTRA_CA_CERTS).toBe("/certs.pem");
   });
 
   test("prepares Electron before focused discovery resolves its runtime", async () => {
@@ -309,6 +315,7 @@ describe("Browser process environment", () => {
       expect(command?.args.at(-1)).toBe("config/vitest.browser.config.ts");
       expect(command?.env).toEqual({
         ...environment,
+        SHLVL: "1",
         NODEX_TEST_TIER: tier,
         VITEST_CHROMIUM_GC_FORCE: "1",
         NODE_ENV: "test",
@@ -339,6 +346,7 @@ describe("Browser process environment", () => {
       });
       expect(command?.env).toEqual({
         ...environment,
+        SHLVL: "1",
         NODEX_TEST_TIER: "default",
         ...(suite === "main" ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
         NODE_ENV: "test",

@@ -1,7 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readlinkSync } from "node:fs";
-import path from "node:path";
 import type { BudgetQueueEvent } from "../tooling/machine-budget.ts";
 import type { CachedSuiteReport } from "./run-cached-tests.ts";
 
@@ -81,63 +78,6 @@ export function readChangedPaths(root: string, explicitRef?: string) {
   return { base, ref, files };
 }
 
-export const passKey = (inputs: readonly unknown[]) =>
-  createHash("sha256").update(JSON.stringify(inputs)).digest("hex");
-
-const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
-
-function fileDigest(root: string, file: string, follow = false) {
-  const absolute = path.join(root, file);
-  const stats = lstatSync(absolute, { throwIfNoEntry: false });
-  if (!stats) return null;
-  if (stats.isSymbolicLink() && !follow)
-    return ["symlink", digest(readlinkSync(absolute, { encoding: "buffer" }))];
-  if (!stats.isFile() && !stats.isSymbolicLink()) return ["non-file"];
-  return [stats.mode, digest(readFileSync(absolute))];
-}
-
-// Includes the suite cache's environment inputs and switches used by its runners and checks.
-const validationEnvironment =
-  /^(?:CI$|NODE_ENV$|NODE_OPTIONS$|NODE_EXTRA_CA_CERTS$|TZ$|LANG$|LC_|VITE_|VITEST_|PLAYWRIGHT_|RUNNER_DEBUG$|NODEX_TEST_|NODEX_SENTRY_FORCE_TEST$|NODEX_BUILD_CACHE_DIR$|NODEX_BROWSER_TRACE$|NODEX_CORE_EXECUTABLE$|NODEX_YJS_YRS_BRIDGE_EXECUTABLE$|ESLINT_BETTER_TAILWIND$|NODEX_TOOLING_FIXTURE_MODE$|RUSTFLAGS$|RUSTUP_TOOLCHAIN$)/u;
-
-export function readPassKey(
-  root: string,
-  { base, ref, files }: ReturnType<typeof readChangedPaths>,
-  explicitRef: string | undefined,
-  env: NodeJS.ProcessEnv,
-) {
-  const diff = ["diff", "--binary", "--no-ext-diff", "--no-textconv", "--no-renames"];
-  const envFiles = mergePathLists(
-    gitOutput(
-      root,
-      "ls-files",
-      "--others",
-      "--ignored",
-      "--exclude-standard",
-      "-z",
-      "--",
-      ":(glob)**/.env*",
-    ).toString(),
-  );
-  return passKey([
-    process.version,
-    base,
-    ref,
-    explicitRef,
-    digest(gitOutput(root, ...diff, base, "--")),
-    digest(gitOutput(root, ...diff, "--cached", base, "--")),
-    files.map((file) => [file, fileDigest(root, file)]),
-    ["node_modules/.modules.yaml", "node_modules/.pnpm/lock.yaml", ...envFiles].map((file) => [
-      file,
-      fileDigest(root, file, true),
-    ]),
-    Object.keys(env)
-      .filter((name) => validationEnvironment.test(name))
-      .sort()
-      .map((name) => [name, env[name]]),
-  ]);
-}
-
 export interface StepResult {
   readonly name: string;
   readonly outcome: "pass" | "FAIL" | "TIMEOUT" | "skipped";
@@ -145,6 +85,11 @@ export interface StepResult {
   readonly queueMs: number;
   readonly reason?: string;
   readonly cache?: CachedSuiteReport;
+  readonly activity?: {
+    readonly start: number;
+    readonly end: number;
+    readonly waits: readonly (readonly [number, number])[];
+  };
 }
 
 export interface RunRecord {
@@ -155,27 +100,59 @@ export interface RunRecord {
   readonly pathCount: number;
   readonly steps: readonly StepResult[];
   readonly totalMs: number;
-  readonly reused?: boolean;
-  readonly reusedFrom?: string;
+  readonly idleQueueMs?: number;
   readonly error?: string;
 }
 
-/** Count elapsed queue time once even when concurrent descendants queue together. */
-export function queueTime(events: readonly BudgetQueueEvent[], endedAt: number): number {
+/** Merge overlapping budget requests from a step and its descendants. */
+export function queueWindows(events: readonly BudgetQueueEvent[], endedAt: number) {
   const grants = new Map(
     events.flatMap((event) => ("grantedAt" in event ? [[event.id, event.grantedAt]] : [])),
   );
   const requests = events
     .filter((event) => "requestedAt" in event)
     .sort((a, b) => a.requestedAt - b.requestedAt);
-  let countedUntil = 0;
-  let total = 0;
+  const windows: [number, number][] = [];
   for (const { id, requestedAt } of requests) {
     const end = Math.min(grants.get(id) ?? endedAt, endedAt);
-    total += Math.max(0, end - Math.max(requestedAt, countedUntil));
-    countedUntil = Math.max(end, countedUntil);
+    if (end <= requestedAt) continue;
+    const previous = windows.at(-1);
+    if (previous && requestedAt <= previous[1]) previous[1] = Math.max(previous[1], end);
+    else windows.push([requestedAt, end]);
   }
-  return total;
+  return windows;
+}
+
+export const queueTime = (events: readonly BudgetQueueEvent[], endedAt: number) =>
+  queueWindows(events, endedAt).reduce((total, [start, end]) => total + end - start, 0);
+
+/** Only remove waits on the wall clock when every running step was waiting. */
+export function idleQueueTime(steps: readonly StepResult[]) {
+  const points = steps
+    .flatMap(({ activity }) => {
+      if (!activity) return [];
+      const { start, end, waits } = activity;
+      return [
+        [start, 1, 0],
+        [end, -1, 0],
+        ...waits.flatMap(([from, to]) => [
+          [Math.max(start, from), 0, 1],
+          [Math.min(end, to), 0, -1],
+        ]),
+      ];
+    })
+    .sort(([a], [b]) => a - b);
+  let active = 0;
+  let waiting = 0;
+  let idleMs = 0;
+  let previous = 0;
+  for (const [time, activeDelta, waitingDelta] of points) {
+    if (active > 0 && active === waiting) idleMs += time - previous;
+    active += activeDelta;
+    waiting += waitingDelta;
+    previous = time;
+  }
+  return idleMs;
 }
 
 export const duration = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
@@ -196,7 +173,6 @@ export function formatSummary(record: RunRecord): string {
     [name.padEnd(width), outcome.padEnd(7), run.padStart(8), queue.padStart(8), details]
       .join("  ")
       .trimEnd();
-  const warnings: string[] = [];
   const rows = record.steps.map(({ name, outcome, runMs, queueMs, reason, cache }) => {
     const details = reason ? [reason] : [];
     if (cache) {
@@ -205,14 +181,10 @@ export function formatSummary(record: RunRecord): string {
       if (share !== undefined) details.push(`${share.toFixed(1)}% cacheable`);
       const misses = topCounts(cache.missCauses, ({ input }) => input);
       if (misses) details.push(`misses: ${misses}`);
-      if (share !== undefined && share < 90) {
-        const reasons = topCounts(cache.uncacheable, ({ reason, input }) =>
-          input ? `${reason}: ${input}` : reason,
-        );
-        warnings.push(
-          `WARNING: ${name} was ${share.toFixed(1)}% cacheable. ${reasons || "No uncacheable reasons reported."}`,
-        );
-      }
+      const reasons = topCounts(cache.uncacheable, ({ reason }) => reason);
+      if (reasons) details.push(`always run: ${reasons}`);
+      if (cache.globalKeyMisses) details.push(`runtime/config changes (${cache.globalKeyMisses})`);
+      if (cache.unrecorded) details.push(`new passes (${cache.unrecorded})`);
     }
     return line(
       name,
@@ -226,8 +198,10 @@ export function formatSummary(record: RunRecord): string {
     "",
     line("Step", "Outcome", "Run", "Queue", "Details"),
     ...rows,
-    ...warnings,
-    `Total wall time: ${duration(record.totalMs)}`,
+    `Total wall time: ${duration(record.totalMs)}` +
+      (record.idleQueueMs
+        ? ` (${duration(record.totalMs - record.idleQueueMs)} excluding queue)`
+        : ""),
     "",
   ].join("\n");
 }

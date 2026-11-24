@@ -1,24 +1,27 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { nativeRequirements } from "../../config/test-suites.ts";
-import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
-import { runCommand, withCommandSignal } from "../tooling/process.ts";
-import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
-import { discoverSuiteManifest, runtimeCommand } from "./runtime.ts";
-import { runTests } from "./run-tests.ts";
 import {
-  cacheReach,
-  chooseCacheAudits,
-  isCacheSuite,
-  partitionCacheFiles,
-  type CacheResultSuite,
-  type CacheSuite,
-} from "./test-cache-policy.ts";
+  nativeRequirements,
+  parseTestSuite,
+  runtimeForSuite,
+  suiteConfig,
+  type SuiteId,
+} from "../../config/test-suites.ts";
+import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
+import { prepareElectronRuntime } from "../prepare-electron-runtime.ts";
+import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
+import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
+import { discoverSuiteManifest, runtimeCommand, testRuntimeEnvironment } from "./runtime.ts";
+import { runTests } from "./run-tests.ts";
+import { chooseCacheAudits, relativeInput } from "./test-cache-policy.ts";
 import {
   cacheDirectory,
   cacheEpoch,
+  digestCachePath,
+  stampDigests,
+  changedPassInputs,
   CorruptCachedPass,
   fileHasher,
   findPass,
@@ -28,22 +31,19 @@ import {
   savePass,
   workspaceInputs,
   writeCacheReport,
+  type CachedPass,
   type PassLookup,
 } from "./test-cache-store.ts";
-import { localInputReader } from "./test-cache-inputs.ts";
-import type { TestEvidence } from "./test-cache-graph.ts";
-
-const GiB = 1024 ** 3;
-export const validationConcurrency = (cores: number, memoryBytes: number) =>
-  Math.max(1, Math.min(6, Math.floor(cores / 2), Math.floor(memoryBytes / (6 * GiB))));
-
-interface CacheExclusion {
-  readonly reason: string;
-  readonly input?: string;
-}
+import { localInputReader, observationKey, portablePath } from "./test-cache-inputs.ts";
+import {
+  binaryIdentity,
+  browserRuntimeIdentity,
+  electronAddonIdentity,
+} from "./test-runtime-identity.ts";
+import type { CacheExclusion, TestEvidence } from "./test-cache-evidence.ts";
 
 export interface CachedSuiteReport {
-  readonly suite: CacheResultSuite;
+  readonly suite: SuiteId;
   readonly selected: number;
   readonly hits: number;
   readonly ran: number;
@@ -60,303 +60,480 @@ export type CachedSuiteContext = {
   env: NodeJS.ProcessEnv;
   signal: AbortSignal;
   onReport?: (report: CachedSuiteReport) => void;
+  workspace?: () => ReturnType<typeof workspaceInputs>;
+  digests?: () => ReturnType<typeof stampDigests>;
+  onStdout?: Command["onStdout"];
+  onStderr?: Command["onStderr"];
+  execute?: <T>(run: () => Promise<T>) => Promise<T>;
 };
 
-interface CacheRun {
-  selected: readonly string[];
-  hits: readonly string[];
-  ran: readonly string[];
-  lookupMs?: number;
-  readonly passes: Set<string>;
-  readonly lookups: Map<string, PassLookup>;
-  readonly exclusions: Map<string, CacheExclusion>;
+interface CacheUnit {
+  readonly id: string;
+  readonly files: readonly string[];
 }
 
-function summarizeRun(suite: CacheSuite, run: CacheRun, lookupMs: number): CachedSuiteReport {
+interface SuiteInputs {
+  readonly units: readonly CacheUnit[];
+  readonly globalKey: string;
+  readonly directory: string;
+  readonly workspace: Awaited<ReturnType<typeof workspaceInputs>>;
+  readonly hash: ReturnType<typeof fileHasher>;
+  readonly browser: boolean;
+  readonly stable: () => Promise<boolean>;
+}
+
+const totalFiles = (units: readonly CacheUnit[]) =>
+  units.reduce((count, unit) => count + unit.files.length, 0);
+
+async function collectSuiteInputs(
+  suite: SuiteId,
+  filters: readonly string[],
+  context: CachedSuiteContext,
+  digests: ReturnType<typeof stampDigests>,
+): Promise<SuiteInputs | undefined> {
+  const { repositoryRoot: root, env, signal } = context;
+  const browser = suite === "browser";
+  const electron = runtimeForSuite(suite) === "electron-node";
+  const directory = cacheDirectory(root, env, suite);
+  const resultsRoot = path.dirname(path.dirname(directory));
+  if (electron) await prepareElectronRuntime({ projectRoot: root });
+  const caPath = env.NODE_EXTRA_CA_CERTS;
+  const [manifest, epoch, workspace, extra, ca] = await Promise.all([
+    discoverSuiteManifest(suite, filters, false, { cwd: root, env, signal }),
+    cacheEpoch(directory),
+    context.workspace?.() ?? workspaceInputs(root, resultsRoot),
+    (browser
+      ? browserRuntimeIdentity(env, digests)
+      : electron
+        ? electronAddonIdentity(root, digests)
+        : Promise.resolve(undefined)
+    ).catch(() => undefined),
+    caPath ? binaryIdentity(path.resolve(root, caPath), digests).catch(() => undefined) : undefined,
+  ]);
+  const { files, isolated, runtime, configDependencies } = manifest;
+  // File hits require isolated Vitest realms and a complete record for every collected spec.
+  if ((!browser && !isolated) || !files.length || files.some((file) => !workspace.files.has(file)))
+    return undefined;
+  if (((browser || electron) && !extra) || (caPath && !ca)) return undefined;
+  const hash = fileHasher(root, digests);
+  const configInputs = configDependencies.map((file) => relativeInput(root, file));
+  if (configInputs.some((file) => file === undefined)) return undefined;
+  const globalKey = await globalCacheKey(
+    root,
+    suite,
+    env,
+    epoch,
+    workspace,
+    hash,
+    runtime,
+    [extra?.digest, ca?.digest, browser ? files : undefined],
+    configInputs.flatMap((file) => (file && !file.startsWith("node_modules/.pnpm/") ? [file] : [])),
+  );
+  if (!globalKey) return undefined;
+  return {
+    units: browser
+      ? [{ id: suiteConfig(suite), files }]
+      : files.map((file) => ({ id: file, files: [file] })),
+    globalKey,
+    directory,
+    workspace,
+    hash,
+    browser,
+    async stable() {
+      const [current, sameHashes, sameRuntime, currentEpoch, sameCa] = await Promise.all([
+        workspaceInputs(root, resultsRoot),
+        hash.unchanged(),
+        extra?.unchanged(),
+        cacheEpoch(directory),
+        ca?.unchanged(),
+      ]);
+      return (
+        current.topology === workspace.topology &&
+        sameHashes &&
+        sameRuntime !== false &&
+        sameCa !== false &&
+        currentEpoch === epoch
+      );
+    },
+  };
+}
+
+function summarize(
+  suite: SuiteId,
+  units: readonly CacheUnit[],
+  hits: readonly CacheUnit[],
+  ran: readonly CacheUnit[],
+  lookups: ReadonlyMap<string, PassLookup>,
+  exclusions: ReadonlyMap<string, readonly CacheExclusion[]>,
+  lookupMs: number,
+): CachedSuiteReport {
   const causes = new Map<string, number>();
+  const reasons = new Map<string, { reason: string; count: number }>();
   let unrecorded = 0;
   let globalKeyMisses = 0;
-  for (const file of run.passes) {
-    const lookup = run.lookups.get(file);
-    if (lookup?.kind === "unrecorded") unrecorded++;
-    if (lookup?.kind === "globalKeyMiss") globalKeyMisses++;
-    if (lookup?.kind !== "changed") continue;
-    for (const input of lookup.inputs) causes.set(input, (causes.get(input) ?? 0) + 1);
+  let cacheable = 0;
+  for (const { id, files } of units) {
+    const count = files.length;
+    const rejected = exclusions.get(id);
+    for (const reason of new Set(rejected?.map((item) => item.reason))) {
+      const group = reasons.get(reason);
+      if (group) group.count += count;
+      else reasons.set(reason, { reason, count });
+    }
+    if (rejected) continue;
+    cacheable += count;
+    const lookup = lookups.get(id);
+    if (lookup?.kind === "unrecorded") unrecorded += count;
+    if (lookup?.kind === "globalKeyMiss") globalKeyMisses += count;
+    if (lookup?.kind === "changed")
+      for (const input of lookup.inputs) causes.set(input, (causes.get(input) ?? 0) + count);
   }
-  const exclusions = new Map<string, CacheExclusion & { count: number }>();
-  for (const { reason, input } of run.exclusions.values()) {
-    const key = JSON.stringify([reason, input]);
-    const group = exclusions.get(key);
-    if (group) group.count++;
-    else exclusions.set(key, { reason, input, count: 1 });
-  }
+  const byCount = (a: { count: number }, b: { count: number }) => b.count - a.count;
   return {
     suite,
-    selected: run.selected.length,
-    hits: run.hits.length,
-    ran: run.ran.length,
-    cacheable: run.passes.size,
-    uncacheable: [...exclusions.values()].sort(
-      (a, b) =>
-        b.count - a.count ||
-        a.reason.localeCompare(b.reason) ||
-        (a.input ?? "").localeCompare(b.input ?? ""),
-    ),
-    missCauses: [...causes]
-      .map(([input, count]) => ({ input, count }))
-      .sort((a, b) => b.count - a.count || a.input.localeCompare(b.input)),
+    selected: totalFiles(units),
+    hits: totalFiles(hits),
+    ran: totalFiles(ran),
+    cacheable,
+    uncacheable: [...reasons.values()].sort(byCount),
+    missCauses: [...causes].map(([input, count]) => ({ input, count })).sort(byCount),
     unrecorded,
     globalKeyMisses,
     lookupMs,
   };
 }
 
-export async function runCachedSuite(
-  suite: CacheSuite,
-  filters: readonly string[],
-  context: CachedSuiteContext,
-): Promise<number> {
-  const { env, onReport } = context;
-  const tier = resolveVitestTestTier(env.NODEX_TEST_TIER);
-  const runUncached = () =>
-    runTests({ suites: [suite], tier, related: false, args: filters }, context);
-  if (
-    env.CI ||
-    tier !== "default" ||
-    env.NODEX_TEST_CACHE === "off" ||
-    env.NODEX_TEST_TIMINGS ||
-    process.platform !== "darwin"
-  )
-    return runUncached();
-
-  const started = performance.now();
-  const run: CacheRun = {
-    selected: [],
-    hits: [],
-    ran: [],
-    passes: new Set(),
-    lookups: new Map(),
-    exclusions: new Map(),
-  };
-  let fallback = false;
-  try {
-    const result = await runCachedFlow(suite, filters, context, run, started);
-    if (result !== undefined) return result;
-    fallback = true;
-  } finally {
-    if (!fallback)
-      onReport?.(summarizeRun(suite, run, run.lookupMs ?? performance.now() - started));
-  }
-  return runUncached();
-}
-
-async function runCachedFlow(
-  suite: CacheSuite,
-  filters: readonly string[],
-  { repositoryRoot: root, env, signal }: CachedSuiteContext,
-  run: CacheRun,
-  started: number,
-): Promise<number | undefined> {
-  const commandContext = { cwd: root, env: { ...env, NODEX_TEST_TIER: "default" }, signal };
-  const directory = cacheDirectory(root, env, suite);
-  const resultsRoot = path.dirname(path.dirname(directory));
-  const [{ files: selected, isolated }, workspace, epoch, history] = await Promise.all([
-    discoverSuiteManifest(suite, filters, false, commandContext),
-    workspaceInputs(root, resultsRoot),
-    cacheEpoch(directory),
-    readCacheReport(root, suite),
-  ]);
-  // Skipping files changes the shared worker state when isolation is disabled.
-  if (!isolated || selected.length === 0) return undefined;
-  run.selected = selected;
-  const hash = fileHasher(root);
-  const globalKey = await globalCacheKey(root, suite, commandContext.env, epoch, workspace, hash);
-  if (!globalKey) return undefined;
-
-  const local = { topology: workspace.topology, reader: localInputReader(root) };
-  const { cacheable, uncached } = partitionCacheFiles(suite, selected);
-  for (const file of uncached) run.exclusions.set(file, { reason: "path policy" });
-  try {
-    const lookups = await Promise.all(
-      cacheable.map(
-        async (file) => [file, await findPass(directory, file, globalKey, hash, local)] as const,
-      ),
-    );
-    for (const [file, lookup] of lookups) {
-      run.lookups.set(file, lookup);
-      if (lookup.kind === "hit") run.passes.add(file);
-    }
-  } catch (error) {
-    if (!(error instanceof CorruptCachedPass)) throw error;
-    await invalidateCache(directory);
-    process.stderr.write(
-      `[test-cache] Audit failed for ${error.message}: corrupted record. Invalidated ${suite} cached passes.\n`,
-    );
-    return 1;
-  }
-  const [audit] = chooseCacheAudits([...run.passes], randomUUID(), history.auditedAt);
-  const batch = selected.filter((file) => !run.passes.has(file) || file === audit);
-  const skipped = selected.filter((file) => run.passes.has(file) && file !== audit);
-  const lookupMs = performance.now() - started;
-  run.lookupMs = lookupMs;
-  process.stdout.write(
-    `[test-cache] ${suite}: ${skipped.length} hits, ${batch.length} files to run${audit ? " including audit " + audit : ""} (${(lookupMs / 1_000).toFixed(2)}s lookup)\n`,
-  );
-
+async function executeBatch(
+  suite: SuiteId,
+  files: readonly string[],
+  priority: readonly string[],
+  inputs: SuiteInputs,
+  { repositoryRoot: root, env, signal, onStdout, onStderr, execute }: CachedSuiteContext,
+) {
   const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-cache-"));
   try {
     await writeFile(
       path.join(staging, "batch.json"),
       JSON.stringify({
-        files: batch,
-        workspace: [...workspace.files],
+        files,
+        workspace: [...inputs.workspace.files],
+        priority,
       }),
     );
-    const prepared = await prepareNativeArtifacts(nativeRequirements(suite, batch), {
-      repositoryRoot: root,
-      profile: "dev",
-      env: commandContext.env,
-      signal,
-    });
-    const batchStarted = Date.now();
-    if (signal.aborted) return 130;
-    run.hits = skipped;
-    run.ran = batch;
-    for (const file of batch) {
-      if (!run.exclusions.has(file)) run.exclusions.set(file, { reason: "missing test evidence" });
-    }
-    const result = await runCommand(
-      runtimeCommand(
-        suite,
-        [
-          "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
-          path.join(import.meta.dirname, "run-cache-batch.mts"),
+    const run = async () => {
+      const prepared = await prepareNativeArtifacts(nativeRequirements(suite, files), {
+        repositoryRoot: root,
+        profile: "dev",
+        env,
+        signal,
+      });
+      const started = Date.now();
+      // Repeated Node fixture launches can reuse parsed bytecode within this batch.
+      const nodeCompileCache =
+        env.NODE_COMPILE_CACHE ??
+        (env.NODE_V8_COVERAGE ? undefined : path.join(staging, "node-bytecode"));
+      const { exitCode } = await runCommand({
+        ...runtimeCommand(
           suite,
-          staging,
-        ],
-        {
-          ...commandContext,
-          env: { ...commandContext.env, ...preparedNativeEnvironment(prepared) },
-        },
-      ),
-    );
-    if (signal.aborted) return result.exitCode;
+          [
+            "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+            path.join(
+              import.meta.dirname,
+              inputs.browser ? "run-browser-cache-batch.mts" : "run-cache-batch.mts",
+            ),
+            ...(inputs.browser ? [] : [suite]),
+            staging,
+          ],
+          {
+            cwd: root,
+            env: {
+              ...env,
+              ...preparedNativeEnvironment(prepared),
+              ...(inputs.browser
+                ? {}
+                : {
+                    NODE_COMPILE_CACHE: nodeCompileCache,
+                    NODEX_TEST_OBSERVATIONS: path.join(staging, "observations"),
+                    NODEX_TEST_OBSERVATION_ROOT: root,
+                  }),
+            },
+            signal,
+          },
+        ),
+        onStdout,
+        onStderr,
+      });
+      return { started, exitCode };
+    };
+    const result = await (execute ? execute(run) : run());
     const evidence = await readFile(path.join(staging, "evidence.json"), "utf8")
       .then((content) => JSON.parse(content) as TestEvidence[])
-      .catch(() => undefined);
-    for (const { file, reason, input, deps, local } of evidence ?? []) {
-      if (reason || !deps || !local)
-        run.exclusions.set(file, { reason: reason ?? "missing module graph", input });
-      else run.exclusions.delete(file);
-    }
-    const audited = evidence?.find(({ file }) => file === audit);
-    if (audit && (!audited?.passed || !audited.deps || !audited.local)) {
-      run.passes.clear();
-      await invalidateCache(directory);
-      process.stderr.write(
-        `[test-cache] Audit failed for ${audit}. Invalidated ${suite} cached passes.\n`,
-      );
-      return result.exitCode || 1;
-    }
-    if ((await cacheEpoch(directory)) !== epoch) {
-      run.passes.clear();
-      process.stderr.write(`[test-cache] ${suite} passes were invalidated during this run.\n`);
-      return result.exitCode || 1;
-    }
-    if (!evidence) return result.exitCode || 1;
-
-    const currentWorkspace = await workspaceInputs(root, resultsRoot);
-    const stable =
-      currentWorkspace.topology === workspace.topology &&
-      (await hash.unchanged()) &&
-      (await local.reader.unchanged());
-    if (!stable) run.passes.clear();
-    for (const entry of evidence) {
-      if (entry.file === audit || !entry.deps || !entry.local || entry.reason) continue;
-      if (!stable) {
-        run.exclusions.set(entry.file, { reason: "workspace inputs changed" });
-        continue;
-      }
-      const inputs = await Promise.all(
-        entry.deps.map(async (file) => [file, await hash(file, batchStarted)] as const),
-      );
-      const recorded = inputs.filter(
-        (pair): pair is readonly [string, string] => pair[1] !== undefined,
-      );
-      if (recorded.length !== inputs.length) {
-        run.exclusions.set(entry.file, { reason: "dependency unavailable or changed" });
-        continue;
-      }
-      await savePass(directory, entry.file, {
-        globalKey,
-        deps: Object.fromEntries(recorded),
-        local: {
-          ...entry.local,
-          topology: entry.broadTopology ? workspace.topology : undefined,
-        },
-      });
-      run.passes.add(entry.file);
-    }
-    const timings = { ...history.timings };
-    const auditedAt = { ...history.auditedAt };
-    for (const { file, durationMs } of evidence) {
-      if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
-    }
-    if (audit) auditedAt[audit] = Date.now();
-    const previous = cacheReach(selected, run.passes, history.timings ?? {});
-    const usePrevious = previous.timed === selected.length;
-    const reach = usePrevious ? previous : cacheReach(selected, run.passes, timings);
-    const share =
-      reach.timeShare === undefined
-        ? ""
-        : `, ${(100 * reach.timeShare).toFixed(1)}% of ${usePrevious ? "previous" : "observed"} file time` +
-          (reach.timed < selected.length ? ` (${reach.timed}/${selected.length} timed)` : "");
-    const summary = summarizeRun(suite, run, lookupMs);
-    await writeCacheReport(root, suite, {
-      hits: run.hits,
-      evidence: evidence.map(({ file, passed, reason, input, durationMs }) => ({
-        file,
-        passed,
-        reason,
-        input,
-        durationMs,
-      })),
-      timings,
-      auditedAt,
-      summary,
-    });
-    const reasons = new Map<string, number>();
-    for (const { reason, count } of summary.uncacheable)
-      reasons.set(reason, (reasons.get(reason) ?? 0) + count);
-    process.stdout.write(
-      `[test-cache] ${suite}: ${summary.cacheable}/${summary.selected} cacheable (${((summary.cacheable / summary.selected) * 100).toFixed(1)}% of files${share}); ${
-        [...reasons]
-          .sort((left, right) => right[1] - left[1])
-          .map(([reason, count]) => `${reason} (${count})`)
-          .join(", ") || `${uncached.length} excluded`
-      }\n`,
-    );
-    if (!stable && audit) {
-      process.stderr.write("[test-cache] Workspace inputs changed during validation.\n");
-      return result.exitCode || 1;
-    }
-    return result.exitCode;
+      .catch(() => []);
+    return { ...result, evidence };
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
 }
 
+async function preparePass(
+  unit: CacheUnit,
+  entry: TestEvidence | undefined,
+  inputs: SuiteInputs,
+  reader: ReturnType<typeof localInputReader>,
+  started: number,
+): Promise<CachedPass | readonly CacheExclusion[]> {
+  if (entry?.exclusions?.length) return entry.exclusions;
+  if (!entry?.passed || !entry.deps || !entry.local || entry.reason)
+    return [{ reason: entry?.reason ?? "missing passing test evidence", input: entry?.input }];
+  const deps = await Promise.all(
+    entry.deps.map(
+      async (file) =>
+        [file, portablePath(file) ? await inputs.hash(file, started) : undefined] as const,
+    ),
+  );
+  const unavailable = deps.find(([, hash]) => hash === undefined);
+  if (unavailable) return [{ reason: "dependency unavailable or changed", input: unavailable[0] }];
+  const pass: CachedPass = {
+    globalKey: inputs.globalKey,
+    deps: Object.fromEntries(deps) as Record<string, string>,
+    local: {
+      ...entry.local,
+      topology: entry.broadTopology ? inputs.workspace.topology : undefined,
+    },
+  };
+  const changed = await changedPassInputs(pass, inputs.globalKey, unit.id, inputs.hash, {
+    topology: inputs.workspace.topology,
+    reader,
+  });
+  if (changed.length) return [{ reason: "observed paths changed", input: changed[0] }];
+  return pass;
+}
+
+const isPass = (candidate: CachedPass | readonly CacheExclusion[]): candidate is CachedPass =>
+  "globalKey" in candidate;
+
+function comparablePass(pass: CachedPass) {
+  const pairs = (record: Readonly<Record<string, unknown>> = {}) =>
+    Object.entries(record).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([
+    pairs(pass.deps),
+    pairs(pass.local?.probes),
+    pairs(pass.local?.globs),
+    pass.local?.topology,
+    pass.local?.observed?.toSorted((a, b) => observationKey(a).localeCompare(observationKey(b))),
+  ]);
+}
+
+export async function memoizeSuite(
+  suite: SuiteId,
+  inputs: SuiteInputs,
+  context: CachedSuiteContext,
+  started: number,
+  fallback: (stage: "lookup" | "recording") => Promise<number>,
+  runBatch: (files: readonly string[]) => Promise<{
+    started: number;
+    exitCode: number;
+    evidence: readonly TestEvidence[];
+  }>,
+  auditEnabled = !inputs.browser || randomInt(64) === 0,
+) {
+  const { units, hash, directory, globalKey, workspace } = inputs;
+  const reader = localInputReader(context.repositoryRoot);
+  const history = await readCacheReport(context.repositoryRoot, suite);
+  const retained = new Map<string, CachedPass>();
+  const log = context.onStdout ?? ((chunk: string) => process.stdout.write(chunk));
+  const error = context.onStderr ?? ((chunk: string) => process.stderr.write(chunk));
+  const invalidate = async (message: string, exit = 1) => {
+    await invalidateCache(directory);
+    error(`[test-cache] ${message}. Invalidated ${suite} passes.\n`);
+    return exit;
+  };
+  const lookups = new Map<string, PassLookup>();
+  try {
+    await Promise.all(
+      units.map(async ({ id }) => {
+        lookups.set(
+          id,
+          await findPass(directory, id, globalKey, hash, {
+            topology: workspace.topology,
+            reader,
+            onHit: (pass) => retained.set(id, pass),
+          }),
+        );
+      }),
+    );
+  } catch (cause) {
+    if (!(cause instanceof CorruptCachedPass)) throw cause;
+    return invalidate(`Corrupted pass for ${cause.message}`);
+  }
+  // Keep the expensive whole-suite audit sampled at its existing cadence.
+  const [audit] = chooseCacheAudits(
+    [...retained.keys()],
+    randomUUID(),
+    history.auditedAt,
+    auditEnabled ? 1 : 0,
+  );
+  const hits = units.filter(({ id }) => retained.has(id) && id !== audit);
+  const batch = units.filter(({ id }) => !retained.has(id) || id === audit);
+  const retainedInputs = [...retained.values()].flatMap(({ local }) => (local ? [local] : []));
+  // A candidate that already missed cannot invalidate the inputs of reused passes.
+  if (hits.length && (!(await inputs.stable()) || !(await reader.unchanged(retainedInputs))))
+    return fallback("lookup");
+  const lookupMs = performance.now() - started;
+  log(
+    `[test-cache] ${suite}: ${totalFiles(hits)} hits, ${totalFiles(batch)} files to run${audit ? " including audit " + audit : ""} (${(lookupMs / 1_000).toFixed(2)}s lookup)\n`,
+  );
+
+  const exclusions = new Map<string, readonly CacheExclusion[]>();
+  const auditedAt = { ...history.auditedAt };
+  const timings = { ...history.timings };
+  let evidence: readonly TestEvidence[] = [];
+  let exitCode = 0;
+  if (batch.length) {
+    const result = await runBatch(batch.flatMap(({ files }) => files));
+    if (context.signal.aborted) return result.exitCode || 130;
+    evidence = result.evidence;
+    exitCode = result.exitCode;
+    const byUnit = new Map(evidence.map((entry) => [entry.file, entry]));
+    const fresh = localInputReader(context.repositoryRoot);
+    const passes = await Promise.all(
+      batch.map(
+        async (unit) =>
+          [
+            unit.id,
+            await preparePass(unit, byUnit.get(unit.id), inputs, fresh, result.started),
+          ] as const,
+      ),
+    );
+    const newInputs = passes.flatMap(([, pass]) =>
+      isPass(pass) && pass.local ? [pass.local] : [],
+    );
+    if (
+      !(await inputs.stable()) ||
+      !(await reader.unchanged(retainedInputs)) ||
+      !(await fresh.unchanged(newInputs))
+    )
+      return exitCode || (await fallback("recording"));
+    for (const [id, pass] of passes) {
+      if (id === audit) {
+        const previous = retained.get(id);
+        if (!isPass(pass) || !previous || comparablePass(previous) !== comparablePass(pass))
+          return invalidate(`Audit could not reproduce ${id}`, exitCode || 1);
+        auditedAt[id] = Date.now();
+      }
+      if (!isPass(pass)) exclusions.set(id, pass);
+    }
+    await Promise.all(
+      passes.flatMap(([id, pass]) => (isPass(pass) ? [savePass(directory, id, pass)] : [])),
+    );
+    for (const { file, durationMs } of evidence) {
+      if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
+    }
+  }
+  const summary = summarize(suite, units, hits, batch, lookups, exclusions, lookupMs);
+  context.onReport?.(summary);
+  await writeCacheReport(context.repositoryRoot, suite, {
+    hits: hits.map(({ id }) => id),
+    evidence: evidence.map(({ file, passed, reason, input, exclusions, durationMs }) => ({
+      file,
+      passed,
+      reason,
+      input,
+      exclusions,
+      durationMs,
+    })),
+    timings,
+    auditedAt,
+    summary,
+  });
+  return exitCode;
+}
+
+export async function runCachedSuite(
+  suite: SuiteId,
+  filters: readonly string[],
+  context: CachedSuiteContext,
+  priority: readonly string[] = [],
+): Promise<number> {
+  const start = performance.now();
+  const tier = resolveVitestTestTier(context.env.NODEX_TEST_TIER);
+  const env: NodeJS.ProcessEnv = { ...testRuntimeEnvironment(context.env), NODEX_TEST_TIER: tier };
+  delete env.NODEX_TEST_OBSERVATIONS;
+  delete env.NODEX_TEST_OBSERVATION_ROOT;
+  delete env.NODEX_TEST_TRANSFORM_CACHES;
+  const runUncached = () =>
+    runTests(
+      { suites: [suite], tier, related: false, args: filters },
+      {
+        ...context,
+        env,
+        execute: undefined,
+      },
+    );
+  const fallback = (reason: string) => {
+    (context.onStdout ?? ((chunk: string) => process.stdout.write(chunk)))(
+      `[test-cache] ${suite}: ${reason}\n`,
+    );
+    return context.execute ? context.execute(runUncached) : runUncached();
+  };
+  if (
+    env.CI ||
+    tier !== "default" ||
+    env.NODEX_TEST_CACHE === "off" ||
+    env.NODEX_TEST_TIMINGS ||
+    env.PWDEBUG ||
+    process.platform !== "darwin" ||
+    // Additional loaders and preloads can have unobserved inputs.
+    env.NODE_OPTIONS?.trim()
+      .split(/\s+/u)
+      .some(
+        (option) =>
+          option && option !== "--use-system-ca" && !/^--max-old-space-size=\d+$/u.test(option),
+      )
+  )
+    return fallback("running without result reuse");
+  if (context.signal.aborted) return 130;
+  const digests = context.digests?.() ?? stampDigests(digestCachePath(context.repositoryRoot, env));
+  const validate = async (suiteContext: CachedSuiteContext, retry: boolean): Promise<number> => {
+    if (suiteContext.signal.aborted) return 130;
+    const inputs = await collectSuiteInputs(suite, filters, suiteContext, digests);
+    if (!inputs) return fallback("suite identity or file isolation unavailable");
+    return memoizeSuite(
+      suite,
+      inputs,
+      suiteContext,
+      start,
+      (stage) => {
+        // Static checks can finish writing temporary files while lookup is in progress.
+        if (stage === "lookup" && retry)
+          return validate({ ...suiteContext, workspace: undefined }, false);
+        return fallback("inputs changed during validation");
+      },
+      (files) => executeBatch(suite, files, priority, inputs, suiteContext),
+    );
+  };
+  try {
+    return await validate({ ...context, env }, true);
+  } finally {
+    if (!context.digests) await digests.flush();
+  }
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
   void withCommandSignal(async (signal) => {
-    const [suite, ...filters] = process.argv.slice(2);
+    const [name, ...filters] = process.argv.slice(2);
     try {
-      if (!suite || !isCacheSuite(suite) || filters.some((filter) => filter.startsWith("-"))) {
-        throw new Error("Usage: vp run test:cached <unit|renderer> [file filters]");
-      }
-      return await runCachedSuite(suite, filters, {
+      if (
+        !name ||
+        filters.some((filter) => filter.startsWith("-")) ||
+        (name === "browser" && filters.length)
+      )
+        throw new Error("Usage: vp run test:cached <suite> [file filters; omit for browser]");
+      return await runCachedSuite(parseTestSuite(name), filters, {
         repositoryRoot: path.resolve(import.meta.dirname, "../.."),
         env: process.env,
         signal,
+        onReport: (report) => process.stdout.write(JSON.stringify(report) + "\n"),
       });
     } catch (error) {
       process.stderr.write(String(error) + "\n");

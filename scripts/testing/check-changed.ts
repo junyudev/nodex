@@ -5,12 +5,12 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism } from "node:os";
+import { availableParallelism, totalmem } from "node:os";
 import path from "node:path";
+import { isNativeExecutable, nativeRequirements, type SuiteId } from "../../config/test-suites.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
   acquireMachineBudget,
@@ -23,25 +23,42 @@ import { findFocusedTests, planCheckSteps, type CheckStep } from "./check-change
 import {
   duration,
   formatSummary,
+  idleQueueTime,
   queueTime,
+  queueWindows,
   readChangedPaths,
-  readPassKey,
   type RunRecord,
   type StepResult,
 } from "./check-changed-record.ts";
 import {
   runCachedSuite,
-  validationConcurrency,
   type CachedSuiteReport,
+  type CachedSuiteContext,
 } from "./run-cached-tests.ts";
-import { runMemoizedBrowserSuite } from "./run-memoized-browser-suite.ts";
-import { runTests } from "./run-tests.ts";
+import { randomUUID } from "node:crypto";
+import {
+  cacheDirectory,
+  digestCachePath,
+  stampDigests,
+  workspaceInputs,
+} from "./test-cache-store.ts";
 
 export { mergePathLists } from "./check-changed-record.ts";
 
 const write = (line: string) => process.stdout.write(line + "\n");
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const isMissing = (error: unknown) => (error as NodeJS.ErrnoException).code === "ENOENT";
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+export const validationConcurrency = (cores: number, memoryBytes: number) =>
+  Math.max(1, Math.min(6, Math.floor(cores / 2), Math.floor(memoryBytes / (6 * 1024 ** 3))));
 
 export function parseCheckArguments(args: readonly string[], env: NodeJS.ProcessEnv) {
   let ref: string | undefined;
@@ -56,50 +73,29 @@ export function parseCheckArguments(args: readonly string[], env: NodeJS.Process
       throw new Error("Usage: vp run check:changed [<ref>] [--timeout <seconds>]");
     }
   }
-  const timeoutMs = Number(override ?? (env.CHECK_CHANGED_TIMEOUT || "1200")) * 1000;
+  const configured = override ?? (env.CHECK_CHANGED_TIMEOUT || undefined);
+  const timeoutMs = Number(configured ?? "1200") * 1000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647)
     throw new Error(
       "Set --timeout or CHECK_CHANGED_TIMEOUT to a positive number of seconds within the timer limit.",
     );
-  return { ref, timeoutMs };
+  return { ref, timeoutMs, suiteTimeoutMs: configured === undefined ? 3_600_000 : timeoutMs };
 }
 
 type ActiveStep = Exclude<CheckStep, { kind: "skip" }>;
 
 interface StepWork {
-  readonly step: ActiveStep;
+  readonly step: Extract<CheckStep, { kind: "command" }>;
   readonly rustEnv: ReturnType<typeof planCheckSteps>["rustEnv"];
-  readonly cacheReport: string;
 }
 
-/** One process per step keeps runner output, test cache reports, and cancellation scoped. */
+/** Static commands run in subprocesses with scoped output and cancellation. */
 async function runStepWork(file: string, signal: AbortSignal): Promise<number> {
-  const { step, rustEnv, cacheReport } = JSON.parse(readFileSync(file, "utf8")) as StepWork;
+  const { step, rustEnv } = JSON.parse(readFileSync(file, "utf8")) as StepWork;
   const repositoryRoot = process.cwd();
-  const env = { ...process.env, NODEX_TEST_TIER: "default" };
-  const context = { repositoryRoot, env, signal };
-  if (step.kind === "cached") {
-    const cachedContext = {
-      ...context,
-      onReport: (report: CachedSuiteReport) => {
-        const pending = cacheReport + ".tmp";
-        writeFileSync(pending, JSON.stringify(report));
-        renameSync(pending, cacheReport);
-      },
-    };
-    return step.suite === "browser"
-      ? runMemoizedBrowserSuite(cachedContext)
-      : runCachedSuite(step.suite, step.filters, cachedContext);
-  }
-  if (step.kind === "tests") {
-    return runTests(
-      { suites: [step.suite], tier: "default", related: step.related, args: step.args },
-      context,
-    );
-  }
-
-  const commandEnv = step.budget ? { ...process.env, ...rustEnv } : process.env;
-  const lease = step.budget
+  const budgeted = step.resource === "rust-budget";
+  const commandEnv = budgeted ? { ...process.env, ...rustEnv } : process.env;
+  const lease = budgeted
     ? await acquireMachineBudget(
         { weight: 4, memoryGiB: 6, label: step.name },
         { cwd: repositoryRoot, env: commandEnv, signal },
@@ -147,14 +143,25 @@ interface StepContext {
   readonly directory: string;
   readonly timeoutMs: number;
   readonly signal: AbortSignal;
+  readonly commandLane?: (
+    env: NodeJS.ProcessEnv,
+    signal: AbortSignal,
+    run: () => Promise<number>,
+  ) => Promise<number>;
 }
+
+type StepInvocation =
+  | Pick<Command, "command" | "args">
+  | ((
+      context: Pick<CachedSuiteContext, "env" | "signal" | "onReport" | "onStdout" | "onStderr">,
+    ) => Promise<number>);
 
 export async function runStep(
   name: string,
-  invocation: Pick<Command, "command" | "args">,
+  invocation: StepInvocation,
   context: StepContext,
   reportName: string,
-  cached = false,
+  onBudgetGranted?: () => void,
 ): Promise<StepResult> {
   write(`[check:changed] START ${name}`);
   const budgetReport = path.join(context.directory, reportName + ".budget.jsonl");
@@ -164,23 +171,43 @@ export async function runStep(
   const startedAt = Date.now();
   const timeout = new AbortController();
   let timedOutAt: number | undefined;
+  let budgetGranted = false;
   // Waiting for the machine budget is not running time, so it never counts against the limit.
   const timer = setInterval(() => {
     const now = Date.now();
-    if (now - startedAt - queueTime(readQueueEvents(budgetReport), now) < context.timeoutMs) return;
+    const events = readQueueEvents(budgetReport);
+    if (onBudgetGranted && !budgetGranted && events.some((event) => "grantedAt" in event)) {
+      budgetGranted = true;
+      onBudgetGranted();
+    }
+    if (now - startedAt - queueTime(events, now) < context.timeoutMs) return;
     timedOutAt = now;
     timeout.abort();
   }, 1_000);
   let failure: string | undefined;
+  let cache: CachedSuiteReport | undefined;
   try {
-    const { exitCode } = await runCommand({
-      ...invocation,
-      cwd: context.root,
+    const commandContext = {
       env: { ...process.env, [MACHINE_BUDGET_REPORT_ENV]: budgetReport },
       signal: AbortSignal.any([context.signal, timeout.signal]),
       onStdout: capture,
       onStderr: capture,
-    });
+    };
+    let exitCode: number;
+    if (typeof invocation === "function") {
+      exitCode = await invocation({
+        ...commandContext,
+        onReport: (report) => {
+          cache = report;
+        },
+      });
+    } else {
+      const run = async () =>
+        (await runCommand({ ...invocation, ...commandContext, cwd: context.root })).exitCode;
+      exitCode = await (context.commandLane
+        ? context.commandLane(commandContext.env, commandContext.signal, run)
+        : run());
+    }
     if (exitCode && !timeout.signal.aborted)
       failure = context.signal.aborted ? "cancelled" : `exit ${exitCode}`;
   } catch (error) {
@@ -190,19 +217,18 @@ export async function runStep(
     clearInterval(timer);
   }
   const elapsed = Math.round(performance.now() - started);
+  const end = Date.now();
+  const waits = queueWindows(readQueueEvents(budgetReport), timedOutAt ?? end);
   const queueMs = Math.min(
     elapsed,
-    queueTime(readQueueEvents(budgetReport), timedOutAt ?? Date.now()),
+    waits.reduce((total, [from, to]) => total + to - from, 0),
   );
   const runMs = elapsed - queueMs;
-  const cacheJson = cached
-    ? readIfPresent(path.join(context.directory, reportName + ".cache.json"))
-    : "";
-  const cache = cacheJson ? (JSON.parse(cacheJson) as CachedSuiteReport) : undefined;
   const outcome = timeout.signal.aborted ? "TIMEOUT" : failure ? "FAIL" : "pass";
   const reason = timeout.signal.aborted
     ? `running-time limit ${duration(context.timeoutMs)}`
-    : (failure ?? (cached && !cache ? "cache report unavailable" : undefined));
+    : (failure ??
+      (typeof invocation === "function" && !cache ? "cache report unavailable" : undefined));
   const output = chunks.join("").trimEnd();
   const block = outcome === "pass" ? output.slice(-2000).split("\n").slice(-3).join("\n") : output;
   write(
@@ -216,45 +242,76 @@ export async function runStep(
       .filter(Boolean)
       .join("\n"),
   );
-  return { name, outcome, runMs, queueMs, reason, cache };
+  return {
+    name,
+    outcome,
+    runMs,
+    queueMs,
+    reason,
+    cache,
+    activity: { start: startedAt, end, waits },
+  };
 }
 
-/** A blocked lane holds its position in the admission order. Other work already running can finish. */
+/** Limit only unbudgeted commands. Rust waits in its own lane. */
 export async function runStepQueue(
   steps: readonly CheckStep[],
   concurrency: number,
   signal: AbortSignal,
   run: (step: ActiveStep, index: number) => Promise<StepResult>,
 ): Promise<readonly StepResult[]> {
-  const results: Promise<StepResult>[] = [];
-  const active = new Set<Promise<StepResult>>();
-  const lanes = new Set<NonNullable<CheckStep["lane"]>>();
-  for (const [index, step] of steps.entries()) {
-    const { lane, name } = step;
-    if (step.kind !== "skip") {
-      const canStart = () => active.size < concurrency && (!lane || !lanes.has(lane));
-      while (!signal.aborted && !canStart()) await Promise.race(active);
+  const local = new Set<Promise<StepResult>>();
+  let rust = Promise.resolve<unknown>(undefined);
+  const admit = async (step: CheckStep, index: number): Promise<StepResult> => {
+    const { name } = step;
+    const usesLocalSlot = step.kind === "command" && !step.resource;
+    if (usesLocalSlot) {
+      while (!signal.aborted && local.size >= concurrency) await Promise.race(local);
     }
     if (step.kind === "skip" || signal.aborted) {
       const reason = step.kind === "skip" ? step.reason : "run cancelled before admission";
-      results.push(Promise.resolve({ name, outcome: "skipped", reason, runMs: 0, queueMs: 0 }));
-      continue;
+      return { name, outcome: "skipped", reason, runMs: 0, queueMs: 0 };
     }
-    if (lane) lanes.add(lane);
-    const pending = run(step, index)
+    const start = async () => run(step, index);
+    const pending = start()
       .catch((error: unknown): StepResult => {
         const reason = message(error);
         write(`[check:changed] FAIL ${name} · ${reason}`);
         return { name, outcome: "FAIL", reason, runMs: 0, queueMs: 0 };
       })
-      .finally(() => {
-        active.delete(pending);
-        if (lane) lanes.delete(lane);
-      });
-    active.add(pending);
-    results.push(pending);
-  }
-  return Promise.all(results);
+      .finally(() => local.delete(pending));
+    if (usesLocalSlot) local.add(pending);
+    return pending;
+  };
+  return Promise.all(
+    steps.map((step, index) => {
+      if (step.lane !== "rust") return admit(step, index);
+      const pending = rust.then(() => admit(step, index));
+      rust = pending;
+      return pending;
+    }),
+  );
+}
+
+export function validationLanes(semanticReady: Promise<void>) {
+  const vitest = executionLane(semanticReady, "serial Vitest lane");
+  const cargo = executionLane(semanticReady, "shared Cargo outputs");
+  return {
+    cargo,
+    suite<T>(
+      suite: SuiteId,
+      env: NodeJS.ProcessEnv,
+      signal: AbortSignal,
+      run: () => Promise<T>,
+      afterFocused?: Promise<void>,
+    ) {
+      // Cargo gates can replace artifacts while these suites are launching them.
+      const execute = nativeRequirements(suite).some(isNativeExecutable)
+        ? () => cargo(env, signal, run)
+        : run;
+      return vitest(env, signal, execute, afterFocused);
+    },
+  };
 }
 
 function presentSiblings(root: string, directory: string): string[] {
@@ -268,17 +325,37 @@ function presentSiblings(root: string, directory: string): string[] {
   }
 }
 
-interface PassRecord {
-  readonly key: string;
-  readonly record: RunRecord;
-}
-
-function readLastPass(file: string): PassRecord | undefined {
-  try {
-    return JSON.parse(readIfPresent(file)) as PassRecord;
-  } catch {
-    return undefined;
-  }
+function executionLane(startAfter: Promise<void>, label: string) {
+  let available = startAfter;
+  return async <T>(
+    env: NodeJS.ProcessEnv,
+    signal: AbortSignal,
+    run: () => Promise<T>,
+    afterFocused?: Promise<void>,
+  ) => {
+    const id = randomUUID();
+    const report = (event: BudgetQueueEvent) => {
+      const file = env[MACHINE_BUDGET_REPORT_ENV];
+      if (file) appendFileSync(file, JSON.stringify(event) + "\n");
+    };
+    let release: (() => void) | undefined;
+    try {
+      const requestedAt = Date.now();
+      report({ id, label, requestedAt });
+      if (afterFocused) await afterFocused;
+      const previous = available;
+      const turn = deferred();
+      available = turn.promise;
+      release = turn.resolve;
+      await previous;
+      const grantedAt = Date.now();
+      report({ id, label, grantedAt, waitedMs: grantedAt - requestedAt });
+      signal.throwIfAborted();
+      return await run();
+    } finally {
+      release?.();
+    }
+  };
 }
 
 async function checkChanged(
@@ -289,13 +366,12 @@ async function checkChanged(
   const started = performance.now();
   const startedAt = new Date().toISOString();
   const totalMs = () => Math.round(performance.now() - started);
-  const directory = path.join(root, "node_modules/.cache");
-  const lastPassFile = path.join(directory, "check-changed-last-pass.json");
   // A fresh install can replace node_modules while the first step is running.
   const generated = path.join(root, ".generated");
   mkdirSync(generated, { recursive: true });
   const staging = mkdtempSync(path.join(generated, "check-changed-"));
   const steps: StepResult[] = [];
+  let digests: ReturnType<typeof stampDigests> | undefined;
   let comparison: ReturnType<typeof readChangedPaths> | undefined;
   let record: RunRecord | undefined;
   const createRecord = (): RunRecord => ({
@@ -306,9 +382,10 @@ async function checkChanged(
     pathCount: comparison?.files.length ?? 0,
     steps,
     totalMs: totalMs(),
+    idleQueueMs: idleQueueTime(steps),
   });
   try {
-    const { ref: explicitRef, timeoutMs } = parseCheckArguments(args, process.env);
+    const { ref: explicitRef, timeoutMs, suiteTimeoutMs } = parseCheckArguments(args, process.env);
     const context = { root, directory: staging, timeoutMs, signal };
     const install = await runStep(
       "install dependencies",
@@ -322,23 +399,6 @@ async function checkChanged(
     comparison = readChangedPaths(root, explicitRef);
     const { base, ref, files } = comparison;
     write(`[check:changed] ${files.length} changed paths since ${base.slice(0, 12)} (${ref})`);
-    const fingerprint = (changed: ReturnType<typeof readChangedPaths>) => {
-      try {
-        return readPassKey(root, changed, explicitRef, process.env);
-      } catch (error) {
-        write(`[check:changed] Could not fingerprint the worktree. ${message(error)}`);
-        return undefined;
-      }
-    };
-    const key = fingerprint(comparison);
-    const previous = key && readLastPass(lastPassFile);
-    if (previous && previous.key === key) {
-      write("Nothing changed since the last passing run");
-      write(formatSummary(previous.record));
-      record = { ...createRecord(), reused: true, reusedFrom: previous.record.startedAt };
-      return 0;
-    }
-
     const present = files.filter((file) =>
       lstatSync(path.join(root, file), { throwIfNoEntry: false })?.isFile(),
     );
@@ -346,54 +406,81 @@ async function checkChanged(
       presentSiblings(root, directory),
     );
     const { steps: plan, rustEnv } = planCheckSteps(files, present, focused);
-    const concurrency = validationConcurrency(availableParallelism(), process.availableMemory());
+    const concurrency = validationConcurrency(availableParallelism(), totalmem());
+    const semanticReady = deferred();
+    const lanes = validationLanes(semanticReady.promise);
+    const focusedSuites = new Set(
+      plan.flatMap((step) => (step.kind === "cached" && step.priority.length ? [step.suite] : [])),
+    );
+    const focusedDone = deferred();
+    if (!focusedSuites.size) focusedDone.resolve();
+    const resultsRoot = path.dirname(path.dirname(cacheDirectory(root, process.env, "unit")));
+    let workspace: ReturnType<typeof workspaceInputs> | undefined;
     steps.push(
       ...(await runStepQueue(plan, concurrency, signal, async (step, index) => {
         const name = String(index);
-        const input = path.join(staging, name + ".json");
-        const work: StepWork = {
-          step,
-          rustEnv,
-          cacheReport: path.join(staging, name + ".cache.json"),
-        };
-        writeFileSync(input, JSON.stringify(work));
-        return runStep(
-          step.name,
-          {
-            command: process.execPath,
-            args: ["--import", "tsx", import.meta.filename, "--step", input],
-          },
-          context,
-          name,
-          step.kind === "cached",
-        );
+        if (step.kind === "cached") {
+          const afterFocused = step.priority.length ? undefined : focusedDone.promise;
+          return runStep(
+            step.name,
+            (stepContext) =>
+              runCachedSuite(
+                step.suite,
+                [],
+                {
+                  ...stepContext,
+                  env: { ...stepContext.env, NODEX_TEST_TIER: "default" },
+                  repositoryRoot: root,
+                  workspace: () => (workspace ??= workspaceInputs(root, resultsRoot)),
+                  digests: () => (digests ??= stampDigests(digestCachePath(root, process.env))),
+                  execute: (run) =>
+                    lanes.suite(step.suite, stepContext.env, stepContext.signal, run, afterFocused),
+                },
+                step.priority,
+              ),
+            { ...context, timeoutMs: suiteTimeoutMs },
+            name,
+          ).finally(() => {
+            if (focusedSuites.delete(step.suite) && !focusedSuites.size) focusedDone.resolve();
+          });
+        }
+        const semantic = step.resource === "semantic";
+        const commandLane: StepContext["commandLane"] =
+          step.resource === "rust-budget"
+            ? (env, signal, run) => lanes.cargo(env, signal, run, focusedDone.promise)
+            : undefined;
+        try {
+          const input = path.join(staging, name + ".json");
+          writeFileSync(input, JSON.stringify({ step, rustEnv } satisfies StepWork));
+          return await runStep(
+            step.name,
+            {
+              command: process.execPath,
+              args: ["--import", "tsx", import.meta.filename, "--step", input],
+            },
+            { ...context, commandLane },
+            name,
+            semantic ? semanticReady.resolve : undefined,
+          );
+        } finally {
+          // A task-cache hit, disabled machine budget, or startup error may have no grant.
+          if (semantic) semanticReady.resolve();
+        }
       })),
     );
     if (signal.aborted) return 130;
     if (steps.some(({ outcome }) => outcome === "FAIL" || outcome === "TIMEOUT")) return 1;
 
-    if (key && key === fingerprint(readChangedPaths(root, explicitRef))) {
-      record = createRecord();
-      const temp = lastPassFile + "." + path.basename(staging) + ".tmp";
-      mkdirSync(directory, { recursive: true });
-      try {
-        writeFileSync(temp, JSON.stringify({ key, record } satisfies PassRecord));
-        renameSync(temp, lastPassFile);
-      } finally {
-        rmSync(temp, { force: true });
-      }
-    } else if (key) {
-      write("[check:changed] Worktree inputs changed during validation. Pass record omitted.");
-    }
     return 0;
   } catch (error) {
     record = { ...createRecord(), error: message(error) };
     write(`[check:changed] ${record.error}`);
     return signal.aborted ? 130 : 1;
   } finally {
+    await digests?.flush();
     record ??= createRecord();
     try {
-      if (!record.reused) write(formatSummary(record));
+      write(formatSummary(record));
       const runDirectory = path.join(resolvePrimaryCheckoutRoot(root), "cache.local/check-changed");
       mkdirSync(runDirectory, { recursive: true });
       appendFileSync(path.join(runDirectory, "runs.jsonl"), JSON.stringify(record) + "\n");

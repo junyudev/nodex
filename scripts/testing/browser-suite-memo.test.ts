@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { browserRequestInput } from "./browser-cache-inputs.ts";
-import { localInputReader } from "./test-cache-inputs.ts";
-import { digest, fileHasher, findPass, savePass, workspaceInputs } from "./test-cache-store.ts";
+import { memoizeSuite, type CachedSuiteReport } from "./run-cached-tests.ts";
+import { digest, fileHasher, workspaceInputs } from "./test-cache-store.ts";
 
 const origin = "http://localhost:63315";
 const root = path.resolve("browser-workspace");
@@ -46,9 +46,12 @@ describe("browser request inputs", () => {
     expect(get(origin + "/src/renderer/missing.ts")).toMatchObject({ kind: "opaque" });
   });
 
-  it("admits a pinned CDN file and rejects mutable URLs and service workers", () => {
+  it("rejects external responses and service workers", () => {
     const pinned = "https://unpkg.com/@floating-ui/core@1.7.3/dist/core.js";
-    expect(get(pinned)).toEqual({ kind: "external", input: pinned });
+    expect(get(pinned)).toMatchObject({
+      kind: "opaque",
+      exclusion: { reason: "external browser request" },
+    });
     expect(get("https://unpkg.com/@floating-ui/core@^1.7/dist/core.js")).toEqual({
       kind: "opaque",
       exclusion: {
@@ -79,21 +82,54 @@ it("restores one browser pass only while its collection and inputs still match",
     await mkdir(path.dirname(path.join(workspaceRoot, file)), { recursive: true });
     await writeFile(path.join(workspaceRoot, file), content);
   };
-  const inputs = async () => {
-    const workspace = await workspaceInputs(workspaceRoot);
-    return {
-      topology: workspace.topology,
-      reader: localInputReader(workspaceRoot),
-      identity: {
-        "browser test files": digest(
-          JSON.stringify(
-            [...workspace.files].filter((file) => file.endsWith(".browser.test.ts")).sort(),
-          ),
-        ),
+  let runs = 0;
+  let report: CachedSuiteReport | undefined;
+  const run = async (files = [existing]) => {
+    const code = await memoizeSuite(
+      "browser",
+      {
+        units: [{ id: unit, files }],
+        globalKey: digest(JSON.stringify([key, files])),
+        directory: store,
+        workspace: await workspaceInputs(workspaceRoot),
+        hash: fileHasher(workspaceRoot),
+        browser: true,
+        stable: async () => true,
       },
-    };
+      {
+        repositoryRoot: workspaceRoot,
+        env: {},
+        signal: new AbortController().signal,
+        onStdout: () => {},
+        onReport: (result) => {
+          report = result;
+        },
+      },
+      performance.now(),
+      async () => {
+        throw new Error("unexpected fallback");
+      },
+      async (batch) => {
+        runs++;
+        expect(batch).toEqual(files);
+        return {
+          started: Number.MAX_SAFE_INTEGER,
+          exitCode: 0,
+          evidence: [
+            {
+              file: unit,
+              passed: true,
+              deps: [unit, ...files, used],
+              local: { probes: {}, globs: {} },
+              broadTopology: true,
+            },
+          ],
+        };
+      },
+      false,
+    );
+    expect(code).toBe(0);
   };
-  const lookup = async () => findPass(store, unit, key, fileHasher(workspaceRoot), await inputs());
   try {
     await Promise.all([
       put(unit, "config"),
@@ -101,24 +137,18 @@ it("restores one browser pass only while its collection and inputs still match",
       put(used, "used"),
       put(unused, "initial"),
     ]);
-    const before = await inputs();
-    await savePass(store, unit, {
-      globalKey: key,
-      identity: before.identity,
-      deps: { [unit]: digest("config"), [existing]: digest("test"), [used]: digest("used") },
-      local: { topology: before.topology, probes: {}, globs: {} },
-    });
-    expect(await lookup()).toEqual({ kind: "hit" });
+    await run();
+    expect(report).toMatchObject({ hits: 0, ran: 1, selected: 1, cacheable: 1, uncacheable: [] });
     await put(unused, "changed");
-    expect(await lookup()).toEqual({ kind: "hit" });
+    await run();
+    expect(report).toMatchObject({ hits: 1, ran: 0, selected: 1 });
+    expect(runs).toBe(1);
     await put(used, "changed");
-    expect(await lookup()).toEqual({ kind: "changed", inputs: [used] });
-    await put(used, "used");
+    await run();
+    expect(report).toMatchObject({ hits: 0, ran: 1, missCauses: [{ input: used, count: 1 }] });
     await put(newTest, "new test");
-    expect(await lookup()).toEqual({
-      kind: "changed",
-      inputs: ["browser test files", "workspace file names"],
-    });
+    await run([existing, newTest]);
+    expect(report).toMatchObject({ hits: 0, ran: 2, globalKeyMisses: 2 });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

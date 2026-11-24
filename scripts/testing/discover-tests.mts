@@ -24,16 +24,26 @@ export async function discoverTests(suite: string, args: readonly string[], rela
       ),
     ].sort();
     // Vitest gives VM pool files fresh realms even when the worker process is reused.
-    const isolated = specifications.every(
-      ({ project, pool }) =>
-        (project.config.isolate || pool === "vmForks" || pool === "vmThreads") &&
-        !project.config.browser.enabled &&
-        project.config.experimental.viteModuleRunner !== false,
-    );
-    const setupFiles = [
-      ...new Set(context.projects.flatMap((project) => project.config.setupFiles)),
-    ];
-    return { files, isolated, setupFiles };
+    const isolated =
+      files.length === specifications.length &&
+      specifications.every(
+        ({ project, pool }) =>
+          (project.config.isolate || pool === "vmForks" || pool === "vmThreads") &&
+          !project.config.browser.enabled &&
+          project.config.experimental.viteModuleRunner !== false,
+      );
+    const configDependencies = [
+      ...new Set([
+        ...context.vite.config.configFileDependencies,
+        ...context.projects.flatMap((project) => project.vite.config.configFileDependencies),
+      ]),
+    ].sort();
+    return {
+      files,
+      configDependencies,
+      isolated,
+      runtime: { versions: process.versions, platform: process.platform, arch: process.arch },
+    };
   } finally {
     await context.close();
   }

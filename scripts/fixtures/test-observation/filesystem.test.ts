@@ -54,4 +54,6 @@ test("reads back its own output", () => {
 test("spawns the current Node executable", async () => {
   const [code] = await once(spawn(process.execPath, ["-e", ""], { stdio: "ignore" }), "exit");
   expect(code).toBe(0);
+  const laterRead = readFileSync(new NodeURL("./import-only.test.ts", import.meta.url));
+  expect(laterRead.byteLength).toBeGreaterThan(0);
 });

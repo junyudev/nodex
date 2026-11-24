@@ -8,17 +8,17 @@ import fsPromises from "node:fs/promises";
 import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
-import { syncBuiltinESMExports } from "node:module";
+import { registerHooks, syncBuiltinESMExports } from "node:module";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import workers from "node:worker_threads";
 
 type PathState = "absent" | "file" | "directory";
-type ReadKind =
+export type ReadKind =
   | "content"
   | "stat"
   | "lstat"
@@ -38,15 +38,34 @@ type Reason =
   | "network"
   | "worker"
   | "native addon"
+  | "native filesystem"
+  | "module resolution"
   | "file attribution";
 
-interface PathEvidence {
+export interface PathEvidence {
   readonly state: PathState;
   readonly error?: string;
   readonly digest?: string;
   readonly target?: string;
   readonly mode?: number;
   readonly recursive?: boolean;
+  readonly bufferSize?: number;
+}
+
+export interface ObservedPath {
+  readonly path: string;
+  readonly kind: ReadKind;
+  readonly evidence: PathEvidence;
+}
+
+export interface TestObservation {
+  readonly version: number;
+  readonly file: string;
+  readonly reads: readonly string[];
+  readonly listings: readonly ObservedPath[];
+  readonly pathEvidence: readonly ObservedPath[];
+  readonly unobservable: Readonly<Record<string, readonly string[]>>;
+  readonly nativeResolution: boolean;
 }
 
 interface Observation {
@@ -58,10 +77,11 @@ interface Observation {
   readonly temporary: readonly string[];
   readonly created: Set<string>;
   readonly descriptors: Map<number, { path: string; identity: string }>;
-  readonly reads: Map<string, string>;
-  readonly nativeAddons: Set<string>;
-  readonly snapshots: Map<string, { path: string; kind: ReadKind; evidence: PathEvidence }>;
+  readonly reads: Set<string>;
+  readonly ignored: readonly string[];
+  readonly snapshots: Map<string, ObservedPath>;
   readonly reasons: Map<Reason, Set<string>>;
+  nativeResolution: boolean;
   pending: number;
   finished: boolean;
 }
@@ -73,7 +93,6 @@ const raw = {
   fstat: fs.fstatSync,
   access: fs.accessSync,
   realpath: fs.realpathSync.native,
-  readFile: fs.readFileSync,
   readlink: fs.readlinkSync,
   readdir: fs.readdirSync,
   opendir: fs.opendirSync,
@@ -82,6 +101,8 @@ const raw = {
   rename: fs.renameSync,
 };
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+const virtualStore = path.join(repositoryRoot, "node_modules", ".pnpm");
+const virtualStoreUrl = pathToFileURL(virtualStore + path.sep).href;
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const relative = (root: string, filename: string) =>
   path.relative(root, filename).split(path.sep).join("/");
@@ -94,7 +115,7 @@ const missing = (error: unknown) =>
 function coveredByInstall(root: string, filename: string, canonical: string) {
   if (!inside(root, filename) || !relative(root, filename).split("/").includes("node_modules"))
     return false;
-  const install = path.join(root, "node_modules");
+  const install = path.join(repositoryRoot, "node_modules");
   if (!inside(install, canonical)) return false;
   const first = relative(install, canonical).split("/")[0];
   // Tests and tools also put independent outputs under node_modules/.cache.
@@ -104,20 +125,17 @@ const isListing = (kind: ReadKind): kind is "readdir" | "opendir" =>
   kind === "readdir" || kind === "opendir";
 const identity = (stat: fs.BigIntStats) => `${stat.dev}:${stat.ino}`;
 // Normalizing an unresolved parent segment can change the meaning of a path through a symlink.
+const parentSegment =
+  process.platform === "win32" ? /(?:^|[\\/])\.\.(?:[\\/]|$)/u : /(?:^|\/)\.\.(?:\/|$)/u;
 const resolvePath = (name: string) =>
-  name && !name.split(process.platform === "win32" ? /[\\/]/u : /\//u).includes("..")
-    ? path.resolve(name)
-    : undefined;
+  name && !parentSegment.test(name) ? path.resolve(name) : undefined;
 const processPath = (value: unknown) => {
   try {
+    if (typeof value === "string") return resolvePath(value);
     if (Buffer.isBuffer(value)) {
       const decoded = value.toString();
       return Buffer.from(decoded).equals(value) ? resolvePath(decoded) : undefined;
     }
-    if (typeof value === "string")
-      return value.length && !value.split(path.sep).includes("..")
-        ? path.resolve(value)
-        : undefined;
     if (value && typeof value === "object" && "href" in value && typeof value.href === "string")
       return path.resolve(fileURLToPath(value.href));
   } catch {
@@ -136,6 +154,8 @@ const tryRealpath = (filename: string): string => {
 };
 
 let active: Observation | undefined;
+let tracing = false;
+let nativeHooksInstalled = false;
 let internal = 0;
 const origins = new Map<number, Observation>();
 function withinRecorder<T>(run: () => T): T {
@@ -152,12 +172,12 @@ function publish(observation: Observation) {
   const probes = new Map<string, PathState>();
   for (const entry of snapshots.values()) probes.set(entry.path, entry.evidence.state);
   const record = {
-    version: 1,
+    version: 2,
     file,
     pool,
     worker: { pid: process.pid, threadId: workers.threadId },
-    reads: Object.fromEntries(reads),
-    nativeAddons: [...observation.nativeAddons].sort(),
+    reads: [...reads].sort(),
+    nativeResolution: observation.nativeResolution,
     probes: Object.fromEntries(probes),
     listings: [...snapshots.values()].filter(({ kind }) => isListing(kind)),
     pathEvidence: [...snapshots.values()].filter(({ kind }) => !isListing(kind)),
@@ -185,10 +205,16 @@ function block(observation: Observation, reason: Reason, detail: string) {
 
 function current() {
   if (internal) return;
-  const origin = origins.get(executionAsyncId());
-  if (!origin?.finished) return active;
-  block(origin, "file attribution", "operation after the file finished");
-  return undefined;
+  if (tracing) {
+    const origin = origins.get(executionAsyncId());
+    if (origin?.finished) {
+      if (origin.reasons.size === 0)
+        block(origin, "file attribution", "operation after the file finished");
+      return;
+    }
+  }
+  // An opaque operation has already committed the file to execution on the next check.
+  if (active?.reasons.size === 0) return active;
 }
 
 function inputPath(observation: Observation, value: unknown, method: string) {
@@ -213,22 +239,37 @@ function inputPath(observation: Observation, value: unknown, method: string) {
   return filename;
 }
 
+const runnerCache = (observation: Observation, filename: string) =>
+  observation.ignored.some(
+    (directory) => filename === directory || filename.startsWith(directory + path.sep),
+  );
+
 function classify(observation: Observation, filename: string) {
-  const canonical = tryRealpath(filename);
   const { root, temporary, created } = observation;
-  if (created.has(filename) && filename === canonical) return;
-  if (coveredByInstall(root, filename, canonical)) return;
+  // Vitest's transform files and the locked pnpm store are represented by runner/install identity.
+  if (runnerCache(observation, filename)) return;
+  const canonical = tryRealpath(filename);
+  if (created.has(canonical) && filename === canonical) return;
   if (
-    !inside(root, filename) &&
-    !inside(root, canonical) &&
-    temporary.some((directory) => inside(directory, canonical))
+    coveredByInstall(root, filename, canonical) ||
+    coveredByInstall(repositoryRoot, filename, canonical)
   )
     return;
   if (inside(root, filename) && inside(root, canonical)) return canonical;
+  if (temporary.some((directory) => inside(directory, canonical))) {
+    for (let parent = canonical; parent !== path.dirname(parent); parent = path.dirname(parent)) {
+      if (created.has(parent)) return;
+    }
+  }
   block(observation, "external filesystem", filename);
 }
 
-function listDirectory(filename: string, kind: "readdir" | "opendir", recursive: boolean) {
+function listDirectory(
+  filename: string,
+  kind: "readdir" | "opendir",
+  recursive: boolean,
+  bufferSize?: number,
+) {
   const encode = (entry: fs.Dirent) => [
     entry.parentPath ? relative(filename, entry.parentPath) : "",
     entry.name,
@@ -243,7 +284,10 @@ function listDirectory(filename: string, kind: "readdir" | "opendir", recursive:
   if (kind === "readdir")
     return raw.readdir(filename, { recursive, withFileTypes: true }).map(encode);
   const entries: string[][] = [];
-  const directory = raw.opendir(filename, { recursive });
+  const directory = raw.opendir(
+    filename,
+    bufferSize === undefined ? { recursive } : { recursive, bufferSize },
+  );
   try {
     for (let entry = directory.readSync(); entry; entry = directory.readSync())
       entries.push(encode(entry));
@@ -253,11 +297,23 @@ function listDirectory(filename: string, kind: "readdir" | "opendir", recursive:
   return entries;
 }
 
-function pathSnapshot(filename: string, kind: ReadKind, options: unknown): PathEvidence {
+export function pathSnapshot(filename: string, kind: ReadKind, options: unknown): PathEvidence {
   const flags = options && typeof options === "object" ? options : {};
+  const encoding =
+    typeof options === "string" ? options : "encoding" in flags ? flags.encoding : undefined;
+  if (isListing(kind) && encoding && encoding !== "utf8" && encoding !== "utf-8")
+    throw new Error("Untracked directory encoding");
   const recursive = isListing(kind) && "recursive" in flags && flags.recursive === true;
   const mode = kind === "access" && typeof options === "number" ? options : undefined;
-  const replay = { ...(recursive ? { recursive } : {}), ...(mode === undefined ? {} : { mode }) };
+  const bufferSize =
+    kind === "opendir" && "bufferSize" in flags && typeof flags.bufferSize === "number"
+      ? flags.bufferSize
+      : undefined;
+  const replay = {
+    ...(recursive ? { recursive } : {}),
+    ...(mode === undefined ? {} : { mode }),
+    ...(bufferSize === undefined ? {} : { bufferSize }),
+  };
   try {
     const stat =
       kind === "lstat" || kind === "readlink"
@@ -293,10 +349,10 @@ function pathSnapshot(filename: string, kind: ReadKind, options: unknown): PathE
           ),
         ),
       };
-    if (kind === "content")
-      return state === "file" ? { state, digest: digest(raw.readFile(filename)) } : { state };
+    if (kind === "content") return { state };
     if (!isListing(kind)) throw new Error("Unsupported read operation");
-    const entries = state === "directory" ? listDirectory(filename, kind, recursive) : [];
+    const entries =
+      state === "directory" ? listDirectory(filename, kind, recursive, bufferSize) : [];
     return { state, digest: digest(JSON.stringify(entries)), ...replay };
   } catch (error) {
     if (!missing(error)) throw error;
@@ -306,26 +362,39 @@ function pathSnapshot(filename: string, kind: ReadKind, options: unknown): PathE
 
 function recordRead(observation: Observation, filename: string, kind: ReadKind, options: unknown) {
   try {
+    if (runnerCache(observation, filename)) return;
+    const name = relative(observation.root, filename) || ".";
+    if (kind === "content" && observation.reads.has(name))
+      return { state: "file" } satisfies PathEvidence;
     const canonical = classify(observation, filename);
     if (!canonical) return;
-    const name = relative(observation.root, filename) || ".";
+    // A path alias is not portable and can be retargeted independently of the file it names.
+    if (canonical !== filename) {
+      block(observation, "filesystem operation", "path alias " + name);
+      return;
+    }
     const snapshot = pathSnapshot(filename, kind, options);
+    if (kind === "content" && snapshot.state === "file") {
+      observation.reads.add(name);
+      return snapshot;
+    }
     const evidence =
-      canonical === filename
+      snapshot.target === undefined
         ? snapshot
-        : {
-            ...snapshot,
-            target: snapshot.target ?? relative(observation.root, canonical),
-          };
-    const key = JSON.stringify([name, kind, evidence.mode, evidence.recursive]);
+        : { ...snapshot, target: relative(observation.root, snapshot.target) || "." };
+    const key = JSON.stringify([
+      name,
+      kind,
+      evidence.mode,
+      evidence.recursive,
+      evidence.bufferSize,
+    ]);
     const previous = observation.snapshots.get(key);
     if (previous && JSON.stringify(previous.evidence) !== JSON.stringify(evidence)) {
       block(observation, "unstable filesystem input", name);
       return;
     }
-    // Two operations can follow symlinks differently. Preserve both pieces of evidence.
     observation.snapshots.set(key, { path: name, kind, evidence });
-    if (kind === "content" && evidence.digest) observation.reads.set(name, evidence.digest);
     return evidence;
   } catch {
     block(observation, "filesystem operation", kind + " " + filename);
@@ -342,7 +411,13 @@ function intercept(owner: object, key: PropertyKey, apply: ProxyHandler<Function
   if (typeof original === "function") Reflect.set(owner, key, new Proxy(original, apply));
 }
 
-function observe(owner: object, method: string, api: Api, inspect: Inspect) {
+function observe(
+  owner: object,
+  method: string,
+  api: Api,
+  inspect: Inspect,
+  suppressNested = false,
+) {
   intercept(owner, method, {
     apply(original, receiver, args: unknown[]) {
       const observation = current();
@@ -362,13 +437,13 @@ function observe(owner: object, method: string, api: Api, inspect: Inspect) {
           block(observation, "filesystem operation", method);
         }
       });
-      if (!complete) return Reflect.apply(original, receiver, args);
-      if (api === "sync")
+      if (api === "sync" && (complete || suppressNested))
         return withinRecorder(() => {
           const result: unknown = Reflect.apply(original, receiver, args);
-          complete(result);
+          complete?.(result);
           return result;
         });
+      if (!complete) return Reflect.apply(original, receiver, args);
       const callback = args.at(-1);
       if (api === "callback" && typeof callback !== "function")
         return Reflect.apply(original, receiver, args);
@@ -433,10 +508,13 @@ function readOperation(method: string, kind: ReadKind): Inspect {
     if (!filename) return;
     const before = recordRead(observation, filename, kind, args[1]);
     if (!before) return;
+    // The parent hashes content once and rejects ctime newer than the start of the batch.
+    if (kind === "content" && before.state === "file") return () => {};
     return (result) => {
       if (
-        (method === "readFile" && Buffer.isBuffer(result) && digest(result) !== before.digest) ||
-        (kind === "exists" && typeof result === "boolean" && result !== (before.state !== "absent"))
+        kind === "exists" &&
+        typeof result === "boolean" &&
+        result !== (before.state !== "absent")
       ) {
         block(observation, "unstable filesystem input", relative(observation.root, filename));
       }
@@ -491,15 +569,21 @@ function absentPath(filename: string) {
 
 function rememberCreated(observation: Observation, filename: string) {
   // Never exempt a link or its target based on a creation at the link's spelling.
-  if (inside(observation.root, filename) && tryRealpath(filename) === filename)
-    observation.created.add(filename);
+  const canonical = tryRealpath(filename);
+  if (inside(observation.root, filename)) {
+    if (canonical === filename) observation.created.add(filename);
+    return;
+  }
+  if (observation.temporary.some((directory) => inside(directory, canonical)))
+    observation.created.add(canonical);
 }
 
 function openOperation(observation: Observation, [value, flags]: unknown[]): Completion | void {
   const filename = inputPath(observation, value, "open");
   if (!filename) return;
-  const creates = createsFile(flags) && absentPath(filename);
-  if (!creates) recordRead(observation, filename, "exists", undefined);
+  const installed = runnerCache(observation, filename);
+  const creates = !installed && createsFile(flags) && absentPath(filename);
+  if (!creates && !installed) recordRead(observation, filename, "exists", undefined);
   return (result) => {
     if (creates) rememberCreated(observation, filename);
     const handle = typeof result === "number" ? undefined : (result as fsPromises.FileHandle);
@@ -522,19 +606,35 @@ function mutation(method: string): Inspect {
       ? args[1]
       : args[0];
     const filename = processPath(value);
-    if (!filename || !inside(observation.root, filename)) return;
-    if (["rm", "rmdir", "unlink", "rename"].includes(method)) {
-      const removed = processPath(args[0]);
-      if (removed)
-        for (const created of observation.created)
-          if (inside(removed, created)) observation.created.delete(created);
+    if (!filename || runnerCache(observation, filename)) return;
+    const removal = ["rm", "rmdir", "unlink", "rename"].includes(method)
+      ? processPath(args[0])
+      : undefined;
+    const removed = removal && tryRealpath(removal);
+    const forgetRemoved = () => {
+      if (!removed) return;
+      for (const created of observation.created)
+        if (inside(removed, created)) observation.created.delete(created);
+    };
+    if (method !== "mkdir" && !inside(observation.root, filename)) {
+      classify(observation, filename);
+      return removed ? forgetRemoved : undefined;
     }
     if (
-      ["rm", "rmdir", "unlink", "cp", "symlink", "link"].includes(method) ||
-      !absentPath(filename)
-    )
+      method === "mkdir" &&
+      !inside(observation.root, filename) &&
+      !observation.temporary.some((directory) => inside(directory, tryRealpath(filename)))
+    ) {
+      classify(observation, filename);
       return;
+    }
+    if (["rm", "rmdir", "unlink"].includes(method)) {
+      recordRead(observation, filename, "exists", undefined);
+      return forgetRemoved;
+    }
+    if (["cp", "symlink", "link"].includes(method) || !absentPath(filename)) return;
     return (firstCreated) => {
+      forgetRemoved();
       rememberCreated(observation, filename);
       if (method !== "mkdir" || typeof firstCreated !== "string") return;
       for (
@@ -549,7 +649,8 @@ function mutation(method: string): Inspect {
 
 function hookFilesystem() {
   for (const [method, kind] of Object.entries(pathReaders)) {
-    observe(fs, method + "Sync", "sync", readOperation(method, kind));
+    // Node's synchronous file reads can call the public descriptor API internally.
+    observe(fs, method + "Sync", "sync", readOperation(method, kind), true);
     observe(
       fs,
       method,
@@ -576,7 +677,7 @@ function hookFilesystem() {
   observe(fsPromises, "open", "promise", openOperation);
   const temporaryDirectory: Inspect = (observation, [prefix]) => {
     const name = processPath(prefix);
-    if (!name || !inside(observation.root, name)) return;
+    if (!name) return;
     return (result) => {
       const created = processPath(
         result && typeof result === "object" && "path" in result ? result.path : result,
@@ -755,10 +856,6 @@ function hookExecution() {
   });
   onCall(process, "dlopen", (observation, [, file]) => {
     const filename = processPath(file);
-    if (filename && coveredByInstall(observation.root, filename, tryRealpath(filename))) {
-      observation.nativeAddons.add(relative(observation.root, filename));
-      return;
-    }
     block(observation, "native addon", filename ?? "<unknown>");
   });
 }
@@ -813,6 +910,57 @@ function hookNetwork() {
   });
 }
 
+function hookNativeFilesystem() {
+  const sqlite = process.getBuiltinModule("node:sqlite");
+  if (!sqlite) return;
+  // SQLite can open database and journal files below the JavaScript filesystem API.
+  intercept(sqlite, "DatabaseSync", {
+    construct(original, args, target) {
+      const observation = current();
+      const [location] = args;
+      if (observation && location !== ":memory:") {
+        const filename = processPath(location);
+        if (!filename || withinRecorder(() => classify(observation, filename)))
+          block(observation, "native filesystem", "SQLite database");
+      }
+      return Reflect.construct(original, args, target);
+    },
+  });
+  onCall(sqlite.DatabaseSync.prototype, "loadExtension", (observation) =>
+    block(observation, "native addon", "SQLite extension"),
+  );
+}
+
+function hookNativeResolution() {
+  registerHooks({
+    resolve(specifier, context, next) {
+      const observation = current();
+      try {
+        const result = next(specifier, context);
+        if (
+          !observation ||
+          result.url.startsWith("node:") ||
+          result.url.startsWith(virtualStoreUrl)
+        )
+          return result;
+        const filename = processPath({ href: result.url });
+        if (filename === import.meta.filename) return result;
+        if (filename) {
+          if (withinRecorder(() => recordRead(observation, filename, "content", undefined)))
+            observation.nativeResolution = true;
+        } else {
+          block(observation, "module resolution", "untracked native module URL");
+        }
+        return result;
+      } catch (error) {
+        // The native loader doesn't expose its unsuccessful path probes.
+        if (observation) block(observation, "module resolution", "failed native lookup");
+        throw error;
+      }
+    },
+  });
+}
+
 // Node preloads the hooks before Vitest's VM loader snapshots named builtin exports.
 if (process.env.NODEX_TEST_OBSERVATIONS) {
   hookFilesystem();
@@ -820,8 +968,6 @@ if (process.env.NODEX_TEST_OBSERVATIONS) {
   hookNetwork();
   syncBuiltinESMExports();
 }
-
-let tracing = false;
 
 /** The first setup file starts recording after Vitest creates the worker environment. */
 export function beginTestObservation(
@@ -834,7 +980,14 @@ export function beginTestObservation(
     block(active, "file attribution", "overlapping setup");
     endTestObservation(path.resolve(active.root, active.file));
   }
-  if (!tracing) {
+  if (!nativeHooksInstalled) {
+    hookNativeResolution();
+    hookNativeFilesystem();
+    syncBuiltinESMExports();
+    nativeHooksInstalled = true;
+  }
+  // Fresh isolated workers have no previous file whose async resources need attribution.
+  if (!tracing && (pool === "vmForks" || pool === "vmThreads")) {
     createHook({
       init(id, _type, trigger) {
         if (internal) return;
@@ -848,7 +1001,7 @@ export function beginTestObservation(
     }).enable();
     tracing = true;
   }
-  const root = repositoryRoot;
+  const root = process.env.NODEX_TEST_OBSERVATION_ROOT ?? repositoryRoot;
   active = {
     file: relative(root, file),
     recordPath: path.join(directory, digest(relative(root, file)) + "-" + randomUUID() + ".json"),
@@ -858,9 +1011,18 @@ export function beginTestObservation(
     temporary: [...new Set([os.tmpdir(), "/tmp"].map((value) => tryRealpath(path.resolve(value))))],
     created: new Set(),
     descriptors: new Map(),
-    reads: new Map(),
-    nativeAddons: new Set(),
+    reads: new Set(),
+    ignored: [
+      virtualStore,
+      path.join(root, "node_modules", ".vite"),
+      path.join(root, "node_modules", ".vite-temp"),
+      path.join(root, "node_modules", ".vitest-cache"),
+      ...(JSON.parse(process.env.NODEX_TEST_TRANSFORM_CACHES ?? "[]") as string[]).flatMap(
+        (directory) => [directory, tryRealpath(directory)],
+      ),
+    ],
     snapshots: new Map(),
+    nativeResolution: false,
     reasons: new Map(),
     pending: 0,
     finished: false,

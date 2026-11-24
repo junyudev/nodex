@@ -8,7 +8,7 @@ export interface BrowserCacheExclusion {
 }
 
 type Input =
-  | { readonly kind: "file" | "external"; readonly input: string }
+  | { readonly kind: "file"; readonly input: string }
   | { readonly kind: "install" | "runtime" | "inline" | "typography" }
   | { readonly kind: "opaque"; readonly exclusion: BrowserCacheExclusion };
 
@@ -16,19 +16,6 @@ const opaque = (reason: string, input?: string): Input => ({
   kind: "opaque",
   exclusion: { reason, input },
 });
-
-// Only admit named files from a pinned npm release on the package CDN. Tags,
-// ranges, entry-point redirects, and transformed CDN endpoints are opaque.
-function immutableUrl(url: URL) {
-  return (
-    url.origin === "https://unpkg.com" &&
-    !url.username &&
-    !url.password &&
-    !url.search &&
-    !url.pathname.endsWith("/") &&
-    /^\/(?:@[\w.-]+\/)?[\w.-]+@\d+\.\d+\.\d+(?:-[\w.-]+)?\/[\w./@-]+$/u.test(url.pathname)
-  );
-}
 
 export function browserFileId(id: string) {
   const clean = cleanId(id);
@@ -91,10 +78,7 @@ export function browserRequestInput(
       ? url.protocol + "//" + url.host + url.pathname
       : url.origin + url.pathname;
   if (!["GET", "HEAD"].includes(request.method)) return opaque("non-read browser request", label);
-  if (!context.origins.has(url.origin))
-    return immutableUrl(url)
-      ? { kind: "external", input: url.href }
-      : opaque("external browser request", label);
+  if (!context.origins.has(url.origin)) return opaque("external browser request", label);
 
   const pathname = decodeURIComponent(url.pathname);
   if (pathname === "/typography-bootstrap.js") return { kind: "typography" };

@@ -1,47 +1,34 @@
-import { ownerOfTest, type SuiteId } from "../../config/test-suites.ts";
+import { APP_TEST_SUITES, ownerOfTest, type SuiteId } from "../../config/test-suites.ts";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
 import type { CiGatePlan } from "../ci/ci-gate-plan.ts";
 import { selectStaticChecks, STATIC_CHECKS } from "../ci/verify-static.ts";
-import {
-  CACHE_SUITES,
-  isCacheSuite,
-  type CacheResultSuite,
-  type CacheSuite,
-} from "./test-cache-policy.ts";
-
 interface StepCommand {
   readonly args: readonly string[];
   readonly label?: string;
 }
 
-export type CheckStep = { readonly name: string; readonly lane?: "vitest" | "rust" } & (
+export type CheckStep = { readonly name: string; readonly lane?: "rust" } & (
   | {
       readonly kind: "command";
       readonly commands: readonly StepCommand[];
-      readonly budget?: boolean;
+      readonly resource?: "rust-budget" | "semantic";
     }
   | {
       readonly kind: "cached";
-      readonly suite: CacheResultSuite;
-      readonly filters: readonly string[];
-    }
-  | {
-      readonly kind: "tests";
       readonly suite: SuiteId;
-      readonly related: boolean;
-      readonly args: readonly string[];
+      readonly priority: readonly string[];
     }
   | { readonly kind: "skip"; readonly reason: string }
 );
 
 const codeFile = /\.[cm]?[jt]sx?$/u;
-const testFile = /\.test\.[cm]?[jt]sx?$/u;
+const testFile = /\.(?:test\.[cm]?[jt]sx?|integration\.ts)$/u;
 
 export function findFocusedTests(
   changed: readonly string[],
   present: ReadonlySet<string>,
   siblings: (directory: string) => readonly string[],
-): Record<CacheSuite, string[]> {
+): Partial<Record<SuiteId, string[]>> {
   const candidates = new Set<string>();
   const directories = new Map<string, readonly string[]>();
   for (const file of changed) {
@@ -60,10 +47,10 @@ export function findFocusedTests(
     }
   }
 
-  const result: Record<CacheSuite, string[]> = { unit: [], renderer: [] };
+  const result: Partial<Record<SuiteId, string[]>> = {};
   for (const file of [...candidates].sort()) {
     const owner = ownerOfTest(file);
-    if (owner?.tier === "default" && isCacheSuite(owner.suite)) result[owner.suite].push(file);
+    if (owner?.tier === "default") (result[owner.suite] ??= []).push(file);
   }
   return result;
 }
@@ -103,7 +90,7 @@ function rustSteps(plan: CiGatePlan | null): CheckStep[] {
   const rust = (name: string, args: readonly string[], budget = true): CheckStep => ({
     ...command(name, args),
     lane: "rust",
-    budget,
+    resource: budget ? "rust-budget" : undefined,
   });
   const steps = [
     ...(plan?.rustFast
@@ -131,12 +118,9 @@ function rustSteps(plan: CiGatePlan | null): CheckStep[] {
 export function planCheckSteps(
   files: readonly string[],
   present: readonly string[],
-  focused: Readonly<Record<CacheSuite, readonly string[]>>,
+  focused: Readonly<Partial<Record<SuiteId, readonly string[]>>>,
 ) {
-  // An empty change still runs the semantic gate. Deleted inputs need full app selection.
-  const plan = files.length
-    ? classifyChangedPaths(files, { forceFullTests: present.length !== files.length })
-    : null;
+  const plan = files.length ? classifyChangedPaths(files) : null;
   const groups = plan?.staticGroups ?? [];
   const types = groups.includes("types");
   const checkI18n =
@@ -156,18 +140,18 @@ export function planCheckSteps(
         }
       : skip("changed-file format/lint", "no changed files to read"),
     checkI18n ? command("i18n", ["run", "i18n:check"]) : skip("i18n", "no catalog check selected"),
-    ...CACHE_SUITES.map((suite): CheckStep =>
-      focused[suite].length
-        ? {
-            name: `focused ${suite}`,
-            kind: "cached",
-            lane: "vitest",
-            suite,
-            filters: focused[suite],
-          }
-        : skip(`focused ${suite}`, "no changed or sibling tests"),
-    ),
-    command(types ? "static types" : "semantic", ["run", types ? "check" : "check:semantic"]),
+    {
+      ...command(types ? "static types" : "semantic", ["run", types ? "check" : "check:semantic"]),
+      resource: "semantic",
+    },
+    ...APP_TEST_SUITES.toSorted(
+      (a, b) => Number(Boolean(focused[b]?.length)) - Number(Boolean(focused[a]?.length)),
+    ).map((suite): CheckStep => ({
+      name: `app ${suite}`,
+      kind: "cached",
+      suite,
+      priority: focused[suite] ?? [],
+    })),
     ...groups
       .filter((group) => group !== "types")
       .map((group): CheckStep => ({
@@ -182,30 +166,6 @@ export function planCheckSteps(
           return [{ args: check.command, label: check.name }];
         }),
       })),
-    ...(plan?.appTestSuites.length
-      ? CACHE_SUITES.map((suite): CheckStep => ({
-          name: `app ${suite}`,
-          kind: "cached",
-          lane: "vitest",
-          suite,
-          filters: [],
-        }))
-      : CACHE_SUITES.map((suite) => skip(`app ${suite}`, "no application suites selected"))),
-    ...(plan?.appTestSuites ?? [])
-      .filter((suite) => !isCacheSuite(suite) && suite !== "browser")
-      .map((suite): CheckStep => ({
-        name: `app ${suite}`,
-        kind: "tests",
-        lane: "vitest",
-        suite,
-        related: plan?.testMode === "related",
-        args: (plan?.relatedPaths ?? []).map((file) => "./" + file),
-      })),
-    // Chromium shares one browser context across files, so the whole suite is one memoized
-    // unit that replays when nothing it loaded has changed.
-    plan?.appTestSuites.length
-      ? { name: "app browser", kind: "cached", lane: "vitest", suite: "browser", filters: [] }
-      : skip("app browser", "no application suites selected"),
     ...rustSteps(plan),
   ];
   return { steps, rustEnv: plan && rustGateEnvironment(plan, files) };

@@ -21,12 +21,13 @@ import {
   type LocalInputs,
   type PathState,
 } from "./test-cache-inputs.ts";
+import { prioritizeTests } from "./cache-test-order.ts";
+import type { TestEvidence } from "./test-cache-evidence.ts";
 import { relativeInput } from "./test-cache-policy.ts";
 
 export interface BrowserBatchEvidence {
   readonly files: readonly string[];
   readonly inputs: readonly string[];
-  readonly immutableUrls: readonly string[];
   readonly exclusions: readonly BrowserCacheExclusion[];
   readonly local: Omit<LocalInputs, "topology">;
   readonly broadTopology: boolean;
@@ -126,7 +127,12 @@ function graphInputs(
   return [...nodes].map((node) => node.id ?? node.url);
 }
 
-async function resolutionEvidence(root: string, files: Iterable<string>, client: DevEnvironment) {
+async function resolutionEvidence(
+  root: string,
+  files: Iterable<string>,
+  client: DevEnvironment,
+  exclude: (reason: string, input?: string) => void,
+) {
   const reader = localInputReader(root);
   const probes: Record<string, PathState> = {};
   const globs: Record<string, readonly string[]> = {};
@@ -137,20 +143,22 @@ async function resolutionEvidence(root: string, files: Iterable<string>, client:
         const importer = path.join(root, file);
         const parsedSource = await readFile(importer, "utf8");
         const parsed = parseSync(file, parsedSource);
-        if (parsed.errors.length) return;
+        if (parsed.errors.length) return exclude("unparsed browser module resolution", file);
         const { staticImports, staticExports, dynamicImports, importMetas } = parsed.module;
         const dynamic = literalImports(parsedSource, dynamicImports);
         const requests = new Set([
-          ...(dynamic ?? []),
+          ...dynamic,
           ...staticImports.map(({ moduleRequest }) => moduleRequest.value),
           ...staticExports.flatMap(({ entries }) =>
             entries.flatMap(({ moduleRequest }) => (moduleRequest ? [moduleRequest.value] : [])),
           ),
         ]);
         const patterns = importMetas.length ? readGlobs(file, parsed) : [];
-        for (const pattern of patterns ?? []) {
+        if (!patterns) return exclude("unsupported browser glob", file);
+        for (const pattern of patterns) {
           const members = await reader.glob(pattern);
           if (members) globs[pattern] = members;
+          else exclude("untracked browser glob", pattern);
         }
         for (const request of requests) {
           if (!/^(?:@\/|\.\.?\/)/u.test(request) || client.config.resolve.tsconfigPaths) continue;
@@ -183,14 +191,12 @@ async function recordInputs(
 ): Promise<BrowserBatchEvidence> {
   const files = modules.map(({ relativeModuleId }) => relativeModuleId).sort();
   const inputs = new Set(files);
-  const immutableUrls = new Set<string>();
   let typographyRequested = false;
   const exclusions = new Map<string, BrowserCacheExclusion>();
   const exclude = (reason: string, input?: string) =>
     exclusions.set(JSON.stringify([reason, input]), { reason, input });
   const admit = (input: ReturnType<typeof browserRequestInput>) => {
     if (input.kind === "file") inputs.add(input.input);
-    if (input.kind === "external") immutableUrls.add(input.input);
     if (input.kind === "typography") typographyRequested = true;
     if (input.kind === "opaque") exclude(input.exclusion.reason, input.exclusion.input);
   };
@@ -201,7 +207,6 @@ async function recordInputs(
     return {
       files,
       inputs: [],
-      immutableUrls: [],
       exclusions: [{ reason: "missing Vite browser server" }],
       local: { probes: {}, globs: {} },
       broadTopology: true,
@@ -263,7 +268,7 @@ async function recordInputs(
     }
   };
   admitRequests();
-  const { probes, globs } = await resolutionEvidence(root, inputs, client);
+  const { probes, globs } = await resolutionEvidence(root, inputs, client, exclude);
   // CSS dependencies (including Tailwind scanner inputs), worker bundle inputs,
   // and workspace files used to build optimized dependencies can bypass ESM edges.
   await Promise.all(
@@ -316,7 +321,6 @@ async function recordInputs(
   return {
     files,
     inputs: [...inputs].sort(),
-    immutableUrls: [...immutableUrls].sort(),
     exclusions: [...exclusions.values()],
     local: {
       probes: Object.fromEntries(Object.entries(probes).sort(([a], [b]) => a.localeCompare(b))),
@@ -330,9 +334,12 @@ async function recordInputs(
 const [directory] = process.argv.slice(2);
 if (!directory) throw new Error("Expected browser batch directory.");
 const root = process.cwd();
-const workspace = new Set<string>(
-  JSON.parse(await readFile(path.join(directory, "workspace.json"), "utf8")),
-);
+const batch = JSON.parse(await readFile(path.join(directory, "batch.json"), "utf8")) as {
+  files: string[];
+  workspace: string[];
+  priority: string[];
+};
+const workspace = new Set(batch.workspace);
 const browser = browserObservation();
 const vite = viteObservation();
 let evidence: BrowserBatchEvidence | undefined;
@@ -359,6 +366,9 @@ const runner = await createVitest(
     allowOnly: false,
     fsModuleCache: false,
     browser: { provider: ciPlaywrightProvider(browser.attach) },
+    ...(batch.priority.length
+      ? { sequence: { sequencer: prioritizeTests(root, batch.priority) } }
+      : {}),
     reporters: [...testObservation("browser").reporters, recorder],
   },
   { cacheDir: path.join(directory, "vite"), plugins: [vite.plugin] },
@@ -373,8 +383,14 @@ if (evidence) {
     captured === observationStamp()
       ? evidence.exclusions
       : [...evidence.exclusions, { reason: "browser traffic continued after recording" }];
-  await writeFile(
-    path.join(directory, "evidence.json"),
-    JSON.stringify({ ...evidence, exclusions }),
-  );
+  const sameCollection = JSON.stringify(evidence.files) === JSON.stringify(batch.files);
+  const entry: TestEvidence = {
+    file: suiteConfig("browser"),
+    passed: true,
+    deps: [...new Set([suiteConfig("browser"), ...evidence.inputs])].sort(),
+    local: evidence.local,
+    broadTopology: evidence.broadTopology,
+    exclusions: sameCollection ? exclusions : [{ reason: "browser test collection changed" }],
+  };
+  await writeFile(path.join(directory, "evidence.json"), JSON.stringify([entry]));
 }

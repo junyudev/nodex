@@ -3,10 +3,19 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runtimeForSuite, suiteConfig, type SuiteId } from "../../config/test-suites.ts";
+import { withoutAgentShell } from "../../src/main/platform/node/agent-shell-environment.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const require = createRequire(import.meta.url);
 const vitePlusRequire = createRequire(require.resolve("vite-plus/package.json"));
+
+export function testRuntimeEnvironment(env: NodeJS.ProcessEnv) {
+  const environment = withoutAgentShell(env);
+  delete environment.CODEX_TOOL_CALL_ID;
+  // Test subprocesses are nested shells. A missing depth can trigger first-shell PATH setup.
+  environment.SHLVL = "1";
+  return environment;
+}
 
 export function runtimeCommand(
   suite: SuiteId,
@@ -53,6 +62,12 @@ export function vitestCommand(
   );
 }
 
+export interface TestRuntimeIdentity {
+  readonly versions: Readonly<Record<string, string | undefined>>;
+  readonly platform: string;
+  readonly arch: string;
+}
+
 export async function discoverSuiteManifest(
   suite: SuiteId,
   args: readonly string[],
@@ -80,21 +95,29 @@ export async function discoverSuiteManifest(
     const result = await runCommand(command);
     if (result.exitCode !== 0)
       throw new Error("Test discovery failed for " + suite + " (exit " + result.exitCode + ").");
-    const { files, isolated, setupFiles } = JSON.parse(await readFile(output, "utf8")) as {
+    const { files, isolated, configDependencies, runtime } = JSON.parse(
+      await readFile(output, "utf8"),
+    ) as {
       files?: unknown;
       isolated?: unknown;
-      setupFiles?: unknown;
+      runtime?: TestRuntimeIdentity;
+      configDependencies?: unknown;
     };
     if (
+      typeof runtime?.versions?.node !== "string" ||
+      typeof runtime.versions.modules !== "string" ||
+      typeof runtime.platform !== "string" ||
+      typeof runtime.arch !== "string" ||
+      (runtimeForSuite(suite) === "electron-node" && !runtime.versions.electron) ||
       typeof isolated !== "boolean" ||
       !Array.isArray(files) ||
       !files.every((file): file is string => typeof file === "string") ||
-      !Array.isArray(setupFiles) ||
-      !setupFiles.every((file): file is string => typeof file === "string")
+      !Array.isArray(configDependencies) ||
+      !configDependencies.every((file): file is string => typeof file === "string")
     ) {
       throw new Error("Invalid test discovery result for " + suite + ".");
     }
-    return { files, isolated, setupFiles };
+    return { files, isolated, configDependencies, runtime };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

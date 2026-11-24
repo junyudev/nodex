@@ -175,7 +175,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 
 ## Verification
 
-Run `vp run check:changed` before handoff for changed-file format and lint, the semantic gate, and the same static, Rust, and application-test gates Main CI selects for the unpushed change. Use focused tests while iterating. Reserve the full uncached suites for release gates and changes that need their coverage. See [Choosing checks](docs/development.md#choosing-checks).
+Run `vp run check:changed` before handoff for changed-file format and lint, the semantic gate, the static and Rust gates Main CI selects for the unpushed change, and every default Vitest suite. Use focused tests while iterating. Reserve the full uncached suites for release gates and changes that need their coverage. See [Choosing checks](docs/development.md#choosing-checks).
 
 You decide what to verify. Aim for confidence that matches the change's risk: read the diff and the commits it lands on, skip checks the change cannot affect, and go deeper where it is risky, cross-cutting, or unfamiliar. One strong real-world check can replace a stack of broader suites.
 
@@ -185,7 +185,7 @@ In the handoff, say what you ran and how it went, and what you skipped and why. 
 
 Each runtime has its own runner; the wrong one fails, or passes, for the wrong reasons.
 
-- Branch handoff: `vp run check:changed`. To use the shared result cache for one suite, use `vp run test:cached unit` or `vp run test:cached renderer`.
+- Branch handoff: `vp run check:changed`. To use the shared result cache for one suite, use `vp run test:cached <suite>`.
 
 - Node and shared tests outside native Core/bridge contracts: `vp test run --config config/vitest.node.config.ts <path>`
 - Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path>`

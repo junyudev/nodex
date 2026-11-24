@@ -910,23 +910,22 @@ closest merge base, preferring `origin/main` on ties. On `main` it compares with
 Pass a ref explicitly with `vp run check:changed <ref>`. Staged, unstaged, and
 untracked paths all count.
 
-A frozen dependency install runs first. As slots become available, the runner
-starts changed-file format and lint, i18n, changed and sibling unit and
-renderer tests, the semantic gate, selected static groups, full cached unit and
-renderer suites, other selected application suites, the memoized Chromium suite,
-and Rust. The static
-`types` lane runs `vp run check`. The local `ui-contracts` lane compiles changed
-renderer files. Vitest steps and Rust steps each run serially within their own
-group. Checks finish even when another step fails.
+A frozen dependency install runs first. Every run checks all default Vitest
+suites. Suites with changed or sibling tests execute first, and those files lead
+their batches. Changed-file checks, catalog validation, and the semantic gate
+start while suite lookups run. Local Vitest and Rust execution wait for the semantic gate's
+machine-budget claim. Vitest batches run serially. Rust gates share an execution lane
+with suites that launch the worktree's Cargo artifacts. The change classifier chooses
+local static and Rust gates and selects suites in CI. The local `types` lane
+runs `vp run check`. The `ui-contracts` lane compiles changed renderer files.
+Checks finish even when another step fails.
 
-The summary shows outcomes, run and shared-machine queue times, and available
-test cache statistics. Failed or timed-out steps print their full output. Raise
-the 20-minute per-step running-time limit with `--timeout <seconds>` or
-`CHECK_CHANGED_TIMEOUT`. Time waiting in the shared machine queue does not count.
-Each run appends a record to
-`cache.local/check-changed/runs.jsonl` in the primary checkout. After install,
-an unchanged worktree and validation environment reuse the last passing summary
-from the worktree's `node_modules/.cache/`. Edits during checks prevent reuse.
+The summary shows outcomes, running and queue times, cache hits, and the main
+reasons tests ran. Failed or timed-out steps print their full output. The running
+limit is one hour per Vitest suite and 20 minutes per other step. Override it
+with `--timeout <seconds>` or `CHECK_CHANGED_TIMEOUT`. Queue time does not count.
+Each run appends a record to `cache.local/check-changed/runs.jsonl` in the
+primary checkout.
 
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,
@@ -1231,69 +1230,30 @@ Add a snapshot cache only after measurement shows live authoritative materializa
 
 ### Local test result cache
 
-`vp run test:cached unit` and `vp run test:cached renderer` discover test files
-with the suite's Vitest config and accept the same file filters. On macOS they
-run all misses, uncached files, and one sampled hit in a single Vitest run per
-suite. The audit picks the least recently audited hit in the checkout and
-randomizes ties. The run uses the suite's environment, pool, workers, native
-preparation, and machine budget. CI, other host platforms, stress and live tiers,
-detailed timing collection, and configurations without isolated files and a Vite
-module graph use the ordinary runner. Set `NODEX_TEST_CACHE=off` to bypass the cache.
+`vp run check:changed` checks every file in the default Vitest suites against
+its last passing inputs. Node, jsdom, and Electron-as-Node reuse passes per
+isolated file. Chromium observes inputs and reuses passes at suite scope.
+Run one suite with `vp run test:cached <suite>`. On CI,
+other host platforms, and with `NODEX_TEST_CACHE=off`, the ordinary runner
+executes the tests directly.
 
-A reusable pass requires every test in the file to pass without retries, skips,
-or todos. Vitest records the imports the workers loaded. The cache also follows
-Vite graph edges for static imports, glob matches, watched inputs, and mock
-targets. Lazy imports come from each file's worker report before Vitest adds
-its shared graph edges. A test that never opens a lazy module can reuse its
-pass after an edit to that module.
-Records use checkout-relative paths and content hashes for the test, its
-dependencies, setup imports, and snapshots. The shared key covers Vite and
-Vitest configuration, package and TypeScript manifests, patches, the lockfile,
-install metadata, Node, the declared environment, and the cache implementation.
-For ordinary workspace imports, each pass records the selected file and the
-earlier filesystem candidates Vite probed. Workspace exports that point
-directly to a file use the shared package manifest and the selected file.
-Each pass also checks matching names for supported literal globs and the presence of the test's conventional snapshot.
-A file addition or deletion invalidates the passes that depend on it. Passes
-with less precise resolver evidence also check workspace file names. Unsupported
-globs and untracked inputs stay uncached. Worktrees share passes with matching
-inputs. Local artifact directories such as `cache.local/` do not affect
-workspace identity. Keep checkout and installation inputs stable during
-validation. Cached batches use fresh Vitest transforms so a miss after a
-resolution or glob change executes against the current files.
+A pass is reusable if all its tests passed without skips or retries and all
+recorded inputs still match. Vitest and Vite supply the loaded modules and
+resolution evidence. The runtime recorder adds files read, path probes, and
+directory listings. Chromium records browser requests, Vite inputs, and
+optimizer sources. Install and runtime identity are shared across the units in
+a suite. Electron keys also cover the rebuilt native addon. Operations with
+unobserved inputs, including subprocesses and workspace-built native
+executables, always run. The recorder stops collecting new inputs once a file
+has an unobservable operation. Missing or unstable evidence also requires execution.
 
-Eligibility excludes I/O-capable Node builtins, opaque module loading, native
-artifacts, unknown virtual modules, and worker execution outside the module graph.
-The pinned toolchain supplies the allowed virtual helper. In renderer jsdom tests,
-the known browser worker and audio worklet URL imports record their entry files
-and resolved static imports. The environment has no native Worker or AudioWorklet
-implementation. Browser tests continue to exercise real worker execution.
-
-Tooling tests can use the cache when their imports have recorded inputs. External
-tooling dependencies and ambient tooling inputs such as environment variables
-stay uncached. The cache assumes an intact locked dependency install. Keep tests
-that use subprocesses, external fixtures, native artifacts, or mutable host state
-on the uncached path. Add exceptions to `scripts/testing/test-cache-policy.ts`
-when the graph cannot express a test's inputs.
-
-The suite prints eligibility by file count and by the share of measured file
-time, including environment setup, collection, and test execution. The latest
-report under `node_modules/.cache/test-result-reports/` retains per-file timings
-across focused runs and cache hits.
-
-On macOS, browser memoization treats the default browser suite as one unit because
-its files share a Playwright context. A passing run records context requests,
-Vite client imports and watch files, and local resolution inputs. The complete
-suite runs again when an input changes, an unknown request or service worker
-prevents reuse, or a cached pass is sampled for audit. One of every 64 hits is sampled on average. The browser
-memoization runner can be exercised directly with
-`pnpm exec tsx scripts/testing/run-memoized-browser-suite.ts`; `check:changed`
-uses it whenever it runs application tests. `vp run test:browser` always runs Chromium.
-
-Passes live under the primary checkout's `cache.local/test-results/`.
-`NODEX_BUILD_CACHE_DIR` overrides the cache root. Each test keeps up to four
-recent content records so independent worktrees and branch switches can reuse
-passes. A failed audit or a corrupt record fails the command and invalidates the shared suite cache.
+Each eligible pass retains checkout-relative evidence under
+`cache.local/test-results/` in the primary checkout. `NODEX_BUILD_CACHE_DIR`
+overrides the root. Worktrees and branch switches reuse recent passes with
+matching inputs. Lookups reuse digests for stable file stamps and identify
+Chromium by Playwright's installed revision and its executable. The runner audits
+one file hit per file-based suite and samples Chromium at one in 64 hits. An audit
+failure or corrupted record invalidates the suite's saved passes and fails the check.
 
 ### Runtime conversation work
 
@@ -1387,15 +1347,15 @@ benchmarks or enforce a noisy universal wall-time threshold.
 ### Observe test-file inputs
 
 Set `NODEX_TEST_OBSERVATIONS` to a fresh, absolute output directory to record Node
-I/O separately for each unit, renderer, Agent Runtime, Effect Codex, or Core
-client test file. Use the ordinary suite runner so its runtime, native
-prerequisites, and machine budget remain in effect.
+I/O separately for each test file, including main and integration under Electron.
+Use the ordinary suite runner so its runtime, native prerequisites, and machine
+budget remain in effect.
 
 ```sh
 NODEX_TEST_OBSERVATIONS="$PWD/node_modules/.cache/test-observations-unit" vp run test:unit
 ```
 
-Each JSON record identifies its file and worker and contains content digests,
+Each JSON record identifies its file and worker and contains paths of content reads,
 path probes, directory listing digests, and reasons the recorder could not
 account for an operation. The first setup file starts attribution and the run
 hook closes it after test hooks and snapshots. Node preloads the hooks so VM

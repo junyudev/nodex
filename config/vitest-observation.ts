@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { InlineConfig } from "vite-plus/test/node";
 
 /**
@@ -11,8 +12,23 @@ export function testObservation(suite: string) {
     attachmentsDir,
     reporters: [
       "default",
-      ["./scripts/tooling/vitest-machine-budget-reporter.ts", { suite }],
-      ["./scripts/tooling/vitest-timing-reporter.ts", { directory, suite }],
+      ...(process.env.NODEX_TEST_OBSERVATIONS
+        ? [
+            fileURLToPath(
+              new URL("../scripts/testing/test-observation-transform-cache.ts", import.meta.url),
+            ),
+          ]
+        : []),
+      [
+        fileURLToPath(
+          new URL("../scripts/tooling/vitest-machine-budget-reporter.ts", import.meta.url),
+        ),
+        { suite },
+      ],
+      [
+        fileURLToPath(new URL("../scripts/tooling/vitest-timing-reporter.ts", import.meta.url)),
+        { directory, suite },
+      ],
     ],
   } satisfies Pick<InlineConfig, "attachmentsDir" | "reporters">;
 }

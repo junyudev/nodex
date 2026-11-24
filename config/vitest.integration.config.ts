@@ -1,3 +1,4 @@
+import { observeTestFiles } from "./test-file-observation";
 import { vitestTimeouts } from "./test-timeouts";
 import { resolveVitestTestTier } from "./vitest-test-tier";
 import { TEST_ENVIRONMENT } from "./test-environment";
@@ -12,7 +13,7 @@ const testFiles = filesForSuite("integration", resolveVitestTestTier());
 
 export default defineConfig({
   test: {
-    setupFiles: ["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"],
+    ...observeTestFiles(["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"]),
     ...testObservation("integration"),
     env: TEST_ENVIRONMENT,
     environment: "node",

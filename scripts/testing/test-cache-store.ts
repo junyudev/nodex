@@ -11,6 +11,7 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
 import path from "node:path";
 import { resolvePrimaryCheckoutRoot } from "../immutable-artifact-cache.ts";
 import type { CachedSuiteReport } from "./run-cached-tests.ts";
@@ -20,38 +21,94 @@ import {
   sameMembers,
   type LocalInputs,
 } from "./test-cache-inputs.ts";
-import type { TestEvidence } from "./test-cache-graph.ts";
-import type { CacheResultSuite, CacheSuite } from "./test-cache-policy.ts";
+import type { TestEvidence } from "./test-cache-evidence.ts";
+import type { SuiteId } from "../../config/test-suites.ts";
+import type { TestRuntimeIdentity } from "./runtime.ts";
 
 export interface CachedPass {
   readonly globalKey: string;
   readonly deps: Readonly<Record<string, string>>;
   readonly local?: LocalInputs;
-  readonly identity?: Readonly<Record<string, string>>;
-  readonly immutableUrls?: readonly string[];
 }
 
 export const digest = (content: string | Buffer) =>
   createHash("sha256").update(content).digest("hex");
 
-export function cacheDirectory(root: string, env: NodeJS.ProcessEnv, suite: CacheResultSuite) {
+export function cacheDirectory(root: string, env: NodeJS.ProcessEnv, suite: SuiteId) {
   const override = env.NODEX_BUILD_CACHE_DIR?.trim();
   return path.join(
     override ? path.resolve(override) : path.join(resolvePrimaryCheckoutRoot(root), "cache.local"),
     "test-results",
-    "v1",
+    "v2",
     suite,
   );
 }
 
-export function fileHasher(root: string) {
+export const fileStamp = (value: BigIntStats) =>
+  [value.dev, value.ino, value.size, value.ctimeNs].join(":");
+
+export function digestCachePath(root: string, env: NodeJS.ProcessEnv) {
+  const results = path.dirname(cacheDirectory(root, env, "unit"));
+  return path.join(results, "digests", digest(root) + ".json");
+}
+
+/** A stamp is only a shortcut for bytes hashed while that stamp was stable. */
+export function stampDigests(filename?: string) {
+  const pending = new Map<string, Promise<string | undefined>>();
+  const additions = new Map<string, string>();
+  const stored = (async () => {
+    if (!filename) return new Map<string, string>();
+    try {
+      const record = await readFile(filename, "utf8");
+      const payload = record.slice(65);
+      if (record.slice(0, 65) === digest(payload) + "\n") {
+        const entries = JSON.parse(payload) as Record<string, string>;
+        return new Map(
+          Object.entries(entries).filter(([, value]) => /^[a-f0-9]{64}$/u.test(value)),
+        );
+      }
+    } catch {
+      // The digest table is a performance hint. Re-read content if it is unavailable.
+    }
+    return new Map<string, string>();
+  })();
+  const fresh = async (file: string, stamp: string) => {
+    const bytes = await readFile(file);
+    const after = await stat(file, { bigint: true });
+    return stamp === fileStamp(after) ? digest(bytes) : undefined;
+  };
+  return {
+    async hash(file: string, before: BigIntStats) {
+      const stamp = fileStamp(before);
+      // A coarse filesystem clock can give a fresh change the same ctime as its predecessor.
+      // Publish only stamps already older than one full clock tick when bytes are read.
+      if (before.ctimeNs >= BigInt(Date.now() - 1_000) * 1_000_000n) return fresh(file, stamp);
+      const existing = (await stored).get(stamp);
+      if (existing) return existing;
+      const cached = pending.get(stamp);
+      if (cached) return cached;
+      const computed = fresh(file, stamp).then((hash) => {
+        if (hash) additions.set(stamp, hash);
+        return hash;
+      });
+      pending.set(stamp, computed);
+      return computed;
+    },
+    async flush() {
+      if (!filename || additions.size === 0) return;
+      const entries = [...(await stored), ...additions].slice(-32_768);
+      const payload = JSON.stringify(Object.fromEntries(entries));
+      await publish(filename, digest(payload) + "\n" + payload).catch(() => undefined);
+    },
+  };
+}
+
+export function fileHasher(root: string, digests = stampDigests()) {
   const canonicalRoot = realpath(root).catch(() => undefined);
   const read = new Map<
     string,
     Promise<{ hash: string; stamp: string; ctimeNs: bigint } | undefined>
   >();
-  const stamp = (value: Awaited<ReturnType<typeof readStat>>) =>
-    [value.dev, value.ino, value.size, value.ctimeNs].join(":");
   const readStat = (file: string) => stat(path.join(root, file), { bigint: true });
   const readInput = (file: string) => {
     const cached = read.get(file);
@@ -67,10 +124,9 @@ export function fileHasher(root: string) {
             (await realpath(path.join(root, file))) !== path.join(canonical, file))
         )
           return undefined;
-        const bytes = await readFile(path.join(root, file));
-        const after = await readStat(file);
-        if (stamp(before) !== stamp(after)) return undefined;
-        return { hash: digest(bytes), stamp: stamp(after), ctimeNs: after.ctimeNs };
+        const hash = await digests.hash(path.join(root, file), before);
+        if (!hash) return undefined;
+        return { hash, stamp: fileStamp(before), ctimeNs: before.ctimeNs };
       } catch {
         return undefined;
       }
@@ -89,8 +145,9 @@ export function fileHasher(root: string) {
       const results = await Promise.all(
         [...read].map(async ([file, pending]) => {
           const input = await pending;
+          if (!input) return true;
           const current = await readStat(file).catch(() => undefined);
-          return input ? current && stamp(current) === input.stamp : current === undefined;
+          return current && fileStamp(current) === input.stamp;
         }),
       );
       return results.every(Boolean);
@@ -157,11 +214,14 @@ export async function workspaceInputs(root: string, resultsRoot?: string) {
 
 export async function globalCacheKey(
   root: string,
-  suite: CacheResultSuite,
+  suite: SuiteId,
   env: NodeJS.ProcessEnv,
   epoch: string,
   workspace: Awaited<ReturnType<typeof workspaceInputs>>,
   hash: ReturnType<typeof fileHasher>,
+  runtime: TestRuntimeIdentity,
+  suiteIdentity: unknown,
+  configDependencies: readonly string[] = [],
 ) {
   const sharedInput = (file: string) =>
     /^(?:config\/|patches\/|scripts\/testing\/|scripts\/tooling\/vitest-)/u.test(file) ||
@@ -172,7 +232,10 @@ export async function globalCacheKey(
     (suite === "browser" && /(?:^|\/)\.gitignore$/u.test(file)) ||
     [".node-version", ".npmrc", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file);
   if ([...workspace.links].some(sharedInput)) return undefined;
-  const globalFiles = [...workspace.files].filter(sharedInput).sort();
+  const globalFiles = [
+    ...new Set([...workspace.files].filter(sharedInput).concat(configDependencies)),
+  ].sort();
+  if (!globalFiles.every((file) => workspace.files.has(file))) return undefined;
   const installed = await readFile(path.join(root, "node_modules/.modules.yaml"), "utf8").catch(
     () => undefined,
   );
@@ -185,20 +248,18 @@ export async function globalCacheKey(
     globalFiles.map(async (file) => [file, await hash(file)] as const),
   );
   if (inputs.some(([, content]) => content === undefined)) return undefined;
+  // The runtime exposes process.env to all tests. Normalize checkout paths and omit the
+  // budget's reporting destination, which only instruments the runner.
   const environment = Object.entries(env)
-    .filter(([name]) =>
-      /^(?:NODEX_TEST_TIER$|NODEX_SENTRY_FORCE_TEST$|NODE_OPTIONS$|NODE_EXTRA_CA_CERTS$|CI$|TZ$|LANG$|LC_|VITE_)/u.test(
-        name,
-      ),
-    )
-    .sort(([left], [right]) => left.localeCompare(right));
+    .filter(([name]) => name !== "NODEX_MACHINE_BUDGET_REPORT" && name !== "_")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => [name, value?.replaceAll(root, "<workspace>")]);
   return digest(
     JSON.stringify([
-      "v1",
+      "v2",
       suite,
-      process.versions,
-      process.platform,
-      process.arch,
+      runtime,
+      suiteIdentity,
       epoch,
       environment,
       inputs,
@@ -230,10 +291,10 @@ type CacheReportHistory = {
   readonly auditedAt?: Record<string, number>;
 };
 
-const reportPath = (root: string, suite: CacheSuite) =>
+const reportPath = (root: string, suite: SuiteId) =>
   path.join(root, "node_modules/.cache/test-result-reports", suite + ".json");
 
-export async function readCacheReport(root: string, suite: CacheSuite) {
+export async function readCacheReport(root: string, suite: SuiteId) {
   return readFile(reportPath(root, suite), "utf8")
     .then((content) => (JSON.parse(content) as CacheReportHistory | null) ?? {})
     .catch((): CacheReportHistory => ({}));
@@ -241,7 +302,7 @@ export async function readCacheReport(root: string, suite: CacheSuite) {
 
 export const writeCacheReport = (
   root: string,
-  suite: CacheSuite,
+  suite: SuiteId,
   report: CacheReportHistory & {
     hits: readonly string[];
     summary: CachedSuiteReport;
@@ -252,7 +313,7 @@ export const writeCacheReport = (
 export const invalidateCache = (directory: string) =>
   publish(path.join(directory, "epoch"), randomUUID());
 
-async function changedPassInputs(
+export async function changedPassInputs(
   pass: CachedPass,
   globalKey: string,
   file: string,
@@ -266,9 +327,6 @@ async function changedPassInputs(
     if (typeof expected !== "string" || !portablePath(dependency))
       throw new CorruptCachedPass(file);
     if ((await hash(dependency)) !== expected) changed.push(dependency);
-  }
-  for (const [input, expected] of Object.entries(workspace.identity ?? {})) {
-    if (pass.identity?.[input] !== expected) changed.push(input);
   }
   if (pass.local?.topology !== undefined && pass.local.topology !== workspace.topology)
     changed.push("workspace file names");
@@ -285,6 +343,10 @@ async function changedPassInputs(
     const members = await workspace.reader.glob(pattern);
     if (!members || !sameMembers(members, expected)) changed.push(pattern);
   }
+  for (const entry of pass.local?.observed ?? []) {
+    if (entry.path !== "." && !portablePath(entry.path)) throw new CorruptCachedPass(file);
+    if (!(await workspace.reader.matches(entry))) changed.push(entry.path);
+  }
   return [...new Set(changed)];
 }
 
@@ -300,7 +362,6 @@ export class CorruptCachedPass extends Error {}
 interface PassWorkspace {
   readonly topology: string;
   readonly reader: ReturnType<typeof localInputReader>;
-  readonly identity?: Readonly<Record<string, string>>;
   readonly onHit?: (pass: CachedPass) => void;
 }
 

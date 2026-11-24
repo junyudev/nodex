@@ -14,7 +14,7 @@ interface RecordForFile {
   file: string;
   pool: string;
   worker: { pid: number; threadId: number };
-  reads: Record<string, string>;
+  reads: string[];
   probes: Record<string, string>;
   listings: { path: string; evidence: { digest?: string } }[];
   unobservable: Record<string, string[]>;
@@ -53,7 +53,7 @@ test.each(["forks", "vmForks", "threads"])(
       expect(records).toHaveLength(2);
       expect(filesystem.pool).toBe(pool);
       expect(importOnly.pool).toBe(pool);
-      expect(filesystem.reads[fixtures + "/vitest.config.ts"]).toMatch(/^[\da-f]{64}$/u);
+      expect(filesystem.reads).toContain(fixtures + "/vitest.config.ts");
       expect(filesystem.probes[fixtures + "/absent.fixture"]).toBe("absent");
       expect(filesystem.probes[fixtures + "/also-absent.fixture"]).toBe("absent");
       expect(filesystem.listings).toContainEqual({
@@ -62,12 +62,13 @@ test.each(["forks", "vmForks", "threads"])(
         evidence: { state: "directory", digest: expect.any(String) },
       });
       expect(
-        Object.keys({ ...filesystem.reads, ...filesystem.probes }).some(
+        [...filesystem.reads, ...Object.keys(filesystem.probes)].some(
           (file) => file.endsWith(".fixture") && file.includes("/created-"),
         ),
       ).toBe(false);
       expect(filesystem.unobservable).toEqual({ subprocess: [process.execPath] });
-      expect(importOnly.reads[fixtures + "/vitest.config.ts"]).toBeUndefined();
+      expect(filesystem.reads).not.toContain(fixtures + "/import-only.test.ts");
+      expect(importOnly.reads).not.toContain(fixtures + "/vitest.config.ts");
       expect(importOnly.probes[fixtures + "/absent.fixture"]).toBeUndefined();
       expect(importOnly.unobservable).toEqual({});
       // This assertion witnesses worker reuse, where file boundaries matter most.

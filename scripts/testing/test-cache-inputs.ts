@@ -1,5 +1,6 @@
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
+import { pathSnapshot, type ObservedPath, type ReadKind } from "./test-observation.mts";
 import { relativeInput } from "./test-cache-policy.ts";
 
 export const cleanId = (id: string) => id.split(/[?#]/u, 1)[0];
@@ -10,6 +11,7 @@ export interface LocalInputs {
   readonly probes: Readonly<Record<string, PathState>>;
   readonly globs: Readonly<Record<string, readonly string[]>>;
   readonly topology?: string;
+  readonly observed?: readonly ObservedPath[];
 }
 
 export function portablePath(file: string) {
@@ -32,7 +34,7 @@ function memoize<T>(read: (key: string) => Promise<T>) {
     reads.set(key, pending);
     return pending;
   };
-  return Object.assign(get, { reads });
+  return get;
 }
 
 /** Observe names directly, including untracked paths and case-insensitive filesystem lookups. */
@@ -86,25 +88,62 @@ export function localInputReader(root: string) {
       return undefined;
     }
   });
+  const observation = memoize(async (key) => {
+    const [file, kind, mode, recursive, bufferSize] = JSON.parse(key) as [
+      string,
+      ReadKind,
+      number | null,
+      boolean | null,
+      number | null,
+    ];
+    const absolute = path.join(root, file);
+    try {
+      const current = pathSnapshot(
+        absolute,
+        kind,
+        kind === "access" ? (mode ?? undefined) : { recursive, bufferSize },
+      );
+      if (current.state !== "absent" && !(await state(file))) return undefined;
+      if (current.target === undefined) return JSON.stringify(current);
+      const target =
+        relativeInput(root, current.target) ?? (current.target === root ? "." : undefined);
+      if (target !== undefined) return JSON.stringify({ ...current, target });
+    } catch {
+      return undefined;
+    }
+  });
+  const matches = (entry: ObservedPath) => matchesKey(observationKey(entry), entry.evidence);
+  const matchesKey = async (key: string, expected: ObservedPath["evidence"]) =>
+    (await observation(key)) === JSON.stringify(expected);
   return {
     state,
     glob,
-    async unchanged() {
+    matches,
+    async unchanged(accepted: readonly LocalInputs[]) {
+      const probes = new Map<string, PathState>();
+      const globs = new Map<string, readonly string[]>();
+      const observed = new Map<string, ObservedPath>();
+      for (const input of accepted) {
+        for (const [file, expected] of Object.entries(input.probes)) probes.set(file, expected);
+        for (const [pattern, expected] of Object.entries(input.globs)) globs.set(pattern, expected);
+        for (const entry of input.observed ?? []) observed.set(observationKey(entry), entry);
+      }
       const current = localInputReader(root);
-      const changes = await Promise.all([
-        ...[...state.reads].map(
-          async ([file, previous]) => (await previous) !== (await current.state(file)),
-        ),
-        ...[...glob.reads].map(async ([pattern, previous]) => {
-          const before = await previous;
-          const after = await current.glob(pattern);
-          return before !== after && (!before || !after || !sameMembers(before, after));
+      const checks = await Promise.all([
+        ...[...probes].map(async ([file, expected]) => (await current.state(file)) === expected),
+        ...[...observed.values()].map((entry) => current.matches(entry)),
+        ...[...globs].map(async ([pattern, expected]) => {
+          const members = await current.glob(pattern);
+          return members !== undefined && sameMembers(expected, members);
         }),
       ]);
-      return !changes.some(Boolean);
+      return checks.every(Boolean);
     },
   };
 }
+
+export const observationKey = ({ path, kind, evidence }: ObservedPath) =>
+  JSON.stringify([path, kind, evidence.mode, evidence.recursive, evidence.bufferSize]);
 
 export const sameMembers = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((name, index) => name === right[index]);
