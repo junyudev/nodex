@@ -17,7 +17,7 @@ use serde_json::json;
 fn definition(name: &str, mode: AutomationMode, scope: AutomationScope) -> AutomationInput {
     serde_json::from_value(json!({
         "kind":"cron","name":name,"mode":mode,"scope":scope,
-        "prompt":"Review the queue","rrule":"FREQ=YEARLY","timezone":"UTC",
+        "prompt":"Review the queue","trigger":{"kind":"clock","rrule":"FREQ=YEARLY","timezone":"UTC"},
         "project_id":null,"cwds":[],"execution_environment":"local"
     }))
     .unwrap()

@@ -39,15 +39,17 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         "name": "Review releases",
         "condition_text": "Every day",
         "prompt": "Review the latest releases",
-        "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
-        "timezone": "Asia/Singapore",
+        "trigger": {
+            "kind": "clock",
+            "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+            "timezone": "Asia/Singapore"
+        },
         "mode": "dry_run",
         "project_id": null,
         "execution_environment": "local",
         "backend_binding": {"driver": "codex", "instanceId": "codex"},
         "model": "gpt-6"
     });
-    fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
     let create = [
         "automations",
         "create",
@@ -56,6 +58,18 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         "--idempotency-key",
         "create-automation",
     ];
+    for trigger in [
+        serde_json::json!({"kind": "event", "filter": {"events": ["check_failed"]}, "rrule": "FREQ=DAILY"}),
+        serde_json::json!({"kind": "event", "filter": {"events": ["check_failed"]}, "timezone": "UTC"}),
+        serde_json::json!({"kind": "clock"}),
+    ] {
+        let mut invalid = definition.clone();
+        invalid["trigger"] = trigger;
+        fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        let rejected = run(&home, &create);
+        assert_eq!(rejected["error"]["code"], "INVALID_INPUT", "{rejected}");
+    }
+    fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
     let created = success(&home, &create);
     let id = created["item"]["automation_id"].as_str().unwrap();
     assert_eq!(created["item"]["mode"], "dry_run");
@@ -63,10 +77,7 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         created["item"]["backend_binding"],
         definition["backend_binding"]
     );
-    assert_eq!(
-        created["item"]["typed_condition"]["timezone"],
-        "Asia/Singapore"
-    );
+    assert_eq!(created["item"]["trigger"]["timezone"], "Asia/Singapore");
     let replay = success(&home, &create);
     assert_eq!(replay["item"], created["item"]);
     assert_eq!(replay["duplicate"], true);
@@ -85,6 +96,10 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
         .unwrap()
         .to_string();
     definition["prompt"] = serde_json::json!("Review releases and record breaking changes");
+    definition["trigger"]
+        .as_object_mut()
+        .unwrap()
+        .remove("timezone");
     fs::write(&path, serde_json::to_vec(&definition).unwrap()).unwrap();
     let updated = success(
         &home,
@@ -100,6 +115,7 @@ fn automations_preserve_revisions_and_manual_dispatch_identity() {
             path.to_str().unwrap(),
         ],
     );
+    assert_eq!(updated["item"]["trigger"]["timezone"], "Asia/Singapore");
     assert_eq!(updated["item"]["prompt"], definition["prompt"]);
     assert_eq!(
         run(

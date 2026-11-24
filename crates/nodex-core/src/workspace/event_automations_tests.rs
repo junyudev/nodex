@@ -1,8 +1,8 @@
 use super::*;
 use crate::automation::AutomationModule;
 use nodex_core_contracts::{
-    CoreErrorCode, ModuleApplyRequest, StoreEpoch, agent::AgentTurnProvenance, automation::*,
-    automation_assessment::*,
+    CoreErrorCode, ModuleApplyRequest, ModuleReadRequest, StoreEpoch, agent::AgentTurnProvenance,
+    automation::*, automation_assessment::*,
 };
 use rusqlite::params;
 
@@ -37,7 +37,7 @@ fn configured_automation(
             ]),
         },
     );
-    let input:AutomationInput=serde_json::from_value(json!({"kind":"cron","name":id,"condition_text":"When CI fails, investigate this Project","prompt":"Investigate the failure and propose a fix","mode":mode,"runbook_page_id":runbook,"project_id":"project:default","cwds":[nodex_platform::fixture_path!("/workspace/event-automations")],"execution_environment":"local","model":"test-model","source_condition":{"source_id":"github","repositories":["alice/repo"],"kinds":["check_failed"],"labels":[],"actor_class":"any"}})).unwrap();
+    let input = event_input(id, mode, runbook);
     AutomationModule::new("profile-1", "library-1", &w.kernel)
         .apply(
             &context(),
@@ -57,6 +57,284 @@ fn configured_automation(
         .automations
         .remove(0)
 }
+fn event_input(id: &str, mode: AutomationMode, runbook: Option<&str>) -> AutomationInput {
+    serde_json::from_value(json!({
+        "kind": "cron",
+        "name": id,
+        "condition_text": "When CI fails, investigate this Project",
+        "prompt": "Investigate the failure and propose a fix",
+        "mode": mode,
+        "runbook_page_id": runbook,
+        "project_id": "project:default",
+        "cwds": [nodex_platform::fixture_path!("/workspace/event-automations")],
+        "execution_environment": "local",
+        "model": "test-model",
+        "trigger": {
+            "kind": "event",
+            "filter": {
+                "source_id": "github",
+                "repositories": ["alice/repo"],
+                "events": ["check_failed"]
+            }
+        }
+    }))
+    .unwrap()
+}
+
+#[test]
+fn event_trigger_survives_status_changes_and_replacement_in_either_direction() {
+    let w = setup();
+    let item = automation(&w, "automation", AutomationMode::DryRun);
+    let module = AutomationModule::new("profile-1", "library-1", &w.kernel);
+    let apply = |op: &str, intent| {
+        module.apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: AUTOMATION_CONTRACT_VERSION,
+                operation_id: op.into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent,
+            },
+        )
+    };
+    let read = |read| {
+        module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read,
+                },
+            )
+            .unwrap()
+            .value
+    };
+    let assert_event = |item: &Automation| {
+        let value = serde_json::to_value(item).unwrap();
+        assert_eq!(value["trigger"]["kind"], "event");
+        assert_eq!(
+            value["trigger"]["filter"]["events"],
+            json!(["check_failed"])
+        );
+        let json = value.to_string();
+        for field in ["rrule", "timezone", "jitter_salt", "next_run_at_ms"] {
+            assert!(!json.contains(&format!("\"{field}\"")));
+        }
+    };
+    assert_event(&item);
+    let AutomationReadValue::Automation { item: Some(stored) } = read(AutomationRead::Automation {
+        automation_id: "automation".into(),
+    }) else {
+        panic!("saved event Automation");
+    };
+    assert_event(&stored);
+    assert_eq!(item, *stored);
+    let AutomationReadValue::DueWork { plan } = read(AutomationRead::DueWork {
+        lane: AutomationDueWorkLane::Automations,
+    }) else {
+        panic!("clock plan");
+    };
+    assert_eq!(plan.next_wake_at_ms, None);
+    assert_eq!(plan.work_token, None);
+    assert_eq!(
+        apply(
+            "run-event",
+            AutomationIntent::DispatchNow {
+                automation_id: "automation".into(),
+            }
+        )
+        .unwrap_err()
+        .code,
+        CoreErrorCode::InvalidInput
+    );
+    assert_eq!(
+        apply(
+            "reschedule-event",
+            AutomationIntent::RescheduleAutomation {
+                automation_id: "automation".into(),
+                expected_revision: 1,
+                not_before_ms: Some(4_000_000_000_000),
+                retry_within_ms: None,
+            }
+        )
+        .unwrap_err()
+        .code,
+        CoreErrorCode::InvalidInput
+    );
+
+    let mut heartbeat = event_input("Heartbeat", AutomationMode::DryRun, None);
+    heartbeat.kind = AutomationExecutionKind::Heartbeat;
+    let error = apply(
+        "create-event-heartbeat",
+        AutomationIntent::CreateAutomation {
+            automation_id: "event-heartbeat".into(),
+            automation: heartbeat,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::InvalidInput);
+    assert_eq!(
+        error.message,
+        "A heartbeat continues its Session on a clock trigger"
+    );
+
+    for (op, revision, status) in [
+        ("pause-event", 1, AutomationStatus::Paused),
+        ("resume-event", 2, AutomationStatus::Active),
+    ] {
+        let outcome = apply(
+            op,
+            AutomationIntent::SetAutomationStatus {
+                automation_id: "automation".into(),
+                expected_revision: revision,
+                status,
+            },
+        )
+        .unwrap();
+        let item = &outcome.committed.value.automations[0];
+        assert_eq!(item.status, status);
+        assert_event(item);
+    }
+
+    let replace = |op: &str, revision, automation| {
+        apply(
+            op,
+            AutomationIntent::UpdateAutomation {
+                automation_id: "automation".into(),
+                expected_revision: revision,
+                status: AutomationStatus::Active,
+                automation,
+            },
+        )
+        .unwrap()
+        .committed
+        .value
+        .automations
+        .remove(0)
+    };
+    let event = event_input("automation", AutomationMode::DryRun, None);
+    let mut clock = event.clone();
+    clock.mode = Some(AutomationMode::AskFirst);
+    clock.condition_text = None;
+    clock.trigger = AutomationTriggerInput::Clock {
+        rrule: " FREQ=DAILY ".into(),
+        timezone: None,
+    };
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute(
+                "UPDATE automation_clock_metadata SET jitter_salt='transition-salt'",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let scheduled = replace("make-clock", 3, clock);
+    let AutomationTrigger::Clock {
+        rrule,
+        timezone,
+        next_run_at_ms,
+    } = scheduled.trigger
+    else {
+        panic!("clock replacement");
+    };
+    assert_eq!(rrule, "FREQ=DAILY");
+    assert_eq!(scheduled.condition_text, rrule);
+    assert_eq!(timezone, iana_time_zone::get_timezone().unwrap());
+    assert!(next_run_at_ms.is_some());
+    let clock_parts: (i64, String) = w
+        .kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row(
+        "SELECT schedule_revision,jitter_salt FROM automations WHERE automation_id='automation'",
+        [], |r| Ok((r.get(0)?, r.get(1)?)),
+    )?)
+        })
+        .unwrap();
+    assert_eq!(clock_parts, (4, "transition-salt".into()));
+
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute(
+                "UPDATE automations SET next_run_at=0 WHERE automation_id='automation'",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let AutomationReadValue::DueWork { plan } = read(AutomationRead::DueWork {
+        lane: AutomationDueWorkLane::Automations,
+    }) else {
+        panic!("clock plan");
+    };
+    let claim = apply(
+        "claim-clock",
+        AutomationIntent::ClaimDue {
+            work_token: plan.work_token.unwrap(),
+            limit: 1,
+            lease_duration_ms: 60_000,
+        },
+    )
+    .unwrap();
+    let lease = &claim.committed.value.claimed_leases[0];
+    assert_eq!(lease.purpose, AutomationLeasePurpose::Hold);
+
+    let changed = apply(
+        "make-event",
+        AutomationIntent::UpdateAutomation {
+            automation_id: "automation".into(),
+            expected_revision: 4,
+            status: AutomationStatus::Active,
+            automation: event,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        changed.committed.receipt.affected_lease_ids,
+        std::slice::from_ref(&lease.lease_id)
+    );
+    assert_event(&changed.committed.value.automations[0]);
+    w.kernel
+        .writer()
+        .call(|c| {
+            let (revision, has_schedule): (i64, bool) = c.query_row(
+                "SELECT schedule_revision, rrule IS NOT NULL OR timezone IS NOT NULL
+                OR jitter_salt IS NOT NULL OR next_run_at IS NOT NULL
+             FROM automations WHERE automation_id='automation'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            assert_eq!((revision, has_schedule), (5, false));
+            for invalid in [
+                "rrule='FREQ=DAILY'",
+                "timezone='UTC'",
+                "jitter_salt='salt'",
+                "next_run_at=1",
+                "kind='heartbeat'",
+                "event_filter_json=NULL",
+            ] {
+                let error = c
+                    .execute(
+                        &format!(
+                            "UPDATE automations SET {invalid} WHERE automation_id='automation'"
+                        ),
+                        [],
+                    )
+                    .unwrap_err();
+                assert_eq!(
+                    error.sqlite_error().unwrap().extended_code,
+                    rusqlite::ffi::SQLITE_CONSTRAINT_CHECK,
+                    "{invalid}"
+                );
+            }
+            Ok(())
+        })
+        .unwrap();
+}
+
 fn event(w: &TestWorkspace, n: i64) {
     let mut batch = ingest(w, n - 1, "lease");
     if let SourceCommand::IngestSourceBatch { triggers, .. } = &mut batch {
@@ -193,12 +471,12 @@ fn submit(r: &AutomationAssessmentRequest, matched: bool) -> ProjectWorkspaceInt
 }
 #[test]
 fn filters_select_event_kind_repository_source_actor_and_labels() {
-    let f = AutomationSourceFilter {
+    let f = AutomationEventFilter {
         source_id: Some("github".into()),
         repositories: vec!["alice/repo".into()],
-        kinds: vec![AutomationSourceEventKind::CheckFailed],
+        events: vec![AutomationSourceEventKind::CheckFailed],
         labels: vec![],
-        actor_class: Some(AutomationActorFilter::Person),
+        actor_class: AutomationActorFilter::Person,
     };
     let w = setup();
     let SourceCommand::IngestSourceBatch { mut triggers, .. } = ingest(&w, 0, "lease") else {
@@ -220,8 +498,8 @@ fn filters_select_event_kind_repository_source_actor_and_labels() {
         &thread(),
         e
     ));
-    let mut f = AutomationSourceFilter {
-        actor_class: Some(AutomationActorFilter::Any),
+    let mut f = AutomationEventFilter {
+        actor_class: AutomationActorFilter::Any,
         ..f
     };
     assert!(crate::automation::event_filter::matches(
@@ -244,7 +522,7 @@ fn filters_select_event_kind_repository_source_actor_and_labels() {
         e
     ));
     f.repositories.clear();
-    f.kinds = vec![AutomationSourceEventKind::LabelAdded];
+    f.events = vec![AutomationSourceEventKind::LabelAdded];
     f.labels = vec!["typo".into()];
     e.kind = "labeled".into();
     e.metadata = json!({"label":"feature","labels":["typo"]});
@@ -388,7 +666,9 @@ fn a_changed_automation_requeues_the_same_trigger_with_a_new_generation_and_poli
     event(&w, 1);
     let old = pending(&w).remove(0);
     begin(&w, &old);
-    let input:AutomationInput=serde_json::from_value(json!({"kind":"cron","name":"Automation","condition_text":"Investigate failed checks","prompt":"Investigate the failure","mode":"ask_first","project_id":"project:default","cwds":[nodex_platform::fixture_path!("/workspace/event-automations")],"execution_environment":"local","model":"test-model","source_condition":{"source_id":"github","repositories":["alice/repo"],"kinds":["check_failed"],"labels":[],"actor_class":"any"}})).unwrap();
+    let mut input = event_input("Automation", AutomationMode::AskFirst, None);
+    input.condition_text = Some("Investigate failed checks".into());
+    input.prompt = Some("Investigate the failure".into());
     AutomationModule::new("profile-1", "library-1", &w.kernel)
         .apply(
             &context(),

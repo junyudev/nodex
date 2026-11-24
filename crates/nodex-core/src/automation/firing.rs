@@ -27,18 +27,47 @@ pub(crate) fn held(
     connection: &Connection,
     id: &str,
 ) -> Result<Option<AutomationHeldDecision>, StoreError> {
-    let event_contract: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='automation_event_filters')",
-        [],
-        |r| r.get(0),
-    )?;
-    let sql = if event_contract {
-        "SELECT dispatch_id,page_id,inbox_project_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count FROM automation_decisions firing JOIN blocks block ON block.id=firing.page_id AND block.lifecycle='active' WHERE automation_id=?1 AND waiting_in_inbox=1 AND ((assessment_json IS NOT NULL)=EXISTS(SELECT 1 FROM automation_event_filters WHERE automation_id=?1)) ORDER BY created_at_ms,dispatch_id LIMIT 1"
-    } else {
-        "SELECT dispatch_id,page_id,inbox_project_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count FROM automation_decisions firing JOIN blocks block ON block.id=firing.page_id AND block.lifecycle='active' WHERE automation_id=?1 AND waiting_in_inbox=1"
-    };
+    held_for_trigger(connection, id, None)
+}
+
+fn held_for_trigger(
+    connection: &Connection,
+    id: &str,
+    event: Option<bool>,
+) -> Result<Option<AutomationHeldDecision>, StoreError> {
+    query_held(
+        connection,
+        params![id, event],
+        "SELECT dispatch_id,page_id,inbox_project_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count
+         FROM automation_decisions firing
+         JOIN blocks block ON block.id=firing.page_id AND block.lifecycle='active'
+         JOIN automations definition USING(automation_id)
+         WHERE automation_id=?1 AND waiting_in_inbox=1 AND ((assessment_json IS NOT NULL)=COALESCE(?2,trigger_kind='event'))
+         ORDER BY firing.created_at_ms,dispatch_id LIMIT 1",
+    )
+}
+
+pub(super) fn held_legacy_clock(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<AutomationHeldDecision>, StoreError> {
+    query_held(
+        connection,
+        [id],
+        "SELECT dispatch_id,page_id,inbox_project_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count
+         FROM automation_decisions firing
+         JOIN blocks block ON block.id=firing.page_id AND block.lifecycle='active'
+         WHERE automation_id=?1 AND waiting_in_inbox=1",
+    )
+}
+
+fn query_held(
+    connection: &Connection,
+    params: impl rusqlite::Params,
+    sql: &str,
+) -> Result<Option<AutomationHeldDecision>, StoreError> {
     Ok(connection
-        .query_row(sql, [id], |r| {
+        .query_row(sql, params, |r| {
             Ok(AutomationHeldDecision {
                 dispatch_id: r.get(0)?,
                 page_id: r.get(1)?,
@@ -218,7 +247,7 @@ pub(crate) fn claim_admitted(
     expiry: i64,
     limit: u32,
 ) -> Result<(Vec<AutomationLease>, Vec<String>), StoreError> {
-    let ids=connection.prepare("SELECT firing.dispatch_id,firing.automation_id,firing.first_scheduled_for_ms,firing.automation_revision FROM automation_decisions firing JOIN automations definition USING(automation_id) WHERE firing.status='admitted' AND firing.due_at_ms<=?1 AND definition.status<>'DELETED' AND NOT EXISTS (SELECT 1 FROM automation_execution_leases lease WHERE lease.dispatch_id=firing.dispatch_id AND lease.status='claimed' AND lease.expires_at_ms>?1) ORDER BY firing.due_at_ms,firing.dispatch_id LIMIT ?2")?
+    let ids=connection.prepare("SELECT firing.dispatch_id,firing.automation_id,firing.first_scheduled_for_ms,firing.automation_revision FROM automation_decisions firing JOIN automations definition USING(automation_id) WHERE firing.status='admitted' AND firing.assessment_json IS NULL AND firing.due_at_ms<=?1 AND definition.status<>'DELETED' AND NOT EXISTS (SELECT 1 FROM automation_execution_leases lease WHERE lease.dispatch_id=firing.dispatch_id AND lease.status='claimed' AND lease.expires_at_ms>?1) ORDER BY firing.due_at_ms,firing.dispatch_id LIMIT ?2")?
         .query_map(params![now,limit],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut leases = Vec::new();
     let mut expired = Vec::new();
@@ -269,12 +298,12 @@ pub(super) fn settle(
     // An earlier admission may fail after a successor has already been held.
     // Preserve the reviewed failed run and absorb the successor's due times.
     if waiting {
-        let automation: String = connection.query_row(
-            "SELECT automation_id FROM automation_decisions WHERE dispatch_id=?1",
+        let (automation, event): (String, bool) = connection.query_row(
+            "SELECT automation_id, assessment_json IS NOT NULL FROM automation_decisions WHERE dispatch_id=?1",
             [dispatch],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        if let Some(successor) = held(connection, &automation)? {
+        if let Some(successor) = held_for_trigger(connection, &automation, Some(event))? {
             connection.execute("UPDATE automation_decisions SET waiting_in_inbox=0,status='withdrawn',due_at_ms=NULL,updated_at_ms=?2 WHERE dispatch_id=?1", params![successor.dispatch_id,now])?;
             connection.execute("UPDATE inbox_proposals SET state='dismissed',revision=revision+1,updated_at=?2 WHERE proposal_id=(SELECT current_proposal_id FROM inbox_entries WHERE page_id=?1)", params![successor.page_id,iso])?;
             crate::workspace::inbox::close_absorbed_decision(

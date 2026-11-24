@@ -5032,11 +5032,13 @@ mod scheduled {
 
     pub(super) fn task_input() -> AutomationInput {
         AutomationInput {
-            source_condition: None,
+            trigger: AutomationTriggerInput::Clock {
+                rrule: "FREQ=MINUTELY;INTERVAL=5".into(),
+                timezone: None,
+            },
             scope: None,
             owner_member_id: None,
             condition_text: None,
-            timezone: None,
             kind: AutomationExecutionKind::Cron,
             project_id: None,
             target_session_id: None,
@@ -5045,7 +5047,6 @@ mod scheduled {
             runbook_page_id: None,
             name: "Daily report".into(),
             prompt: Some("Prepare the report".into()),
-            rrule: Some("FREQ=MINUTELY;INTERVAL=5".into()),
             model: None,
             reasoning_effort: None,
             service_tier: None,

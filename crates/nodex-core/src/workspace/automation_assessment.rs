@@ -109,13 +109,13 @@ fn applicable(
     thread: &ExternalThread,
     events: &[SourceTrigger],
 ) -> Result<Vec<Automation>, StoreError> {
-    let ids=c.prepare("SELECT r.automation_id FROM automations r JOIN automation_event_filters f ON f.automation_id=r.automation_id JOIN members m ON m.id=r.owner_member_id WHERE m.library_id=?1 AND m.lifecycle='active' AND r.status='ACTIVE' ORDER BY r.automation_id LIMIT 200")?.query_map([library],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let ids=c.prepare("SELECT r.automation_id FROM automations r JOIN members m ON m.id=r.owner_member_id WHERE m.library_id=?1 AND m.lifecycle='active' AND r.status='ACTIVE' AND r.trigger_kind='event' ORDER BY r.automation_id LIMIT 200")?.query_map([library],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut automations = Vec::new();
     for id in ids {
         let automation = crate::automation::firing::definition(c, &id)?;
-        if let Some(AutomationCondition::Source { filters }) = &automation.typed_condition
+        if let AutomationTrigger::Event { filter } = &automation.trigger
             && events.iter().any(|e| {
-                crate::automation::event_filter::matches(filters, &e.source_id, thread, &e.event)
+                crate::automation::event_filter::matches(filter, &e.source_id, thread, &e.event)
             })
         {
             automations.push(automation);
@@ -124,7 +124,7 @@ fn applicable(
     Ok(automations)
 }
 fn hash(automations: &[Automation]) -> Result<String, StoreError> {
-    let policy=automations.iter().map(|r|json!({"automation_id":r.automation_id,"revision":r.automation_revision,"owner":r.owner_member_id,"condition":r.condition_text,"action":r.prompt,"mode":r.mode,"filter":r.typed_condition,"scope":r.scope,"project":r.project_id,"target":r.backend_binding,"model":r.model,"effort":r.reasoning_effort,"environment":r.execution_environment,"cwds":r.cwds,"runbook":r.runbook_page_id})).collect::<Vec<_>>();
+    let policy=automations.iter().map(|r|json!({"automation_id":r.automation_id,"revision":r.automation_revision,"owner":r.owner_member_id,"condition":r.condition_text,"action":r.prompt,"mode":r.mode,"trigger":r.trigger,"scope":r.scope,"project":r.project_id,"target":r.backend_binding,"model":r.model,"effort":r.reasoning_effort,"environment":r.execution_environment,"cwds":r.cwds,"runbook":r.runbook_page_id})).collect::<Vec<_>>();
     Ok(crate::document::sha256(encode(&policy)?.as_bytes()))
 }
 pub(crate) fn refresh_pending(c: &Connection, library: &str) -> Result<(), StoreError> {

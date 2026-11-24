@@ -501,6 +501,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 217,
         apply: migrate_v216_to_v217,
     },
+    MigrationStep {
+        from_revision: 217,
+        to_revision: 218,
+        apply: migrate_v217_to_v218,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2825,6 +2830,25 @@ fn migrate_v216_to_v217(
     Ok(())
 }
 
+fn migrate_v217_to_v218(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    super::automation_trigger_migration::migrate(connection)?;
+    // Sealed LocalCommits attest the old receipt bytes. Clients resync at the
+    // durable head, and the rewritten operation receipts remain available.
+    super::local_commit::reset_delivery_window(connection)?;
+    super::operational_journal::refresh_receipt_pressure(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"automation_trigger_union":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4374,7 +4398,30 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_automation_trigger_to_v217(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('automations') WHERE name='trigger_kind')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !present {
+        return Ok(());
+    }
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    let result =
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v218-to-v217.sql"));
+    connection.pragma_update(None, "legacy_alter_table", legacy)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(result?)
+}
+
+#[cfg(test)]
 fn rewind_member_chat_lifecycle_to_v216(connection: &Connection) -> Result<(), StoreError> {
+    rewind_automation_trigger_to_v217(connection)?;
     let present: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='member_session_settled')",
         [],
@@ -9327,6 +9374,222 @@ mod tests {
     }
 
     #[test]
+    fn automation_trigger_migration_preserves_clock_schedules_and_rewrites_saved_actions() {
+        use nodex_core_contracts::automation::Automation;
+
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        install_current_schema(&mut connection).unwrap();
+        initialize_fresh_profile(&connection, 1).unwrap();
+        rewind_automation_trigger_to_v217(&connection).unwrap();
+        validate_schema_identity(&connection, 217).unwrap();
+        connection.pragma_update(None, "user_version", 217).unwrap();
+        connection.execute_batch(
+            r#"INSERT INTO profiles VALUES('profile','today','today');
+             INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('library','profile','today','today');
+             INSERT INTO projects(id,library_id,name,created,updated)
+               VALUES('project','library','Work','today','today');
+             INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,created_at,updated_at,activity_at)
+               VALUES('chat','project','Work','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',1793491200000);
+             INSERT INTO external_threads(id,library_id,provider,host,repository_id,number,thread_json)
+               VALUES('thread','library','github','github.com','123',1,'{}');
+             INSERT INTO automations(automation_id,owner_member_id,scope_project_id,project_id,
+               target_session_id,kind,name,prompt,condition_text,model,rrule,timezone,jitter_salt,
+               status,mode,next_run_at,last_run_at,created_at,updated_at,schedule_revision,automation_revision)
+             SELECT fixture.id,member.id,'project',fixture.project,fixture.target,fixture.kind,fixture.name,
+               'Investigate and repair CI','When checks fail','gpt-6','FREQ=DAILY','Asia/Singapore','old-salt',
+               'ACTIVE','dry_run',1234,1200,1,2,3,4
+             FROM (SELECT 'cron' AS id,'project' AS project,NULL AS target,'cron' AS kind,'Clock cron' AS name
+               UNION ALL SELECT 'heartbeat',NULL,'chat','heartbeat','Heartbeat'
+               UNION ALL SELECT 'event','project',NULL,'cron','main 变红时修复'
+               UNION ALL SELECT 'stale-event','project',NULL,'cron','Event with stale clock time') fixture
+             JOIN members member ON member.library_id='library' AND member.role='owner';
+             INSERT INTO automation_event_filters
+             SELECT automation_id,'{"source_id":null,"repositories":["example/nodex"],"kinds":["new_issue"],"labels":["main-ci-red"],"actor_class":"any"}'
+             FROM automations WHERE automation_id IN ('event','stale-event');"#,
+        ).unwrap();
+        let cwd = nodex_platform::fixture_path!("/workspace/nodex");
+        connection.execute(
+            "UPDATE automations SET mode='run',model='gpt-6.2-sol',reasoning_effort='xhigh',
+                cwds_json=json_array(?1),next_run_at=CASE automation_id WHEN 'stale-event' THEN next_run_at END
+             WHERE automation_id IN ('event','stale-event')",
+            [cwd],
+        ).unwrap();
+        let owner: String = connection
+            .query_row(
+                "SELECT id FROM members WHERE library_id='library' AND role='owner'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let old_filter = json!({
+            "source_id": null, "repositories": ["example/nodex"], "kinds": ["new_issue"],
+            "labels": ["main-ci-red"], "actor_class": null,
+        });
+        let mut event = json!({
+            "automation_id": "event", "automation_revision": 4, "kind": "cron",
+            "scope": {"kind": "project", "project_id": "project"}, "owner_member_id": owner,
+            "condition_text": "When checks fail", "project_id": "project", "status": "ACTIVE",
+            "mode": "run", "name": "main 变红时修复", "prompt": "Investigate and repair CI",
+            "model": "gpt-6.2-sol", "reasoning_effort": "xhigh", "cwds": [cwd],
+            "execution_environment": "worktree",
+            "backend_binding": {"driver": "codex", "instanceId": "codex"},
+            "rrule": "FREQ=DAILY", "next_run_at_ms": null, "last_run_at_ms": 1200,
+            "created_at_ms": 1, "updated_at_ms": 2,
+            "typed_condition": {"kind": "source", "filters": old_filter},
+        });
+        let mut cron = event.clone();
+        cron["automation_id"] = json!("cron");
+        cron["next_run_at_ms"] = json!(1234);
+        cron["typed_condition"] = json!({
+            "kind": "clock", "rrule": "FREQ=DAILY", "timezone": "Asia/Singapore",
+            "jitter_salt": "old-salt",
+        });
+        let mut frozen = event.clone();
+        frozen["configuration_revision"] = json!(4);
+        connection.execute(
+            "INSERT INTO automation_decisions(dispatch_id,automation_id,status,frozen_action_json,
+                mode,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms)
+             VALUES('dispatch','event','completed',?1,'run',1,1,'{}',1,1)",
+            [frozen.to_string()],
+        ).unwrap();
+        event["typed_condition"]["filters"]
+            .as_object_mut()
+            .unwrap()
+            .remove("actor_class");
+        let receipt = json!({"value": {
+            "automations": [event],
+            "claimed_leases": [{"execution_automation": event}, {"execution_automation": cron}]
+        }})
+        .to_string();
+        connection.execute(
+            "INSERT INTO automation_assessment_requests(request_id,library_id,thread_id,policy_hash,
+                automations_json,created_at_ms,updated_at_ms) VALUES('assessment','library','thread','old',?1,1,1)",
+            [json!([event]).to_string()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO core_module_receipts(module_name,operation_id,profile_id,adapter_kind,
+                operation_kind,store_epoch,request_hash,result_json,committed_at)
+             VALUES('automation','active-receipt','profile','test','claim_due','epoch',printf('%064x',0),?1,'today')",
+            [&receipt],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO detached_module_receipts(module_name,operation_id,profile_id,adapter_kind,
+                operation_kind,store_epoch,request_hash,result_json,committed_at,local_commit_seq,
+                commit_manifest_hash,detached_at_ms)
+             VALUES('automation','detached-receipt','profile','test','claim_due','epoch',printf('%064x',0),
+                ?1,'today',1,printf('%064x',0),1)",
+            [&receipt],
+        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO module_receipt_retention_metadata VALUES
+                ('automation','active-receipt',1,1,?1), ('automation','detached-receipt',1,1,?1)",
+                [receipt.len() as i64 + 100],
+            )
+            .unwrap();
+        connection.execute(
+            "UPDATE operational_journal_state SET retained_receipt_count=2,retained_receipt_bytes=?1",
+            [(receipt.len() as i64 + 100) * 2],
+        ).unwrap();
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v217_to_v218(
+                transaction,
+                &MigrationContext {
+                    source_revision: 217,
+                    target_revision: 218,
+                    source_schema_fingerprint: published_format(217)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(218)?.schema_fingerprint,
+                    backup_name: "v217.db".into(),
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 218)
+        })
+        .unwrap();
+
+        let dangling: i64 = connection
+            .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(dangling, 0);
+        let event_trigger = json!({"kind":"event","filter":{
+            "source_id":null,"repositories":["example/nodex"],"events":["new_issue"],
+            "labels":["main-ci-red"],"actor_class":"any"
+        }});
+        for id in ["event", "stale-event"] {
+            let (kind, no_schedule, schedule_revision, revision, last_run, json): (
+                String, bool, i64, i64, i64, String
+            ) = connection.query_row(
+                "SELECT trigger_kind,rrule IS NULL AND timezone IS NULL AND jitter_salt IS NULL AND next_run_at IS NULL,
+                    schedule_revision,automation_revision,last_run_at,event_filter_json
+                 FROM automations WHERE automation_id=?1",
+                [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)),
+            ).unwrap();
+            assert_eq!(kind, "event");
+            assert!(no_schedule, "{id} retained a clock field");
+            assert_eq!((schedule_revision, revision, last_run), (3, 4, 1200));
+            assert_eq!(
+                serde_json::from_str::<Value>(&json).unwrap(),
+                event_trigger["filter"]
+            );
+        }
+        let clock_trigger = json!({
+            "kind":"clock","rrule":"FREQ=DAILY","timezone":"Asia/Singapore","next_run_at_ms":1234
+        });
+        for id in ["cron", "heartbeat"] {
+            let item = crate::automation::firing::definition(&connection, id).unwrap();
+            assert_eq!(serde_json::to_value(item.trigger).unwrap(), clock_trigger);
+        }
+        let assert_event = |value: &Value| {
+            let item: Automation = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(item.automation_id, "event");
+            assert_eq!(value["trigger"], event_trigger);
+            for field in [
+                "rrule",
+                "timezone",
+                "jitter_salt",
+                "next_run_at_ms",
+                "typed_condition",
+            ] {
+                assert!(!value.to_string().contains(&format!("\"{field}\"")));
+            }
+        };
+        let item = crate::automation::firing::definition(&connection, "event").unwrap();
+        assert_event(&serde_json::to_value(item).unwrap());
+        let json_column = |sql: &str| -> (Value, usize) {
+            let raw: String = connection.query_row(sql, [], |r| r.get(0)).unwrap();
+            (serde_json::from_str(&raw).unwrap(), raw.len())
+        };
+        let (frozen, _) = json_column("SELECT frozen_action_json FROM automation_decisions");
+        assert_eq!(frozen["configuration_revision"], 4);
+        assert_event(&frozen);
+        let (assessment, _) =
+            json_column("SELECT automations_json FROM automation_assessment_requests");
+        assert_event(&assessment[0]);
+        let mut total_bytes = 0;
+        for table in ["core_module_receipts", "detached_module_receipts"] {
+            let (receipt, len) = json_column(&format!("SELECT result_json FROM {table}"));
+            assert_event(&receipt["value"]["automations"][0]);
+            assert_event(&receipt["value"]["claimed_leases"][0]["execution_automation"]);
+            assert_eq!(
+                receipt["value"]["claimed_leases"][1]["execution_automation"]["trigger"],
+                clock_trigger
+            );
+            total_bytes += len as i64 + 100;
+        }
+        let accounting: (i64, i64) = connection.query_row(
+            "SELECT retained_receipt_bytes,(SELECT sum(receipt_bytes) FROM module_receipt_retention_metadata)
+             FROM operational_journal_state", [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(accounting, (total_bytes, total_bytes));
+    }
+
+    #[test]
     fn member_chat_lifecycle_migration_keeps_every_chat_open_and_archive_clears_settlement() {
         use crate::infrastructure::schema::validate_schema_identity;
 
@@ -10171,7 +10434,7 @@ mod tests {
             .unwrap();
         super::super::legacy_visibility_migration::install_test_maintenance_context(&connection)
             .unwrap();
-        connection.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,created_at,updated_at) VALUES ('task','owner','Clock','UTC','salt','cron','ACTIVE','Report',1,1)",[]).unwrap();
+        connection.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,trigger_kind,rrule,timezone,jitter_salt,kind,status,name,created_at,updated_at) VALUES ('task','owner','Clock','clock','FREQ=DAILY','UTC','salt','cron','ACTIVE','Report',1,1)",[]).unwrap();
         for (index, status) in [(1, "failed"), (2, "held")] {
             let page = format!("page:{index}");
             let dispatch = format!("dispatch:{index}");
@@ -10630,14 +10893,16 @@ mod tests {
             super::super::schema::read_schema_inventory(&connection).unwrap(),
             super::super::schema::read_schema_inventory(&fresh).unwrap()
         );
-        let mode: String = connection
+        let (mode, rrule, next_run): (String, String, Option<i64>) = connection
             .query_row(
-                "SELECT mode FROM automations WHERE automation_id='saved-task'",
+                "SELECT mode, rrule, next_run_at FROM automations WHERE automation_id='saved-task'",
                 [],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .unwrap();
         assert_eq!(mode, "run");
+        assert_eq!(rrule, "FREQ=HOURLY;INTERVAL=24;BYMINUTE=0");
+        assert_eq!(next_run, None);
         assert_eq!(
             connection
                 .query_row("SELECT count(*) FROM automation_decisions", [], |r| r

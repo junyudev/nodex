@@ -296,7 +296,7 @@ fn automation_messages_act_for_their_grant_owner_before_the_run_binds_its_chat()
         c.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at) VALUES('chat','Report','2026-11-01T00:00:00Z','2026-11-01T00:00:00Z',1793491200000)", [])?;
         // Bob spoke last in the chat; the Automation's standing grant belongs to Alice.
         c.execute("INSERT INTO session_requesting_members VALUES('chat','person',?1,'2026-11-01T00:00:00Z')",[&bob_id])?;
-        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,kind,status,name,created_at,updated_at) VALUES('report',?1,'Daily','UTC','salt','cron','ACTIVE','Report',1,1)",[&alice_id])?;
+        c.execute("INSERT INTO automations(automation_id,owner_member_id,condition_text,timezone,jitter_salt,trigger_kind,rrule,kind,status,name,created_at,updated_at) VALUES('report',?1,'Daily','UTC','salt','clock','FREQ=DAILY','cron','ACTIVE','Report',1,1)",[&alice_id])?;
         for (dispatch, message, session) in [("dispatch:new", "automation:message:new", None), ("dispatch:bound", "automation:message:bound", Some("chat"))] {
             c.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,status,mode,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms) VALUES(?1,'report','admitted','run',json_object('owner_member_id',?2),1,1,'{}',1,1)",params![dispatch,&alice_id])?;
             c.execute("INSERT INTO automation_execution_runs(run_id,automation_id,session_id,status,created_at,updated_at,admission_hash,dispatch_id,message_id) VALUES(?1,'report',?2,'IN_PROGRESS',1,1,?3,?1,?4)",params![dispatch,session,"0".repeat(64),message])?;

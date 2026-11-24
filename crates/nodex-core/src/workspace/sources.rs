@@ -75,7 +75,7 @@ pub(super) fn read(
             repository,
         } => {
             require_source(connection, library, &source_id)?;
-            let filters=connection.prepare("SELECT f.filter_json FROM automation_event_filters f JOIN automations r ON r.automation_id=f.automation_id JOIN members m ON m.id=r.owner_member_id WHERE m.library_id=?1 AND m.lifecycle='active' AND r.status='ACTIVE' LIMIT 200")?.query_map([library],|r|decode::<nodex_core_contracts::automation::AutomationSourceFilter>(r.get(0)?))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let filters=connection.prepare("SELECT r.event_filter_json FROM automations r JOIN members m ON m.id=r.owner_member_id WHERE m.library_id=?1 AND m.lifecycle='active' AND r.status='ACTIVE' AND r.trigger_kind='event' LIMIT 200")?.query_map([library],|r|decode::<nodex_core_contracts::automation::AutomationEventFilter>(r.get(0)?))?.collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(SourceReadValue::EventAutomationWatching {
                 enabled: filters.iter().any(|f| {
                     f.source_id.as_ref().is_none_or(|id| id == &source_id)

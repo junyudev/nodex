@@ -7,7 +7,8 @@ use nodex_core_contracts::automation::{
     AutomationExecutionEnvironment, AutomationExecutionKind, AutomationInput, AutomationIntent,
     AutomationLease, AutomationLeaseStatus, AutomationMode, AutomationNotificationPolicy,
     AutomationNotificationPreference, AutomationReceipt, AutomationRun, AutomationRunBulkResult,
-    AutomationStatus, PageOccurrenceMutationResult, ReminderLease, ReminderSnooze,
+    AutomationStatus, AutomationTrigger, AutomationTriggerInput, PageOccurrenceMutationResult,
+    ReminderLease, ReminderSnooze,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest,
@@ -56,7 +57,6 @@ struct NormalizedDefinition {
     notification_policy: Option<AutomationNotificationPolicy>,
     name: String,
     prompt: String,
-    rrule: String,
     model: Option<String>,
     reasoning_effort: Option<String>,
     service_tier: Option<String>,
@@ -116,13 +116,13 @@ pub(super) fn plan_definition_due_work(
                  MAX(definition.next_run_at, COALESCE((SELECT MAX(lease.expires_at_ms) FROM automation_execution_leases lease
                    WHERE lease.automation_id=definition.automation_id AND lease.scheduled_for_ms=definition.next_run_at
                      AND lease.status='claimed' AND NOT EXISTS (SELECT 1 FROM automation_decisions firing WHERE firing.dispatch_id=lease.dispatch_id AND (firing.page_id IS NOT NULL OR firing.admitted_at_ms IS NOT NULL))), definition.next_run_at)) AS eligible_at
-               FROM automations definition WHERE definition.status='ACTIVE' AND definition.next_run_at IS NOT NULL
+               FROM automations definition WHERE definition.trigger_kind='clock' AND definition.status='ACTIVE' AND definition.next_run_at IS NOT NULL
                UNION ALL
                SELECT 'firing:' || firing.dispatch_id, firing.due_at_ms,
                  MAX(firing.due_at_ms, COALESCE((SELECT MAX(expires_at_ms) FROM automation_execution_leases lease
                     WHERE lease.dispatch_id=firing.dispatch_id AND lease.status='claimed'), firing.due_at_ms))
                FROM automation_decisions firing JOIN automations definition USING(automation_id)
-               WHERE firing.status='admitted' AND firing.due_at_ms IS NOT NULL AND definition.status<>'DELETED'
+               WHERE firing.status='admitted' AND firing.assessment_json IS NULL AND firing.due_at_ms IS NOT NULL AND definition.status<>'DELETED'
              ) ORDER BY eligible_at, identity LIMIT 1",
             [],
             |row| {
@@ -304,18 +304,20 @@ pub(super) fn apply(
                     let current = read_definition(transaction, automation_id)?
                         .ok_or_else(|| not_found("Automation is unavailable"))?;
                     let input = AutomationInput {
-                        source_condition: match &current.typed_condition {
-                            Some(
-                                nodex_core_contracts::automation::AutomationCondition::Source {
-                                    filters,
-                                },
-                            ) => Some(filters.clone()),
-                            _ => None,
+                        trigger: match current.trigger {
+                            AutomationTrigger::Clock { rrule, .. } => {
+                                AutomationTriggerInput::Clock {
+                                    rrule,
+                                    timezone: None,
+                                }
+                            }
+                            AutomationTrigger::Event { filter } => {
+                                AutomationTriggerInput::Event { filter }
+                            }
                         },
                         scope: None,
                         owner_member_id: None,
                         condition_text: Some(current.condition_text),
-                        timezone: None,
                         kind: current.kind,
                         project_id: current.project_id,
                         target_session_id: current.target_session_id,
@@ -324,7 +326,6 @@ pub(super) fn apply(
                         runbook_page_id: current.runbook_page_id,
                         name: current.name,
                         prompt: Some(current.prompt),
-                        rrule: Some(current.rrule),
                         model: current.model,
                         reasoning_effort: current.reasoning_effort,
                         service_tier: current.service_tier,
@@ -624,6 +625,9 @@ fn reschedule_definition(
     }
     let definition = read_definition(connection, automation_id)?
         .ok_or_else(|| not_found("Automation is unavailable"))?;
+    if !matches!(&definition.trigger, AutomationTrigger::Clock { .. }) {
+        return Err(invalid("Only a clock trigger can be rescheduled"));
+    }
     super::clock::require_owner_available(connection, &definition)?;
     if definition.status != AutomationStatus::Active {
         return Err(conflict("Only an active Automation can be rescheduled"));
@@ -703,12 +707,9 @@ fn dispatch_now(
     if definition.status == AutomationStatus::Deleted {
         return Err(not_found("Automation is unavailable"));
     }
-    if matches!(
-        definition.typed_condition,
-        Some(nodex_core_contracts::automation::AutomationCondition::Source { .. })
-    ) {
+    let AutomationTrigger::Clock { next_run_at_ms, .. } = &definition.trigger else {
         return Err(invalid("An event Automation requires an external Trigger"));
-    }
+    };
     let held = definition.held_decision.is_some();
     let (now_ms, committed_at) = core_now(connection)?;
     if !held {
@@ -720,7 +721,7 @@ fn dispatch_now(
         let next = if definition.status == AutomationStatus::Active {
             scheduled_next_for_stored(connection, &definition, now_ms)?
         } else {
-            definition.next_run_at_ms
+            *next_run_at_ms
         };
         connection.execute(
             "UPDATE automations SET next_run_at=?2,last_run_at=?3,updated_at=?3 WHERE automation_id=?1",
@@ -793,8 +794,14 @@ fn create_definition(
         &definition,
     )?;
     let (now_ms, committed_at) = core_now(connection)?;
-    let timezone = automation_timezone(input.timezone.as_deref(), None)?;
-    let salt = jitter_salt(connection)?;
+    let trigger = prepare_trigger(
+        connection,
+        automation_id,
+        input,
+        None,
+        AutomationStatus::Active,
+        now_ms,
+    )?;
     let owner = super::agent_command::input_owner(
         connection,
         library_id,
@@ -802,17 +809,7 @@ fn create_definition(
         input.owner_member_id.as_deref(),
         None,
     )?;
-    let condition = condition_text(input.condition_text.as_deref(), &definition.rrule)?;
     let scope_project = automation_scope(connection, library_id, input, None)?;
-    let next_run = next_run_at(
-        automation_id,
-        definition.kind,
-        &definition.rrule,
-        now_ms,
-        &salt,
-        &timezone,
-    )
-    .map_err(schedule_invalid)?;
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Automation cwd JSON cannot be encoded"))?;
     validate_binding(&definition.backend_binding)
@@ -823,16 +820,16 @@ fn create_definition(
            reasoning_effort, service_tier, cwds_json, agent_backend_driver, \
            agent_backend_instance_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
-           created_at, updated_at, automation_revision, notification_policy, project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id\
+           created_at, updated_at, automation_revision, notification_policy, project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id, trigger_kind, event_filter_json\
          ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-           ?13, ?14, ?15, NULL, ?16, ?16, 1, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+           ?13, ?14, ?15, NULL, ?16, ?16, 1, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
         params![
             automation_id,
             kind_string(definition.kind),
             definition.target_session_id,
             definition.name,
             definition.prompt,
-            definition.rrule,
+            trigger.rrule,
             definition.model,
             definition.reasoning_effort,
             definition.service_tier,
@@ -841,20 +838,21 @@ fn create_definition(
             definition.backend_binding.instance_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
-            next_run,
+            trigger.next_run_at,
             now_ms,
             definition.notification_policy.map(|_| "failed_runs_only"),
             definition.project_id,
             mode_literal(mode),
             input.runbook_page_id,
             owner,
-            condition,
-            timezone,
-            salt,
+            trigger.condition_text,
+            trigger.timezone,
+            trigger.jitter_salt,
             scope_project,
+            trigger.kind,
+            trigger.event_filter_json,
         ],
     )?;
-    super::event_filter::save(connection, automation_id, input.source_condition.as_ref())?;
     let stored = read_definition(connection, automation_id)?
         .ok_or_else(|| corrupt("Created Automation is unavailable"))?;
     finish_mutation(
@@ -923,11 +921,13 @@ fn update_definition(
         normalize_definition(connection, library_id, input, current.notification_policy)?;
     require_unique_active_heartbeat(connection, automation_id, status, &definition)?;
     let (now_ms, committed_at) = core_now(connection)?;
-    let timezone = automation_timezone(input.timezone.as_deref(), Some(&current))?;
-    let salt: String = connection.query_row(
-        "SELECT jitter_salt FROM automations WHERE automation_id=?1",
-        [automation_id],
-        |r| r.get(0),
+    let trigger = prepare_trigger(
+        connection,
+        automation_id,
+        input,
+        Some(&current),
+        status,
+        now_ms,
     )?;
     let owner = super::agent_command::input_owner(
         connection,
@@ -936,34 +936,7 @@ fn update_definition(
         input.owner_member_id.as_deref(),
         Some(&current),
     )?;
-    let condition = input
-        .condition_text
-        .as_deref()
-        .map(|text| condition_text(Some(text), &definition.rrule))
-        .transpose()?
-        .unwrap_or_else(|| current.condition_text.clone());
     let scope_project = automation_scope(connection, library_id, input, Some(&current))?;
-    let schedule_changed = current.kind != definition.kind
-        || automation_timezone(None, Some(&current))? != timezone
-        || current.rrule != definition.rrule
-        || current.status != status;
-    let next_run = if status == AutomationStatus::Active {
-        if schedule_changed || current.next_run_at_ms.is_none() {
-            next_run_at(
-                automation_id,
-                definition.kind,
-                &definition.rrule,
-                now_ms,
-                &salt,
-                &timezone,
-            )
-            .map_err(schedule_invalid)?
-        } else {
-            current.next_run_at_ms
-        }
-    } else {
-        None
-    };
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Automation cwd JSON cannot be encoded"))?;
     validate_binding(&definition.backend_binding)
@@ -975,7 +948,8 @@ fn update_definition(
            agent_backend_driver = ?11, \
            agent_backend_instance_id = ?12, execution_environment = ?13, \
            local_environment_config_path = ?14, next_run_at = ?15, updated_at = ?16, \
-           automation_revision = automation_revision + 1, notification_policy = ?19, project_id = ?20, mode = ?21, runbook_page_id = ?22, owner_member_id=?23, condition_text=?24, timezone=?25, schedule_revision=schedule_revision+?26, scope_project_id=?27 \
+           automation_revision = automation_revision + 1, notification_policy = ?19, project_id = ?20, mode = ?21, runbook_page_id = ?22, owner_member_id=?23, condition_text=?24, timezone=?25, schedule_revision=schedule_revision+?26, scope_project_id=?27, \
+           jitter_salt=?28, trigger_kind=?29, event_filter_json=?30 \
          WHERE automation_id = ?17 AND automation_revision = ?18",
         params![
             kind_string(definition.kind),
@@ -983,7 +957,7 @@ fn update_definition(
             definition.target_session_id,
             definition.name,
             definition.prompt,
-            definition.rrule,
+            trigger.rrule,
             definition.model,
             definition.reasoning_effort,
             definition.service_tier,
@@ -992,7 +966,7 @@ fn update_definition(
             definition.backend_binding.instance_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
-            next_run,
+            trigger.next_run_at,
             now_ms,
             automation_id,
             expected_revision,
@@ -1001,10 +975,13 @@ fn update_definition(
             mode_literal(input.mode.unwrap_or(current.mode)),
             input.runbook_page_id,
             owner,
-            condition,
-            timezone,
-            schedule_changed,
+            trigger.condition_text,
+            trigger.timezone,
+            trigger.schedule_changed,
             scope_project,
+            trigger.jitter_salt,
+            trigger.kind,
+            trigger.event_filter_json,
         ],
     )?;
     if changed != 1 {
@@ -1012,10 +989,13 @@ fn update_definition(
     }
     let lease_ids = if status == AutomationStatus::Paused {
         cancel_claimed_leases(connection, automation_id, now_ms, "definition_paused")?
+    } else if trigger.kind == "event" && matches!(current.trigger, AutomationTrigger::Clock { .. })
+    {
+        // An unprocessed clock occurrence cannot become an event assessment.
+        cancel_clock_holds(connection, automation_id, now_ms)?
     } else {
         Vec::new()
     };
-    super::event_filter::save(connection, automation_id, input.source_condition.as_ref())?;
     let stored = read_definition(connection, automation_id)?
         .ok_or_else(|| corrupt("Updated Automation is unavailable"))?;
     finish_mutation(
@@ -1141,7 +1121,7 @@ fn claim_due(
     let due = {
         let mut statement = connection.prepare(
             "SELECT automation_id, next_run_at, automation_revision FROM automations definition \
-             WHERE status = 'ACTIVE' AND next_run_at IS NOT NULL AND next_run_at <= ?1 \
+             WHERE trigger_kind = 'clock' AND status = 'ACTIVE' AND next_run_at IS NOT NULL AND next_run_at <= ?1 \
                AND NOT EXISTS (SELECT 1 FROM automation_execution_leases lease WHERE lease.automation_id=definition.automation_id \
                  AND lease.scheduled_for_ms=definition.next_run_at AND lease.status='claimed' AND lease.expires_at_ms>?1 \
                  AND NOT EXISTS (SELECT 1 FROM automation_decisions firing WHERE firing.dispatch_id=lease.dispatch_id AND (firing.page_id IS NOT NULL OR firing.admitted_at_ms IS NOT NULL))) \
@@ -1415,7 +1395,9 @@ fn settle_lease(
         } else {
             None
         };
-        let next_run = if failed {
+        let next_run = if matches!(definition.trigger, AutomationTrigger::Event { .. }) {
+            None
+        } else if failed {
             match (retry_at_ms, next_scheduled) {
                 (Some(retry), Some(scheduled)) => Some(retry.min(scheduled)),
                 (Some(retry), None) => Some(retry),
@@ -1813,6 +1795,9 @@ fn normalize_definition(
     input: &AutomationInput,
     current_notification_policy: Option<AutomationNotificationPolicy>,
 ) -> Result<NormalizedDefinition, StoreError> {
+    if let AutomationTriggerInput::Event { filter } = &input.trigger {
+        super::event_filter::validate(connection, library_id, input, filter)?;
+    }
     if let Some(page_id) = &input.runbook_page_id {
         validate_id("runbook_page_id", page_id)?;
         let active: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pages page JOIN blocks block ON block.id=page.block_id JOIN libraries library ON library.id=block.library_id WHERE page.block_id=?1 AND block.library_id=?2 AND block.lifecycle='active')", params![page_id,library_id], |row| row.get(0))?;
@@ -1830,15 +1815,6 @@ fn normalize_definition(
     if prompt.len() > MAX_PROMPT_BYTES {
         return Err(invalid("Automation prompt exceeds its bound"));
     }
-    if let Some(filter) = &input.source_condition {
-        super::event_filter::validate(connection, library_id, input, filter)?;
-    }
-    let rrule = normalize_rrule(if input.source_condition.is_some() {
-        Some("FREQ=DAILY")
-    } else {
-        input.rrule.as_deref()
-    })
-    .map_err(schedule_invalid)?;
     let model = normalize_optional_string(input.model.as_deref(), MAX_MODEL_BYTES, "model")?;
     let reasoning_effort = normalize_optional_string(
         input.reasoning_effort.as_deref(),
@@ -1923,7 +1899,6 @@ fn normalize_definition(
         },
         name: name.to_owned(),
         prompt: prompt.to_owned(),
-        rrule,
         model,
         reasoning_effort,
         service_tier,
@@ -2133,68 +2108,148 @@ fn automation_scope(
     }
     Ok(scope)
 }
-fn clock_parts(automation: &Automation) -> Result<(String, String), StoreError> {
-    match &automation.typed_condition {
-        Some(nodex_core_contracts::automation::AutomationCondition::Clock {
+/// Columns written together at the SQLite boundary.
+struct TriggerColumns {
+    kind: &'static str,
+    condition_text: String,
+    rrule: Option<String>,
+    timezone: Option<String>,
+    jitter_salt: Option<String>,
+    next_run_at: Option<i64>,
+    event_filter_json: Option<String>,
+    schedule_changed: bool,
+}
+
+fn prepare_trigger(
+    connection: &Connection,
+    automation_id: &str,
+    input: &AutomationInput,
+    current: Option<&Automation>,
+    status: AutomationStatus,
+    now_ms: i64,
+) -> Result<TriggerColumns, StoreError> {
+    let execution_changed =
+        current.is_some_and(|item| item.kind != input.kind || item.status != status);
+    let current_clock = current.and_then(|item| match &item.trigger {
+        AutomationTrigger::Clock {
+            rrule,
             timezone,
-            jitter_salt,
-            ..
-        }) => Ok((timezone.clone(), jitter_salt.clone())),
-        _ => Err(invalid("This Automation has no clock condition")),
+            next_run_at_ms,
+        } => Some((rrule.as_str(), timezone.as_str(), *next_run_at_ms)),
+        AutomationTrigger::Event { .. } => None,
+    });
+    match &input.trigger {
+        AutomationTriggerInput::Clock { rrule, timezone } => {
+            let rrule = normalize_rrule(rrule).map_err(schedule_invalid)?;
+            let timezone = automation_timezone(
+                timezone
+                    .as_deref()
+                    .or(current_clock.map(|(_, zone, _)| zone)),
+            )?;
+            let salt = if current_clock.is_some() {
+                stored_jitter_salt(connection, automation_id)?
+            } else {
+                jitter_salt(connection)?
+            };
+            let schedule_changed = execution_changed
+                || current_clock.is_none_or(|(rule, zone, _)| rule != rrule || zone != timezone);
+            // An omitted condition keeps the saved one on replacement; a new clock reads as its rule.
+            let condition_text = input
+                .condition_text
+                .as_deref()
+                .or(current.map(|item| item.condition_text.as_str()))
+                .unwrap_or(&rrule)
+                .trim();
+            if condition_text.is_empty() || condition_text.len() > MAX_PROMPT_BYTES {
+                return Err(invalid(
+                    "A clock trigger's condition_text is empty or exceeds its bound",
+                ));
+            }
+            let current_next = current_clock.and_then(|(_, _, next)| next);
+            let next_run_at = if schedule_changed
+                || (status == AutomationStatus::Active && current_next.is_none())
+            {
+                next_run_at(automation_id, input.kind, &rrule, now_ms, &salt, &timezone)
+                    .map_err(schedule_invalid)?
+            } else {
+                current_next
+            };
+            Ok(TriggerColumns {
+                kind: "clock",
+                condition_text: condition_text.to_owned(),
+                rrule: Some(rrule),
+                timezone: Some(timezone),
+                jitter_salt: Some(salt),
+                next_run_at: next_run_at.filter(|_| status == AutomationStatus::Active),
+                event_filter_json: None,
+                schedule_changed,
+            })
+        }
+        AutomationTriggerInput::Event { filter } => Ok(TriggerColumns {
+            kind: "event",
+            condition_text: input
+                .condition_text
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .to_owned(),
+            rrule: None,
+            timezone: None,
+            jitter_salt: None,
+            next_run_at: None,
+            event_filter_json: Some(
+                serde_json::to_string(filter)
+                    .map_err(|_| internal("The event trigger filter cannot be encoded"))?,
+            ),
+            schedule_changed: execution_changed || current_clock.is_some(),
+        }),
     }
 }
-fn automation_timezone(
-    input: Option<&str>,
-    current: Option<&Automation>,
-) -> Result<String, StoreError> {
+
+fn automation_timezone(input: Option<&str>) -> Result<String, StoreError> {
     let timezone = match input {
         Some(value) => value.to_owned(),
-        None => match current {
-            Some(automation) => match &automation.typed_condition {
-                Some(nodex_core_contracts::automation::AutomationCondition::Clock {
-                    timezone,
-                    ..
-                }) => timezone.clone(),
-                _ => "UTC".into(),
-            },
-            None => super::schedule::local_timezone()?,
-        },
+        None => super::schedule::local_timezone()?,
     };
     timezone
         .parse::<chrono_tz::Tz>()
-        .map_err(|_| invalid("Automation timezone must be an IANA timezone"))?;
+        .map_err(|_| invalid("A clock trigger's timezone must be an IANA timezone"))?;
     Ok(timezone)
 }
-fn condition_text(input: Option<&str>, rrule: &str) -> Result<String, StoreError> {
-    let value = input.unwrap_or(rrule).trim();
-    if value.is_empty() || value.len() > MAX_PROMPT_BYTES {
-        return Err(invalid(
-            "Automation condition is empty or exceeds its bound",
-        ));
-    }
-    Ok(value.to_owned())
-}
+
 pub(super) fn scheduled_next_for_stored(
-    _connection: &Connection,
+    connection: &Connection,
     definition: &Automation,
     now_ms: i64,
 ) -> Result<Option<i64>, StoreError> {
-    if matches!(
-        definition.typed_condition,
-        Some(nodex_core_contracts::automation::AutomationCondition::Source { .. })
-    ) {
+    let AutomationTrigger::Clock {
+        rrule, timezone, ..
+    } = &definition.trigger
+    else {
         return Ok(None);
-    }
-    let (timezone, salt) = clock_parts(definition)?;
+    };
+    let salt = stored_jitter_salt(connection, &definition.automation_id)?;
     next_run_at(
         &definition.automation_id,
         definition.kind,
-        &definition.rrule,
+        rrule,
         now_ms,
         &salt,
-        &timezone,
+        timezone,
     )
-    .map_err(|_| corrupt("Stored clock condition is invalid"))
+    .map_err(|_| corrupt("Stored clock trigger schedule is invalid"))
+}
+
+fn stored_jitter_salt(connection: &Connection, automation_id: &str) -> Result<String, StoreError> {
+    connection
+        .query_row(
+            "SELECT jitter_salt FROM automations WHERE automation_id=?1 AND trigger_kind='clock'",
+            [automation_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .filter(|salt| !salt.is_empty() && salt.len() <= 512)
+        .ok_or_else(|| corrupt("Stored clock trigger jitter salt is unavailable"))
 }
 
 fn jitter_salt(connection: &Connection) -> Result<String, StoreError> {
@@ -2207,6 +2262,23 @@ fn jitter_salt(connection: &Connection) -> Result<String, StoreError> {
         .optional()?
         .filter(|salt| !salt.is_empty() && salt.len() <= 512)
         .ok_or_else(|| corrupt("Automation jitter salt is unavailable"))
+}
+
+fn cancel_clock_holds(
+    connection: &Connection,
+    automation_id: &str,
+    now_ms: i64,
+) -> Result<Vec<String>, StoreError> {
+    let mut lease_ids = connection
+        .prepare(
+            "UPDATE automation_execution_leases SET status='cancelled', settled_at_ms=?2,
+                reason_code='trigger_changed'
+             WHERE automation_id=?1 AND purpose='hold' AND status='claimed' RETURNING lease_id",
+        )?
+        .query_map(params![automation_id, now_ms], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+    lease_ids.sort();
+    Ok(lease_ids)
 }
 
 pub(super) fn cancel_claimed_leases(
@@ -2355,7 +2427,7 @@ fn validate_id(label: &str, value: &str) -> Result<(), StoreError> {
 }
 
 fn schedule_invalid(error: ScheduleError) -> StoreError {
-    invalid(error.0)
+    invalid(&format!("A clock trigger's rrule is invalid: {}", error.0))
 }
 
 fn invalid(message: &str) -> StoreError {
@@ -2418,10 +2490,11 @@ mod tests {
     use chrono::{Duration, Utc};
     use nodex_core_contracts::agent::AgentBackendBinding;
     use nodex_core_contracts::automation::{
-        AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationExecutionKind,
+        Automation, AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationExecutionKind,
         AutomationInput, AutomationIntent, AutomationLeaseStatus, AutomationNotificationPreference,
         AutomationRead, AutomationReadValue, AutomationRunStatus, AutomationStatus,
-        PageOccurrenceSchedulePatch, PageOccurrenceUpdateScope, ReminderLeaseStatus,
+        AutomationTrigger, AutomationTriggerInput, PageOccurrenceSchedulePatch,
+        PageOccurrenceUpdateScope, ReminderLeaseStatus,
     };
     use nodex_core_contracts::automation::{AutomationMode, AutomationNotificationPolicy};
     use nodex_core_contracts::database::{
@@ -2537,13 +2610,22 @@ mod tests {
         }
     }
 
+    fn next_run(automation: &Automation) -> Option<i64> {
+        let AutomationTrigger::Clock { next_run_at_ms, .. } = automation.trigger else {
+            panic!("expected a clock trigger");
+        };
+        next_run_at_ms
+    }
+
     fn definition() -> AutomationInput {
         AutomationInput {
-            source_condition: None,
+            trigger: AutomationTriggerInput::Clock {
+                rrule: "FREQ=MINUTELY;INTERVAL=5".to_owned(),
+                timezone: None,
+            },
             scope: None,
             owner_member_id: None,
             condition_text: None,
-            timezone: None,
             mode: None,
             runbook_page_id: None,
             kind: AutomationExecutionKind::Cron,
@@ -2552,7 +2634,6 @@ mod tests {
             notification_policy: AutomationNotificationPreference::Preserve,
             name: "Daily report".to_owned(),
             prompt: Some("Prepare the report".to_owned()),
-            rrule: Some("FREQ=MINUTELY;INTERVAL=5".to_owned()),
             model: Some("claude-opus-4-1".to_owned()),
             reasoning_effort: Some("Thinking".to_owned()),
             service_tier: Some("priority".to_owned()),
@@ -2576,9 +2657,9 @@ mod tests {
                     connection.execute(
                         "INSERT INTO automations(\
                            automation_id, kind, status, name, prompt, rrule, cwds_json, \
-                           execution_environment, created_at, updated_at,owner_member_id,condition_text,timezone,jitter_salt\
+                           execution_environment, created_at, updated_at,owner_member_id,condition_text,timezone,jitter_salt,trigger_kind\
                          ) VALUES (?1, 'cron', 'ACTIVE', ?1, '', \
-                           'FREQ=DAILY', '[]', 'local', 1, 1,(SELECT member_id FROM local_profile_members LIMIT 1),'Clock','UTC','salt')",
+                           'FREQ=DAILY', '[]', 'local', 1, 1,(SELECT member_id FROM local_profile_members LIMIT 1),'Clock','UTC','salt','clock')",
                         [format!("automation:capacity:{index}")],
                     )?;
                 }
@@ -3384,6 +3465,57 @@ mod tests {
     }
 
     #[test]
+    fn a_clock_condition_reads_as_its_rule_and_survives_replacement() {
+        let harness = harness();
+        let created = apply(
+            &harness,
+            "create-unconditioned",
+            AutomationIntent::CreateAutomation {
+                automation_id: "daily-report".to_owned(),
+                automation: definition(),
+            },
+        )
+        .expect("create Automation");
+        assert_eq!(
+            created.committed.value.automations[0].condition_text,
+            "FREQ=MINUTELY;INTERVAL=5"
+        );
+        let mut written = definition();
+        written.condition_text = Some("Every few minutes while the report is open".to_owned());
+        apply(
+            &harness,
+            "write-condition",
+            AutomationIntent::UpdateAutomation {
+                automation_id: "daily-report".to_owned(),
+                expected_revision: 1,
+                status: AutomationStatus::Active,
+                automation: written,
+            },
+        )
+        .expect("write condition");
+        let mut rescheduled = definition();
+        rescheduled.trigger = AutomationTriggerInput::Clock {
+            rrule: "FREQ=HOURLY".to_owned(),
+            timezone: None,
+        };
+        let kept = apply(
+            &harness,
+            "reschedule",
+            AutomationIntent::UpdateAutomation {
+                automation_id: "daily-report".to_owned(),
+                expected_revision: 2,
+                status: AutomationStatus::Active,
+                automation: rescheduled,
+            },
+        )
+        .expect("reschedule without restating the condition");
+        assert_eq!(
+            kept.committed.value.automations[0].condition_text,
+            "Every few minutes while the report is open"
+        );
+    }
+
+    #[test]
     fn definitions_are_typed_revisioned_and_exactly_replayed() {
         let harness = harness();
         let created = apply(
@@ -3399,11 +3531,7 @@ mod tests {
             created.committed.value.automations[0].automation_revision,
             1
         );
-        assert!(
-            created.committed.value.automations[0]
-                .next_run_at_ms
-                .is_some()
-        );
+        assert!(next_run(&created.committed.value.automations[0]).is_some());
 
         let replay = apply(
             &harness,
@@ -3461,7 +3589,7 @@ mod tests {
         let definition = &dispatched.committed.value.automations[0];
         assert_eq!(definition.automation_revision, 1);
         assert!(definition.last_run_at_ms.is_some());
-        assert!(definition.next_run_at_ms.is_some());
+        assert!(next_run(definition).is_some());
 
         let replay = apply(
             &harness,
@@ -3555,11 +3683,7 @@ mod tests {
                 .last_run_at_ms
                 .is_some()
         );
-        assert!(
-            completed.committed.value.automations[0]
-                .next_run_at_ms
-                .is_some()
-        );
+        assert!(next_run(&completed.committed.value.automations[0]).is_some());
         let duplicate = apply(
             &harness,
             "complete-2",
@@ -3580,7 +3704,10 @@ mod tests {
         input.project_id = None;
         input.target_session_id = Some("session-target".to_owned());
         input.cwds = None;
-        input.rrule = Some("FREQ=MINUTELY;INTERVAL=30".to_owned());
+        input.trigger = AutomationTriggerInput::Clock {
+            rrule: "FREQ=MINUTELY;INTERVAL=30".to_owned(),
+            timezone: None,
+        };
         apply(
             &harness,
             "heartbeat-create",
@@ -3643,7 +3770,7 @@ mod tests {
             let automation = completed.committed.value.automations[0].clone();
             (
                 started_at_ms,
-                automation.next_run_at_ms.expect("next beat"),
+                next_run(&automation).expect("next beat"),
                 automation.last_run_at_ms.expect("completion time"),
             )
         };
@@ -3779,7 +3906,7 @@ mod tests {
         )
         .expect("pause Automation");
         assert_eq!(paused.committed.value.automations[0].automation_revision, 2);
-        assert_eq!(paused.committed.value.automations[0].next_run_at_ms, None);
+        assert_eq!(next_run(&paused.committed.value.automations[0]), None);
         assert_eq!(
             paused.committed.receipt.affected_lease_ids.as_slice(),
             std::slice::from_ref(&lease_id)
@@ -3853,7 +3980,7 @@ mod tests {
         )
         .expect("reschedule Automation");
         assert_eq!(
-            rescheduled.committed.value.automations[0].next_run_at_ms,
+            next_run(&rescheduled.committed.value.automations[0]),
             Some(4_000_000_000_000)
         );
         assert_eq!(
@@ -3933,11 +4060,7 @@ mod tests {
         )
         .expect("fail lease");
         assert_eq!(failed.committed.value.automations[0].last_run_at_ms, None);
-        assert!(
-            failed.committed.value.automations[0]
-                .next_run_at_ms
-                .is_some()
-        );
+        assert!(next_run(&failed.committed.value.automations[0]).is_some());
         let lease = harness
             .kernel
             .readers()
@@ -5772,7 +5895,7 @@ mod tests {
         let paused = read_definition("heartbeat");
         assert_eq!(paused.status, AutomationStatus::Paused);
         assert_eq!(paused.automation_revision, 2);
-        assert_eq!(paused.next_run_at_ms, None);
+        assert_eq!(next_run(&paused), None);
         assert_eq!(
             read_definition("other-heartbeat").status,
             AutomationStatus::Active
@@ -5853,7 +5976,7 @@ mod tests {
         let deleted = read_definition("heartbeat");
         assert_eq!(deleted.status, AutomationStatus::Deleted);
         assert_eq!(deleted.automation_revision, 4);
-        assert_eq!(deleted.next_run_at_ms, None);
+        assert_eq!(next_run(&deleted), None);
         let lease = harness
             .kernel
             .readers()

@@ -1387,14 +1387,11 @@ export interface components {
             readonly mode: components["schemas"]["AutomationMode"];
             readonly model?: string | null;
             readonly name: string;
-            /** Format: int64 */
-            readonly next_run_at_ms?: number | null;
             readonly notification_policy?: components["schemas"]["AutomationNotificationPolicy"] | null;
             readonly owner_member_id: string;
             readonly project_id?: string | null;
             readonly prompt: string;
             readonly reasoning_effort?: string | null;
-            readonly rrule: string;
             readonly runbook_page_id?: string | null;
             /** @description The runbook Page's current title; None without a runbook or when the Page is no longer active. */
             readonly runbook_title?: string | null;
@@ -1402,7 +1399,7 @@ export interface components {
             readonly service_tier?: string | null;
             readonly status: components["schemas"]["AutomationStatus"];
             readonly target_session_id?: string | null;
-            readonly typed_condition?: components["schemas"]["AutomationCondition"] | null;
+            readonly trigger: components["schemas"]["AutomationTrigger"];
             /** Format: int64 */
             readonly updated_at_ms: number;
         };
@@ -1525,21 +1522,6 @@ export interface components {
         /** @enum {string} */
         readonly AutomationAssessmentResource: "triggers" | "thread" | "automations" | "pages" | "follows" | "decisions";
         /**
-         * @description A typed condition narrows an Automation's natural-language condition. Clock schedules
-         *     retain their own zone and jitter seed, independent of the execution Host.
-         */
-        readonly AutomationCondition: {
-            readonly jitter_salt: string;
-            /** @enum {string} */
-            readonly kind: "clock";
-            readonly rrule: string;
-            readonly timezone: string;
-        } | {
-            readonly filters: components["schemas"]["AutomationSourceFilter"];
-            /** @enum {string} */
-            readonly kind: "source";
-        };
-        /**
          * @description Lifecycle of a decision that went through the Inbox.
          * @enum {string}
          */
@@ -1566,6 +1548,17 @@ export interface components {
             readonly reminder_lease_ids: readonly string[];
             readonly run_ids: readonly string[];
             readonly snooze_ids: readonly number[];
+        };
+        /** @description Event filters select evidence, never authorize work or replace the written condition. */
+        readonly AutomationEventFilter: {
+            readonly actor_class?: components["schemas"]["AutomationActorFilter"];
+            readonly events: readonly components["schemas"]["AutomationSourceEventKind"][];
+            /** @description Empty leaves label evidence unfiltered. */
+            readonly labels?: readonly string[];
+            /** @description Empty selects every watched repository. */
+            readonly repositories?: readonly string[];
+            /** @description None selects every Source in the Space. */
+            readonly source_id?: string | null;
         };
         /** @enum {string} */
         readonly AutomationEventKind: "automation_changed";
@@ -1622,7 +1615,6 @@ export interface components {
             readonly project_id?: string | null;
             readonly prompt?: string | null;
             readonly reasoning_effort?: string | null;
-            readonly rrule?: string | null;
             /**
              * @description A Page whose current content every run follows as standing instructions, and which
              *     each run's chat links to. Absent clears it, like other optional fields.
@@ -1630,9 +1622,9 @@ export interface components {
             readonly runbook_page_id?: string | null;
             readonly scope?: components["schemas"]["AutomationScope"] | null;
             readonly service_tier?: string | null;
-            readonly source_condition?: components["schemas"]["AutomationSourceFilter"] | null;
             readonly target_session_id?: string | null;
-            readonly timezone?: string | null;
+            /** @description What starts the Automation: a clock schedule or matching Source events. */
+            readonly trigger: components["schemas"]["AutomationTriggerInput"];
         };
         readonly AutomationIntent: {
             readonly intent: components["schemas"]["AutomationIntent"];
@@ -1941,16 +1933,45 @@ export interface components {
         };
         /** @enum {string} */
         readonly AutomationSourceEventKind: "new_issue" | "new_pr" | "comment" | "review" | "check_failed" | "check_passed" | "label_added" | "label_removed";
-        /** @description Event filters select evidence, never authorize work or replace the written condition. */
-        readonly AutomationSourceFilter: {
-            readonly actor_class?: components["schemas"]["AutomationActorFilter"] | null;
-            readonly kinds: readonly components["schemas"]["AutomationSourceEventKind"][];
-            readonly labels?: readonly string[];
-            readonly repositories: readonly string[];
-            readonly source_id?: string | null;
-        };
         /** @enum {string} */
         readonly AutomationStatus: "ACTIVE" | "PAUSED" | "DELETED";
+        /**
+         * @description A saved trigger. A clock retains its schedule, explicit timezone and next due instant;
+         *     an event trigger has none of them.
+         */
+        readonly AutomationTrigger: {
+            /** @enum {string} */
+            readonly kind: "clock";
+            /**
+             * Format: int64
+             * @description None while the Automation is paused or deleted.
+             */
+            readonly next_run_at_ms?: number | null;
+            readonly rrule: string;
+            readonly timezone: string;
+        } | {
+            readonly filter: components["schemas"]["AutomationEventFilter"];
+            /** @enum {string} */
+            readonly kind: "event";
+        };
+        /**
+         * @description What starts an Automation. Its written condition and action still govern judgement;
+         *     the trigger only decides when that judgement happens.
+         */
+        readonly AutomationTriggerInput: {
+            /** @enum {string} */
+            readonly kind: "clock";
+            readonly rrule: string;
+            /**
+             * @description Omitted keeps a saved clock's timezone on replacement, and otherwise uses the
+             *     Host's timezone.
+             */
+            readonly timezone?: string | null;
+        } | {
+            readonly filter: components["schemas"]["AutomationEventFilter"];
+            /** @enum {string} */
+            readonly kind: "event";
+        };
         readonly BackupCapacity: {
             /** Format: int64 */
             readonly automatic_ready_bytes: number;
@@ -2129,14 +2150,11 @@ export interface components {
                 readonly mode: components["schemas"]["AutomationMode"];
                 readonly model?: string | null;
                 readonly name: string;
-                /** Format: int64 */
-                readonly next_run_at_ms?: number | null;
                 readonly notification_policy?: components["schemas"]["AutomationNotificationPolicy"] | null;
                 readonly owner_member_id: string;
                 readonly project_id?: string | null;
                 readonly prompt: string;
                 readonly reasoning_effort?: string | null;
-                readonly rrule: string;
                 readonly runbook_page_id?: string | null;
                 /** @description The runbook Page's current title; None without a runbook or when the Page is no longer active. */
                 readonly runbook_title?: string | null;
@@ -2144,7 +2162,7 @@ export interface components {
                 readonly service_tier?: string | null;
                 readonly status: components["schemas"]["AutomationStatus"];
                 readonly target_session_id?: string | null;
-                readonly typed_condition?: components["schemas"]["AutomationCondition"] | null;
+                readonly trigger: components["schemas"]["AutomationTrigger"];
                 /** Format: int64 */
                 readonly updated_at_ms: number;
             }[];

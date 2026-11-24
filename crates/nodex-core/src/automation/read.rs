@@ -1,9 +1,9 @@
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::automation::{
-    Automation, AutomationCondition, AutomationDecision, AutomationDueWorkLane,
-    AutomationExecutionEnvironment, AutomationExecutionKind, AutomationLease,
-    AutomationLeasePurpose, AutomationLeaseStatus, AutomationMode, AutomationNotificationPolicy,
-    AutomationRead, AutomationReadValue, AutomationStatus,
+    Automation, AutomationDecision, AutomationDueWorkLane, AutomationExecutionEnvironment,
+    AutomationExecutionKind, AutomationLease, AutomationLeasePurpose, AutomationLeaseStatus,
+    AutomationMode, AutomationNotificationPolicy, AutomationRead, AutomationReadValue,
+    AutomationStatus, AutomationTrigger,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -316,7 +316,7 @@ fn read_definition_window(
                 agent_backend_driver, \
                 agent_backend_instance_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id \
+                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id, trigger_kind, event_filter_json \
          FROM automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
@@ -344,7 +344,7 @@ fn read_definition_window(
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|_| corrupt("Automation definition column types are invalid"))?
         .into_iter()
-        .map(|item| enrich_definition(connection, item))
+        .map(|item| enrich_definition(connection, item, false))
         .collect::<Result<Vec<_>, _>>()?;
     let candidates = rows.into_iter().map(|item| WindowCandidate {
         coordinate: KeysetCoordinate {
@@ -396,10 +396,10 @@ fn read_definition_with_binding(
     } else {
         "agent_backend_driver, agent_backend_instance_id"
     };
-    let legacy_definition = if legacy {
+    let trigger_columns = if legacy {
         ", agent_backend_definition_id"
     } else {
-        ""
+        ", trigger_kind, event_filter_json"
     };
     let definition = connection
         .query_row(
@@ -407,7 +407,7 @@ fn read_definition_with_binding(
                     prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
                     {identity_columns}, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id {legacy_definition} \
+                project_id, mode, runbook_page_id, owner_member_id, condition_text, timezone, jitter_salt, scope_project_id {trigger_columns} \
              FROM automations WHERE automation_id = ?1"),
             [automation_id],
             |row| decode_definition(row, legacy),
@@ -415,7 +415,7 @@ fn read_definition_with_binding(
         .optional()
         .map_err(|_| corrupt("Automation definition column types are invalid"))?;
     definition
-        .map(|item| enrich_definition(connection, item))
+        .map(|item| enrich_definition(connection, item, legacy))
         .transpose()
 }
 
@@ -442,6 +442,46 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
         binding_from_storage(driver, row.get(13)?)
             .map_err(|message| rusqlite_conversion(message.to_owned()))?
     };
+    // The clock backfill predates event Automations and freezes clock snapshots only.
+    let trigger_kind = if legacy {
+        "clock".to_owned()
+    } else {
+        row.get(29)?
+    };
+    let trigger = match trigger_kind.as_str() {
+        "clock" => {
+            let salt: String = row.get(27)?;
+            if salt.is_empty() || salt.len() > 512 {
+                return Err(rusqlite_conversion(
+                    "Stored clock trigger jitter salt is invalid".into(),
+                ));
+            }
+            let rrule = if legacy {
+                use crate::infrastructure::automation_trigger_migration::LEGACY_DEFAULT_RRULE;
+
+                row.get::<_, Option<String>>(7)?
+                    .filter(|rule| !rule.trim().is_empty())
+                    .unwrap_or_else(|| LEGACY_DEFAULT_RRULE.to_owned())
+            } else {
+                row.get(7)?
+            };
+            AutomationTrigger::Clock {
+                rrule,
+                timezone: row.get(26)?,
+                next_run_at_ms: row.get(16)?,
+            }
+        }
+        "event" => AutomationTrigger::Event {
+            filter: serde_json::from_str(&row.get::<_, String>(30)?).map_err(|_| {
+                rusqlite_conversion("Stored event trigger filter is invalid".into())
+            })?,
+        },
+        _ => {
+            return Err(rusqlite_conversion(
+                "Stored Automation trigger kind is invalid".into(),
+            ));
+        }
+    };
     Ok(Automation {
         scope: row.get::<_, Option<String>>(28)?.map_or(
             nodex_core_contracts::automation::AutomationScope::Space,
@@ -449,11 +489,7 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
         ),
         owner_member_id: row.get(24)?,
         condition_text: row.get(25)?,
-        typed_condition: Some(AutomationCondition::Clock {
-            rrule: row.get(7)?,
-            timezone: row.get(26)?,
-            jitter_salt: row.get(27)?,
-        }),
+        trigger,
         automation_id: row.get(0)?,
         automation_revision: row.get(1)?,
         kind,
@@ -482,7 +518,6 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
         held_decision: None,
         name: row.get(5)?,
         prompt: row.get(6)?,
-        rrule: row.get(7)?,
         model: row.get(8)?,
         reasoning_effort: row.get(9)?,
         service_tier: row.get(10)?,
@@ -490,7 +525,6 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
         cwds,
         execution_environment: environment,
         local_environment_config_path: row.get(15)?,
-        next_run_at_ms: row.get(16)?,
         last_run_at_ms: row.get(17)?,
         created_at_ms: row.get(18)?,
         updated_at_ms: row.get(19)?,
@@ -500,31 +534,13 @@ fn decode_definition(row: &rusqlite::Row<'_>, legacy: bool) -> rusqlite::Result<
 fn enrich_definition(
     connection: &Connection,
     mut item: Automation,
+    legacy: bool,
 ) -> Result<Automation, StoreError> {
-    // The clock migration freezes retained Automations before the event tables exist.
-    let has_events: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='automation_event_filters')",
-        [],
-        |r| r.get(0),
-    )?;
-    let filter: Option<String> = if has_events {
-        connection
-            .query_row(
-                "SELECT filter_json FROM automation_event_filters WHERE automation_id=?1",
-                [&item.automation_id],
-                |r| r.get(0),
-            )
-            .optional()?
+    item.held_decision = if legacy {
+        super::firing::held_legacy_clock(connection, &item.automation_id)?
     } else {
-        None
+        super::firing::held(connection, &item.automation_id)?
     };
-    if let Some(filter) = filter {
-        item.typed_condition = Some(AutomationCondition::Source {
-            filters: serde_json::from_str(&filter)
-                .map_err(|_| corrupt("Invalid Automation Source filter"))?,
-        });
-    }
-    item.held_decision = super::firing::held(connection, &item.automation_id)?;
     item.runbook_title = connection.query_row(
         "SELECT COALESCE(materialization.title,'') FROM pages page \
          JOIN blocks block ON block.id=page.block_id AND block.lifecycle='active' \
@@ -541,10 +557,34 @@ fn validate_definition(definition: Automation) -> Result<Automation, StoreError>
         || definition.name.trim().is_empty()
         || definition.created_at_ms < 0
         || definition.updated_at_ms < definition.created_at_ms
-        || definition.next_run_at_ms.is_some_and(|value| value < 0)
         || definition.last_run_at_ms.is_some_and(|value| value < 0)
     {
         return Err(corrupt("Stored Automation definition is invalid"));
+    }
+    match &definition.trigger {
+        AutomationTrigger::Clock {
+            rrule,
+            timezone,
+            next_run_at_ms,
+        } => {
+            if rrule.trim().is_empty() || rrule.len() > 16 * 1024 {
+                return Err(corrupt("Stored clock trigger rrule is invalid"));
+            }
+            if timezone.parse::<chrono_tz::Tz>().is_err() {
+                return Err(corrupt("Stored clock trigger timezone is invalid"));
+            }
+            if next_run_at_ms.is_some_and(|instant| instant < 0) {
+                return Err(corrupt("Stored clock trigger next_run_at_ms is invalid"));
+            }
+        }
+        AutomationTrigger::Event { filter } => {
+            if definition.kind != AutomationExecutionKind::Cron {
+                return Err(corrupt(
+                    "A heartbeat continues its Session on a clock trigger",
+                ));
+            }
+            super::event_filter::validate_filter(filter).map_err(corrupt)?;
+        }
     }
     for (label, value, max_bytes) in [
         ("model", definition.model.as_deref(), 512),

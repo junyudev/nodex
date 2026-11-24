@@ -6,7 +6,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 14;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 15;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -81,17 +81,16 @@ pub enum AutomationScope {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AutomationInput {
-    #[serde(default)]
-    pub source_condition: Option<AutomationSourceFilter>,
+    /// What starts the Automation: a clock schedule or matching Source events.
+    pub trigger: AutomationTriggerInput,
     #[serde(default)]
     pub scope: Option<AutomationScope>,
     #[serde(default)]
     pub owner_member_id: Option<String>,
     #[serde(default)]
     pub condition_text: Option<String>,
-    #[serde(default)]
-    pub timezone: Option<String>,
     pub kind: AutomationExecutionKind,
     pub project_id: Option<String>,
     pub target_session_id: Option<String>,
@@ -107,7 +106,6 @@ pub struct AutomationInput {
     pub runbook_page_id: Option<String>,
     pub name: String,
     pub prompt: Option<String>,
-    pub rrule: Option<String>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
@@ -123,7 +121,7 @@ pub struct Automation {
     pub scope: AutomationScope,
     pub owner_member_id: String,
     pub condition_text: String,
-    pub typed_condition: Option<AutomationCondition>,
+    pub trigger: AutomationTrigger,
     pub automation_id: String,
     pub automation_revision: i64,
     pub kind: AutomationExecutionKind,
@@ -140,7 +138,6 @@ pub struct Automation {
     pub held_decision: Option<AutomationHeldDecision>,
     pub name: String,
     pub prompt: String,
-    pub rrule: String,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
@@ -148,42 +145,68 @@ pub struct Automation {
     pub cwds: Vec<String>,
     pub execution_environment: AutomationExecutionEnvironment,
     pub local_environment_config_path: Option<String>,
-    pub next_run_at_ms: Option<i64>,
     pub last_run_at_ms: Option<i64>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
 }
 
-/// A typed condition narrows an Automation's natural-language condition. Clock schedules
-/// retain their own zone and jitter seed, independent of the execution Host.
+/// What starts an Automation. Its written condition and action still govern judgement;
+/// the trigger only decides when that judgement happens.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AutomationCondition {
+pub enum AutomationTriggerInput {
+    /// Falls due on an RRULE interpreted in an IANA timezone.
+    Clock {
+        rrule: String,
+        /// Omitted keeps a saved clock's timezone on replacement, and otherwise uses the
+        /// Host's timezone.
+        #[serde(default)]
+        timezone: Option<String>,
+    },
+    /// Selects matching Source Triggers for assessment. It has no schedule.
+    Event { filter: AutomationEventFilter },
+}
+
+/// A saved trigger. A clock retains its schedule, explicit timezone and next due instant;
+/// an event trigger has none of them.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AutomationTrigger {
     Clock {
         rrule: String,
         timezone: String,
-        jitter_salt: String,
+        /// None while the Automation is paused or deleted.
+        next_run_at_ms: Option<i64>,
     },
-    Source {
-        filters: AutomationSourceFilter,
+    Event {
+        filter: AutomationEventFilter,
     },
 }
 
 /// Event filters select evidence, never authorize work or replace the written condition.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct AutomationSourceFilter {
+pub struct AutomationEventFilter {
+    /// None selects every Source in the Space.
+    #[serde(default)]
     pub source_id: Option<String>,
+    /// Empty selects every watched repository.
+    #[serde(default)]
     pub repositories: Vec<String>,
-    pub kinds: Vec<AutomationSourceEventKind>,
+    pub events: Vec<AutomationSourceEventKind>,
+    /// Empty leaves label evidence unfiltered.
     #[serde(default)]
     pub labels: Vec<String>,
-    pub actor_class: Option<AutomationActorFilter>,
+    #[serde(default)]
+    pub actor_class: AutomationActorFilter,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AutomationActorFilter {
+    /// People only.
     Person,
+    /// Anyone, including bots and CI.
+    #[default]
     Any,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -983,5 +1006,107 @@ mod tests {
                 .is_some_and(Value::is_null)
         );
         assert!(serialized.get("scheduled_end_ms").is_none());
+    }
+
+    #[test]
+    fn triggers_admit_only_their_own_fields() {
+        let event = serde_json::json!({
+            "kind": "event",
+            "filter": {"repositories": ["nodex/nodex"], "events": ["check_failed"]},
+        });
+        let parsed =
+            serde_json::from_value::<AutomationTriggerInput>(event.clone()).expect("event trigger");
+        assert_eq!(
+            parsed,
+            AutomationTriggerInput::Event {
+                filter: AutomationEventFilter {
+                    source_id: None,
+                    repositories: vec!["nodex/nodex".to_owned()],
+                    events: vec![AutomationSourceEventKind::CheckFailed],
+                    labels: Vec::new(),
+                    actor_class: AutomationActorFilter::Any,
+                },
+            }
+        );
+        for (field, value) in [
+            ("rrule", serde_json::json!("FREQ=DAILY")),
+            ("timezone", serde_json::json!("UTC")),
+            ("next_run_at_ms", serde_json::json!(1)),
+        ] {
+            let mut invalid = event.clone();
+            invalid[field] = value;
+            assert!(
+                serde_json::from_value::<AutomationTriggerInput>(invalid).is_err(),
+                "an event trigger must refuse {field}"
+            );
+        }
+        assert!(
+            serde_json::from_value::<AutomationTriggerInput>(serde_json::json!({
+                "kind": "clock",
+                "timezone": "UTC",
+            }))
+            .is_err(),
+            "a clock trigger requires its RRULE"
+        );
+        assert!(
+            serde_json::from_value::<AutomationTriggerInput>(serde_json::json!({
+                "kind": "clock",
+                "rrule": "FREQ=DAILY",
+                "filter": {"events": ["comment"]},
+            }))
+            .is_err(),
+            "a clock trigger cannot carry an event filter"
+        );
+
+        let saved = serde_json::to_value(AutomationTrigger::Event {
+            filter: AutomationEventFilter {
+                source_id: None,
+                repositories: Vec::new(),
+                events: vec![AutomationSourceEventKind::NewPr],
+                labels: Vec::new(),
+                actor_class: AutomationActorFilter::Person,
+            },
+        })
+        .expect("saved event trigger");
+        assert_eq!(
+            saved,
+            serde_json::json!({
+                "kind": "event",
+                "filter": {
+                    "source_id": null,
+                    "repositories": [],
+                    "events": ["new_pr"],
+                    "labels": [],
+                    "actor_class": "person",
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn automation_input_refuses_fields_outside_its_trigger() {
+        let input = serde_json::json!({
+            "trigger": {"kind": "clock", "rrule": "FREQ=DAILY"},
+            "kind": "cron",
+            "name": "Daily",
+            "prompt": "Summarize",
+            "project_id": null,
+            "target_session_id": null,
+            "model": null,
+            "reasoning_effort": null,
+            "service_tier": null,
+            "cwds": null,
+            "execution_environment": null,
+            "local_environment_config_path": null,
+        });
+        serde_json::from_value::<AutomationInput>(input.clone()).expect("clock input");
+        for field in ["rrule", "timezone", "source_condition"] {
+            let mut stale = input.clone();
+            stale[field] = serde_json::json!("FREQ=DAILY");
+            assert!(
+                serde_json::from_value::<AutomationInput>(stale).is_err(),
+                "{field} belongs inside the trigger"
+            );
+        }
     }
 }
