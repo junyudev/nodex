@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Stopping a subagent now stops all of it. Its running turn ends, follow-ups waiting behind it never run, and none of them reports back to the Agent that delegated it, while turns that already finished keep their results. A follow-up held after you stop a subagent's own chat no longer keeps the parent chat looking busy, and a message steered into a turn that was just starting no longer reports a separate, cancelled task.
 - A subagent's result arrives once its work is done. A follow-up that delegated more work no longer reports back before that work finishes, a result no longer waits for a follow-up queued behind it, and a subagent woken by its own subagents' results reports the answer it gave after reading them.
 - Antigravity and other ACP chats that can resume now pick up your installed plugins on a later reply if they opened before Nodex finished reading them.
+- File search no longer shows matches and then replaces them with "File search is unavailable". Matches stay put, and when a folder can't be searched completely, a line below the results says why: the folder is too large, no longer exists, or Nodex isn't allowed to read it. If search itself stops, select **Couldn’t search files** to try again. A linked folder that points back inside the same folder is now searched only at its real location, so files your ignore rules hide no longer flood the results through the link.
 
 ### Removed
 

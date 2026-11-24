@@ -32,7 +32,7 @@ export type PaletteItem =
   | ExecutablePaletteItem
   | { kind: "more"; id: string; scope: DiscoveryScope }
   | { kind: "text-query"; id: string; query: string };
-type PaletteSectionModel = { title: string; items: PaletteItem[] };
+type PaletteSectionModel = { title: string; items: PaletteItem[]; scope?: DiscoveryScope };
 export type DiscoveryLimits = Readonly<Record<DiscoveryScope, number>>;
 export const MAX_DISCOVERY_RESULTS = 60;
 export const DEFAULT_DISCOVERY_LIMITS: DiscoveryLimits = { chats: 5, pages: 5, files: 5, text: 5 };
@@ -64,6 +64,7 @@ function discoverySection(
 ): PaletteSectionModel {
   return {
     title,
+    scope,
     items:
       expandable && items.length > limit && limit < getDiscoveryResultLimit(scope)
         ? [...items.slice(0, limit), { kind: "more", id: `more:${scope}`, scope }]
@@ -94,9 +95,35 @@ const DISCOVERY_TITLES = defineMessages({
   files: { id: "lib.commandPaletteSections.files", defaultMessage: "Files" },
 });
 
+/** The selectable row that runs a file search or path check again after it could not run. */
+export const FILE_SEARCH_RETRY_ID = "retryFileSearch";
+
+function fileSearchRetryItem(target: "files" | "path", intl: IntlShape): CommandPaletteCommand {
+  return {
+    kind: "command",
+    id: FILE_SEARCH_RETRY_ID,
+    title:
+      target === "path"
+        ? intl.formatMessage({
+            id: "lib.commandPaletteSections.retryPathCheck",
+            defaultMessage: "Couldn’t check path. Select to retry",
+          })
+        : intl.formatMessage({
+            id: "lib.commandPaletteSections.retryFileSearch",
+            defaultMessage: "Couldn’t search files. Select to retry",
+          }),
+    subtitle: "",
+    keywords: [],
+    group: "Suggested",
+    priority: 0,
+  };
+}
+
 interface CommandPaletteSectionsInput {
   discoveryLimits?: DiscoveryLimits;
   files?: readonly CommandPaletteFile[];
+  /** A file search or path check that could not run and can be retried. */
+  fileSearchRetry?: "files" | "path" | null;
   textMatches?: readonly CommandPaletteText[];
   textQueries?: readonly string[];
   query: string;
@@ -141,6 +168,7 @@ export function buildCommandPaletteSectionsModel(
     pageSearchBatch,
     pageSearchScopeKey,
     files = [],
+    fileSearchRetry = null,
     textMatches = [],
     textQueries = [],
     discoveryLimits = DEFAULT_DISCOVERY_LIMITS,
@@ -224,6 +252,10 @@ export function buildCommandPaletteSectionsModel(
   const pageSearchTruncated = freshPageSearch && pageSearchBatch?.truncated === true;
   const pageSearchIndexing = freshPageSearch && pageSearchBatch?.coverage === "indexing";
   let showPageSearchStatus = false;
+  const retryItem = fileSearchRetry && fileSearchRetryItem(fileSearchRetry, intl);
+  /** Matches stay ahead of the retry row, which is never hidden behind "Show more". */
+  const withFileSearchRetry = (section: PaletteSectionModel): PaletteSectionModel =>
+    retryItem ? { ...section, items: [...section.items, retryItem] } : section;
   const sections: PaletteSectionModel[] = (() => {
     if (mode === "root" || mode === "actions") {
       const quickActions = normalizedQuery.length === 0 && mode === "root";
@@ -276,14 +308,16 @@ export function buildCommandPaletteSectionsModel(
             ),
           );
       }
-      if (files.length > 0)
+      if (files.length > 0 || retryItem)
         sections.push(
-          discoverySection(
-            intl.formatMessage(DISCOVERY_TITLES.files),
-            [...files],
-            "files",
-            discoveryLimits.files,
-            normalizedQuery.length > 0,
+          withFileSearchRetry(
+            discoverySection(
+              intl.formatMessage(DISCOVERY_TITLES.files),
+              [...files],
+              "files",
+              discoveryLimits.files,
+              normalizedQuery.length > 0,
+            ),
           ),
         );
       if (textMatches.length > 0)
@@ -321,21 +355,23 @@ export function buildCommandPaletteSectionsModel(
 
     if (mode === "files")
       return [
-        {
+        withFileSearchRetry({
           title: query.trim()
             ? intl.formatMessage(DISCOVERY_TITLES.files)
             : intl.formatMessage({
                 id: "lib.commandPaletteSections.openedRecently",
                 defaultMessage: "Opened recently",
               }),
+          scope: "files",
           items: [...files],
-        },
+        }),
       ];
     if (mode === "text") {
       if (query.length > 0)
         return [
           {
             title: intl.formatMessage(DISCOVERY_TITLES.text),
+            scope: "text",
             items: [...textMatches],
           },
         ];

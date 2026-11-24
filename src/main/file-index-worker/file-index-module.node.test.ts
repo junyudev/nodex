@@ -18,6 +18,7 @@ import { FileWatchError, type FileWatchEvent, type FileWatchHost } from "../file
 import {
   layer as listingLayer,
   WorkspaceFileListing,
+  WorkspaceFileListingError,
   type WorkspaceFileListingRequest,
 } from "../platform/node/WorkspaceFileListing";
 import {
@@ -77,7 +78,8 @@ const fixedListing = (trees: Record<string, readonly string[]>): Listing =>
     list: (request) =>
       Effect.gen(function* () {
         const files = trees[request.root] ?? [];
-        if (files.length > 0) yield* request.onPaths(files);
+        const completed = files.length === 0 || (yield* request.onPaths(files));
+        return { kind: completed ? "completed" : "stopped", aliases: [] } as const;
       }),
     readDirectory: () => Effect.die("unexpected directory read"),
     pathKind: () => Effect.die("unexpected path inspection"),
@@ -154,7 +156,7 @@ const makeHarness = (
       ...(input.limits ? { limits: input.limits } : {}),
       ...(input.timings ? { timings: input.timings } : {}),
     }).pipe(Effect.provideService(WorkspaceFileListing, listing));
-    /** Sends a query and returns its last results once it completes or fails. */
+    /** Sends a query and returns its last results once it completes. */
     const search = (sessionId: string, seq: number, query: string) =>
       Effect.gen(function* () {
         yield* index.query(sessionId, seq, query);
@@ -164,7 +166,8 @@ const makeHarness = (
           if (message.type !== "session" || message.sessionId !== sessionId || message.seq !== seq)
             continue;
           if (message.outcome.kind === "updated") files = message.outcome.files;
-          else return { outcome: message.outcome.kind, files };
+          else
+            return { outcome: message.outcome.kind, files, incomplete: message.outcome.incomplete };
         }
       });
     const names = (sessionId: string, seq: number, query: string) =>
@@ -382,27 +385,175 @@ it.effect("bounds each root and the resident total, releasing idle roots first",
   }),
 );
 
-it.effect("fails open searches when listing fails and lists the root again for the next one", () =>
+const listingError = (reason: WorkspaceFileListingError["reason"]) =>
+  new WorkspaceFileListingError({ message: "Could not list workspace files", reason });
+
+it.effect("reacquires a failed root on the next query in the same session", () =>
   Effect.gen(function* () {
     let attempts = 0;
+    const listing = fixedListing({ "/repo": ["Alpha.ts"] });
     const { index, search, requests } = yield* makeHarness({
       listing: WorkspaceFileListing.of({
-        ...fixedListing({ "/repo": ["Alpha.ts"] }),
+        ...listing,
         list: (request) =>
           ++attempts === 1
-            ? Effect.die("listing failed")
-            : fixedListing({ "/repo": ["Alpha.ts"] }).list(request),
+            ? Effect.succeed({ kind: "failed", aliases: [], error: listingError("unreadable") })
+            : listing.list(request),
       }),
     });
     yield* index.open("first", ["/repo"]);
-    assert.equal((yield* search("first", 1, "alpha")).outcome, "failed");
-    yield* index.open("second", ["/repo"]);
-    const recovered = yield* search("second", 1, "alpha");
-    assert.equal(recovered.outcome, "completed");
-    assert.lengthOf(recovered.files, 1);
+    const failed = yield* search("first", 1, "alpha");
+    assert.deepEqual(failed, {
+      outcome: "completed",
+      files: [],
+      incomplete: { reason: "unreadable", root: "/repo" },
+    });
+    const recovered = yield* search("first", 2, "alpha");
+    assert.isUndefined(recovered.incomplete);
+    assert.deepEqual(
+      recovered.files.map((file) => file.path),
+      ["Alpha.ts"],
+    );
     assert.lengthOf(requests, 2);
-    assert.equal((yield* search("unknown", 1, "alpha")).outcome, "failed");
+    assert.deepEqual(
+      (yield* index.inspect).map((root) => root.sessions),
+      [1],
+    );
+    yield* index.close("first");
+    assert.deepEqual(
+      (yield* index.inspect).map((root) => root.sessions),
+      [0],
+    );
+    assert.deepEqual((yield* search("unknown", 1, "alpha")).incomplete, { reason: "unavailable" });
   }),
+);
+
+it.effect("returns healthy roots and reports the first affected root in session order", () =>
+  Effect.gen(function* () {
+    const listing = fixedListing({ "/repo": ["Alpha.ts"] });
+    const { index, search } = yield* makeHarness({
+      listing: WorkspaceFileListing.of({
+        ...listing,
+        list: (request) => {
+          if (request.root === "/repo") return listing.list(request);
+          const reason = request.root === "/missing" ? "missing" : "unreadable";
+          return Effect.succeed({ kind: "failed", aliases: [], error: listingError(reason) });
+        },
+      }),
+    });
+    yield* index.open("first", ["/missing", "/repo", "/private"]);
+    yield* index.open("second", ["/private", "/missing", "/repo"]);
+    const first = yield* search("first", 1, "alpha");
+    const second = yield* search("second", 1, "alpha");
+    assert.deepEqual(first.incomplete, { reason: "missing", root: "/missing" });
+    assert.deepEqual(second.incomplete, { reason: "unreadable", root: "/private" });
+    assert.deepEqual(
+      first.files.map((file) => [file.root, file.path]),
+      [["/repo", "Alpha.ts"]],
+    );
+    assert.deepEqual(second.files, first.files);
+  }),
+);
+
+it.effect("keeps matches from cut-short and capacity-limited listings", () =>
+  Effect.gen(function* () {
+    const listing = fixedListing({
+      "/large": ["Alpha.ts", "Alpha-2.ts"],
+      "/short": ["Alpha-3.ts"],
+    });
+    const { index, search } = yield* makeHarness({
+      listing: WorkspaceFileListing.of({
+        ...listing,
+        list: (request) =>
+          request.root === "/short"
+            ? listing.list(request).pipe(
+                Effect.as({
+                  kind: "cut-short",
+                  aliases: [],
+                  error: listingError("unavailable"),
+                } as const),
+              )
+            : listing.list(request),
+      }),
+      limits: {
+        root: { entries: 1, pathUnits: 100 },
+        resident: { entries: 4, pathUnits: 400 },
+      },
+    });
+    yield* index.open("large", ["/large"]);
+    yield* index.open("short", ["/short"]);
+    const large = yield* search("large", 1, "alpha");
+    const short = yield* search("short", 1, "alpha");
+    assert.deepEqual(large.incomplete, { reason: "too-large", root: "/large" });
+    assert.deepEqual(
+      large.files.map((file) => file.path),
+      ["Alpha.ts"],
+    );
+    assert.deepEqual(short.incomplete, { reason: "too-large", root: "/short" });
+    assert.deepEqual(
+      short.files.map((file) => file.path),
+      ["Alpha-3.ts"],
+    );
+  }),
+);
+
+it.effect(
+  "preserves the index on refresh failure and clears a capacity limit after a full relist fits",
+  () =>
+    Effect.gen(function* () {
+      const trees = { "/repo": ["Alpha.ts"] };
+      const listing = fixedListing(trees);
+      let cutShort = false;
+      const { index, watch, updates, search } = yield* makeHarness({
+        listing: WorkspaceFileListing.of({
+          ...listing,
+          list: (request) =>
+            listing.list(request).pipe(
+              Effect.map((result) =>
+                cutShort
+                  ? ({
+                      kind: "cut-short",
+                      aliases: [],
+                      error: listingError("unavailable"),
+                    } as const)
+                  : result,
+              ),
+            ),
+          readDirectory: () => Effect.succeed([]),
+        }),
+        limits: {
+          root: { entries: 2, pathUnits: 100 },
+          resident: { entries: 4, pathUnits: 400 },
+        },
+      });
+      const relist = watch
+        .change("/repo")
+        .pipe(
+          Effect.andThen(TestClock.adjust(FILE_INDEX_TIMINGS.changeMaxDelay)),
+          Effect.andThen(Queue.take(updates)),
+        );
+      yield* index.open("search", ["/repo"]);
+      assert.isUndefined((yield* search("search", 1, "alpha")).incomplete);
+      trees["/repo"] = ["folder/Alpha.ts", "folder/Alpha-2.ts"];
+      yield* relist;
+      assert.deepEqual((yield* search("search", 2, "alpha")).incomplete, {
+        reason: "too-large",
+        root: "/repo",
+      });
+      trees["/repo"] = ["Alpha.ts"];
+      yield* relist;
+      const recovered = yield* search("search", 3, "alpha");
+      assert.isUndefined(recovered.incomplete);
+      assert.deepEqual(
+        recovered.files.map((file) => file.path),
+        ["Alpha.ts"],
+      );
+
+      cutShort = true;
+      trees["/repo"] = ["Alpha-after-cut-short.ts"];
+      yield* relist;
+      assert.deepEqual(yield* search("search", 4, "alpha"), recovered);
+    }),
 );
 
 it.effect("does not keep a root it cannot watch once nobody searches it", () =>

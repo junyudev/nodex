@@ -9,6 +9,7 @@ import {
 } from "@/lib/command-palette-workspace-selection";
 import { isAbsoluteSearchPath } from "../../../shared/file-search-paths";
 import { useCommandPaletteFileSearch } from "@/lib/use-command-palette-file-search";
+import { describeFileSearchIncomplete } from "@/lib/file-search-status";
 import { useWorkspaceTextSearch } from "@/lib/use-workspace-text-search";
 import {
   useWorkspaceTextSearchHistory,
@@ -102,6 +103,7 @@ import {
 import type { Project } from "@/lib/types";
 import {
   buildCommandPaletteSectionsModel,
+  FILE_SEARCH_RETRY_ID,
   DEFAULT_DISCOVERY_LIMITS,
   getCommandPaletteChatLimit,
   getDiscoveryResultLimit,
@@ -807,7 +809,7 @@ export const CommandPaletteSurface = forwardRef<
     query,
     scope: searchScope,
   });
-  const retryFileLookup = fileSearch.retry;
+  const fileSearchRetry = fileSearch.retry;
   const files: CommandPaletteFile[] = fileSearch.matches.map((file) => ({
     kind: "file",
     id: file.fsPath,
@@ -922,6 +924,7 @@ export const CommandPaletteSurface = forwardRef<
         findPending: find.pending,
         findFailed: find.failed,
         files,
+        fileSearchRetry: fileSearchRetry?.target ?? null,
         textMatches,
         textQueries: history.queries,
         discoveryLimits,
@@ -941,38 +944,13 @@ export const CommandPaletteSurface = forwardRef<
       find.pending,
       find.failed,
       files,
+      fileSearchRetry?.target,
       textMatches,
       history.queries,
       discoveryLimits,
     ],
   );
-  const sections =
-    mode === "files" && fileSearch.retry
-      ? [
-          ...visibleModel.sections,
-          {
-            title: "Files",
-            items: [
-              {
-                kind: "command" as const,
-                id: "retryFileLookup",
-                title: intl.formatMessage({
-                  id: "workbench.commandPaletteSurface.retryFileLookup",
-                  defaultMessage: "Couldn’t check path. Select to retry",
-                }),
-                subtitle: "",
-                keywords: [],
-                group: "Suggested" as const,
-                priority: 0,
-              },
-            ],
-          },
-        ]
-      : visibleModel.sections;
-  const flatItems =
-    fileSearch.retry && mode === "files"
-      ? sections.flatMap((section) => section.items)
-      : visibleModel.flatItems;
+  const { sections, flatItems } = visibleModel;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const [openingInput, setOpeningInput] = useState({ open, initialQuery, openTriggerTick });
@@ -1130,8 +1108,8 @@ export const CommandPaletteSurface = forwardRef<
       if (theme.execute(item.id)) onRequestClose();
       return;
     }
-    if (item.kind === "command" && item.id === "retryFileLookup") {
-      retryFileLookup?.();
+    if (item.kind === "command" && item.id === FILE_SEARCH_RETRY_ID) {
+      fileSearchRetry?.run();
       return;
     }
     if (item.kind === "text-query") {
@@ -1280,9 +1258,16 @@ export const CommandPaletteSurface = forwardRef<
       ? getPaletteItemDomId(listId, selectedIndex)
       : undefined;
   const showPageSearchStatus = visibleModel.showPageSearchStatus;
+  // A search that can be retried says so in its selectable retry row instead.
+  const fileSearchNotice =
+    (mode === "files" || mode === "root") && fileSearch.incomplete && !fileSearchRetry
+      ? describeFileSearchIncomplete(intl, fileSearch.incomplete)
+      : null;
+  const fileSearchNoticeRow = fileSearchNotice ? (
+    <SearchStatusRow>{fileSearchNotice}</SearchStatusRow>
+  ) : null;
   const showFileSearchStatus =
-    (mode === "files" || mode === "root") &&
-    (fileSearch.loading || (fileSearch.error !== null && !fileSearch.retry));
+    (mode === "files" || mode === "root") && (fileSearch.loading || fileSearchNotice !== null);
   const hasVisibleSearchStatus =
     visibleModel.chatStatus !== null ||
     visibleModel.chatSearchTruncated ||
@@ -1442,7 +1427,7 @@ export const CommandPaletteSurface = forwardRef<
               .reduce((sum, candidate) => sum + candidate.items.length, 0);
             return (
               <Fragment key={section.title}>
-                {!activePage && mode === "root" && section.title === "Text" ? (
+                {!activePage && mode === "root" && section.scope === "text" ? (
                   <CommandPaletteTextError result={textSearch} mode={mode} />
                 ) : null}
                 <PaletteSection
@@ -1453,7 +1438,7 @@ export const CommandPaletteSurface = forwardRef<
                   showHeading={
                     mode !== "text" &&
                     !(activePage && section.title === "Suggested") &&
-                    section.items[0]?.id !== "retryFileLookup"
+                    section.items[0]?.id !== FILE_SEARCH_RETRY_ID
                   }
                   items={section.items}
                   listId={listId}
@@ -1465,12 +1450,13 @@ export const CommandPaletteSurface = forwardRef<
                   }}
                   onExecute={handleExecute}
                 />
+                {section.scope === "files" ? fileSearchNoticeRow : null}
               </Fragment>
             );
           })}
           {!activePage &&
           mode === "root" &&
-          !sections.some((section) => section.title === "Text") ? (
+          !sections.some((section) => section.scope === "text") ? (
             <CommandPaletteTextError result={textSearch} mode={mode} />
           ) : null}
           {visibleModel.chatStatus && visibleModel.chatStatus !== "searching" ? (
@@ -1498,22 +1484,14 @@ export const CommandPaletteSurface = forwardRef<
               />
             </SearchStatusRow>
           ) : null}
-          {showFileSearchStatus ? (
-            fileSearch.error ? (
-              <SearchStatusRow>
-                <FormattedMessage
-                  id="workbench.commandPaletteSurface.fileSearchUnavailable"
-                  defaultMessage={"File search is unavailable"}
-                />
-              </SearchStatusRow>
-            ) : (
-              <span className="sr-only" role="status">
-                <FormattedMessage
-                  id="workbench.commandPaletteSurface.searchingFiles"
-                  defaultMessage={"Searching files…"}
-                />
-              </span>
-            )
+          {sections.some((section) => section.scope === "files") ? null : fileSearchNoticeRow}
+          {fileSearch.loading && (mode === "files" || mode === "root") ? (
+            <span className="sr-only" role="status">
+              <FormattedMessage
+                id="workbench.commandPaletteSurface.searchingFiles"
+                defaultMessage={"Searching files…"}
+              />
+            </span>
           ) : null}
           {!activePage && (mode === "text" || mode === "root") ? (
             <CommandPaletteTextStatus

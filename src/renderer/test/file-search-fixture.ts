@@ -1,8 +1,15 @@
-import type { FileSearchEvent, FileSearchStartInput } from "../../shared/file-search";
+import type {
+  FileSearchEvent,
+  FileSearchIncomplete,
+  FileSearchStartInput,
+} from "../../shared/file-search";
 import type { WorkspaceFileDirectoryEntry } from "../../shared/types";
 
 /** Native-session transport fixture shared by Files workflow tests. */
-export function createFileSearchFixture(entries: readonly WorkspaceFileDirectoryEntry[]) {
+export function createFileSearchFixture(
+  entries: readonly WorkspaceFileDirectoryEntry[],
+  options: { readonly incomplete?: FileSearchIncomplete } = {},
+) {
   const listeners = new Set<(event: FileSearchEvent) => void>();
   const sessions = new Map<string, FileSearchStartInput>();
   const emit = (event: FileSearchEvent) => listeners.forEach((listener) => listener(event));
@@ -31,7 +38,14 @@ export function createFileSearchFixture(entries: readonly WorkspaceFileDirectory
             })),
         },
       });
-      emit({ method: "fuzzyFileSearch/sessionCompleted", params: { sessionId: input.sessionId } });
+      emit({
+        method: "fuzzyFileSearch/sessionCompleted",
+        params: {
+          sessionId: input.sessionId,
+          query: input.query,
+          ...(options.incomplete ? { incomplete: options.incomplete } : {}),
+        },
+      });
     },
     on(channel: string, listener: (...args: unknown[]) => void) {
       if (channel !== "file-search:event") return () => undefined;

@@ -31,10 +31,14 @@ class FakeWorker implements FileIndexWorkerProcess {
   readonly events = new EventEmitter();
   terminated = false;
 
-  constructor(readonly epoch: number) {}
+  constructor(
+    readonly epoch: number,
+    readonly onSent: (message: FileIndexWorkerHostMessage) => void,
+  ) {}
 
   send(message: FileIndexWorkerHostMessage): void {
     this.sent.push(message);
+    this.onSent(message);
   }
   onMessage(listener: (message: unknown) => void) {
     this.events.on("message", listener);
@@ -76,12 +80,19 @@ const verifiedRipgrep = (resolve: Effect.Effect<string, RipgrepUnavailable>) =>
   } as unknown as RipgrepExecutionRuntime["Service"]);
 
 const makeHarness = (
-  options: { readonly ripgrep?: Effect.Effect<string, RipgrepUnavailable> } = {},
+  options: {
+    readonly ripgrep?: Effect.Effect<string, RipgrepUnavailable>;
+    readonly onSend?: (message: FileIndexWorkerHostMessage) => void;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const workers: FakeWorker[] = [];
+    const sent = yield* Queue.unbounded<FileIndexWorkerHostMessage>();
     const createProcess: FileIndexWorkerProcessFactory = (input) => {
-      const worker = new FakeWorker(input.workerData.epoch);
+      const worker = new FakeWorker(input.workerData.epoch, (message) => {
+        options.onSend?.(message);
+        Queue.offerUnsafe(sent, message);
+      });
       assert.equal(input.workerData.ripgrepPath, "/verified/rg");
       workers.push(worker);
       return worker;
@@ -114,7 +125,7 @@ const makeHarness = (
           .pipe(Scope.provide(sessionScope));
         return { session, events, close: Scope.close(sessionScope, Exit.void) };
       });
-    return { workers, scope, open };
+    return { workers, sent, scope, open };
   });
 
 it.effect("routes every query to the worker and delivers only the latest answers", () =>
@@ -155,55 +166,91 @@ it.effect("routes every query to the worker and delivers only the latest answers
   }),
 );
 
-it.effect("fails searches in flight when the worker stops and reopens sessions in a new one", () =>
-  Effect.gen(function* () {
-    const { workers, open } = yield* makeHarness();
-    const pending = yield* open("pending");
-    const settled = yield* open("settled");
-    yield* settled.session.update("x");
-    workers[0]!.reply("settled", 1, { kind: "completed" });
-    yield* Queue.take(settled.events);
-    yield* pending.session.update("a");
+it.effect(
+  "reopens only unsettled searches and replays their latest queries after worker loss",
+  () =>
+    Effect.gen(function* () {
+      const { workers, sent, open } = yield* makeHarness();
+      const pending = yield* open("pending");
+      const settled = yield* open("settled");
+      yield* settled.session.update("x");
+      workers[0]!.reply("settled", 1, { kind: "completed" });
+      yield* Queue.take(settled.events);
+      yield* pending.session.update("a");
+      yield* pending.session.update("ab");
+      yield* Queue.clear(sent);
+      workers[0]!.events.emit("exit", 1);
 
-    workers[0]!.events.emit("exit", 1);
-    assert.deepEqual(yield* Queue.take(pending.events), {
-      method: "file-search/sessionFailed",
-      params: { sessionId: "pending", query: "a" },
-    });
-    assert.isTrue(workers[0]!.terminated);
-    workers[0]!.reply("pending", 1, { kind: "completed" });
-
-    yield* pending.session.update("ab");
-    yield* settled.session.update("xy");
-    assert.lengthOf(workers, 2);
-    assert.equal(workers[1]!.epoch, 2);
-    assert.deepEqual(workers[1]!.sent, [
-      { type: "open", sessionId: "pending", roots: ["/repo"] },
-      { type: "query", sessionId: "pending", seq: 2, query: "ab" },
-      { type: "open", sessionId: "settled", roots: ["/repo"] },
-      { type: "query", sessionId: "settled", seq: 2, query: "xy" },
-    ]);
-    workers[1]!.reply("pending", 2, { kind: "completed" });
-    assert.deepEqual(yield* Queue.take(pending.events), {
-      method: "fuzzyFileSearch/sessionCompleted",
-      params: { sessionId: "pending", query: "ab" },
-    });
-    assert.lengthOf(yield* Queue.clear(settled.events), 0);
-  }),
+      assert.deepEqual(yield* Queue.take(sent), {
+        type: "open",
+        sessionId: "pending",
+        roots: ["/repo"],
+      });
+      assert.deepEqual(yield* Queue.take(sent), {
+        type: "query",
+        sessionId: "pending",
+        seq: 2,
+        query: "ab",
+      });
+      assert.lengthOf(workers, 2);
+      assert.equal(workers[1]!.epoch, 2);
+      workers[0]!.reply("pending", 2, { kind: "completed" });
+      workers[1]!.reply("pending", 2, {
+        kind: "completed",
+        incomplete: { reason: "too-large", root: "/repo" },
+      });
+      assert.deepEqual(yield* Queue.take(pending.events), {
+        method: "fuzzyFileSearch/sessionCompleted",
+        params: {
+          sessionId: "pending",
+          query: "ab",
+          incomplete: { reason: "too-large", root: "/repo" },
+        },
+      });
+      assert.lengthOf(yield* Queue.clear(pending.events), 0);
+      assert.lengthOf(yield* Queue.clear(settled.events), 0);
+      yield* settled.session.update("xy");
+      assert.deepEqual(workers[1]!.sent.slice(2), [
+        { type: "open", sessionId: "settled", roots: ["/repo"] },
+        { type: "query", sessionId: "settled", seq: 2, query: "xy" },
+      ]);
+    }),
 );
 
-it.effect("treats an invalid worker message as a stopped worker", () =>
+it.effect("settles the query as unavailable if its replacement worker is lost", () =>
   Effect.gen(function* () {
-    const { workers, open } = yield* makeHarness();
+    const { workers, sent, open } = yield* makeHarness();
     const search = yield* open("search");
     yield* search.session.update("a");
+    const files = [result("a.ts")];
+    workers[0]!.reply("search", 1, { kind: "updated", files });
+    assert.deepEqual(yield* Queue.take(search.events), {
+      method: "fuzzyFileSearch/sessionUpdated",
+      params: { sessionId: "search", query: "a", files },
+    });
+    yield* Queue.clear(sent);
     workers[0]!.events.emit("message", { type: "session", sessionId: "search" });
-    assert.equal((yield* Queue.take(search.events)).method, "file-search/sessionFailed");
-    assert.isTrue(workers[0]!.terminated);
+    yield* Queue.take(sent);
+    yield* Queue.take(sent);
+    workers[1]!.events.emit("error", new Error("Worker stopped"));
+    assert.deepEqual(yield* Queue.take(search.events), {
+      method: "fuzzyFileSearch/sessionCompleted",
+      params: { sessionId: "search", query: "a", incomplete: { reason: "unavailable" } },
+    });
+    assert.lengthOf(workers, 2);
+    assert.lengthOf(yield* Queue.clear(search.events), 0);
+    yield* search.session.update("ab");
+    assert.lengthOf(workers, 3);
+    assert.deepEqual(workers[2]!.sent.at(-1), {
+      type: "query",
+      sessionId: "search",
+      seq: 2,
+      query: "ab",
+    });
   }),
 );
 
-it.effect("reports a failed search without starting a worker when ripgrep is unavailable", () =>
+it.effect("settles as unavailable without starting a worker when ripgrep is unavailable", () =>
   Effect.gen(function* () {
     const { workers, open } = yield* makeHarness({
       ripgrep: Effect.fail(new RipgrepUnavailable({ cause: "missing" })),
@@ -211,10 +258,28 @@ it.effect("reports a failed search without starting a worker when ripgrep is una
     const search = yield* open("search");
     yield* search.session.update("a");
     assert.deepEqual(yield* Queue.take(search.events), {
-      method: "file-search/sessionFailed",
-      params: { sessionId: "search", query: "a" },
+      method: "fuzzyFileSearch/sessionCompleted",
+      params: { sessionId: "search", query: "a", incomplete: { reason: "unavailable" } },
     });
     assert.lengthOf(workers, 0);
+  }),
+);
+
+it.effect("settles as unavailable when a query cannot be sent", () =>
+  Effect.gen(function* () {
+    const { workers, open } = yield* makeHarness({
+      onSend: (message) => {
+        if (message.type === "query") throw new Error("Worker is unreachable");
+      },
+    });
+    const search = yield* open("search");
+    yield* search.session.update("a");
+    assert.deepEqual(yield* Queue.take(search.events), {
+      method: "fuzzyFileSearch/sessionCompleted",
+      params: { sessionId: "search", query: "a", incomplete: { reason: "unavailable" } },
+    });
+    assert.lengthOf(workers, 1);
+    assert.isTrue(workers[0]!.terminated);
   }),
 );
 
@@ -239,8 +304,11 @@ it.effect("asks the worker to stop with Main and terminates it after the grace p
     const { workers, open, scope } = yield* makeHarness();
     const search = yield* open("search");
     yield* search.session.update("a");
-    yield* search.close;
     const closing = yield* Effect.forkChild(Scope.close(scope, Exit.void));
+    assert.deepEqual(yield* Queue.take(search.events), {
+      method: "fuzzyFileSearch/sessionCompleted",
+      params: { sessionId: "search", query: "a", incomplete: { reason: "unavailable" } },
+    });
     yield* Effect.yieldNow;
     assert.deepEqual(workers[0]!.sent.at(-1), { type: "shutdown" });
     assert.isFalse(workers[0]!.terminated);

@@ -2,6 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import {
@@ -59,16 +60,20 @@ export async function resolveRipgrepExecutable(
   return executable;
 }
 
-export const live = Layer.effect(
-  RipgrepExecutionRuntime,
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const resolve = yield* Effect.cached(
-      Effect.tryPromise({
-        try: (signal) => resolveRipgrepExecutable(config, signal),
-        catch: (cause) => new RipgrepRuntimeError({ cause }),
-      }),
-    );
-    return RipgrepExecutionRuntime.of({ resolve });
-  }),
-);
+export const layer = (release = ripgrepRelease) =>
+  Layer.effect(
+    RipgrepExecutionRuntime,
+    Effect.gen(function* () {
+      const config = yield* MainConfig;
+      const resolve = yield* Effect.cachedWithTTL(
+        Effect.tryPromise({
+          try: (signal) => resolveRipgrepExecutable(config, signal, release),
+          catch: (cause) => new RipgrepRuntimeError({ cause }),
+        }),
+        (exit) => (Exit.isSuccess(exit) ? Infinity : 0),
+      );
+      return RipgrepExecutionRuntime.of({ resolve });
+    }),
+  );
+
+export const live = layer();

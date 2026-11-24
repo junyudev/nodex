@@ -1,5 +1,5 @@
 import * as Predicate from "effect/Predicate";
-import type { FileSearchResult } from "../../shared/file-search";
+import type { FileSearchIncomplete, FileSearchResult } from "../../shared/file-search";
 
 /** Main and the worker ship in one bundle, so the message shapes change together. */
 export interface FileIndexWorkerData {
@@ -27,8 +27,7 @@ export type FileIndexWorkerHostMessage =
 
 export type FileIndexSessionOutcome =
   | { readonly kind: "updated"; readonly files: readonly FileSearchResult[] }
-  | { readonly kind: "completed" }
-  | { readonly kind: "failed" };
+  | { readonly kind: "completed"; readonly incomplete?: FileSearchIncomplete };
 
 export type FileIndexWorkerThreadMessage =
   | { readonly type: "ready"; readonly epoch: number }
@@ -59,7 +58,18 @@ function isResult(value: unknown): value is FileSearchResult {
 
 function isOutcome(value: unknown): value is FileIndexSessionOutcome {
   if (!Predicate.isObject(value)) return false;
-  if (value.kind === "completed" || value.kind === "failed") return true;
+  if (value.kind === "completed") {
+    const incomplete = value.incomplete;
+    if (incomplete === undefined) return true;
+    return (
+      Predicate.isObject(incomplete) &&
+      (incomplete.reason === "too-large" ||
+        incomplete.reason === "missing" ||
+        incomplete.reason === "unreadable" ||
+        incomplete.reason === "unavailable") &&
+      (incomplete.root === undefined || typeof incomplete.root === "string")
+    );
+  }
   return value.kind === "updated" && Array.isArray(value.files) && value.files.every(isResult);
 }
 

@@ -7,7 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import type { FileSearchEvent } from "../../shared/file-search";
+import type { FileSearchEvent, FileSearchIncomplete } from "../../shared/file-search";
 import { MainConfig } from "../app/MainConfig";
 import {
   isFileIndexWorkerThreadMessage,
@@ -75,17 +75,24 @@ interface SearchSession {
   /** The worker generation that holds this session, if any. */
   openedIn: WorkerSession | null;
   seq: number;
-  query: string;
-  /** The latest query has completed or failed. */
-  settled: boolean;
+  pending: SearchQuery | null;
 }
+
+interface SearchQuery {
+  readonly seq: number;
+  readonly text: string;
+  sentTo: WorkerSession | null;
+  replayed: boolean;
+}
+
+const UNAVAILABLE = { reason: "unavailable" } as const;
 
 const createNodeProcess: FileIndexWorkerProcessFactory = (input) => {
   const worker = new Worker(input.workerPath, {
     name: "file-index",
     workerData: input.workerData,
     // Indexes stay within their entry bounds (about 70 MiB when full); this ceiling stops a
-    // runaway worker without touching Main, and the next search starts a new one.
+    // runaway worker without touching Main, which can resume the search in a new one.
     resourceLimits: { maxOldGenerationSizeMb: 512 },
   });
   return {
@@ -132,77 +139,93 @@ export const live = (
       let nextEpoch = 1;
       let closed = false;
 
-      const failed = (search: SearchSession) =>
-        search.onEvent({
-          method: "file-search/sessionFailed",
-          params: { sessionId: search.id, query: search.query },
-        });
+      const isPending = (search: SearchSession, query: SearchQuery) =>
+        searches.get(search.id) === search && search.pending === query;
 
-      const handleFailure = (
+      const settle = Effect.fnUntraced(function* (
+        search: SearchSession,
+        query: SearchQuery,
+        incomplete?: FileSearchIncomplete,
+      ) {
+        if (!isPending(search, query)) return;
+        search.pending = null;
+        yield* search.onEvent({
+          method: "fuzzyFileSearch/sessionCompleted",
+          params: {
+            sessionId: search.id,
+            query: query.text,
+            ...(incomplete ? { incomplete } : {}),
+          },
+        });
+      });
+
+      const handleFailure = Effect.fnUntraced(function* (
         worker: WorkerSession,
         error: Error,
-        phase: "error" | "exit" | "protocol",
-      ): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          if (current !== worker) return;
-          current = null;
-          worker.releaseListeners();
-          yield* Effect.logWarning("File search worker stopped", {
-            epoch: worker.epoch,
-            phase,
-            error: error.message,
-          });
-          // The index died with the worker; the next query opens the session in a new one.
-          for (const search of searches.values()) {
-            if (search.openedIn !== worker) continue;
-            search.openedIn = null;
-            if (search.settled) continue;
-            search.settled = true;
-            yield* failed(search);
+        phase: "error" | "exit" | "protocol" | "send",
+      ): Effect.fn.Return<void> {
+        if (current !== worker) return;
+        current = null;
+        const recoveries: Effect.Effect<void>[] = [];
+        for (const search of searches.values()) {
+          if (search.openedIn === worker) search.openedIn = null;
+          const query = search.pending;
+          if (!query || query.sentTo !== worker) continue;
+          query.sentTo = null;
+          if (query.replayed) recoveries.push(settle(search, query, UNAVAILABLE));
+          else {
+            query.replayed = true;
+            recoveries.push(dispatch(search, query));
           }
-          yield* Effect.tryPromise(() => worker.process.terminate()).pipe(Effect.ignore);
-        });
+        }
+        yield* Effect.logWarning("File search worker stopped", {
+          epoch: worker.epoch,
+          phase,
+          error: error.message,
+        }).pipe(
+          Effect.andThen(Effect.all(recoveries, { concurrency: "unbounded", discard: true })),
+          Effect.ensuring(
+            Effect.tryPromise(() => worker.process.terminate()).pipe(
+              Effect.ignore,
+              Effect.ensuring(Effect.sync(worker.releaseListeners)),
+            ),
+          ),
+        );
+      });
 
       const send = (worker: WorkerSession, message: FileIndexWorkerHostMessage) =>
-        Effect.try({
-          try: () => worker.process.send(message),
-          catch: (cause) =>
-            new FileIndexWorkerUnavailable({ message: "Could not reach file search", cause }),
-        }).pipe(
-          Effect.tapError((error) => handleFailure(worker, new Error(error.message), "error")),
+        Effect.try(() => worker.process.send(message)).pipe(
+          Effect.catch(() =>
+            handleFailure(worker, new Error("Could not reach file search"), "send"),
+          ),
         );
 
-      const handleMessage = (worker: WorkerSession, raw: unknown): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          if (current !== worker) return;
-          if (!isFileIndexWorkerThreadMessage(raw))
-            return yield* handleFailure(
-              worker,
-              new Error("File index worker sent an invalid message"),
-              "protocol",
-            );
-          if (raw.type === "ready") {
-            if (raw.epoch === worker.epoch) return;
-            return yield* handleFailure(
-              worker,
-              new Error("File index worker started in another generation"),
-              "protocol",
-            );
-          }
-          const search = searches.get(raw.sessionId);
-          if (!search || search.openedIn !== worker || search.seq !== raw.seq || search.settled)
-            return;
-          const params = { sessionId: search.id, query: search.query };
-          if (raw.outcome.kind === "updated")
-            return yield* search.onEvent({
-              method: "fuzzyFileSearch/sessionUpdated",
-              params: { ...params, files: raw.outcome.files },
-            });
-          search.settled = true;
-          yield* raw.outcome.kind === "completed"
-            ? search.onEvent({ method: "fuzzyFileSearch/sessionCompleted", params })
-            : failed(search);
+      const handleMessage = Effect.fnUntraced(function* (worker: WorkerSession, raw: unknown) {
+        if (current !== worker) return;
+        if (!isFileIndexWorkerThreadMessage(raw))
+          return yield* handleFailure(
+            worker,
+            new Error("File index worker sent an invalid message"),
+            "protocol",
+          );
+        if (raw.type === "ready") {
+          if (raw.epoch === worker.epoch) return;
+          return yield* handleFailure(
+            worker,
+            new Error("File index worker started in another generation"),
+            "protocol",
+          );
+        }
+        const search = searches.get(raw.sessionId);
+        const query = search?.pending;
+        if (!search || !query || query.sentTo !== worker || query.seq !== raw.seq) return;
+        if (raw.outcome.kind === "completed")
+          return yield* settle(search, query, raw.outcome.incomplete);
+        yield* search.onEvent({
+          method: "fuzzyFileSearch/sessionUpdated",
+          params: { sessionId: search.id, query: query.text, files: raw.outcome.files },
         });
+      });
 
       const ensureWorker = startLock.withPermit(
         Effect.gen(function* () {
@@ -217,99 +240,106 @@ export const live = (
                 new FileIndexWorkerUnavailable({ message: "File search is unavailable", cause }),
             ),
           );
-          const epoch = nextEpoch++;
-          const process = yield* Effect.try({
-            try: () =>
-              createProcess({
-                workerPath: options.workerPath,
-                workerData: { epoch, ripgrepPath, environment },
-              }),
-            catch: (cause) =>
-              new FileIndexWorkerUnavailable({ message: "Could not start file search", cause }),
-          });
-          const worker: WorkerSession = {
-            epoch,
-            process,
-            exit: yield* Deferred.make<number>(),
-            releaseListeners: () => undefined,
-          };
-          const releaseMessage = process.onMessage((message) => {
-            void runCallback(handleMessage(worker, message));
-          });
-          const releaseError = process.onError((error) => {
-            void runCallback(handleFailure(worker, error, "error"));
-          });
-          const releaseExit = process.onExit((code) => {
-            void runCallback(
-              Deferred.succeed(worker.exit, code).pipe(
-                Effect.andThen(
-                  handleFailure(
-                    worker,
-                    new Error(`File index worker exited with code ${String(code)}`),
-                    "exit",
-                  ),
-                ),
-              ),
-            );
-          });
-          worker.releaseListeners = () => {
-            releaseMessage();
-            releaseError();
-            releaseExit();
-          };
-          current = worker;
-          return worker;
-        }),
-      );
-
-      /** Opens the session in the current worker unless it closed while the worker started. */
-      const attach = (search: SearchSession) =>
-        Effect.gen(function* () {
-          const worker = yield* ensureWorker;
+          const exit = yield* Deferred.make<number>();
           return yield* Effect.try({
             try: () => {
-              if (searches.get(search.id) !== search) return null;
-              if (search.openedIn !== worker) {
-                search.openedIn = worker;
-                worker.process.send({ type: "open", sessionId: search.id, roots: search.roots });
-              }
+              if (closed) throw new Error("File search is shutting down");
+              const epoch = nextEpoch++;
+              const process = createProcess({
+                workerPath: options.workerPath,
+                workerData: { epoch, ripgrepPath, environment },
+              });
+              const worker: WorkerSession = {
+                epoch,
+                process,
+                exit,
+                releaseListeners: () => undefined,
+              };
+              const releaseMessage = process.onMessage((message) => {
+                void runCallback(handleMessage(worker, message));
+              });
+              const releaseError = process.onError((error) => {
+                void runCallback(handleFailure(worker, error, "error"));
+              });
+              const releaseExit = process.onExit((code) => {
+                void runCallback(
+                  Deferred.succeed(worker.exit, code).pipe(
+                    Effect.andThen(
+                      handleFailure(
+                        worker,
+                        new Error(`File index worker exited with code ${String(code)}`),
+                        "exit",
+                      ),
+                    ),
+                  ),
+                );
+              });
+              worker.releaseListeners = () => {
+                releaseMessage();
+                releaseError();
+                releaseExit();
+              };
+              current = worker;
               return worker;
             },
             catch: (cause) =>
-              new FileIndexWorkerUnavailable({ message: "Could not reach file search", cause }),
-          }).pipe(
-            Effect.tapError((error) => handleFailure(worker, new Error(error.message), "error")),
-          );
-        });
+              new FileIndexWorkerUnavailable({ message: "Could not start file search", cause }),
+          });
+        }),
+      );
 
-      const update = (search: SearchSession, query: string) =>
-        Effect.gen(function* () {
-          if (searches.get(search.id) !== search) return;
-          const seq = ++search.seq;
-          search.query = query;
-          search.settled = !query;
-          if (!query) {
-            if (search.openedIn && search.openedIn === current)
-              yield* send(current, { type: "query", sessionId: search.id, seq, query }).pipe(
-                Effect.ignore,
-              );
-            return;
-          }
-          const sent = yield* attach(search).pipe(
-            Effect.flatMap((worker) =>
-              worker
-                ? send(worker, { type: "query", sessionId: search.id, seq, query })
-                : Effect.void,
-            ),
-            Effect.as(true),
-            Effect.catch((error) =>
-              Effect.logWarning("Could not search workspace files", error).pipe(Effect.as(false)),
-            ),
-          );
-          if (sent || search.seq !== seq || search.settled) return;
-          search.settled = true;
-          yield* failed(search);
-        });
+      const dispatch = Effect.fnUntraced(function* (
+        search: SearchSession,
+        query: SearchQuery,
+      ): Effect.fn.Return<void> {
+        if (!isPending(search, query)) return;
+        const started = yield* Effect.result(ensureWorker);
+        if (!isPending(search, query)) return;
+        if (started._tag === "Failure") {
+          yield* Effect.logWarning("Could not search workspace files", started.failure);
+          return yield* settle(search, query, UNAVAILABLE);
+        }
+        const worker = started.success;
+        const sent = yield* Effect.result(
+          Effect.try(() => {
+            if (!isPending(search, query) || worker !== current) return false;
+            if (search.openedIn !== worker) {
+              worker.process.send({ type: "open", sessionId: search.id, roots: search.roots });
+              search.openedIn = worker;
+            }
+            worker.process.send({
+              type: "query",
+              sessionId: search.id,
+              seq: query.seq,
+              query: query.text,
+            });
+            query.sentTo = worker;
+            return true;
+          }),
+        );
+        if (sent._tag === "Success") {
+          if (!sent.success) yield* settle(search, query, UNAVAILABLE);
+          return;
+        }
+        // A query that could not be sent settles here. Other searches may have lost a worker.
+        yield* handleFailure(worker, new Error("Could not reach file search"), "send").pipe(
+          Effect.ensuring(settle(search, query, UNAVAILABLE)),
+        );
+      });
+
+      const update = Effect.fnUntraced(function* (search: SearchSession, text: string) {
+        if (searches.get(search.id) !== search) return;
+        const seq = ++search.seq;
+        if (!text) {
+          search.pending = null;
+          if (search.openedIn && search.openedIn === current)
+            yield* send(current, { type: "query", sessionId: search.id, seq, query: text });
+          return;
+        }
+        const query: SearchQuery = { seq, text, sentTo: null, replayed: false };
+        search.pending = query;
+        yield* dispatch(search, query);
+      });
 
       const openSession = (
         input: { readonly sessionId: string; readonly roots: readonly string[] },
@@ -323,17 +353,17 @@ export const live = (
               onEvent,
               openedIn: null,
               seq: 0,
-              query: "",
-              settled: true,
+              pending: null,
             };
             searches.set(search.id, search);
             return search;
           }),
           (search) =>
             Effect.gen(function* () {
-              if (searches.get(search.id) === search) searches.delete(search.id);
+              if (searches.get(search.id) !== search) return;
+              searches.delete(search.id);
               if (search.openedIn && search.openedIn === current)
-                yield* send(current, { type: "close", sessionId: search.id }).pipe(Effect.ignore);
+                yield* send(current, { type: "close", sessionId: search.id });
             }),
         ).pipe(
           Effect.map((search): LocalFileSearchSession => ({
@@ -346,6 +376,9 @@ export const live = (
           closed = true;
           const worker = current;
           current = null;
+          for (const search of searches.values()) {
+            if (search.pending) yield* settle(search, search.pending, UNAVAILABLE);
+          }
           if (!worker) return;
           yield* Effect.try(() => worker.process.send({ type: "shutdown" })).pipe(Effect.ignore);
           yield* Effect.raceFirst(

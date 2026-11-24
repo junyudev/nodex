@@ -14,12 +14,16 @@ import {
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { searchWorkspaceTextOnHost } from "../../codex-application/WorkspaceTextSearch";
 import type { WorkspaceTextSearchEvent } from "../../../shared/workspace-text-search";
-import { RipgrepExecutionRuntime, resolveRipgrepExecutable } from "./RipgrepExecutionRuntime";
+import {
+  layer as ripgrepLayer,
+  RipgrepExecutionRuntime,
+  resolveRipgrepExecutable,
+} from "./RipgrepExecutionRuntime";
 import { ripgrepSha256 } from "./ripgrep-runtime-artifact.mjs";
 import { live, WorkspaceTextSearchPlatform } from "./WorkspaceTextSearchPlatform";
 
 it.effect(
-  "runs verified local text search without Codex and rejects changed executable bytes",
+  "retries ripgrep verification and runs local text search with the verified executable",
   () =>
     Effect.gen(function* () {
       const target = ripgrepTarget(process.platform, process.arch);
@@ -42,7 +46,6 @@ it.effect(
         await mkdir(directory, { recursive: true });
         await mkdir(workspace);
         const bytes = await readFile(rgPath);
-        await writeFile(executable, bytes, { mode: 0o755 });
         await writeFile(path.join(workspace, "file.txt"), "needle\n");
         return bytes;
       });
@@ -57,9 +60,13 @@ it.effect(
           },
         },
       };
-      const resolve = (signal?: AbortSignal) => resolveRipgrepExecutable(config, signal, release);
+      const runtime = ripgrepLayer(release).pipe(Layer.provide(mainConfigLayer(config)));
       const events: WorkspaceTextSearchEvent[] = [];
       yield* Effect.gen(function* () {
+        const ripgrep = yield* RipgrepExecutionRuntime;
+        expect((yield* Effect.result(ripgrep.resolve))._tag).toBe("Failure");
+        yield* Effect.promise(() => writeFile(executable, binary, { mode: 0o755 }));
+        expect(yield* ripgrep.resolve).toBe(executable);
         const search = yield* WorkspaceTextSearchPlatform;
         const host = yield* search.open({ kind: "local", roots: [workspace] });
         yield* searchWorkspaceTextOnHost(
@@ -70,16 +77,17 @@ it.effect(
               events.push(event);
             }),
         );
+        binary[binary.length - 1] = binary[binary.length - 1]! ^ 1;
+        yield* Effect.promise(async () => {
+          await writeFile(executable, binary);
+          await expect(resolveRipgrepExecutable(config, undefined, release)).rejects.toThrow(
+            "release lock",
+          );
+        });
+        expect(yield* ripgrep.resolve).toBe(executable);
       }).pipe(
         Effect.provide(
-          live.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                mainConfigLayer(config),
-                Layer.succeed(RipgrepExecutionRuntime, { resolve: Effect.promise(resolve) }),
-              ),
-            ),
-          ),
+          live.pipe(Layer.provideMerge(runtime), Layer.provide(mainConfigLayer(config))),
         ),
       );
       expect(events).toContainEqual(
@@ -88,10 +96,5 @@ it.effect(
           match: expect.objectContaining({ relativePath: "file.txt" }),
         }),
       );
-      binary[binary.length - 1] = binary[binary.length - 1]! ^ 1;
-      yield* Effect.promise(async () => {
-        await writeFile(executable, binary);
-        await expect(resolve()).rejects.toThrow("release lock");
-      });
     }),
 );

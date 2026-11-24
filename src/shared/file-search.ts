@@ -23,6 +23,23 @@ export interface FileSearchResult {
   readonly indices: readonly number[] | null;
 }
 
+/**
+ * Why a settled search did not cover every name below its roots. `too-large` means a folder
+ * holds more than search can list within its bounds; the others mean a folder could not be
+ * listed at all. Matches found elsewhere remain valid either way.
+ */
+export type FileSearchIncompleteReason = "too-large" | "missing" | "unreadable" | "unavailable";
+
+export interface FileSearchIncomplete {
+  readonly reason: FileSearchIncompleteReason;
+  /** The first affected root, in session order; absent when search itself could not run. */
+  readonly root?: string;
+}
+
+/**
+ * A search never fails as a whole: it settles with the matches it found and, when it could
+ * not search everything, the first reason why.
+ */
 export type FileSearchEvent =
   | {
       readonly method: "fuzzyFileSearch/sessionUpdated";
@@ -30,9 +47,11 @@ export type FileSearchEvent =
     }
   | {
       readonly method: "fuzzyFileSearch/sessionCompleted";
-      readonly params: FileSearchSessionRef & { readonly query?: string };
-    }
-  | { readonly method: "file-search/sessionFailed"; readonly params: FileSearchUpdateInput };
+      readonly params: FileSearchSessionRef & {
+        readonly query?: string;
+        readonly incomplete?: FileSearchIncomplete;
+      };
+    };
 
 export const FILE_SEARCH_EXCLUDED_SEGMENTS = [
   ".git",

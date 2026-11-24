@@ -1,4 +1,3 @@
-import { getIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import type { FileSearchMatch, FileSearchScope } from "../../shared/file-search";
 import {
@@ -11,13 +10,25 @@ import { readWorkspaceFileMetadata } from "./workspace-file-operations";
 import { getWorkspaceFileParentPath } from "./workbench-workspace-context";
 import { getRecentWorkspaceSearchFiles } from "./workspace-search-recent-files";
 import { resolveCommandPaletteFilePath } from "./command-palette-workspace-operations";
-import { useFileSearch } from "./use-file-search";
+import { useFileSearch, type FileSearchState } from "./use-file-search";
 
 function missingPath(cause: unknown): boolean {
   if (!(cause instanceof Error)) return false;
   if ("code" in cause && (cause.code === "not_found" || cause.code === "ENOENT")) return true;
   return /ENOENT|No such file or directory|\(os error 2\)/.test(cause.message);
 }
+
+export interface CommandPaletteFileSearchState extends Omit<FileSearchState, "retry"> {
+  /** A search or path check that could not run; selecting it runs it again. */
+  readonly retry: { readonly target: "files" | "path"; readonly run: () => void } | null;
+}
+
+const IDLE: CommandPaletteFileSearchState = {
+  matches: [],
+  loading: false,
+  incomplete: null,
+  retry: null,
+};
 
 /** Explicit paths are host lookups; names use the shared native search session. */
 export function useCommandPaletteFileSearch(input: {
@@ -27,7 +38,7 @@ export function useCommandPaletteFileSearch(input: {
   readonly showRecent: boolean;
   /** Explicit folder overrides constrain absolute paths; default project roots do not. */
   readonly restrictToRoots?: boolean;
-}) {
+}): CommandPaletteFileSearchState {
   const query = input.query.trim();
   const hostId = input.scope?.hostId ?? "local";
   const direct = isAbsoluteSearchPath(query) || query.startsWith("~/") || query.startsWith("~\\");
@@ -38,7 +49,7 @@ export function useCommandPaletteFileSearch(input: {
   const [lookup, setLookup] = useState<{
     key: string;
     match: FileSearchMatch | null;
-    error: string | null;
+    failed: boolean;
   } | null>(null);
   useEffect(() => {
     if (!input.enabled || !direct) return;
@@ -49,7 +60,7 @@ export function useCommandPaletteFileSearch(input: {
         if (!current) return;
         const path = resolveSearchResultPath(resolvedPath, resolvedPath);
         if (input.restrictToRoots && !roots.some((root) => searchRootContainsPath(root, path))) {
-          setLookup({ key, error: null, match: null });
+          setLookup({ key, failed: false, match: null });
           return;
         }
         const metadata = await readWorkspaceFileMetadata({ hostId, path });
@@ -57,7 +68,7 @@ export function useCommandPaletteFileSearch(input: {
         const normalized = normalizeSearchPath(path);
         setLookup({
           key,
-          error: null,
+          failed: false,
           match: {
             root: getWorkspaceFileParentPath(path),
             relativePath: normalized.split("/").at(-1) || normalized,
@@ -71,38 +82,28 @@ export function useCommandPaletteFileSearch(input: {
       })
       .catch((cause: unknown) => {
         if (!current) return;
-        setLookup({
-          key,
-          match: null,
-          error: missingPath(cause)
-            ? null
-            : cause instanceof Error
-              ? cause.message
-              : getIntl().formatMessage({
-                  id: "lib.useCommandPaletteFileSearch.pathCheckFailed",
-                  defaultMessage: "Couldn't check path",
-                }),
-        });
+        if (!missingPath(cause)) console.warn("Could not check path", cause);
+        setLookup({ key, match: null, failed: !missingPath(cause) });
       });
     return () => {
       current = false;
     };
   }, [input.enabled, input.restrictToRoots, direct, hostId, query, key, rootsKey]);
-  const retryLookup = () => retry((value) => value + 1);
-  if (!input.enabled) return { matches: [], loading: false, error: null, retry: null };
+  if (!input.enabled) return IDLE;
   if (!query && input.showRecent)
     return {
+      ...IDLE,
       matches: getRecentWorkspaceSearchFiles(input.scope ?? { hostId, roots: [] }),
-      loading: false,
-      error: null,
-      retry: null,
     };
-  if (!direct) return { ...native, retry: null };
-  if (lookup?.key !== key) return { matches: [], loading: true, error: null, retry: null };
+  if (!direct)
+    return {
+      ...native,
+      retry: native.retry && { target: "files", run: native.retry },
+    };
+  if (lookup?.key !== key) return { ...IDLE, loading: true };
   return {
+    ...IDLE,
     matches: lookup.match ? [lookup.match] : [],
-    loading: false,
-    error: lookup.error,
-    retry: lookup.error ? retryLookup : null,
+    retry: lookup.failed ? { target: "path", run: () => retry((value) => value + 1) } : null,
   };
 }

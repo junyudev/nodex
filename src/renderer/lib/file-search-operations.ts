@@ -40,9 +40,19 @@ export function createFileSearchSession(
       if (stopped) return;
       latestQuery = query;
       if (!query && (!start || input.hostId !== "local")) return;
-      await ensureStarted();
-      if (stopped || latestQuery !== query) return;
-      await invokeRendererControl("file-search:update", { sessionId, query });
+      for (let attempt = 0; ; attempt++) {
+        await ensureStarted();
+        if (stopped || latestQuery !== query) return;
+        try {
+          await invokeRendererControl("file-search:update", { sessionId, query });
+          return;
+        } catch (error) {
+          if (stopped || latestQuery !== query) return;
+          if (attempt > 0) throw error;
+          // Main may have released this session; starting it again under the same id recovers.
+          start = null;
+        }
+      }
     },
     stop: async () => {
       if (stopped) return;

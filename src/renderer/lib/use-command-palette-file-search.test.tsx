@@ -30,7 +30,12 @@ const initial = {
 };
 
 beforeEach(() => {
-  vi.mocked(useFileSearch).mockReturnValue({ matches: [], loading: false, error: null });
+  vi.mocked(useFileSearch).mockReturnValue({
+    matches: [],
+    loading: false,
+    incomplete: null,
+    retry: null,
+  });
   vi.mocked(readWorkspaceFileMetadata).mockResolvedValue(metadata());
 });
 afterEach(() => {
@@ -106,7 +111,7 @@ test("changed roots clear stale lookup results and enforce containment before re
     resolveOld(metadata());
   });
   expect(result.current.matches).toEqual([]);
-  expect(result.current.error).toBeNull();
+  expect(result.current.retry).toBeNull();
   rerender({ ...initial, query: "/work/../outside/file.ts", restrictToRoots: true });
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(readWorkspaceFileMetadata).toHaveBeenCalledTimes(1);
@@ -119,15 +124,17 @@ test("missing paths are empty results while real lookup failures can be retried"
   );
   const { result, rerender } = renderHook(useCommandPaletteFileSearch, { initialProps: initial });
   await waitFor(() => expect(result.current.loading).toBe(false));
-  expect(result.current).toEqual({ matches: [], loading: false, error: null, retry: null });
+  expect(result.current).toEqual({ matches: [], loading: false, incomplete: null, retry: null });
   vi.mocked(readWorkspaceFileMetadata).mockRejectedValueOnce(new Error("Host unavailable"));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   rerender({ ...initial, query: "/outside/other.ts" });
-  await waitFor(() => expect(result.current.error).toBe("Host unavailable"));
+  await waitFor(() => expect(result.current.retry?.target).toBe("path"));
+  warn.mockRestore();
   await act(async () => {
-    result.current.retry?.();
+    result.current.retry?.run();
   });
   await waitFor(() => expect(result.current.matches[0]?.fsPath).toBe("/outside/other.ts"));
-  expect(result.current.error).toBeNull();
+  expect(result.current.retry).toBeNull();
 });
 
 test.each([

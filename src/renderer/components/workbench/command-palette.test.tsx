@@ -2221,6 +2221,68 @@ test("file search opens directories on the selected host and releases its sessio
   }
 });
 
+test("Files keeps matches from a partly searched folder and retries a search that could not run", async () => {
+  const fixture = createFileSearchFixture(
+    [{ name: "report.ts", path: "src/report.ts", type: "file", isSymlink: false }],
+    { incomplete: { reason: "too-large", root: "/big-folder" } },
+  );
+  let reachable = true;
+  const updates: unknown[] = [];
+  const previousApi = window.api;
+  installWindowApi({
+    on: fixture.on,
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "file-search:update") {
+        updates.push(args[0]);
+        if (!reachable) throw new Error("File search session is not owned by this window");
+      }
+      return fixture.invoke(channel, args[0]);
+    },
+  });
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="files"
+      initialQuery="report"
+      commands={[]}
+      fileSearchScope={{ hostId: "local", roots: ["/big-folder"] }}
+      onChangeMode={() => undefined}
+      onRequestClose={() => undefined}
+      onExecute={() => undefined}
+    />,
+  );
+  try {
+    expect(await view.findByRole("option", { name: /report\.ts/ })).toBeTruthy();
+    expect(view.getByText("“big-folder” is too large to search completely")).toBeTruthy();
+    reachable = false;
+    await act(async () => {
+      fireEvent.change(view.getByRole("combobox"), { target: { value: "repo" } });
+      await Promise.resolve();
+    });
+    const retry = await view.findByRole("option", {
+      name: "Couldn’t search files. Select to retry",
+    });
+    expect(view.queryByText("“big-folder” is too large to search completely")).toBeNull();
+    reachable = true;
+    const attempts = updates.length;
+    await act(async () => {
+      fireEvent.click(retry);
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("option", { name: /report\.ts/ })).toBeTruthy();
+    expect(updates.length).toBeGreaterThan(attempts);
+    expect(
+      view.queryByRole("option", { name: "Couldn’t search files. Select to retry" }),
+    ).toBeNull();
+  } finally {
+    view.unmount();
+    warn.mockRestore();
+    installWindowApi(previousApi);
+  }
+});
+
 test("Text streams host-scoped matches, filters file types, and fences stale acceptance", async () => {
   const listeners = new Set<(...args: unknown[]) => void>();
   const requests: import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest[] = [];

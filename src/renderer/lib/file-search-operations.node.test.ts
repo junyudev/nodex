@@ -85,3 +85,27 @@ test("closing while start is in flight prevents an update and still releases the
     "file-search:stop",
   ]);
 });
+
+test("a rejected update starts the session again once before reporting the failure", async () => {
+  mocks.subscribe.mockReturnValue(vi.fn());
+  mocks.control.mockImplementation(async (channel: string) => {
+    if (channel === "file-search:update")
+      throw new Error("File search session is not owned by this window");
+  });
+  const session = createFileSearchSession({ hostId: "local", roots: ["/repo"], onEvent: vi.fn() });
+  await expect(session.update("a")).rejects.toThrow("not owned");
+  expect(mocks.control.mock.calls.map(([channel]) => channel)).toEqual([
+    "file-search:start",
+    "file-search:update",
+    "file-search:start",
+    "file-search:update",
+  ]);
+  mocks.control.mockReset();
+  mocks.control.mockRejectedValueOnce(new Error("lost")).mockResolvedValue(undefined);
+  await session.update("ab");
+  expect(mocks.control.mock.calls.map(([channel]) => channel)).toEqual([
+    "file-search:update",
+    "file-search:start",
+    "file-search:update",
+  ]);
+});

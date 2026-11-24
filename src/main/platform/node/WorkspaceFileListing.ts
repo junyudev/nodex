@@ -1,12 +1,16 @@
-import { readdir, stat } from "node:fs/promises";
+import { lstat, opendir, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/process";
-import { FILE_SEARCH_EXCLUDED_SEGMENTS } from "../../../shared/file-search";
+import {
+  FILE_SEARCH_EXCLUDED_SEGMENTS,
+  type FileSearchIncompleteReason,
+} from "../../../shared/file-search";
 import { escapeWorkspaceTextSearchGlob } from "../../../shared/workspace-text-search-rg";
 import { runBoundedProcess } from "./BoundedProcess";
 import * as NodeServices from "./NodeServices";
@@ -15,6 +19,7 @@ export class WorkspaceFileListingError extends Schema.TaggedError<WorkspaceFileL
   "WorkspaceFileListingError",
   {
     message: Schema.String,
+    reason: Schema.Literals(["missing", "unreadable", "unavailable"]),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
@@ -28,9 +33,16 @@ export interface WorkspaceFileListingRequest {
    * do not fit one command line, the walk includes them.
    */
   readonly excludedDirectories: readonly string[];
-  /** Receives root-relative paths as ripgrep prints them; returning false stops the walk. */
+  /** In-root directory links found by an earlier walk. */
+  readonly knownAliases?: readonly string[];
+  /** Receives filtered root-relative paths. Restarts can repeat paths; false stops the walk. */
   readonly onPaths: (paths: readonly string[]) => Effect.Effect<boolean>;
 }
+
+export type WorkspaceFileListingResult = { readonly aliases: readonly string[] } & (
+  | { readonly kind: "completed" | "stopped" }
+  | { readonly kind: "failed" | "cut-short"; readonly error: WorkspaceFileListingError }
+);
 
 export type WorkspacePathKind = "file" | "directory" | "other";
 
@@ -45,7 +57,7 @@ export class WorkspaceFileListing extends Context.Service<
   {
     readonly list: (
       request: WorkspaceFileListingRequest,
-    ) => Effect.Effect<void, WorkspaceFileListingError>;
+    ) => Effect.Effect<WorkspaceFileListingResult>;
     /** Null means the directory no longer exists. Symbolic links report `other`. */
     readonly readDirectory: (
       directory: string,
@@ -65,14 +77,32 @@ const SEGMENT_EXCLUSIONS = FILE_SEARCH_EXCLUDED_SEGMENTS.flatMap((segment) => [
   `!${segment}`,
 ]);
 
-export const listingArguments = (
-  request: Pick<WorkspaceFileListingRequest, "directory" | "excludedDirectories">,
-): string[] => {
-  const exclusions = request.excludedDirectories.map(
-    (directory) => `!/${escapeWorkspaceTextSearchGlob(directory)}`,
-  );
+const DIRECTORY_CHECK_CONCURRENCY = 16;
+const MAX_ALIAS_RESTARTS = 4;
+const LISTING_TIMEOUT_MS = 30_000;
+const LISTING_MAX_BYTES = 32 * 1024 * 1024;
+
+const exclusionGlob = (directory: string) => `!/${escapeWorkspaceTextSearchGlob(directory)}`;
+const exclusionCost = (glob: string) => glob.length + 8;
+
+const aliasGlobs = (aliases: ReadonlySet<string>): string[] => {
+  const globs: string[] = [];
+  let budget = EXCLUSION_BUDGET;
+  for (const alias of aliases) {
+    const glob = exclusionGlob(alias);
+    const cost = exclusionCost(glob);
+    if (cost > budget) continue;
+    globs.push(glob);
+    budget -= cost;
+  }
+  return globs;
+};
+
+const listingArguments = (request: WorkspaceFileListingRequest, aliases: readonly string[]) => {
+  const exclusions = request.excludedDirectories.map(exclusionGlob);
   const withinBudget =
-    exclusions.reduce((total, glob) => total + glob.length + 8, 0) <= EXCLUSION_BUDGET;
+    [...aliases, ...exclusions].reduce((total, glob) => total + exclusionCost(glob), 0) <=
+    EXCLUSION_BUDGET;
   return [
     "--files",
     "--null",
@@ -80,6 +110,7 @@ export const listingArguments = (
     "--follow",
     "--no-config",
     ...SEGMENT_EXCLUSIONS,
+    ...aliases.flatMap((glob) => ["--glob", glob]),
     ...(withinBudget ? exclusions.flatMap((glob) => ["--glob", glob]) : []),
     ...(request.directory ? ["--", request.directory] : []),
   ];
@@ -87,6 +118,69 @@ export const listingArguments = (
 
 const isMissing = (cause: unknown) =>
   Predicate.hasProperty(cause, "code") && (cause.code === "ENOENT" || cause.code === "ENOTDIR");
+
+const directoryErrorReason = (cause: unknown): Exclude<FileSearchIncompleteReason, "too-large"> => {
+  if (isMissing(cause)) return "missing";
+  if (Predicate.hasProperty(cause, "code") && (cause.code === "EACCES" || cause.code === "EPERM"))
+    return "unreadable";
+  return "unavailable";
+};
+
+const inspectDirectory = (directory: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const resolved = await realpath(directory);
+      // Opening the folder checks traversal access, including macOS privacy restrictions.
+      const handle = await opendir(resolved);
+      await handle.close();
+      return resolved;
+    },
+    catch: (cause) =>
+      new WorkspaceFileListingError({
+        message: "Could not open a workspace folder",
+        reason: directoryErrorReason(cause),
+        cause,
+      }),
+  });
+
+const parentDirectory = (relative: string) =>
+  relative.slice(0, Math.max(0, relative.lastIndexOf("/")));
+const listedParent = (raw: string) =>
+  parentDirectory(process.platform === "win32" ? raw.replaceAll("\\", "/") : raw);
+
+const insideRoot = (root: string, target: string) => {
+  const relative = path.relative(root, target);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+};
+
+function makeDirectoryFilter(root: string, realRoot: string, aliases: Set<string>) {
+  const checked = new Map<string, Promise<boolean>>();
+  const check = (directory: string): Promise<boolean> => {
+    if (!directory) return Promise.resolve(true);
+    const cached = checked.get(directory);
+    if (cached) return cached;
+    const pending = inspect(directory);
+    checked.set(directory, pending);
+    return pending;
+  };
+  const inspect = async (directory: string): Promise<boolean> => {
+    if (!(await check(parentDirectory(directory)))) return false;
+    const absolute = path.join(root, directory);
+    try {
+      const entry = await lstat(absolute);
+      if (!entry.isSymbolicLink()) return entry.isDirectory();
+      const target = await realpath(absolute);
+      if (!(await stat(target)).isDirectory()) return false;
+      if (!insideRoot(realRoot, target)) return true;
+      aliases.add(directory);
+      return false;
+    } catch {
+      // A directory may disappear or become inaccessible while ripgrep is walking it.
+      return false;
+    }
+  };
+  return (directory: string) => Effect.promise(() => check(directory));
+}
 
 export const layer = (input: {
   readonly executable: string;
@@ -98,26 +192,85 @@ export const layer = (input: {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const list = Effect.fn("WorkspaceFileListing.list")(function* (
         request: WorkspaceFileListingRequest,
-      ) {
-        const result = yield* runBoundedProcess(spawner, input.environment, {
-          executable: input.executable,
-          args: listingArguments(request),
-          cwd: request.root,
-          maxBytes: 32 * 1024 * 1024,
-          timeoutMs: 30_000,
-          onPaths: request.onPaths,
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new WorkspaceFileListingError({ message: error.message, cause: error.cause }),
-          ),
-        );
-        // Unreadable entries and symlink loops end with code 2 after listing everything else.
-        if (!result.stopped && result.code > 2)
-          return yield* new WorkspaceFileListingError({
-            message: "Could not list workspace files",
-            cause: result.stderr,
-          });
+      ): Effect.fn.Return<WorkspaceFileListingResult> {
+        const opened = yield* Effect.result(inspectDirectory(request.root));
+        if (opened._tag === "Failure")
+          return { kind: "failed", aliases: request.knownAliases ?? [], error: opened.failure };
+        const aliases = new Set<string>();
+        const checkDirectory = makeDirectoryFilter(request.root, opened.success, aliases);
+        // Recheck earlier aliases so replacing a link does not leave its new contents hidden.
+        yield* Effect.forEach(request.knownAliases ?? [], checkDirectory, {
+          concurrency: DIRECTORY_CHECK_CONCURRENCY,
+          discard: true,
+        });
+        if (request.directory) {
+          const target = yield* Effect.result(
+            inspectDirectory(path.join(request.root, request.directory)),
+          );
+          if (target._tag === "Failure")
+            return { kind: "failed", aliases: [...aliases], error: target.failure };
+          if (!(yield* checkDirectory(request.directory)))
+            return { kind: "completed", aliases: [...aliases] };
+        }
+
+        const deadline = (yield* Clock.currentTimeMillis) + LISTING_TIMEOUT_MS;
+        let delivered = false;
+        let stopped = false;
+        for (let attempt = 0; ; attempt++) {
+          const globs = aliasGlobs(aliases);
+          const aliasCount = aliases.size;
+          let restart = false;
+          const result = yield* runBoundedProcess(spawner, input.environment, {
+            executable: input.executable,
+            args: listingArguments(request, globs),
+            cwd: request.root,
+            maxBytes: LISTING_MAX_BYTES,
+            timeoutMs: Math.max(1, deadline - (yield* Clock.currentTimeMillis)),
+            onPaths: Effect.fnUntraced(function* (paths: readonly string[]) {
+              const parents = paths.map(listedParent);
+              const rejected = new Set(
+                yield* Effect.forEach(
+                  new Set(parents),
+                  Effect.fnUntraced(function* (directory: string) {
+                    return (yield* checkDirectory(directory)) ? null : directory;
+                  }),
+                  { concurrency: DIRECTORY_CHECK_CONCURRENCY },
+                ),
+              );
+              const files = paths.filter((_, index) => !rejected.has(parents[index]!));
+              if (files.length > 0) {
+                delivered = true;
+                stopped = !(yield* request.onPaths(files));
+              }
+              restart =
+                !stopped &&
+                attempt < MAX_ALIAS_RESTARTS &&
+                aliases.size > aliasCount &&
+                aliasGlobs(aliases).length > globs.length;
+              return !stopped && !restart;
+            }),
+          }).pipe(Effect.result);
+          if (stopped) return { kind: "stopped", aliases: [...aliases] };
+          if (restart && (yield* Clock.currentTimeMillis) < deadline) continue;
+          if (!delivered && (result._tag === "Failure" || result.success.code >= 2)) {
+            // The folder may have become inaccessible between opening it and starting ripgrep.
+            const checked = yield* Effect.result(inspectDirectory(request.root));
+            if (checked._tag === "Failure")
+              return { kind: "failed", aliases: [...aliases], error: checked.failure };
+          }
+          // Unreadable entries and link loops end with code 2 after listing everything else.
+          if (!restart && result._tag === "Success" && result.success.code <= 2)
+            return { kind: "completed", aliases: [...aliases] };
+          return {
+            kind: delivered ? "cut-short" : "failed",
+            aliases: [...aliases],
+            error: new WorkspaceFileListingError({
+              message: "Could not list all workspace files",
+              reason: "unavailable",
+              cause: result._tag === "Failure" ? result.failure : result.success.stderr,
+            }),
+          };
+        }
       });
       const readDirectory = (directory: string) =>
         Effect.tryPromise({
@@ -136,6 +289,7 @@ export const layer = (input: {
           catch: (cause) =>
             new WorkspaceFileListingError({
               message: "Could not inspect a workspace folder",
+              reason: directoryErrorReason(cause),
               cause,
             }),
         });
@@ -152,7 +306,11 @@ export const layer = (input: {
             }
           },
           catch: (cause) =>
-            new WorkspaceFileListingError({ message: "Could not inspect a workspace path", cause }),
+            new WorkspaceFileListingError({
+              message: "Could not inspect a workspace path",
+              reason: directoryErrorReason(cause),
+              cause,
+            }),
         });
       return WorkspaceFileListing.of({ list, readDirectory, pathKind });
     }),

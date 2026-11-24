@@ -8,9 +8,16 @@ import * as FiberMap from "effect/FiberMap";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { FILE_SEARCH_EXCLUDED_SEGMENTS } from "../../shared/file-search";
+import {
+  FILE_SEARCH_EXCLUDED_SEGMENTS,
+  type FileSearchIncomplete,
+  type FileSearchIncompleteReason,
+} from "../../shared/file-search";
 import type { FileWatchHost } from "../file-watch-host";
-import { WorkspaceFileListing } from "../platform/node/WorkspaceFileListing";
+import {
+  WorkspaceFileListing,
+  WorkspaceFileListingError,
+} from "../platform/node/WorkspaceFileListing";
 import type {
   FileIndexSessionOutcome,
   FileIndexWorkerThreadMessage,
@@ -57,6 +64,8 @@ interface RootIndex {
   readonly scope: Scope.Closeable;
   readonly wake: Queue.Queue<void>;
   status: RootStatus;
+  incomplete?: FileSearchIncompleteReason;
+  aliases: readonly string[];
   watch: "pending" | "active" | "unavailable";
   sessions: number;
   releasedAt: number;
@@ -67,7 +76,7 @@ interface RootIndex {
 }
 
 interface Session {
-  readonly roots: readonly RootIndex[];
+  roots: readonly RootIndex[];
   seq: number;
 }
 
@@ -256,25 +265,6 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
     );
   });
 
-  const listInto = (root: RootIndex, directory: string, excludedDirectories: readonly string[]) =>
-    Effect.gen(function* () {
-      const listed: string[] = [];
-      yield* listing.list({
-        root: root.root,
-        directory,
-        excludedDirectories,
-        onPaths: (paths) =>
-          Effect.sync(() => {
-            for (const raw of paths) {
-              const normalized = root.index.normalize(raw);
-              if (normalized !== null) listed.push(normalized);
-            }
-            return listed.length <= limits.root.entries;
-          }),
-      });
-      return listed;
-    });
-
   /** Applies one refresh; a directory that disappeared hands the work to its parent. */
   const refresh = Effect.fnUntraced(function* (root: RootIndex, target: Refresh) {
     const { index } = root;
@@ -284,18 +274,52 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       if (!target.directory) return null;
       return { directory: index.indexedAncestor(target.directory), depth: "direct" } as const;
     }
-    let excluded: string[] = [];
-    if (target.depth === "direct") {
-      const kinds = new Map(children.map((child) => [child.name, child.kind]));
-      for (const directory of index.subdirectories(target.directory)) {
-        const kind = kinds.get(directory.slice(directory.lastIndexOf("/") + 1));
-        if (kind === undefined || kind === "file") index.removeTree(directory);
-      }
-      // Folders that are already indexed keep their own entries; only new folders are walked.
-      excluded = index.subdirectories(target.directory);
+
+    const kinds = new Map(children.map((child) => [child.name, child.kind]));
+    const kindOf = (directory: string) =>
+      kinds.get(directory.slice(directory.lastIndexOf("/") + 1));
+    const subdirectories = target.depth === "direct" ? index.subdirectories(target.directory) : [];
+    const listed = new Set<string>();
+    const result = yield* listing.list({
+      root: root.root,
+      directory: target.directory,
+      // Only new folders are walked; indexed folders and links keep their entries, and a
+      // replaced link reports its own change, which refreshes its whole tree.
+      excludedDirectories: subdirectories.filter((directory) => {
+        const kind = kindOf(directory);
+        return kind !== undefined && kind !== "file";
+      }),
+      knownAliases: root.aliases,
+      onPaths: (paths) =>
+        Effect.sync(() => {
+          for (const raw of paths) {
+            const normalized = index.normalize(raw);
+            if (normalized !== null) listed.add(normalized);
+            if (listed.size > limits.root.entries) return false;
+          }
+          return true;
+        }),
+    });
+    root.aliases = result.aliases;
+    if (result.kind === "failed" || result.kind === "cut-short") return yield* result.error;
+    if (result.kind === "stopped") {
+      root.incomplete = "too-large";
+      return null;
     }
-    const listed = yield* listInto(root, target.directory, excluded);
-    index.reconcile(target.directory, target.depth, listed, capacityFor(root));
+
+    for (const alias of root.aliases) index.removeTree(alias);
+    for (const directory of subdirectories) {
+      const kind = kindOf(directory);
+      if (kind === undefined || kind === "file") index.removeTree(directory);
+    }
+    const { full } = index.reconcile(
+      target.directory,
+      target.depth,
+      [...listed],
+      capacityFor(root),
+    );
+    if (full) root.incomplete = "too-large";
+    else if (target.directory === "" && target.depth === "tree") delete root.incomplete;
     return null;
   });
 
@@ -331,7 +355,8 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
         // A file whose contents changed keeps its name.
         if (kind === "file" && index.hasFile(change)) continue;
         if (kind === "file") index.removeTree(change);
-        directs.add(index.indexedAncestor(change));
+        if (kind === "directory" && index.hasDirectory(change)) trees.add(change);
+        else directs.add(index.indexedAncestor(change));
       }
     }
     const keptTrees: string[] = [];
@@ -389,6 +414,7 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
         root: root.root,
         directory: "",
         excludedDirectories: [],
+        knownAliases: root.aliases,
         onPaths: (paths) =>
           Effect.gen(function* () {
             const capacity = capacityFor(root);
@@ -405,16 +431,31 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
             return room;
           }),
       })
-      .pipe(Effect.exit);
-    if (Exit.isFailure(listed)) {
-      // Open searches report the failure; the next search lists the root again.
+      .pipe(
+        Effect.catchDefect((cause) =>
+          Effect.succeed({
+            kind: "failed",
+            aliases: root.aliases,
+            error: new WorkspaceFileListingError({
+              message: "Could not list workspace files",
+              reason: "unavailable",
+              cause,
+            }),
+          } as const),
+        ),
+      );
+    root.aliases = listed.aliases;
+    if (listed.kind === "failed" || (listed.kind === "cut-short" && root.index.size === 0)) {
+      // Open searches report the unavailable folder; their next query acquires it again.
       root.status = "failed";
+      root.incomplete = listed.error.reason;
       if (roots.get(root.root) === root) roots.delete(root.root);
       yield* signal(root);
-      yield* Effect.logWarning("Could not index workspace files", listed.cause);
+      yield* Effect.logWarning("Could not index workspace files", listed.error);
       yield* Scope.close(root.scope, Exit.void).pipe(Effect.forkIn(moduleScope));
       return;
     }
+    if (listed.kind !== "completed") root.incomplete = "too-large";
     root.index.finishBuilding();
     root.status = "ready";
     yield* signal(root);
@@ -435,6 +476,7 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       scope: yield* Scope.fork(moduleScope),
       wake: yield* Queue.sliding<void>(1),
       status: "building",
+      aliases: [],
       watch: "pending",
       sessions: 1,
       releasedAt: 0,
@@ -487,6 +529,7 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
       if (ranking.dirty && ranking.size > 0 && now - publishedAt >= publishMillis)
         yield* publishMatches;
     });
+    let incomplete: FileSearchIncomplete | undefined;
     for (const root of session.roots) {
       // A finished listing is never edited in place, so this list stays consistent.
       const entries = root.index.entries();
@@ -496,15 +539,15 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
         const end = Math.min(entries.length, offset + RANKING_BATCH_SIZE);
         ranking.scan(root.root, entries, offset, end);
         offset = end;
-        if (root.status === "failed") return yield* publish({ kind: "failed" });
         if (offset === entries.length && root.status !== "building") break;
         yield* publishProgress;
         if (offset < entries.length) yield* Effect.yieldNow;
         else yield* Deferred.await(progress);
       }
+      if (!incomplete && root.incomplete) incomplete = { reason: root.incomplete, root: root.root };
     }
     if (ranking.dirty) yield* publishMatches;
-    yield* publish({ kind: "completed" });
+    yield* publish({ kind: "completed", ...(incomplete ? { incomplete } : {}) });
   });
 
   const open = Effect.fn("FileIndexModule.open")(function* (
@@ -524,11 +567,27 @@ export const makeFileIndexModule = Effect.fn("FileIndexModule.make")(function* (
   ) {
     const session = sessions.get(sessionId);
     if (!session) {
-      if (text) options.publish({ type: "session", sessionId, seq, outcome: { kind: "failed" } });
+      if (text)
+        options.publish({
+          type: "session",
+          sessionId,
+          seq,
+          outcome: { kind: "completed", incomplete: { reason: "unavailable" } },
+        });
       return;
     }
+    const retryFailedRoots = session.seq >= 0;
     session.seq = seq;
     if (!text) return yield* FiberMap.remove(rankings, sessionId);
+    if (retryFailedRoots && session.roots.some((root) => root.status === "failed"))
+      session.roots = yield* Effect.forEach(
+        session.roots,
+        Effect.fnUntraced(function* (root: RootIndex) {
+          if (root.status !== "failed") return root;
+          yield* release(root);
+          return yield* acquire(root.root);
+        }),
+      );
     yield* FiberMap.run(rankings, sessionId, rank(sessionId, session, seq, text));
   });
 

@@ -3,6 +3,7 @@ import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypo
 import { WorkspaceFilePluginActions } from "./workspace-file-plugin-actions";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { useFileSearch } from "@/lib/use-file-search";
+import { describeFileSearchIncomplete } from "@/lib/file-search-status";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { FileTreeFilter } from "@/components/ui/file-tree-filter";
@@ -605,7 +606,7 @@ export function WorkspaceFilesPanel({
   });
   const searchPending =
     search.loading || debouncedSearchQuery !== navigationState.searchQuery.trim();
-  const searchError = search.error;
+  const searchNotice = search.incomplete && describeFileSearchIncomplete(intl, search.incomplete);
   const searchPaths: WorkspaceFileTreePath[] = [];
   const searchDirectories = new Set<string>();
   for (const match of search.matches) {
@@ -1161,13 +1162,19 @@ export function WorkspaceFilesPanel({
   const browsePaths = directoryTree.paths;
   const treePaths = navigationState.searchQuery.trim() ? (searchPaths ?? []) : browsePaths;
   const allFilesStatus = navigationState.searchQuery.trim()
-    ? searchError
+    ? searchNotice
       ? {
-          text: intl.formatMessage({
-            id: "workspaceFiles.workspaceFilesPanel.unavailable",
-            defaultMessage: "Unavailable",
-          }),
-          title: searchError,
+          text:
+            search.incomplete?.reason === "too-large"
+              ? intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.partial",
+                  defaultMessage: "Partial",
+                })
+              : intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.unavailable",
+                  defaultMessage: "Unavailable",
+                }),
+          title: searchNotice,
         }
       : searchPending
         ? {
@@ -1935,7 +1942,7 @@ export function WorkspaceFilesPanel({
                           </div>
                         ) : (
                           <div className="px-2 py-2 text-sm text-tertiary">
-                            {searchError ??
+                            {searchNotice ||
                               (searchPending
                                 ? intl.formatMessage({
                                     id: "workspaceFiles.workspaceFilesPanel.searchingFiles",
