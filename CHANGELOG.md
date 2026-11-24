@@ -10,12 +10,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+### Removed
+
+## [0.5.12] - 2026-11-24
+
+### Fixed
+
 - Claude Code chats can use your plugins' MCP tools. Each plugin server turned Claude Code away with "Invalid lease" as it connected, because Claude Code checks a server before it initializes and Nodex tied the credential to that first check. Plugin servers now accept the chat's credential on every request until the plugin changes or the chat closes.
 - Antigravity chats open again. Every message to Antigravity failed with "Nodex application authority is unavailable for this request" while Nodex prepared its plugins. Antigravity now receives your installed plugins' skills and MCP servers like Claude Code and other ACP Agents, and an Agent that hits a problem Nodex can name now shows that problem instead of the same generic message.
 - ACP Agents that do not announce HTTP MCP support now get your plugins' MCP servers. They used to receive only the plugins' skills, so tools such as a plugin's local command server were missing from their chats; Nodex now connects those servers the same way it connects its own tools.
 - Plugins no longer stop you from sending messages to Claude Code or ACP Agents. Opening several chats at once, or Codex being slow to list your installed plugins, could fail a reply with "Timed out preparing the Session's plugins" until you refreshed the Plugins page. Nodex now keeps the plugins it last read and rereads them in the background, so a reply waits at most a few seconds and starts with the plugins it has, picking up the rest at a later reply. A plugin that cannot be prepared is left out without holding up the others.
-
-### Removed
 
 ## [0.5.11] - 2026-11-23
 
