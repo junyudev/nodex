@@ -49,6 +49,7 @@ export interface CachedSuiteReport {
   readonly hits: number;
   readonly ran: number;
   readonly cacheable: number;
+  readonly recorded: number;
   readonly uncacheable: readonly (CacheExclusion & { readonly count: number })[];
   readonly missCauses: readonly { input: string; count: number }[];
   readonly unrecorded: number;
@@ -67,6 +68,12 @@ export type CachedSuiteContext = {
   onStderr?: Command["onStderr"];
   execute?: <T>(run: () => Promise<T>) => Promise<T>;
   exactFiles?: readonly string[];
+  /** Linux CI supplies a verified runner image identity and a deterministic file partition. */
+  linuxCI?: {
+    readonly host: string | undefined;
+    readonly directory: string;
+    readonly select: (file: string) => boolean;
+  };
   prepare?: typeof prepareNativeArtifacts;
 };
 
@@ -82,6 +89,7 @@ interface SuiteInputs {
   readonly workspace: Awaited<ReturnType<typeof workspaceInputs>>;
   readonly hash: ReturnType<typeof fileHasher>;
   readonly browser: boolean;
+  readonly ciNativeFiles?: readonly string[];
   readonly stable: () => Promise<boolean>;
 }
 
@@ -93,23 +101,24 @@ async function collectSuiteInputs(
   filters: readonly string[],
   context: CachedSuiteContext,
   digests: ReturnType<typeof stampDigests>,
+  selectedManifest?: Awaited<ReturnType<typeof discoverSuiteManifest>>,
 ): Promise<SuiteInputs | undefined> {
   const { repositoryRoot: root, env, signal } = context;
   const browser = suite === "browser";
   const electron = runtimeForSuite(suite) === "electron-node";
-  const directory = cacheDirectory(root, env, suite);
+  const directory = context.linuxCI?.directory ?? cacheDirectory(root, env, suite);
   const resultsRoot = path.dirname(path.dirname(directory));
-  if (electron) await prepareElectronRuntime({ projectRoot: root });
+  if (electron && !selectedManifest) await prepareElectronRuntime({ projectRoot: root });
   const caPath = env.NODE_EXTRA_CA_CERTS;
   const command = runtimeCommand(suite, [], { cwd: root, env, signal }).command;
   const [manifest, epoch, workspace, extra, ca, executable] = await Promise.all([
-    discoverSuiteManifest(suite, filters, false, { cwd: root, env, signal }),
+    selectedManifest ?? discoverSuiteManifest(suite, filters, false, { cwd: root, env, signal }),
     cacheEpoch(directory),
     context.workspace?.() ?? workspaceInputs(root, resultsRoot),
     (browser
       ? browserRuntimeIdentity(env, digests)
       : electron
-        ? electronAddonIdentity(root, digests)
+        ? electronAddonIdentity(root, digests, context.linuxCI && command)
         : Promise.resolve(undefined)
     ).catch(() => undefined),
     caPath ? binaryIdentity(path.resolve(root, caPath), digests).catch(() => undefined) : undefined,
@@ -136,7 +145,14 @@ async function collectSuiteInputs(
     workspace,
     hash,
     runtime,
-    [executable.digest, extra?.digest, ca?.digest, browser ? files : undefined],
+    [
+      executable.digest,
+      extra?.digest,
+      ca?.digest,
+      browser ? files : undefined,
+      context.linuxCI?.host,
+      context.linuxCI && nativeRequirements(suite, files),
+    ],
     configInputs.flatMap((file) => (file && !file.startsWith("node_modules/.pnpm/") ? [file] : [])),
   );
   if (!globalKey) return undefined;
@@ -149,6 +165,7 @@ async function collectSuiteInputs(
     workspace,
     hash,
     browser,
+    ciNativeFiles: context.linuxCI ? files : undefined,
     async stable() {
       const [current, sameHashes, sameRuntime, currentEpoch, sameCa, sameExecutable] =
         await Promise.all([
@@ -179,6 +196,7 @@ function summarize(
   lookups: ReadonlyMap<string, PassLookup>,
   exclusions: ReadonlyMap<string, readonly CacheExclusion[]>,
   lookupMs: number,
+  recorded: number,
 ): CachedSuiteReport {
   const causes = new Map<string, number>();
   const reasons = new Map<string, { reason: string; count: number }>();
@@ -208,6 +226,7 @@ function summarize(
     hits: totalFiles(hits),
     ran: totalFiles(ran),
     cacheable,
+    recorded,
     uncacheable: [...reasons.values()].sort(byCount),
     missCauses: [...causes].map(([input, count]) => ({ input, count })).sort(byCount),
     unrecorded,
@@ -234,12 +253,15 @@ async function executeBatch(
       }),
     );
     const run = async () => {
-      const prepared = await (prepare ?? prepareNativeArtifacts)(nativeRequirements(suite, files), {
-        repositoryRoot: root,
-        profile: "dev",
-        env,
-        signal,
-      });
+      const prepared = await (prepare ?? prepareNativeArtifacts)(
+        nativeRequirements(suite, inputs.ciNativeFiles ?? files),
+        {
+          repositoryRoot: root,
+          profile: "dev",
+          env,
+          signal,
+        },
+      );
       const started = Date.now();
       // Repeated Node fixture launches can reuse parsed bytecode within this batch.
       const nodeCompileCache =
@@ -358,7 +380,11 @@ export async function memoizeSuite(
 ) {
   const { units, hash, directory, globalKey, workspace } = inputs;
   const reader = localInputReader(context.repositoryRoot);
-  const history = await readCacheReport(context.repositoryRoot, suite);
+  const history = await readCacheReport(
+    context.repositoryRoot,
+    suite,
+    context.linuxCI && directory,
+  );
   const retained = new Map<string, CachedPass>();
   const log = context.onStdout ?? ((chunk: string) => process.stdout.write(chunk));
   const error = context.onStderr ?? ((chunk: string) => process.stderr.write(chunk));
@@ -408,6 +434,7 @@ export async function memoizeSuite(
   const timings = { ...history.timings };
   let evidence: readonly TestEvidence[] = [];
   let exitCode = 0;
+  let recorded = 0;
   if (batch.length) {
     const result = await runBatch(batch.flatMap(({ files }) => files));
     if (context.signal.aborted) return result.exitCode || 130;
@@ -442,6 +469,7 @@ export async function memoizeSuite(
       }
       if (!isPass(pass)) exclusions.set(id, pass);
     }
+    recorded = passes.filter(([id, pass]) => id !== audit && isPass(pass)).length;
     await Promise.all(
       passes.map(async ([id, pass]) => {
         if (isPass(pass)) {
@@ -458,22 +486,27 @@ export async function memoizeSuite(
       if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
     }
   }
-  const summary = summarize(suite, units, hits, batch, lookups, exclusions, lookupMs);
+  const summary = summarize(suite, units, hits, batch, lookups, exclusions, lookupMs, recorded);
   context.onReport?.(summary);
-  await writeCacheReport(context.repositoryRoot, suite, {
-    hits: hits.map(({ id }) => id),
-    evidence: evidence.map(({ file, passed, reason, input, exclusions, durationMs }) => ({
-      file,
-      passed,
-      reason,
-      input,
-      exclusions,
-      durationMs,
-    })),
-    timings,
-    auditedAt,
-    summary,
-  });
+  await writeCacheReport(
+    context.repositoryRoot,
+    suite,
+    {
+      hits: hits.map(({ id }) => id),
+      evidence: evidence.map(({ file, passed, reason, input, exclusions, durationMs }) => ({
+        file,
+        passed,
+        reason,
+        input,
+        exclusions,
+        durationMs,
+      })),
+      timings,
+      auditedAt,
+      summary,
+    },
+    context.linuxCI && directory,
+  );
   return exitCode;
 }
 
@@ -491,6 +524,21 @@ export async function runCachedSuite(
   delete env.NODEX_TEST_OBSERVATION_RUNTIME;
   delete env.NODEX_TEST_OBSERVATION_CHILD;
   delete env.NODEX_TEST_TRANSFORM_CACHES;
+  if (context.signal.aborted) return 130;
+  const { linuxCI } = context;
+  let manifest: Awaited<ReturnType<typeof discoverSuiteManifest>> | undefined;
+  if (linuxCI) {
+    const { repositoryRoot: cwd, signal } = context;
+    if (runtimeForSuite(suite) === "electron-node")
+      await prepareElectronRuntime({ projectRoot: cwd });
+    manifest = await discoverSuiteManifest(suite, filters, false, { cwd, env, signal });
+    if (!manifest.files.length) throw new Error("Application suite has no tests: " + suite);
+    context = { ...context, exactFiles: manifest.files.filter(linuxCI.select) };
+    if (!context.exactFiles?.length) {
+      process.stdout.write(`[test-cache] ${suite}: no files in this shard\n`);
+      return 0;
+    }
+  }
   const runUncached = () =>
     runIsolatedTests(
       { suites: [suite], tier, related: false, args: filters },
@@ -504,12 +552,13 @@ export async function runCachedSuite(
     return context.execute ? context.execute(runUncached) : runUncached();
   };
   if (
-    env.CI ||
+    (linuxCI
+      ? process.platform !== "linux" || !linuxCI.host
+      : Boolean(env.CI) || process.platform !== "darwin") ||
     tier !== "default" ||
     env.NODEX_TEST_CACHE === "off" ||
-    env.NODEX_TEST_TIMINGS ||
+    (env.NODEX_TEST_TIMINGS && !linuxCI) ||
     env.PWDEBUG ||
-    process.platform !== "darwin" ||
     // Additional loaders and preloads can have unobserved inputs.
     env.NODE_OPTIONS?.trim()
       .split(/\s+/u)
@@ -520,10 +569,12 @@ export async function runCachedSuite(
   )
     return fallback("running without result reuse");
   if (context.signal.aborted) return 130;
-  const digests = context.digests?.() ?? stampDigests(digestCachePath(context.repositoryRoot, env));
+  const digests =
+    context.digests?.() ??
+    stampDigests(linuxCI ? undefined : digestCachePath(context.repositoryRoot, env));
   const validate = async (suiteContext: CachedSuiteContext, retry: boolean): Promise<number> => {
     if (suiteContext.signal.aborted) return 130;
-    const inputs = await collectSuiteInputs(suite, filters, suiteContext, digests);
+    const inputs = await collectSuiteInputs(suite, filters, suiteContext, digests, manifest);
     if (!inputs) return fallback("suite identity or file isolation unavailable");
     return memoizeSuite(
       suite,

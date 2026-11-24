@@ -697,6 +697,7 @@ it("summarizes cache reach, top causes, skipped steps, and total time", () => {
           hits: 5,
           ran: 6,
           selected: 10,
+          recorded: 0,
           cacheable: 8,
           uncacheable: [{ reason: "untracked file read", input: "generated.json", count: 2 }],
           missCauses: [{ input: "source.ts", count: 3 }],

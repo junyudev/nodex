@@ -294,8 +294,11 @@ type CacheReportHistory = {
 const reportPath = (root: string, suite: SuiteId) =>
   path.join(root, "node_modules/.cache/test-result-reports", suite + ".json");
 
-export async function readCacheReport(root: string, suite: SuiteId) {
-  return readFile(reportPath(root, suite), "utf8")
+export async function readCacheReport(root: string, suite: SuiteId, directory?: string) {
+  return readFile(
+    directory ? path.join(directory, "history.json") : reportPath(root, suite),
+    "utf8",
+  )
     .then((content) => (JSON.parse(content) as CacheReportHistory | null) ?? {})
     .catch((): CacheReportHistory => ({}));
 }
@@ -308,7 +311,12 @@ export const writeCacheReport = (
     summary: CachedSuiteReport;
     evidence: readonly Omit<TestEvidence, "deps">[];
   },
-) => publish(reportPath(root, suite), JSON.stringify(report));
+  directory?: string,
+) => {
+  if (!directory) return publish(reportPath(root, suite), JSON.stringify(report));
+  const { timings, auditedAt } = report;
+  return publish(path.join(directory, "history.json"), JSON.stringify({ timings, auditedAt }));
+};
 
 export const invalidateCache = (directory: string) =>
   publish(path.join(directory, "epoch"), randomUUID());
@@ -419,7 +427,9 @@ export async function findPass(
   workspace: PassWorkspace = { topology: "", reader: localInputReader(directory) },
 ): Promise<PassLookup> {
   const base = entriesForFile(directory, file);
-  const entries = (await readdir(base).catch(() => [])).filter((name) => name.endsWith(".json"));
+  const records = await readdir(base).catch((): string[] => []);
+  if (records.includes(unobservableMarker)) return { kind: "unrecorded" };
+  const entries = records.filter((name) => name.endsWith(".json"));
   let closest: string[] | undefined;
   let otherGlobalKey = false;
   for (const name of entries) {
