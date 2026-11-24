@@ -10015,8 +10015,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           // the replacement open succeeds or fails below.
           const closedExistingNativeThreadId = existing !== null ? existing.nativeThreadId : null;
           if (existing !== null) {
-            yield* existing.releasePlugins;
             yield* existing.query.close.pipe(Effect.ignore);
+            yield* existing.releasePlugins;
             if (existing.nativeThreadId !== nativeThreadId) {
               yield* clearWakeStateForNativeThread(existing.nativeThreadId);
               yield* resetBackgroundTaskStateForNativeThreadProcess(existing.nativeThreadId, {
