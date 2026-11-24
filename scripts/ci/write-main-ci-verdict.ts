@@ -24,6 +24,23 @@ interface FailedJob {
   readonly failedTests: readonly string[] | null;
 }
 
+interface VerdictCommit {
+  readonly sha: string;
+  readonly subject: string;
+  readonly author: string;
+}
+
+export interface MainCiVerdict {
+  readonly schemaVersion: 1;
+  readonly runId: string;
+  readonly runAttempt: number;
+  readonly status: "success" | "failure";
+  readonly range: VerdictRange;
+  readonly commits: readonly VerdictCommit[];
+  readonly failingGates: readonly FailingGate[];
+  readonly failingJobs: readonly FailedJob[] | null;
+}
+
 const fullSha = (value: string | undefined): value is string =>
   value !== undefined && /^[a-f0-9]{40}$/u.test(value) && !/^0+$/u.test(value);
 
@@ -40,7 +57,7 @@ export function resolveVerdictRange(
   return { basis: "head-only", baseSha: null, headSha };
 }
 
-function readCommits(range: VerdictRange): readonly { sha: string; subject: string }[] {
+function readCommits(range: VerdictRange): readonly VerdictCommit[] {
   const revision = range.baseSha ? `${range.baseSha}..${range.headSha}` : range.headSha;
   const fields = execFileSync(
     "git",
@@ -48,7 +65,7 @@ function readCommits(range: VerdictRange): readonly { sha: string; subject: stri
       "log",
       "--reverse",
       "--topo-order",
-      "--format=%H%x00%s",
+      "--format=%H%x00%s%x00%an",
       "-z",
       ...(range.baseSha ? [] : ["-1"]),
       revision,
@@ -56,11 +73,14 @@ function readCommits(range: VerdictRange): readonly { sha: string; subject: stri
     { encoding: "utf8" },
   ).split("\0");
   const commits = [];
-  for (let index = 0; index < fields.length - 1; index += 2) {
+  for (let index = 0; index < fields.length - 1; index += 3) {
     const sha = fields[index];
     const subject = fields[index + 1];
-    if (!fullSha(sha) || subject === undefined) throw new Error("Invalid Git commit record.");
-    commits.push({ sha, subject });
+    const author = fields[index + 2];
+    if (!fullSha(sha) || subject === undefined || author === undefined) {
+      throw new Error("Invalid Git commit record.");
+    }
+    commits.push({ sha, subject, author });
   }
   return commits;
 }
@@ -208,7 +228,7 @@ async function main(): Promise<void> {
           process.stderr.write(`GitHub job details unavailable. ${String(error)}\n`);
           return null;
         });
-  const verdict = {
+  const verdict: MainCiVerdict = {
     schemaVersion: 1,
     runId: GITHUB_RUN_ID,
     runAttempt: Number(GITHUB_RUN_ATTEMPT),

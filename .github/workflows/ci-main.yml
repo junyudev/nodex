@@ -99,6 +99,10 @@ jobs:
   complete:
     name: main complete
     if: always()
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     needs:
       - classify
       - static-contracts
@@ -118,6 +122,7 @@ jobs:
         id: verify
         run: node --no-warnings scripts/ci/verify-required-gates.ts
       - name: Write Main CI verdict
+        id: verdict
         if: always()
         env:
           CI_BASE_SHA: ${{ needs.classify.outputs.base_sha }}
@@ -134,3 +139,9 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 14
+      - name: Update the red-main issue
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.verdict.outcome == 'success' && (steps.verify.outcome == 'failure' || success()) }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_GATE_OUTCOME: ${{ steps.verify.outcome }}
+        run: node --no-warnings scripts/ci/update-main-ci-issue.ts
