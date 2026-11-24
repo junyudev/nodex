@@ -191,10 +191,18 @@ it.live(
             env: { PLUGIN_ROOT: root, PLUGIN_DATA: data, DECLARED: root },
             argument: data + "/value ${UNSET}",
           });
-          expect(structuredContent?.envNames).toEqual([
+          const envNames = structuredContent?.envNames;
+          if (!Array.isArray(envNames)) throw new Error("Expected child environment names");
+          // Windows may set this process metadata when it creates the child.
+          expect(
+            envNames.filter(
+              (name) => process.platform !== "win32" || name !== "PROCESSOR_ARCHITECTURE",
+            ),
+          ).toEqual([
             "DECLARED",
             "PLUGIN_DATA",
             "PLUGIN_ROOT",
+            ...(process.platform === "win32" ? ["SYSTEMROOT"] : []),
             // CoreFoundation generates this in the child even for an empty launch environment.
             ...(process.platform === "darwin" ? ["__CF_USER_TEXT_ENCODING"] : []),
           ]);

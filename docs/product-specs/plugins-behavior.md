@@ -93,8 +93,10 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   starts or resumes; other Agents pick it up before their next turn.
 - **Agents.** Codex uses every part of a plugin. Claude Code, Antigravity and the other ACP
   Agents receive its skills and the MCP servers Nodex can run itself: local command servers and
-  servers that need no sign-in. Servers that need a sign-in, connected apps and hooks stay in
-  Codex, because their credentials and review live there; Installation › Agents names them.
+  servers that need no sign-in. Local command servers receive their declared environment and
+  plugin paths. On Windows, they also receive the system root. Servers that need a sign-in, connected
+  apps and hooks stay in Codex, because their credentials and review live there; Installation ›
+  Agents names them.
   OpenCode does not receive plugins yet. Disabling or uninstalling a plugin, or narrowing its
   Projects, cuts off its servers for other Agents as soon as Nodex reads the change; a call
   already running finishes, and its result is not returned.

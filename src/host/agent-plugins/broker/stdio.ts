@@ -14,7 +14,6 @@ const windowsDefaults = [
   "LOGONSERVER",
   "PATH",
   "SYSTEMDRIVE",
-  "SYSTEMROOT",
   "TEMP",
   "USERDOMAIN",
   "USERNAME",
@@ -76,6 +75,8 @@ export async function prepareStdio(
     ["NODE_V8_COVERAGE", undefined],
     ...(windows ? windowsDefaults.map((name) => [name, ""] as const) : []),
   ]);
+  // Native Windows runtimes such as Node need SystemRoot during startup.
+  if (windows) env.set("SYSTEMROOT", process.env.SYSTEMROOT ?? "");
   for (const [name, value] of Object.entries(declaration.env)) {
     const key = windows ? name.toUpperCase() : name;
     if (!name || /[=\0]/.test(name) || key === "PLUGIN_ROOT" || key === "PLUGIN_DATA")
