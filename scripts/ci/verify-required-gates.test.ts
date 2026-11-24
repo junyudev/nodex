@@ -30,6 +30,25 @@ describe("required CI gate verification", () => {
     },
   );
 
+  test.each(["failure", "cancelled", "skipped"] as const)(
+    "rejects a classifier with %s result even when no other gates are selected",
+    (classifierResult) => {
+      expect(() =>
+        verifyRequiredGates({ classifierResult, results: {}, selectedGates: [] }),
+      ).toThrow(`classify finished with ${classifierResult}`);
+    },
+  );
+
+  test("rejects a missing result for a selected gate", () => {
+    expect(() =>
+      verifyRequiredGates({
+        classifierResult: "success",
+        results: {},
+        selectedGates: ["rust-checks"],
+      }),
+    ).toThrow("rust-checks has no GitHub job result");
+  });
+
   test("rejects duplicate and empty selected gate names", () => {
     expect(() =>
       verifyRequiredGates({
@@ -47,7 +66,7 @@ describe("required CI gate verification", () => {
     ).toThrow("must not be empty");
   });
 
-  test("derives PR gates only from the validated plan and Main gates from needs", () => {
+  test("derives pre-merge gates from the validated plan and unconditional gates from needs", () => {
     expect(
       requiredGateNames(["stale-or-unselected"], classifyChangedPaths(["src/renderer/app.tsx"])),
     ).toEqual(["static-contracts", "app-tests"]);

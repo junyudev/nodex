@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, test } from "vite-plus/test";
 
 import { APP_TEST_SUITES, STATIC_GROUPS, type CiGatePlan } from "./ci-gate-plan";
@@ -7,8 +9,10 @@ import {
   verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
   verifyMainCiBaseContract,
+  verifyPreMergeCiContract,
   verifyRustCacheOwnership,
 } from "./verify-ci-matrix-contracts";
+import { readWorkflow, repositoryRoot, requireRecord } from "./github-workflow-files";
 import { MAIN_CI_BASE_COMMAND } from "./main-ci-base";
 
 const nightlyWorkflow = ({
@@ -179,6 +183,48 @@ describe("CI matrix contracts", () => {
         "Release",
       ),
     ).toThrow("needs must be a job id or array of job ids");
+  });
+});
+
+describe("pre-merge CI workflow", () => {
+  const readPreMergeWorkflow = () =>
+    readWorkflow(path.join(repositoryRoot, ".github/workflows/ci.yml"));
+
+  test("requires both trigger events and isolated merge-group runs", () => {
+    const workflow = readPreMergeWorkflow();
+    expect(() => verifyPreMergeCiContract(workflow)).not.toThrow();
+
+    const concurrency = requireRecord(workflow.concurrency, "concurrency");
+    expect(() =>
+      verifyPreMergeCiContract({
+        ...workflow,
+        concurrency: { ...concurrency, group: "ci-all-merge-groups" },
+      }),
+    ).toThrow("must isolate merge-group runs");
+
+    const triggers = requireRecord(workflow.on, "triggers");
+    expect(() =>
+      verifyPreMergeCiContract({ ...workflow, on: { ...triggers, merge_group: null } }),
+    ).toThrow("merge_group trigger");
+  });
+
+  test("rejects an aggregate that can skip checking selected jobs", () => {
+    const workflow = readPreMergeWorkflow();
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const required = requireRecord(jobs.required, "required");
+    expect(() =>
+      verifyPreMergeCiContract({
+        ...workflow,
+        jobs: { ...jobs, required: { ...required, if: "success()" } },
+      }),
+    ).toThrow("required must always enforce");
+
+    expect(() =>
+      verifyPreMergeCiContract({
+        ...workflow,
+        jobs: { ...jobs, required: { ...required, needs: ["classify", "static-contracts"] } },
+      }),
+    ).toThrow("required dependencies");
   });
 });
 

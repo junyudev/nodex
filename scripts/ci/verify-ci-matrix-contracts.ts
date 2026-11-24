@@ -147,6 +147,72 @@ const declaredNeeds = (value: unknown, label: string): ReadonlySet<string> => {
   throw new Error(`${label} needs must be a job id or array of job ids.`);
 };
 
+export const verifyPreMergeCiContract = (workflow: UnknownRecord): void => {
+  const triggers = requireRecord(workflow.on, "Pre-merge CI triggers");
+  if (triggers.pull_request !== null) {
+    throw new Error("Pre-merge CI must run on unfiltered pull requests.");
+  }
+  const mergeGroup = requireRecord(triggers.merge_group, "Pre-merge CI merge_group trigger");
+  if (
+    Object.keys(mergeGroup).length !== 1 ||
+    !Array.isArray(mergeGroup.types) ||
+    mergeGroup.types.length !== 1 ||
+    mergeGroup.types[0] !== "checks_requested"
+  ) {
+    throw new Error("Pre-merge CI must run for every merge-group check request.");
+  }
+
+  const concurrency = requireRecord(workflow.concurrency, "Pre-merge CI concurrency");
+  if (
+    concurrency.group !==
+      "ci-${{ github.event_name }}-${{ github.event_name == 'merge_group' && github.run_id || github.event.pull_request.number || github.ref }}" ||
+    concurrency["cancel-in-progress"] !== "${{ github.event_name != 'merge_group' }}"
+  ) {
+    throw new Error("Pre-merge CI must isolate merge-group runs and allow superseding PR runs.");
+  }
+
+  const jobs = requireRecord(workflow.jobs, "Pre-merge CI jobs");
+  const classify = requireRecord(jobs.classify, "Pre-merge CI classify job");
+  const changes = Array.isArray(classify.steps)
+    ? classify.steps.filter(isRecord).find((step) => step.id === "changes")
+    : undefined;
+  const diff = requireRecord(changes?.env, "Pre-merge CI comparison range");
+  if (
+    classify.if !== undefined ||
+    changes?.if !== undefined ||
+    diff.BASE_SHA !==
+      "${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}" ||
+    diff.HEAD_SHA !==
+      "${{ github.event_name != 'merge_group' && github.sha || github.event.merge_group.head_sha }}"
+  ) {
+    throw new Error("Pre-merge CI must classify the PR or merge-group comparison range.");
+  }
+
+  const required = requireRecord(jobs.required, "Pre-merge CI required job");
+  requireExactEntries(
+    [...declaredNeeds(required.needs, "Pre-merge CI required")].sort(),
+    ["app-tests", "classify", "rust-checks", "static-contracts"],
+    "Pre-merge CI required dependencies",
+  );
+  const verifier = Array.isArray(required.steps)
+    ? required.steps.filter(isRecord).find((step) => step.id === "verify")
+    : undefined;
+  const env = requireRecord(verifier?.env, "Pre-merge CI required verifier environment");
+  if (
+    required.name !== "required" ||
+    required.if !== "always()" ||
+    required["continue-on-error"] !== undefined ||
+    verifier?.if !== undefined ||
+    verifier?.["continue-on-error"] !== undefined ||
+    verifier?.run !== "node --no-warnings scripts/ci/verify-required-gates.ts" ||
+    env.CI_GATE_PLAN_JSON !== "${{ needs.classify.outputs.plan }}" ||
+    env.CI_NEEDS_JSON !== "${{ toJSON(needs) }}" ||
+    env.CI_CLASSIFIER_RESULT !== undefined
+  ) {
+    throw new Error("Pre-merge CI required must always enforce the selected gate results.");
+  }
+};
+
 /** Electron UI coverage belongs only to the curated Nightly job. */
 export const verifyElectronE2eWorkflowContracts = (
   workflow: UnknownRecord,
@@ -257,6 +323,7 @@ const main = (): void => {
   verifyAppTestMatrixContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml")),
   );
+  verifyPreMergeCiContract(readWorkflow(path.join(repositoryRoot, ".github/workflows/ci.yml")));
   verifyMainCiBaseContract(readWorkflow(path.join(repositoryRoot, MAIN_CI_WORKFLOW_PATH)));
   for (const workflowPath of workflowFiles()) {
     const workflow = readWorkflow(workflowPath);

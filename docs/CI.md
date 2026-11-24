@@ -7,10 +7,15 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
 
 ## Workflow tiers
 
-- `.github/workflows/ci.yml` owns the pull-request `required` check. Its typed
-  classifier selects static groups, affected Vitest suites, affected Rust
-  crates, protocol verification, and Store migration contracts. It never runs
-  stress, macOS runtime, Electron E2E, or UI performance tests.
+- `.github/workflows/ci.yml` owns the `required` check for pull requests and
+  merge groups. Both events use the same classifier and gates for the tested
+  merge commit. Pull requests compare against the PR base. Merge groups compare
+  the event's `base_sha` and `head_sha`, so the gates cover the combined queued
+  changes. New PR updates supersede earlier runs for that PR. Each merge-group
+  run has its own concurrency key. The workflow selects static groups, affected
+  Vitest suites, affected Rust crates, protocol verification, and Store
+  migration contracts. It leaves stress, macOS runtime, Electron E2E, and UI
+  performance to their dedicated workflows.
 - `.github/workflows/ci-main.yml` applies the same targeted classifier to the
   diff from the newest ancestor with a successful Main CI run on `main`. Push
   and manual runs using this rule can establish a base, so a failed gate stays

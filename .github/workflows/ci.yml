@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       full:
@@ -15,8 +17,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Queued groups have separate runs, even when GitHub rebuilds the same queue ref.
+  group: ci-${{ github.event_name }}-${{ github.event_name == 'merge_group' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   classify:
@@ -31,15 +34,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Classify changed paths
+        id: changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
-          HEAD_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event_name != 'merge_group' && github.sha || github.event.merge_group.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
           base_sha="${BASE_SHA}"
           if [[ -z "${base_sha}" || "${base_sha}" =~ ^0+$ ]]; then
+            if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+              echo "::error::The event did not provide a comparison base."
+              exit 1
+            fi
             base_sha="$(git rev-list --max-parents=0 "${HEAD_SHA}")"
           fi
           arguments=(--base "${base_sha}" --head "${HEAD_SHA}" --output "${RUNNER_TEMP}/classification.json")
@@ -97,6 +105,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Require every selected gate
+        id: verify
         env:
           CI_GATE_PLAN_JSON: ${{ needs.classify.outputs.plan }}
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
