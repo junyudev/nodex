@@ -493,7 +493,7 @@ export class ElectronScenarioHarness {
   /**
    * Scenarios drive the Project tree, which lists each Project's chats beneath it. A new Profile
    * arranges chats by attention instead, so the harness switches once and the Profile remembers
-   * it. A scenario of the attention lanes switches back from the same menu.
+   * it. A scenario of the attention lanes switches back with the same toggle.
    */
   private async arrangeSidebarByProject(page: Page): Promise<void> {
     if (this.#sidebarArranged) return;
@@ -508,7 +508,6 @@ export class ElectronScenarioHarness {
     if ((await arrangement.getAttribute("data-app-action-sidebar-organize")) !== "attention")
       return;
     await arrangement.click();
-    await page.locator('[data-app-action-sidebar-view-option="project"]').click();
     await page.locator('[data-app-action-sidebar-organize="project"]').waitFor();
   }
 
