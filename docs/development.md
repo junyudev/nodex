@@ -951,6 +951,13 @@ with `--timeout <seconds>` or `CHECK_CHANGED_TIMEOUT`. Queue time does not count
 Each run appends a record to `cache.local/check-changed/runs.jsonl` in the
 primary checkout.
 
+Branch new worktrees from `origin/main` and keep local `main` in sync with it.
+After the fast check, fetch and rebase onto `origin/main`, push the branch, and
+open a pull request with `gh pr create`. End the turn so Nodex can return the
+workspace pull request's CI results. Enable auto-merge with
+`gh pr merge --auto --rebase`; the pull request merges once the required CI check
+passes. Fix any failures and push the fixes.
+
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,
 including Rust, stress, browser, and static contracts.

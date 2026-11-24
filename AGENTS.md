@@ -167,7 +167,14 @@ Release notes are a required deliverable only for **release-note-worthy** user-v
 
 ## Verification
 
-Run `vp run check:changed` for fast feedback while working: changed-file format and lint, incremental types, the tests whose recorded inputs the change touches, and `cargo check` for touched crates. Before merging into `main`, run `vp run check:changed --full` for the complete gate (every default Vitest suite, the semantic gate, and the static and Rust gates Main CI selects); pre-merge CI will take over that role. Use focused tests while iterating. See [Choosing checks](docs/development.md#choosing-checks).
+Branch worktrees from `origin/main`. Keep local `main` as a mirror of `origin/main`.
+
+1. Run `vp run check:changed` for local feedback. Use `--full` when CI is unavailable or the change needs macOS coverage.
+2. Fetch `origin`, rebase onto `origin/main`, push the branch, and open a pull request with `gh pr create`.
+3. End the turn. Nodex follows workspace pull requests and returns CI results.
+4. Enable auto-merge with `gh pr merge --auto --rebase`; the pull request merges once the required check passes. Fix any failures and push the fixes.
+
+See [Choosing checks](docs/development.md#choosing-checks) for local coverage.
 
 You decide what to verify. Aim for confidence that matches the change's risk: read the diff and the commits it lands on, skip checks the change cannot affect, and go deeper where it is risky, cross-cutting, or unfamiliar. One strong real-world check can replace a stack of broader suites.
 
@@ -177,7 +184,7 @@ In the handoff, say what you ran and how it went, and what you skipped and why. 
 
 Each runtime has its own runner; the wrong one fails, or passes, for the wrong reasons.
 
-- Feedback: `vp run check:changed`; before merging into `main`: `vp run check:changed --full`. To use the shared result cache for one suite, use `vp run test:cached <suite>`.
+- Local branch check: `vp run check:changed`. To use the shared result cache for one suite, use `vp run test:cached <suite>`.
 
 - Node and shared tests outside native Core/bridge contracts: `vp test run --config config/vitest.node.config.ts <path>`
 - Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path>`
