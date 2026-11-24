@@ -1,14 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import { nativeBuildScratchDirectory } from "./native-build-scratch";
-
-const originalTmpdir = process.env.TMPDIR;
-afterEach(() => {
-  if (originalTmpdir === undefined) delete process.env.TMPDIR;
-  else process.env.TMPDIR = originalTmpdir;
-});
 
 describe("native build scratch directory", () => {
   test("gives a checkout under a spaced path a directory that node-gyp can compile in", () => {
@@ -24,12 +17,10 @@ describe("native build scratch directory", () => {
   });
 
   test("fails with the fix when the temporary directory itself has whitespace", () => {
-    const parent = mkdtempSync(join(tmpdir(), "scratch parent "));
-    try {
-      process.env.TMPDIR = parent;
-      expect(() => nativeBuildScratchDirectory("/work/three")).toThrow(/Set TMPDIR/u);
-    } finally {
-      rmSync(parent, { recursive: true, force: true });
-    }
+    const parent = join(tmpdir(), "scratch parent");
+    const variable = process.platform === "win32" ? "TEMP" : "TMPDIR";
+    expect(() => nativeBuildScratchDirectory("/work/three", parent)).toThrow(
+      `Set ${variable} to a path without spaces.`,
+    );
   });
 });

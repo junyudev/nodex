@@ -100,15 +100,21 @@ test.skipIf(process.platform === "win32")(
   },
 );
 
-test("attributes a signal exit with its diagnostic tail", async () => {
-  await expect(
-    runToolingProbe(
-      "terminated lint",
-      nodeProbe(`
-    process.stderr.write('lint diagnostic', () => process.kill(process.pid, 'SIGKILL'));
-  `),
-    ),
-  ).rejects.toThrow(/terminated lint: probe failed:[\s\S]*SIGKILL[\s\S]*lint diagnostic/u);
+test("preserves diagnostics for platform-specific forced termination", async () => {
+  const result = runToolingProbe(
+    "terminated lint",
+    nodeProbe(`
+      process.stderr.write('lint diagnostic', () => process.kill(process.pid, 'SIGKILL'));
+    `),
+  );
+  if (process.platform === "win32") {
+    // A self-kill uses TerminateProcess with exit code 1 on Windows.
+    await expect(result).resolves.toEqual({ status: 1, stdout: "", stderr: "lint diagnostic" });
+    return;
+  }
+  await expect(result).rejects.toThrow(
+    /terminated lint: probe failed: Error: Terminated by SIGKILL[\s\S]*stderr \(tail\):\nlint diagnostic/u,
+  );
 });
 
 test("bounds probes on CI runners and leaves shared local computers unbounded", () => {

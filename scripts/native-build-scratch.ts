@@ -9,12 +9,16 @@ import { join } from "node:path";
  * space (for example a macOS `managed worktrees` folder) fails to compile. Native compilation runs
  * here, and only its finished artifacts are copied back into the checkout.
  */
-export function nativeBuildScratchDirectory(checkoutRoot: string): string {
+export function nativeBuildScratchDirectory(
+  checkoutRoot: string,
+  temporaryRoot = tmpdir(),
+): string {
   const digest = createHash("sha256").update(checkoutRoot).digest("hex").slice(0, 16);
-  const directory = join(tmpdir(), `nodex-native-${digest}`);
+  const directory = join(temporaryRoot, `nodex-native-${digest}`);
   if (/\s/u.test(directory)) {
+    const variable = process.platform === "win32" ? "TEMP" : "TMPDIR";
     throw new Error(
-      `Native builds need a temporary directory without whitespace; ${directory} contains some. Set TMPDIR to a path without spaces.`,
+      `Native builds need a temporary directory without whitespace: ${directory}. Set ${variable} to a path without spaces.`,
     );
   }
   mkdirSync(directory, { recursive: true });
