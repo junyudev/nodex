@@ -437,9 +437,7 @@ function InboxModelGuide() {
       <dl className="mt-2 flex flex-col gap-2">
         {INBOX_MODEL_GUIDE.map((entry) => (
           <div key={entry.family} className="flex flex-col gap-0.5">
-            <dt className="text-token-foreground">
-              {entry.familyMessage ? intl.formatMessage(entry.familyMessage) : entry.family}
-            </dt>
+            <dt className="text-token-foreground">{entry.family}</dt>
             <dd className="text-xs leading-5 text-token-description-foreground">
               {intl.formatMessage(entry.noteMessage)}
             </dd>

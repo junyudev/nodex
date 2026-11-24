@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex's model guide now covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4 Neon, each judged on its own. Inbox suggestions send backend and systems work to GPT-6.2 Sol and can give UI work to Gemini 4 Neon when the Claude budget runs low. GPT-6.1 models and OpenCode's free models no longer carry a guide note, so the Inbox's plan no longer marks free models `Free`.
+
 ### Fixed
 
 - Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt. If the chat's Agent still cannot write a title, another available Agent writes it.

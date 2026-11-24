@@ -24,8 +24,6 @@ import {
 
 /** What is left of the budget a model spends, as the Inbox plans with it. */
 export type InboxPlanningBudget =
-  /** The model costs nothing to run. */
-  | { readonly kind: "free" }
   | {
       readonly kind: "left";
       readonly percent: number;
@@ -51,8 +49,8 @@ export interface InboxPlanningModel {
   /** What the guide says the family does well, in one line. */
   readonly summary: string | null;
   readonly budget: InboxPlanningBudget;
-  /** The Agent's whole usage, as its rail meter's card shows it; null for free models. */
-  readonly usage: UsageMeterView | null;
+  /** The Agent's whole usage, as its rail meter's card shows it. */
+  readonly usage: UsageMeterView;
 }
 
 export type InboxPlanningModels =
@@ -133,17 +131,14 @@ export function inboxPlanningModels(
       const families = useModelGuide ? INBOX_MODEL_GUIDE.filter((entry) => offered.has(entry)) : [];
       if (families.length === 0)
         return [{ key: provider.instanceId, kind, title: agent, summary: null, budget, usage }];
-      return families.map((entry) => {
-        const family = entry.familyMessage ? intl.formatMessage(entry.familyMessage) : entry.family;
-        return {
-          key: `${provider.instanceId}:${entry.family}`,
-          kind,
-          title: named && !entry.family.includes(agent) ? `${family} · ${agent}` : family,
-          summary: intl.formatMessage(entry.summaryMessage),
-          budget: entry.free ? { kind: "free" } : budget,
-          usage: entry.free ? null : usage,
-        };
-      });
+      return families.map((entry) => ({
+        key: `${provider.instanceId}:${entry.family}`,
+        kind,
+        title: named ? `${entry.family} · ${agent}` : entry.family,
+        summary: intl.formatMessage(entry.summaryMessage),
+        budget,
+        usage,
+      }));
     });
 }
 
@@ -176,7 +171,7 @@ export function describeInboxPlanning(
 export function inboxPlanningNextChange(planning: InboxPlanning): number | null {
   if (planning.kind === "off" || planning.models.kind === "fixed") return null;
   const moments = planning.models.models.flatMap((model) =>
-    model.usage?.nextChangeAt == null ? [] : [model.usage.nextChangeAt],
+    model.usage.nextChangeAt == null ? [] : [model.usage.nextChangeAt],
   );
   return moments.length > 0 ? Math.min(...moments) : null;
 }

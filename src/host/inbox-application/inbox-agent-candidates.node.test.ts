@@ -40,8 +40,8 @@ const codex: Provider = {
   models: [
     { slug: "gpt-6-mini", name: "GPT-6 Mini", isCustom: false, capabilities: {} },
     {
-      slug: "gpt-6.1-sol",
-      name: "GPT-6.1 Sol",
+      slug: "gpt-6.2-sol",
+      name: "GPT-6.2 Sol",
       isCustom: false,
       isDefault: true,
       capabilities: {
@@ -106,7 +106,7 @@ describe("what a suggestion may run chats on", () => {
       },
     );
     expect(openai?.models[0]).toMatchObject({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       efforts: ["medium", "high", "xhigh"],
       default_effort: "medium",
       speeds: ["fast"],
@@ -229,6 +229,6 @@ describe("what a suggestion may run chats on", () => {
         reasoningEffort: null,
         serviceTier: null,
       }),
-    ).toEqual({ instance_id: "codex", model: "gpt-6.1-sol", effort: "medium" });
+    ).toEqual({ instance_id: "codex", model: "gpt-6.2-sol", effort: "medium" });
   });
 });

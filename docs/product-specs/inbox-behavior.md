@@ -803,8 +803,8 @@ chats stay in the Project.
   rail's usage ring and what is left of that Agent's weekly window, or of its
   longest window, named, when it has no weekly one; a window that limits one
   model only stays in the Agent's usage card, which the ring opens on hover as
-  the rail's does when the Agent reports any windows. A family the guide marks free reads `Free`. Without
-  the guide, the list is `Budgets`: each Agent once, with its budget alone.
+  the rail's does when the Agent reports any windows. Without the guide, the
+  list is `Budgets`: each Agent once, with its budget alone.
 - Nothing is claimed that is not known. A window that has reset since it was
   read reads `Reset since read`, an Agent that reports no usage reads
   `Not reported`, and an old reading is faded, as on the rail, and says how
@@ -1069,9 +1069,10 @@ creates a second message, and does not count against the Agent budget again.
   - what chats the Inbox starts run on otherwise, chosen with the composer's
     model menu: the Agent, its model, and the model's effort and speed;
   - whether suggestions read Nodex's model guide, which is on by default and can
-    be read in full there. It covers GPT-6.1, Claude Opus 5.5 and the models
-    OpenCode offers free, which it marks free so suggestions can spend no budget
-    on routine work. The guide changes with Nodex; the user's own view of each
+    be read in full there. It covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4
+    Neon. Each note speaks for one named model, judged on its own: sibling or
+    older models, such as GPT-6.2 Astra or GPT-6.1 Sol, and groups of models,
+    such as those a provider offers free, carry no note. The guide changes with Nodex; the user's own view of each
     model belongs in the routing preferences.
 
   Choices read the Runtime's existing provider and model catalog without forcing

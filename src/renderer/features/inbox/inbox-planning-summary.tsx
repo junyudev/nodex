@@ -56,11 +56,6 @@ const BUDGET_TONE: Partial<Record<UsageSeverity, string>> = {
 
 function budgetText(budget: InboxPlanningBudget, intl: IntlShape): string {
   switch (budget.kind) {
-    case "free":
-      return intl.formatMessage({
-        id: "inbox.inboxPlanningSummary.free",
-        defaultMessage: "Free",
-      });
     case "left":
       return [
         intl.formatMessage(
@@ -107,15 +102,11 @@ function BudgetRing({
   const { budget, usage } = model;
   const mark = <AgentProviderIcon kind={model.kind} className="fill-current" />;
   const track = budget.kind === "spent" ? "spent" : budget.kind === "left" ? "solid" : "dotted";
-  // Free models spend nothing, and an Agent that reports no windows has no card to show.
-  if (!usage || usage.windows.length === 0)
-    return usage ? (
+  // An Agent that reports no windows has no card to show.
+  if (usage.windows.length === 0)
+    return (
       <span className="inline-flex shrink-0 text-token-foreground">
         <UsageRingGlyph provider={model.kind} mark={mark} track={track} />
-      </span>
-    ) : (
-      <span className="inline-flex size-6 shrink-0 items-center justify-center [&>svg]:size-3">
-        {mark}
       </span>
     );
   return (

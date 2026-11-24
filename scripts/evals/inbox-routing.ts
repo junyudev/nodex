@@ -82,8 +82,8 @@ const evalProviders = (budget: NonNullable<RoutingCase["agents"]>): readonly Pro
       usageLimits: weekly(budget.codexLeft),
       models: [
         {
-          slug: "gpt-6.1-sol",
-          name: "GPT-6.1 Sol",
+          slug: "gpt-6.2-sol",
+          name: "GPT-6.2 Sol",
           isCustom: false,
           isDefault: true,
           capabilities: {
@@ -373,7 +373,7 @@ const exampleOutput = (value: RoutingCase) => ({
     skills: [],
     additions:
       decision.handsOffTo === "codex"
-        ? ["You may hand the backend to GPT-6.1 Sol."]
+        ? ["You may hand the backend to GPT-6.2 Sol."]
         : decision.handsOffTo === "claude"
           ? ["You may hand the visual design to Opus 5.5."]
           : [],
@@ -383,7 +383,7 @@ const exampleOutput = (value: RoutingCase) => ({
       decision.lead === "claude"
         ? "claude-opus-5-5"
         : decision.lead === "codex"
-          ? "gpt-6.1-sol"
+          ? "gpt-6.2-sol"
           : null,
     chat_effort: decision.lead === "claude" || decision.lead === "codex" ? "high" : null,
     summary:

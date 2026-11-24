@@ -47,9 +47,9 @@ const model = (slug: string, name: string, isDefault = false) => ({
   capabilities: {},
 });
 
-/** GPT-6.1 Sol runs at low effort unless told otherwise. */
+/** GPT-6.2 Sol runs at low effort unless told otherwise. */
 const sol = {
-  ...model("gpt-6.1-sol", "GPT-6.1 Sol", true),
+  ...model("gpt-6.2-sol", "GPT-6.2 Sol", true),
   capabilities: {
     optionDescriptors: [
       {
@@ -63,7 +63,7 @@ const sol = {
   },
 };
 
-/** Codex offering GPT-6.1 Sol beside a model the guide does not cover. */
+/** Codex offering GPT-6.2 Sol beside a model the guide does not cover. */
 const codex = (windows: readonly UsageWindow[] = [session(20), weekly("secondary", 29)]) => ({
   ...codexProvider(),
   models: [sol, model("gpt-6-astra", "GPT-6 Astra")],
@@ -103,10 +103,21 @@ const settings = (overrides: Partial<InboxSettings> = {}): InboxSettings => ({
 
 describe("what suggestions choose a new chat's model among", () => {
   test("each guide family an Agent offers, beside that Agent's weekly budget", () => {
-    const models = inboxPlanningModels(catalog([codex(), claude(), openCode()]), true, NOW);
+    const antigravity: Provider = {
+      ...codexProvider(),
+      instanceId: "antigravity",
+      displayName: "Antigravity",
+      driver: "antigravity",
+      models: [model("gemini-4-neon", "Gemini 4 Neon", true)],
+    };
+    const models = inboxPlanningModels(
+      catalog([codex(), claude(), antigravity, openCode()]),
+      true,
+      NOW,
+    );
     expect(lines(models)).toEqual([
       {
-        title: "GPT-6.1",
+        title: "GPT-6.2 Sol",
         summary: expect.stringMatching(/^Backend/),
         budget: { kind: "left", percent: 71, severity: "normal", window: null, readAgo: null },
       },
@@ -116,10 +127,19 @@ describe("what suggestions choose a new chat's model among", () => {
         summary: expect.stringMatching(/^Frontend/),
         budget: { kind: "left", percent: 62, severity: "normal", window: null, readAgo: null },
       },
-      // Free models spend no budget, whatever OpenCode reports.
-      { title: "OpenCode free models", summary: expect.any(String), budget: { kind: "free" } },
+      {
+        title: "Gemini 4 Neon · Antigravity",
+        summary: expect.stringMatching(/^Frontend/),
+        budget: { kind: "unknown" },
+      },
+      { title: "OpenCode", summary: null, budget: { kind: "unknown" } },
     ]);
-    expect(models.map((entry) => entry.kind)).toEqual(["codex", "claudeAgent", "opencode"]);
+    expect(models.map((entry) => entry.kind)).toEqual([
+      "codex",
+      "claudeAgent",
+      "antigravity",
+      "opencode",
+    ]);
   });
 
   test("without the guide, each Agent once with only its budget", () => {
@@ -132,19 +152,20 @@ describe("what suggestions choose a new chat's model among", () => {
   });
 
   test("only families among the models a suggestion is actually offered", () => {
-    // Main offers twelve models an Agent at most, so a thirteenth free model never reaches it.
+    // Main offers at most twelve models per Agent, leaving Gemini outside the offered list.
     const crowded = {
       ...openCode(),
       models: [
         model("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
         ...Array.from({ length: 11 }, (_, index) =>
-          model(`openai/gpt-6.1-variant-${index}`, `GPT-6.1 Variant ${index}`),
+          model(`openai/gpt-6.2-sol-variant-${index}`, `GPT-6.2 Sol Variant ${index}`),
         ),
+        model("google/gemini-4-neon", "Gemini 4 Neon"),
         model("opencode/glm-5.3-flash-free", "GLM-5.3-Flash Free"),
       ],
     };
     const titles = inboxPlanningModels(catalog([crowded]), true, NOW).map((entry) => entry.title);
-    expect(titles).toEqual(["GPT-6.1 · OpenCode"]);
+    expect(titles).toEqual(["GPT-6.2 Sol · OpenCode"]);
   });
 
   test("only Agents that can take a chat now", () => {
@@ -153,7 +174,7 @@ describe("what suggestions choose a new chat's model among", () => {
     const titles = inboxPlanningModels(catalog([codex(), disabled, empty]), true, NOW).map(
       (entry) => entry.title,
     );
-    expect(titles).toEqual(["GPT-6.1"]);
+    expect(titles).toEqual(["GPT-6.2 Sol"]);
   });
 });
 
@@ -226,7 +247,7 @@ describe("how the Inbox plans", () => {
   test("names the suggestion model at the effort suggestions run it", () => {
     const planning = describeInboxPlanning(agents, settings(), { kind: "automatic" }, NOW);
     expect(planning.kind === "suggests" && inboxAgentLine(planning.suggestedBy)).toBe(
-      "Codex · GPT-6.1 Sol · High",
+      "Codex · GPT-6.2 Sol · High",
     );
     expect(planning).toMatchObject({ when: "automatic", models: { kind: "chosen", guide: true } });
   });
@@ -255,7 +276,7 @@ describe("how the Inbox plans", () => {
     const planning = describeInboxPlanning(agents, settings(), { kind: "off" }, NOW);
     expect(planning.kind).toBe("off");
     expect(planning.kind === "off" && inboxAgentLine(planning.chat)).toBe(
-      "Codex · GPT-6.1 Sol · Light",
+      "Codex · GPT-6.2 Sol · Light",
     );
   });
 });

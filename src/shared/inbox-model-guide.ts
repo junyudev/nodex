@@ -14,12 +14,8 @@ export interface InboxModelGuideEntry {
   /** English guidance sent to the suggestion Agent. */
   readonly note: string;
   readonly noteMessage: MessageDescriptor;
-  /** Display label for a family whose name includes Nodex-authored wording. */
-  readonly familyMessage?: MessageDescriptor;
   /** The note in one line, as the Inbox shows it to people. */
   readonly summaryMessage: MessageDescriptor;
-  /** The family costs nothing to run, so it has no budget to weigh. */
-  readonly free?: true;
 }
 
 const MODEL_GUIDE_MESSAGES = defineMessages({
@@ -41,25 +37,21 @@ const MODEL_GUIDE_MESSAGES = defineMessages({
     id: "inbox.modelGuide.opusSummary",
     defaultMessage: "Frontend, UI and copy, with real taste. Spends the Claude budget faster.",
   },
-  openCodeFreeFamily: {
-    id: "inbox.modelGuide.openCodeFreeFamily",
-    defaultMessage: "OpenCode free models",
-  },
-  openCodeFreeNote: {
-    id: "inbox.modelGuide.openCodeFreeNote",
+  geminiNote: {
+    id: "inbox.modelGuide.geminiNote",
     defaultMessage:
-      "Free through OpenCode, so they spend no subscription budget. Smaller, faster models: fine for docs, notes, summaries and simple, well-specified changes, but weaker than GPT-6.1 or Claude Opus 5.5 at hard reasoning, architecture and taste. They can be slow or rate-limited when busy, so keep urgent or important work on a model with budget.",
+      "Excellent at frontend, UI and UX, with real taste in visual design and interaction; close to Claude Opus 5.5 there and far better than GPT models. Spends a Gemini budget rather than Claude's, so it can take UI work when the Claude budget runs low.",
   },
-  openCodeFreeSummary: {
-    id: "inbox.modelGuide.openCodeFreeSummary",
-    defaultMessage: "Docs, notes and simple changes. Weaker at hard problems.",
+  geminiSummary: {
+    id: "inbox.modelGuide.geminiSummary",
+    defaultMessage: "Frontend and UI, with real taste. Spends a Gemini budget, not Claude's.",
   },
 });
 
 export const INBOX_MODEL_GUIDE: readonly InboxModelGuideEntry[] = [
   {
-    family: "GPT-6.1",
-    match: /gpt[-\s]?6\.1/iu,
+    family: "GPT-6.2 Sol",
+    match: /gpt[-\s]?6\.2[-\s]?sol/iu,
     note: MODEL_GUIDE_MESSAGES.gptNote.defaultMessage,
     noteMessage: MODEL_GUIDE_MESSAGES.gptNote,
     summaryMessage: MODEL_GUIDE_MESSAGES.gptSummary,
@@ -72,13 +64,11 @@ export const INBOX_MODEL_GUIDE: readonly InboxModelGuideEntry[] = [
     summaryMessage: MODEL_GUIDE_MESSAGES.opusSummary,
   },
   {
-    family: MODEL_GUIDE_MESSAGES.openCodeFreeFamily.defaultMessage,
-    familyMessage: MODEL_GUIDE_MESSAGES.openCodeFreeFamily,
-    match: /^opencode\/[\w.-]+-free$/iu,
-    note: MODEL_GUIDE_MESSAGES.openCodeFreeNote.defaultMessage,
-    noteMessage: MODEL_GUIDE_MESSAGES.openCodeFreeNote,
-    summaryMessage: MODEL_GUIDE_MESSAGES.openCodeFreeSummary,
-    free: true,
+    family: "Gemini 4 Neon",
+    match: /gemini[-\s]?4[-\s]?neon/iu,
+    note: MODEL_GUIDE_MESSAGES.geminiNote.defaultMessage,
+    noteMessage: MODEL_GUIDE_MESSAGES.geminiNote,
+    summaryMessage: MODEL_GUIDE_MESSAGES.geminiSummary,
   },
 ];
 
