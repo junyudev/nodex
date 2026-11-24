@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
+import { immutableDirectoryDigest } from "../immutable-artifact-cache.ts";
 import { relativeInput } from "./test-cache-policy.ts";
 import { digest, fileStamp, type stampDigests } from "./test-cache-store.ts";
 
@@ -42,12 +43,23 @@ async function chromiumIdentity(digests: Digests) {
   const installedRevision = await realpath(revision);
   if (!relativeInput(installedRevision, canonical)) return;
   const binary = await binaryIdentity(canonical, digests);
+  // A restored Linux browser is a fresh extraction. Bind its entire distribution
+  // by content rather than by inode or extraction time.
+  const distribution =
+    process.platform === "linux" ? immutableDirectoryDigest(installedRevision) : undefined;
   return {
-    digest: digest(JSON.stringify([installedRevision, canonical, binary.stamp, binary.digest])),
+    digest: digest(
+      JSON.stringify(
+        distribution
+          ? [path.basename(revision), relativeInput(installedRevision, canonical), distribution]
+          : [installedRevision, canonical, binary.stamp, binary.digest],
+      ),
+    ),
     async unchanged() {
       return (
         canonical === (await realpath(executable).catch(() => undefined)) &&
-        (await binary.unchanged())
+        (await binary.unchanged()) &&
+        (!distribution || distribution === immutableDirectoryDigest(installedRevision))
       );
     },
   };
@@ -74,7 +86,7 @@ export function browserRuntimeIdentity(env: NodeJS.ProcessEnv, digests: Digests)
   );
 }
 
-export async function electronAddonIdentity(root: string, digests: Digests) {
+export async function electronAddonIdentity(root: string, digests: Digests, executable?: string) {
   const require = createRequire(path.join(root, "package.json"));
   const packageRoot = path.dirname(require.resolve("node-pty/package.json"));
   const release = path.join(packageRoot, "build", "Release");
@@ -90,16 +102,20 @@ export async function electronAddonIdentity(root: string, digests: Digests) {
   const files = await paths();
   if (!files.some((file) => file.endsWith(".node"))) return;
   const entries = await Promise.all(files.map((file) => binaryIdentity(file, digests)));
+  const distribution = executable && path.dirname(executable);
+  const distributionDigest = distribution && immutableDirectoryDigest(distribution);
   return {
     digest: digest(
-      JSON.stringify(
+      JSON.stringify([
+        distributionDigest,
         entries.map((entry, index) => [relativeInput(packageRoot, files[index]), entry.digest]),
-      ),
+      ]),
     ),
     async unchanged() {
       return (
         JSON.stringify(await paths()) === JSON.stringify(files) &&
-        (await Promise.all(entries.map((entry) => entry.unchanged()))).every(Boolean)
+        (await Promise.all(entries.map((entry) => entry.unchanged()))).every(Boolean) &&
+        (!distribution || distributionDigest === immutableDirectoryDigest(distribution))
       );
     },
   };
