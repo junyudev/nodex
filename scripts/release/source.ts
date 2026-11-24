@@ -1,28 +1,44 @@
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { readFileSync, realpathSync, statSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse as parseToml } from "smol-toml";
 import {
-  advanceChangelog,
-  extractReleaseNotes,
-  extractUnreleasedNotes,
-  validateNextVersionChangelog,
-} from "./changelog";
+  CHANGES_DIRECTORY,
+  CHANGES_README,
+  formatChangelog,
+  parseChangelog,
+  readUnreleasedChanges,
+  type PublishedRelease,
+  type RepositoryFile,
+} from "../../src/shared/changelog";
+import { readChangeFiles, readChangeFilesAtRef } from "./changelog";
 import { compareStableVersions, nextPatchVersion, normalizeStableVersion } from "./model";
 
-export const RELEASE_SOURCE_PATHS = [
+const RELEASE_METADATA_PATHS = [
   "package.json",
   "Cargo.toml",
   "Cargo.lock",
   "CHANGELOG.md",
 ] as const;
 
+export const RELEASE_SOURCE_PATHS = [...RELEASE_METADATA_PATHS, CHANGES_DIRECTORY] as const;
+
 interface ReleaseSourceFiles {
   readonly cargoPackages: ReadonlySet<string>;
   readonly cargoLock: string;
   readonly cargoToml: string;
   readonly changelog: string;
+  readonly changes: readonly RepositoryFile[];
   readonly packageJson: string;
 }
 
@@ -199,6 +215,7 @@ export function readReleaseSourceFiles(cwd: string): ReleaseSourceFiles {
     cargoToml,
     cargoLock: read("Cargo.lock"),
     changelog: read("CHANGELOG.md"),
+    changes: readChangeFiles(root),
   };
 }
 
@@ -240,6 +257,7 @@ const filesAtRef = (cwd: string, ref: string): ReleaseSourceFiles => {
     cargoToml,
     cargoLock: readAtRef("Cargo.lock"),
     changelog: readAtRef("CHANGELOG.md"),
+    changes: readChangeFilesAtRef(cwd, ref),
   };
 };
 
@@ -303,35 +321,62 @@ const updateCargoLockVersions = (
   return updated;
 };
 
+const metadataFiles = (files: ReleaseSourceFiles) =>
+  ({
+    "package.json": files.packageJson,
+    "Cargo.toml": files.cargoToml,
+    "Cargo.lock": files.cargoLock,
+    "CHANGELOG.md": files.changelog,
+  }) satisfies Record<(typeof RELEASE_METADATA_PATHS)[number], string>;
+
 const writeFilesAtomically = (
   cwd: string,
   before: ReleaseSourceFiles,
   after: ReleaseSourceFiles,
 ): void => {
-  const values: Array<[(typeof RELEASE_SOURCE_PATHS)[number], string]> = [
-    ["package.json", after.packageJson],
-    ["Cargo.toml", after.cargoToml],
-    ["Cargo.lock", after.cargoLock],
-    ["CHANGELOG.md", after.changelog],
-  ];
-  const prior = [before.packageJson, before.cargoToml, before.cargoLock, before.changelog];
-  const temporaryPaths = values
-    .filter(([, content], index) => content !== prior[index])
-    .map(([path, content]) => {
-      const temporaryPath = join(cwd, `.${path.replaceAll("/", "-")}.${randomUUID()}.tmp`);
-      writeFileSync(temporaryPath, content, "utf8");
-      return [path, temporaryPath] as const;
-    });
+  const prior = metadataFiles(before);
+  const next = metadataFiles(after);
+  const updates = RELEASE_METADATA_PATHS.filter((path) => next[path] !== prior[path]);
+  const remaining = new Set(after.changes.map(({ path }) => path));
+  const deletions = before.changes.filter(({ path }) => !remaining.has(path));
+  const temporaryDirectory = mkdtempSync(join(cwd, ".release-source-"));
+  const backups: { path: string; backup: string }[] = [];
+  let keepBackups = false;
   try {
-    for (const [path, temporaryPath] of temporaryPaths) renameSync(temporaryPath, join(cwd, path));
+    for (const [index, path] of updates.entries()) {
+      const temporary = join(temporaryDirectory, `new-${index}`);
+      writeFileSync(temporary, next[path], "utf8");
+      chmodSync(temporary, statSync(join(cwd, path)).mode);
+    }
+    for (const [index, path] of [...updates, ...deletions.map(({ path }) => path)].entries()) {
+      const original = join(cwd, path);
+      const backup = join(temporaryDirectory, `original-${index}`);
+      renameSync(original, backup);
+      backups.push({ path: original, backup });
+      if (index < updates.length) {
+        renameSync(join(temporaryDirectory, `new-${index}`), original);
+      }
+    }
   } catch (error) {
-    writeFileSync(join(cwd, "package.json"), before.packageJson, "utf8");
-    writeFileSync(join(cwd, "Cargo.toml"), before.cargoToml, "utf8");
-    writeFileSync(join(cwd, "Cargo.lock"), before.cargoLock, "utf8");
-    writeFileSync(join(cwd, "CHANGELOG.md"), before.changelog, "utf8");
+    const failures: unknown[] = [];
+    for (const { path, backup } of backups.reverse()) {
+      try {
+        renameSync(backup, path);
+      } catch (failure) {
+        failures.push(failure);
+      }
+    }
+    if (failures.length > 0) {
+      keepBackups = true;
+      throw new AggregateError(
+        [error, ...failures],
+        `Release source update could not be rolled back. Backups remain in ${temporaryDirectory}.`,
+        { cause: error },
+      );
+    }
     throw error;
   } finally {
-    for (const [, temporaryPath] of temporaryPaths) rmSync(temporaryPath, { force: true });
+    if (!keepBackups) rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 };
 
@@ -350,90 +395,129 @@ function versionFiles(current: ReleaseSourceSnapshot, version: string): ReleaseS
   };
 }
 
+export function validateReleaseSource(current: ReleaseSourceSnapshot): void {
+  const version = current.packageVersion;
+  if (parseChangelog(current.changelog).some((release) => release.version === version)) {
+    throw new Error(`Source version ${version} already has a dated changelog section.`);
+  }
+  readUnreleasedChanges(current.files.changes);
+}
+
 export function setSourceVersion(cwd: string, target: string): void {
   const version = normalizeStableVersion(target);
   const current = inspectReleaseSource(cwd);
-  validateNextVersionChangelog(current.changelog, version);
+  validateReleaseSource(current);
   if (version === current.packageVersion) return;
   if (compareStableVersions(version, current.packageVersion) < 0) {
     throw new Error("Source version must increase.");
   }
   const next = versionFiles(current, version);
-  snapshotFromFiles(next);
+  validateReleaseSource(snapshotFromFiles(next));
   writeFilesAtomically(cwd, current.files, next);
 }
 
 function advancedFiles(
   current: ReleaseSourceSnapshot,
-  version: string,
-  notes: string,
-  date: string,
+  release: PublishedRelease,
+  sourceChanges: readonly RepositoryFile[],
 ): ReleaseSourceFiles | null {
-  const comparison = compareStableVersions(current.packageVersion, version);
-  if (comparison < 0) throw new Error("Main source version is older than the published release.");
-  if (comparison > 0) {
-    try {
-      if (extractReleaseNotes(current.changelog, version) === notes) return null;
-    } catch {
-      // Main may have selected a higher next version during promotion.
-    }
+  const published = parseChangelog(current.changelog);
+  const existing = published.find(({ version }) => version === release.version);
+  if (existing) {
+    if (isDeepStrictEqual(existing, release)) return null;
+    throw new Error(
+      `CHANGELOG.md already lists ${release.version} with different release notes or date.`,
+    );
   }
+  if (!isDeepStrictEqual(release.sections, readUnreleasedChanges(sourceChanges))) {
+    throw new Error(`Release ${release.version} notes do not match its source change files.`);
+  }
+  const comparison = compareStableVersions(current.packageVersion, release.version);
+  if (comparison < 0) throw new Error("Main source version is older than the published release.");
+  const shipped = new Map(sourceChanges.map(({ path, content }) => [path, content]));
   return {
-    ...(comparison === 0 ? versionFiles(current, nextPatchVersion(version)) : current.files),
-    changelog: advanceChangelog(current.changelog, notes, version, date),
+    ...(comparison === 0
+      ? versionFiles(current, nextPatchVersion(release.version))
+      : current.files),
+    changelog: formatChangelog([release, ...published]),
+    changes: current.files.changes.filter(
+      ({ path, content }) => path === CHANGES_README || shipped.get(path) !== content,
+    ),
   };
 }
 
 export function advanceReleaseSource(
   cwd: string,
-  version: string,
-  notes: string,
-  date: string,
+  release: PublishedRelease,
+  sourceChanges: readonly RepositoryFile[],
 ): boolean {
   const current = inspectReleaseSource(cwd);
-  const next = advancedFiles(current, version, notes, date);
+  const next = advancedFiles(current, release, sourceChanges);
   if (!next) return false;
-  snapshotFromFiles(next);
-  validateNextVersionChangelog(next.changelog, parsePackageVersion(next.packageJson));
+  validateReleaseSource(snapshotFromFiles(next));
   writeFilesAtomically(cwd, current.files, next);
   return true;
 }
 
+const allowedAdvancePaths = (cwd: string, base: string, head: string): boolean => {
+  // Raw diff includes mode changes. An advance only rewrites regular metadata files or deletes changes.
+  const fields = run(cwd, "git", [
+    "diff",
+    "--raw",
+    "--no-renames",
+    "--ignore-submodules=none",
+    "-z",
+    base,
+    head,
+    "--",
+  ]).split("\0");
+  let changedChangelog = false;
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const path = fields[index + 1]!;
+    const [oldMode, newMode, , , status] = fields[index]!.slice(1).split(" ");
+    if (path === "CHANGELOG.md") changedChangelog = true;
+    if (RELEASE_METADATA_PATHS.some((allowed) => allowed === path)) {
+      if (status !== "M" || oldMode !== newMode || !/^100(?:644|755)$/.test(oldMode ?? "")) {
+        return false;
+      }
+      continue;
+    }
+    if (status !== "D" || !path.startsWith(`${CHANGES_DIRECTORY}/`)) return false;
+  }
+  return changedChangelog;
+};
+
 /** Only the exact release notes and version roll-forward bypass push-triggered CI admission. */
 export function isVersionAdvance(cwd: string, base: string, head: string): boolean {
-  const paths = run(cwd, "git", ["diff", "--name-only", base, head, "--"]).split("\n");
-  if (
-    !paths.includes("CHANGELOG.md") ||
-    paths.some((path) => !RELEASE_SOURCE_PATHS.some((allowed) => allowed === path))
-  )
-    return false;
-  const message = run(cwd, "git", ["show", "-s", "--format=%B", head]);
-  const source = /^Nodex-Release-Source: ([a-f0-9]{40})$/m.exec(message)?.[1];
-  if (!source) return false;
   try {
+    const parent = run(cwd, "git", ["show", "-s", "--format=%P", head]);
+    if (parent !== run(cwd, "git", ["rev-parse", "--verify", `${base}^{commit}`])) return false;
+    if (!allowedAdvancePaths(cwd, base, head)) return false;
+    const source = run(cwd, "git", [
+      "show",
+      "-s",
+      "--format=%(trailers:key=Nodex-Release-Source,valueonly,unfold)",
+      head,
+    ]);
+    if (!/^[a-f0-9]{40}$/.test(source)) return false;
     run(cwd, "git", ["merge-base", "--is-ancestor", source, base]);
+
+    const released = inspectReleaseSourceAtRef(cwd, source);
+    const before = inspectReleaseSourceAtRef(cwd, base);
+    const after = inspectReleaseSourceAtRef(cwd, head);
+    validateReleaseSource(after);
+    const [release] = parseChangelog(after.changelog);
+    if (release?.version !== released.packageVersion) return false;
+    const expected = advancedFiles(before, release, released.files.changes);
+    return (
+      expected !== null &&
+      isDeepStrictEqual(metadataFiles(after.files), metadataFiles(expected)) &&
+      isDeepStrictEqual(
+        new Map(after.files.changes.map(({ path, content }) => [path, content])),
+        new Map(expected.changes.map(({ path, content }) => [path, content])),
+      )
+    );
   } catch {
     return false;
   }
-  const released = inspectReleaseSourceAtRef(cwd, source);
-  const before = inspectReleaseSourceAtRef(cwd, base);
-  const after = inspectReleaseSourceAtRef(cwd, head).files;
-  const date = after.changelog
-    .split("\n")
-    .find((line) => line.startsWith(`## [${released.packageVersion}] - `))
-    ?.slice(-10);
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const expected = advancedFiles(
-    before,
-    released.packageVersion,
-    extractUnreleasedNotes(released.changelog),
-    date,
-  );
-  return (
-    !!expected &&
-    after.packageJson === expected.packageJson &&
-    after.cargoToml === expected.cargoToml &&
-    after.cargoLock === expected.cargoLock &&
-    after.changelog === expected.changelog
-  );
 }

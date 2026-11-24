@@ -7,6 +7,10 @@ on:
         description: Nightly tag to promote (blank selects the newest published Nightly)
         required: false
         type: string
+      headline:
+        description: Short plain-text headline for the stable release
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -44,12 +48,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY_TAG: ${{ inputs.nightly_tag }}
+          RELEASE_HEADLINE: ${{ inputs.headline }}
         shell: bash
         run: |
           set -euo pipefail
           args=(--repo "${GITHUB_REPOSITORY}" --dir "${RUNNER_TEMP}/nightly" --output "${RUNNER_TEMP}/candidate.json")
           if [[ -n "${NIGHTLY_TAG}" ]]; then args+=(--tag "${NIGHTLY_TAG}"); fi
-          vp exec tsx scripts/release/cli.ts resolve-promotion "${args[@]}"
+          vp exec tsx scripts/release/cli.ts resolve-promotion "${args[@]}" --headline="${RELEASE_HEADLINE}"
           # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
@@ -58,14 +63,23 @@ jobs:
               `source_sha=${identity.sourceSha}`, `tag=${stable.tag}`, `version=${stable.version}`,
               `nightly_run_id=${runId}`, `resume_run_id=${resumeRunId ?? ""}`, "",
             ].join("\n"));
+            fs.writeFileSync(process.argv[2], notes);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Promote ${identity.tag} to ${stable.tag}\n\n${notes}`);
-          ' "${RUNNER_TEMP}/candidate.json"
+          ' "${RUNNER_TEMP}/candidate.json" "${RUNNER_TEMP}/release-notes.md"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nodex-promotion-index-${{ steps.candidate.outputs.source_sha }}
           path: ${{ runner.temp }}/nightly/nodex-release-bundle-${{ steps.candidate.outputs.source_sha }}/release-bundle.json
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nodex-release-notes-${{ steps.candidate.outputs.source_sha }}
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
 
   finalize-sparkle:
     needs: resolve

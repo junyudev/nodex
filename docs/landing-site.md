@@ -111,7 +111,7 @@ every quality.
 - `src/styles/theme.css` for site colors and the desktop and phone app colors the replicas use in each theme
 - `src/lib/site.ts` for typed release and install constants
 - `src/lib/social-cards.ts` for the social cards the site publishes
-- `src/changelog.ts` for build-time `CHANGELOG.md` parsing and the entry helpers the changelog page uses
+- `src/changelog.ts` for the changelog page's view of `CHANGELOG.md` and `changes/`, read through `src/shared/changelog.ts`, and the entry helpers the page uses
 - `src/download-cta.ts` for copying the Homebrew install command
 - `public/` for copied brand assets, the committed social cards, and `.nojekyll`
 - `scripts/capture-demos.ts` for recording demos into README and social media
@@ -132,7 +132,7 @@ Download links point at the stable alias assets every GitHub Release carries: `N
 The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Remote both point at this card rather than at a store.
 Windows downloads appear only when the release the site describes carries Windows installers: `windowsDownloadsAvailable` in `src/lib/site.ts` compares the root app version with 0.5.0, the last stable release published without them. Once a later release is the oldest one the site can describe, that gate can be removed.
 The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
-The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, shows `Unreleased` first as in development and then each dated release in source order, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
+The changelog page at `/changelog/` is also build-time data: it shows the changes not released yet from `changes/` first, as Unreleased and without a headline, then each published release from the root `CHANGELOG.md`, newest first, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
 
 ## Publishing Topology
 

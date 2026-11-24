@@ -21,7 +21,14 @@ import {
 
 export type { AppTestSuite, CiGatePlan, DependencyKind, StaticGroup } from "./ci-gate-plan.ts";
 
-const RELEASE_PATHS = new Set(["Cargo.lock", "Cargo.toml", "CHANGELOG.md", "package.json"]);
+const RELEASE_PATHS = new Set(["Cargo.lock", "Cargo.toml", "package.json"]);
+
+/**
+ * The published release notes and the changes not released yet. `release:check` reads both with
+ * the parser release automation and the website share, so it alone validates them.
+ */
+const isReleaseNotesPath = (path: string): boolean =>
+  path === "CHANGELOG.md" || path.startsWith("changes/");
 
 const isRendererCompilerCheckPath = (path: string): boolean =>
   path === "scripts/ci/react-compiler-ratchet.ts" ||
@@ -399,12 +406,12 @@ const sourcePlan = (
   });
 };
 
-const classifyNormalizedPaths = (
-  paths: readonly string[],
-  options: { readonly full?: boolean; readonly forceFullTests?: boolean },
-): CiGatePlan => {
-  if (options.full || paths.length === 0) return allGatesPlan("source");
+type ClassificationOptions = { readonly full?: boolean; readonly forceFullTests?: boolean };
 
+const classifyOtherPaths = (
+  paths: readonly string[],
+  options: ClassificationOptions,
+): CiGatePlan => {
   if (paths.every(isDocumentationPath)) return createPlan({ docsOnly: true });
   const landingOnly =
     paths.some(isLandingPath) &&
@@ -474,6 +481,21 @@ const classifyNormalizedPaths = (
     dependencyKind,
     options.forceFullTests || requiresFullTests(executablePaths),
   );
+};
+
+const classifyNormalizedPaths = (
+  paths: readonly string[],
+  options: ClassificationOptions,
+): CiGatePlan => {
+  if (options.full || paths.length === 0) return allGatesPlan("source");
+  const otherPaths = paths.filter((path) => !isReleaseNotesPath(path));
+  if (otherPaths.length === paths.length) return classifyOtherPaths(paths, options);
+  const plan = otherPaths.every(isDocumentationPath)
+    ? createPlan({})
+    : classifyOtherPaths(otherPaths, options);
+  return plan.staticGroups.includes("repository-contracts")
+    ? plan
+    : createPlan({ ...plan, staticGroups: [...plan.staticGroups, "repository-contracts"] });
 };
 
 export function classifyChangedPaths(

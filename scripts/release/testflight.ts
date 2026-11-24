@@ -4,10 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  readChangelogHeadline,
-  splitChangelogReleaseBody,
-} from "../../src/shared/changelog-headline";
+import { parseReleaseNotes } from "../../src/shared/changelog";
 import { TESTFLIGHT_DIRECTORY, parseReleaseBundleManifest } from "./bundle";
 import {
   APP_STORE_CONNECT_APP_ID,
@@ -231,10 +228,7 @@ const findGroup = async (client: AppStoreConnect, name: string): Promise<string>
 function testerNotes(bundlePath: string, version: string): string {
   const notesPath = join(dirname(resolve(bundlePath)), "release-notes.md");
   const headline = existsSync(notesPath)
-    ? readChangelogHeadline(
-        splitChangelogReleaseBody(readFileSync(notesPath, "utf8")).beforeCategories,
-        version,
-      )
+    ? parseReleaseNotes(readFileSync(notesPath, "utf8"), `Release ${version}`).headline
     : null;
   return [
     headline,

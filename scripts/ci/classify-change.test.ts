@@ -21,6 +21,44 @@ describe("CI change classification", () => {
     });
   });
 
+  test.each([
+    ["CHANGELOG.md"],
+    ["changes/fixed/2026-11-24-editor.md", "docs/release.md"],
+    ["changes/README.md", "changes/added/2026-11-24-editor.md"],
+    ["changes/fixed/nested/malformed.txt"],
+  ])("validates release notes with release:check alone: %s", (...paths) => {
+    expect(classifyChangedPaths(paths)).toEqual({
+      allGates: false,
+      appTestSuites: [],
+      dependencyKind: "none",
+      docsOnly: false,
+      landingOnly: false,
+      protocolContracts: false,
+      relatedPaths: [],
+      rustFast: false,
+      rustFull: false,
+      rustMigration: false,
+      staticGroups: ["repository-contracts"],
+      testMode: "none",
+    });
+  });
+
+  test("adds release:check to the plan of the change a release note describes", () => {
+    const change = "changes/added/2026-11-24-editor.md";
+    const source = classifyChangedPaths(["src/renderer/components/app.tsx"]);
+    const withNotes = classifyChangedPaths(["src/renderer/components/app.tsx", change]);
+    expect(withNotes).toEqual({
+      ...source,
+      staticGroups: expect.arrayContaining([...source.staticGroups, "repository-contracts"]),
+    });
+    expect(withNotes.relatedPaths).not.toContain(change);
+    expect(classifyChangedPaths(["packages/landing/src/App.tsx", change])).toMatchObject({
+      landingOnly: true,
+      staticGroups: ["source-ownership", "repository-contracts", "landing"],
+      relatedPaths: ["packages/landing/src/App.tsx"],
+    });
+  });
+
   test("selects only the landing owner for landing plus documentation", () => {
     expect(classifyChangedPaths(["packages/landing/src/App.tsx", "README.md"])).toMatchObject({
       appTestSuites: ["unit", "renderer"],

@@ -12,6 +12,7 @@ on:
       - "pnpm-lock.yaml"
       - "package.json"
       - "CHANGELOG.md"
+      - "changes/**"
   workflow_dispatch:
 
 permissions:

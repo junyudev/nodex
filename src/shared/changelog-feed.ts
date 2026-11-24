@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { CHANGELOG_SECTION_KINDS, type ChangelogSectionKind } from "./changelog";
 
 /**
- * The public Nodex changelog feed: the most recent dated releases from CHANGELOG.md, published by
+ * The public Nodex changelog feed: the most recent published releases from CHANGELOG.md, published by
  * the website beside its changelog page and read by the desktop's What's new. The website builds
  * it; Main fetches and decodes it; the renderer only presents it.
  */
@@ -10,17 +11,6 @@ import { z } from "zod";
 export const CHANGELOG_PAGE_URL = "https://nodex.jyu.app/changelog/";
 /** Where the website publishes the feed. */
 export const CHANGELOG_FEED_URL = "https://nodex.jyu.app/changelog.json";
-
-/** Kinds of change in the order a release reads them. */
-export const CHANGELOG_SECTION_KINDS = [
-  "added",
-  "changed",
-  "deprecated",
-  "removed",
-  "fixed",
-  "security",
-] as const;
-export type ChangelogSectionKind = (typeof CHANGELOG_SECTION_KINDS)[number];
 
 /** One changelog bullet, split after its first sentence. Both parts keep inline Markdown. */
 export interface ChangelogEntry {

@@ -1,0 +1,1 @@
+Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt. If the chat's Agent still cannot write a title, another available Agent writes it.

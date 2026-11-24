@@ -4,12 +4,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
+  assertReleaseHeadline,
+  formatReleaseNotes,
+  formatReleaseSections,
+  parseReleaseNotes,
+  readUnreleasedChanges,
+  type PublishedRelease,
+  type ReleaseNotesSection,
+  type RepositoryFile,
+} from "../../src/shared/changelog";
+import {
   readArchitectureDirectory,
   parseReleaseBundleManifest,
   type ReleaseBundleManifest,
 } from "./bundle";
 import { assertSameBuildIdentity, resolveBuildIdentity } from "./candidate";
-import { extractUnreleasedNotes } from "./changelog";
+import { readChangeFilesAtRef } from "./changelog";
 import {
   gh,
   planPublication,
@@ -58,13 +68,13 @@ function assertOnMain(cwd: string, sourceSha: string, main: string): void {
   }
 }
 
-type PublishedRelease = GitHubRelease & { published_at: string };
+type PublishedGitHubRelease = GitHubRelease & { published_at: string };
 
-function publishedReleases(repo: string): PublishedRelease[] {
+function publishedReleases(repo: string): PublishedGitHubRelease[] {
   return api<GitHubRelease[][]>(`repos/${repo}/releases?per_page=100`, "--paginate", "--slurp")
     .flat()
     .filter(
-      (release): release is PublishedRelease =>
+      (release): release is PublishedGitHubRelease =>
         !release.draft &&
         typeof release.published_at === "string" &&
         Number.isFinite(Date.parse(release.published_at)),
@@ -169,7 +179,7 @@ function stableResumeRun(repo: string, sha: string): number | null {
   return null;
 }
 
-export function resolvePromotion(cwd: string, repo: string, requestedTag?: string) {
+function resolvePromotionCandidate(cwd: string, repo: string, requestedTag?: string) {
   const releases = publishedReleases(repo);
   const nightly = requestedTag?.trim()
     ? releases.find((release) => release.tag_name === requestedTag.trim())
@@ -182,6 +192,12 @@ export function resolvePromotion(cwd: string, repo: string, requestedTag?: strin
   const sourceSha = tagTarget(repo, nightly.tag_name);
   if (!sourceSha) throw new Error("The Nightly tag has no source commit.");
   assertOnMain(cwd, sourceSha, fetchMain(cwd));
+  const sections = readUnreleasedChanges(readChangeFilesAtRef(cwd, sourceSha));
+  if (sections.length === 0) {
+    throw new Error(
+      `${nightly.tag_name} has no release entries in changes/. Select a Nightly built from source with change files.`,
+    );
+  }
   const build = resolveBuildIdentity({ cwd, ref: sourceSha });
   const identity = publicationIdentity(build, "nightly");
   if (identity.tag !== nightly.tag_name)
@@ -214,21 +230,46 @@ export function resolvePromotion(cwd: string, repo: string, requestedTag?: strin
       );
     }
   }
-  const resumeRunId = stableTarget ? stableResumeRun(repo, sourceSha) : null;
-  if (stableTarget && resumeRunId === null && readGitHubRelease(repo, stable.tag)) {
+  return {
+    identity,
+    stable,
+    sections,
+    stableTarget,
+    publishedAt: nightly.published_at,
+    runId: nightlyRun(repo, sourceSha),
+  };
+}
+
+function notesFromGitHub(release: GitHubRelease, sections: readonly ReleaseNotesSection[]) {
+  const notes = parseReleaseNotes(release.body ?? "", `GitHub Release ${release.tag_name}`);
+  if (!isDeepStrictEqual(notes.sections, sections)) {
+    throw new Error(
+      `GitHub Release ${release.tag_name} notes do not match its source change files.`,
+    );
+  }
+  return notes;
+}
+
+export function resolvePromotion(cwd: string, repo: string, headline: string, tag?: string) {
+  assertReleaseHeadline(headline, "Stable promotion");
+  const { sections, stableTarget, ...candidate } = resolvePromotionCandidate(cwd, repo, tag);
+  const { identity, stable } = candidate;
+  const existing = stableTarget ? readGitHubRelease(repo, stable.tag) : null;
+  if (existing && notesFromGitHub(existing, sections).headline !== headline) {
+    throw new Error(
+      `The headline differs from GitHub Release ${stable.tag}. Resume with its original headline.`,
+    );
+  }
+  // Until the Stable tag exists nothing is published, so a new dispatch builds afresh and may
+  // choose another headline.
+  const resumeRunId = stableTarget ? stableResumeRun(repo, identity.sourceSha) : null;
+  if (stableTarget && resumeRunId === null && existing) {
     throw new Error(
       "The stable release exists, but its assembled promotion artifact is no longer retained.",
     );
   }
-  const notes = extractUnreleasedNotes(inspectReleaseSourceAtRef(cwd, sourceSha).changelog);
-  return {
-    identity,
-    stable,
-    notes,
-    publishedAt: nightly.published_at,
-    runId: nightlyRun(repo, sourceSha),
-    resumeRunId,
-  };
+  const notes = formatReleaseNotes({ headline, sections }, `Release ${stable.version}`);
+  return { ...candidate, notes, resumeRunId };
 }
 
 /** Compare the certified build deliverables. Feed files and publication metadata are regenerated. */
@@ -345,8 +386,14 @@ export function verifyPromotionInputs(
   }
 }
 
-export function preparePromotion(cwd: string, repo: string, dir: string, tag?: string) {
-  const candidate = resolvePromotion(cwd, repo, tag);
+export function preparePromotion(
+  cwd: string,
+  repo: string,
+  dir: string,
+  headline: string,
+  tag?: string,
+) {
+  const candidate = resolvePromotion(cwd, repo, headline, tag);
   gh([
     "run",
     "download",
@@ -379,12 +426,24 @@ export function verifyPromotedBundle(nightlyPath: string, stablePath: string): v
   }
 }
 
-export function promoteFromLocal(cwd: string, repo: string, tag?: string): void {
-  const { identity, notes, publishedAt } = resolvePromotion(cwd, repo, tag);
+export function promoteFromLocal(cwd: string, repo: string, tag?: string, headline?: string): void {
+  const candidate =
+    headline === undefined
+      ? resolvePromotionCandidate(cwd, repo, tag)
+      : resolvePromotion(cwd, repo, headline, tag);
+  const { identity, publishedAt } = candidate;
   const hours = Math.floor((Date.now() - Date.parse(publishedAt)) / 3_600_000);
+  const preview =
+    "notes" in candidate ? candidate.notes : formatReleaseSections(candidate.sections);
   process.stdout.write(
-    `${identity.tag} · ${identity.sourceSha} · ${hours}h old · v${identity.version}\n\n${notes}\n`,
+    `${identity.tag} · ${identity.sourceSha} · ${hours}h old · v${identity.version}\n\n${preview.trimEnd()}\n\n`,
   );
+  if (headline === undefined) {
+    process.stdout.write(
+      `To promote, run vp run release:promote -- ${identity.tag} --headline "Your headline"\n`,
+    );
+    return;
+  }
   const result = api<{ html_url: string }>(
     `repos/${repo}/actions/workflows/release.yml/dispatches`,
     "--method",
@@ -395,6 +454,8 @@ export function promoteFromLocal(cwd: string, repo: string, tag?: string): void 
     "ref=main",
     "-f",
     `inputs[nightly_tag]=${identity.tag}`,
+    "-f",
+    `inputs[headline]=${headline}`,
   );
   process.stdout.write(`${result.html_url}\n`);
 }
@@ -417,20 +478,24 @@ export function advancePublishedRelease(cwd: string, repo: string, tag: string):
   if (sourceSha !== published.sourceSha)
     throw new Error("Stable tag and bundle source do not agree.");
   assertOnMain(cwd, sourceSha, fetchMain(cwd));
-  const notes = extractUnreleasedNotes(inspectReleaseSourceAtRef(cwd, sourceSha).changelog);
+  const source = inspectReleaseSourceAtRef(cwd, sourceSha);
+  if (source.packageVersion !== version) {
+    throw new Error(`Stable tag ${tag} does not match source version ${source.packageVersion}.`);
+  }
+  const sourceChanges = source.files.changes;
+  const notes = notesFromGitHub(release, readUnreleasedChanges(sourceChanges));
   const date = new Date(release.published_at).toISOString().slice(0, 10);
-  advanceMain({ cwd, sourceSha, version, notes, date });
+  advanceMain({ cwd, sourceSha, release: { ...notes, version, date }, sourceChanges });
 }
 
 export function advanceMain(options: {
   cwd: string;
   sourceSha: string;
-  version: string;
-  notes: string;
-  date: string;
+  release: PublishedRelease;
+  sourceChanges: readonly RepositoryFile[];
 }): void {
-  const { cwd, sourceSha, version, notes, date } = options;
-  const tag = `v${version}`;
+  const { cwd, sourceSha, release, sourceChanges } = options;
+  const tag = `v${release.version}`;
   if (git(cwd, "status", "--porcelain"))
     throw new Error("Advance requires a clean checkout of main.");
   const branch = git(cwd, "branch", "--show-current");
@@ -441,8 +506,12 @@ export function advanceMain(options: {
   git(cwd, "merge", "--ff-only", main);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     assertOnMain(cwd, sourceSha, main);
-    if (!advanceReleaseSource(cwd, version, notes, date)) return;
-    git(cwd, "add", "--", ...RELEASE_SOURCE_PATHS);
+    if (!advanceReleaseSource(cwd, release, sourceChanges)) return;
+    // Deleted changes are still tracked. Listing tracked paths also permits an absent changes/ directory.
+    const paths = git(cwd, "ls-files", "-z", "--", ...RELEASE_SOURCE_PATHS)
+      .split("\0")
+      .filter(Boolean);
+    git(cwd, "add", "-A", "--", ...paths);
     git(
       cwd,
       "commit",
@@ -456,7 +525,7 @@ export function advanceMain(options: {
       return;
     } catch (cause) {
       const newer = fetchMain(cwd);
-      // Regenerate on the new parent so concurrent changelog edits are retained.
+      // Regenerate on the new parent so concurrent change files are retained.
       git(cwd, "reset", "--hard", newer);
       if (newer === main) throw new Error("Unable to push the release advance to main.", { cause });
       main = newer;

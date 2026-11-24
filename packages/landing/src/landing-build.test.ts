@@ -2,13 +2,14 @@ import { execFile } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { runInNewContext } from "node:vm";
@@ -16,11 +17,17 @@ import { motionValue } from "motion/react";
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parse } from "node-html-parser";
+import {
+  CHANGES_DIRECTORY,
+  parseChangelog,
+  readUnreleasedChanges,
+} from "../../../src/shared/changelog";
 import { decodeChangelogFeed } from "../../../src/shared/changelog-feed";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test, vi } from "vite-plus/test";
 import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
 import CaptureStage from "./demos/CaptureStage";
+import { inlineHtml } from "./changelog";
 import { CAPTURE_DEMOS, captureDemoPath, type CaptureDemoId } from "./demos/capture-demos";
 import { GOOGLE_PLAY_URL, RELEASES_URL, windowsDownloadsAvailable } from "./lib/site";
 import { SOCIAL_CARDS, type SocialCardId } from "./lib/social-cards";
@@ -49,7 +56,11 @@ vi.mock("./demos/timeline", async (importOriginal) => ({
 }));
 
 const landingRoot = resolve(import.meta.dirname, "..");
-const generated = resolve(landingRoot, "../../.generated");
+const repositoryRoot = resolve(landingRoot, "../..");
+const generated = join(repositoryRoot, ".generated");
+const publishedReleases = parseChangelog(
+  readFileSync(join(repositoryRoot, "CHANGELOG.md"), "utf8"),
+);
 mkdirSync(generated, { recursive: true });
 const outputDir = mkdtempSync(join(generated, "landing-build-"));
 const execFileAsync = promisify(execFile);
@@ -282,12 +293,10 @@ test("the homepage follows browser language until the visitor chooses a language
 });
 
 test("the release stamp matches the latest dated changelog release", () => {
-  const latestVersion = /^## \[([0-9.]+)\] - /m.exec(
-    readFileSync(resolve(landingRoot, "../../CHANGELOG.md"), "utf8"),
-  )?.[1];
+  const [latest] = publishedReleases;
 
   expect(readPage("").querySelector(".landing-version-label")?.textContent).toBe(
-    `v${latestVersion}`,
+    `v${latest?.version}`,
   );
 });
 
@@ -447,22 +456,40 @@ test.each(Object.keys(CAPTURE_DEMOS) as CaptureDemoId[])(
   },
 );
 
-test("the changelog marks the latest dated release as Latest, after any release in development", () => {
-  const latestVersion = /^## \[([0-9.]+)\] - /m.exec(
-    readFileSync(resolve(landingRoot, "../../CHANGELOG.md"), "utf8"),
-  )?.[1];
+test("the changelog leads with the repository's unreleased changes, then every published release", () => {
+  const changeFiles = readdirSync(join(repositoryRoot, CHANGES_DIRECTORY), {
+    recursive: true,
+    withFileTypes: true,
+  })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const path = join(entry.parentPath, entry.name);
+      return {
+        path: relative(repositoryRoot, path).replaceAll("\\", "/"),
+        content: readFileSync(path, "utf8"),
+      };
+    });
+  const unreleased = readUnreleasedChanges(changeFiles).flatMap(({ entries }) => entries);
   const releases = readPage("changelog").querySelectorAll("article[data-release]");
   const status = (release: (typeof releases)[number]) =>
     release.querySelector("[data-release-status]")?.textContent.trim();
   const dated = releases.filter((release) => release.id !== "unreleased");
 
-  expect(dated[0]?.id).toBe(`v${latestVersion}`);
+  expect(dated.map(({ id }) => id)).toEqual(publishedReleases.map(({ version }) => `v${version}`));
   expect(releases.filter((release) => status(release) === "Latest")).toEqual([dated[0]]);
+
+  if (unreleased.length === 0) {
+    expect(releases).toEqual(dated);
+    return;
+  }
+  const [first] = releases;
+  expect(first?.id).toBe("unreleased");
+  expect(first?.querySelector("h2")?.textContent.trim()).toBe("Unreleased");
+  expect(first && status(first)).toBe("In development");
+  const normalize = (text: string) => text.replace(/\s+/gu, " ").trim();
   expect(
-    releases
-      .filter((release) => release.id === "unreleased")
-      .every((release) => release === releases[0] && status(release) === "In development"),
-  ).toBe(true);
+    first?.querySelectorAll("section li").map((entry) => normalize(entry.textContent)),
+  ).toEqual(unreleased.map((entry) => normalize(parse(inlineHtml(entry)).textContent)));
 });
 
 test("every release in the changelog rail jumps to that release", () => {
@@ -479,9 +506,9 @@ test("every release in the changelog rail jumps to that release", () => {
 });
 
 test("the published changelog JSON uses the same headlines and anchors as the page", () => {
-  const feed = decodeChangelogFeed(
-    JSON.parse(readFileSync(join(outputDir, "changelog.json"), "utf8")),
-  );
+  const rawFeed: unknown = JSON.parse(readFileSync(join(outputDir, "changelog.json"), "utf8"));
+  const feed = decodeChangelogFeed(rawFeed);
+  expect(feed).toEqual(rawFeed);
   const datedReleases = readPage("changelog")
     .querySelectorAll("article[data-release]")
     .filter(({ id }) => id !== "unreleased");

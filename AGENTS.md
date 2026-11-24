@@ -154,25 +154,16 @@ When behavior changes, update the narrowest source-of-truth doc:
 Do not add implementation chronology, schema/version inventories, individual file behavior, UI interaction detail, failure runbooks, or feature acceptance rules to `docs/ARCHITECTURE.md`.
 Replace stale architectural statements and link to the narrow owner instead of appending another description of the same contract.
 
-Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** user-visible changes:
+Release notes are a required deliverable only for **release-note-worthy** user-visible changes:
 
-- Keep an `Unreleased` section at the top.
-- Keep its headline current: the plain line under `## [Unreleased]`, before the first category, sums up the one or two changes people will care about most in the next release. What's new, the changelog page and release notes lead with it, so write a short phrase in product words, about 36 characters and never more than 48, with no Markdown and no closing period (`Google Antigravity and a smaller Nodex`). Rewrite it when a bigger change lands; fixes and polish rarely change it. Releasing requires one, and every dated release keeps its own.
-- Write for humans, not commit-log style.
-- Only include externally relevant changes:
-  - Added
-  - Changed
-  - Deprecated
-  - Removed
-  - Fixed
-  - Security
-- Do NOT add changelog entries for tiny UI fixups, visual tweaks, styling/token/color adjustments, copy nits, or small interaction polish, even when user-visible.
-- Do NOT add entries for pure refactors, formatting, comments, test-only changes, or internal tooling changes unless they affect users.
-- Do NOT add entries to Changed/Fixed if you are changing/fixing a feature that is Unreleased.
-- If unsure whether a change belongs in release notes, default to leaving `CHANGELOG.md` unchanged and mention that choice in the final response.
-- Use one bullet per user-visible change.
-- Open each bullet with a sentence that stands on its own; the public changelog shows it as the entry's lead and the rest as detail.
-- Prefer impact-oriented wording, not implementation wording.
+- Write each one as its own file under `changes/`, as [changes/README.md](changes/README.md) describes, and never edit `CHANGELOG.md`: release automation writes it when a release is published. Branches that add different files never conflict over release notes.
+- A follow-up to a change that has not been released edits that change's file; do not add a Changed or Fixed entry for a feature that has not shipped.
+- Do not write a headline: whoever promotes a release writes it then, as [docs/release.md](docs/release.md#ship-a-stable-release) describes.
+- Only include externally relevant changes: Added, Changed, Deprecated, Removed, Fixed or Security.
+- Do NOT add changes for tiny UI fixups, visual tweaks, styling/token/color adjustments, copy nits, or small interaction polish, even when user-visible.
+- Do NOT add changes for pure refactors, formatting, comments, test-only changes, or internal tooling changes unless they affect users.
+- If unsure whether a change belongs in release notes, default to adding no change file and mention that choice in the final response.
+- Write for humans, about impact rather than implementation, and open with a sentence that stands on its own; the public changelog shows it as the entry's lead and the rest as detail.
 
 ## Verification
 

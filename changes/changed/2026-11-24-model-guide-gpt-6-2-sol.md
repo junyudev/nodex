@@ -1,0 +1,1 @@
+Nodex's model guide now covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4 Neon, each judged on its own. Inbox suggestions send backend and systems work to GPT-6.2 Sol and can give UI work to Gemini 4 Neon when the Claude budget runs low. GPT-6.1 models and OpenCode's free models no longer carry a guide note, so the Inbox's plan no longer marks free models `Free`.

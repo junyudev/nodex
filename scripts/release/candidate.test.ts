@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
-import { assertSameBuildIdentity, createBuildIdentity, resolveBuildIdentity } from "./candidate";
+import { formatChangelog, readUnreleasedChanges } from "../../src/shared/changelog";
+import {
+  assertSameBuildIdentity,
+  createBuildIdentity,
+  resolveBuildIdentity,
+  resolveNightlyCandidate,
+} from "./candidate";
+import { readChangeFilesAtRef } from "./changelog";
+import { advanceReleaseSource } from "./source";
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync("git", args, {
@@ -17,6 +25,30 @@ const git = (cwd: string, ...args: string[]): string =>
       GIT_COMMITTER_DATE: "2026-10-29T00:00:00Z",
     },
   }).trim();
+
+function seedRepository(repository: string): void {
+  mkdirSync(join(repository, "crates/nodex-core"), { recursive: true });
+  writeFileSync(join(repository, "package.json"), '{"version":"0.4.0"}\n');
+  writeFileSync(
+    join(repository, "Cargo.toml"),
+    '[workspace]\nmembers = ["crates/nodex-core"]\n\n[workspace.package]\nversion = "0.4.0"\n',
+  );
+  writeFileSync(
+    join(repository, "crates/nodex-core/Cargo.toml"),
+    '[package]\nname = "nodex-core"\nversion.workspace = true\n',
+  );
+  writeFileSync(
+    join(repository, "Cargo.lock"),
+    'version = 4\n\n[[package]]\nname = "nodex-core"\nversion = "0.4.0"\n',
+  );
+  writeFileSync(join(repository, "CHANGELOG.md"), formatChangelog([]));
+  git(repository, "init", "--initial-branch=main");
+  git(repository, "config", "user.name", "Nodex Test");
+  git(repository, "config", "user.email", "nodex@example.com");
+  git(repository, "config", "commit.gpgsign", "false");
+  git(repository, "add", ".");
+  git(repository, "commit", "-m", "chore: seed release source");
+}
 
 describe("release candidate identity", () => {
   test("derives one deterministic nightly identity from source facts", () => {
@@ -54,30 +86,7 @@ describe("release candidate identity", () => {
     const repository = join(root, "source");
     const shallow = join(root, "shallow");
     try {
-      mkdirSync(join(repository, "crates/nodex-core"), { recursive: true });
-      writeFileSync(join(repository, "package.json"), '{"version":"0.4.0"}\n');
-      writeFileSync(
-        join(repository, "Cargo.toml"),
-        '[workspace]\nmembers = ["crates/nodex-core"]\n\n[workspace.package]\nversion = "0.4.0"\n',
-      );
-      writeFileSync(
-        join(repository, "crates/nodex-core/Cargo.toml"),
-        '[package]\nname = "nodex-core"\nversion.workspace = true\n',
-      );
-      writeFileSync(
-        join(repository, "Cargo.lock"),
-        'version = 4\n\n[[package]]\nname = "nodex-core"\nversion = "0.4.0"\n',
-      );
-      writeFileSync(
-        join(repository, "CHANGELOG.md"),
-        "# Changelog\n\n## [Unreleased]\n\n## [0.4.0] - 2026-10-29\n\nSample release\n\n### Added\n\n- Release fixture.\n",
-      );
-      git(repository, "init", "--initial-branch=main");
-      git(repository, "config", "user.name", "Nodex Test");
-      git(repository, "config", "user.email", "nodex@example.com");
-      git(repository, "config", "commit.gpgsign", "false");
-      git(repository, "add", ".");
-      git(repository, "commit", "-m", "chore: seed release source");
+      seedRepository(repository);
       git(repository, "commit", "--allow-empty", "-m", "chore: advance source history");
       git(repository, "commit", "--allow-empty", "-m", "chore: advance release history");
       const sourceSha = git(repository, "rev-parse", "HEAD");
@@ -102,6 +111,52 @@ describe("release candidate identity", () => {
       expect(resolveBuildIdentity({ cwd: shallow, ref: sourceSha })).toEqual(expected);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("skips Nightly for an exact release advance and admits ordinary change files", () => {
+    const repository = mkdtempSync(join(tmpdir(), "nodex-nightly-advance-"));
+    try {
+      seedRepository(repository);
+      mkdirSync(join(repository, "changes/fixed"), { recursive: true });
+      const entry = join(repository, "changes/fixed/2026-10-29-sync.md");
+      writeFileSync(entry, "Fixed sync.\n");
+      git(repository, "add", "changes");
+      git(repository, "commit", "-m", "Fix sync");
+      const source = git(repository, "rev-parse", "HEAD");
+      expect(resolveNightlyCandidate({ cwd: repository, head: source })).toMatchObject({
+        shouldRelease: true,
+        identity: { version: "0.4.0" },
+      });
+
+      const sourceChanges = readChangeFilesAtRef(repository, source);
+      advanceReleaseSource(
+        repository,
+        {
+          version: "0.4.0",
+          date: "2026-10-29",
+          headline: "More reliable sync",
+          sections: readUnreleasedChanges(sourceChanges),
+        },
+        sourceChanges,
+      );
+      git(repository, "add", "-A");
+      git(
+        repository,
+        "commit",
+        "-m",
+        "Advance the release",
+        "-m",
+        `Nodex-Release-Source: ${source}`,
+      );
+      const head = git(repository, "rev-parse", "HEAD");
+      expect(resolveNightlyCandidate({ cwd: repository, head })).toEqual({
+        shouldRelease: false,
+        reason: "version-advance-only",
+        sourceSha: head,
+      });
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
     }
   });
 });

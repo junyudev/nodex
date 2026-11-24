@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import type { ChangelogRelease, ChangelogSectionKind } from "../../../shared/changelog-feed";
+import type { ChangelogSectionKind } from "../../../shared/changelog";
+import type { ChangelogRelease } from "../../../shared/changelog-feed";
 import { changelogInlineTokens } from "../../../shared/changelog-inline";
 import { OpenExternalIcon } from "@/components/shared/icons";
 import {

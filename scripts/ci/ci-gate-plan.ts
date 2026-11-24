@@ -188,7 +188,11 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
     candidate.landingOnly &&
     (!candidate.staticGroups.includes("landing") ||
       candidate.staticGroups.some(
-        (group) => group !== "landing" && group !== "ci-contracts" && group !== "source-ownership",
+        (group) =>
+          group !== "landing" &&
+          group !== "ci-contracts" &&
+          group !== "source-ownership" &&
+          group !== "repository-contracts",
       ) ||
       candidate.appTestSuites.some((suite) => suite !== "unit" && suite !== "renderer") ||
       candidate.protocolContracts ||
@@ -196,7 +200,7 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
       candidate.rustMigration)
   ) {
     throw new Error(
-      "Landing-only plans may select landing, source ownership, CI contracts, and unit/renderer tests.",
+      "Landing-only plans may select landing, source ownership, CI and repository contracts, and unit/renderer tests.",
     );
   }
 }

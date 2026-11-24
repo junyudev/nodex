@@ -1,33 +1,6 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-## [Unreleased]
-
-API key balances and what's new in the app
-
-### Added
-
-- See what's new in Nodex without leaving the app. **Feedback & community** in the account menu now opens on the three newest releases, each with its headline and date, and a filled dot marks the ones released since you last looked. Choose one to read its release notes in place, or open the full changelog on the website.
-- See what is left on an API key. DeepSeek and Kimi connections show their prepaid balance, such as `¥2.90 left`, and a MiniMax plan key shows its five-hour and weekly windows: beside the connection in **Settings > Agents > API keys**, on a meter of its own at the foot of the rail, and in the Inbox's plan. The meter measures a balance against your last top-up and turns amber and then red as it runs low; turn it off in **Settings > Appearance > Usage meters**.
-
-### Changed
-
-- Nodex's model guide now covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4 Neon, each judged on its own. Inbox suggestions send backend and systems work to GPT-6.2 Sol and can give UI work to Gemini 4 Neon when the Claude budget runs low. GPT-6.1 models and OpenCode's free models no longer carry a guide note, so the Inbox's plan no longer marks free models `Free`.
-- API keys now run on Nodex's built-in Codex. Codex talks to the provider's OpenAI Responses API and knows each model's context window and reasoning levels, such as DeepSeek's Low, High and Max, and connecting a key no longer downloads Claude Code. Choose **Runs on: Claude Code** when connecting to keep using Claude Code, or for an endpoint that only serves the Anthropic Messages API; keys you already connected keep running on Claude Code with their chats.
-
-### Fixed
-
-- Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt. If the chat's Agent still cannot write a title, another available Agent writes it.
-- Titles and Git drafts written with a Codex that uses its own model provider now go to that provider. They used to ignore the provider, endpoint and sign-in settings in Codex's `config.toml` and fall back to OpenAI.
-- An API key connection's chats, assignments, Inbox lines and usage show the provider's own mark instead of Claude Code's.
-- A subagent that received a follow-up now appears once in the Subagents tab. Before, each follow-up added another row, the map kept showing the finished first turn while the follow-up was still running, and counts such as "4/5 back" counted turns instead of subagents. The subagent's row and card now show the turn it is working on and keep their place, and Stop stops that turn. The chat's Subagents summary and the Composer's agent mentions list it once too.
-- Stopping a subagent now stops all of it. Its running turn ends, follow-ups waiting behind it never run, and none of them reports back to the Agent that delegated it, while turns that already finished keep their results. A follow-up held after you stop a subagent's own chat no longer keeps the parent chat looking busy, and a message steered into a turn that was just starting no longer reports a separate, cancelled task.
-- A subagent's result arrives once its work is done. A follow-up that delegated more work no longer reports back before that work finishes, a result no longer waits for a follow-up queued behind it, and a subagent woken by its own subagents' results reports the answer it gave after reading them.
-- Antigravity and other ACP chats that can resume now pick up your installed plugins on a later reply if they opened before Nodex finished reading them.
-- File search no longer shows matches and then replaces them with "File search is unavailable". Matches stay put, and when a folder can't be searched completely, a line below the results says why: the folder is too large, no longer exists, or Nodex isn't allowed to read it. If search itself stops, select **Couldn’t search files** to try again. A linked folder that points back inside the same folder is now searched only at its real location, so files your ignore rules hide no longer flood the results through the link.
-
-### Removed
+The notes of every Nodex release, newest first. Changes that have not been released yet are files in [`changes/`](changes/).
 
 ## [0.5.12] - 2026-11-24
 
@@ -158,9 +131,7 @@ Simplified Chinese and your own API keys
 ### Fixed
 
 - Nodex waits for a chat and its delegated work to finish before offering Accept. Only the chat's root Agent can report the Page ready, and a later round reopens the work unless you have since changed its Status.
-
 - Chats with agents added through the Agent Client Protocol get a real title. They used to keep their whole opening prompt as the title; Nodex now uses the name the agent gives its own session, unless you chose a title model in Settings or renamed the chat first.
-
 - Google Antigravity can answer in Nodex. Every message to it used to fail before it could start, because it couldn’t read the format of one of Nodex’s tools; Nodex now describes its tools in a form every Agent accepts.
 
 ## [0.5.7] - 2026-11-16
@@ -178,7 +149,6 @@ Send Browser annotations to Agents
 ### Fixed
 
 - Updating a plugin outside Nodex no longer blocks Claude Code or ACP replies. Nodex reloads the installed plugin before the next reply.
-
 - A terminal or background helper that loses its connection no longer leaves Nodex in a broken state, which happened most often on Windows. The affected terminal or operation now ends cleanly, and you can start it again without restarting Nodex.
 
 ## [0.5.6] - 2026-11-15
@@ -252,7 +222,6 @@ Team Spaces and coordinated Agent work
 
 - Open and edit skills as pages. Customize groups skills by folder and shows which Agents read each one. Open a skill from a chat or the command palette, edit its instructions with changes saved directly to disk, or duplicate a read-only skill to make your own copy.
 - Mention skills in Pages with `$` or the Skills section of `@`. Click a mention to open the skill’s instructions. When you send the Page text to a chat, the mention becomes a skill invocation in the message.
-
 - Nodex now coordinates your chats. One long-lived Nodex conversation routes every Inbox message knowing what is already running, watches the chats it starts, and keeps your Inbox focused on waiting messages and Pages waiting for you. Nodex adds a note when a Page needs more context, and one notification follows each episode. A chat can return a misrouted message with a reason for Nodex to route again. Reply to a Page waiting for you and your words go straight to its active chat, or answer the question it asked; open Nodex from the Inbox header to talk to it directly, and turn on Start my requests to let it start what you clearly ask for without a click. Work advances through Triage, Todo, In Progress and In Review as it starts and reports; your later Status choices take precedence. Accept reviewed work with `nodex page accept`; canceled work retires without releasing its dependents.
 - Pages have an Owner and one Assignee, either a person or an Agent. Board cards can wait for one another, and an Agent Assignee can be set to Start automatically. Cards, List rows, the Inbox and each Page’s Status say plainly whose move a Page waits for, such as Needs your answer, Ready for Alice’s review, Codex is working, Queued · 2nd or Waiting for NODEX-2. A Page’s Status offers Start, Resume, Accept or Open chat when you can act, while your later Status choices take precedence. Start hands a card to a chat Nodex watches, a card set to Start automatically starts once the cards it waits for are done, and for a bigger request Nodex can propose a plan that creates and starts its cards in one step.
 - Each Page’s Agent work in a Git Project gets its own branch and worktree, shared by its later chats. A new chat opens with its prompt while Nodex prepares the checkout. If preparation fails, the chat shows the reason and lets you retry. The Page shows its pull request and the GitHub threads it follows, the Board shows its pull request, and completing or canceling the Page removes the idle checkout while keeping the branch and PR link.
@@ -262,7 +231,6 @@ Team Spaces and coordinated Agent work
 - Watch GitHub from Settings → GitHub. Choose repositories and discover assignments, review requests and mentions. Updates on followed threads reach the Page's active chat, verified PR milestones move its stage, and new GitHub requests arrive in the Inbox for your decision. Nodex can acknowledge a request and post its result back to its GitHub origin. Problems in the Inbox offer a fix, and Activity explains routing, milestones, delivery and recovery. Polling, delivery and replies resume safely after restart.
 - Work with other people in a team Space. Join one from the account menu at the bottom of the rail, then switch between Spaces there or from the command palette, moving between a team's Pages, Boards and Inbox alongside your personal Space; each Space keeps its own layout, and losing access to a team leaves personal work untouched. Settings → Spaces shows who is in the Space and which devices reach it: Owners invite people, revoke Devices, remove Members and rename the Space, and everyone links and revokes their own Devices. Remote access lets your phone and other computers reach your personal Space without sharing it. Connections pin the host's certificate and resume live after a dropped network. History records who made each change, and each person keeps their own Inbox, unread chats, pins, reminders and View preferences across devices.
 - Run a team Space on an always-on machine with `nodex serve`. It initializes the Space, its Owner and certificate, runs Agents, Sources and Automations without desktop windows, and keeps working while everyone's laptops are closed. Members start chats and work on the host from their desktops and phones and use hosted chats as they would their own: attach images, files and Pages, fork, open side chats and edit their last message. The person who started a chat and the Space's Owners rename, archive, compact or stop it, and questions and approvals stay with the Member entitled to answer them. Host status reports when Agents share the host account's file access.
-
 - Claude Fable 5.2 is available, and new Claude models appear as soon as your Claude Code offers them. Claude chats list the models your installed Claude Code offers your account, with their effort, Fast and Ultracode choices, without waiting for a Nodex update. The default Fable model and the name `fable` follow the Fable model Claude Code gives you; Fable 5.2 needs Claude Code 2.1.321 or newer.
 - See how an agent understood your request without going back to its chat. When you send a message and move on, the agent's opening statement, what it says it will do before it starts, appears briefly at the top of the window you are in. Point at it to read all of it, Stop the agent or Reply to correct it on the spot, or click it to open the chat. A working chat's hover card in the sidebar shows the same statement. Turn it off in Settings → General → Notifications.
 
@@ -286,9 +254,7 @@ Team Spaces and coordinated Agent work
 ### Fixed
 
 - On iOS 27, tapping a button in Nodex Mobile's top bar no longer also scrolls the list beneath it to the top. Opening Settings used to leave the Inbox at its oldest message.
-
 - Older chats open again after upgrading Nodex.
-
 - Dropping a tab on the edge of a tab group now splits the group instead of doing nothing.
 - Page history opens again after you edit a Page and pause. The automatic revision Nodex saves when you stop editing made the Page's history show a database error instead of its revisions.
 - Usage analytics that is off when Nodex starts no longer sends events an earlier launch left waiting. Setting `DO_NOT_TRACK`, or otherwise turning analytics off while Nodex was closed, now discards them as turning it off in Settings does.
@@ -452,7 +418,6 @@ Nodex for Windows
 ### Fixed
 
 - Nodex opens existing Profiles after an upgrade even when they contain older chat cleanup records or Pages written by an earlier Markdown serializer.
-
 - Codex chats running side by side no longer all stop at once. When one chat's output arrived faster than Nodex could keep up, or Nodex failed to record one of its events, Nodex closed the Codex process the chats share, and every reply ended with "The provider event stream closed unexpectedly". Now only that chat catches up with Codex while the others keep going, and replies whose Codex process does stop resume on their own.
 - An Agent that delegates tasks now always learns how they ended. A brief local read failure as a task finished could leave it shown as working to the delegating chat until Nodex restarted, so the Agent was never woken; Nodex now retries that handoff and rechecks unsettled tasks every minute.
 - Changes that finish saving during a brief slowdown are no longer reported as failed. Nodex used to show a timeout or cancellation for a save that had already completed.
@@ -510,7 +475,6 @@ Plugins, ACP Registry and a smarter Inbox
 - The Files viewer previews videos and audio, with seeking, volume, playback speed, picture in picture and fullscreen, and explains when a file such as an archive or office document has no preview. Its header copies the file's path in the form you need, opens it on GitHub, and opens media and documents in the app made for them.
 - Files shows a text file's changes in place: pick Uncommitted, Unstaged, Staged, a commit or the branch to compare against, step between changes, switch between unified and split layouts, and keep editing while you compare. The file tree lists changed files above all files, with All changes opening Review, and the breadcrumb opens any folder's contents. Enable Git blame from the command palette to see who last changed the line you're on.
 - Agent questions keep unfinished answers across reopening and restart, support partial replies after work stops, and show readable answer history. Private responses stay hidden in copied and exported text.
-
 - macOS Appearance settings offer app-wide Font smoothing, enabled by default and synchronized across windows.
 - `/fast` and `/ultracode` toggle Fast and Ultracode from a Claude chat's composer, and Claude chats highlight the words Claude Code reacts to in a message, `ultrathink` and `ultracode`, with what each does for that turn.
 - Agents can find conversations by content, recover complete messages and activity through bounded continuations, continue chats with existing attachments, and follow exact Runs across restarts. Discovery stays in the calling Project unless Profile scope is explicit, permission limits apply to every send, and single-Run waits default to ten minutes with a one-hour maximum.
@@ -566,7 +530,6 @@ Plugins, ACP Registry and a smarter Inbox
 - Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High. When dynamic workflows are off for your Claude account, the toggle says so instead of silently doing nothing.
 - Changing a Claude chat's model, effort, Fast or Ultracode no longer restarts Claude Code, so it applies right away even while background agents, shells or workflows are running. If a change cannot be confirmed, retrying restores the complete choice before sending the next message.
 - The Composer context ring reports Claude Code, OpenCode and other Agents’ current usage, restores it when reopening a chat, and distinguishes unavailable readings from an empty context.
-
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.
 - Claude's thinking no longer turns into replies the moment a tool call starts, and long thinking no longer stretches past the edge of the chat.
 - Pasting into the chat or Inbox Composer keeps every line, and rich text from browsers, Notes, mail and documents pastes as its Markdown, keeping headings, emphasis, lists, links, code and tables.
@@ -645,6 +608,10 @@ An Inbox, and Agents that work together
 - New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.
 
+### Removed
+
+- Intel Mac builds. macOS releases and automatic updates now support Apple Silicon only.
+
 ### Fixed
 
 - Terminal output failures no longer trigger runaway error reporting and memory exhaustion.
@@ -659,10 +626,6 @@ An Inbox, and Agents that work together
 ### Security
 
 - Hardened rich-text paste, equations, diagrams, and configuration parsing against malicious input.
-
-### Removed
-
-- Intel Mac builds. macOS releases and automatic updates now support Apple Silicon only.
 
 ## [0.3.0] - 2026-09-20
 

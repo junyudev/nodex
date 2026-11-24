@@ -44,7 +44,8 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
 
 Nightly certification supplies exhaustive exact-SHA evidence. Stable promotion
 verifies the published Nightly and reuses its build outputs. Main CI checks that
-source version surfaces agree and the changelog contains Unreleased.
+source version surfaces agree and that `CHANGELOG.md` and the change files under
+`changes/` are well formed.
 
 Every aggregate gate fails closed: a selected job must succeed; skipped,
 cancelled, missing, and failed results are rejected. Manual PR/Main dispatch

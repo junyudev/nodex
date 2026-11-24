@@ -559,19 +559,28 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
 
 ## Ship a stable release
 
-1. Land the candidate on `main` with the intended next version, a headline and
-   meaningful entries under `Unreleased`. To choose a non-patch version, run
+1. Land the candidate on `main`. Its release notes are the change files under
+   `changes/` at that source, as [changes/README.md](../changes/README.md)
+   describes. To choose a non-patch version, run
    `vp run release:version -- <x.y.z>` and commit the three version sources
    through the ordinary source workflow. `vp run release:check` validates the
-   version sources and changelog.
+   version sources, `CHANGELOG.md` and every change file.
 2. Wait for **Nightly Release** to succeed and test the published Nightly.
-3. Dispatch **Release** on `main` with the Nightly tag. A blank input selects
-   the newest published Nightly. The local command prints the tag, source,
-   age, version and notes before dispatch and returns the run URL.
+3. Read what the Nightly would publish, write the release's headline, and
+   dispatch **Release** with both. A blank tag selects the newest published
+   Nightly. Without `--headline`, the local command prints the tag, source, age,
+   version and entries and stops; with one, it dispatches and returns the run
+   URL.
 
    ```bash
    vp run release:promote -- v0.5.5-nightly.20261111.2531
+   vp run release:promote -- v0.5.5-nightly.20261111.2531 --headline "Team Spaces and coordinated Agent work"
    ```
+
+   The headline sums up the one or two changes people will care about most. What's
+   new, the changelog page and the release notes lead with it, so write a short
+   phrase in product words, about 36 characters and never more than 48, with no
+   Markdown and no closing period.
 
 ### Promotion path
 
@@ -583,6 +592,11 @@ and every public asset must match the published Nightly SHA-256 digests.
 Assembly checks the Stable native and mobile hashes against that same verified
 Nightly, including the private TestFlight payload.
 
+The resolve job checks the headline and renders the release notes once: the
+headline, then the source's change files by kind. The three feed finalizers and
+the Bundle's `release-notes.md` use those exact bytes. A Nightly built before
+any change file landed has nothing to release and is turned away.
+
 The protected finalizers sign the three Stable feeds, using previous Stable
 archives for compatible macOS deltas. The assembler uses the retained native
 and mobile builds. The publisher reuses or creates the annotated tag and
@@ -592,11 +606,13 @@ retained iOS build. For internal testers, run the mobile package's
 `ios:testflight` command with the retained Nightly Bundle's
 `release-bundle.json` path. Use the same App Store Connect team credentials.
 
-The advance job rolls the exact released notes, headline included, into a dated
-heading using the GitHub publication date. Entries added on `main` remain in
-`Unreleased`, which starts without a headline until the next release's is written.
-The job advances the version sources by one patch, or keeps a higher version
-already chosen on `main`, and retries on a fresh parent if a push races.
+The advance job reads the notes the published release carries, headline
+included, checks them against the source's change files and adds them to
+`CHANGELOG.md` under a dated heading using the GitHub publication date. It
+deletes the change files the release published; a change file edited on `main`
+after the source was cut stays for the next release, as does every change added
+since. The job advances the version sources by one patch, or keeps a higher
+version already chosen on `main`, and retries on a fresh parent if a push races.
 It dispatches **Deploy Landing Site** after the push. A pages-only deploy
 preserves both update subtrees. The download page displays the latest dated
 changelog release.

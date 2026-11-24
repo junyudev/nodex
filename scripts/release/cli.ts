@@ -6,7 +6,7 @@ import {
   recordArchitectureBuild,
   type MacArchitecture,
 } from "./bundle";
-import { extractUnreleasedNotes, validateNextVersionChangelog } from "./changelog";
+import { renderReleaseNotesAtRef } from "./changelog";
 import { publishBrowserRuntime } from "./browser-runtime";
 import { buildWindowsDistribution } from "./windows-distribution";
 import { buildAndroidDistribution, buildIosDistribution } from "./mobile-distribution";
@@ -21,7 +21,12 @@ import {
   releaseAssetPaths,
   verifyRemoteRelease,
 } from "./github-release";
-import { inspectReleaseSource, inspectReleaseSourceAtRef, setSourceVersion } from "./source";
+import {
+  inspectReleaseSource,
+  inspectReleaseSourceAtRef,
+  setSourceVersion,
+  validateReleaseSource,
+} from "./source";
 import { parseBuildIdentity, parseReleaseIdentity, publicationIdentity } from "./model";
 import {
   assertSameBuildIdentity,
@@ -53,6 +58,11 @@ const parseFlags = (
     const argument = args[index];
     if (!argument.startsWith("--")) {
       positional.push(argument);
+      continue;
+    }
+    const equals = argument.indexOf("=");
+    if (equals !== -1) {
+      flags.set(argument.slice(2, equals), argument.slice(equals + 1));
       continue;
     }
     const value = args[index + 1];
@@ -94,7 +104,7 @@ const main = async (): Promise<void> => {
     const snapshot = flags.has("head")
       ? inspectReleaseSourceAtRef(projectRoot, required(flags, "head"))
       : inspectReleaseSource(projectRoot);
-    validateNextVersionChangelog(snapshot.changelog, snapshot.packageVersion);
+    validateReleaseSource(snapshot);
     writeJson(flags.get("output"), { version: snapshot.packageVersion });
     return;
   }
@@ -113,6 +123,7 @@ const main = async (): Promise<void> => {
       projectRoot,
       required(flags, "repo"),
       required(flags, "dir"),
+      flags.get("headline") ?? "",
       flags.get("tag"),
     );
     writeJson(required(flags, "output"), result);
@@ -123,8 +134,17 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "promote") {
-    if (positional.length > 1) throw new Error("Usage: vp run release:promote [-- <nightly-tag>].");
-    promoteFromLocal(projectRoot, flags.get("repo") ?? "junyudev/nodex", positional[0]);
+    if (positional.length > 1) {
+      throw new Error(
+        'Usage: vp run release:promote -- [<nightly-tag>] [--headline "Your headline"].',
+      );
+    }
+    promoteFromLocal(
+      projectRoot,
+      flags.get("repo") ?? "junyudev/nodex",
+      positional[0],
+      flags.get("headline"),
+    );
     return;
   }
   if (command === "advance") {
@@ -323,8 +343,10 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "extract-notes") {
-    const notes = extractUnreleasedNotes(
-      readFileSync(resolve(flags.get("changelog") ?? "CHANGELOG.md"), "utf8"),
+    const notes = renderReleaseNotesAtRef(
+      projectRoot,
+      required(flags, "source"),
+      flags.get("headline") ?? "",
     );
     const output = flags.get("output");
     if (output) writeFileSync(resolve(output), notes, "utf8");

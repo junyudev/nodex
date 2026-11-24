@@ -1,16 +1,25 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { parse as parseToml } from "smol-toml";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vite-plus/test";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import {
+  formatChangelog,
+  parseChangelog,
+  readUnreleasedChanges,
+  type PublishedRelease,
+} from "../../src/shared/changelog";
+import { readChangeFilesAtRef } from "./changelog";
 import {
   advanceReleaseSource,
   isVersionAdvance,
   inspectReleaseSource,
   inspectReleaseSourceAtRef,
   setSourceVersion,
+  validateReleaseSource,
 } from "./source";
 import { advanceMain } from "./promotion";
 
@@ -25,6 +34,28 @@ const PACKAGE_NAMES = [
 ] as const;
 
 let fixture = "";
+
+const shippedPath = "changes/added/2026-11-11-verification.md";
+const secondPath = "changes/added/2026-11-12-concurrent.md";
+const newPath = "changes/added/2026-11-13-new.md";
+const shippedEntry = "Added a verified release flow.\n";
+const previousRelease: PublishedRelease = {
+  version: "0.1.9",
+  date: "2026-05-03",
+  headline: "Previous release",
+  sections: [{ kind: "added", entries: ["Previous release."] }],
+};
+const publishedRelease = (ref = "HEAD"): PublishedRelease => ({
+  version: "0.1.10",
+  date: "2026-11-13",
+  headline: "Verified releases",
+  sections: readUnreleasedChanges(readChangeFilesAtRef(fixture, ref)),
+});
+
+const commit = (message: string, source?: string): void => {
+  git("add", "-A");
+  git("commit", "-m", message, ...(source ? ["-m", `Nodex-Release-Source: ${source}`] : []));
+};
 
 const git = (...args: string[]): string =>
   execFileSync("git", args, {
@@ -55,20 +86,22 @@ const writeFixture = (version = "0.1.10"): void => {
       (name) => `[[package]]\nname = "${name}"\nversion = "${version}"\n`,
     ).join("\n")}`,
   );
-  writeFileSync(
-    join(fixture, "CHANGELOG.md"),
-    `# Changelog\n\n## [Unreleased]\n\nVerified releases\n\n### Added\n- Added a verified release flow.\n\n## [${version}] - 2026-05-03\n\nPrevious release\n\n### Added\n- Previous release.\n`,
-  );
+  writeFileSync(join(fixture, "CHANGELOG.md"), formatChangelog([previousRelease]));
+  mkdirSync(join(fixture, "changes/added"), { recursive: true });
+  writeFileSync(join(fixture, "changes/README.md"), "How to write a change.\n");
+  writeFileSync(join(fixture, shippedPath), shippedEntry);
+  writeFileSync(join(fixture, secondPath), "Added concurrent verification.\n");
 };
 
 beforeEach(() => {
   fixture = mkdtempSync(join(tmpdir(), "nodex-release-source-"));
   writeFixture();
-  git("init");
+  git("init", "--initial-branch=main");
   git("config", "user.name", "Nodex Test");
   git("config", "user.email", "nodex@example.com");
-  git("add", ".");
-  git("commit", "-m", "chore: seed release source");
+  git("config", "commit.gpgsign", "false");
+  git("config", "core.autocrlf", "false");
+  commit("chore: seed release source");
 });
 
 afterEach(() => rmSync(fixture, { recursive: true, force: true }));
@@ -248,35 +281,153 @@ test("worktree inspection accepts contained manifest links and rejects non-regul
   expect(() => inspectReleaseSource(fixture)).toThrow("regular file within the worktree");
 });
 
-test("advances and recognizes the exact release metadata roll-forward", () => {
-  const changelog = join(fixture, "CHANGELOG.md");
-  writeFileSync(
-    changelog,
-    readFileSync(changelog, "utf8")
-      .replace("[0.1.10]", "[0.1.9]")
-      .replace("Verified releases", "A newer draft headline")
-      .replace(
-        "- Added a verified release flow.",
-        "- Added a verified release flow.\n- Added after the Nightly.",
-      ),
-  );
-  const released = git("rev-parse", "HEAD");
-  git("commit", "-am", "append unreleased notes");
-  const notes = "Verified releases\n\n### Added\n\n- Added a verified release flow.\n";
-  expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(true);
-  expect(advanceReleaseSource(fixture, "0.1.10", notes, "2026-11-11")).toBe(false);
+test("validates the published archive and change files even when the queue is empty", () => {
+  rmSync(join(fixture, "changes"), { recursive: true });
+  expect(() => validateReleaseSource(inspectReleaseSource(fixture))).not.toThrow();
+
+  const release = publishedRelease();
+  writeFileSync(join(fixture, "CHANGELOG.md"), formatChangelog([release, previousRelease]));
+  expect(() => setSourceVersion(fixture, "0.2.0")).toThrow("already has a dated changelog");
+  writeFileSync(join(fixture, "CHANGELOG.md"), "## [Unreleased]\n");
+  expect(() => validateReleaseSource(inspectReleaseSource(fixture))).toThrow("changes/");
+  writeFileSync(join(fixture, "CHANGELOG.md"), formatChangelog([previousRelease]));
+  mkdirSync(join(fixture, "changes"), { recursive: true });
+  writeFileSync(join(fixture, "changes/invalid.md"), "Invalid path.\n");
+  expect(() => setSourceVersion(fixture, "0.2.0")).toThrow("changes/invalid.md");
+});
+
+test("advances only shipped and unchanged files, prepends the release and is idempotent", () => {
+  const source = git("rev-parse", "HEAD");
+  const release = publishedRelease(source);
+  const sourceChanges = readChangeFilesAtRef(fixture, source);
+  // A byte-level edit stays pending even if it renders as the same entry.
+  const edited = "Added concurrent verification.\r\n";
+  writeFileSync(join(fixture, secondPath), edited);
+  writeFileSync(join(fixture, newPath), shippedEntry);
+  commit("Keep concurrent notes on main");
+
+  expect(advanceReleaseSource(fixture, release, sourceChanges)).toBe(true);
   const snapshot = inspectReleaseSource(fixture);
   expect(snapshot.packageVersion).toBe("0.1.11");
-  expect(snapshot.changelog).toContain(
-    "## [Unreleased]\n\n### Added\n\n- Added after the Nightly.",
+  expect(parseChangelog(snapshot.changelog)).toEqual([release, previousRelease]);
+  expect(snapshot.files.changes).toEqual(
+    expect.arrayContaining([
+      { path: "changes/README.md", content: "How to write a change.\n" },
+      { path: secondPath, content: edited },
+      { path: newPath, content: shippedEntry },
+    ]),
   );
-  expect(snapshot.changelog).toContain("## [0.1.10] - 2026-11-11\n\n" + notes);
-  git("commit", "-am", "advance version", "-m", `Nodex-Release-Source: ${released}`);
+  expect(snapshot.files.changes).toHaveLength(3);
+  expect(advanceReleaseSource(fixture, release, sourceChanges)).toBe(false);
+  expect(() =>
+    advanceReleaseSource(fixture, { ...release, date: "2026-11-14" }, sourceChanges),
+  ).toThrow("different release notes or date");
+
+  const base = git("rev-parse", "HEAD");
+  commit("Advance version", source);
+  expect(isVersionAdvance(fixture, base, "HEAD")).toBe(true);
+});
+
+test("restores version files and a deleted change file if a later deletion fails", () => {
+  const before = inspectReleaseSource(fixture);
+  const release = publishedRelease();
+  const sourceChanges = readChangeFilesAtRef(fixture, "HEAD");
+  const rename = fs.renameSync;
+  const failure = new Error("Could not remove a shipped file");
+  const spy = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+    if (from === join(fixture, secondPath)) throw failure;
+    rename(from, to);
+  });
+  syncBuiltinESMExports();
+  try {
+    expect(() => advanceReleaseSource(fixture, release, sourceChanges)).toThrow(failure);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+  expect(inspectReleaseSource(fixture)).toEqual(before);
+  expect(git("status", "--porcelain")).toBe("");
+});
+
+test.each([
+  ["an extra file", () => writeFileSync(join(fixture, "app.ts"), "export {};\n")],
+  ["an undeleted shipped file", () => writeFileSync(join(fixture, shippedPath), shippedEntry)],
+  ["an extra deletion", () => rmSync(join(fixture, newPath))],
+  [
+    "sections different from the source",
+    (release: PublishedRelease) =>
+      writeFileSync(
+        join(fixture, "CHANGELOG.md"),
+        formatChangelog([
+          { ...release, sections: [{ kind: "fixed", entries: ["Changed the published entry."] }] },
+          previousRelease,
+        ]),
+      ),
+  ],
+  [
+    "an invalid headline",
+    (release: PublishedRelease) =>
+      writeFileSync(
+        join(fixture, "CHANGELOG.md"),
+        formatChangelog([release, previousRelease]).replace(release.headline, "Invalid headline."),
+      ),
+  ],
+] as const)("rejects a purported advance with %s", (_name, tamper) => {
+  const source = git("rev-parse", "HEAD");
+  const release = publishedRelease(source);
+  writeFileSync(join(fixture, newPath), "Added after the Nightly.\n");
+  commit("Add a change to main");
+  const base = git("rev-parse", "HEAD");
+  expect(advanceReleaseSource(fixture, release, readChangeFilesAtRef(fixture, source))).toBe(true);
+  tamper(release);
+  commit("Tamper with the advance", source);
+  expect(isVersionAdvance(fixture, base, "HEAD")).toBe(false);
+});
+
+test("rebases independent changes in the same kind and conflicts on edits to shipped files", () => {
+  const source = git("rev-parse", "HEAD");
+  const release = publishedRelease(source);
+  const branches = [
+    { name: "branch-a", path: "changes/added/2026-11-13-branch-a.md", entry: "Added A.\n" },
+    { name: "branch-b", path: "changes/added/2026-11-13-branch-b.md", entry: "Added B.\n" },
+    { name: "branch-c", path: shippedPath, entry: "Edited a shipped change.\n" },
+  ];
+  for (const { name, path, entry } of branches) {
+    git("switch", "-c", name, source);
+    writeFileSync(join(fixture, path), entry);
+    commit(name);
+  }
+  git("switch", "main");
+  expect(advanceReleaseSource(fixture, release, readChangeFilesAtRef(fixture, source))).toBe(true);
+  commit("Advance version", source);
+  for (const { name, path, entry } of branches.slice(0, 2)) {
+    git("rebase", "main", name);
+    expect(git("diff", "--name-only", "main", "HEAD")).toBe(path);
+    expect(readFileSync(join(fixture, path), "utf8")).toBe(entry);
+    expect(git("status", "--porcelain")).toBe("");
+  }
+
+  const result = spawnSync("git", ["rebase", "main", "branch-c"], {
+    cwd: fixture,
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" },
+  });
+  expect(result.status).toBe(1);
+  expect(result.stdout).toContain("CONFLICT (modify/delete)");
+  expect(git("diff", "--name-only", "--diff-filter=U")).toBe(shippedPath);
+});
+
+test("advance stages the publication when main has already removed the entire change queue", () => {
+  const sourceSha = git("rev-parse", "HEAD");
+  const release = publishedRelease(sourceSha);
+  const sourceChanges = readChangeFilesAtRef(fixture, sourceSha);
+  git("remote", "add", "origin", ".");
+  rmSync(join(fixture, "changes"), { recursive: true });
+  commit("Remove the pending changes from main");
+
+  advanceMain({ cwd: fixture, sourceSha, release, sourceChanges });
   expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(true);
-  writeFileSync(join(fixture, "app.ts"), "export {};\n");
-  git("add", "app.ts");
-  git("commit", "--amend", "--no-edit");
-  expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(false);
+  expect(parseChangelog(inspectReleaseSource(fixture).changelog)[0]).toEqual(release);
 });
 
 test.skipIf(process.platform === "win32")(
@@ -287,10 +438,6 @@ test.skipIf(process.platform === "win32")(
     const gitAt = (cwd: string, ...args: string[]) =>
       execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     try {
-      const changelog = join(fixture, "CHANGELOG.md");
-      writeFileSync(changelog, readFileSync(changelog, "utf8").replace("[0.1.10]", "[0.1.9]"));
-      git("commit", "-am", "set next release");
-      git("branch", "-M", "main");
       const sourceSha = git("rev-parse", "HEAD");
       gitAt(remote, "init", "--bare", "--initial-branch=main");
       git("remote", "add", "origin", remote);
@@ -299,14 +446,9 @@ test.skipIf(process.platform === "win32")(
       gitAt(dirname(concurrent), "clone", remote, concurrent);
       gitAt(concurrent, "config", "user.email", "race@example.com");
       gitAt(concurrent, "config", "user.name", "Concurrent author");
-      writeFileSync(
-        join(concurrent, "CHANGELOG.md"),
-        readFileSync(changelog, "utf8").replace(
-          "### Added\n- Added a verified release flow.",
-          "### Added\n- Added a verified release flow.\n- Added during the push.",
-        ),
-      );
-      gitAt(concurrent, "commit", "-am", "add concurrent notes");
+      writeFileSync(join(concurrent, newPath), "Added during the push.\n");
+      gitAt(concurrent, "add", newPath);
+      gitAt(concurrent, "commit", "-m", "Add concurrent notes");
 
       writeFileSync(
         join(fixture, ".git/hooks/pre-push"),
@@ -323,18 +465,18 @@ fi
       const options = {
         cwd: fixture,
         sourceSha,
-        version: "0.1.10",
-        date: "2026-11-11",
-        notes: "Verified releases\n\n### Added\n\n- Added a verified release flow.\n",
+        release: publishedRelease(sourceSha),
+        sourceChanges: readChangeFilesAtRef(fixture, sourceSha),
       };
       advanceMain(options);
       const head = git("rev-parse", "HEAD");
       expect(git("rev-parse", "HEAD^")).toBe(
         gitAt(concurrent, "rev-parse", "HEAD").toString().trim(),
       );
-      expect(inspectReleaseSource(fixture).changelog).toContain(
-        "### Added\n\n- Added during the push.",
-      );
+      expect(inspectReleaseSource(fixture).files.changes).toContainEqual({
+        path: newPath,
+        content: "Added during the push.\n",
+      });
       expect(isVersionAdvance(fixture, "HEAD^", "HEAD")).toBe(true);
       advanceMain(options);
       expect(git("rev-parse", "HEAD")).toBe(head);

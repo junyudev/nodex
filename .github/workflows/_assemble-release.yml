@@ -118,6 +118,22 @@ jobs:
           name: nodex-promotion-index-${{ inputs.source_sha }}
           path: ${{ runner.temp }}/promotion-index
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: inputs.channel == 'stable' && !inputs.rehearsal
+        with:
+          name: nodex-release-notes-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/notes
+
+      - name: Verify the original promotion notes on resume
+        if: inputs.resume_run_id != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! cmp -s "${RUNNER_TEMP}/notes/release-notes.md" "${RUNNER_TEMP}/release-bundle/release-notes.md"; then
+            echo '::error::Release notes differ from the retained Stable Bundle. Resume with the headline from the original promotion.'
+            exit 1
+          fi
+
       - name: Assemble Release Bundle
         if: inputs.resume_run_id == ''
         env:
@@ -145,8 +161,7 @@ jobs:
             --certificate "${RUNNER_TEMP}/certification/source-certification.json" --run-id "${SOURCE_RUN_ID}"
           cp "${RUNNER_TEMP}/certification/source-certification.json" "${bundle}/source-certification.json"
           if [[ "${CHANNEL}" == "stable" && "${REHEARSAL}" != "true" ]]; then
-            git show "${SOURCE_SHA}:CHANGELOG.md" > "${RUNNER_TEMP}/CHANGELOG.md"
-            vp run release:notes -- --changelog "${RUNNER_TEMP}/CHANGELOG.md" --output "${bundle}/release-notes.md"
+            cp "${RUNNER_TEMP}/notes/release-notes.md" "${bundle}/release-notes.md"
           else
             # shellcheck disable=SC2016
             printf 'Build from `%s`.\n' "${SOURCE_SHA}" > "${bundle}/release-notes.md"

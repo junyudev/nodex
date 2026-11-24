@@ -1,19 +1,14 @@
 import {
-  CHANGELOG_PAGE_URL,
-  CHANGELOG_SECTION_KINDS,
-  type ChangelogFeed,
-} from "../../../src/shared/changelog-feed";
-import {
-  readChangelogHeadline,
-  splitChangelogReleaseBody,
-} from "../../../src/shared/changelog-headline";
+  CHANGELOG_SECTION_TITLES,
+  parseChangelog,
+  readUnreleasedChanges,
+  type ReleaseNotesSection,
+  type RepositoryFile,
+} from "../../../src/shared/changelog";
+import { CHANGELOG_PAGE_URL, type ChangelogFeed } from "../../../src/shared/changelog-feed";
 import { changelogInlineTokens } from "../../../src/shared/changelog-inline";
 
-/**
- * The root CHANGELOG.md as data for the changelog page: releases in source order, Unreleased
- * first, each with its headline, categories and entries. Entries keep their inline Markdown and
- * lead with their first sentence (`splitEntry`).
- */
+/** An entry on the changelog page, with its inline Markdown intact. */
 export type ChangelogItem = {
   text: string;
 };
@@ -30,13 +25,6 @@ export type ChangelogRelease = {
   label: string;
   version: string | null;
 };
-
-const releaseHeadingPattern = /^## \[(?<label>[^\]]+)\](?: - (?<date>\d{4}-\d{2}-\d{2}))?$/;
-const categoryHeadingPattern = /^### (?<title>.+)$/;
-
-function normalizeContent(content: string): string {
-  return content.replace(/\r\n/g, "\n");
-}
 
 function escapeHtml(value: string): string {
   return value
@@ -89,128 +77,6 @@ function findMatchingBacktickRun(value: string, start: number, delimiterLength: 
   return -1;
 }
 
-function readMeaningfulReleaseCategories(content: string, heading: string): ChangelogCategory[] {
-  const categories: ChangelogCategory[] = [];
-  let activeCategory: ChangelogCategory | null = null;
-
-  for (const rawLine of content.split("\n")) {
-    const line = rawLine.trimEnd();
-    const categoryHeading = line.match(categoryHeadingPattern);
-
-    if (categoryHeading?.groups?.title) {
-      activeCategory = {
-        title: categoryHeading.groups.title.trim(),
-        items: [],
-      };
-      categories.push(activeCategory);
-      continue;
-    }
-
-    if (line.trim().length === 0) {
-      continue;
-    }
-
-    if (!line.startsWith("- ")) {
-      throw new Error(`Unsupported changelog content in ${heading}: "${line}".`);
-    }
-
-    if (!activeCategory) {
-      throw new Error(`Changelog bullets must appear below a category heading in ${heading}.`);
-    }
-
-    activeCategory.items.push({
-      text: line.slice(2).trim(),
-    });
-  }
-
-  return categories.filter((category) => category.items.length > 0);
-}
-
-function parseReleaseHeading(
-  heading: string,
-): Pick<ChangelogRelease, "date" | "label" | "version"> {
-  const match = heading.match(releaseHeadingPattern);
-  const label = match?.groups?.label;
-  const date = match?.groups?.date ?? null;
-
-  if (!label) {
-    throw new Error(`Unsupported changelog release heading: "${heading}".`);
-  }
-
-  if (label === "Unreleased") {
-    if (date) {
-      throw new Error("The Unreleased changelog section must not include a date.");
-    }
-
-    return {
-      date: null,
-      label: "Unreleased",
-      version: null,
-    };
-  }
-
-  if (!date) {
-    throw new Error(`Release heading "${heading}" must include a YYYY-MM-DD date.`);
-  }
-
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(label)) {
-    throw new Error(`Release heading "${heading}" must use a semver version label.`);
-  }
-
-  return {
-    date,
-    label: `v${label}`,
-    version: label,
-  };
-}
-
-export function parseChangelog(content: string): ChangelogRelease[] {
-  const normalizedContent = normalizeContent(content);
-  const lines = normalizedContent.split("\n");
-  const releaseSections: Array<{ bodyLines: string[]; heading: string }> = [];
-  let activeSection: { bodyLines: string[]; heading: string } | null = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-
-    if (line.startsWith("## [") || (!activeSection && line.startsWith("## "))) {
-      activeSection = {
-        heading: line,
-        bodyLines: [],
-      };
-      releaseSections.push(activeSection);
-      continue;
-    }
-
-    if (!activeSection) {
-      continue;
-    }
-
-    activeSection.bodyLines.push(rawLine);
-  }
-
-  if (releaseSections.length === 0) {
-    throw new Error("Unable to find any changelog release sections.");
-  }
-
-  return releaseSections.map((section) => {
-    const release = parseReleaseHeading(section.heading);
-    const { beforeCategories, categories } = splitChangelogReleaseBody(
-      section.bodyLines.join("\n"),
-    );
-    return {
-      ...release,
-      headline: readChangelogHeadline(beforeCategories, release.version ?? release.label),
-      categories: readMeaningfulReleaseCategories(categories, section.heading),
-    };
-  });
-}
-
-/** Kinds of change in the order the changelog page reads them, whatever order a release uses. */
-export const CHANGE_ORDER = CHANGELOG_SECTION_KINDS.map(
-  (kind) => kind.charAt(0).toUpperCase() + kind.slice(1),
-);
-
 /** Each kind of change keeps the color its status has in the app. */
 export const CHANGE_TONE: Record<string, string> = {
   Added: "bg-status-done",
@@ -221,43 +87,54 @@ export const CHANGE_TONE: Record<string, string> = {
   Security: "bg-free",
 };
 
-/**
- * The releases the changelog page shows: each one with entries, in source order, its kinds of
- * change in CHANGE_ORDER. An Unreleased section with no entries yet is left out.
- */
-export function releasesToShow(content: string): ChangelogRelease[] {
-  const rank = (category: ChangelogCategory) => {
-    const index = CHANGE_ORDER.indexOf(category.title);
-    return index === -1 ? CHANGE_ORDER.length : index;
-  };
-  return parseChangelog(content)
-    .filter((release) => release.categories.length > 0)
-    .map((release) => ({
-      ...release,
-      categories: [...release.categories].sort((a, b) => rank(a) - rank(b)),
-    }));
+function toCategories(sections: readonly ReleaseNotesSection[]): ChangelogCategory[] {
+  return sections.map(({ kind, entries }) => ({
+    title: CHANGELOG_SECTION_TITLES[kind],
+    items: entries.map((text) => ({ text })),
+  }));
 }
 
-/** The dated changelog releases published for Nodex's What's new. */
+/** Unreleased notes, if any, followed by every published release. */
+export function releasesToShow(
+  content: string,
+  changeFiles: readonly RepositoryFile[],
+): ChangelogRelease[] {
+  const unreleased = toCategories(readUnreleasedChanges(changeFiles));
+  const published = parseChangelog(content).map(({ version, date, headline, sections }) => ({
+    version,
+    date,
+    headline,
+    label: `v${version}`,
+    categories: toCategories(sections),
+  }));
+  if (unreleased.length === 0) return published;
+  return [
+    { label: "Unreleased", version: null, date: null, headline: null, categories: unreleased },
+    ...published,
+  ];
+}
+
+/** The latest published releases for Nodex's What's new. */
 export function changelogFeed(
   content: string,
   { limit = 12 }: { readonly limit?: number } = {},
 ): ChangelogFeed {
-  const releases = releasesToShow(content).flatMap(({ version, date, headline, categories }) => {
-    if (version === null || date === null || headline === null) return [];
-    const sections = categories.flatMap((category) => {
-      const kind = CHANGELOG_SECTION_KINDS[CHANGE_ORDER.indexOf(category.title)];
-      if (!kind) return [];
-      const entries = category.items.map(({ text }) => {
-        const { lead, rest: detail } = splitEntry(text);
-        return { lead, detail };
-      });
-      return [{ kind, entries }];
-    });
-    if (sections.length === 0) return [];
-    return [{ version, date, url: `${CHANGELOG_PAGE_URL}#v${version}`, headline, sections }];
-  });
-  return { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases: releases.slice(0, limit) };
+  const releases = parseChangelog(content)
+    .slice(0, limit)
+    .map(({ version, date, headline, sections }) => ({
+      version,
+      date,
+      url: `${CHANGELOG_PAGE_URL}#v${version}`,
+      headline,
+      sections: sections.map(({ kind, entries }) => ({
+        kind,
+        entries: entries.map((entry) => {
+          const { lead, rest: detail } = splitEntry(entry);
+          return { lead, detail };
+        }),
+      })),
+    }));
+  return { schemaVersion: 1, url: CHANGELOG_PAGE_URL, releases };
 }
 
 /**
