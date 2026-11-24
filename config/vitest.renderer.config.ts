@@ -1,3 +1,4 @@
+import { observeTestFiles } from "./test-file-observation";
 import { vitestTimeouts } from "./test-timeouts";
 import { resolveVitestTestTier } from "./vitest-test-tier";
 import { TEST_ENVIRONMENT } from "./test-environment";
@@ -67,14 +68,14 @@ export default defineConfig(async () => ({
     maxWorkers: useVmPool ? Math.min(maxWorkers, 2) : maxWorkers,
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
-    setupFiles: [
-      // First, so modules that capture the frame function when they load see the real-time one.
+    ...observeTestFiles([
+      // Before the other renderer setup files, which may capture the frame function.
       "./src/renderer/test/setup-animation-frames.ts",
       "./config/setup-markdown.ts",
       "./config/setup-search-kernel.ts",
       "./config/setup-test-timeouts.ts",
       "./src/renderer/test/setup.ts",
-    ],
+    ]),
     ...vitestTimeouts(testFiles.isStress),
   },
 }));

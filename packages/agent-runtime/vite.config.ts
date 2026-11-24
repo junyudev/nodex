@@ -1,3 +1,4 @@
+import { observeTestFiles } from "../../config/test-file-observation.ts";
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import { fileURLToPath } from "node:url";
@@ -32,10 +33,10 @@ export default defineConfig({
       ],
     ],
     ...vitestTimeouts(testFiles.isStress),
-    setupFiles: [
+    ...observeTestFiles([
       fileURLToPath(new URL("../../config/setup-test-timeouts.ts", import.meta.url)),
       fileURLToPath(new URL("./vendor/shared/src/testing/longTempDir.ts", import.meta.url)),
       fileURLToPath(new URL("./src/testUtils/gitConfig.setup.ts", import.meta.url)),
-    ],
+    ]),
   },
 });

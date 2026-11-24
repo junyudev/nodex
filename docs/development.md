@@ -1384,6 +1384,30 @@ boundaries instead of accepting or silencing them. Compare trends only
 within the same runner/toolchain/scope; ordinary CI does not run repeated full
 benchmarks or enforce a noisy universal wall-time threshold.
 
+### Observe test-file inputs
+
+Set `NODEX_TEST_OBSERVATIONS` to a fresh, absolute output directory to record Node
+I/O separately for each unit, renderer, Agent Runtime, Effect Codex, or Core
+client test file. Use the ordinary suite runner so its runtime, native
+prerequisites, and machine budget remain in effect.
+
+```sh
+NODEX_TEST_OBSERVATIONS="$PWD/node_modules/.cache/test-observations-unit" vp run test:unit
+```
+
+Each JSON record identifies its file and worker and contains content digests,
+path probes, directory listing digests, and reasons the recorder could not
+account for an operation. The first setup file starts attribution and the run
+hook closes it after test hooks and snapshots. Node preloads the hooks so VM
+contexts and dependencies capture the instrumented builtins. Records are local
+diagnostics and may contain absolute paths and executable names.
+
+The recorder covers the hooked Node calls during the file, under the suite's
+temp-directory and loopback conventions. Memoization also needs a complete
+pass, validated module-resolution evidence, and accounting for other ambient
+inputs. Treat missing or duplicate records as incomplete. Observation mode
+writes diagnostic records only.
+
 ### Collaborative editor dependency updates
 
 Keep Tiptap versions aligned across the root, vendored BlockNote manifests, and

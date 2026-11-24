@@ -60,6 +60,9 @@ export async function discoverSuiteManifest(
   context: Pick<Command, "cwd" | "env" | "signal">,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-test-discovery-"));
+  // Discovery describes the ordinary suite. Only file execution opts into I/O recording.
+  const env = { ...context.env };
+  delete env.NODEX_TEST_OBSERVATIONS;
   try {
     const output = path.join(directory, "files.json");
     const command = runtimeCommand(
@@ -72,7 +75,7 @@ export async function discoverSuiteManifest(
         related ? "related" : "run",
         ...args,
       ],
-      context,
+      { ...context, env },
     );
     const result = await runCommand(command);
     if (result.exitCode !== 0)
