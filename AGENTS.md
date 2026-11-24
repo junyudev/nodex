@@ -242,7 +242,7 @@ For UI iteration and visual review, `vp run dev --home <absolute-task-home> --se
 ## Commit and PR Expectations
 
 - Keep changes scoped and atomic.
-- Before merging a branch into `main`, including a requested rebase-and-merge, rewrite its unpublished history into atomic Conventional Commits. Fold `wip`, review-fix, style, and formatting commits into the commits they complete, and never merge a fix for a defect the same branch introduced as its own commit. The merged result must typecheck; intermediate commits need not be verified one by one.
+- Before merging a branch into `main`, including a requested rebase-and-merge, rewrite its unpublished history into atomic Conventional Commits. Fold `wip`, review-fix, style, and formatting commits into the commits they complete, and never merge a fix for a defect the same branch introduced as its own commit. The merged result must typecheck; intermediate commits need not be verified one by one. Rewrite history against the branch's own base (`git merge-base HEAD main`), then rebase onto current `main`: resetting onto a newer `main` and committing the old working tree silently undoes every commit `main` gained meanwhile, which `vp run check:changed` reports.
 - Use Conventional Commits: `<type>(<scope>): <description>`, omitting the scope when it adds no value. Common types include `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`, and `perf`.
 - Write a concise, imperative, human-readable subject that explains why the change matters. Prefer the user, product, reliability, or performance outcome over the implementation mechanism.
   - Bad: `perf(server): negotiate permessage-deflate on the websocket`

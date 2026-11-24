@@ -2,6 +2,7 @@ import { ownerOfTest, type SuiteId } from "../../config/test-suites.ts";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
 import type { CiGatePlan } from "../ci/ci-gate-plan.ts";
 import { selectStaticChecks, STATIC_CHECKS } from "../ci/verify-static.ts";
+import type { readChangedPaths } from "./check-changed-record.ts";
 import {
   CACHE_SUITES,
   isCacheSuite,
@@ -128,11 +129,21 @@ function rustSteps(plan: CiGatePlan | null): CheckStep[] {
   return steps.length ? steps : [skip("rust", "no Rust or protocol gates selected")];
 }
 
+type ChangeScope = Omit<ReturnType<typeof readChangedPaths>, "ref">;
+
+function restorationStep({ base, head, shallow }: ChangeScope): CheckStep {
+  const name = "committed file restorations";
+  if (shallow) return skip(name, "shallow history (fetch full history to enable this check)");
+  if (base === head) return skip(name, "no commits since the comparison base");
+  return command(name, ["exec", "tsx", "scripts/testing/check-file-restorations.ts", base, head]);
+}
+
 export function planCheckSteps(
-  files: readonly string[],
+  comparison: ChangeScope,
   present: readonly string[],
   focused: Readonly<Record<CacheSuite, readonly string[]>>,
 ) {
+  const { files } = comparison;
   // An empty change still runs the semantic gate. Deleted inputs need full app selection.
   const plan = files.length
     ? classifyChangedPaths(files, { forceFullTests: present.length !== files.length })
@@ -142,6 +153,7 @@ export function planCheckSteps(
   const checkI18n =
     groups.includes("ui-contracts") || files.some((file) => file.startsWith("src/"));
   const steps: CheckStep[] = [
+    restorationStep(comparison),
     present.length
       ? {
           name: "changed-file format/lint",
