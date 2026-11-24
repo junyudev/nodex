@@ -7,7 +7,8 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { beginTestObservation, endTestObservation } from "../../testing/test-observation.mts";
 
-const directory = realpathSync(process.argv[2]);
+// Match the native realpath used to check candidate identities, including Windows temp paths.
+const directory = realpathSync.native(process.argv[2]);
 const root = process.cwd();
 const here = import.meta.dirname;
 const require = createRequire(import.meta.url);
