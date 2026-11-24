@@ -3,6 +3,7 @@ import path from "node:path";
 
 interface CargoDependency {
   readonly name: string;
+  readonly kind?: string | null;
 }
 
 interface CargoPackage {
@@ -19,7 +20,7 @@ export interface CargoMetadata {
 
 const normalize = (value: string): string => value.replaceAll("\\", "/");
 
-export const selectAffectedRustPackageNames = (
+export const selectTouchedRustPackageNames = (
   metadata: CargoMetadata,
   repositoryRoot: string,
   changedPaths: readonly string[],
@@ -51,9 +52,16 @@ export const selectAffectedRustPackageNames = (
     if (!owner) return allNames;
     directlyAffected.add(owner.name);
   }
-  if (directlyAffected.size === 0) return [];
+  return [...directlyAffected].sort();
+};
 
-  const affected = new Set(directlyAffected);
+export function selectAffectedRustPackageNames(
+  metadata: CargoMetadata,
+  repositoryRoot: string,
+  changedPaths: readonly string[],
+): readonly string[] {
+  const affected = new Set(selectTouchedRustPackageNames(metadata, repositoryRoot, changedPaths));
+  const packages = metadata.packages.filter(({ id }) => metadata.workspace_members.includes(id));
   let changed = true;
   while (changed) {
     changed = false;
@@ -65,7 +73,7 @@ export const selectAffectedRustPackageNames = (
     }
   }
   return [...affected].sort();
-};
+}
 
 const run = (
   command: string,

@@ -2,14 +2,24 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { APP_TEST_SUITES } from "../../config/test-suites.ts";
+import {
+  APP_TEST_SUITES,
+  NODEX_CLI_BOOTSTRAP_TEST,
+  YJS_YRS_TEST,
+} from "../../config/test-suites.ts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
+import { selectTouchedRustPackageNames } from "../ci/run-affected-rust.ts";
 import { STATIC_GROUPS } from "../ci/ci-gate-plan.ts";
 import {
+  deferNativeTests,
   findFocusedTests,
+  observedChangedInput,
   planCheckSteps,
+  planFastCheckSteps,
   rustGateEnvironment,
+  selectAffectedTests,
+  selectFocusedBrowserTests,
   type CheckStep,
 } from "./check-changed-plan.ts";
 import {
@@ -20,6 +30,7 @@ import {
   selectComparisonBase,
 } from "./check-changed-record.ts";
 import { parseCheckArguments, runStep, runStepQueue, validationLanes } from "./check-changed.ts";
+import { readSelectionEvidence, recordTestObservability, savePass } from "./test-cache-store.ts";
 
 const remote = "refs/remotes/origin/main";
 const local = "refs/heads/main";
@@ -106,6 +117,208 @@ describe("changed-check comparison", () => {
         "No merge base with HEAD for missing",
       );
     });
+  });
+});
+
+describe("fast check selection", () => {
+  const component = "src/renderer/components/widget.tsx";
+  const test = "src/renderer/components/widget.test.tsx";
+  const parent = "src/renderer/components/parent.test.tsx";
+  const other = "src/renderer/components/other.test.tsx";
+  const catalog = "src/shared/i18n/catalogs/zh-CN.json";
+
+  function fromInputs(changed: readonly string[], inputs: Record<string, readonly string[]>) {
+    const present = new Set(changed);
+    return Object.entries(inputs).map(([file, dependencies]) => ({
+      file,
+      evidence: observedChangedInput(
+        {
+          globalKey: "key",
+          deps: Object.fromEntries([file, ...dependencies].map((dep) => [dep, "hash"])),
+        },
+        changed,
+        present,
+      )
+        ? ("affected" as const)
+        : ("unaffected" as const),
+    }));
+  }
+
+  it("selects a leaf component's dependent tests from their recorded inputs", () => {
+    expect(
+      selectAffectedTests(
+        fromInputs([component], { [test]: [component], [parent]: [component], [other]: [] }),
+        new Set(),
+      ),
+    ).toEqual({ files: [parent, test], unaffected: 1, unrecorded: 0, unobservable: 0 });
+  });
+
+  it("selects a test-only edit, including a new test with no recorded pass", () => {
+    for (const evidence of ["affected", "unrecorded"] as const) {
+      const focused = findFocusedTests([test], new Set([test]), () => []);
+      expect(
+        selectAffectedTests(
+          [
+            { file: test, evidence },
+            { file: other, evidence: "unrecorded" },
+          ],
+          new Set(focused.renderer),
+        ),
+      ).toEqual({ files: [test], unaffected: 0, unrecorded: 1, unobservable: 0 });
+    }
+  });
+
+  it("keeps a sibling test with no pass and skips known unobservable files", () => {
+    const focused = findFocusedTests([component], new Set([component]), () => [
+      "widget.test.tsx",
+      "widget.jsdom.test.ts",
+    ]);
+    expect(
+      selectAffectedTests(
+        [
+          { file: test, evidence: "unrecorded" },
+          { file: "src/renderer/components/widget.jsdom.test.ts", evidence: "unobservable" },
+          { file: other, evidence: "unobservable" },
+        ],
+        new Set(focused.renderer),
+      ),
+    ).toEqual({
+      files: [test],
+      unaffected: 0,
+      unrecorded: 0,
+      unobservable: 2,
+    });
+  });
+
+  it("selects only the tests that observed the edited translation catalog", () => {
+    expect(
+      selectAffectedTests(
+        fromInputs([catalog], {
+          [parent]: [catalog],
+          [test]: ["src/shared/i18n/catalogs/fr-FR.json"],
+          [other]: [],
+        }),
+        new Set(),
+      ).files,
+    ).toEqual([parent]);
+  });
+
+  it("distinguishes editing a catalog from changing the names a test observed", () => {
+    const pass = {
+      globalKey: "key",
+      deps: { [test]: "hash" },
+      local: {
+        probes: { [catalog]: "file" as const },
+        globs: { "src/shared/i18n/catalogs/*.json": [catalog] },
+      },
+    };
+    const newCatalog = "src/shared/i18n/catalogs/fr-FR.json";
+    expect(observedChangedInput(pass, [catalog], new Set([catalog]))).toBe(false);
+    expect(observedChangedInput(pass, [catalog], new Set())).toBe(true);
+    expect(observedChangedInput(pass, [newCatalog], new Set([newCatalog]))).toBe(true);
+  });
+
+  it("runs only focused Chromium specs through the ordinary runner", () => {
+    const sibling = "src/renderer/components/widget.browser.test.tsx";
+    const changedTest = "src/renderer/changed.browser.test.ts";
+    const newTest = "src/renderer/new.browser.test.ts";
+    const unrelated = "src/renderer/unrelated.browser.test.ts";
+    const changed = [component, changedTest, newTest];
+    const focused = findFocusedTests(changed, new Set(changed), () => ["widget.browser.test.tsx"]);
+    const browser = selectFocusedBrowserTests(
+      [sibling, changedTest, newTest, unrelated],
+      new Set(focused.browser),
+    );
+    const { steps } = planFastCheckSteps(
+      changed,
+      changed,
+      {
+        renderer: selectAffectedTests([{ file: test, evidence: "affected" }], new Set()),
+        browser,
+      },
+      [],
+    );
+    expect(steps.find(({ name }) => name === "app renderer")).toMatchObject({
+      kind: "cached",
+      exactFiles: [test],
+    });
+    expect(steps.find(({ name }) => name === "app browser")).toMatchObject({
+      kind: "browser",
+      files: [changedTest, sibling, newTest],
+    });
+    expect(browser.unaffected).toBe(1);
+    expect(
+      planFastCheckSteps([catalog], [catalog], {}, []).steps.find(
+        ({ name }) => name === "app browser",
+      ),
+    ).toMatchObject({ kind: "skip", reason: "Chromium suite: left to CI" });
+    const full = planCheckSteps([catalog], [catalog], {}).steps.find(
+      ({ name }) => name === "app browser",
+    );
+    expect(full).toMatchObject({ kind: "cached" });
+    expect(full).not.toHaveProperty("exactFiles");
+  });
+
+  it("defers only files that need an unavailable native test artifact", () => {
+    const core = "src/main/core-client/related.node.test.ts";
+    const selection = selectAffectedTests(
+      [core, NODEX_CLI_BOOTSTRAP_TEST, YJS_YRS_TEST].map((file) => ({
+        file,
+        evidence: "affected",
+      })),
+      new Set(),
+    );
+    const fast = deferNativeTests("core-client", selection, (artifact) => artifact !== "cli");
+    expect(fast).toMatchObject({ files: [core, YJS_YRS_TEST], nativeDeferred: { cli: 1 } });
+    expect(deferNativeTests("core-client", fast, () => false)).toMatchObject({
+      files: [],
+      nativeDeferred: { "core-server": 1, "yjs-yrs-bridge": 1 },
+    });
+  });
+
+  it("checks only the touched Rust crate, even if other crates depend on it", () => {
+    const root = path.resolve("repo");
+    const makePackage = (name: string, dependencies: string[]) => ({
+      name,
+      id: name,
+      dependencies: dependencies.map((name) => ({ name })),
+      manifest_path: path.join(root, "crates", name, "Cargo.toml"),
+    });
+    const files = ["crates/nodex-platform/src/lib.rs"];
+    const rustPackages = selectTouchedRustPackageNames(
+      {
+        workspace_members: ["nodex-platform", "nodex-cli"],
+        packages: [makePackage("nodex-platform", []), makePackage("nodex-cli", ["nodex-platform"])],
+      },
+      root,
+      files,
+    );
+    const { steps } = planFastCheckSteps(files, files, {}, rustPackages);
+    expect(steps.filter(({ lane }) => lane === "rust")).toMatchObject([
+      {
+        commands: [{ args: ["exec", "cargo", "check", "--locked", "--package", "nodex-platform"] }],
+      },
+    ]);
+  });
+
+  it("reads retained evidence and remembers when a later run could not observe a test", async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "nodex-check-evidence-"));
+    try {
+      const matches = (pass: Parameters<typeof observedChangedInput>[0]) =>
+        observedChangedInput(pass, [component], new Set([component]));
+      expect(await readSelectionEvidence(directory, test, matches)).toBe("unrecorded");
+      await savePass(directory, test, {
+        globalKey: "key",
+        deps: { [test]: "hash", [component]: "hash" },
+      });
+      expect(await readSelectionEvidence(directory, test, matches)).toBe("affected");
+      await recordTestObservability(directory, test, false);
+      expect(await readSelectionEvidence(directory, test, matches)).toBe("unobservable");
+      await recordTestObservability(directory, test, true);
+      expect(await readSelectionEvidence(directory, test, matches)).toBe("affected");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -342,7 +555,11 @@ describe("changed-check steps", () => {
 it("accepts an explicit ref and gives the timeout flag precedence over the environment", () => {
   expect(
     parseCheckArguments(["feature", "--timeout", "2"], { CHECK_CHANGED_TIMEOUT: "3" }),
-  ).toEqual({ ref: "feature", timeoutMs: 2000, suiteTimeoutMs: 2000 });
+  ).toEqual({ ref: "feature", full: false, timeoutMs: 2000, suiteTimeoutMs: 2000 });
+  expect(parseCheckArguments(["--full", "feature"], {})).toMatchObject({
+    ref: "feature",
+    full: true,
+  });
   expect(parseCheckArguments([], { CHECK_CHANGED_TIMEOUT: "3" }).timeoutMs).toBe(3000);
   expect(parseCheckArguments([], {}).suiteTimeoutMs).toBe(3_600_000);
   expect(() => parseCheckArguments(["--timeout", "-1"], {})).toThrow("positive number");

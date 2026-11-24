@@ -350,6 +350,19 @@ function hasDefaultCargoConfiguration(
   });
 }
 
+export function rustCargoConfigurationInputs(
+  projectRoot: string,
+  environment: NodeJS.ProcessEnv,
+): readonly string[] {
+  return [
+    ...new Set(
+      cargoConfigurationFiles(projectRoot, environment).flatMap((file) =>
+        cargoConfigurationClosure(file).map(({ file }) => file),
+      ),
+    ),
+  ];
+}
+
 function readToolchainIdentity(
   projectRoot: string,
   environment: NodeJS.ProcessEnv,

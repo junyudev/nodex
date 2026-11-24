@@ -379,6 +379,38 @@ interface PassWorkspace {
   readonly onHit?: (pass: CachedPass) => void;
 }
 
+export type SelectionEvidence = "affected" | "unaffected" | "unobservable" | "unrecorded";
+
+const unobservableMarker = "unobservable";
+
+// Selection is advisory. Only findPass can authorize reuse of a passing test.
+export async function readSelectionEvidence(
+  directory: string,
+  file: string,
+  matches?: (pass: CachedPass) => boolean,
+): Promise<SelectionEvidence> {
+  const base = entriesForFile(directory, file);
+  const entries = await readdir(base).catch((): string[] => []);
+  if (entries.includes(unobservableMarker)) return "unobservable";
+  const records = entries.filter((name) => name.endsWith(".json"));
+  if (!matches) return records.length ? "unaffected" : "unrecorded";
+  let found = false;
+  for (const name of records) {
+    const pass = await readFile(path.join(base, name), "utf8")
+      .then((content) => JSON.parse(content) as CachedPass)
+      .catch(() => undefined);
+    if (!pass || typeof pass.deps?.[file] !== "string") continue;
+    if (matches(pass)) return "affected";
+    found = true;
+  }
+  return found ? "unaffected" : "unrecorded";
+}
+
+export function recordTestObservability(directory: string, file: string, observable: boolean) {
+  const marker = path.join(entriesForFile(directory, file), unobservableMarker);
+  return observable ? rm(marker, { force: true }) : publish(marker, "");
+}
+
 export async function findPass(
   directory: string,
   file: string,

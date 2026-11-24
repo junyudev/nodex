@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   lstatSync,
@@ -10,7 +11,19 @@ import {
 } from "node:fs";
 import { availableParallelism, totalmem } from "node:os";
 import path from "node:path";
-import { isNativeExecutable, nativeRequirements, type SuiteId } from "../../config/test-suites.ts";
+import {
+  APP_TEST_SUITES,
+  isNativeExecutable,
+  nativeRequirements,
+  ownerOfTest,
+  type NativeExecutableId,
+  type SuiteId,
+} from "../../config/test-suites.ts";
+import {
+  selectAffectedRustPackageNames,
+  selectTouchedRustPackageNames,
+  type CargoMetadata,
+} from "../ci/run-affected-rust.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
   acquireMachineBudget,
@@ -19,7 +32,18 @@ import {
 } from "../tooling/machine-budget.ts";
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
 import { vitePlusCommand } from "../vite-plus-command.ts";
-import { findFocusedTests, planCheckSteps, type CheckStep } from "./check-changed-plan.ts";
+import {
+  changesRustWorkspace,
+  deferNativeTests,
+  findFocusedTests,
+  isTestFile,
+  observedChangedInput,
+  planCheckSteps,
+  planFastCheckSteps,
+  selectAffectedTests,
+  selectFocusedBrowserTests,
+  type CheckStep,
+} from "./check-changed-plan.ts";
 import {
   duration,
   formatSummary,
@@ -36,9 +60,14 @@ import {
   type CachedSuiteContext,
 } from "./run-cached-tests.ts";
 import { randomUUID } from "node:crypto";
+import { nativeArtifactPackage, prepareNativeArtifacts } from "./native-artifacts.ts";
+import { readPreparedNativeTests } from "./native-test-readiness.ts";
+import { runIsolatedTests } from "./run-tests.ts";
+import { testRuntimeEnvironment } from "./runtime.ts";
 import {
   cacheDirectory,
   digestCachePath,
+  readSelectionEvidence,
   stampDigests,
   workspaceInputs,
 } from "./test-cache-store.ts";
@@ -63,14 +92,17 @@ export const validationConcurrency = (cores: number, memoryBytes: number) =>
 export function parseCheckArguments(args: readonly string[], env: NodeJS.ProcessEnv) {
   let ref: string | undefined;
   let override: string | undefined;
+  let full = false;
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
     if (argument === "--timeout" && override === undefined && args[index + 1] !== undefined) {
       override = args[++index];
+    } else if (argument === "--full" && !full) {
+      full = true;
     } else if (argument && !argument.startsWith("-") && ref === undefined) {
       ref = argument;
     } else {
-      throw new Error("Usage: vp run check:changed [<ref>] [--timeout <seconds>]");
+      throw new Error("Usage: vp run check:changed [<ref>] [--full] [--timeout <seconds>]");
     }
   }
   const configured = override ?? (env.CHECK_CHANGED_TIMEOUT || undefined);
@@ -79,14 +111,14 @@ export function parseCheckArguments(args: readonly string[], env: NodeJS.Process
     throw new Error(
       "Set --timeout or CHECK_CHANGED_TIMEOUT to a positive number of seconds within the timer limit.",
     );
-  return { ref, timeoutMs, suiteTimeoutMs: configured === undefined ? 3_600_000 : timeoutMs };
+  return { ref, full, timeoutMs, suiteTimeoutMs: configured === undefined ? 3_600_000 : timeoutMs };
 }
 
 type ActiveStep = Exclude<CheckStep, { kind: "skip" }>;
 
 interface StepWork {
   readonly step: Extract<CheckStep, { kind: "command" }>;
-  readonly rustEnv: ReturnType<typeof planCheckSteps>["rustEnv"];
+  readonly rustEnv: NodeJS.ProcessEnv | null;
 }
 
 /** Static commands run in subprocesses with scoped output and cancellation. */
@@ -143,6 +175,7 @@ interface StepContext {
   readonly directory: string;
   readonly timeoutMs: number;
   readonly signal: AbortSignal;
+  readonly cacheReport?: false;
   readonly commandLane?: (
     env: NodeJS.ProcessEnv,
     signal: AbortSignal,
@@ -228,7 +261,9 @@ export async function runStep(
   const reason = timeout.signal.aborted
     ? `running-time limit ${duration(context.timeoutMs)}`
     : (failure ??
-      (typeof invocation === "function" && !cache ? "cache report unavailable" : undefined));
+      (typeof invocation === "function" && context.cacheReport !== false && !cache
+        ? "cache report unavailable"
+        : undefined));
   const output = chunks.join("").trimEnd();
   const block = outcome === "pass" ? output.slice(-2000).split("\n").slice(-3).join("\n") : output;
   write(
@@ -303,9 +338,15 @@ export function validationLanes(semanticReady: Promise<void>) {
   };
   return {
     cargo,
-    suite<T>(suite: SuiteId, env: NodeJS.ProcessEnv, signal: AbortSignal, run: () => Promise<T>) {
+    suite<T>(
+      suite: SuiteId,
+      env: NodeJS.ProcessEnv,
+      signal: AbortSignal,
+      run: () => Promise<T>,
+      files?: readonly string[],
+    ) {
       // Native suites and Rust gates can replace the same executables while tests launch them.
-      if (nativeRequirements(suite).some(isNativeExecutable)) return cargo(env, signal, run);
+      if (nativeRequirements(suite, files).some(isNativeExecutable)) return cargo(env, signal, run);
       return runAfter(semanticReady, "semantic admission", env, signal, run);
     },
   };
@@ -343,6 +384,106 @@ async function runAfter<T>(
   return run();
 }
 
+async function planAffectedTests(
+  root: string,
+  workspace: ReadonlySet<string>,
+  changed: readonly string[],
+  present: ReadonlySet<string>,
+  focused: Readonly<Partial<Record<SuiteId, readonly string[]>>>,
+  signal: AbortSignal,
+) {
+  const bySuite = new Map<SuiteId, string[]>();
+  for (const file of workspace) {
+    if (!isTestFile(file)) continue;
+    const owner = ownerOfTest(file);
+    if (owner?.tier !== "default") continue;
+    const files = bySuite.get(owner.suite) ?? [];
+    files.push(file);
+    bySuite.set(owner.suite, files);
+  }
+
+  const matches = changed.length
+    ? (pass: Parameters<typeof observedChangedInput>[0]) =>
+        observedChangedInput(pass, changed, present)
+    : undefined;
+  const tests = await Promise.all(
+    APP_TEST_SUITES.map(async (suite) => {
+      const files = bySuite.get(suite) ?? [];
+      const focus = new Set(focused[suite]);
+      if (suite === "browser") return [suite, selectFocusedBrowserTests(files, focus)] as const;
+      const directory = cacheDirectory(root, process.env, suite);
+      const candidates = [];
+      // Retained passes can be large. Bound open files and discard each pass after matching.
+      for (let index = 0; index < files.length; index += 16) {
+        signal.throwIfAborted();
+        candidates.push(
+          ...(await Promise.all(
+            files.slice(index, index + 16).map(async (file) => ({
+              file,
+              evidence: await readSelectionEvidence(directory, file, matches),
+            })),
+          )),
+        );
+      }
+      return [suite, selectAffectedTests(candidates, focus)] as const;
+    }),
+  );
+  return Object.fromEntries(tests);
+}
+
+function readRustChanges(root: string, files: readonly string[]) {
+  const workspace = files.some(changesRustWorkspace);
+  if (!workspace && !files.some((file) => file.startsWith("crates/"))) {
+    return { touched: [], affected: new Set<string>() };
+  }
+  const metadata = JSON.parse(
+    execFileSync("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps"], {
+      cwd: root,
+      encoding: "utf8",
+    }),
+  ) as CargoMetadata;
+  const changed = workspace ? ["Cargo.toml"] : files;
+  const buildMetadata = {
+    ...metadata,
+    packages: metadata.packages.map((pkg) => ({
+      ...pkg,
+      dependencies: pkg.dependencies.filter(({ kind }) => kind !== "dev"),
+    })),
+  };
+  const memberDirectories = metadata.packages
+    .filter(({ id }) => metadata.workspace_members.includes(id))
+    .map(({ manifest_path }) =>
+      path.relative(root, path.dirname(manifest_path)).split(path.sep).join("/"),
+    );
+  const buildInputs = workspace
+    ? changed
+    : changed.filter((file) =>
+        memberDirectories.some((directory) => file.startsWith(directory + "/")),
+      );
+  return {
+    touched: selectTouchedRustPackageNames(metadata, root, changed),
+    affected: new Set(selectAffectedRustPackageNames(buildMetadata, root, buildInputs)),
+  };
+}
+
+function prepareFastNativeTests(affected: ReadonlySet<string>): typeof prepareNativeArtifacts {
+  return async (artifacts, context) => {
+    const current = readPreparedNativeTests(context, artifacts.filter(isNativeExecutable));
+    const remaining = artifacts.filter(
+      (artifact) => !isNativeExecutable(artifact) || !current[artifact],
+    );
+    const stale = remaining
+      .filter(isNativeExecutable)
+      .find((artifact) => !affected.has(nativeArtifactPackage(artifact)));
+    if (stale)
+      throw new Error(
+        `${stale} preparation changed while the check was queued. Rerun the fast check.`,
+      );
+    const built = await prepareNativeArtifacts(remaining, context);
+    return { executables: { ...current, ...built.executables } };
+  };
+}
+
 async function checkChanged(
   root: string,
   args: readonly string[],
@@ -359,6 +500,8 @@ async function checkChanged(
   let digests: ReturnType<typeof stampDigests> | undefined;
   let comparison: ReturnType<typeof readChangedPaths> | undefined;
   let record: RunRecord | undefined;
+  let fastTests: RunRecord["fastTests"];
+  let prepare: typeof prepareNativeArtifacts | undefined;
   const createRecord = (): RunRecord => ({
     startedAt,
     worktree: root,
@@ -366,11 +509,17 @@ async function checkChanged(
     ref: comparison?.ref ?? null,
     pathCount: comparison?.files.length ?? 0,
     steps,
+    fastTests,
     totalMs: totalMs(),
     idleQueueMs: idleQueueTime(steps),
   });
   try {
-    const { ref: explicitRef, timeoutMs, suiteTimeoutMs } = parseCheckArguments(args, process.env);
+    const {
+      ref: explicitRef,
+      full,
+      timeoutMs,
+      suiteTimeoutMs,
+    } = parseCheckArguments(args, process.env);
     const context = { root, directory: staging, timeoutMs, signal };
     const install = await runStep(
       "install dependencies",
@@ -383,19 +532,59 @@ async function checkChanged(
 
     comparison = readChangedPaths(root, explicitRef);
     const { base, ref, files } = comparison;
-    write(`[check:changed] ${files.length} changed paths since ${base.slice(0, 12)} (${ref})`);
+    write(
+      `[check:changed] ${full ? "Full" : "Fast"} check · ${files.length} changed paths since ${base.slice(0, 12)} (${ref})`,
+    );
     const present = files.filter((file) =>
       lstatSync(path.join(root, file), { throwIfNoEntry: false })?.isFile(),
     );
-    const focused = findFocusedTests(files, new Set(present), (directory) =>
+    const presentFiles = new Set(present);
+    const focused = findFocusedTests(files, presentFiles, (directory) =>
       presentSiblings(root, directory),
     );
-    const { steps: plan, rustEnv } = planCheckSteps(files, present, focused);
+    const resultsRoot = path.dirname(path.dirname(cacheDirectory(root, process.env, "unit")));
+    let workspace: ReturnType<typeof workspaceInputs> | undefined;
+    const getWorkspace = () => (workspace ??= workspaceInputs(root, resultsRoot));
+    const planRun = async () => {
+      if (full) return planCheckSteps(files, present, focused);
+      write("[check:changed] START test selection");
+      const started = performance.now();
+      const tests = await planAffectedTests(
+        root,
+        (await getWorkspace()).files,
+        files,
+        presentFiles,
+        focused,
+        signal,
+      );
+      const rust = readRustChanges(root, files);
+      const selectedArtifacts = APP_TEST_SUITES.flatMap((suite) =>
+        nativeRequirements(suite, tests[suite].files).filter(isNativeExecutable),
+      );
+      const current = readPreparedNativeTests(
+        { repositoryRoot: root, env: testRuntimeEnvironment(process.env) },
+        [...new Set(selectedArtifacts)],
+      );
+      const canRun = (artifact: NativeExecutableId) =>
+        current[artifact] !== undefined || rust.affected.has(nativeArtifactPackage(artifact));
+      for (const suite of APP_TEST_SUITES)
+        tests[suite] = deferNativeTests(suite, tests[suite], canRun);
+      prepare = prepareFastNativeTests(rust.affected);
+      const runMs = Math.round(performance.now() - started);
+      steps.push({ name: "test selection", outcome: "pass", runMs, queueMs: 0 });
+      write(`[check:changed] pass test selection (run ${duration(runMs)}, queue 0.00s)`);
+      fastTests = Object.fromEntries(
+        Object.entries(tests).map(([suite, { files, ...counts }]) => [
+          suite,
+          { selected: files.length, ...counts },
+        ]),
+      );
+      return planFastCheckSteps(files, present, tests, rust.touched);
+    };
+    const { steps: plan, rustEnv } = await planRun();
     const concurrency = validationConcurrency(availableParallelism(), totalmem());
     const semanticReady = deferred();
     const lanes = validationLanes(semanticReady.promise);
-    const resultsRoot = path.dirname(path.dirname(cacheDirectory(root, process.env, "unit")));
-    let workspace: ReturnType<typeof workspaceInputs> | undefined;
     steps.push(
       ...(await runStepQueue(plan, concurrency, signal, async (step, index) => {
         const name = String(index);
@@ -410,14 +599,36 @@ async function checkChanged(
                   ...stepContext,
                   env: { ...stepContext.env, NODEX_TEST_TIER: "default" },
                   repositoryRoot: root,
-                  workspace: () => (workspace ??= workspaceInputs(root, resultsRoot)),
+                  exactFiles: step.exactFiles,
+                  prepare,
+                  workspace: getWorkspace,
                   digests: () => (digests ??= stampDigests(digestCachePath(root, process.env))),
                   execute: (run) =>
-                    lanes.suite(step.suite, stepContext.env, stepContext.signal, run),
+                    lanes.suite(
+                      step.suite,
+                      stepContext.env,
+                      stepContext.signal,
+                      run,
+                      step.exactFiles,
+                    ),
                 },
                 step.priority,
               ),
             { ...context, timeoutMs: suiteTimeoutMs },
+            name,
+          );
+        }
+        if (step.kind === "browser") {
+          return runStep(
+            step.name,
+            ({ env, signal, onStdout, onStderr }) =>
+              lanes.suite("browser", env, signal, () =>
+                runIsolatedTests(
+                  { suites: ["browser"], tier: "default", related: false, args: [] },
+                  { repositoryRoot: root, exactFiles: step.files, env, signal, onStdout, onStderr },
+                ),
+              ),
+            { ...context, timeoutMs: suiteTimeoutMs, cacheReport: false },
             name,
           );
         }

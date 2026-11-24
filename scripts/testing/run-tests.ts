@@ -1,3 +1,5 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { runTimedCommand } from "../ci/run-timed.ts";
 import path from "node:path";
 import {
@@ -59,21 +61,21 @@ export function parseTestSelection(
   return { suites: [parseTestSuite(name)], tier, related, args: forwarded };
 }
 
-export async function runTests(
-  selection: TestSelection,
-  context: {
-    readonly repositoryRoot: string;
-    readonly env: NodeJS.ProcessEnv;
-    readonly signal: AbortSignal;
-    readonly prepare?: typeof prepareNativeArtifacts;
-    readonly discover?: typeof discoverSuite;
-    readonly execute?: typeof runCommand;
-    readonly onStdout?: Command["onStdout"];
-    readonly onStderr?: Command["onStderr"];
-    readonly prepareElectron?: typeof prepareElectronRuntime;
-    readonly isolatedVitestDirectory?: string;
-  },
-): Promise<number> {
+interface TestRunContext {
+  readonly repositoryRoot: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly signal: AbortSignal;
+  readonly prepare?: typeof prepareNativeArtifacts;
+  readonly discover?: typeof discoverSuite;
+  readonly execute?: typeof runCommand;
+  readonly onStdout?: Command["onStdout"];
+  readonly onStderr?: Command["onStderr"];
+  readonly prepareElectron?: typeof prepareElectronRuntime;
+  readonly isolatedVitestDirectory?: string;
+  readonly exactFiles?: readonly string[];
+}
+
+export async function runTests(selection: TestSelection, context: TestRunContext): Promise<number> {
   // Tests run as independent Nodex processes: an Agent shell that launched the run must not leak its CLI binding.
   const environment: NodeJS.ProcessEnv = {
     ...testRuntimeEnvironment(context.env),
@@ -97,14 +99,16 @@ export async function runTests(
     const needsSelection =
       nativeRequirements(suite).length > 0 &&
       (selection.tier === "stress" || selection.related || selection.args.length > 0);
-    const files = needsSelection
-      ? await (context.discover ?? discoverSuite)(
-          suite,
-          selection.args,
-          selection.related,
-          commandContext,
-        )
-      : undefined;
+    const files =
+      context.exactFiles ??
+      (needsSelection
+        ? await (context.discover ?? discoverSuite)(
+            suite,
+            selection.args,
+            selection.related,
+            commandContext,
+          )
+        : undefined);
     requirements.push(...nativeRequirements(suite, files));
     if (requiresAgentRuntime(suite, selection.tier, files)) requirements.push("agent-runtime");
   }
@@ -139,6 +143,22 @@ export async function runTests(
     if (result.exitCode !== 0) return result.exitCode;
   }
   return 0;
+}
+
+export async function runIsolatedTests(
+  selection: TestSelection,
+  context: TestRunContext,
+  priority: readonly string[] = [],
+) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-test-uncached-"));
+  try {
+    await writeFile(path.join(directory, "priority.json"), JSON.stringify(priority));
+    if (context.exactFiles)
+      await writeFile(path.join(directory, "files.json"), JSON.stringify(context.exactFiles));
+    return await runTests(selection, { ...context, isolatedVitestDirectory: directory });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {

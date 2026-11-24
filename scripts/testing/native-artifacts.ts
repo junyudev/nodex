@@ -8,6 +8,7 @@ import {
 } from "../../config/test-suites.ts";
 import { acquireMachineBudget, MACHINE_BUDGET_HELD_ENV } from "../tooling/machine-budget.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
+import { nativeTestBuildIdentity, recordNativeTestPreparation } from "./native-test-readiness.ts";
 
 const targets = {
   "windows-maintenance": {
@@ -39,6 +40,8 @@ const targets = {
     environment: "NODEX_YJS_YRS_BRIDGE_EXECUTABLE",
   },
 } as const;
+
+export const nativeArtifactPackage = (artifact: NativeExecutableId) => targets[artifact].package;
 
 export interface PreparedNativeArtifacts {
   readonly executables: Readonly<Partial<Record<NativeExecutableId, string>>>;
@@ -153,6 +156,11 @@ export async function prepareNativeArtifacts(
         output += chunk;
       },
     };
+    const buildStarted = Date.now();
+    const buildIdentity =
+      !env.CI && !context.execute && context.profile !== "release"
+        ? nativeTestBuildIdentity({ repositoryRoot: context.repositoryRoot, env })
+        : undefined;
     const result =
       context.execute || !env.NODEX_TEST_TIMINGS
         ? await (context.execute ?? runCommand)(command)
@@ -165,7 +173,20 @@ export async function prepareNativeArtifacts(
     if (result.exitCode !== 0)
       throw new Error("Native test preparation failed (exit " + result.exitCode + ").");
     process.stdout.write("Native preparation: " + (result.durationMs / 1000).toFixed(2) + "s\n");
-    return readCargoExecutables(output, executables, context.repositoryRoot);
+    const prepared = readCargoExecutables(output, executables, context.repositoryRoot);
+    if (buildIdentity)
+      for (const id of executables) {
+        const executable = prepared.executables[id];
+        if (executable)
+          recordNativeTestPreparation(
+            context.repositoryRoot,
+            id,
+            executable,
+            buildIdentity,
+            buildStarted,
+          );
+      }
+    return prepared;
   } finally {
     lease?.release();
   }

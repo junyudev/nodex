@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import type { BudgetQueueEvent } from "../tooling/machine-budget.ts";
+import type { SuiteId } from "../../config/test-suites.ts";
+import type { FastTestSelection } from "./check-changed-plan.ts";
 import type { CachedSuiteReport } from "./run-cached-tests.ts";
 
 interface ComparisonBase {
@@ -101,6 +103,14 @@ export interface RunRecord {
   readonly steps: readonly StepResult[];
   readonly totalMs: number;
   readonly idleQueueMs?: number;
+  readonly fastTests?: Partial<
+    Record<
+      SuiteId,
+      Omit<FastTestSelection, "files"> & {
+        readonly selected: number;
+      }
+    >
+  >;
   readonly error?: string;
 }
 
@@ -175,6 +185,24 @@ export function formatSummary(record: RunRecord): string {
       .trimEnd();
   const rows = record.steps.map(({ name, outcome, runMs, queueMs, reason, cache }) => {
     const details = reason ? [reason] : [];
+    const selection = record.fastTests?.[name.slice(4) as SuiteId];
+    if (selection) {
+      const { selected, unobservable, unrecorded, unaffected, nativeDeferred } = selection;
+      const deferred = Object.entries(nativeDeferred ?? {});
+      const nativeCount = deferred.reduce((sum, [, count]) => sum + count, 0);
+      details.push(
+        `${selected} selected, ${unobservable + unrecorded + unaffected + nativeCount} skipped` +
+          ` (${unobservable} unobservable, ${unrecorded} without evidence, ${unaffected} unaffected` +
+          (nativeCount ? `, ${nativeCount} left to CI)` : ")"),
+      );
+      if (nativeCount)
+        details.push(
+          "Left to CI: " +
+            deferred
+              .map(([artifact, count]) => `${count} need a current local ${artifact} build`)
+              .join(", "),
+        );
+    }
     if (cache) {
       const share = cache.selected ? (100 * cache.cacheable) / cache.selected : undefined;
       details.push(`${cache.hits}/${cache.selected} hits`);
@@ -202,6 +230,11 @@ export function formatSummary(record: RunRecord): string {
       (record.idleQueueMs
         ? ` (${duration(record.totalMs - record.idleQueueMs)} excluding queue)`
         : ""),
+    ...(record.fastTests
+      ? [
+          "Fast check skips the full lint ratchet, repository-wide static contracts, unselected tests, and full Rust gates. CI runs those gates.",
+        ]
+      : []),
     "",
   ].join("\n");
 }

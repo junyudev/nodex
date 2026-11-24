@@ -77,7 +77,7 @@ Search WASM regeneration uses `vp run search-kernel:wasm:generate`. It requires
 the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli 0.2.129`, matching
 the search kernel crate and generator pin. Commit the regenerated bindings, binary,
 and integrity digest in `crates/nodex-search-kernel/generated` together with changes
-to the WASM build inputs. CI, `vp run verify:static`, and `vp run check:changed` verify
+to the WASM build inputs. CI, `vp run verify:static`, and `vp run check:changed --full` verify
 the digest without a Rust or WASM toolchain. It covers the local Rust sources and
 manifests, the kernel's Cargo lock dependency graph, the pinned toolchain and build
 recipe, and the generated files. The inherited workspace release version is excluded
@@ -907,23 +907,33 @@ display state model. Fixture classes and runtime commands are detailed below.
 
 ### Choosing checks
 
-Run `vp run check:changed` before handing off a branch and before pushing `main`.
-On a branch, it chooses whichever of local `main` and `origin/main` gives the
-closest merge base, preferring `origin/main` on ties. On `main` it compares with
-`origin/main` to cover every unpushed commit. Keep the remote-tracking ref current.
-Pass a ref explicitly with `vp run check:changed <ref>`. Staged, unstaged, and
-untracked paths all count.
+Run `vp run check:changed` for fast local feedback. It checks changed-file
+formatting and lint warnings, validates i18n for changes under `src/`, runs
+incremental TypeScript checks, and compiles changed renderer files with the
+React Compiler. For Rust changes it runs `cargo check` for the touched crates.
 
-A frozen dependency install runs first. Every run checks all default Vitest
-suites. Changed and sibling tests lead their suite's execution. Changed-file
-checks, catalog validation, and the semantic gate start while suite lookups run.
-Vitest and budgeted Rust execution wait until the semantic gate claims its
-budget or finishes. The machine budget limits concurrent runs. Suites that build
-and launch Cargo executables share a lane with Rust gates that can replace those
-executables. The change classifier chooses local static and Rust gates and
-selects suites in CI. The local `types` lane
-runs `vp run check`. The `ui-contracts` lane compiles changed renderer files.
-Checks finish even when another step fails.
+The fast tier reads the test result store before starting Vitest. It selects
+files that recorded a changed input, as well as changed, new, and sibling
+tests. It counts and skips tests known to have unobservable inputs. Chromium
+runs only changed, new, and sibling browser tests through the ordinary runner.
+The full Chromium suite runs in CI and with `--full`.
+
+Selected Node, jsdom, and Electron tests go through the result cache. Tests
+requiring a native executable use a current build prepared by the test runner
+in this worktree. The fast tier builds missing executables when the change
+touches their Rust inputs and reports other native tests as left to CI. CI is
+the merge authority.
+
+Use `vp run check:changed --full` for a complete local run when CI is
+unavailable or for macOS-specific changes. It checks all default Vitest suites,
+the full semantic gate, and the static and Rust gates selected by the change
+classifier. Both tiers start with a frozen install and keep running independent
+checks after a failure.
+
+On a branch, the check uses whichever of local `main` and `origin/main` gives
+the closest merge base, preferring `origin/main` on ties. On `main` it compares
+with `origin/main`. Keep the remote-tracking ref current. Pass a ref explicitly
+with `vp run check:changed <ref>`. Staged, unstaged, and untracked paths count.
 
 The summary shows outcomes, running and queue times, cache hits, and the main
 reasons tests ran. Failed or timed-out steps print their full output. The running
@@ -1235,7 +1245,7 @@ Add a snapshot cache only after measurement shows live authoritative materializa
 
 ### Local test result cache
 
-`vp run check:changed` checks every file in the default Vitest suites against
+`vp run check:changed --full` checks every file in the default Vitest suites against
 its last passing inputs. Node, jsdom, and Electron-as-Node reuse passes per
 isolated file. Chromium observes inputs and reuses passes at suite scope.
 Run one suite with `vp run test:cached <suite>`. On CI,

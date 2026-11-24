@@ -14,7 +14,7 @@ import { prepareElectronRuntime } from "../prepare-electron-runtime.ts";
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
 import { discoverSuiteManifest, runtimeCommand, testRuntimeEnvironment } from "./runtime.ts";
-import { runTests } from "./run-tests.ts";
+import { runIsolatedTests } from "./run-tests.ts";
 import { chooseCacheAudits, relativeInput } from "./test-cache-policy.ts";
 import {
   cacheDirectory,
@@ -28,6 +28,7 @@ import {
   globalCacheKey,
   invalidateCache,
   readCacheReport,
+  recordTestObservability,
   savePass,
   workspaceInputs,
   writeCacheReport,
@@ -65,6 +66,8 @@ export type CachedSuiteContext = {
   onStdout?: Command["onStdout"];
   onStderr?: Command["onStderr"];
   execute?: <T>(run: () => Promise<T>) => Promise<T>;
+  exactFiles?: readonly string[];
+  prepare?: typeof prepareNativeArtifacts;
 };
 
 interface CacheUnit {
@@ -112,7 +115,12 @@ async function collectSuiteInputs(
     caPath ? binaryIdentity(path.resolve(root, caPath), digests).catch(() => undefined) : undefined,
     binaryIdentity(command, digests).catch(() => undefined),
   ]);
-  const { files, isolated, runtime, configDependencies } = manifest;
+  const { isolated, runtime, configDependencies } = manifest;
+  const exactFiles = new Set(context.exactFiles);
+  const files = context.exactFiles
+    ? manifest.files.filter((file) => exactFiles.has(file))
+    : manifest.files;
+  if (context.exactFiles && files.length !== exactFiles.size) return undefined;
   // File hits require isolated Vitest realms and a complete record for every collected spec.
   if ((!browser && !isolated) || !files.length || files.some((file) => !workspace.files.has(file)))
     return undefined;
@@ -213,7 +221,7 @@ async function executeBatch(
   files: readonly string[],
   priority: readonly string[],
   inputs: SuiteInputs,
-  { repositoryRoot: root, env, signal, onStdout, onStderr, execute }: CachedSuiteContext,
+  { repositoryRoot: root, env, signal, onStdout, onStderr, execute, prepare }: CachedSuiteContext,
 ) {
   const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-cache-"));
   try {
@@ -226,7 +234,7 @@ async function executeBatch(
       }),
     );
     const run = async () => {
-      const prepared = await prepareNativeArtifacts(nativeRequirements(suite, files), {
+      const prepared = await (prepare ?? prepareNativeArtifacts)(nativeRequirements(suite, files), {
         repositoryRoot: root,
         profile: "dev",
         env,
@@ -435,7 +443,16 @@ export async function memoizeSuite(
       if (!isPass(pass)) exclusions.set(id, pass);
     }
     await Promise.all(
-      passes.flatMap(([id, pass]) => (isPass(pass) ? [savePass(directory, id, pass)] : [])),
+      passes.map(async ([id, pass]) => {
+        if (isPass(pass)) {
+          await savePass(directory, id, pass);
+          await recordTestObservability(directory, id, true);
+          return;
+        }
+        const entry = byUnit.get(id);
+        if (entry?.passed && (entry.exclusions?.length || entry.reason))
+          await recordTestObservability(directory, id, false);
+      }),
     );
     for (const { file, durationMs } of evidence) {
       if (durationMs !== undefined && durationMs > 0) timings[file] = durationMs;
@@ -474,18 +491,12 @@ export async function runCachedSuite(
   delete env.NODEX_TEST_OBSERVATION_RUNTIME;
   delete env.NODEX_TEST_OBSERVATION_CHILD;
   delete env.NODEX_TEST_TRANSFORM_CACHES;
-  const runUncached = async () => {
-    const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-uncached-"));
-    try {
-      await writeFile(path.join(staging, "priority.json"), JSON.stringify(priority));
-      return await runTests(
-        { suites: [suite], tier, related: false, args: filters },
-        { ...context, env, execute: undefined, isolatedVitestDirectory: staging },
-      );
-    } finally {
-      await rm(staging, { recursive: true, force: true });
-    }
-  };
+  const runUncached = () =>
+    runIsolatedTests(
+      { suites: [suite], tier, related: false, args: filters },
+      { ...context, env, execute: undefined },
+      priority,
+    );
   const fallback = (reason: string) => {
     (context.onStdout ?? ((chunk: string) => process.stdout.write(chunk)))(
       `[test-cache] ${suite}: ${reason}\n`,

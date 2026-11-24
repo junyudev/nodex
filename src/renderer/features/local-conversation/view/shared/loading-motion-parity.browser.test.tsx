@@ -197,11 +197,17 @@ describe("loading motion parity in Chromium", () => {
 
   test("stops OS-governed CSS loaders under reduced motion", async () => {
     const session = cdp() as unknown as ChromiumMediaEmulationSession;
-    await session.send("Emulation.setEmulatedMedia", {
-      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
-    });
+    const setReducedMotion = async (value: "no-preference" | "reduce") => {
+      await act(async () => {
+        await session.send("Emulation.setEmulatedMedia", {
+          features: [{ name: "prefers-reduced-motion", value }],
+        });
+        await Promise.resolve();
+      });
+    };
 
     try {
+      await setReducedMotion("reduce");
       const view = render(
         <div data-testid="os-reduced-loaders">
           <CodexShimmerText variant="classic">Working</CodexShimmerText>
@@ -210,11 +216,13 @@ describe("loading motion parity in Chromium", () => {
           <NodexLogoShimmer />
         </div>,
       );
-      expect(readLoadingAnimations(view.getByTestId("os-reduced-loaders"))).toEqual([]);
+      try {
+        expect(readLoadingAnimations(view.getByTestId("os-reduced-loaders"))).toEqual([]);
+      } finally {
+        view.unmount();
+      }
     } finally {
-      await session.send("Emulation.setEmulatedMedia", {
-        features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
-      });
+      await setReducedMotion("no-preference");
     }
   });
 });

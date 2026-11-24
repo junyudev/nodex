@@ -1,7 +1,10 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import type { Command } from "../tooling/process";
+import { readPreparedNativeTests, recordNativeTestPreparation } from "./native-test-readiness";
 import {
   cargoBuildArguments,
   prepareNativeArtifacts,
@@ -165,4 +168,47 @@ describe("native test preparation", () => {
       }),
     ).rejects.toThrow("exit 7");
   });
+});
+
+test("reads only current worktree-native preparation evidence", () => {
+  const workspace = realpathSync(mkdtempSync(path.join(os.tmpdir(), "nodex-native-readiness-")));
+  const crate = path.join(workspace, "crates/nodex-core-server");
+  const source = path.join(crate, "src/main.rs");
+  const binary = path.join(workspace, "target/debug/nodex-core");
+  const available = (build = "compiler-build") =>
+    readPreparedNativeTests({ repositoryRoot: workspace }, ["core-server"], () => build);
+  const record = () =>
+    recordNativeTestPreparation(
+      workspace,
+      "core-server",
+      binary,
+      "compiler-build",
+      Date.now() + 1000,
+    );
+  try {
+    expect(available()).toEqual({});
+    mkdirSync(path.dirname(source), { recursive: true });
+    mkdirSync(path.dirname(binary), { recursive: true });
+    for (const config of ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"])
+      writeFileSync(path.join(workspace, config), config);
+    writeFileSync(path.join(crate, "Cargo.toml"), "[package]");
+    writeFileSync(source, "fn main() {}");
+    writeFileSync(binary, "native executable", { mode: 0o755 });
+    writeFileSync(
+      binary + ".d",
+      `${binary.replaceAll("\\", "/")}: ${source.replaceAll("\\", "/")}
+`,
+    );
+    record();
+    expect(available()).toEqual({ "core-server": binary });
+    expect(available("other-compiler")).toEqual({});
+    writeFileSync(source, "fn main() { let _ = 1; }");
+    expect(available()).toEqual({});
+    writeFileSync(source, "fn main() {}");
+    expect(available()).toEqual({ "core-server": binary });
+    rmSync(binary);
+    expect(available()).toEqual({});
+  } finally {
+    rmSync(workspace, { force: true, recursive: true });
+  }
 });

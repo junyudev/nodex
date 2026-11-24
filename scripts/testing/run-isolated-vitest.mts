@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseCLI, startVitest } from "vite-plus/test/node";
+import { createVitest, parseCLI, startVitest } from "vite-plus/test/node";
 import { prioritizeTests } from "./cache-test-order.ts";
 
 const [directory, ...args] = process.argv.slice(2);
@@ -11,14 +11,31 @@ const priority = JSON.parse(
 const { filter, options } = parseCLI(["vitest", ...args]);
 
 // The ordinary fallback can overlap recorded batches, other fallbacks and discovery.
-await startVitest(
-  filter,
-  {
-    ...options,
-    fsModuleCachePath: path.join(directory, "transforms"),
-    ...(priority.length
-      ? { sequence: { sequencer: prioritizeTests(process.cwd(), priority) } }
-      : {}),
-  },
-  { cacheDir: path.join(directory, "vite") },
-);
+const settings = {
+  ...options,
+  fsModuleCachePath: path.join(directory, "transforms"),
+  ...(priority.length ? { sequence: { sequencer: prioritizeTests(process.cwd(), priority) } } : {}),
+};
+const vite = { cacheDir: path.join(directory, "vite") };
+const files = await readFile(path.join(directory, "files.json"), "utf8").catch((error: unknown) => {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  return undefined;
+});
+
+if (files === undefined) {
+  await startVitest(filter, settings, vite);
+} else {
+  const selected = new Set((JSON.parse(files) as string[]).map((file) => path.resolve(file)));
+  const runner = await createVitest(settings, vite);
+  try {
+    await runner.standalone();
+    const specifications = (await runner.globTestSpecifications()).filter(({ moduleId }) =>
+      selected.has(moduleId),
+    );
+    if (specifications.length !== selected.size)
+      throw new Error("Test selection changed during discovery.");
+    await runner.runTestSpecifications(specifications);
+  } finally {
+    await runner.close();
+  }
+}
