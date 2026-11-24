@@ -24,16 +24,14 @@ const parseStringArray = (value: unknown, label: string): readonly string[] => {
   return parsed;
 };
 
-const requireReusableInput = (
+const reusableInputs = (
   workflow: UnknownRecord,
   jobName: string,
-  inputName: string,
   workflowName: string,
-): readonly string[] => {
+): UnknownRecord => {
   const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
   const job = requireRecord(jobs[jobName], `${workflowName} ${jobName} job`);
-  const inputs = requireRecord(job.with, `${workflowName} ${jobName} inputs`);
-  return parseStringArray(inputs[inputName], `${workflowName} ${jobName}.${inputName}`);
+  return requireRecord(job.with, `${workflowName} ${jobName} inputs`);
 };
 
 const requireExactEntries = (
@@ -52,55 +50,66 @@ const requireExactEntries = (
   );
 };
 
-const requireFullGatePlan = (workflow: UnknownRecord, workflowName: string): void => {
-  const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
-  const job = requireRecord(jobs["app-tests"], `${workflowName} app-tests job`);
-  const inputs = requireRecord(job.with, `${workflowName} app-tests inputs`);
+const requireFullAppTestMatrix = (
+  workflow: UnknownRecord,
+  jobName: string,
+  workflowName: string,
+): void => {
+  const inputs = reusableInputs(workflow, jobName, workflowName);
+  const label = `${workflowName} ${jobName}`;
+  requireExactEntries(
+    parseStringArray(inputs.suites_json, `${label}.suites_json`),
+    APP_TEST_SUITES,
+    `${label} suites`,
+  );
   if (typeof inputs.gate_plan_json !== "string") {
-    throw new Error(`${workflowName} app-tests.gate_plan_json must be a JSON string.`);
+    throw new Error(`${label}.gate_plan_json must be a JSON string.`);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(inputs.gate_plan_json) as unknown;
   } catch (cause) {
-    throw new Error(`${workflowName} app-tests.gate_plan_json must contain valid JSON.`, { cause });
+    throw new Error(`${label}.gate_plan_json must contain valid JSON.`, { cause });
   }
   const plan = parseCiGatePlan(parsed);
   if (plan.testMode !== "full" || !plan.rustFull) {
     throw new Error(`${workflowName} must use a full deterministic gate plan.`);
   }
+  requireExactEntries(plan.appTestSuites, APP_TEST_SUITES, `${label} gate plan suites`);
 };
 
 export const verifyFullCiContracts = (
   workflow: UnknownRecord,
   workflowName = "Nightly CI",
 ): void => {
+  const inputs = reusableInputs(workflow, "static-contracts", workflowName);
   requireExactEntries(
-    requireReusableInput(workflow, "static-contracts", "groups_json", workflowName),
+    parseStringArray(inputs.groups_json, `${workflowName} static-contracts.groups_json`),
     STATIC_GROUPS,
     `${workflowName} static groups`,
   );
-  requireExactEntries(
-    requireReusableInput(workflow, "app-tests", "suites_json", workflowName),
-    APP_TEST_SUITES,
-    `${workflowName} app test suites`,
-  );
-  requireFullGatePlan(workflow, workflowName);
+  requireFullAppTestMatrix(workflow, "app-tests", workflowName);
 };
 
 export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
   const jobs = requireRecord(workflow.jobs, "Application test workflow jobs");
   const testJob = requireRecord(jobs.test, "Application test matrix job");
-  if (!Array.isArray(testJob.steps)) return;
-  const duplicatedBuildResources = testJob.steps.some((candidate) => {
-    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate))
-      return false;
-    const run = (candidate as UnknownRecord).run;
-    return typeof run === "string" && /\bbuild-resources:prepare\b/u.test(run);
-  });
+  const steps = Array.isArray(testJob.steps) ? testJob.steps.filter(isRecord) : [];
+  const duplicatedBuildResources = steps.some(
+    ({ run }) => typeof run === "string" && /\bbuild-resources:prepare\b/u.test(run),
+  );
   if (duplicatedBuildResources) {
     throw new Error(
       "Application test cells must not regenerate build resources owned by the generated static contract.",
+    );
+  }
+  const strategy = requireRecord(testJob.strategy, "Application test matrix strategy");
+  if (
+    testJob["runs-on"] !== "${{ inputs.runner }}" ||
+    strategy["max-parallel"] !== "${{ inputs.max_parallel }}"
+  ) {
+    throw new Error(
+      "Application test jobs must respect the caller's runner and parallel job limit.",
     );
   }
 };
@@ -213,6 +222,49 @@ export const verifyPreMergeCiContract = (workflow: UnknownRecord): void => {
   }
 };
 
+export const verifyNightlyMacApplicationContracts = (workflow: UnknownRecord): void => {
+  const jobs = requireRecord(workflow.jobs, "Nightly CI jobs");
+  const macJob = requireRecord(jobs["app-tests-macos"], "Nightly CI macOS application job");
+  const inputs = requireRecord(macJob.with, "Nightly CI macOS application inputs");
+  const linuxInputs = reusableInputs(workflow, "app-tests", "Nightly CI");
+  if (
+    macJob.uses !== "./.github/workflows/_app-tests.yml" ||
+    macJob.if !== undefined ||
+    inputs.runner !== "macos-26" ||
+    typeof inputs.timing_prefix !== "string" ||
+    inputs.timing_prefix === linuxInputs.timing_prefix
+  ) {
+    throw new Error(
+      "Nightly CI must reuse the application workflow on macos-26 with distinct artifacts.",
+    );
+  }
+  requireFullAppTestMatrix(workflow, "app-tests-macos", "Nightly CI");
+
+  const otherMacJobs = Object.values(jobs).filter(
+    (job) =>
+      isRecord(job) && typeof job["runs-on"] === "string" && job["runs-on"].startsWith("macos-"),
+  ).length;
+  const parallel = inputs.max_parallel;
+  if (
+    typeof parallel !== "number" ||
+    !Number.isInteger(parallel) ||
+    parallel < 1 ||
+    parallel + otherMacJobs > 5
+  ) {
+    throw new Error(
+      "Nightly CI must fit its application matrix and other macOS jobs in five slots.",
+    );
+  }
+
+  const complete = requireRecord(jobs.complete, "Nightly CI complete job");
+  if (
+    complete.if !== "always()" ||
+    !declaredNeeds(complete.needs, "Nightly CI complete").has("app-tests-macos")
+  ) {
+    throw new Error("Nightly CI complete must always require the macOS application matrix.");
+  }
+};
+
 /** Electron UI coverage belongs only to the curated Nightly job. */
 export const verifyElectronE2eWorkflowContracts = (
   workflow: UnknownRecord,
@@ -313,9 +365,9 @@ export const verifyDirectNeedsContracts = (workflow: UnknownRecord, workflowName
 };
 
 const main = (): void => {
-  verifyFullCiContracts(
-    readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-nightly.yml")),
-  );
+  const nightly = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-nightly.yml"));
+  verifyFullCiContracts(nightly);
+  verifyNightlyMacApplicationContracts(nightly);
   verifyFullCiContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_certify-release-source.yml")),
     "Release certification",

@@ -9,6 +9,7 @@ import {
   verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
   verifyMainCiBaseContract,
+  verifyNightlyMacApplicationContracts,
   verifyPreMergeCiContract,
   verifyRustCacheOwnership,
 } from "./verify-ci-matrix-contracts";
@@ -75,10 +76,10 @@ describe("CI matrix contracts", () => {
     ).toThrow("Nightly CI static groups");
     expect(() =>
       verifyFullCiContracts(nightlyWorkflow({ appTestSuites: [...APP_TEST_SUITES, "new"] })),
-    ).toThrow("Nightly CI app test suites");
+    ).toThrow("Nightly CI app-tests suites");
     expect(() =>
       verifyFullCiContracts(nightlyWorkflow({ appTestSuites: [...APP_TEST_SUITES].reverse() })),
-    ).toThrow("Nightly CI app test suites");
+    ).toThrow("Nightly CI app-tests suites");
   });
 
   test("labels malformed full-plan inputs and rejects incomplete coverage", () => {
@@ -225,6 +226,46 @@ describe("pre-merge CI workflow", () => {
         jobs: { ...jobs, required: { ...required, needs: ["classify", "static-contracts"] } },
       }),
     ).toThrow("required dependencies");
+  });
+});
+
+describe("Nightly macOS application coverage", () => {
+  const readNightlyWorkflow = () =>
+    readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-nightly.yml"));
+
+  test("requires every suite within the shared macOS runner budget", () => {
+    const workflow = readNightlyWorkflow();
+    expect(() => verifyNightlyMacApplicationContracts(workflow)).not.toThrow();
+
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const macJob = requireRecord(jobs["app-tests-macos"], "mac application job");
+    const inputs = requireRecord(macJob.with, "mac application inputs");
+    for (const [overrides, error] of [
+      [{ max_parallel: 3 }, "in five slots"],
+      [{ suites_json: '["unit"]' }, "app-tests-macos suites"],
+    ] as const) {
+      expect(() =>
+        verifyNightlyMacApplicationContracts({
+          ...workflow,
+          jobs: {
+            ...jobs,
+            "app-tests-macos": { ...macJob, with: { ...inputs, ...overrides } },
+          },
+        }),
+      ).toThrow(error);
+    }
+  });
+
+  test("requires the aggregate to wait for the macOS application matrix", () => {
+    const workflow = readNightlyWorkflow();
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const complete = requireRecord(jobs.complete, "complete");
+    expect(() =>
+      verifyNightlyMacApplicationContracts({
+        ...workflow,
+        jobs: { ...jobs, complete: { ...complete, needs: ["app-tests"] } },
+      }),
+    ).toThrow("complete must always require the macOS application matrix");
   });
 });
 

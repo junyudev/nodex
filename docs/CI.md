@@ -25,10 +25,12 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   rule also needs full coverage to establish a trusted base. A newer push cancels a Main CI
   run still in progress; because the newer run compares against the last green commit, it
   re-checks everything the cancelled run covered. Manual runs are never cancelled.
-- `.github/workflows/ci-nightly.yml` runs every deterministic static, Rust,
-  application, browser, stress, and macOS runtime contract, plus a curated
-  Electron E2E set on standard `macos-26`. The `nightly complete` aggregate
-  requires that job. Paid-agent and UI performance tests remain excluded.
+- `.github/workflows/ci-nightly.yml` runs every deterministic static and Rust
+  gate, and all default application suites including browser on Linux and
+  standard `macos-26`. Two macOS application suites can run at once, leaving
+  three macOS slots for stress, runtime contracts, and curated Electron E2E.
+  The `nightly complete` aggregate requires all of these jobs. Paid-agent and
+  UI performance tests remain excluded.
 - `.github/workflows/performance.yml` is the weekly owner for Core runtime
   benchmarks and explicitly ignored scale contracts. Performance regressions
   are diagnosed below Electron rather than through UI timings.
@@ -108,9 +110,9 @@ or test. Application installs use the shared Vite+ dependency cache.
   changes run every selected suite. Deleted paths fail closed because they
   cannot participate in Vitest's import graph.
 
-The reusable application matrix owns `unit`, `core-client`, `main`, `renderer`,
-`integration`, and `browser`. Browser is a normal Vitest suite with a managed
-Chromium prerequisite; it is not a Playwright UI workflow. Main and integration
+The reusable application matrix owns `unit`, `effect-codex`, `agent-runtime`,
+`core-client`, `main`, `renderer`, `integration`, and `browser`. Browser is a
+Vitest suite with a managed Chromium prerequisite. Main and integration
 continue to run through Electron's Node ABI so native addons are exercised by
 the correct runtime. Application cells do not regenerate third-party notices or
 other build resources; the generated static contract and real build/package
@@ -144,7 +146,7 @@ diagnostics, dependency optimization, and HMR through
 outer-page navigation, page/context closure, browser disconnection, and HTTP
 server errors or closure. Session identity and page/browser state distinguish
 these events from normal per-file iframe replacement; browser API disconnect
-logs retain the WebSocket close code and reason. Failed browser jobs also print
+logs retain the WebSocket close code and reason. Failed Linux browser jobs also print
 runner memory, filesystem space and inodes, and process RSS after failure.
 Available cgroup counters also retain OOM events, peak memory and the memory limit.
 The Linux browser job's existing one-second process sampler retains live shared

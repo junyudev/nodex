@@ -35,9 +35,20 @@ jobs:
     name: nightly application and browser tests
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"],"testMode":"full"}'
-      suites_json: '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
+      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"],"testMode":"full"}'
+      suites_json: &all_application_suites '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
       timing_prefix: nightly-app
+
+  app-tests-macos:
+    name: nightly macOS application and browser tests
+    uses: ./.github/workflows/_app-tests.yml
+    with:
+      gate_plan_json: *full_gate_plan
+      suites_json: *all_application_suites
+      runner: macos-26
+      # Stress, runtime contracts, and Electron E2E can occupy the other three macOS slots.
+      max_parallel: 2
+      timing_prefix: nightly-app-macos
 
   stress:
     name: nightly stress suite
@@ -116,6 +127,7 @@ jobs:
       - static-contracts
       - rust-checks
       - app-tests
+      - app-tests-macos
       - stress
       - runtime-contracts
       - electron-e2e

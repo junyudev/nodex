@@ -11,6 +11,14 @@ on:
         description: Validated CI gate plan containing full or related test selection.
         required: true
         type: string
+      runner:
+        description: Standard GitHub-hosted runner for the application matrix.
+        default: ubuntu-latest
+        type: string
+      max_parallel:
+        description: Maximum number of application suites to run at once.
+        default: 256
+        type: number
       source_sha:
         description: Exact source commit to test; defaults to the caller commit.
         required: false
@@ -28,9 +36,10 @@ jobs:
     name: app ${{ matrix.suite }}
     strategy:
       fail-fast: false
+      max-parallel: ${{ inputs.max_parallel }}
       matrix:
         suite: ${{ fromJSON(inputs.suites_json) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     env:
       CI_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-${{ matrix.suite }}
@@ -74,10 +83,10 @@ jobs:
             --name "app-${APP_TEST_SUITE}" \
             -- vp exec tsx scripts/ci/run-app-test-suite.ts --suite "${APP_TEST_SUITE}"
       - name: Show renderer memory state
-        if: always() && matrix.suite == 'renderer'
+        if: always() && runner.os == 'Linux' && matrix.suite == 'renderer'
         run: free -h
       - name: Show failed browser runner resources
-        if: failure() && matrix.suite == 'browser'
+        if: failure() && runner.os == 'Linux' && matrix.suite == 'browser'
         run: |
           free -h
           df -h "${GITHUB_WORKSPACE}" /tmp /dev/shm
@@ -93,7 +102,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: app-${{ matrix.suite }}-failure-${{ github.run_attempt }}
+          name: ${{ inputs.timing_prefix }}-${{ matrix.suite }}-failure-${{ github.run_attempt }}
           path: |
             .vitest-attachments/
             test-results/
