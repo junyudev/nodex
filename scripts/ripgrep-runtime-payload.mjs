@@ -32,9 +32,11 @@ export function assertRipgrepRuntimePayload(
   )
     throw new Error("Invalid standalone ripgrep resource directory or license");
   const stat = lstatSync(binary);
+  // Windows stat cannot report POSIX executable bits, even for a macOS payload.
+  const checkExecutableMode = process.platform !== "win32" && !target.startsWith("win32-");
   if (
     !stat.isFile() ||
-    (!target.startsWith("win32-") && (stat.mode & 0o111) === 0) ||
+    (checkExecutableMode && (stat.mode & 0o111) === 0) ||
     stat.size > release.builds[target].binarySize + 128 * 1024
   )
     throw new Error("Invalid standalone ripgrep executable");
