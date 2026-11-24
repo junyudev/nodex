@@ -6,6 +6,7 @@ import {
   type NativeArtifactId,
   type NativeExecutableId,
 } from "../../config/test-suites.ts";
+import { acquireMachineBudget, MACHINE_BUDGET_HELD_ENV } from "../tooling/machine-budget.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const targets = {
@@ -130,29 +131,44 @@ export async function prepareNativeArtifacts(
   process.stdout.write(
     "Preparing native test artifacts: " + [...new Set(executables)].join(", ") + "\n",
   );
-  const command: Command = {
-    command: "cargo",
-    args,
-    cwd: context.repositoryRoot,
-    env: context.env,
-    signal: context.signal,
-    onStdout: (chunk) => {
-      output += chunk;
-    },
-  };
-  const result =
-    context.execute || !context.env?.NODEX_TEST_TIMINGS
-      ? await (context.execute ?? runCommand)(command)
-      : await runTimedCommand({
-          ...command,
-          commandArguments: command.args,
-          name: "native-prepare",
-          timingDirectory: context.env.NODEX_TEST_TIMINGS,
-        });
-  if (result.exitCode !== 0)
-    throw new Error("Native test preparation failed (exit " + result.exitCode + ").");
-  process.stdout.write("Native preparation: " + (result.durationMs / 1000).toFixed(2) + "s\n");
-  return readCargoExecutables(output, executables, context.repositoryRoot);
+  const env = context.env ?? process.env;
+  const jobs = 4;
+  // Cargo prepares the binaries before Vitest can claim its own budget.
+  const lease = context.execute
+    ? undefined
+    : await acquireMachineBudget(
+        { weight: jobs, memoryGiB: 6, label: "native test preparation" },
+        { cwd: context.repositoryRoot, env, signal: context.signal },
+      );
+  try {
+    const command: Command = {
+      command: "cargo",
+      args,
+      cwd: context.repositoryRoot,
+      env: lease?.env[MACHINE_BUDGET_HELD_ENV]
+        ? { ...env, ...lease.env, CARGO_BUILD_JOBS: String(jobs) }
+        : context.env,
+      signal: context.signal,
+      onStdout: (chunk) => {
+        output += chunk;
+      },
+    };
+    const result =
+      context.execute || !env.NODEX_TEST_TIMINGS
+        ? await (context.execute ?? runCommand)(command)
+        : await runTimedCommand({
+            ...command,
+            commandArguments: command.args,
+            name: "native-prepare",
+            timingDirectory: env.NODEX_TEST_TIMINGS,
+          });
+    if (result.exitCode !== 0)
+      throw new Error("Native test preparation failed (exit " + result.exitCode + ").");
+    process.stdout.write("Native preparation: " + (result.durationMs / 1000).toFixed(2) + "s\n");
+    return readCargoExecutables(output, executables, context.repositoryRoot);
+  } finally {
+    lease?.release();
+  }
 }
 
 export function preparedNativeEnvironment(artifacts: PreparedNativeArtifacts): NodeJS.ProcessEnv {

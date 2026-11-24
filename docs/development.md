@@ -915,12 +915,13 @@ Pass a ref explicitly with `vp run check:changed <ref>`. Staged, unstaged, and
 untracked paths all count.
 
 A frozen dependency install runs first. Every run checks all default Vitest
-suites. Suites with changed or sibling tests execute first, and those files lead
-their batches. Changed-file checks, catalog validation, and the semantic gate
-start while suite lookups run. Local Vitest and Rust execution wait for the semantic gate's
-machine-budget claim. Vitest batches run serially. Rust gates share an execution lane
-with suites that launch the worktree's Cargo artifacts. The change classifier chooses
-local static and Rust gates and selects suites in CI. The local `types` lane
+suites. Changed and sibling tests lead their suite's execution. Changed-file
+checks, catalog validation, and the semantic gate start while suite lookups run.
+Vitest and budgeted Rust execution wait until the semantic gate claims its
+budget or finishes. The machine budget limits concurrent runs. Suites that build
+and launch Cargo executables share a lane with Rust gates that can replace those
+executables. The change classifier chooses local static and Rust gates and
+selects suites in CI. The local `types` lane
 runs `vp run check`. The `ui-contracts` lane compiles changed renderer files.
 Checks finish even when another step fails.
 
@@ -995,7 +996,7 @@ one computer-wide budget before they start, and wait in line while either is ful
 | A Vitest suite, through `vp run test*` or a direct `vp test run --config ...`        | one per worker it can start; stress runs at least half the computer | 0.5 GiB per Node worker, 1 GiB per jsdom fork, 1.5 GiB per worker in a jsdom VM run, 2 GiB per Chromium worker, plus one more for Vitest itself |
 | `vp run test:e2e*`, including its builds                                             | 3                                                                   | 8 GiB                                                                                                                                           |
 | `vp run test:e2e:performance`                                                        | all                                                                 | all                                                                                                                                             |
-| `core:test:workspace`, `core:test:migration`, `check:changed` Rust builds and tests  | 4                                                                   | 6 GiB                                                                                                                                           |
+| `core:test:*`, budgeted Rust gates, and native test executable builds                | 4                                                                   | 6 GiB                                                                                                                                           |
 
 The budget defaults to the performance cores and half the installed memory; the rest stays with
 the desktop, editors, running apps and the Agents themselves. Memory figures are sampled peaks
@@ -1239,7 +1240,8 @@ its last passing inputs. Node, jsdom, and Electron-as-Node reuse passes per
 isolated file. Chromium observes inputs and reuses passes at suite scope.
 Run one suite with `vp run test:cached <suite>`. On CI,
 other host platforms, and with `NODEX_TEST_CACHE=off`, the ordinary runner
-executes the tests directly.
+executes the tests directly. Discovery and execution use invocation-local Vite
+and Vitest caches, including when a suite falls back to the ordinary runner.
 
 A pass is reusable if all its tests passed without skips or retries and all
 recorded inputs still match. Vitest and Vite supply the loaded modules and

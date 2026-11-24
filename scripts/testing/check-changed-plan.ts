@@ -11,7 +11,7 @@ export type CheckStep = { readonly name: string; readonly lane?: "rust" } & (
   | {
       readonly kind: "command";
       readonly commands: readonly StepCommand[];
-      readonly resource?: "rust-budget" | "semantic";
+      readonly resource?: "feedback" | "rust-budget" | "semantic";
     }
   | {
       readonly kind: "cached";
@@ -139,7 +139,9 @@ export function planCheckSteps(
           ],
         }
       : skip("changed-file format/lint", "no changed files to read"),
-    checkI18n ? command("i18n", ["run", "i18n:check"]) : skip("i18n", "no catalog check selected"),
+    checkI18n
+      ? { ...command("i18n", ["run", "i18n:check"]), resource: "feedback" }
+      : skip("i18n", "no catalog check selected"),
     {
       ...command(types ? "static types" : "semantic", ["run", types ? "check" : "check:semantic"]),
       resource: "semantic",

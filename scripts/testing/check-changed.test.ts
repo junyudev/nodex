@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { APP_TEST_SUITES } from "../../config/test-suites.ts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { classifyChangedPaths } from "../ci/classify-change.ts";
 import { STATIC_GROUPS } from "../ci/ci-gate-plan.ts";
 import {
@@ -225,7 +225,10 @@ describe("changed-check steps", () => {
   });
 
   it("keeps feedback and local slots available while budgeted work waits", async () => {
-    const cmd = (name: string, resource?: "semantic" | "rust-budget"): CheckStep => ({
+    const cmd = (
+      name: string,
+      resource?: Extract<CheckStep, { kind: "command" }>["resource"],
+    ): CheckStep => ({
       kind: "command",
       commands: [],
       name,
@@ -234,7 +237,7 @@ describe("changed-check steps", () => {
     });
     const steps: CheckStep[] = [
       cmd("changed"),
-      cmd("i18n"),
+      cmd("i18n", "feedback"),
       cmd("semantic", "semantic"),
       ...APP_TEST_SUITES.map((suite): CheckStep => ({
         name: suite,
@@ -251,7 +254,6 @@ describe("changed-check steps", () => {
     const changed = deferred();
     const semanticGrant = deferred();
     const semanticFinish = deferred();
-    const focusedDone = deferred();
     const rustGrant = deferred();
     const staticStarted = deferred();
     const signal = new AbortController().signal;
@@ -264,17 +266,9 @@ describe("changed-check steps", () => {
         await semanticFinish.promise;
       }
       if (step.kind === "cached") {
-        const focused = step.suite === "renderer";
-        await lanes.suite(
-          step.suite,
-          {},
-          signal,
-          async () => {
-            claims.push(step.suite);
-          },
-          focused ? undefined : focusedDone.promise,
-        );
-        if (focused) focusedDone.resolve();
+        await lanes.suite(step.suite, {}, signal, async () => {
+          claims.push(step.suite);
+        });
       }
       if (step.name === "clippy") await rustGrant.promise;
       if (step.name === "static") staticStarted.resolve();
@@ -285,11 +279,10 @@ describe("changed-check steps", () => {
         queueMs: 0,
       };
     });
-    expect(admission).toEqual(["changed", "semantic", ...APP_TEST_SUITES]);
+    expect(admission).toEqual(["changed", "i18n", "semantic", ...APP_TEST_SUITES]);
     expect(claims).toEqual(["semantic"]);
     changed.resolve();
     await staticStarted.promise;
-    expect(admission).toContain("i18n");
     expect(admission).toContain("clippy");
     expect(admission).not.toContain("rust tests");
     expect(claims).toEqual(["semantic"]);
@@ -297,44 +290,51 @@ describe("changed-check steps", () => {
     semanticFinish.resolve();
     rustGrant.resolve();
     const results = await running;
-    expect(claims).toEqual([
-      "semantic",
-      "renderer",
-      ...APP_TEST_SUITES.filter((suite) => suite !== "renderer"),
-    ]);
+    expect(claims[0]).toBe("semantic");
+    expect(claims.slice(1).sort()).toEqual([...APP_TEST_SUITES].sort());
     expect(results.map(({ outcome }) => outcome).filter((outcome) => outcome !== "pass")).toEqual([
       "FAIL",
       "TIMEOUT",
     ]);
     expect(admission).toContain("rust tests");
   });
-  it("serializes writes to Cargo outputs with suites that launch them", async () => {
+  it("lets independent suites overlap while Rust blocks suites that launch Cargo artifacts", async () => {
     const lanes = validationLanes(Promise.resolve());
     const signal = new AbortController().signal;
-    const rustStarted = deferred();
     const rustDone = deferred();
+    const rendererDone = deferred();
     const execution: string[] = [];
     const rust = lanes.cargo({}, signal, async () => {
       execution.push("rust started");
-      rustStarted.resolve();
       await rustDone.promise;
       execution.push("rust finished");
     });
-    await rustStarted.promise;
+    const renderer = lanes.suite("renderer", {}, signal, async () => {
+      execution.push("renderer started");
+      await rendererDone.promise;
+    });
+    const core = lanes.suite("core-client", {}, signal, async () => {
+      execution.push("core-client");
+    });
+    const agentRuntime = lanes.suite("agent-runtime", {}, signal, async () => {
+      execution.push("agent-runtime");
+    });
     try {
-      await lanes.suite("renderer", {}, signal, async () => {
-        execution.push("renderer");
-      });
-      const core = lanes.suite("core-client", {}, signal, async () => {
-        execution.push("core-client");
-      });
-      await new Promise<void>((resolve) => queueMicrotask(resolve));
-      expect(execution).toEqual(["rust started", "renderer"]);
+      await Promise.resolve();
+      expect(execution).toEqual(["rust started", "renderer started", "agent-runtime"]);
       rustDone.resolve();
-      await Promise.all([rust, core]);
-      expect(execution).toEqual(["rust started", "renderer", "rust finished", "core-client"]);
+      await core;
+      expect(execution).toEqual([
+        "rust started",
+        "renderer started",
+        "agent-runtime",
+        "rust finished",
+        "core-client",
+      ]);
     } finally {
       rustDone.resolve();
+      rendererDone.resolve();
+      await Promise.all([rust, renderer, core, agentRuntime]);
     }
   });
 });
@@ -419,6 +419,28 @@ it("summarizes cache reach, top causes, skipped steps, and total time", () => {
   expect(output).toContain("always run: untracked file read (2)");
   expect(output).toContain("no Rust paths changed");
   expect(output).toContain("Total wall time: 4.00s");
+});
+
+it("excludes a suite's semantic admission wait from its running-time limit", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "nodex-check-step-test-"));
+  const ready = deferred();
+  const lanes = validationLanes(ready.promise);
+  vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval"] });
+  try {
+    const result = runStep(
+      "app renderer",
+      ({ env, signal }) => lanes.suite("renderer", env, signal, async () => 0),
+      { root: directory, directory, timeoutMs: 1000, signal: new AbortController().signal },
+      "queued",
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+    ready.resolve();
+    expect(await result).toMatchObject({ outcome: "pass", queueMs: 3000, runMs: 0 });
+  } finally {
+    ready.resolve();
+    vi.useRealTimers();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 it("reports a command that exceeds its wall-clock limit as TIMEOUT", async () => {

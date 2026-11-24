@@ -253,7 +253,7 @@ export async function runStep(
   };
 }
 
-/** Limit only unbudgeted commands. Rust waits in its own lane. */
+/** Limit background commands. Feedback starts immediately and Rust waits in its own lane. */
 export async function runStepQueue(
   steps: readonly CheckStep[],
   concurrency: number,
@@ -294,22 +294,19 @@ export async function runStepQueue(
 }
 
 export function validationLanes(semanticReady: Promise<void>) {
-  const vitest = executionLane(semanticReady, "serial Vitest lane");
-  const cargo = executionLane(semanticReady, "shared Cargo outputs");
+  let cargoReady = semanticReady;
+  const cargo = <T>(env: NodeJS.ProcessEnv, signal: AbortSignal, run: () => Promise<T>) => {
+    const previous = cargoReady;
+    const turn = deferred();
+    cargoReady = turn.promise;
+    return runAfter(previous, "shared Cargo outputs", env, signal, run).finally(turn.resolve);
+  };
   return {
     cargo,
-    suite<T>(
-      suite: SuiteId,
-      env: NodeJS.ProcessEnv,
-      signal: AbortSignal,
-      run: () => Promise<T>,
-      afterFocused?: Promise<void>,
-    ) {
-      // Cargo gates can replace artifacts while these suites are launching them.
-      const execute = nativeRequirements(suite).some(isNativeExecutable)
-        ? () => cargo(env, signal, run)
-        : run;
-      return vitest(env, signal, execute, afterFocused);
+    suite<T>(suite: SuiteId, env: NodeJS.ProcessEnv, signal: AbortSignal, run: () => Promise<T>) {
+      // Native suites and Rust gates can replace the same executables while tests launch them.
+      if (nativeRequirements(suite).some(isNativeExecutable)) return cargo(env, signal, run);
+      return runAfter(semanticReady, "semantic admission", env, signal, run);
     },
   };
 }
@@ -325,37 +322,25 @@ function presentSiblings(root: string, directory: string): string[] {
   }
 }
 
-function executionLane(startAfter: Promise<void>, label: string) {
-  let available = startAfter;
-  return async <T>(
-    env: NodeJS.ProcessEnv,
-    signal: AbortSignal,
-    run: () => Promise<T>,
-    afterFocused?: Promise<void>,
-  ) => {
-    const id = randomUUID();
-    const report = (event: BudgetQueueEvent) => {
-      const file = env[MACHINE_BUDGET_REPORT_ENV];
-      if (file) appendFileSync(file, JSON.stringify(event) + "\n");
-    };
-    let release: (() => void) | undefined;
-    try {
-      const requestedAt = Date.now();
-      report({ id, label, requestedAt });
-      if (afterFocused) await afterFocused;
-      const previous = available;
-      const turn = deferred();
-      available = turn.promise;
-      release = turn.resolve;
-      await previous;
-      const grantedAt = Date.now();
-      report({ id, label, grantedAt, waitedMs: grantedAt - requestedAt });
-      signal.throwIfAborted();
-      return await run();
-    } finally {
-      release?.();
-    }
+async function runAfter<T>(
+  ready: Promise<void>,
+  label: string,
+  env: NodeJS.ProcessEnv,
+  signal: AbortSignal,
+  run: () => Promise<T>,
+): Promise<T> {
+  const id = randomUUID();
+  const report = (event: BudgetQueueEvent) => {
+    const file = env[MACHINE_BUDGET_REPORT_ENV];
+    if (file) appendFileSync(file, JSON.stringify(event) + "\n");
   };
+  const requestedAt = Date.now();
+  report({ id, label, requestedAt });
+  await ready;
+  const grantedAt = Date.now();
+  report({ id, label, grantedAt, waitedMs: grantedAt - requestedAt });
+  signal.throwIfAborted();
+  return run();
 }
 
 async function checkChanged(
@@ -409,18 +394,12 @@ async function checkChanged(
     const concurrency = validationConcurrency(availableParallelism(), totalmem());
     const semanticReady = deferred();
     const lanes = validationLanes(semanticReady.promise);
-    const focusedSuites = new Set(
-      plan.flatMap((step) => (step.kind === "cached" && step.priority.length ? [step.suite] : [])),
-    );
-    const focusedDone = deferred();
-    if (!focusedSuites.size) focusedDone.resolve();
     const resultsRoot = path.dirname(path.dirname(cacheDirectory(root, process.env, "unit")));
     let workspace: ReturnType<typeof workspaceInputs> | undefined;
     steps.push(
       ...(await runStepQueue(plan, concurrency, signal, async (step, index) => {
         const name = String(index);
         if (step.kind === "cached") {
-          const afterFocused = step.priority.length ? undefined : focusedDone.promise;
           return runStep(
             step.name,
             (stepContext) =>
@@ -434,20 +413,18 @@ async function checkChanged(
                   workspace: () => (workspace ??= workspaceInputs(root, resultsRoot)),
                   digests: () => (digests ??= stampDigests(digestCachePath(root, process.env))),
                   execute: (run) =>
-                    lanes.suite(step.suite, stepContext.env, stepContext.signal, run, afterFocused),
+                    lanes.suite(step.suite, stepContext.env, stepContext.signal, run),
                 },
                 step.priority,
               ),
             { ...context, timeoutMs: suiteTimeoutMs },
             name,
-          ).finally(() => {
-            if (focusedSuites.delete(step.suite) && !focusedSuites.size) focusedDone.resolve();
-          });
+          );
         }
         const semantic = step.resource === "semantic";
         const commandLane: StepContext["commandLane"] =
           step.resource === "rust-budget"
-            ? (env, signal, run) => lanes.cargo(env, signal, run, focusedDone.promise)
+            ? (env, signal, run) => lanes.cargo(env, signal, run)
             : undefined;
         try {
           const input = path.join(staging, name + ".json");

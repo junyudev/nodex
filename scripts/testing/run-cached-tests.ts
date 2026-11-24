@@ -461,15 +461,18 @@ export async function runCachedSuite(
   delete env.NODEX_TEST_OBSERVATIONS;
   delete env.NODEX_TEST_OBSERVATION_ROOT;
   delete env.NODEX_TEST_TRANSFORM_CACHES;
-  const runUncached = () =>
-    runTests(
-      { suites: [suite], tier, related: false, args: filters },
-      {
-        ...context,
-        env,
-        execute: undefined,
-      },
-    );
+  const runUncached = async () => {
+    const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-uncached-"));
+    try {
+      await writeFile(path.join(staging, "priority.json"), JSON.stringify(priority));
+      return await runTests(
+        { suites: [suite], tier, related: false, args: filters },
+        { ...context, env, execute: undefined, isolatedVitestDirectory: staging },
+      );
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  };
   const fallback = (reason: string) => {
     (context.onStdout ?? ((chunk: string) => process.stdout.write(chunk)))(
       `[test-cache] ${suite}: ${reason}\n`,

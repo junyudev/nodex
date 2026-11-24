@@ -71,6 +71,7 @@ export async function runTests(
     readonly onStdout?: Command["onStdout"];
     readonly onStderr?: Command["onStderr"];
     readonly prepareElectron?: typeof prepareElectronRuntime;
+    readonly isolatedVitestDirectory?: string;
   },
 ): Promise<number> {
   // Tests run as independent Nodex processes: an Agent shell that launched the run must not leak its CLI binding.
@@ -116,10 +117,13 @@ export async function runTests(
   for (const suite of selection.suites) {
     if (context.signal.aborted) return 130;
     const command = {
-      ...vitestCommand(suite, selection.args, selection.related, {
-        ...commandContext,
-        env: { ...environment, ...preparedNativeEnvironment(prepared) },
-      }),
+      ...vitestCommand(
+        suite,
+        selection.args,
+        selection.related,
+        { ...commandContext, env: { ...environment, ...preparedNativeEnvironment(prepared) } },
+        context.isolatedVitestDirectory,
+      ),
       onStdout: context.onStdout,
       onStderr: context.onStderr,
     };

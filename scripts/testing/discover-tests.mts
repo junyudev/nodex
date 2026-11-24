@@ -4,14 +4,23 @@ import { createVitest, parseCLI } from "vite-plus/test/node";
 import { parseTestSuite, suiteConfig } from "../../config/test-suites.ts";
 
 /** Discover in the suite's actual runtime without collecting or executing test modules. */
-export async function discoverTests(suite: string, args: readonly string[], related: boolean) {
+async function discoverTests(
+  suite: string,
+  args: readonly string[],
+  related: boolean,
+  directory: string,
+) {
   const { filter, options } = parseCLI(["vitest", related ? "related" : "run", ...args]);
-  const context = await createVitest({
-    ...options,
-    config: suiteConfig(parseTestSuite(suite)),
-    watch: false,
-    reporters: [],
-  });
+  const context = await createVitest(
+    {
+      ...options,
+      config: suiteConfig(parseTestSuite(suite)),
+      watch: false,
+      reporters: [],
+      fsModuleCache: false,
+    },
+    { cacheDir: path.join(directory, "vite") },
+  );
   try {
     const specifications = related
       ? await context.getRelevantTestSpecifications(filter)
@@ -54,6 +63,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.met
   if (!suite || !output || !["run", "related"].includes(mode)) {
     throw new Error("Expected suite, manifest path, run/related, and optional Vitest arguments.");
   }
-  const manifest = await discoverTests(suite, args, mode === "related");
+  const manifest = await discoverTests(suite, args, mode === "related", path.dirname(output));
   await writeFile(output, JSON.stringify(manifest, null, 2) + "\n");
 }

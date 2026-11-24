@@ -42,16 +42,20 @@ export function vitestCommand(
   args: readonly string[],
   related: boolean,
   context: Pick<Command, "cwd" | "env" | "signal">,
+  isolatedDirectory?: string,
 ): Command {
   // Test discovery, bindings, and execution use the same Vite+-owned runner.
-  const entry = path.join(
-    path.dirname(vitePlusRequire.resolve("vitest/package.json")),
-    "vitest.mjs",
-  );
+  const entry = isolatedDirectory
+    ? [
+        "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+        path.join(import.meta.dirname, "run-isolated-vitest.mts"),
+        isolatedDirectory,
+      ]
+    : [path.join(path.dirname(vitePlusRequire.resolve("vitest/package.json")), "vitest.mjs")];
   return runtimeCommand(
     suite,
     [
-      entry,
+      ...entry,
       related ? "related" : "run",
       ...(related ? ["--run", "--passWithNoTests"] : []),
       ...args,
