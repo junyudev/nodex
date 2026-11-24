@@ -16,6 +16,7 @@ export const AGENT_RUNTIME_WATCHED_READS: ReadonlySet<AgentRuntimeMethod> =
     "thread.queue",
     "thread.queued-preview",
     "thread.run-message",
+    "threads.latest-replies",
     "thread.questions.list",
     "thread.prompt-index",
     "thread.item",

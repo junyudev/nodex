@@ -692,8 +692,10 @@ fn read_budget_gate_large_fixture() {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 read: ProjectWorkspaceRead::TaskWindow {
                     project_id: Some(PROJECT_ID.to_owned()),
+                    whole_library: false,
                     include_archived: Some(false),
                     placement_scope: Default::default(),
+                    lifecycle: Default::default(),
                     order: Default::default(),
                     window: CollectionWindowRequest {
                         after: None,
@@ -725,8 +727,10 @@ fn read_budget_gate_large_fixture() {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 read: ProjectWorkspaceRead::TaskWindow {
                     project_id: Some(PROJECT_ID.to_owned()),
+                    whole_library: false,
                     include_archived: Some(false),
                     placement_scope: Default::default(),
+                    lifecycle: Default::default(),
                     order: Default::default(),
                     window: CollectionWindowRequest {
                         after: Some(workspace_cursor),

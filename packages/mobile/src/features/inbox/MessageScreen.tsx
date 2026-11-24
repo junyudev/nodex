@@ -18,7 +18,7 @@ import { agentChipLabel, effectiveAgentChoice } from "../pickers/agent-choice";
 import { EntryActions, SignatureLine } from "./InboxPane";
 import {
   entryChatSession,
-  laterLabel,
+  snoozeLabel,
   messageChat,
   outcomeLabel,
   sourceLabel,
@@ -92,9 +92,9 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
     navigation.goBack();
   };
 
-  const chooseLater = () => navigation.navigate("InboxLaterPicker", { pageId });
+  const chooseSnooze = () => navigation.navigate("InboxSnoozePicker", { pageId });
   const canMarkDone = message.waiting;
-  const deferred = message.later != null && Date.parse(message.later.until) > now;
+  const deferred = message.snooze != null && Date.parse(message.snooze.until) > now;
 
   const startChatFromMessage = () => {
     lightTap();
@@ -126,7 +126,7 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
           message.pageKey,
           formatStreamTime(Date.parse(message.submittedAt), now),
           sourceLabel(message),
-          laterLabel(message, new Date(now)),
+          snoozeLabel(message, new Date(now)),
           outcomeLabel(message),
         ]
           .filter(Boolean)
@@ -175,12 +175,12 @@ export const MessageScreen = ({ route, navigation }: ScreenProps<"Message">) => 
             icon="undo"
             label="Return to Inbox"
             onPress={() =>
-              decideAndClose({ type: deferred ? "clear_later" : "return" }, "Back in the Inbox")
+              decideAndClose({ type: deferred ? "wake" : "return" }, "Back in the Inbox")
             }
           />
         ) : null}
         {canMarkDone && message.source.kind !== "automation" ? (
-          <Row icon="clock" label={deferred ? "Change time" : "Later"} onPress={chooseLater} />
+          <Row icon="clock" label={deferred ? "Change time" : "Snooze"} onPress={chooseSnooze} />
         ) : null}
         {canMarkDone ? (
           <Row

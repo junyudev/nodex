@@ -51,6 +51,8 @@ pub(super) fn record_opened(
             params![session_id, opened_at, score],
         )?;
     }
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let seen = super::member_attention::clear_woke(connection, &member, session_id)?;
     finish_session_mutation(
         connection,
         library_id,
@@ -62,7 +64,11 @@ pub(super) fn record_opened(
         session_id,
         authority,
         vec![],
-        SessionInvalidationKind::None,
+        if seen {
+            SessionInvalidationKind::SummaryAndDetail
+        } else {
+            SessionInvalidationKind::None
+        },
         committed_at,
     )
 }

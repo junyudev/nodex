@@ -5,11 +5,11 @@ import {
   parseCodexRealtimeDelegationText,
 } from "../../shared/codex-delegation";
 import type { CoreModules } from "../core-runtime/CoreModules";
-import { recordAcceptedUserMessage } from "../project-application/SessionMessageReminder";
+import { recordAcceptedUserMessage } from "../project-application/SessionMessageSnooze";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 
 /** Native acknowledgements and live observations share one sender-aware acceptance boundary. */
-export const recordAcceptedNativeUserMessage = Effect.fn("CodexSessionMessageReminders.accept")(
+export const recordAcceptedNativeUserMessage = Effect.fn("CodexSessionMessageSnoozes.accept")(
   function* (
     core: CoreModules["Service"],
     input: {

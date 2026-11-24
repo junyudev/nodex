@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { makeInboxLaterReminders } from "./InboxLaterReminders";
+import { makeInboxSnoozeClock } from "./InboxSnoozeClock";
 
 const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, { discard: true });
 
@@ -15,7 +15,7 @@ it.effect("catches up on startup, re-arms on change, and catches up when woken o
       const now = yield* Clock.currentTimeMillis;
       const pending = [now - 1, now + 10_000];
       const returned: number[] = [];
-      const clock = yield* makeInboxLaterReminders({
+      const clock = yield* makeInboxSnoozeClock({
         changes: Stream.fromPubSub(changes),
         next: Effect.sync(() => {
           const deadline = Math.min(...pending);

@@ -13,6 +13,7 @@ const assignee = z.discriminatedUnion("kind", [
   }),
 ]);
 const actor = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("members") }),
   z.object({ kind: z.literal("member"), member_id: z.string() }),
   z.object({ kind: z.literal("agent"), assignee }),
   z.object({ kind: z.literal("page"), page_id: z.string(), key: z.string().nullable().optional() }),
@@ -24,6 +25,8 @@ const schema = z.object({
   actor,
   reason: z
     .enum([
+      "triage",
+      "delivery_recovery",
       "working",
       "paused",
       "queued",

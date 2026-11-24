@@ -160,7 +160,7 @@ pub(super) fn item(
         None
     };
     Ok(ProjectWorkspaceInboxItem {
-        later: None,
+        snooze: None,
         problem: None,
         handback: None,
         row_kind: if kind == "turn" {

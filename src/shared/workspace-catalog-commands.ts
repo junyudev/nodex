@@ -11,7 +11,8 @@ import type {
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
-  ProjectSessionReminderInput,
+  ProjectSessionSettledInput,
+  ProjectSessionSnoozeInput,
   SessionManagedInput,
   ProjectSessionUpdateInput,
 } from "./types";
@@ -83,8 +84,8 @@ export interface ProjectSessionRenameCommandPayload extends ProjectSessionIdenti
 export interface ProjectSessionPinnedCommandPayload
   extends ProjectSessionIdentityPayload, ProjectSessionPinnedInput {}
 
-export type ProjectSessionReminderCommandInput = OperationIdentifiedCommand<
-  ProjectSessionIdentityPayload & ProjectSessionReminderInput
+export type ProjectSessionSnoozeCommandInput = OperationIdentifiedCommand<
+  ProjectSessionIdentityPayload & ProjectSessionSnoozeInput
 >;
 
 export interface ProjectSessionUnreadCommandPayload
@@ -121,6 +122,12 @@ export type ProjectSessionOpenedCommandInput =
   OperationIdentifiedCommand<ProjectSessionIdentityPayload>;
 export type ProjectSessionUnreadCommandInput =
   OperationIdentifiedCommand<ProjectSessionUnreadCommandPayload>;
+export type ProjectSessionSettledCommandInput =
+  OperationIdentifiedCommand<ProjectSessionSettledInput>;
+/** Settles every chat that asked nothing of the requesting Member since `idleBefore` (Unix ms). */
+export type ProjectSessionsSettleIdleCommandInput = OperationIdentifiedCommand<{
+  readonly idleBefore: number;
+}>;
 
 export interface SidebarSectionIdentityPayload {
   readonly sectionId: string;

@@ -579,6 +579,7 @@ mod tests {
         let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::SessionWindow {
+                provenance: None,
                 archived: false,
                 order: None,
                 projectless_only: None,
@@ -905,8 +906,10 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: binding.project_id.clone(),
+                whole_library: false,
                 include_archived: Some(false),
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     first: Some(10),
@@ -1411,6 +1414,7 @@ mod tests {
         let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::SessionWindow {
+                provenance: None,
                 order: None,
                 archived: false,
                 projectless_only: None,

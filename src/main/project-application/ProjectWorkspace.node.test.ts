@@ -54,6 +54,8 @@ const session = (overrides: Partial<CoreSession> = {}): CoreSession => ({
   no_thread_fallback_title: "New chat",
   display_title: "Mapped session",
   activity_at: 2,
+  attention_at: 2,
+  page_turn: null,
   managed: false,
   pinned: true,
   pinned_order: 1,
@@ -186,24 +188,51 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
       after: "sidebar-cursor",
       first: 50,
     });
+    // Every Project's open chats, ordered by when each came back to a person.
+    yield* workspace.listProjectSessionSummaryWindow(null, {
+      wholeLibrary: true,
+      lifecycle: "open",
+      order: "attention",
+      first: 50,
+    });
     assert.deepEqual(observed, [
       {
         kind: "task_window",
         project_id: "project:one",
+        whole_library: false,
         include_archived: false,
         placement_scope: "all",
+        lifecycle: "all",
         order: "activity",
         window: { after: null, first: undefined },
       },
       {
         kind: "task_window",
         project_id: null,
+        whole_library: false,
         include_archived: false,
         placement_scope: "builtin",
+        lifecycle: "all",
         order: "activity",
         window: { after: "sidebar-cursor", first: 50 },
       },
+      {
+        kind: "task_window",
+        project_id: null,
+        whole_library: true,
+        include_archived: false,
+        placement_scope: "all",
+        lifecycle: "open",
+        order: "attention",
+        window: { after: null, first: 50 },
+      },
     ]);
+    // A list of the whole Library names no Project, so the read never reaches Core.
+    const scoped = yield* workspace
+      .listProjectSessionSummaryWindow("project:one", { wholeLibrary: true })
+      .pipe(Effect.flip);
+    assert.equal(scoped._tag, "ProjectWorkspaceError");
+    assert.equal(observed.length, 3);
     assert.equal(sidebar.projectionRevision, 7);
     yield* Scope.close(scope, Exit.void);
   }),
@@ -238,16 +267,19 @@ it.effect("reads several lanes of one scope's chat list from one Core read", () 
       {
         kind: "task_windows",
         project_id: "project:one",
+        whole_library: false,
         lanes: [
           {
             include_archived: false,
             placement_scope: "all",
+            lifecycle: "all",
             order: "activity",
             window: { after: null, first: 50 },
           },
           {
             include_archived: false,
             placement_scope: "builtin",
+            lifecycle: "all",
             order: "manual",
             window: { after: null, first: 50 },
           },

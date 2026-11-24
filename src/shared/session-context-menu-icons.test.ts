@@ -21,9 +21,9 @@ describe("native session context-menu icons", () => {
     expect(buildSessionContextMenuIconSvg("openIn")).toContain("M11.949 3.47949");
   });
 
-  test("draws reminder and fork glyphs from the geometry the app uses, on the 20-unit grid", () => {
+  test("draws snooze and fork glyphs from the geometry the app uses, on the 20-unit grid", () => {
     const expected = {
-      reminder: [CLOCK_HAND_PATH, CLOCK_RING_PATH],
+      snooze: [CLOCK_HAND_PATH, CLOCK_RING_PATH],
       fork: [BRANCH_PATH],
       local: [LAPTOP_PATH],
       worktree: [WORKTREE_PATH],

@@ -48,8 +48,8 @@ const projectAction = (
   item: InboxItem,
 ): InboxProposalAction => {
   switch (action.type) {
-    case "later":
-      return { type: "later", remindAt: action.remindAt };
+    case "snooze":
+      return { type: "snooze", snoozedUntil: action.snoozedUntil };
     case "keep":
       return { type: "keep" };
     case "save_to_notes":
@@ -165,7 +165,7 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
     return {
       ...base,
       rowKind: "turn",
-      later: item.later ? { ...item.later } : null,
+      snooze: item.snooze ? { ...item.snooze } : null,
       turn: {
         episode: turn.turn.episode,
         reason: turn.turn.reason ?? null,
@@ -187,7 +187,7 @@ export const projectInboxEntry = (item: InboxItem): InboxEntry => {
   return {
     ...base,
     rowKind: "intake",
-    later: item.later ? { ...item.later } : null,
+    snooze: item.snooze ? { ...item.snooze } : null,
     important: item.important,
     waiting: item.waiting,
     kind: item.kind ?? item.proposal?.kind ?? null,
@@ -219,8 +219,8 @@ const reject = (error: InboxApplicationError) => {
     return unavailable("The change may already be saved. Retry to check it.");
   if (cause instanceof CoreModuleResponseError) {
     const code =
-      cause.coreError.recovery.kind === "inbox_remind_at_passed"
-        ? "inbox_remind_at_passed"
+      cause.coreError.recovery.kind === "inbox_snooze_time_passed"
+        ? "inbox_snooze_time_passed"
         : "rejected";
     return rpcError(code, cause.coreError.message, cause.coreError.retryable);
   }
@@ -336,7 +336,7 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                     decision.proposalId,
                     decision.revision,
                     decision.keptSkillNames?.toSorted(),
-                    decision.remindAt,
+                    decision.snoozedUntil,
                   ]
                 : [
                     decision.projectId,
@@ -376,8 +376,8 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                   "This message changed. Review the suggestion on your desktop.",
                 ),
               );
-            if (decision.remindAt && proposal.action.type !== "later")
-              return yield* Effect.fail(invalid("Only a Later suggestion has a return time."));
+            if (decision.snoozedUntil && proposal.action.type !== "snooze")
+              return yield* Effect.fail(invalid("Only a Snooze suggestion has a return time."));
             const proposedSkills = inboxActionSkills(proposal.action);
             const kept = decision.keptSkillNames;
             if (
@@ -394,8 +394,8 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
                 expectedRevision: decision.revision,
                 storeEpoch,
                 basis: proposal.basis,
-                ...(decision.remindAt
-                  ? { action: { type: "later", remindAt: decision.remindAt } }
+                ...(decision.snoozedUntil
+                  ? { action: { type: "snooze", snoozedUntil: decision.snoozedUntil } }
                   : {}),
                 ...(kept
                   ? {
@@ -507,10 +507,10 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         yield* inbox.retryProblem({ operationId, problemId: decision.problemId }).pipe(refused);
         return { undoToken: null, sessionId: null };
       }
-      const later = decision.type === "later" || decision.type === "clear_later";
+      const changesSnooze = decision.type === "snooze" || decision.type === "wake";
       if (
         row?.rowKind !== "intake" &&
-        !(row?.rowKind === "turn" && later) &&
+        !(row?.rowKind === "turn" && changesSnooze) &&
         !(row === null && decision.type === "delete")
       )
         return yield* Effect.fail(
@@ -521,11 +521,11 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         case "accept":
         case "start_chat":
           return yield* confirm(input, operationId);
-        case "later":
-          yield* inbox.setLater({ pageIds, until: decision.until }, operationId).pipe(refused);
+        case "snooze":
+          yield* inbox.setSnooze({ pageIds, until: decision.until }, operationId).pipe(refused);
           break;
-        case "clear_later":
-          yield* inbox.clearLater({ pageIds }, operationId).pipe(refused);
+        case "wake":
+          yield* inbox.wake({ pageIds }, operationId).pipe(refused);
           break;
         case "save_to_notes": {
           if (!row) return yield* Effect.fail(missing("The message is unavailable."));
@@ -590,7 +590,7 @@ export const makeMobileInbox = Effect.fn("MobileInbox.make")(function* (
         Effect.map(([result, summary]) => ({
           items: result.items.map(projectInboxEntry),
           nextCursor: result.nextCursor,
-          laterCount: summary.laterCount,
+          snoozedCount: summary.snoozedCount,
         })),
       ),
     "inbox.message": ({ entryId: pageId }) =>

@@ -1,8 +1,11 @@
 import { expect, test } from "vite-plus/test";
 
+import type { PageTurn } from "../../shared/page-turn";
+import { inboxCountsFromCore } from "./inbox-adapter";
 import {
   projectWorkspaceSessionSidebarPlacementFromCore,
   projectWorkspaceSidebarSectionSummaryFromCore,
+  projectWorkspaceTaskFromCore,
 } from "./project-workspace-adapter";
 
 test.each([
@@ -41,10 +44,10 @@ test.each([
     project_id: "project:work",
     section_id: "section:direct",
     unread: true,
-    remind_at: "2026-11-02T09:00:00.000Z",
+    snoozed_until: "2026-11-02T09:00:00.000Z",
   },
-  { project_id: null, section_id: null, unread: false, remind_at: null },
-])("preserves nullable Session Sidebar placement and reminders: %j", (placement) => {
+  { project_id: null, section_id: null, unread: false, snoozed_until: null },
+])("preserves nullable Session Sidebar placement and snoozes: %j", (placement) => {
   expect(
     projectWorkspaceSessionSidebarPlacementFromCore({
       session_id: "session:live",
@@ -55,6 +58,60 @@ test.each([
     projectId: placement.project_id,
     sectionId: placement.section_id,
     unread: placement.unread,
-    remindAt: placement.remind_at,
+    snoozedUntil: placement.snoozed_until,
+  });
+});
+
+const reviewTurn: PageTurn = {
+  page_id: "page",
+  actor: { kind: "member", member_id: "person" },
+  episode: "review-episode",
+  reason: "review",
+  since: "2026-11-02T09:00:00.000Z",
+  hold: null,
+};
+
+test.each([reviewTurn, null])(
+  "carries the current Page Turn from Core into the chat summary: %j",
+  (pageTurn) => {
+    expect(
+      projectWorkspaceTaskFromCore({
+        session: {
+          id: "chat",
+          project_id: "work",
+          no_thread_fallback_title: "A chat",
+          display_title: "A chat",
+          activity_at: 0,
+          attention_at: 0,
+          pinned: false,
+          managed: false,
+          archived: false,
+          unread: false,
+          page_turn: pageTurn,
+          can_manage: true,
+          can_stop: true,
+          created_at: reviewTurn.since,
+          updated_at: reviewTurn.since,
+        },
+      }).pageTurn,
+    ).toEqual(pageTurn);
+  },
+);
+
+test("keeps the Inbox waiting signal independent of its count", () => {
+  const waiting = { library: true, projects: { work: true, planning: false } };
+  expect(
+    inboxCountsFromCore({
+      library_count: 3,
+      projects: [
+        { project_id: "work", inbox_count: 1 },
+        { project_id: "planning", inbox_count: 2 },
+      ],
+      waiting,
+    }),
+  ).toEqual({
+    library: 3,
+    projects: { work: 1, planning: 2 },
+    waiting,
   });
 });

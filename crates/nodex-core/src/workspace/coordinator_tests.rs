@@ -93,8 +93,10 @@ fn coordinator_managed_state_projects_to_sessions_and_invalidates_on_each_toggle
             &w.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: None,
+                whole_library: false,
                 include_archived: None,
                 placement_scope: ProjectWorkspaceTaskPlacementScope::All,
+                lifecycle: Default::default(),
                 order: ProjectWorkspaceTaskOrder::Activity,
                 window: CollectionWindowRequest::default(),
             },
@@ -514,6 +516,7 @@ fn coordinator_is_absent_from_discovery_routing_and_page_chats() {
     let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
         &w.module,
         ProjectWorkspaceRead::SessionWindow {
+            provenance: None,
             archived: false,
             order: None,
             projectless_only: None,

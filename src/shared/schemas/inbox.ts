@@ -64,8 +64,8 @@ const prompt = z
   .refine((value) => utf8Bytes(value) <= MAX_INBOX_PROMPT_BYTES, "Prompt is too long");
 
 export const InboxEntryKindSchema = z.enum(["note", "todo", "question"]);
-export const InboxWindowFilterSchema = z.enum(["inbox", "processed", "later"]);
-export const InboxRemindAtSchema = z.iso.datetime({ offset: true }).max(64);
+export const InboxWindowFilterSchema = z.enum(["inbox", "processed", "snoozed"]);
+export const InboxSnoozedUntilSchema = z.iso.datetime({ offset: true }).max(64);
 
 const choiceValue = z.string().trim().min(1).max(256).nullable();
 
@@ -110,7 +110,7 @@ const skillInvocations = z
   .optional();
 
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("later"), remindAt: InboxRemindAtSchema }),
+  z.strictObject({ type: z.literal("snooze"), snoozedUntil: InboxSnoozedUntilSchema }),
   z.strictObject({
     type: z.literal("plan"),
     summary: z.string().trim().min(1).max(200),
@@ -328,8 +328,8 @@ export const InboxPageIdsInputSchema = z
   .object({ pageIds: pageIds(MAX_INBOX_BULK_PAGES) })
   .strict() satisfies z.ZodType<InboxPageIdsInput>;
 
-export const InboxSetLaterInputSchema = InboxPageIdsInputSchema.extend({
-  until: InboxRemindAtSchema,
+export const InboxSetSnoozeInputSchema = InboxPageIdsInputSchema.extend({
+  until: InboxSnoozedUntilSchema,
 });
 
 export const InboxSuggestionRequestInputSchema = z

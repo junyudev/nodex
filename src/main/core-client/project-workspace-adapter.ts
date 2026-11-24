@@ -78,7 +78,7 @@ export const projectWorkspaceSessionSidebarPlacementFromCore = (
   projectId: placement.project_id ?? null,
   sectionId: placement.section_id ?? null,
   unread: placement.unread,
-  remindAt: placement.remind_at ?? null,
+  snoozedUntil: placement.snoozed_until ?? null,
 });
 
 export const projectWorkspaceSidebarSectionSummaryFromCore = (
@@ -771,7 +771,12 @@ const fromCoreSessionSummary = (
   archived: session.archived,
   archivedAt: session.archived_at ?? null,
   unread: session.unread,
-  remindAt: session.remind_at ?? null,
+  snoozedUntil: session.snoozed_until ?? null,
+  snoozedAt: session.snoozed_at ?? null,
+  wokeAt: session.woke_at ?? null,
+  pageTurn: session.page_turn,
+  settledAt: session.settled_at ?? null,
+  attentionAt: session.attention_at,
   canManage: session.can_manage,
   canStop: session.can_stop,
   thread,

@@ -185,13 +185,13 @@ Core enforces assignment references and records the Member who granted consent; 
 Agent availability when starting work. See
 [Database Pages and Views](product-specs/database-pages-and-views-behavior.md#work-prerequisites-and-agent-work).
 
-Core owns each Session's nullable chat reminder, exact-value consumption, and
+Core owns each Session's nullable chat snooze, exact-value consumption, and
 unfinished delivery receipts. One
 Profile-scoped Desktop scheduler observes that authority, uses the existing native
 identity or Core Session unread owner, and publishes through the desktop notification
 owner. User-message acceptance confirms cancellation and Session activity through Workspace
 with durable message identities; execution history stays with its existing owner. See
-[Desktop Notification Behavior](product-specs/desktop-notification-behavior.md#chat-reminders).
+[Desktop Notification Behavior](product-specs/desktop-notification-behavior.md#chat-snoozes).
 
 An Agent Runtime bound Session retains its Core product identity while its root Thread
 has one external execution owner. Core atomically admits the immutable reference and
@@ -386,7 +386,7 @@ Runtime remains the sole execution and history writer. The kernel composes
 app-owned Effect services in its embedding process Scope, without a second
 runtime or shutdown coordinator. Main embeds it for the personal Space.
 The headless serve process embeds the same kernel for a team Space, and delivers every
-Member's chat reminders there; Core keeps pins, reminders and unread state per Member,
+Member's chat snoozes there; Core keeps pins, snoozes and unread state per Member,
 and a desktop presents only its own Member's. Core relays
 authenticated Member reads and person commands to that Space's execution owner;
 the Runtime retains transcript ownership. Core decides each person action on a hosted
@@ -1082,7 +1082,7 @@ item windows and exact content continuations from Runtime or passive native Code
 independently of renderer snapshots. Discovery merges owner catalogs after Core validates
 their current Session bindings; Runtime conversation recency, previews and indexed message
 evidence remain Runtime facts. Core owns each Session's activity, its creation, the person's
-latest accepted message or a chat reminder coming due, as the one ordering key for chat lanes and
+latest accepted message or a chat snooze coming due, as the one ordering key for chat lanes and
 pickers; the durable user-message acceptance that cancels a reminder also raises it, and Main
 reconciles it from the Runtime catalog when a Runtime connection starts. Core owns durable foreground-open usage and a narrow search
 revision for Workspace observations. Main owns one Scope per search query, with private source

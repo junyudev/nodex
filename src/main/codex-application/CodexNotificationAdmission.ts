@@ -1,4 +1,4 @@
-import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageReminders";
+import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageSnoozes";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -116,7 +116,7 @@ export const make: Effect.Effect<
       });
     }).pipe(
       Effect.catchCause((cause) =>
-        Effect.logError("Accepted chat message could not cancel its reminder", cause),
+        Effect.logError("Accepted chat message could not cancel its snooze", cause),
       ),
     );
 

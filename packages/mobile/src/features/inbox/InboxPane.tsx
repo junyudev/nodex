@@ -28,7 +28,7 @@ import {
   entryChatSession,
   entrySignature,
   type EntrySignature,
-  laterLabel,
+  snoozeLabel,
   outcomeLabel,
   proposalAction,
   proposalSkills,
@@ -87,7 +87,7 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
       ? view.proposal
       : null;
   const intake = message.rowKind === "intake";
-  const later = laterLabel(message, new Date(now));
+  const snooze = snoozeLabel(message, new Date(now));
   return (
     <Tap
       accessibilityActions={
@@ -129,10 +129,10 @@ const MessageRow = ({ message, now }: { readonly message: InboxEntry; readonly n
         {message.important ? <Icon name="starFilled" size={12} color="warning" /> : null}
         <Txt className="text-xs text-ink-3" numberOfLines={1}>
           {[
-            later,
+            snooze,
             (message.rowKind === "intake" || message.rowKind === "turn") &&
-            message.later &&
-            Date.parse(message.later.until) > now
+            message.snooze &&
+            Date.parse(message.snooze.until) > now
               ? null
               : time,
             sourceLabel(message),
@@ -212,7 +212,7 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
       <View className="flex-1" style={insetPadding(insets)}>
         {filter === "inbox" ? (
           <EmptyState icon="inbox" title="Nothing waiting" detail="Drop a thought here." />
-        ) : filter === "later" ? (
+        ) : filter === "snoozed" ? (
           <EmptyState icon="clock" title="Nothing set aside" />
         ) : (
           <EmptyState icon="history" title="Nothing handled yet" />
@@ -220,10 +220,10 @@ export const InboxPane = ({ insets }: { readonly insets: ContentInsets }) => {
       </View>
     );
   }
-  if (filter === "later") {
+  if (filter === "snoozed") {
     return (
       <LegendList
-        key={`${inboxScopeKey(scope)}:later`}
+        key={`${inboxScopeKey(scope)}:snoozed`}
         contentContainerStyle={{ paddingTop: insets.top + 4, paddingBottom: insets.bottom + 8 }}
         contentInsetAdjustmentBehavior="never"
         data={inbox.rows}
@@ -311,21 +311,21 @@ export const EntryActions = ({
   const reply = view.reply
     ? () => (onReply ? onReply({ entryId: entry.id, episode, title: entry.title }) : openChat?.())
     : null;
-  const deferred = entry.later !== null && Date.parse(entry.later.until) > now;
+  const deferred = entry.snooze !== null && Date.parse(entry.snooze.until) > now;
   const actions = [
     deferred ? (
       <Chip
         key="return"
         icon="undo"
         label="Return to Inbox"
-        onPress={() => void decide(entry.id, { type: "clear_later" }, "Back in the Inbox")}
+        onPress={() => void decide(entry.id, { type: "wake" }, "Back in the Inbox")}
       />
     ) : null,
     <Chip
-      key="later"
+      key="snoozed"
       icon="clock"
-      label={deferred ? "Change time" : "Later"}
-      onPress={() => navigation.navigate("InboxLaterPicker", { pageId: entry.pageId })}
+      label={deferred ? "Change time" : "Snooze"}
+      onPress={() => navigation.navigate("InboxSnoozePicker", { pageId: entry.pageId })}
     />,
     view.accept ? (
       <Button

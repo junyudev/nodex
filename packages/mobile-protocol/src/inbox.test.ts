@@ -19,7 +19,7 @@ describe("mixed Member Inbox wire", () => {
     const turn = InboxEntrySchema.parse({
       ...common,
       rowKind: "turn",
-      later: null,
+      snooze: null,
       turn: {
         episode: "episode",
         reason: "question",

@@ -222,7 +222,7 @@ fn chat_events_concern_the_member_core_entitles_never_another() {
     );
     // A reminder concerns whoever set it, while they remain an active Member.
     let reminder = |member_id: &str| {
-        audience(PhonePushAudience::ReminderOwner {
+        audience(PhonePushAudience::ChatSnoozeOwner {
             member_id: member_id.into(),
         })
     };
@@ -387,6 +387,50 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
         };
         assert_eq!(items.items.len(), 1);
         let episode = items.items[0].turn.as_ref().unwrap().turn.episode.clone();
+        let other = member(&w, "other-person");
+        let read_as = |reader, read| {
+            w.module
+                .read(
+                    reader,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read,
+                    },
+                )
+                .unwrap()
+                .value
+        };
+        for (reader, owns_turn) in [(&remote, true), (&other, false)] {
+            let ProjectWorkspaceReadValue::TaskWindow { tasks } = read_as(
+                reader,
+                ProjectWorkspaceRead::TaskWindow {
+                    project_id: Some(PROJECT.into()),
+                    whole_library: false,
+                    include_archived: None,
+                    placement_scope:
+                        nodex_core_contracts::workspace::ProjectWorkspaceTaskPlacementScope::All,
+                    lifecycle: nodex_core_contracts::workspace::ProjectWorkspaceTaskLifecycle::Open,
+                    order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Attention,
+                    window: CollectionWindowRequest::default(),
+                },
+            ) else {
+                panic!("chat window");
+            };
+            let task = tasks
+                .items
+                .iter()
+                .find(|task| task.session.id == format!("chat:{page}"))
+                .unwrap();
+            let expected = owns_turn.then(|| &items.items[0].turn.as_ref().unwrap().turn);
+            assert_eq!(task.session.page_turn.as_ref(), expected);
+            let ProjectWorkspaceReadValue::InboxCounts { counts } =
+                read_as(reader, ProjectWorkspaceRead::InboxCounts)
+            else {
+                panic!("Inbox counts");
+            };
+            assert_eq!(counts.waiting.library, owns_turn && answer);
+        }
+
         let exact = w
             .module
             .read(
@@ -440,7 +484,6 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
         let first = apply_member(&w, &remote, "remote-reply", intent.clone()).unwrap();
         let replay = apply_member(&w, &remote, "remote-reply", intent.clone()).unwrap();
         assert_eq!(first.committed.commit_seq, replay.committed.commit_seq);
-        let other = member(&w, "other-person");
         assert_eq!(
             apply_member(&w, &other, "remote-reply", intent)
                 .unwrap_err()
@@ -490,7 +533,28 @@ fn remote_members_start_and_accept_work_but_cannot_claim_host_or_agent_authority
         },
     )
     .unwrap();
+    observe(&w, page, 0, SessionExecutionState::Idle);
     set_status_by_hand(&w, page, "review");
+
+    let read_chat = || {
+        let ProjectWorkspaceReadValue::Session { session } = w
+            .module
+            .read(
+                &remote,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::Session {
+                        session_id: format!("chat:{page}"),
+                    },
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("Active chat summary");
+        };
+        session
+    };
     let snapshot = w
         .module
         .read(
@@ -511,7 +575,11 @@ fn remote_members_start_and_accept_work_but_cannot_claim_host_or_agent_authority
     let ProjectWorkspaceReadValue::InboxWindow { mut items } = snapshot.value else {
         panic!("Inbox")
     };
-    let episode = items.items.remove(0).turn.unwrap().turn.episode;
+    let review = items.items.remove(0).turn.unwrap().turn;
+    let before = read_chat();
+    assert!(before.settled_at.is_none());
+    assert_eq!(before.page_turn, Some(review.clone()));
+    let episode = review.episode;
     for intent in [
         ProjectWorkspaceIntent::WriteTurnNote {
             note_id: "note".into(),
@@ -570,6 +638,15 @@ fn remote_members_start_and_accept_work_but_cannot_claim_host_or_agent_authority
     )
     .unwrap();
     assert!(mixed(&w, project_scope(), None, 10).items.is_empty());
+    let after = read_chat();
+    assert!(
+        after.settled_at.is_some(),
+        "accepting review settles the eligible Active chat"
+    );
+    assert!(
+        after.page_turn.is_none(),
+        "the decision is cleared from the chat"
+    );
 }
 
 #[test]

@@ -32,7 +32,7 @@ export type InboxProposalState =
  * `inbox` holds what still needs the user; `processed` holds the messages already handled, which
  * the phone lists on request. The desktop shows handled messages in Activity instead.
  */
-export type InboxWindowFilter = "inbox" | "processed" | "later";
+export type InboxWindowFilter = "inbox" | "processed" | "snoozed";
 
 /**
  * Which Inbox owns a message's decision: the Library Inbox, for thoughts whose Project is not
@@ -65,7 +65,7 @@ export type InboxDispatchAction =
   | { readonly type: "plan"; readonly summary: string; readonly steps: readonly InboxPlanStep[] }
   | { readonly type: "keep" }
   | { readonly type: "save_to_notes"; readonly parentPageId: string | null }
-  | { readonly type: "later"; readonly remindAt: string }
+  | { readonly type: "snooze"; readonly snoozedUntil: string }
   | {
       readonly type: "new_chat";
       readonly projectId: string | null;
@@ -221,7 +221,7 @@ export interface InboxAutomationDecision {
   readonly status: InboxAutomationDecisionStatus;
   readonly firstScheduledFor: number;
   readonly lastScheduledFor: number;
-  /** Later clock occurrences recorded while this decision waited. */
+  /** Snooze clock occurrences recorded while this decision waited. */
   readonly missedCount: number;
   /** Why its execution failed before reaching a chat. */
   readonly failureMessage: string | null;
@@ -311,13 +311,13 @@ export interface InboxPageStatus {
 export const inboxRowKey = (item: Pick<InboxItem, "rowKind" | "pageId">): string =>
   `${item.rowKind}:${item.pageId}`;
 
-export interface InboxLater {
+export interface InboxSnooze {
   readonly setAt: string;
   readonly until: string;
 }
 
 export interface InboxItem {
-  readonly later: InboxLater | null;
+  readonly snooze: InboxSnooze | null;
   readonly handback?: components["schemas"]["InboxHandback"] | null;
   readonly rowKind: "intake" | "turn" | "answer" | "problem";
   readonly problem?: components["schemas"]["SourceProblem"] | null;
@@ -380,7 +380,7 @@ export interface InboxWindow {
 
 export interface InboxSummary {
   readonly notesPageId: string | null;
-  readonly laterCount: number;
+  readonly snoozedCount: number;
   readonly storeEpoch: string;
   /** The Database this Inbox's messages become Pages in, once it exists. */
   readonly databaseId: string | null;
@@ -404,11 +404,16 @@ export interface InboxImportantMessage {
   readonly submittedAt: string;
 }
 
-/** Messages still waiting in each Inbox, for navigation badges. */
+/** Actionable Inbox items and unanswered requests, for navigation. */
 export interface InboxCounts {
   readonly library: number;
   /** Active Projects whose Inbox holds at least one message, keyed by Project. */
   readonly projects: Readonly<Record<string, number>>;
+  /** True for scopes with an unsnoozed question or approval Turn for this reader. */
+  readonly waiting: {
+    readonly library: boolean;
+    readonly projects: Readonly<Record<string, boolean>>;
+  };
 }
 
 export interface InboxSummaryInput {
@@ -424,7 +429,7 @@ export interface InboxWindowInput {
 
 /** A desktop Inbox reads only what still needs the user; what was handled is in Activity. */
 export type InboxStreamInput = Omit<InboxWindowInput, "filter"> & {
-  readonly filter?: "inbox" | "later";
+  readonly filter?: "inbox" | "snoozed";
 };
 
 export interface InboxReplyDestination {
@@ -531,7 +536,7 @@ export interface InboxPageIdsInput {
   readonly pageIds: readonly string[];
 }
 
-export interface InboxSetLaterInput extends InboxPageIdsInput {
+export interface InboxSetSnoozeInput extends InboxPageIdsInput {
   readonly until: string;
 }
 

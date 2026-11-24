@@ -757,6 +757,134 @@ it.effect.each(storageCases)(
 );
 
 it.effect.each(storageCases)(
+  "$storage: a Thread's latest reply is its own last answer from a settled Run",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const runEvent = events.find((event) => event.type === "run.created")!;
+      if (runEvent.type !== "run.created") return;
+      // Nothing has been answered while the only Run is still working.
+      assert.deepEqual(yield* store.getLatestReplies([threadId]), []);
+      const newerRunId = RunId.make("run:newer");
+      yield* store.apply({
+        ...runEvent,
+        id: EventId.make("newer-run"),
+        payload: {
+          ...runEvent.payload,
+          id: newerRunId,
+          ordinal: 2,
+          userMessageId: MessageId.make("message:newer"),
+        },
+      });
+      const long = "y".repeat(ProjectionStore.LATEST_REPLY_TEXT_LIMIT + 50);
+      const replies = [
+        { id: "settled-answer", runId, rootNodeId: nodeId, ordinal: 1, text: long },
+        { id: "child-answer", runId, rootNodeId: NodeId.make("child-root"), ordinal: 2 },
+        { id: "settled-note", runId, rootNodeId: nodeId, ordinal: 3, commentary: true },
+        { id: "settled-empty", runId, rootNodeId: nodeId, ordinal: 4, text: "" },
+        { id: "newer-answer", runId: newerRunId, rootNodeId: nodeId, ordinal: 5 },
+      ];
+      yield* Effect.forEach(
+        replies,
+        (reply) =>
+          Effect.gen(function* () {
+            const replyNodeId = NodeId.make(`node:${reply.id}`);
+            yield* store.apply({
+              id: EventId.make(`node-event:${reply.id}`),
+              type: "node.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: replyNodeId,
+                threadId,
+                runId: reply.runId,
+                parentNodeId: reply.rootNodeId,
+                rootNodeId: reply.rootNodeId,
+                kind: "assistant_message",
+                status: "completed",
+                countsForRun: false,
+                providerThreadId,
+                providerTurnId,
+                nativeItemRef: null,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: now,
+                completedAt: now,
+              },
+            });
+            yield* store.apply({
+              id: EventId.make(`event:${reply.id}`),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                runId: reply.runId,
+                ordinal: reply.ordinal,
+                nodeId: replyNodeId,
+                id: TurnItemId.make(reply.id),
+                threadId,
+                providerThreadId,
+                providerTurnId,
+                nativeItemRef: null,
+                parentItemId: null,
+                status: "completed",
+                title: null,
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                type: "assistant_message",
+                responseKind: reply.commentary ? ("commentary" as const) : ("final" as const),
+                messageId: MessageId.make(`message:${reply.id}`),
+                text: reply.text ?? reply.id,
+                streaming: false,
+              },
+            });
+          }),
+        { discard: true },
+      );
+      const settle = (id: RunId, ordinal: number, status: "completed" | "rolled_back") =>
+        store.apply({
+          ...runEvent,
+          id: EventId.make(`settled:${id}:${status}`),
+          type: "run.updated",
+          payload: {
+            ...runEvent.payload,
+            id,
+            ordinal,
+            status,
+            activeAttemptId: null,
+            completedAt: now,
+          },
+        });
+      yield* settle(runId, 1, "completed");
+      // The newer Run still works, so the settled Run's own answer is the latest reply. A
+      // subagent's answer, a note and an empty message never stand for it.
+      assert.deepEqual(yield* store.getLatestReplies([ThreadId.make("foreign"), threadId]), [
+        {
+          threadId,
+          runId,
+          text: long.slice(0, ProjectionStore.LATEST_REPLY_TEXT_LIMIT),
+          completedAt: DateTime.formatIso(now),
+        },
+      ]);
+      yield* settle(newerRunId, 2, "completed");
+      assert.deepEqual(
+        (yield* store.getLatestReplies([threadId])).map((reply) => reply.text),
+        ["newer-answer"],
+      );
+      // A rolled-back Run left the conversation, and its reply with it.
+      yield* settle(newerRunId, 2, "rolled_back");
+      assert.deepEqual(
+        (yield* store.getLatestReplies([threadId])).map((reply) => reply.runId),
+        [runId],
+      );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
   "$storage: finds the active root turn without an attempt reverse link",
   ({ storeLayer }) =>
     Effect.gen(function* () {

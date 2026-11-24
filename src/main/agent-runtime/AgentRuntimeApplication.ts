@@ -1,4 +1,5 @@
 import { agentDefinition } from "../../shared/agents/registry";
+import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../../shared/chat-reply-preview";
 import { antigravityAgent } from "../../shared/agents/antigravity";
 import { isAbsolute } from "node:path";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
@@ -16,7 +17,7 @@ import {
   modelIsOn,
   readModelPolicyFailure,
 } from "../../shared/model-policy";
-import { recordAcceptedUserMessage } from "../project-application/SessionMessageReminder";
+import { recordAcceptedUserMessage } from "../project-application/SessionMessageSnooze";
 import { make as makeSessionOrdering } from "./AgentRuntimeSessionOrdering";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { readPromptTurns } from "./AgentRuntimePromptTurns";
@@ -91,6 +92,7 @@ import type {
   ProjectSessionArchiveCommandInput,
   ProjectSessionDeleteCommandInput,
   ProjectSessionRenameCommandInput,
+  ProjectSessionSettledCommandInput,
   ProjectSessionPinnedCommandInput,
 } from "../../shared/workspace-catalog-commands";
 
@@ -4679,6 +4681,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     deleteSession: (command: ProjectSessionDeleteCommandInput) =>
       withSessionLifecycle("delete-session", command.payload.sessionId, deleteSession(command)),
+    setSessionsSettled: (command: ProjectSessionSettledCommandInput) =>
+      ownedWrite("settle-sessions", workspace.setProjectSessionSettled(command)),
     setPinnedSession: (command: ProjectSessionPinnedCommandInput) =>
       ownedWrite("pin-session", workspace.setProjectSessionPinned(command)),
     moveSession: (input: {
@@ -5672,6 +5676,56 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             threadId: loaded.threadId,
             ...(input.activeCursor === undefined ? {} : { activeCursor: input.activeCursor }),
             ...(input.terminalCursor === undefined ? {} : { terminalCursor: input.terminalCursor }),
+          });
+        }),
+      ),
+    /**
+     * Each named chat's latest reply as row text. Core names the chats this reader may see and
+     * their executions in one read; the execution owner answers every reply in one more.
+     */
+    replyPreviews: (input: { readonly sessionIds: readonly string[] }) =>
+      ownedOpenRead(
+        "reply-previews",
+        Effect.gen(function* () {
+          const sessionIds = [...new Set(input.sessionIds)];
+          if (
+            sessionIds.length > CHAT_REPLY_PREVIEW_BATCH_LIMIT ||
+            !sessionIds.every((sessionId) => validId(sessionId))
+          )
+            return yield* failure("reply-previews", "Session identities are invalid");
+          if (sessionIds.length === 0) return [];
+          const connection = yield* options.connect;
+          const listed = yield* host(
+            core.workspace.read({
+              kind: "session_window",
+              archived: false,
+              order: "identity",
+              session_ids: sessionIds,
+              window: { first: sessionIds.length },
+            }),
+          );
+          if (listed.value.kind !== "session_window")
+            return yield* failure("reply-previews", "Core returned the wrong chat list");
+          const sessionByThread = new Map(
+            listed.value.sessions.items.flatMap(({ task }) => {
+              const execution = task.session.execution_ref;
+              return execution?.runtime_id === connection.identity.runtimeId
+                ? [[execution.thread_id, task.session.id] as const]
+                : [];
+            }),
+          );
+          if (sessionByThread.size === 0) return [];
+          const replies = yield* connection.request("threads.latest-replies", {
+            threadIds: [...sessionByThread.keys()],
+          });
+          // The Markdown parser stays out of the code Main runs before its first window.
+          const { presentChatReplyPreview } = yield* Effect.promise(
+            () => import("../../shared/chat-reply-preview-text"),
+          );
+          return replies.flatMap((reply) => {
+            const sessionId = sessionByThread.get(reply.threadId);
+            const text = presentChatReplyPreview(reply.text);
+            return sessionId && text ? [{ sessionId, text }] : [];
           });
         }),
       ),

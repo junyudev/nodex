@@ -97,7 +97,7 @@ pub(super) fn read_session_sidebar_placements(
         .prepare(
             "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
              SELECT session.id, session.project_id, EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?3), \
-               (SELECT reminder.remind_at FROM member_session_reminders reminder WHERE reminder.session_id=session.id AND reminder.member_id=?3), \
+               (SELECT snooze.snoozed_until FROM member_session_snoozes snooze WHERE snooze.session_id=session.id AND snooze.member_id=?3), \
                CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
                  WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) THEN COALESCE( \
                  (SELECT item.section_id FROM workspace_sidebar_section_items item \
@@ -120,7 +120,7 @@ pub(super) fn read_session_sidebar_placements(
                 session_id: row.get(0)?,
                 project_id: row.get(1)?,
                 unread: row.get(2)?,
-                remind_at: row.get(3)?,
+                snoozed_until: row.get(3)?,
                 section_id: row.get(4)?,
             })
         })?
@@ -278,8 +278,15 @@ pub(super) fn read_section_item_window(
     let limit_parameter = parameters.len();
     parameters.push(SqlValue::Text(member.to_owned()));
     let task_columns = summary_columns(parameters.len());
+    let settled_at =
+        super::member_attention::settled_at_sql("session.id", &format!("?{}", parameters.len()));
+    let page_turn = super::page_turn::chat_turn_column(
+        "window_rows.session_id",
+        "?2",
+        &format!("?{}", parameters.len()),
+    );
     let sql = format!(
-        "SELECT item.placement_id, item.rank_key, item.revision, \
+        "WITH window_rows AS MATERIALIZED (SELECT item.placement_id, item.rank_key, item.revision, \
            project.id, project.name, project.lifecycle, project.appearance_color, \
            project.appearance_marker_kind, project.appearance_marker_value, \
            pinned_project.project_id, \
@@ -294,10 +301,11 @@ pub(super) fn read_section_item_window(
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
          WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = item.session_id) \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
-             OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0))) \
+             OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0) AND {settled_at} IS NULL)) \
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
            {cursor_predicate} \
-         ORDER BY item.rank_key, item.placement_id LIMIT ?{limit_parameter}"
+         ORDER BY item.rank_key, item.placement_id LIMIT ?{limit_parameter})
+         SELECT window_rows.*, {page_turn} FROM window_rows ORDER BY rank_key, placement_id"
     );
     let rows = connection
         .prepare(&sql)?
@@ -830,7 +838,8 @@ pub(super) fn archive_section_sessions(
     replacement_session_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_custom_section(connection, library_id, section_id, true)?;
-    let mut session_ids = effective_session_ids(connection, library_id, section_id, false)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let mut session_ids = effective_session_ids(connection, library_id, section_id, &member)?;
     let now = sqlite_now(connection)?;
     let mut project_ids = BTreeSet::new();
     for session_id in &session_ids {
@@ -1038,14 +1047,16 @@ fn section_metrics(
     let (direct, session_ids) = match kind {
         ProjectWorkspaceSidebarSectionKind::Custom => {
             let direct = connection.query_row(
-                "SELECT count(*) FROM workspace_sidebar_section_items \
-                 WHERE library_id = ?1 AND section_id = ?2 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = workspace_sidebar_section_items.session_id)",
-                params![library_id, section_id],
+                "SELECT count(*) FROM workspace_sidebar_section_items item
+                 WHERE library_id=?1 AND section_id=?2
+                   AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=item.session_id)
+                   AND NOT EXISTS(SELECT 1 FROM member_session_settled s WHERE s.session_id=item.session_id AND s.member_id=?3)",
+                params![library_id, section_id, member],
                 |row| row.get::<_, i64>(0),
             )?;
             (
                 direct,
-                effective_session_ids(connection, library_id, section_id, false)?,
+                effective_session_ids(connection, library_id, section_id, member)?,
             )
         }
         ProjectWorkspaceSidebarSectionKind::Pinned => {
@@ -1133,12 +1144,13 @@ fn effective_session_ids(
     connection: &Connection,
     library_id: &str,
     section_id: &str,
-    include_archived: bool,
+    member: &str,
 ) -> Result<Vec<String>, StoreError> {
     connection
         .prepare(
             "SELECT session.id FROM project_sessions session \
-             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND (?3 = 1 OR session.archived = 0) AND ( \
+             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND session.archived=0 AND NOT EXISTS(
+               SELECT 1 FROM member_session_settled s WHERE s.session_id=session.id AND s.member_id=?3) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
                  WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
                    AND direct.session_id = session.id) \
@@ -1154,7 +1166,7 @@ fn effective_session_ids(
              ) ORDER BY session.id",
         )?
         .query_map(
-            params![library_id, section_id, i64::from(include_archived)],
+            params![library_id, section_id, member],
             |row| row.get::<_, String>(0),
         )?
         .collect::<rusqlite::Result<Vec<_>>>()

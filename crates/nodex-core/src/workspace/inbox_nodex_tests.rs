@@ -175,7 +175,7 @@ fn automatic_inbox_confirmation_enforces_source_intent_basis_and_action_in_the_t
             apply_host(
                 m,
                 "defer",
-                ProjectWorkspaceIntent::SetInboxLater {
+                ProjectWorkspaceIntent::SetInboxSnooze {
                     page_ids: vec!["page:request".into()],
                     until: "2099-01-01T00:00:00Z".into(),
                 },
@@ -1202,25 +1202,163 @@ fn inbox_ready_turn_requires_real_done_prerequisites_and_excludes_backlog_and_pa
 }
 
 #[test]
+fn chat_windows_and_inbox_counts_follow_the_same_current_turn() {
+    use crate::workspace::test_support::create_project;
+    use nodex_core_contracts::events::DeliveryAtomPayload;
+    use nodex_core_contracts::workspace::{
+        ProjectSessionInvalidationScope, ProjectWorkspaceTaskLifecycle, ProjectWorkspaceTaskOrder,
+        ProjectWorkspaceTaskPlacementScope, TurnReason,
+    };
+
+    let w = seeded_workspace();
+    let m = &w.module;
+    let page = "019d0000-0000-7000-8000-000000000091";
+    let chat = format!("chat:{page}");
+    let other_project = "project:other";
+    create_project(m, "other-project", other_project);
+    send_to(
+        m,
+        "other-intake",
+        "Still needs routing",
+        Some(other_project),
+    );
+    create_work_page(&w, page);
+    start_work_page(&w, page);
+    runtime_session(m, "related", Some(PROJECT), false);
+    apply_host(
+        m,
+        "link-related",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "related".into(),
+            intent: nodex_core_contracts::workspace::ProjectSessionIntent::LinkPage {
+                page_id: page.into(),
+            },
+        },
+    );
+
+    let window = |after| {
+        let ProjectWorkspaceReadValue::TaskWindow { tasks } = read_host(
+            m,
+            ProjectWorkspaceRead::TaskWindow {
+                project_id: Some(PROJECT.into()),
+                whole_library: false,
+                include_archived: None,
+                placement_scope: ProjectWorkspaceTaskPlacementScope::All,
+                lifecycle: ProjectWorkspaceTaskLifecycle::Open,
+                order: ProjectWorkspaceTaskOrder::Attention,
+                window: CollectionWindowRequest {
+                    after,
+                    first: Some(1),
+                },
+            },
+        ) else {
+            panic!("chat window");
+        };
+        tasks
+    };
+    let chat_turn = || {
+        let first = window(None);
+        assert_eq!(first.items.len(), 1);
+        let next = window(Some(first.next_cursor.expect("second chat cursor")));
+        assert_eq!(next.items.len(), 1);
+        assert!(next.next_cursor.is_none());
+        let sessions: std::collections::BTreeMap<_, _> = first
+            .items
+            .into_iter()
+            .chain(next.items)
+            .map(|task| (task.session.id, task.session.page_turn))
+            .collect();
+        assert_eq!(sessions.get("related"), Some(&None));
+        sessions
+            .get(&chat)
+            .expect("the Active chat is listed")
+            .clone()
+    };
+
+    let assert_invalidated = |commit_seq| {
+        let packet = crate::infrastructure::event_log::CoreEventLog::new(w.kernel.readers())
+            .authorized_packet(commit_seq, &host(), None, false)
+            .expect("authorized mutation packet")
+            .expect("mutation packet");
+        assert!(packet.atoms.iter().any(|atom| matches!(
+            &atom.payload,
+            DeliveryAtomPayload::ProjectWorkspace { event, .. }
+                if event.session_summary_scopes.contains(&ProjectSessionInvalidationScope::Project {
+                    project_id: PROJECT.into()
+                }) && event.session_detail_ids.contains(&chat)
+        )), "the changed Page Turn must refresh its chat");
+    };
+
+    observe(&w, page, 0, SessionExecutionState::Working);
+    assert!(chat_turn().is_none());
+    observe(&w, page, 1, SessionExecutionState::Idle);
+    let reviewed = set_status_by_hand(&w, page, "review");
+    assert_invalidated(reviewed.committed.commit_seq);
+    let review = chat_turn().expect("review asks the reader");
+    assert_eq!(review.reason, Some(TurnReason::Review));
+    let waiting = counts(m).waiting;
+    assert!(!waiting.library);
+    assert_eq!(waiting.projects.get(PROJECT), Some(&false));
+
+    record_request(&w, page, 2, "question");
+    let question = chat_turn().expect("question asks the reader");
+    assert_eq!(question.reason, Some(TurnReason::Question));
+    assert_ne!(question.episode, review.episode);
+    let waiting = counts(m).waiting;
+    assert!(waiting.library);
+    assert_eq!(waiting.projects.get(PROJECT), Some(&true));
+    assert_eq!(waiting.projects.get(other_project), Some(&false));
+
+    apply_host(
+        m,
+        "defer-question",
+        ProjectWorkspaceIntent::SetInboxSnooze {
+            page_ids: vec![page.into()],
+            until: "2099-01-01T00:00:00Z".into(),
+        },
+    );
+    assert_eq!(chat_turn(), Some(question.clone()));
+    let deferred = counts(m);
+    assert!(!deferred.waiting.library);
+    assert!(!deferred.waiting.projects.contains_key(PROJECT));
+    assert_eq!(deferred.waiting.projects.get(other_project), Some(&false));
+
+    record_request(&w, page, 3, "approval");
+    let approval = chat_turn().expect("approval starts a fresh episode");
+    assert_eq!(approval.reason, Some(TurnReason::Approval));
+    assert_ne!(approval.episode, question.episode);
+    let waiting = counts(m).waiting;
+    assert!(waiting.library);
+    assert_eq!(waiting.projects.get(PROJECT), Some(&true));
+
+    let done = set_status_by_hand(&w, page, "done");
+    assert_invalidated(done.committed.commit_seq);
+    assert!(chat_turn().is_none());
+    assert!(!counts(m).waiting.library);
+}
+
+fn record_request(w: &TestWorkspace, page: &str, revision: i64, kind: &str) {
+    let observation:SessionExecutionObservation=serde_json::from_value(serde_json::json!({"state":"waiting","runId":"run","runStartedAt":0,"pendingRequestIds":["request"],"pendingRequests":[{"id":"request","kind":kind,"question":"Choose one","options":["One","Two"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"p","progressSince":0})).unwrap();
+    apply_host(
+        &w.module,
+        &format!("observe-request:{revision}"),
+        ProjectWorkspaceIntent::RecordSessionExecution {
+            session_id: format!("chat:{page}"),
+            expected_revision: revision,
+            observation,
+            events: vec![],
+            resolved_request_ids: vec![],
+        },
+    );
+}
+
+#[test]
 fn notification_intents_are_claimed_once_only_while_their_turn_is_current() {
     let w = seeded_workspace();
     let page = "019d0000-0000-7000-8000-000000000091";
     create_work_page(&w, page);
     start_work_page(&w, page);
-    let capture = |revision: i64, kind: &str| {
-        let observation:SessionExecutionObservation=serde_json::from_value(serde_json::json!({"state":"waiting","runId":"run","runStartedAt":0,"pendingRequestIds":["request"],"pendingRequests":[{"id":"request","kind":kind,"question":"Choose one","options":["One","Two"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"p","progressSince":0})).unwrap();
-        apply_host(
-            &w.module,
-            &format!("notify:observe:{revision}"),
-            ProjectWorkspaceIntent::RecordSessionExecution {
-                session_id: format!("chat:{page}"),
-                expected_revision: revision,
-                observation,
-                events: vec![],
-                resolved_request_ids: vec![],
-            },
-        );
-    };
+    let capture = |revision, kind| record_request(&w, page, revision, kind);
     let intents = || {
         let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
             read_host(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)

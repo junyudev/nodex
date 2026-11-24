@@ -90,12 +90,12 @@ describe("sidebar/chat-status over the real Core transport", () => {
             unread: true,
             thread: null,
           },
-          pendingReminder: { displayTitle: "Reminder set", unread: false, thread: null },
-          dueReminder: { displayTitle: "Reminder due", unread: false, thread: null },
+          pendingSnooze: { displayTitle: "Snoozed chat", unread: false, thread: null },
+          dueSnooze: { displayTitle: "Snooze ended", unread: false, thread: null },
         });
-        // Without a Desktop host nothing delivers reminders, so the overdue one is still pending.
-        expect(Date.parse(chats.pendingReminder.remindAt)).toBeGreaterThan(Date.now());
-        expect(Date.parse(chats.dueReminder.remindAt)).toBeLessThanOrEqual(Date.now());
+        // Without a Desktop host nothing delivers snoozes, so the overdue one is still pending.
+        expect(Date.parse(chats.pendingSnooze.snoozedUntil)).toBeGreaterThan(Date.now());
+        expect(Date.parse(chats.dueSnooze.snoozedUntil)).toBeLessThanOrEqual(Date.now());
         const review = await seed.listSidebarSectionItems(observed.reviewSectionId);
         expect(
           review.items.map((item) => (item.kind === "session" ? item.session.id : null)),

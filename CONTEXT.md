@@ -232,18 +232,51 @@ requester, the chat owner and the Space Owners stop that Run's work, its subagen
 delegated and background tasks included, even after another Run becomes current. A
 Run's questions go to its requester.
 
-### Chat reminder
+### Snooze
 
-A Chat reminder makes a chat unread again at a chosen time for the Member who set it;
-each Member keeps their own, as they keep their own pins. A message that Member sends
-into the chat, or archiving it, cancels the reminder.
+A Member can snooze an open chat to defer its current request, including a question
+or approval. The snooze belongs to that Member. A new question, approval, or failed
+Run wakes the chat for the Member whose attention the event records. A completed Run
+leaves the snooze in place. Snoozing unpins the chat. A pin, a message from the
+Member, settling, archiving, or choosing Wake ends its snooze.
+
+A chat whose time arrives has a Woke marker for that Member until they see it, send
+it a message, settle it, or snooze it again. When the Active chat carries a Member's
+current Page Turn, a single snooze or wake applies to both the chat and the Inbox
+[deferral](#inbox) of that episode.
+
+### Settled chat
+
+A Settled chat is one a Member has finished with. It moves from their open chats to
+their Settled shelf. Settling clears their pin, unread mark and snooze. The chat
+reopens when that Member sends a message, marks it unread or pins it, or when its
+Agent stops and asks for them. Archiving removes a chat from every list until it is
+restored.
+Chats also settle automatically when they go idle or when their Page's Status
+becomes Done while they are its Active chat. Both rules leave each Member's pinned,
+unread and snoozed chats open, as well as chats still working, waiting, or awaiting
+their first conversation. A custom Section only arranges chats, so it keeps none open.
+_Avoid_: done chat, finished, closed, resolved.
+
+### Active lane
+
+The Active lane is the sidebar's group for open chats waiting on their Member.
+A Page's [Active chat](#active-chat) is its current work destination.
+
+### Session attention
+
+Session attention is when a chat last came back to a person: when its Agent last
+stopped and asked for them, with a finished reply, a question or an approval, or its
+Session activity when that is later. It orders a Member's open chats when they are
+arranged by attention. A quiet Automation run that asks for nobody, reading a chat
+and organizing it never change it.
 
 ### Session activity
 
 Session activity is when a chat was created, when a person last sent it a message, or,
-in a personal Space, when its reminder came due. It orders chat lists for every Member;
+in a personal Space, when its snooze ended. It orders chat lists for every Member;
 Agent replies, messages from other Agents, reading, organizing a chat and another
-Member's reminder never change it.
+Member's snooze never change it.
 
 ### Phone façade
 
@@ -896,8 +929,8 @@ moves retain its Status and follow the Page's Project for attention. The
 captured text remains in the Page. Deleting an intake message erases its Page,
 entry, advice and revisions.
 
-A **deferral** sets aside one Member's Page Turn episode until a chosen time.
-Later lists the Member's deferred episodes. When the time arrives, the same
+A **deferral** stores one Member's Snooze of a Page Turn episode until its chosen time.
+The Inbox's Snoozed view lists the Member's deferred episodes. When the time arrives, the same
 episode returns if it still needs the Member and the Host can notify them.
 A new episode or loss of membership retires the deferral.
 

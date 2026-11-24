@@ -728,13 +728,13 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handleLocalCommitCommand("project-sessions:set-reminder", (event, command) =>
+    yield* handleLocalCommitCommand("project-sessions:set-snooze", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(
           catalogCommand(
-            "project-sessions:set-reminder",
+            "project-sessions:set-snooze",
             command,
-            projects.setProjectSessionReminder(command),
+            projects.setProjectSessionSnooze(command),
           ),
         ),
       ),
@@ -746,6 +746,28 @@ export const live: Layer.Layer<
             "project-sessions:mark-unread",
             command,
             projects.markProjectSessionUnread(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:set-settled", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:set-settled",
+            command,
+            projects.setProjectSessionSettled(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:settle-idle", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:settle-idle",
+            command,
+            projects.settleIdleProjectSessions(command),
           ),
         ),
       ),

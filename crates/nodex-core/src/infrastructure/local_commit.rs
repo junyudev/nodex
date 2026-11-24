@@ -859,6 +859,7 @@ pub(super) fn seal(connection: &Connection, context: &CommitContext) -> Result<i
     assert_open(connection, context)?;
     validate_and_clear_relocation_obligations(connection, context)?;
     crate::workspace::page_turn::reconcile(connection, context)?;
+    crate::workspace::member_attention::publish_invalidations(connection, context)?;
     let effect_count: i64 = connection.query_row(
         "SELECT count(*) FROM local_commit_effects
          WHERE store_epoch = ?1 AND commit_seq = ?2",

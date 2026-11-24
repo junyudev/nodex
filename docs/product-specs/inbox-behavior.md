@@ -35,8 +35,11 @@ intents, and selection.
 - The Inbox composer sends to the Inbox it shows. The all-Projects Library view
   captures without a Project. Agent and CLI ingress use their Project when present.
   Desktop and [Mobile](mobile-companion-behavior.md) choose destinations explicitly.
-- The sidebar counts actionable intake, Turns and Problems across all Projects.
-  Each Project row shows its own count, muted at zero.
+- The sidebar's Inbox entry follows the sidebar's Project scope. It counts
+  actionable intake, Turns and Problems across all Projects in Library scope,
+  or in the selected Project. It shows the waiting glyph when that scope has
+  a question or approval Turn for the reader outside Snoozed. Each Project
+  row shows its own count, muted at zero.
 - The Library Inbox names the Project of every row that has one, since rows
   from every Project share its stream: the Project's marker and name on the
   line above a message or Turn, ahead of who sent it, and beside a Problem's
@@ -251,7 +254,7 @@ Both appear as a message. When a different eligible reason needs a Member, the
 Page appears as a Turn row.
 
 - **Inbox:** the Member's eligible rows, excluding their current deferrals.
-- **Later:** the Member's deferred rows, soonest first.
+- **Snoozed:** the Member's deferred rows, soonest first.
 - **Handled on the phone:** intake Pages whose messages are no longer waiting.
   [Activity](#activity) records each routing decision.
 
@@ -279,7 +282,7 @@ precedence over the proposal. Notes lead with Save to Notes. Everything else
 leads with Add to Todo. A message's action row shows the one it leads with, the note
 or the todo glyph named by its tooltip, and its menu holds the other; a suggestion
 that already is one of them offers it once, as its decision. The selection bar and
-an opened Later line offer both. Automation Ask-first decisions keep Run, Skip this run and handoff.
+an opened Snoozed row offer both. Automation Ask-first decisions keep Run, Skip this run and handoff.
 Mark done and Skip this run move to Done. Filing moves the Page to Todo
 in its destination Project. Return to Inbox moves it back to Triage and
 requires that the Page have no active chat. Undo restores the decision's
@@ -368,37 +371,43 @@ The user can mark a message important so it stays within reach while it waits.
   it off that list, and `Return to Inbox` brings it back with its mark. Activity
   does not show the mark.
 
-## Later
+## Snooze
 
-Later sets aside a message or a Turn until a chosen time. It decides nothing: the row is the
+Snooze sets aside a message or a Turn until a chosen time. It decides nothing: the row is the
 same waiting row, with its suggestion, its importance and its place on the Board, out of the
 reader's Inbox until then. Work to hold with no time in mind is a decision, and that is Add to
 Todo.
 
-- `Later`, the clock in a message's action row, in a Turn row's actions and in the selection
+When a Member's current Turn belongs to the Page's Active chat, Snooze on
+either surface sets the same return time on both. Snoozing a Turn reopens its settled
+Active chat in Snoozed. Waking either brings both back.
+A new Turn episode retires its deferral and releases the chat if no other current
+Turn still defers it.
+
+- `Snooze`, the clock in a message's action row, in a Turn row's actions and in the selection
   bar, opens one menu: `In 1 hour`, `In 3 hours`, the next 9:00 AM at least three hours away,
-  and Monday 9:00 AM of the following week. They are the times a chat reminder offers, counted
+  and Monday 9:00 AM of the following week. They are the times chat Snooze offers, counted
   from when the menu opens. A message still waiting for advice can be set aside at once. An
-  Automation's waiting run offers no Later. Answers and Problems also keep their own actions.
-- A message then says `Later · tomorrow at 9:00 AM` in its place before it folds away; a Turn
+  Automation's waiting run offers no Snooze. Answers and Problems also keep their own actions.
+- A message then says `Snoozed · tomorrow at 9:00 AM` in its place before it folds away; a Turn
   row simply leaves. Either way a toast confirms the time and offers `Undo`.
-- The header's `Later` view, between Inbox and Activity, lists what the reader set aside in the
+- The header's `Snoozed` view, between Inbox and Activity, lists what the reader set aside in the
   order it comes back: grouped by day (`Today`, `Tomorrow`, a weekday within the week, then a
   date), each line with its time of day, title and Page key. Its count sits beside its name and
   never adds to the Inbox's. Hovering a line offers `Change time` and `Return to Inbox`.
   Opening it shows what was set aside with `Open page`, `Copy`, `Change time` and `Return to
   Inbox`; a message can also be decided there without bringing it back first, with `Add to
   Todo`, `Save to Notes`, `Mark done` and `Delete`. `Change time` names the current time above
-  the same menu. The view has no composer and says what Later is for while it is empty.
-- A row that has come back says so above its card, beside a clock: `Back from Later · set
-  aside yesterday`, until it is handled. A message takes its place in the stream at the time it
+  the same menu. The view has no composer and explains snoozing while it is empty.
+- A row that has come back says so above its card, beside a clock: `Back from snooze · set
+  yesterday`, until it is handled. A message takes its place in the stream at the time it
   was set aside until, and the stream's centered times read that time. Whatever Nodex suggested
   before is still on it.
 - A Turn set aside is that one move. When its Page needs the reader for a new reason, the new
   row shows at once.
-- When Nodex suggests Later, the decision reads `Later · <time>` with the clock, and its menu
+- When Nodex suggests Snooze, the decision reads `Snooze · <time>` with the clock, and its menu
   half, `Choose another time`, confirms the suggestion with a different time. The row offers no
-  second Later. A suggested time that has passed disables the decision and says to choose another.
+  second Snooze. A suggested time that has passed disables the decision and says to choose another.
 
 ## Turns, notes and answers
 
@@ -442,8 +451,11 @@ Blocked, failed and stalled offer Reply. Newly ready work offers
 Start. Every other Turn also offers Open chat, which opens the Page's active
 chat, or the Page when it has none: an icon beside a review or a question with
 options, otherwise the row's filled button.
-Accept moves reviewed work
-to Done through the work command a person, or an Agent acting for them, uses.
+The Page's Active chat and the Inbox show the same decision. Answering or approving
+a request in either place clears that request from both. Accept moves the Page to
+Done, which settles its Active chat for each eligible Member under the same
+rules as [idle settlement](./workbench-shell.md#layout). The chat row's
+`Accept and settle` action accepts the same review episode.
 An Agent may take any of these actions on a Turn of the Member it acts for, and never on
 another Member's Turn; its instructions limit it to what the person told it to answer or
 asked it to handle. Execution approvals stay with the person's chosen permission mode.
@@ -1025,8 +1037,8 @@ creates a second message, and does not count against the Agent budget again.
 ## Entry points and settings
 
 - The sidebar's `Inbox` row sits directly above `New chat` and opens the
-  Library Inbox on its Inbox tab; tabs opened beside it stay open. A Project
-  row opens that Project on its Inbox Home.
+  Inbox for the sidebar's current scope. Tabs opened beside it stay open.
+  A Project row opens that Project on its Inbox Home.
 - `⌘/Ctrl+Shift+D` goes to the Inbox where the user is: in a Project or one of
   its chats it shows that Project's Inbox Home, and anywhere else it opens the
   Library Inbox. Either way it focuses the composer. The command palette
@@ -1112,7 +1124,7 @@ creates a second message, and does not count against the Agent budget again.
 
 ### Remote Member admission
 
-Authenticated remote Members may read Activity, the mixed Inbox projection and the Later
+Authenticated remote Members may read Activity, the mixed Inbox projection and the Snoozed
 window, retry Problems, and take person actions including setting and clearing their own
 deferrals, answering an option, Reply, Accept and Start. Commands retain their
 current episode and request fences, and receipt replay belongs to the initiating

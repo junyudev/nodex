@@ -155,7 +155,7 @@ pub(super) fn inbox_item(
         });
     let at:String=connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ',opened_at_ms/1000.0,'unixepoch') FROM problems WHERE id=?1",[page],|r|r.get(0))?;
     Ok(ProjectWorkspaceInboxItem {
-        later: None,
+        snooze: None,
         problem: Some(problem.clone()),
         handback: None,
         row_kind: InboxRowKind::Problem,

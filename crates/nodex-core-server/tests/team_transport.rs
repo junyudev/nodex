@@ -2282,7 +2282,7 @@ fn each_member_keeps_their_own_pins_and_reminders_on_a_shared_chat() {
     let next_reminder = || {
         serde_json::to_value(
             core.local
-                .workspace_read(None, ProjectWorkspaceRead::NextSessionReminder)
+                .workspace_read(None, ProjectWorkspaceRead::NextSessionSnooze)
                 .unwrap(),
         )
         .unwrap()["payload"]["value"]
@@ -2321,31 +2321,34 @@ fn each_member_keeps_their_own_pins_and_reminders_on_a_shared_chat() {
     // So are reminders, which the host delivers to the Member who set one.
     assert_eq!(
         bob.apply(attention(
-            json!({"kind":"set_reminder","remind_at":"2020-01-01T00:00:00Z"})
+            json!({"kind":"set_snooze","snoozed_until":"2020-01-01T00:00:00Z"})
         ))["status"],
         "ok"
     );
     assert_eq!(
-        bob.read(chat())["session"]["remind_at"],
+        bob.read(chat())["session"]["snoozed_until"],
         "2020-01-01T00:00:00.000Z"
     );
-    assert_eq!(carol.read(chat())["session"]["remind_at"], Value::Null);
+    assert_eq!(carol.read(chat())["session"]["snoozed_until"], Value::Null);
     let due = next_reminder();
     assert_eq!(due["member_id"], json!(bob_member));
-    assert_eq!(due["session"]["remind_at"], "2020-01-01T00:00:00.000Z");
+    assert_eq!(due["session"]["snoozed_until"], "2020-01-01T00:00:00.000Z");
     // Delivery is host bookkeeping, never a Member command.
-    let claim = attention(json!({"kind":"consume_reminder","member_id":bob_member,
-        "remind_at":"2020-01-01T00:00:00.000Z","deliver":true}));
+    let claim = attention(json!({"kind":"consume_snooze","member_id":bob_member,
+        "snoozed_until":"2020-01-01T00:00:00.000Z","deliver":true}));
     assert_eq!(bob.apply(claim.clone())["payload"]["code"], "unauthorized");
     local_apply(claim);
     let delivery = next_reminder()["delivery"]["delivery_id"].clone();
     assert!(delivery.is_string(), "{delivery}");
     local_apply(attention(
-        json!({"kind":"complete_reminder_delivery","delivery_id":delivery,"unread":true}),
+        json!({"kind":"complete_snooze_delivery","delivery_id":delivery,"unread":true}),
     ));
     let reminded = bob.read(chat())["session"].clone();
     assert_eq!(
-        (reminded["unread"].clone(), reminded["remind_at"].clone()),
+        (
+            reminded["unread"].clone(),
+            reminded["snoozed_until"].clone()
+        ),
         (json!(true), Value::Null)
     );
     assert_eq!(carol.read(chat())["session"]["unread"], false);

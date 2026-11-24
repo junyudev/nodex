@@ -39,9 +39,9 @@ export async function seedInboxTriageSkills(workspace: string) {
 }
 
 const PAGE_KEYS = {
-  laterTimed: "laterTimed",
-  laterReturned: "laterReturned",
-  laterSuggested: "laterSuggested",
+  snoozedTimed: "snoozedTimed",
+  snoozeReturned: "snoozeReturned",
+  snoozeSuggested: "snoozeSuggested",
   kept: "keptNote",
   newChat: "newChatSuggestion",
   sendToChat: "sendToChatSuggestion",
@@ -581,25 +581,28 @@ const materializeInboxTriage = async (
     },
   });
 
-  const laterTimed = await port.sendInboxMessage("Review the launch checklist next week.");
-  const laterReturned = await port.sendInboxMessage(
+  const snoozedTimed = await port.sendInboxMessage("Review the launch checklist next week.");
+  const snoozeReturned = await port.sendInboxMessage(
     "Check the new template with an empty Project.",
   );
-  const remindAt = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
-  // A message that says it can wait: Nodex proposes Later and the person decides.
-  const laterSuggested = await port.sendInboxMessage(
+  const snoozedUntil = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
+  // A message that says it can wait: Nodex proposes Snooze and the person decides.
+  const snoozeSuggested = await port.sendInboxMessage(
     "Revisit the pricing page copy in three days.",
   );
   await port.proposeInboxDispatch({
-    pageIds: [laterSuggested.pageId],
-    action: { type: "later", remindAt: new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString() },
+    pageIds: [snoozeSuggested.pageId],
+    action: {
+      type: "snooze",
+      snoozedUntil: new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString(),
+    },
     kind: "todo",
     summary: "Set this aside for three days.",
     rationale: "The message asks to wait three days.",
   });
   const returnAt = Date.now() + 2_000;
-  await port.setInboxLater([laterReturned.pageId], new Date(returnAt).toISOString());
-  await port.setInboxLater([laterTimed.pageId], remindAt);
+  await port.setInboxSnooze([snoozeReturned.pageId], new Date(returnAt).toISOString());
+  await port.setInboxSnooze([snoozedTimed.pageId], snoozedUntil);
   await new Promise((resolve) => setTimeout(resolve, Math.max(0, returnAt - Date.now() + 1)));
 
   return {
@@ -613,9 +616,9 @@ const materializeInboxTriage = async (
       [PAGE_KEYS.notesSection]: notesSectionId,
       [PAGE_KEYS.savedNote]: savedNote.pageId,
       [PAGE_KEYS.waitingNote]: waitingNote.pageId,
-      [PAGE_KEYS.laterTimed]: laterTimed.pageId,
-      [PAGE_KEYS.laterReturned]: laterReturned.pageId,
-      [PAGE_KEYS.laterSuggested]: laterSuggested.pageId,
+      [PAGE_KEYS.snoozedTimed]: snoozedTimed.pageId,
+      [PAGE_KEYS.snoozeReturned]: snoozeReturned.pageId,
+      [PAGE_KEYS.snoozeSuggested]: snoozeSuggested.pageId,
       [PAGE_KEYS.kept]: kept.pageId,
       [PAGE_KEYS.dispatched]: dispatched.pageId,
       [PAGE_KEYS.newChat]: newChat.pageId,
@@ -653,17 +656,17 @@ const inspectInboxTriage = async (
   manifest: ScenarioManifest,
 ): Promise<InboxTriageScenarioFacts> => {
   const inbox = (await port.readInbox()).items;
-  const later = (await port.readInbox(undefined, "later")).items;
+  const snoozed = (await port.readInbox(undefined, "snoozed")).items;
   const returned = inbox.find(
-    (item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.laterReturned],
+    (item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.snoozeReturned],
   );
   if (
-    !later.find((item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.laterTimed])?.later
+    !snoozed.find((item) => item.pageId === manifest.pageIdsByKey[PAGE_KEYS.snoozedTimed])?.snooze
       ?.until ||
-    !returned?.later ||
-    Date.parse(returned.later.until) > Date.now()
+    !returned?.snooze ||
+    Date.parse(returned.snooze.until) > Date.now()
   )
-    throw new Error("inbox/triage Later fixtures are missing");
+    throw new Error("inbox/triage Snoozed fixtures are missing");
 
   const projectScope = projectInbox(manifest.projectId);
   const projectItems = (await port.readInbox(projectScope)).items;

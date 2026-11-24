@@ -66,7 +66,7 @@ import {
   InboxWindowInputSchema,
   InboxEditInputSchema,
   InboxPageIdsInputSchema,
-  InboxSetLaterInputSchema,
+  InboxSetSnoozeInputSchema,
   InboxSetKindInputSchema,
   InboxSetImportantInputSchema,
   InboxUndoInputSchema,
@@ -167,17 +167,17 @@ const readModels = Layer.effectDiscard(
         body: parsed.body,
       });
     });
-    yield* ipc.handleLocalCommitCommand("inbox:later", (_, input) => {
-      const parsed = InboxSetLaterInputSchema.parse(input);
+    yield* ipc.handleLocalCommitCommand("inbox:snooze", (_, input) => {
+      const parsed = InboxSetSnoozeInputSchema.parse(input);
       return mutate({
-        kind: "set_inbox_later",
+        kind: "set_inbox_snooze",
         page_ids: parsed.pageIds,
         until: parsed.until,
       });
     });
-    yield* ipc.handleLocalCommitCommand("inbox:clear-later", (_, input) => {
+    yield* ipc.handleLocalCommitCommand("inbox:wake", (_, input) => {
       const parsed = InboxPageIdsInputSchema.parse(input);
-      return mutate({ kind: "clear_inbox_later", page_ids: parsed.pageIds });
+      return mutate({ kind: "wake_inbox_entries", page_ids: parsed.pageIds });
     });
     yield* ipc.handleLocalCommitCommand("inbox:keep", (_, input) => {
       const parsed = InboxPageIdsInputSchema.parse(input);

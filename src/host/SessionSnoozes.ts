@@ -5,55 +5,55 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { inboxLaterClock } from "./InboxLaterReminders";
+import { inboxSnoozeClock } from "./InboxSnoozeClock";
 import type { ProjectSession } from "../shared/types";
-import type { SessionReminderNotificationEvent } from "../shared/codex-thread-notification";
+import type { SessionSnoozeNotificationEvent } from "../shared/codex-thread-notification";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
 import { UserPresence } from "./UserPresence";
 import { CoreEventHub } from "../main/core-runtime/CoreEventHub";
 import { DatabaseNotifierRuntime } from "../main/host-runtime/DatabaseNotifierRuntime";
 import {
   ProjectWorkspace,
-  type SessionReminderWork,
+  type SessionSnoozeWork,
 } from "../main/project-application/ProjectWorkspace";
 
-export interface SessionReminderOptions {
-  readonly next: Effect.Effect<SessionReminderWork | null, unknown>;
+export interface SessionSnoozeOptions {
+  readonly next: Effect.Effect<SessionSnoozeWork | null, unknown>;
   readonly consume: (
     sessionId: string,
     memberId: string,
-    remindAt: string,
+    snoozedUntil: string,
     deliver: boolean,
   ) => Effect.Effect<boolean, unknown>;
   readonly complete: (sessionId: string, deliveryId: string) => Effect.Effect<boolean, unknown>;
   readonly defer: (sessionId: string, deliveryId: string) => Effect.Effect<void, unknown>;
   readonly markUnread: (session: ProjectSession) => Effect.Effect<unknown, unknown>;
-  /** The Member has the chat in front of them, so its reminder is already answered. */
+  /** The Member has the chat in front of them, so its snooze is already answered. */
   readonly isPresented: (session: ProjectSession, memberId: string) => boolean;
-  readonly notify: (session: ProjectSession, remindAt: string, memberId: string) => void;
+  readonly notify: (session: ProjectSession, snoozedUntil: string, memberId: string) => void;
   readonly changes: Stream.Stream<unknown>;
 }
 
-/** The chat a reminder names, as presence knows it. */
-export const reminderTarget = (session: ProjectSession) => ({
+/** The chat a snooze names, as presence knows it. */
+export const snoozeTarget = (session: ProjectSession) => ({
   conversationId:
     session.executionRef?.threadId ?? session.thread?.threadId ?? `session:${session.id}`,
   hostId: session.thread?.executionHostId ?? "local",
   sessionId: session.id,
 });
 
-/** The attention occurrence a due reminder raises, for desktop notifications and phones alike. */
-export const reminderOccurrence = (
+/** The attention occurrence a due snooze raises, for desktop notifications and phones alike. */
+export const snoozeOccurrence = (
   session: ProjectSession,
-  remindAt: string,
+  snoozedUntil: string,
   memberId: string,
-): SessionReminderNotificationEvent => ({
-  type: "session-reminder",
-  hostId: reminderTarget(session).hostId,
-  remindAt,
+): SessionSnoozeNotificationEvent => ({
+  type: "session-snooze",
+  hostId: snoozeTarget(session).hostId,
+  snoozedUntil,
   memberId,
   conversation: {
-    conversationId: reminderTarget(session).conversationId,
+    conversationId: snoozeTarget(session).conversationId,
     title: session.displayTitle,
     runtimeSessionId: session.id,
     threadSource: null,
@@ -64,11 +64,11 @@ export const reminderOccurrence = (
 });
 
 /**
- * Each Member's chat reminders come due here: one scoped loop, one earliest-deadline timer, and a
+ * Each Member's chat snoozes come due here: one scoped loop, one earliest-deadline timer, and a
  * coalesced wake for all external changes. Presentation and notification are the embedder's ports.
  */
-export const make = Effect.fn("SessionReminderRuntime.make")(function* (
-  options: SessionReminderOptions,
+export const make = Effect.fn("SessionSnoozeRuntime.make")(function* (
+  options: SessionSnoozeOptions,
 ) {
   const activation = yield* Deferred.make<void>();
   const wakes = yield* Queue.sliding<void>(1);
@@ -88,7 +88,7 @@ export const make = Effect.fn("SessionReminderRuntime.make")(function* (
       yield* Queue.take(wakes);
       return;
     }
-    const { session, remindAt, deliveryId, memberId } = work;
+    const { session, snoozedUntil, deliveryId, memberId } = work;
     if (session.archived) {
       if (deliveryId) yield* options.complete(session.id, deliveryId);
       return;
@@ -100,9 +100,9 @@ export const make = Effect.fn("SessionReminderRuntime.make")(function* (
       return;
     }
     if (deliveryId === null) {
-      // Claiming clears the exact reminder and durably retains its unfinished unread delivery.
+      // Claiming clears the exact snooze and durably retains its unfinished unread delivery.
       const deliver = !options.isPresented(session, memberId);
-      yield* options.consume(session.id, memberId, remindAt, deliver);
+      yield* options.consume(session.id, memberId, snoozedUntil, deliver);
       return;
     }
     if (options.isPresented(session, memberId)) {
@@ -116,10 +116,10 @@ export const make = Effect.fn("SessionReminderRuntime.make")(function* (
     }
     // Settlement is another CAS: cancellation, archive, rescheduling or another host wins safely.
     if (!(yield* options.complete(session.id, deliveryId))) return;
-    options.notify(session, remindAt, memberId);
+    options.notify(session, snoozedUntil, memberId);
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Chat reminder delivery failed", cause).pipe(Effect.andThen(wait(30_000))),
+      Effect.logWarning("Chat snooze delivery failed", cause).pipe(Effect.andThen(wait(30_000))),
     ),
   );
   yield* Deferred.await(activation).pipe(Effect.andThen(Effect.forever(step)), Effect.forkScoped);
@@ -127,7 +127,7 @@ export const make = Effect.fn("SessionReminderRuntime.make")(function* (
 });
 
 /**
- * A team host delivers every Member's reminders: the chat turns unread for that Member when its
+ * A team host delivers every Member's snoozes: the chat turns unread for that Member when its
  * time comes, and their phones hear about it. The host has no window to check or notify.
  */
 export const hostedLive = Layer.effectDiscard(
@@ -140,27 +140,27 @@ export const hostedLive = Layer.effectDiscard(
     const owner = yield* make({
       next: SubscriptionRef.get(events.connection).pipe(
         Effect.flatMap((state) =>
-          state.kind === "ready" ? workspace.nextSessionReminder : Effect.succeed(null),
+          state.kind === "ready" ? workspace.nextSessionSnooze : Effect.succeed(null),
         ),
       ),
-      consume: workspace.consumeSessionReminder,
-      // Core turns the chat unread for the reminded Member as it settles the delivery.
+      consume: workspace.consumeSessionSnooze,
+      // Core turns the chat unread for the snoozed Member as it settles the delivery.
       complete: (sessionId, deliveryId) =>
-        workspace.completeSessionReminder(sessionId, deliveryId, true),
-      defer: workspace.deferSessionReminder,
+        workspace.completeSessionSnooze(sessionId, deliveryId, true),
+      defer: workspace.deferSessionSnooze,
       markUnread: () => Effect.void,
-      isPresented: (session, memberId) => presence.isOnPhone(memberId, reminderTarget(session)),
-      notify: (session, remindAt, memberId) =>
+      isPresented: (session, memberId) => presence.isOnPhone(memberId, snoozeTarget(session)),
+      notify: (session, snoozedUntil, memberId) =>
         occurrences.publish({
           kind: "threadNotification",
-          value: reminderOccurrence(session, remindAt, memberId),
+          value: snoozeOccurrence(session, snoozedUntil, memberId),
         }),
       changes: Stream.merge(
         notifier.projectSessionInvalidations,
         SubscriptionRef.changes(events.connection),
       ),
     });
-    yield* inboxLaterClock(
+    yield* inboxSnoozeClock(
       SubscriptionRef.get(events.connection).pipe(Effect.map((state) => state.kind === "ready")),
       Stream.merge(notifier.inboxInvalidations, SubscriptionRef.changes(events.connection)),
     );

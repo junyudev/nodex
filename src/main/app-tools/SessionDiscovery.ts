@@ -74,10 +74,12 @@ export interface SessionListingSummary {
   readonly parentThreadId: string | null;
   readonly relationshipToParent: "fork" | "subagent" | null;
   readonly branch: string | null;
-  readonly settled: boolean | null;
+  readonly settled: boolean;
   readonly settledAt: string | null;
-  readonly snoozed: boolean | null;
+  readonly snoozed: boolean;
   readonly snoozedUntil: string | null;
+  readonly snoozedAt: number | null;
+  readonly wokeAt: number | null;
   readonly pullRequests: CatalogItem["pullRequests"];
   readonly itemCount: number | null;
   readonly itemCountCoverage: "complete" | "local" | "unavailable";
@@ -208,10 +210,15 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
   relationshipToParent:
     runtime?.relationshipToParent ?? (item.task.thread?.forked_from_id ? "fork" : null),
   branch: runtime?.branch ?? null,
-  settled: runtime?.settled ?? null,
-  settledAt: runtime?.settledAt ?? null,
-  snoozed: runtime?.snoozed ?? null,
-  snoozedUntil: runtime?.snoozedUntil ?? null,
+  settled: item.task.session.settled_at != null,
+  settledAt:
+    item.task.session.settled_at == null
+      ? null
+      : new Date(item.task.session.settled_at).toISOString(),
+  snoozed: item.task.session.snoozed_until != null,
+  snoozedUntil: item.task.session.snoozed_until ?? null,
+  snoozedAt: item.task.session.snoozed_at ?? null,
+  wokeAt: item.task.session.woke_at ?? null,
   pullRequests: runtime?.pullRequests ?? [],
   itemCount: runtime?.itemCount ?? null,
   itemCountCoverage: runtime?.itemCountCoverage ?? "unavailable",
@@ -251,10 +258,6 @@ export const withSessionMetadata = (
   parentThreadId: details.parentThreadId,
   relationshipToParent: details.relationshipToParent,
   branch: details.branch,
-  settled: details.settled,
-  settledAt: details.settledAt,
-  snoozed: details.snoozed,
-  snoozedUntil: details.snoozedUntil,
   pullRequests: details.pullRequests,
   itemCount: details.itemCount,
   itemCountCoverage: details.itemCountCoverage,
@@ -353,10 +356,12 @@ const readNative = Effect.fn("SessionDiscovery.native")(function* (
 ) {
   const empty = emptyPage("core", position.core, position.coreDone);
   if (position.coreDone) return empty;
+  const provenance = yield* CoreApplicationAgent;
   const result = yield* core.workspace
     .read(
       {
         kind: "session_window",
+        ...(provenance ? { provenance } : {}),
         archived: input.archived,
         native_only: true,
         ...(input.projectlessOnly ? { projectless_only: true } : {}),
@@ -427,10 +432,12 @@ const readRuntime = Effect.fn("SessionDiscovery.runtime")(function* (
     });
   if (page.runtimeId === null || page.items.length === 0)
     return { ...empty, done: true, runtimeId: page.runtimeId };
+  const provenance = yield* CoreApplicationAgent;
   const placement = yield* core.workspace
     .read(
       {
         kind: "session_window",
+        ...(provenance ? { provenance } : {}),
         archived: input.archived,
         ...(input.projectId === undefined ? {} : { project_id: input.projectId }),
         execution_refs: page.items.map((item) => ({

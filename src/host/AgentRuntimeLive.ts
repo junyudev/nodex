@@ -135,7 +135,6 @@ import { agentRuntimeHostEnvironment } from "../main/agent-runtime/AgentRuntimeH
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
 import { UserPresence } from "./UserPresence";
-import { createOperationId } from "../main/core-runtime/operation-identity";
 import { ProjectWorkspace } from "../main/project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../main/agent-runtime/AgentRuntimeSessionNotifications";
 import { make as makeUserInputAutoResolution } from "../main/agent-runtime/AgentRuntimeUserInputAutoResolution";
@@ -561,11 +560,7 @@ const supervisor = Layer.effectContext(
         presence.isSeen({ conversationId: rootThreadId, sessionId }),
       readAutomationNotificationPolicy: (messageId) => readAutomationTurnPolicy(modules, messageId),
       readSession,
-      markUnread: (sessionId) =>
-        projects.markProjectSessionUnread({
-          operationId: createOperationId("agent-runtime.session.unread"),
-          payload: { sessionId, unread: true },
-        }),
+      recordAttention: projects.recordProjectSessionAttention,
       publish: (event) => {
         applicationEvents.publish({ kind: "threadNotification", value: event });
         // Session notifications finish their unread write before publishing read activity.

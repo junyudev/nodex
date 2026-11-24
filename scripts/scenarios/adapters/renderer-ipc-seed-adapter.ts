@@ -602,9 +602,9 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     requireSuccess(await this.#invoke("inbox:keep", { pageIds }), "Keep Inbox messages");
   }
 
-  async setInboxLater(pageIds: readonly string[], until: string): Promise<void> {
+  async setInboxSnooze(pageIds: readonly string[], until: string): Promise<void> {
     requireSuccess(
-      await this.#invoke("inbox:later", { pageIds, until }),
+      await this.#invoke("inbox:snooze", { pageIds, until }),
       "Set Inbox messages aside",
     );
   }
@@ -643,7 +643,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
 
   async readInbox(
     scope: InboxScope = LIBRARY_INBOX,
-    filter: "inbox" | "later" = "inbox",
+    filter: "inbox" | "snoozed" = "inbox",
   ): Promise<InboxWindow> {
     return await this.#invoke("inbox:window", { scope, filter, first: 200 });
   }
@@ -718,13 +718,13 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return await this.#invoke("project-sessions:get", sessionId);
   }
 
-  async setSessionReminder(sessionId: string, remindAt: string | null): Promise<void> {
+  async setSessionSnooze(sessionId: string, snoozedUntil: string | null): Promise<void> {
     unwrapCoreResult(
-      await this.#invoke("project-sessions:set-reminder", {
-        operationId: createBoundedOperationId("scenario.session.reminder"),
-        payload: { sessionId, remindAt },
+      await this.#invoke("project-sessions:set-snooze", {
+        operationId: createBoundedOperationId("scenario.session.snooze"),
+        payload: { sessionId, snoozedUntil },
       }),
-      "Session reminder",
+      "Session snooze",
     );
   }
 

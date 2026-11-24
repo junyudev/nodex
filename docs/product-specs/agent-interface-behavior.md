@@ -403,7 +403,7 @@ messages. A native source without causal Run evidence keeps its Run null and use
 independent five-message budget for that native connection. A retry with the same
 `idempotencyKey` returns the original receipt without another message or quota charge.
 The tool gives the Agent's requesting Member a routing decision. It starts no work.
-The Member can defer that episode or clear its deferral from Later.
+The Member can snooze that episode or clear its deferral from Snoozed.
 The backing Page retains full Profile content access, including for planning, child
 and background Agents. See [Inbox Behavior](./inbox-behavior.md).
 
@@ -519,29 +519,35 @@ and the authenticated Codex identity read-state owner for native Codex Threads. 
 includes `operationId`, `sessionId`, the accepted `unread` value and the owner's `receipt`.
 It never starts or replaces a Session's execution.
 
-`set_session_reminder` accepts `remindAt` (an ISO 8601 instant with an offset, or
-`null` to clear), optional `sessionId` (the caller by default), and optional
-`idempotencyKey`. One reminder belongs to each root Session, independently of its
-execution kind. Setting replaces the previous time. Core normalizes it to a UTC
-millisecond string and accepts past times as immediately due; times more than
-366 days ahead are rejected. The result contains `operationId`, `sessionId`, the
-accepted `remindAt`, and the Workspace owner's `receipt`. It uses the same captured
-execution authority and durable exact-retry admission as `set_session_unread`.
+`set_session_settled` accepts `sessionIds` (1–200 distinct Session ids), `settled`,
+and optional `idempotencyKey`. Core settles or reopens the batch in one commit for
+the Member the Agent acts for. Settling unpins each changed chat and clears that
+Member's snooze and unread state. Archived chats are left unchanged. The result
+contains `operationId`, `changedSessionIds`, and the Workspace owner's `receipt`.
+Undo can reverse exactly the IDs in `changedSessionIds`.
 
-A reminder makes the chat unread again at its time. Archiving or an accepted
-user-authored message cancels it. Reading the chat, Agent tool messages, delegated
-results, and automatic notifications do not cancel it. A fork starts without a
-reminder. Runtime launch, message, send and replay admission cover the composer,
+`set_session_snooze` accepts `until` (an ISO 8601 instant with an offset, or `null` to wake
+the chat), optional `sessionId` (the caller by default), and optional `idempotencyKey`.
+Each Member keeps one snooze per root Session. Setting it replaces the previous time.
+Core normalizes the time to a UTC millisecond string and accepts past times as immediately
+due. Times more than 366 days ahead are rejected. The result contains `operationId`,
+`sessionId`, the accepted `snoozedUntil`, and the Workspace owner's `receipt`. It uses
+the same captured execution authority and durable exact-retry admission as `set_session_unread`.
+
+The chat becomes unread for that Member when its snooze comes due while they are
+away. Pinning, settling, archiving, the Member's message, or a new request ends the
+snooze early. A Page's current Turn and its Active chat share a snooze and wake. A fork starts
+without a snooze. Runtime launch, message, send and replay admission cover the composer,
 Project Agent Dock, Prompt sends, and user-confirmed Inbox dispatch across providers.
 Native chats cancel at accepted start/steer acknowledgements, live user-message
 acceptance, and durable queue admission.
 Agent delegation envelopes and tool output retain their sender provenance. Core
 remembers accepted user-message identities so retrying an old send cannot cancel a
-newer reminder. Execution and Core are separate durable owners, so the host confirms
+newer snooze. Execution and Core are separate durable owners, so the host confirms
 cancellation after execution accepts the message; retries settle that confirmation.
-Native local queue acceptance cancels the reminder in the queue-write transaction.
+Native local queue acceptance cancels the snooze in the queue-write transaction.
 Delivery and its foreground-presentation exception follow
-[Desktop Notification Behavior](desktop-notification-behavior.md#chat-reminders).
+[Desktop Notification Behavior](desktop-notification-behavior.md#chat-snoozes).
 
 `session_queue` addresses an unarchived `sessionId`, with optional Runtime `execution: {threadId}`.
 It lists user messages and runtime deliveries; only user messages can be changed:
@@ -583,8 +589,9 @@ Active discovery excludes archived Projects. Results use conversation-recency or
 `projectId` filters Project ownership and `query` matches the title or bounded first-user
 prompt preview, rather than searching complete transcripts. Each result identifies direct
 or Project-inherited sidebar placement, title, preview, backend, status and `recencyAt`.
-`statuses` accepts observed Session or Run states; `settled` and `snoozed` filter the
-execution owner's organization state. Runtime results include author and creation source,
+`statuses` accepts observed Session or Run states. `settled` and `snoozed` filter
+the calling Member's Core attention state, and results report that Member's
+`settledAt`, `snoozedUntil`, `snoozedAt`, and `wokeAt`. Runtime results include author and creation source,
 model and modes, latest Run, lineage, branch, pull requests and visible item counts.
 Presented Run status and current activity status remain separate, so queued work cannot
 hide an active Run from status filters.

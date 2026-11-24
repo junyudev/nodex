@@ -8,18 +8,18 @@ import * as Stream from "effect/Stream";
 import { CoreModules } from "../main/core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../main/host-runtime/DatabaseNotifierRuntime";
 
-export type InboxLaterNotification = components["schemas"]["InboxLaterNotification"];
+export type InboxSnoozeNotification = components["schemas"]["InboxSnoozeNotification"];
 
-export const claimInboxLaterNotification = (
+export const claimInboxSnoozeNotification = (
   core: Context.Service.Shape<typeof CoreModules>,
-  intent: InboxLaterNotification,
+  intent: InboxSnoozeNotification,
   forPush: boolean,
 ) =>
   core.workspace
     .apply(
       {
-        operationId: `later-notify:${forPush ? "push" : "desktop"}:${intent.id}`,
-        intent: { kind: "claim_inbox_later_notification", id: intent.id, for_push: forPush },
+        operationId: `inbox-snooze-notify:${forPush ? "push" : "desktop"}:${intent.id}`,
+        intent: { kind: "claim_inbox_snooze_notification", id: intent.id, for_push: forPush },
       },
       undefined,
       null,
@@ -34,7 +34,7 @@ export class NotificationIntentPresentation extends Context.Service<
   NotificationIntentPresentation,
   {
     readonly available: Effect.Effect<boolean>;
-    readonly publishLater?: (intent: InboxLaterNotification) => Effect.Effect<void>;
+    readonly publishSnooze?: (intent: InboxSnoozeNotification) => Effect.Effect<void>;
     readonly publish: (
       intent: components["schemas"]["InboxTurnNotification"],
       row: components["schemas"]["ProjectWorkspaceInboxItem"],
@@ -53,16 +53,16 @@ export const make = Effect.gen(function* () {
   const drain = lane.withPermits(1)(
     Effect.gen(function* () {
       if (!(yield* presentation.available)) return;
-      if (presentation.publishLater) {
-        const later = yield* core.workspace.read(
-          { kind: "inbox_later_notifications", for_push: false },
+      if (presentation.publishSnooze) {
+        const snoozes = yield* core.workspace.read(
+          { kind: "inbox_snooze_notifications", for_push: false },
           undefined,
           null,
         );
-        if (later.value.kind === "inbox_later_notifications") {
-          for (const intent of later.value.intents) {
-            if (yield* claimInboxLaterNotification(core, intent, false))
-              yield* presentation.publishLater(intent);
+        if (snoozes.value.kind === "inbox_snooze_notifications") {
+          for (const intent of snoozes.value.intents) {
+            if (yield* claimInboxSnoozeNotification(core, intent, false))
+              yield* presentation.publishSnooze(intent);
           }
         }
       }

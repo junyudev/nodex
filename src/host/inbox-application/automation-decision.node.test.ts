@@ -29,7 +29,7 @@ const action = {
 const item: CoreInboxItem = {
   row_kind: "intake",
   waiting: true,
-  later: null,
+  snooze: null,
   page_id: "held-page",
   page_key: "IN-3",
   title: "Review dependencies",

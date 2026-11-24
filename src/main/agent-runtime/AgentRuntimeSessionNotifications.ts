@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
@@ -18,7 +19,6 @@ import type { AgentRuntimeActivityTransition } from "./AgentRuntimeSessionActivi
 export interface AgentRuntimeNotificationSession {
   readonly title: string | null;
   readonly archived: boolean;
-  readonly unread: boolean;
   /**
    * The Session a temporary side chat was opened from, per Core's binding. A source that is gone,
    * archived or unbound has no root, so the side chat has nowhere to open.
@@ -36,7 +36,15 @@ export interface AgentRuntimeSessionNotificationOptions {
   readonly readSession: (
     sessionId: string,
   ) => Effect.Effect<AgentRuntimeNotificationSession | null, unknown>;
-  readonly markUnread: (sessionId: string) => Effect.Effect<void, unknown>;
+  /**
+   * The chat came back to its person: it rises to the top of their open chats, reopens when it
+   * was Done, and turns unread unless they already have it in view.
+   */
+  readonly recordAttention: (
+    sessionId: string,
+    seen: boolean,
+    askedAt: number | null,
+  ) => Effect.Effect<void, unknown>;
   readonly readAutomationNotificationPolicy?: (
     messageId: string,
   ) => Effect.Effect<AutomationNotificationPolicy | null, unknown>;
@@ -59,10 +67,10 @@ const waitingFamily = (activity: AgentRuntimeSessionActivity | null) => {
 };
 
 /**
- * Turns Session activity transitions into unread state and desktop notifications. A foreground
+ * Turns Session activity transitions into attention and desktop notifications. A foreground
  * Run ending (including automatic wake Runs) or a new attention request raises the shared
  * notification owner with native conversation copy. Completions that ask for attention and
- * new requests mark an unpresented Session unread.
+ * new requests bring the Session back to its person, unread when they do not have it in view.
  * User attention replaces completion while the Session waits, including questions revealed at
  * turn end. A temporary side chat's attention surfaces through its source Session; its completion
  * keeps the side chat's own conversation and copy but opens its tab inside the source Session, and
@@ -94,6 +102,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
   const observe = (transition: AgentRuntimeActivityTransition) =>
     Effect.gen(function* () {
       const { before, after, rootThreadId, sessionId } = transition;
+      const observedAt = transition.observedAt ?? (yield* Clock.currentTimeMillis);
       const endedRun = transition.endedRun;
       const outcome =
         endedRun && endedRun.status === null
@@ -102,10 +111,13 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
       const status = terminalStatus(endedRun?.status ?? outcome?.status ?? null);
       const beforeFamily = waitingFamily(before);
       const afterFamily = waitingFamily(after);
+      const requestAt = Date.parse(after?.latestRequestAt ?? "");
+      const previousRequestAt = Date.parse(before?.latestRequestAt ?? "");
       const attentionStarted =
         afterFamily !== null &&
         after !== null &&
         (beforeFamily !== afterFamily ||
+          requestAt > previousRequestAt ||
           after.pendingRequestCount > (before?.pendingRequestCount ?? 0) ||
           (afterFamily === "approval" && after.approvalPrompt !== before?.approvalPrompt));
       if (beforeFamily !== null && beforeFamily !== afterFamily)
@@ -117,11 +129,12 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           ...(beforeFamily === "approval" ? { family: "approval" } : {}),
         });
       const turnCompleted = status && endedRun && after?.status !== "waiting";
-      if (!turnCompleted && !attentionStarted) return;
+      const asks = attentionStarted || status === "failed";
+      if (!turnCompleted && !asks) return;
       const session = yield* options.readSession(sessionId);
       if (!session) return;
       const sideChatSource = session.sideChatSource;
-      // A side chat's attention already waits on its source Session; only its replies notify.
+      // A side chat's questions and approvals come back through its source Session.
       if (sideChatSource && !turnCompleted) return;
       // A side chat opens as a tab of its source Session, never as a Scene of its own.
       const parentNavigationPath = sideChatSource?.rootThreadId
@@ -136,10 +149,14 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         sideConversationParentNavigationPath: parentNavigationPath,
         runtimeSessionId: sessionId,
       };
+      const settledOutcome =
+        endedRun && (turnCompleted || status === "failed")
+          ? outcome === undefined
+            ? yield* readOutcome(transition, endedRun.runId)
+            : outcome
+          : null;
       let completion: CodexTurnCompletedNotificationEvent | null = null;
       if (turnCompleted) {
-        const settledOutcome =
-          outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome;
         const policy =
           settledOutcome?.userMessageId && options.readAutomationNotificationPolicy
             ? yield* options
@@ -163,13 +180,18 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           hasPendingContinuation,
         };
       }
-      if (
-        (attentionStarted || (completion && !quietAutomationTurnReason(completion))) &&
-        !session.archived &&
-        !session.unread &&
-        !options.isSeen({ rootThreadId, sessionId })
-      )
-        yield* options.markUnread(sessionId);
+      if ((asks || (completion && !quietAutomationTurnReason(completion))) && !session.archived) {
+        const failureAt = Date.parse(settledOutcome?.completedAt ?? "");
+        const askedAt = Math.max(
+          attentionStarted && Number.isFinite(requestAt) ? requestAt : -Infinity,
+          status === "failed" && Number.isFinite(failureAt) ? failureAt : -Infinity,
+        );
+        yield* options.recordAttention(
+          sessionId,
+          options.isSeen({ rootThreadId, sessionId }),
+          asks ? (Number.isFinite(askedAt) ? askedAt : observedAt) : null,
+        );
+      }
       if (sideChatSource && !parentNavigationPath) return;
       if (completion) options.publish(completion);
       if (attentionStarted && after)

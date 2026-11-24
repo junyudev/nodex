@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 83;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 84;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -63,6 +63,19 @@ pub enum ProjectWorkspaceTaskPlacementScope {
     #[default]
     All,
     Builtin,
+}
+
+/// Which chats a task list shows by the reader's own settlement state.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceTaskLifecycle {
+    /// Open and settled chats.
+    #[default]
+    All,
+    /// Chats still open for the reader.
+    Open,
+    /// Chats the reader settled.
+    Settled,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -178,8 +191,8 @@ pub enum ProjectWorkspaceRead {
     ReadOpenEventBatches {
         limit: u32,
     },
-    /// The earliest chat reminder or unfinished delivery, at most one item.
-    NextSessionReminder,
+    /// The earliest chat snooze or unfinished delivery, at most one item.
+    NextSessionSnooze,
     /// How many chats the chat list shows as unread, across every Project.
     UnreadChatCount,
     QueuedMessageState,
@@ -215,6 +228,9 @@ pub enum ProjectWorkspaceRead {
     },
     SessionWindow {
         archived: bool,
+        /// A calling Agent reads the attention of the Member its current Turn represents.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provenance: Option<Box<crate::agent::AgentTurnProvenance>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         order: Option<ProjectWorkspaceSessionOrder>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,9 +248,15 @@ pub enum ProjectWorkspaceRead {
     },
     TaskWindow {
         project_id: Option<String>,
+        /// Every Project's chats and every chat outside a Project, instead of one scope's.
+        /// `project_id` must then be absent.
+        #[serde(default)]
+        whole_library: bool,
         include_archived: Option<bool>,
         #[serde(default)]
         placement_scope: ProjectWorkspaceTaskPlacementScope,
+        #[serde(default)]
+        lifecycle: ProjectWorkspaceTaskLifecycle,
         #[serde(default)]
         order: ProjectWorkspaceTaskOrder,
         window: CollectionWindowRequest,
@@ -243,6 +265,9 @@ pub enum ProjectWorkspaceRead {
     /// order, from one snapshot.
     TaskWindows {
         project_id: Option<String>,
+        /// Every Project's chats and every chat outside a Project, as in a task window read.
+        #[serde(default)]
+        whole_library: bool,
         lanes: Vec<ProjectWorkspaceTaskLane>,
     },
     SidebarOverview {
@@ -371,8 +396,8 @@ pub enum ProjectWorkspaceRead {
         run_id: String,
     },
     InboxTurnNotifications,
-    NextInboxLater,
-    InboxLaterNotifications {
+    NextInboxSnooze,
+    InboxSnoozeNotifications {
         for_push: bool,
     },
     /// Every Member's current notifying Page Turns, claimed by a desktop or not, for the local
@@ -526,11 +551,11 @@ pub enum ProjectWorkspaceReadValue {
     ReadOpenEventBatches {
         batches: Vec<CoordinatorEventBatch>,
     },
-    /// The earliest reminder any Member is owed, with the chat as that Member reads it.
-    NextSessionReminder {
+    /// The earliest snooze any Member is owed, with the chat as that Member reads it.
+    NextSessionSnooze {
         session: Option<ProjectWorkspaceSessionSummary>,
         member_id: Option<String>,
-        delivery: Option<ProjectWorkspaceSessionReminderDelivery>,
+        delivery: Option<ProjectWorkspaceSessionSnoozeDelivery>,
         next_wake_at: Option<String>,
     },
     UnreadChatCount {
@@ -672,11 +697,11 @@ pub enum ProjectWorkspaceReadValue {
     ChatMessageInbound {
         inbound: Option<crate::inbox::ChatMessageInbound>,
     },
-    NextInboxLater {
-        remind_at: Option<String>,
+    NextInboxSnooze {
+        snoozed_until: Option<String>,
     },
-    InboxLaterNotifications {
-        intents: Vec<crate::inbox::InboxLaterNotification>,
+    InboxSnoozeNotifications {
+        intents: Vec<crate::inbox::InboxSnoozeNotification>,
     },
     InboxTurnNotifications {
         intents: Vec<crate::inbox::InboxTurnNotification>,
@@ -789,6 +814,10 @@ pub enum ProjectWorkspaceTaskOrder {
     #[default]
     Activity,
     Manual,
+    /// The reader's pins first, then the chat that most recently came back to a person.
+    Attention,
+    /// The chat the reader most recently settled first. Only for settled chats.
+    Settlement,
 }
 
 /// Lanes one task lane read may carry.
@@ -800,6 +829,8 @@ pub struct ProjectWorkspaceTaskLane {
     pub include_archived: Option<bool>,
     #[serde(default)]
     pub placement_scope: ProjectWorkspaceTaskPlacementScope,
+    #[serde(default)]
+    pub lifecycle: ProjectWorkspaceTaskLifecycle,
     #[serde(default)]
     pub order: ProjectWorkspaceTaskOrder,
     pub window: CollectionWindowRequest,
@@ -864,7 +895,7 @@ pub struct ProjectWorkspaceSessionSidebarPlacement {
     pub project_id: Option<String>,
     pub section_id: Option<String>,
     pub unread: bool,
-    pub remind_at: Option<String>,
+    pub snoozed_until: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1911,7 +1942,20 @@ pub struct ProjectWorkspaceSessionSummary {
     pub archived: bool,
     pub archived_at: Option<String>,
     pub unread: bool,
-    pub remind_at: Option<String>,
+    pub snoozed_until: Option<String>,
+    /// When the reader set their current snooze, in Unix milliseconds.
+    pub snoozed_at: Option<i64>,
+    /// When the reader's snooze came due and has yet to be seen, in Unix milliseconds.
+    pub woke_at: Option<i64>,
+    /// The current Page Turn that asks this reader, when this is its Active chat.
+    #[schema(required = true)]
+    pub page_turn: Option<PageTurn>,
+    /// When the reader settled this chat, in Unix milliseconds, or null while it is open for
+    /// them. A chat that went idle and was finished for them carries when it last came back.
+    pub settled_at: Option<i64>,
+    /// When the chat last came back to a person, in Unix milliseconds: the later of its activity
+    /// and its Agent last stopping to ask for someone. Open chats order by it.
+    pub attention_at: i64,
     /// The reader may manage this chat: rename, archive or restore it, move it, compact or clear
     /// its context and merge it back. They started it, or they own the Space.
     pub can_manage: bool,
@@ -1950,9 +1994,9 @@ pub enum ProjectWorkspaceSessionStartState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceSessionReminderDelivery {
+pub struct ProjectWorkspaceSessionSnoozeDelivery {
     pub delivery_id: String,
-    pub remind_at: String,
+    pub snoozed_until: String,
 }
 
 /// Immutable execution coordinates; presentation and execution state come from the runtime.
@@ -2347,6 +2391,19 @@ pub enum ProjectWorkspaceIntent {
         section_id: String,
         replacement_session_id: Option<String>,
     },
+    /// Settle or reopen 1–200 distinct chats for the requesting Member.
+    /// The affected Session ids are exactly the chats whose settlement changed.
+    SetSessionsSettled {
+        session_ids: Vec<String>,
+        settled: bool,
+    },
+    /// Settles, for the requesting Member, every chat that has gone quiet for them: a started
+    /// chat whose Agent is not working, that last came back to a person before `idle_before_ms`
+    /// (Unix milliseconds), and that they have not pinned, kept unread or snoozed.
+    /// Repeating it changes nothing; it invalidates every chat list rather than each chat.
+    SettleIdleSessions {
+        idle_before_ms: i64,
+    },
     UpsertSidebarSectionHostLink {
         link: ProjectWorkspaceSidebarSectionHostLink,
     },
@@ -2735,17 +2792,17 @@ pub enum ProjectWorkspaceIntent {
     KeepInboxEntries {
         page_ids: Vec<String>,
     },
-    SetInboxLater {
+    SetInboxSnooze {
         page_ids: Vec<String>,
         until: String,
     },
-    ClearInboxLater {
+    WakeInboxEntries {
         page_ids: Vec<String>,
     },
-    PublishDueInboxLater {
+    PublishDueInboxSnooze {
         wake_at: String,
     },
-    ClaimInboxLaterNotification {
+    ClaimInboxSnoozeNotification {
         id: String,
         for_push: bool,
     },
@@ -2859,29 +2916,37 @@ pub enum ProjectSessionIntent {
     Rename {
         title: String,
     },
-    /// The requesting Member's own pin; every Member keeps their own.
+    /// The requesting Member's own pin; every Member keeps their own. Pinning reopens a settled chat.
     SetPinned {
         pinned: bool,
     },
+    /// Marking a chat unread reopens it if it was settled.
     SetUnread {
         unread: bool,
     },
-    /// The requesting Member's own reminder; every Member keeps their own.
-    SetReminder {
-        remind_at: Option<String>,
+    /// The chat came back to the requesting Member. A new request additionally wakes a snooze
+    /// set before the request was observed.
+    RecordAttention {
+        seen: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        asked_at: Option<i64>,
     },
-    /// Host delivery claims only the exact due reminder it observed, for its Member.
-    ConsumeReminder {
+    /// The requesting Member's own snooze; every Member keeps their own.
+    SetSnooze {
+        snoozed_until: Option<String>,
+    },
+    /// Host delivery claims only the exact due snooze it observed, for its Member.
+    ConsumeSnooze {
         member_id: String,
-        remind_at: String,
+        snoozed_until: String,
         deliver: bool,
     },
-    /// Settles a claimed reminder, turning the chat unread for its Member when `unread`.
-    CompleteReminderDelivery {
+    /// Settles a claimed snooze, turning the chat unread for its Member when `unread`.
+    CompleteSnoozeDelivery {
         delivery_id: String,
         unread: bool,
     },
-    DeferReminderDelivery {
+    DeferSnoozeDelivery {
         delivery_id: String,
     },
     /// Accepted user sends are deduplicated by their exact message identity.

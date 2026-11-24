@@ -1059,11 +1059,52 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async setSessionReminder(sessionId: string, remindAt: string | null): Promise<void> {
+  async setSessionSnooze(sessionId: string, snoozedUntil: string | null): Promise<void> {
     await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
-      workspace.setProjectSessionReminder({
-        operationId: createBoundedOperationId("scenario.session.reminder"),
-        payload: { sessionId, remindAt },
+      workspace.setProjectSessionSnooze({
+        operationId: createBoundedOperationId("scenario.session.snooze"),
+        payload: { sessionId, snoozedUntil },
+      }),
+    );
+  }
+
+  async settleSessions(sessionIds: readonly string[]): Promise<void> {
+    await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.setProjectSessionSettled({
+        operationId: createBoundedOperationId("scenario.session.settle"),
+        payload: { sessionIds: [...sessionIds], settled: true },
+      }),
+    );
+  }
+
+  async deliverDueSessionSnooze(sessionId: string): Promise<void> {
+    await runScenarioProjectWorkspace(
+      this.#runtime,
+      Effect.fn("Scenario.deliverDueSessionSnooze")(function* (workspace) {
+        const due = yield* workspace.nextSessionSnooze;
+        if (
+          due?.session.id !== sessionId ||
+          due.deliveryId ||
+          Date.parse(due.wakeAt) > Date.now()
+        ) {
+          throw new Error("Expected the seeded chat to be the next due snooze");
+        }
+        const claimed = yield* workspace.consumeSessionSnooze(
+          sessionId,
+          due.memberId,
+          due.snoozedUntil,
+          true,
+        );
+        const delivery = yield* workspace.nextSessionSnooze;
+        if (!claimed || delivery?.session.id !== sessionId || !delivery.deliveryId) {
+          throw new Error("The seeded chat has no claimed snooze delivery");
+        }
+        const completed = yield* workspace.completeSessionSnooze(
+          sessionId,
+          delivery.deliveryId,
+          true,
+        );
+        if (!completed) throw new Error("The seeded chat's snooze delivery did not complete");
       }),
     );
   }
@@ -1154,8 +1195,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     await runScenarioInbox(this.#runtime, (inbox) => inbox.keep({ pageIds }));
   }
 
-  async setInboxLater(pageIds: readonly string[], until: string): Promise<void> {
-    await runScenarioInbox(this.#runtime, (inbox) => inbox.setLater({ pageIds, until }));
+  async setInboxSnooze(pageIds: readonly string[], until: string): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.setSnooze({ pageIds, until }));
   }
 
   async recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void> {
@@ -1183,7 +1224,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   async readInbox(
     scope: InboxScope = LIBRARY_INBOX,
-    filter: "inbox" | "later" = "inbox",
+    filter: "inbox" | "snoozed" = "inbox",
   ): Promise<InboxWindow> {
     return await runScenarioInbox(this.#runtime, (inbox) =>
       inbox.window({ scope, filter, first: 200 }),

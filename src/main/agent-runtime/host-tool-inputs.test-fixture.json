@@ -63,7 +63,7 @@
     "updates": [
       {
         "pageIds": ["value"],
-        "values": [{ "propertyId": "status", "value": "done" }]
+        "values": [{ "propertyId": "status", "value": "settled" }]
       }
     ]
   },
@@ -229,11 +229,15 @@
   "stop_session": {
     "sessionId": "value"
   },
-  "set_session_reminder": {
-    "remindAt": "2026-11-06T00:00:00.000Z"
+  "set_session_snooze": {
+    "until": "2026-11-06T00:00:00.000Z"
   },
   "set_session_unread": {
     "unread": false
+  },
+  "set_session_settled": {
+    "sessionIds": ["value"],
+    "settled": false
   },
   "session_queue": {
     "sessionId": "value",

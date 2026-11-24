@@ -27,7 +27,7 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
     ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
     ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxWaiting, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
@@ -73,7 +73,17 @@ fn scope_of(project_id: Option<String>) -> ProjectWorkspaceInboxScope {
 
 // Reads share a clock instant and only join the current episode's deferral.
 const DEFERRAL_JOIN: &str = "LEFT JOIN inbox_deferrals deferral
-  ON rows.in_inbox=1 AND deferral.page_id=rows.page_id AND deferral.member_id=rows.member_id AND deferral.episode=rows.episode";
+  ON rows.in_inbox=1 AND deferral.page_id=rows.page_id AND deferral.member_id=rows.member_id AND deferral.episode=rows.episode
+  LEFT JOIN member_session_snoozes linked_snooze
+    ON linked_snooze.session_id=deferral.linked_session_id AND linked_snooze.member_id=deferral.member_id";
+
+/// A linked Turn returns in the same commit as the chat. A standalone deferral uses the clock.
+fn deferred_sql(clock: &str) -> String {
+    format!(
+        "(CASE WHEN deferral.linked_session_id IS NULL THEN COALESCE(deferral.until_at>{clock},0)
+             ELSE linked_snooze.session_id IS NOT NULL END)"
+    )
+}
 // Stored stream times have millisecond precision. Pad the fraction for a lossless keyset
 // comparison with a deferral, which can name a sub-millisecond instant.
 const STREAM_TIME: &str = "(substr(rows.sort_at,1,length(rows.sort_at)-1)
@@ -88,11 +98,11 @@ pub(super) fn read_summary(
     let project_id = scope_project(scope)?;
     let all = matches!(scope, ProjectWorkspaceInboxScope::All);
     let home = scope_home(connection, library_id, project_id)?;
-    let now = super::inbox::later::now(connection)?;
-    let (entries, actionable, decision, pending, important_count, later_count) =
+    let now = super::inbox::snooze::now(connection)?;
+    let (entries, actionable, decision, pending, important_count, snoozed_count) =
         connection.query_row(&format!(
             "WITH scoped AS (
-               SELECT rows.*, COALESCE(rows.in_inbox=1 AND deferral.until_at>?5,0) AS deferred
+               SELECT rows.*, {deferred} AS deferred
                FROM inbox_member_rows rows {DEFERRAL_JOIN}
                WHERE rows.member_id=?4 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
              )
@@ -103,7 +113,8 @@ pub(super) fn read_summary(
                COALESCE(sum(entry.important=1 AND scoped.actionable=1 AND NOT deferred),0),
                COALESCE(sum(deferred),0)
              FROM scoped LEFT JOIN inbox_entries entry ON scoped.row_kind='intake' AND entry.page_id=scoped.page_id
-             LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id"
+             LEFT JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id",
+            deferred = deferred_sql("?5"),
         ), params![library_id,project_id,all,&member,&now], |r|
             Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?;
     let important = connection.prepare(&format!(
@@ -113,15 +124,16 @@ pub(super) fn read_summary(
          JOIN pages page ON page.block_id=rows.page_id
          LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id
          WHERE rows.member_id=?5 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
-           AND rows.actionable=1 AND entry.important=1 AND (deferral.until_at IS NULL OR deferral.until_at<=?6)
-         ORDER BY 3,rows.row_id LIMIT ?4"
+           AND rows.actionable=1 AND entry.important=1 AND NOT {deferred}
+         ORDER BY 3,rows.row_id LIMIT ?4",
+        deferred = deferred_sql("?6"),
     ))?.query_map(params![library_id,project_id,all,MAX_SUMMARY_IMPORTANT,&member,&now],|r|
         Ok(ProjectWorkspaceInboxImportantMessage{page_id:r.get(0)?,title:r.get(1)?,submitted_at:r.get(2)?})
     )?.collect::<rusqlite::Result<Vec<_>>>()?;
     let dispatching:i64=connection.query_row("SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal JOIN inbox_proposal_pages link ON link.proposal_id=proposal.proposal_id JOIN inbox_intake intake ON intake.page_id=link.page_id JOIN inbox_member_rows row ON row.page_id=intake.page_id AND row.row_kind='intake' AND row.member_id=?4 WHERE proposal.library_id=?1 AND proposal.state='dispatching' AND COALESCE(proposal.failure_kind,'')<>'unknown' AND (?3 OR intake.project_id IS ?2)",params![library_id,project_id,all,&member],|r|r.get(0))?;
     Ok(ProjectWorkspaceInboxSummary {
         notes_page_id: super::inbox::notes::notes_page(connection, library_id, project_id)?,
-        later_count: count(later_count)?,
+        snoozed_count: count(snoozed_count)?,
         database_id: home.as_ref().map(|h| h.database_id.clone()),
         view_id: home.map(|h| h.view_id),
         entry_count: count(entries)?,
@@ -141,19 +153,41 @@ pub(super) fn read_counts(
     library_id: &str,
 ) -> Result<ProjectWorkspaceInboxCounts, StoreError> {
     let member = crate::infrastructure::actors::requesting_member(connection, context)?;
-    let rows=connection.prepare(&format!("SELECT project_id,count(*) AS waiting FROM inbox_member_rows rows {DEFERRAL_JOIN} WHERE rows.member_id=?3 AND library_id=?1 AND actionable=1 AND (deferral.until_at IS NULL OR deferral.until_at<=?4) GROUP BY project_id ORDER BY project_id LIMIT ?2"))?.query_map(params![library_id,MAX_COUNTED_PROJECTS+1,&member,super::inbox::later::now(connection)?],|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let now = super::inbox::snooze::now(connection)?;
+    let rows = connection.prepare(&format!(
+        "WITH scoped AS (
+           SELECT rows.project_id, count(*) AS inbox_count,
+             MAX(CASE WHEN episode.signature ->> '$[1]' IN ('question','approval') THEN 1 ELSE 0 END) AS asks
+           FROM inbox_member_rows rows {DEFERRAL_JOIN}
+           LEFT JOIN page_turn_episodes episode
+             ON rows.row_kind='turn' AND episode.page_id=rows.page_id
+           WHERE rows.member_id=?3 AND rows.library_id=?1 AND rows.actionable=1
+             AND NOT {deferred}
+           GROUP BY rows.project_id
+         )
+         SELECT project_id, inbox_count, asks, MAX(asks) OVER ()
+         FROM scoped ORDER BY project_id LIMIT ?2",
+        deferred = deferred_sql("?4"),
+    ))?.query_map(params![library_id, MAX_COUNTED_PROJECTS + 1, member, now], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, i64>(1)?, r.get::<_, bool>(2)?, r.get::<_, bool>(3)?))
+    })?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut counts = ProjectWorkspaceInboxCounts {
         library_count: 0,
         projects: Vec::new(),
+        waiting: ProjectWorkspaceInboxWaiting {
+            library: rows.first().is_some_and(|row| row.3),
+            projects: Default::default(),
+        },
     };
-    for (project_id, waiting) in rows {
-        counts.library_count += count(waiting)?;
-        match project_id {
-            None => {}
-            Some(project_id) => counts.projects.push(ProjectWorkspaceInboxProjectCount {
+    for (project_id, inbox_count, asks, _) in rows {
+        let inbox_count = count(inbox_count)?;
+        counts.library_count += inbox_count;
+        if let Some(project_id) = project_id {
+            counts.waiting.projects.insert(project_id.clone(), asks);
+            counts.projects.push(ProjectWorkspaceInboxProjectCount {
                 project_id,
-                inbox_count: count(waiting)?,
-            }),
+                inbox_count,
+            });
         }
     }
     Ok(counts)
@@ -235,12 +269,13 @@ pub(super) fn read_window(
         })
         .transpose()?;
     let (after_at, after_id) = after.map_or((None, None), |(at, id)| (Some(at), Some(id)));
-    let sql = if filter == ProjectWorkspaceInboxWindowFilter::Later {
+    let deferred = deferred_sql("?9");
+    let sql = if filter == ProjectWorkspaceInboxWindowFilter::Snoozed {
         format!(
             "SELECT rows.row_kind,rows.page_id,deferral.until_at,rows.row_id
           FROM inbox_member_rows rows {DEFERRAL_JOIN}
           WHERE rows.member_id=?8 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
-            AND rows.in_inbox=?4 AND deferral.until_at>?9
+            AND rows.in_inbox=?4 AND {deferred}
             AND (?5 IS NULL OR (deferral.until_at,rows.row_id)>(?5,?6))
           ORDER BY deferral.until_at,rows.row_id LIMIT ?7"
         )
@@ -249,7 +284,7 @@ pub(super) fn read_window(
           SELECT rows.row_kind,rows.page_id,MAX({STREAM_TIME},COALESCE(deferral.until_at,'')) AS sort_at,rows.row_id
           FROM inbox_member_rows rows {DEFERRAL_JOIN}
           WHERE rows.member_id=?8 AND rows.library_id=?1 AND (?3 OR rows.project_id IS ?2)
-            AND rows.in_inbox=?4 AND (?4 OR rows.row_kind='intake') AND (deferral.until_at IS NULL OR deferral.until_at<=?9)
+            AND rows.in_inbox=?4 AND (?4 OR rows.row_kind='intake') AND NOT {deferred}
         ) SELECT row_kind,page_id,sort_at,row_id FROM stream
           WHERE (?5 IS NULL OR (sort_at,row_id)<(?5,?6)) ORDER BY sort_at DESC,row_id DESC LIMIT ?7")
     };
@@ -265,7 +300,7 @@ pub(super) fn read_window(
                 after_id,
                 (normalized.first + 1) as i64,
                 &member,
-                super::inbox::later::now(connection)?
+                super::inbox::snooze::now(connection)?
             ],
             |r| {
                 Ok((
@@ -671,7 +706,7 @@ fn project_member_item(
     mut item: ProjectWorkspaceInboxItem,
 ) -> Result<ProjectWorkspaceInboxItem, StoreError> {
     if matches!(item.row_kind, InboxRowKind::Intake | InboxRowKind::Turn) {
-        item.later = super::inbox::later::record(connection, &item.page_id, member)?;
+        item.snooze = super::inbox::snooze::record(connection, &item.page_id, member)?;
     }
     let project = |chat: &mut ProjectWorkspaceInboxChat| -> Result<(), StoreError> {
         chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,chat.session_id],|r|r.get(0))?;
@@ -714,7 +749,7 @@ fn read_item(
         .flatten();
     Ok((
         ProjectWorkspaceInboxItem {
-            later: None,
+            snooze: None,
             problem: None,
             basis: cache.basis(connection, page_id)?,
             handback: super::inbox::handback::context(connection, library_id, page_id)?,

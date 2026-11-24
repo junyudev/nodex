@@ -5,6 +5,7 @@ import type { components } from "@nodex/core-protocol";
 import type { HeadlessHost } from "./HeadlessApplicationLive";
 import { executeHostCommand } from "./HostCommands";
 import { HostInvocation } from "./HostInvocation";
+import { createBoundedOperationId } from "../shared/operation-identity";
 
 /** The host's own Runtime owners, recording what each relayed call asks of them and as whom. */
 const recordingHost = () => {
@@ -13,7 +14,12 @@ const recordingHost = () => {
     Effect.flatMap(HostInvocation, (proof) =>
       Effect.sync(() => {
         calls.push({ method, input, proof });
-        return { sessionId: "created", threadId: "thread", projectId: null };
+        return method === "setSessionsSettled"
+          ? {
+              value: { changedSessionIds: ["chat"] },
+              apply: { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 1 } },
+            }
+          : { sessionId: "created", threadId: "thread", projectId: null };
       }),
     );
   const sessions = new Proxy({} as HeadlessHost["Service"]["sessions"], {
@@ -100,5 +106,20 @@ it.effect("answers with the host's own Inbox settings, never a request's", () =>
       });
     expect(yield* read({})).toBe(inbox);
     expect((yield* read({ chatAgent: null }).pipe(Effect.exit))._tag).toBe("Failure");
+  }),
+);
+
+it.effect("relays a settlement batch under the requesting Member's proof", () =>
+  Effect.gen(function* () {
+    const { relay, calls } = recordingHost();
+    const input = {
+      operationId: createBoundedOperationId("test.settlement"),
+      payload: { sessionIds: ["chat", "quiet"], settled: true },
+    };
+    expect(yield* relay("sessions_set_settled", input)).toMatchObject({
+      ok: true,
+      value: { changedSessionIds: ["chat"] },
+    });
+    expect(calls).toEqual([{ method: "setSessionsSettled", input, proof: "bob-proof" }]);
   }),
 );

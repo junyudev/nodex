@@ -20,3 +20,15 @@ test("preserves the selected pause authority through the shared Turn boundary", 
     parsePageTurn({ ...turn, hold: { ...turn.hold, scope: { kind: "project" } } }),
   ).toThrow();
 });
+
+test("reads an attention Turn addressed to any Member", () => {
+  const turn: PageTurn = {
+    page_id: "page",
+    actor: { kind: "members" },
+    reason: "approval",
+    since: "2026-11-02T09:00:00.000Z",
+    episode: "episode",
+    hold: null,
+  };
+  expect(parsePageTurn(turn)).toEqual(turn);
+});

@@ -2,6 +2,7 @@ import { WorkbenchSkillSurfaceConfigSchema } from "./workbench-skill";
 import { WorkbenchPageFileSurfaceConfigSchema } from "./workbench-page-file";
 import { AgentBackendBindingSchema } from "./agent-backend";
 import { z } from "zod";
+import { uniqueScalarValues } from "../schema-constraints";
 import { WorkbenchFileHostIdSchema } from "../workbench-resource-identity";
 import type {
   WorkbenchProjectionBrowserTabConfig,
@@ -22,7 +23,8 @@ import type {
   ProjectSessionThreadLinkInput,
   ProjectSessionUpdateInput,
   ProjectSessionRenameInput,
-  ProjectSessionReminderInput,
+  ProjectSessionSnoozeInput,
+  ProjectSessionSettledInput,
   ProjectSessionForkInput,
 } from "../types";
 import {
@@ -186,9 +188,26 @@ export const ProjectSessionRenameInputSchema = z.object({
   title: z.string(),
 }) satisfies z.ZodType<ProjectSessionRenameInput>;
 
-export const ProjectSessionReminderInputSchema = z.strictObject({
-  remindAt: z.iso.datetime({ offset: true }).nullable(),
-}) satisfies z.ZodType<ProjectSessionReminderInput>;
+export const ProjectSessionSnoozeInputSchema = z.strictObject({
+  snoozedUntil: z.iso.datetime({ offset: true }).nullable(),
+}) satisfies z.ZodType<ProjectSessionSnoozeInput>;
+
+export const SessionSettlementIdsSchema = z
+  .array(
+    z
+      .string()
+      .regex(/^\S(?:.*\S)?$/, "Use the exact Session id")
+      .max(512),
+  )
+  .min(1)
+  .max(200)
+  .refine(uniqueScalarValues, "Choose distinct Session ids")
+  .meta({ uniqueItems: true });
+
+export const ProjectSessionSettledInputSchema = z.strictObject({
+  sessionIds: SessionSettlementIdsSchema,
+  settled: z.boolean(),
+}) satisfies z.ZodType<ProjectSessionSettledInput>;
 
 export const ProjectSessionForkInputSchema = z.object({
   target: z.enum(["local", "newWorktree"]),

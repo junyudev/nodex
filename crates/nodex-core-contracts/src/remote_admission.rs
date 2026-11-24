@@ -152,7 +152,7 @@ pub fn authorize(
                 | "reverse_data_edit"
         ),
         "query_read" => matches!(kind, "schema" | "query" | "displayed_view_query"),
-        "workspace_read" if kind == "inbox_later_notifications" => {
+        "workspace_read" if kind == "inbox_snooze_notifications" => {
             encoded.get("for_push").and_then(|value| value.as_bool()) == Some(false)
         }
         "workspace_read" if kind == "sources" => matches!(
@@ -245,7 +245,7 @@ pub fn authorize(
                 .and_then(|k| k.as_str())
                 == Some("retry_problem")
         }
-        "workspace_apply" if kind == "claim_inbox_later_notification" => {
+        "workspace_apply" if kind == "claim_inbox_snooze_notification" => {
             encoded.get("for_push").and_then(|value| value.as_bool()) == Some(false)
         }
         "workspace_apply" if kind == "confirm_inbox_dispatch" => encoded
@@ -261,7 +261,7 @@ pub fn authorize(
         "workspace_apply" if kind == "delete_session" => true,
         // Accepted messages additionally require their exact live execution-owner delivery proof;
         // renaming and archiving require the chat's owner or a Space Owner. Unread state,
-        // pins and reminders are the requesting Member's own.
+        // pins, snoozes, settlement and a chat coming back to them are the requesting Member's own.
         "workspace_apply" if kind == "mutate_session" => {
             matches!(
                 encoded
@@ -271,7 +271,8 @@ pub fn authorize(
                 Some(
                     "set_unread"
                         | "set_pinned"
-                        | "set_reminder"
+                        | "set_snooze"
+                        | "record_attention"
                         | "record_user_message"
                         | "set_archived"
                         | "rename"
@@ -279,11 +280,14 @@ pub fn authorize(
             )
         }
         // A Member opens a default draft of their own; Core keeps each Member's draft theirs.
+        // A Member finishes only their own idle chats.
         "workspace_apply" => matches!(
             kind,
             "move_session"
                 | "ensure_default_draft_session"
                 | "reorder_pinned_sessions"
+                | "settle_idle_sessions"
+                | "set_sessions_settled"
                 | "set_inbox_routing_consent"
                 | "claim_turn_notification"
                 | "reply_to_page_turn"
@@ -297,8 +301,8 @@ pub fn authorize(
                 | "request_inbox_suggestion"
                 | "retry_inbox_dispatch"
                 | "keep_inbox_entries"
-                | "set_inbox_later"
-                | "clear_inbox_later"
+                | "set_inbox_snooze"
+                | "wake_inbox_entries"
                 | "mark_inbox_messages_done"
                 | "return_inbox_messages"
                 | "set_inbox_entry_kind"
@@ -435,7 +439,8 @@ mod inbox_tests {
             "set_archived",
             "set_unread",
             "set_pinned",
-            "set_reminder",
+            "set_snooze",
+            "record_attention",
         ] {
             assert!(session(intent).is_ok(), "{intent}");
         }
@@ -443,6 +448,7 @@ mod inbox_tests {
             "move_session",
             "reorder_pinned_sessions",
             "ensure_default_draft_session",
+            "settle_idle_sessions",
         ] {
             assert!(authorize(&context, "workspace_apply", &json!({"kind":kind})).is_ok());
         }
@@ -450,8 +456,8 @@ mod inbox_tests {
             "set_fallback_title",
             "link_thread",
             "unlink_thread",
-            "consume_reminder",
-            "complete_reminder_delivery",
+            "consume_snooze",
+            "complete_snooze_delivery",
         ] {
             assert_eq!(
                 session(intent).unwrap_err().code,

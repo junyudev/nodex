@@ -55,6 +55,7 @@ export interface RootActivity {
   readonly activeRunId: string | null;
   readonly readback?: AgentRunReadback | null;
   readonly pendingRequestCount: number;
+  readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
   readonly backgroundTasks: ReadonlyArray<RootActivityBackgroundTask>;
@@ -145,6 +146,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly root_thread_id: string;
         readonly active_runs: number;
         readonly pending_requests: number;
+        readonly latest_request_at: string | null;
         readonly has_approval: number;
         readonly has_input: number;
         readonly approval_prompt: string | null;
@@ -211,14 +213,15 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             ON owner.thread_id = attention.root_thread_id
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
         ), activity_facts AS MATERIALIZED (
-          SELECT root_thread_id, thread_id, kind, progress_at, amount FROM rooted
+          SELECT root_thread_id, thread_id, kind, progress_at, amount, NULL AS request_at FROM rooted
           WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
-          SELECT root_thread_id, thread_id, kind, progress_at, amount FROM attention
+          SELECT root_thread_id, thread_id, kind, progress_at, amount, at AS request_at FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
           SUM(CASE WHEN kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)}) THEN amount ELSE 0 END) AS pending_requests,
+          MAX(request_at) AS latest_request_at,
           MAX(kind = ${ATTENTION_KINDS.approval}) AS has_approval,
           MAX(kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})) AS has_input,
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
@@ -341,6 +344,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           readback:
             head.active_run_id === null ? null : (readbackOf.get(head.active_run_id) ?? null),
           pendingRequestCount: row.pending_requests,
+          latestRequestAt: row.latest_request_at,
           activeFlags: sessionAttentionFlags([
             { kind: ATTENTION_KINDS.approval, awaitsPerson: row.has_approval > 0 },
             { kind: ATTENTION_KINDS.input, awaitsPerson: row.has_input > 0 },

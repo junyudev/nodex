@@ -1,6 +1,5 @@
 import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import type { ProjectionStoreV2Error } from "./ProjectionStore.ts";
-import { isSnoozed } from "./threadSnoozePolicy.ts";
 import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import { readSessionAttention } from "./SessionAttention.ts";
 import type {
@@ -9,7 +8,6 @@ import type {
   OrchestrationV2Run,
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -50,10 +48,6 @@ export interface SessionExecutionMetadata {
   readonly relationshipToParent: "fork" | "subagent" | null;
   readonly rootThreadId: string;
   readonly branch: string | null;
-  readonly settled: boolean;
-  readonly settledAt: string | null;
-  readonly snoozed: boolean;
-  readonly snoozedUntil: string | null;
   readonly pullRequests: readonly SessionPullRequest[];
   readonly itemCount: number;
   readonly itemCountCoverage: "complete" | "local";
@@ -76,7 +70,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
 ) {
   if (threadIds.length === 0) return [];
   const sql = yield* SqlClient.SqlClient;
-  const now = yield* Clock.currentTimeMillis;
   const rows = yield* sql<{
     readonly thread_id: string;
     readonly created_by: SessionExecutionMetadata["createdBy"];
@@ -91,7 +84,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
     readonly worktree_path: string | null;
     readonly latest_run_id: string | null;
     readonly run_status: SessionExecutionMetadata["runStatus"];
-    readonly completed_at: string | null;
     readonly provider_instance_id: string;
     readonly default_provider: string;
     readonly model: string;
@@ -100,11 +92,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
     readonly relationship: SessionExecutionMetadata["relationshipToParent"];
     readonly root_thread_id: string;
     readonly branch: string | null;
-    readonly settled: number;
-    readonly settled_at: string | null;
-    readonly snoozed_at: string | null;
-    readonly snoozed_until: string | null;
-    readonly pending: number;
     readonly pull_requests: string;
     readonly item_count: number;
   }>`
@@ -115,7 +102,7 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
         AND active.status IN ('preparing','starting','running') ORDER BY active.ordinal DESC,active.run_id DESC LIMIT 1) AS active_run_id,
       json_extract(t.payload_json,'$.worktreePath') AS worktree_path,
       run.run_id AS latest_run_id, run.status AS run_status,
-      run.completed_at,t.default_provider, COALESCE(t.provider_instance_id,'') AS provider_instance_id,
+      t.default_provider, COALESCE(t.provider_instance_id,'') AS provider_instance_id,
       COALESCE(json_extract(t.payload_json,'$.modelSelection.model'),'') AS model,
       (SELECT json_extract(option.value,'$.value') FROM json_each(t.payload_json,'$.modelSelection.options') option
         WHERE json_extract(option.value,'$.id') IN ('reasoningEffort','effort','variant')
@@ -124,13 +111,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
       json_extract(t.payload_json,'$.lineage.relationshipToParent') AS relationship,
       json_extract(t.payload_json,'$.lineage.rootThreadId') AS root_thread_id,
       json_extract(t.payload_json,'$.branch') AS branch,
-      COALESCE(json_extract(t.payload_json,'$.settledOverride') = 'settled',0) AS settled,
-      json_extract(t.payload_json,'$.settledAt') AS settled_at,
-      json_extract(t.payload_json,'$.snoozedAt') AS snoozed_at,
-      json_extract(t.payload_json,'$.snoozedUntil') AS snoozed_until,
-      EXISTS(SELECT 1 FROM orchestration_v2_projection_runtime_requests request
-        WHERE request.thread_id=t.thread_id AND request.status='pending'
-          AND request.kind NOT IN ('dynamic_tool_call','auth_refresh')) AS pending,
       (SELECT json_group_array(json_object('host',json_extract(pr.value,'$.host'),
         'repository',json_extract(pr.value,'$.repository'),'number',json_extract(pr.value,'$.number'),
         'url',json_extract(pr.value,'$.url'),'source',json_extract(pr.value,'$.source'),
@@ -148,22 +128,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
   return yield* Effect.forEach(rows, (row) =>
     Effect.gen(function* () {
       const shell = options.shell ? yield* options.shell(row.thread_id) : null;
-      const wokeOnFailure =
-        row.run_status === "failed" &&
-        (row.snoozed_at === null ||
-          (row.completed_at !== null && row.completed_at > row.snoozed_at));
-      const wokeOnCompletion =
-        row.run_status === "completed" &&
-        row.snoozed_at !== null &&
-        row.completed_at !== null &&
-        row.completed_at > row.snoozed_at;
-      const snoozed =
-        row.snoozed_until !== null &&
-        Date.parse(row.snoozed_until) > now &&
-        row.pending === 0 &&
-        !wokeOnFailure &&
-        !wokeOnCompletion;
-      const effectiveSnoozed = shell ? isSnoozed(shell, now) : snoozed;
       return {
         threadId: row.thread_id,
         activeFlags: attention.get(row.thread_id)?.activeFlags ?? [],
@@ -193,10 +157,6 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
         relationshipToParent: row.relationship,
         rootThreadId: row.root_thread_id,
         branch: row.branch,
-        settled: row.settled === 1,
-        settledAt: row.settled === 1 ? row.settled_at : null,
-        snoozed: effectiveSnoozed,
-        snoozedUntil: effectiveSnoozed ? row.snoozed_until : null,
         pullRequests: yield* decodePullRequests(row.pull_requests),
         itemCount: shell ? shell.visibleItemCount : row.item_count,
         itemCountCoverage: shell ? ("complete" as const) : ("local" as const),

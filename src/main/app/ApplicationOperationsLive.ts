@@ -28,7 +28,7 @@ import { live as projectSessionCommandsLive } from "../project-application/Proje
 import { live as coreApplicationProjectionLive } from "../core-runtime/CoreApplicationProjectionRuntime";
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
-import { live as sessionReminderLive } from "../host-runtime/SessionReminderRuntime";
+import { live as sessionSnoozeLive } from "../host-runtime/SessionSnoozeRuntime";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
 import { live as unreadBadgeLive } from "../host-runtime/UnreadBadgeRuntime";
 import { MainConfig } from "./MainConfig";
@@ -78,7 +78,7 @@ const projectionDelivery = projectionDeliveryLive.pipe(
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
 const reminders = Layer.mergeAll(
   reminderSchedulerLive({}),
-  sessionReminderLive,
+  sessionSnoozeLive,
   unreadBadgeLive,
 ).pipe(Layer.provideMerge(coreEvents));
 const agentBackends = agentBackendApplicationLive.pipe(

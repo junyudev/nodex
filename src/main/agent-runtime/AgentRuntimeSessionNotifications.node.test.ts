@@ -57,6 +57,7 @@ const harness = (options: {
             ? null
             : {
                 status: options.runStatus ?? "completed",
+                completedAt: "2026-08-01T00:00:00.000Z",
                 userMessageId:
                   (input as { runId?: string }).runId === "run:automation"
                     ? "message:automation"
@@ -73,6 +74,9 @@ const harness = (options: {
       }),
   } as unknown as AgentRuntimeProcessConnection;
   const unread: string[] = [];
+  /** Every chat that came back to its person, in view or not. */
+  const attention: string[] = [];
+  const asks: (number | null)[] = [];
   const events: CodexThreadNotificationEvent[] = [];
   const unreadAtCompletion: string[][] = [];
   const unreadAtQuestion: string[][] = [];
@@ -113,10 +117,14 @@ const harness = (options: {
           : Effect.succeed({
               title: sessionId === "session:source" ? "Source Session" : "Refine the board",
               archived: false,
-              unread: false,
               sideChatSource: sessionId === "session:a" ? (options.sideChatSource ?? null) : null,
             }),
-      markUnread: (sessionId) => Effect.sync(() => unread.push(sessionId)),
+      recordAttention: (sessionId, seen, askedAt) =>
+        Effect.sync(() => {
+          attention.push(sessionId);
+          asks.push(askedAt);
+          if (!seen) unread.push(sessionId);
+        }),
       readAutomationNotificationPolicy: (messageId) =>
         Effect.succeed(
           messageId === "message:automation" ? (options.automationPolicy ?? null) : null,
@@ -133,6 +141,8 @@ const harness = (options: {
     requests,
     outcomeInputs,
     unread,
+    attention,
+    asks,
     unreadAtCompletion,
     unreadAtQuestion,
     events,
@@ -144,7 +154,14 @@ const transition = (
   before: Activity | null,
   after: Activity | null,
   endedRun: AgentRuntimeActivityTransition["endedRun"] = null,
-) => ({ sessionId: "session:a", rootThreadId: "thread:a", before, after, endedRun });
+) => ({
+  sessionId: "session:a",
+  rootThreadId: "thread:a",
+  observedAt: 100,
+  before,
+  after,
+  endedRun,
+});
 
 it.effect.each(["completed", "failed", "interrupted", "cancelled"] as const)(
   "%s Run shows its persisted reply after native authority is released",
@@ -153,6 +170,9 @@ it.effect.each(["completed", "failed", "interrupted", "cancelled"] as const)(
       const h = harness({ runStatus: status });
       yield* h.deliver([transition(activity("running"), null, { runId: "run:1", status })]);
       assert.deepEqual(h.unread, ["session:a"]);
+      assert.deepEqual(h.asks, [
+        status === "failed" ? Date.parse("2026-08-01T00:00:00.000Z") : null,
+      ]);
       assert.deepEqual(h.unreadAtCompletion, [["session:a"]]);
       assert.strictEqual(h.shown.length, 1);
       assert.include(h.shown[0]!, {
@@ -236,6 +256,21 @@ it.effect("a new question asks for input and its resolution withdraws the notifi
       ["user-input-requested", "request-resolved"],
     );
   }),
+);
+
+it.effect(
+  "records when a replacement question actually arrived even if the count is unchanged",
+  () =>
+    Effect.gen(function* () {
+      const h = harness({});
+      yield* h.deliver([
+        transition(
+          activity("waiting", { latestRequestAt: "1970-01-01T00:00:00.010Z" }),
+          activity("waiting", { latestRequestAt: "1970-01-01T00:00:00.020Z" }),
+        ),
+      ]);
+      assert.deepEqual(h.asks, [20]);
+    }),
 );
 
 it.effect("approval attention uses the requested action and withdraws on resolution", () =>

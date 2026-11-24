@@ -1,4 +1,4 @@
-import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageReminders";
+import { recordAcceptedNativeUserMessage } from "./CodexSessionMessageSnoozes";
 import { RUNTIME_MODE_RANK, type AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import type { CodexCanonicalPermissionContext } from "../../shared/types";
 import { assertCodexFailedTurnContinuation } from "../../shared/codex-conversation-state/codex-failed-turn-continuation";

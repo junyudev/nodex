@@ -72,8 +72,8 @@ export const inboxDispatchActionFromCore = (
         decisionId: action.decision_id,
         agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
       };
-    case "later":
-      return { type: "later", remindAt: action.remind_at };
+    case "snooze":
+      return { type: "snooze", snoozedUntil: action.snoozed_until };
     case "keep":
       return { type: "keep" };
     case "save_to_notes":
@@ -116,8 +116,8 @@ const chatAgentToCore = (agent: InboxAgentChoice): CoreInboxChatAgent => ({
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
-    case "later":
-      return { type: "later", remind_at: action.remindAt };
+    case "snooze":
+      return { type: "snooze", snoozed_until: action.snoozedUntil };
     case "plan":
       return {
         type: "plan",
@@ -323,10 +323,10 @@ function projectAutomationInboxSummary(text: string): string {
 
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   handback: item.handback ?? null,
-  later: item.later
+  snooze: item.snooze
     ? {
-        setAt: item.later.set_at,
-        until: item.later.until,
+        setAt: item.snooze.set_at,
+        until: item.snooze.until,
       }
     : null,
   rowKind: item.row_kind,
@@ -389,7 +389,7 @@ export const inboxSummaryFromCore = (
   viewId: summary.view_id ?? null,
   entryCount: summary.entry_count,
   inboxCount: summary.inbox_count,
-  laterCount: summary.later_count,
+  snoozedCount: summary.snoozed_count,
   needsDecisionCount: summary.needs_decision_count,
   pendingSuggestionCount: summary.pending_suggestion_count,
   dispatchingCount: summary.dispatching_count,
@@ -406,4 +406,5 @@ export const inboxCountsFromCore = (counts: CoreInboxCounts): InboxCounts => ({
   projects: Object.fromEntries(
     counts.projects.map((project) => [project.project_id, project.inbox_count]),
   ),
+  waiting: counts.waiting,
 });

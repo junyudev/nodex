@@ -60,7 +60,7 @@ export const makeWithPorts = (
       const caller = yield* resolveAppToolCallingSession(input.caller, workspace);
       if (!caller) return toolFailure("session_unavailable");
       const request = parsed.data;
-      const sessionId = request.sessionId ?? caller.sessionId;
+      const sessionId = ("sessionId" in request && request.sessionId) || caller.sessionId;
       const target = {
         sessionId,
         ...("execution" in request && request.execution ? { execution: request.execution } : {}),
@@ -76,18 +76,34 @@ export const makeWithPorts = (
       const { operationId } = operation;
       const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
       const organization =
-        input.name === "set_session_unread" || input.name === "set_session_reminder";
+        input.name === "set_session_unread" ||
+        input.name === "set_session_snooze" ||
+        input.name === "set_session_settled";
       const execute = Effect.gen(function* () {
         if (input.name === "stop_session" && sessionId === caller.sessionId)
           return toolFailure("cannot_stop_calling_session");
-        if (organization) yield* access.authorize(sessionId);
-        else yield* access.check(callerTarget, target);
+        if (!("sessionIds" in request)) {
+          if (organization) yield* access.authorize(sessionId);
+          else yield* access.check(callerTarget, target);
+        }
         const source = organization ? null : yield* access.inspect(callerTarget);
         const modeLimit = source
           ? { runtimeMode: source.runtimeMode, interactionMode: source.interactionMode }
           : undefined;
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         const perform = Effect.gen(function* () {
+          if ("sessionIds" in request) {
+            if (!input.caller.isActive()) return toolFailure("call_withdrawn");
+            const result = yield* workspace.setProjectSessionSettled({
+              operationId,
+              payload: { sessionIds: request.sessionIds, settled: request.settled },
+            });
+            return toolSuccess({
+              operationId,
+              changedSessionIds: result.value.changedSessionIds,
+              receipt: result.apply,
+            });
+          }
           // Revalidate lifecycle and permission facts immediately before crossing the control owner.
           const session = organization
             ? yield* access.authorize(sessionId)
@@ -108,16 +124,16 @@ export const makeWithPorts = (
               );
           });
           if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-          if (input.name === "set_session_reminder") {
-            const args = sessionControlSchemas.set_session_reminder.parse(input.arguments);
-            const result = yield* workspace.setProjectSessionReminder({
+          if (input.name === "set_session_snooze") {
+            const args = sessionControlSchemas.set_session_snooze.parse(input.arguments);
+            const result = yield* workspace.setProjectSessionSnooze({
               operationId,
-              payload: { sessionId, remindAt: args.remindAt },
+              payload: { sessionId, snoozedUntil: args.until },
             });
             return toolSuccess({
               operationId,
               sessionId,
-              remindAt: result.value.remindAt,
+              snoozedUntil: result.value.snoozedUntil,
               receipt: result.apply,
             });
           }

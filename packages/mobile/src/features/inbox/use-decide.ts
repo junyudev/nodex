@@ -8,7 +8,7 @@ import { showFailure, showSnack } from "../../ui/snackbar";
 import { decisionReversal } from "./inbox-presentation";
 
 export function handlePassedReturnTime(cause: unknown, recover: () => void): boolean {
-  if (!(cause instanceof RpcFailure) || cause.code !== "inbox_remind_at_passed") return false;
+  if (!(cause instanceof RpcFailure) || cause.code !== "inbox_snooze_time_passed") return false;
   recover();
   return true;
 }

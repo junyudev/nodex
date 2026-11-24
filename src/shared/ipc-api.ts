@@ -417,6 +417,7 @@ import type {
   ProjectWindowInput,
   ProjectUpdateCommandInput,
   ProjectSession,
+  ProjectSessionSettledResult,
   SessionFolder,
   SessionManagedState,
   ProjectSessionForkInput,
@@ -485,7 +486,9 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
-  ProjectSessionReminderCommandInput,
+  ProjectSessionSettledCommandInput,
+  ProjectSessionsSettleIdleCommandInput,
+  ProjectSessionSnoozeCommandInput,
   ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
@@ -1164,11 +1167,11 @@ export interface IpcApi
     args: [input: import("./inbox").InboxDispatchInput];
     result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
   };
-  "inbox:later": {
-    args: [input: import("./inbox").InboxSetLaterInput];
+  "inbox:snooze": {
+    args: [input: import("./inbox").InboxSetSnoozeInput];
     result: CoreLocalCommitResult<void>;
   };
-  "inbox:clear-later": {
+  "inbox:wake": {
     args: [input: import("./inbox").InboxPageIdsInput];
     result: CoreLocalCommitResult<void>;
   };
@@ -1385,13 +1388,21 @@ export interface IpcApi
     args: [command: ProjectSessionManagedCommandInput];
     result: CoreLocalCommitResult<SessionManagedState>;
   };
-  "project-sessions:set-reminder": {
-    args: [command: ProjectSessionReminderCommandInput];
+  "project-sessions:set-snooze": {
+    args: [command: ProjectSessionSnoozeCommandInput];
     result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:mark-unread": {
     args: [command: ProjectSessionUnreadCommandInput];
     result: CoreLocalCommitResult<ProjectSession>;
+  };
+  "project-sessions:set-settled": {
+    args: [command: ProjectSessionSettledCommandInput];
+    result: CoreLocalCommitResult<ProjectSessionSettledResult>;
+  };
+  "project-sessions:settle-idle": {
+    args: [command: ProjectSessionsSettleIdleCommandInput];
+    result: CoreLocalCommitResult<null>;
   };
   "project-sessions:fork": {
     args: [

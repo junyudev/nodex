@@ -46,7 +46,7 @@ const suggestion: InboxProposal = {
 
 const inboxItem = (scope: InboxScope): InboxItem => ({
   rowKind: "intake",
-  later: null,
+  snooze: null,
   turn: null,
   replyToPageId: null,
   pageId: "page",

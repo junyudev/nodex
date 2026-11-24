@@ -176,7 +176,7 @@ pub enum CoreErrorRecovery {
         head_seq: i64,
     },
     ReconnectDocumentSubscription,
-    InboxRemindAtPassed,
+    InboxSnoozeTimePassed,
     DatabaseViewOrderPreparation {
         view_id: String,
     },

@@ -375,9 +375,9 @@ pub(in crate::workspace) fn apply_reliable(
                     let inbox_scope = require_one_scope(connection, &pages)?;
                     let action =
                         normalize_action(connection, library_id, inbox_scope.as_deref(), &action)?;
-                    if let ProjectWorkspaceInboxDispatchAction::Later { remind_at } = &action {
-                        later::set_entries(connection, context, &pages, remind_at, &now)?;
-                        let mut effects = simple_effects("inbox_set_later", &now);
+                    if let ProjectWorkspaceInboxDispatchAction::Snooze { snoozed_until } = &action {
+                        snooze::set_entries(connection, context, &pages, snoozed_until, &now)?;
+                        let mut effects = simple_effects("inbox_set_snooze", &now);
                         effects.page_ids = pages;
                         return Ok(effects);
                     }
@@ -612,7 +612,7 @@ pub(in crate::workspace) fn apply_reliable(
                     )?;
                     if automatic_dispatch && error.is_none() {
                         for suggestion in &suggestions {
-                            connection.execute("UPDATE inbox_proposals SET auto_confirm_pending=1 WHERE proposal_id=?1 AND explicit_request=1 AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages link JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE link.proposal_id=inbox_proposals.proposal_id AND (json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)))",params![&suggestion.proposal_id, later::normalize_time(&now)?])?;
+                            connection.execute("UPDATE inbox_proposals SET auto_confirm_pending=1 WHERE proposal_id=?1 AND explicit_request=1 AND json_extract(action_json,'$.type') IN ('new_chat','send_to_chat') AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages link JOIN inbox_entries entry ON entry.page_id=link.page_id WHERE link.proposal_id=inbox_proposals.proposal_id AND (json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)))",params![&suggestion.proposal_id, snooze::normalize_time(&now)?])?;
                         }
                     }
                     Ok(simple_effects("inbox_settle_suggestion", &now))
@@ -755,10 +755,10 @@ fn decide(
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
-    if let ProjectWorkspaceInboxDispatchAction::Later { remind_at } = &action {
-        later::set_entries(connection, context, pages, remind_at, now)?;
+    if let ProjectWorkspaceInboxDispatchAction::Snooze { snoozed_until } = &action {
+        snooze::set_entries(connection, context, pages, snoozed_until, now)?;
         finish_proposal(connection, proposal_id, &action_json(&action)?, now)?;
-        let mut effects = simple_effects("inbox_confirm_later", now);
+        let mut effects = simple_effects("inbox_confirm_snooze", now);
         effects.page_ids = pages.to_vec();
         return Ok(effects);
     }
@@ -1775,7 +1775,7 @@ fn require_automatic_confirmation(
     proposal: &StoredProposal,
     supplied: Option<&ProjectWorkspaceInboxDispatchAction>,
 ) -> Result<(), StoreError> {
-    let eligible = connection.query_row("SELECT origin='agent' AND explicit_request=1 AND auto_confirm_pending=1 AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id))) FROM inbox_proposals WHERE proposal_id=?1",params![id,later::now(connection)?],|r|r.get::<_,bool>(0))?;
+    let eligible = connection.query_row("SELECT origin='agent' AND explicit_request=1 AND auto_confirm_pending=1 AND NOT EXISTS(SELECT 1 FROM inbox_proposal_pages member JOIN inbox_entries entry ON entry.page_id=member.page_id WHERE member.proposal_id=inbox_proposals.proposal_id AND ((json_extract(entry.actor_json,'$.type')<>'member' OR entry.author_member_id IS NULL OR NOT EXISTS(SELECT 1 FROM inbox_member_rows row JOIN page_turn_episodes episode ON episode.page_id=row.page_id WHERE row.page_id=entry.page_id AND row.member_id=entry.author_member_id AND row.in_inbox=1 AND json_extract(episode.signature,'$[1]')='triage') OR EXISTS(SELECT 1 FROM inbox_deferrals deferral WHERE deferral.page_id=entry.page_id AND deferral.member_id=entry.author_member_id AND deferral.until_at>?2) OR NOT EXISTS(SELECT 1 FROM member_inbox_preferences consent WHERE consent.member_id=entry.author_member_id AND consent.start_my_requests=1)) OR EXISTS(SELECT 1 FROM chat_message_handback_pages returned WHERE returned.page_id=entry.page_id))) FROM inbox_proposals WHERE proposal_id=?1",params![id,snooze::now(connection)?],|r|r.get::<_,bool>(0))?;
     if !eligible {
         return Err(invalid(
             "Nodex may only act on the user's explicit requests",

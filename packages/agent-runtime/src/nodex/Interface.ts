@@ -251,6 +251,8 @@ export interface AgentRootActivity {
   readonly hasWork: boolean;
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  /** When the latest currently pending question or approval was opened. */
+  readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
   readonly backgroundTasks: ReadonlyArray<AgentBackgroundTask>;
@@ -792,6 +794,16 @@ export interface AgentRuntimeOperations
   readonly "thread.run-message": {
     readonly input: { readonly threadId: string; readonly runId: string };
     readonly output: AgentWire<OrchestrationV2ConversationMessage> | null;
+  };
+  /**
+   * The latest reply each named Thread's Agent finished with, as a bounded excerpt, in request
+   * order. Chat lists show it under a chat's title; a Thread without one is left out.
+   */
+  readonly "threads.latest-replies": {
+    readonly input: { readonly threadIds: ReadonlyArray<string> };
+    readonly output: ReadonlyArray<
+      AgentWire<import("../orchestration-v2/ProjectionStore.ts").ProjectionLatestReply>
+    >;
   };
   /** The first own user turn admitted to the conversation, excluding inherited and queued-only history. */
   readonly "thread.opening-request": {

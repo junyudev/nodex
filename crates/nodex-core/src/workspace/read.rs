@@ -1,5 +1,5 @@
 use nodex_core_contracts::workspace::{
-    ChatFolder, ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap,
+    ChatFolder, PageTurn, ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap,
     ProjectWorkspaceBootstrapStatus, ProjectWorkspaceExecutionContext, ProjectWorkspaceProject,
     ProjectWorkspaceRead, ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef,
     ProjectWorkspaceSessionSummary, ProjectWorkspaceThread,
@@ -43,7 +43,12 @@ struct SessionRow {
     archived: i64,
     archived_at: Option<String>,
     unread: i64,
-    remind_at: Option<String>,
+    snoozed_until: Option<String>,
+    snoozed_at: Option<i64>,
+    woke_at: Option<i64>,
+    page_turn: Option<PageTurn>,
+    settled_at: Option<i64>,
+    attention_at: i64,
     can_manage: bool,
     can_stop: bool,
     thread_id: Option<String>,
@@ -162,28 +167,28 @@ pub(super) fn read(
                 batches: super::coordinator::open_batches(connection, limit)?,
             })
         }
-        ProjectWorkspaceRead::NextSessionReminder => {
+        ProjectWorkspaceRead::NextSessionSnooze => {
             let work = connection.query_row(
-                "WITH work AS (SELECT member_id,session_id,remind_at AS wake_at,remind_at,NULL AS delivery_id FROM member_session_reminders UNION ALL SELECT member_id,session_id,next_attempt_at AS wake_at,remind_at,delivery_id FROM member_session_reminder_deliveries) SELECT session.id,work.member_id,work.wake_at,work.remind_at,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id JOIN members member ON member.id=work.member_id AND member.library_id=?1 AND member.lifecycle='active' WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.member_id,work.delivery_id LIMIT 1",
+                "WITH work AS (SELECT member_id,session_id,snoozed_until AS wake_at,snoozed_until,NULL AS delivery_id FROM member_session_snoozes UNION ALL SELECT member_id,session_id,next_attempt_at AS wake_at,snoozed_until,delivery_id FROM member_session_snooze_deliveries) SELECT session.id,work.member_id,work.wake_at,work.snoozed_until,work.delivery_id FROM work JOIN project_sessions session ON session.id=work.session_id JOIN members member ON member.id=work.member_id AND member.library_id=?1 AND member.lifecycle='active' WHERE session.archived=0 AND (session.project_id IS NULL OR EXISTS (SELECT 1 FROM projects owner WHERE owner.id=session.project_id AND owner.library_id=?1)) ORDER BY work.wake_at,session.id,work.member_id,work.delivery_id LIMIT 1",
                 [library_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,String>(3)?, row.get::<_,Option<String>>(4)?)),
             ).optional()?;
-            let Some((id, owed, wake_at, remind_at, delivery_id)) = work else {
-                return Ok(ProjectWorkspaceReadValue::NextSessionReminder {
+            let Some((id, owed, wake_at, snoozed_until, delivery_id)) = work else {
+                return Ok(ProjectWorkspaceReadValue::NextSessionSnooze {
                     session: None,
                     member_id: None,
                     delivery: None,
                     next_wake_at: None,
                 });
             };
-            // The chat as the reminded Member reads it, with their own pin and unread state.
+            // The chat as the snoozed Member reads it, with their own pin and unread state.
             let session = read_session(connection, library_id, &id, &owed)?.map(session_summary);
             let delivery = delivery_id.map(|delivery_id| {
-                nodex_core_contracts::workspace::ProjectWorkspaceSessionReminderDelivery {
+                nodex_core_contracts::workspace::ProjectWorkspaceSessionSnoozeDelivery {
                     delivery_id,
-                    remind_at,
+                    snoozed_until,
                 }
             });
-            Ok(ProjectWorkspaceReadValue::NextSessionReminder {
+            Ok(ProjectWorkspaceReadValue::NextSessionSnooze {
                 session,
                 member_id: Some(owed),
                 delivery,
@@ -250,12 +255,12 @@ pub(super) fn read(
                 inbound: super::inbox::handback::inbound(connection, &session_id, &run_id)?,
             })
         }
-        ProjectWorkspaceRead::NextInboxLater => Ok(ProjectWorkspaceReadValue::NextInboxLater {
-            remind_at: super::inbox::later::next(connection, context, library_id)?,
+        ProjectWorkspaceRead::NextInboxSnooze => Ok(ProjectWorkspaceReadValue::NextInboxSnooze {
+            snoozed_until: super::inbox::snooze::next(connection, context, library_id)?,
         }),
-        ProjectWorkspaceRead::InboxLaterNotifications { for_push } => {
-            Ok(ProjectWorkspaceReadValue::InboxLaterNotifications {
-                intents: super::inbox::later::notifications(
+        ProjectWorkspaceRead::InboxSnoozeNotifications { for_push } => {
+            Ok(ProjectWorkspaceReadValue::InboxSnoozeNotifications {
+                intents: super::inbox::snooze::notifications(
                     connection, context, library_id, for_push,
                 )?,
             })
@@ -503,6 +508,7 @@ pub(super) fn read(
             )?,
         }),
         ProjectWorkspaceRead::SessionWindow {
+            provenance,
             archived,
             order,
             projectless_only,
@@ -513,35 +519,56 @@ pub(super) fn read(
             execution_refs,
             session_ids,
             window,
-        } => Ok(ProjectWorkspaceReadValue::SessionWindow {
-            search_revision: connection.query_row(
-                "SELECT revision FROM session_search_revision WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )?,
-            sessions: super::session_listing::read_session_window(
-                connection,
-                library_id,
-                &member,
-                commit_head,
-                super::session_listing::SessionListingFilter {
-                    archived,
-                    order: order.unwrap_or_default(),
-                    projectless_only: projectless_only.unwrap_or(false),
-                    exclude_drafts: exclude_drafts.unwrap_or(false),
-                    project_id: project_id.as_deref(),
-                    query: query.as_deref(),
-                    native_only: native_only.unwrap_or(false),
-                    execution_refs: execution_refs.as_deref(),
-                    session_ids: session_ids.as_deref(),
-                },
-                &window,
-            )?,
-        }),
+        } => {
+            let member = match provenance {
+                Some(provenance) => {
+                    super::agent_command::admit_read_caller(
+                        connection,
+                        library_id,
+                        context,
+                        &provenance,
+                    )?;
+                    let agent = crate::infrastructure::actors::verified_turn(
+                        connection,
+                        context,
+                        &provenance,
+                    )?;
+                    crate::infrastructure::actors::requesting_member(connection, &agent)?
+                }
+                None => member,
+            };
+            Ok(ProjectWorkspaceReadValue::SessionWindow {
+                search_revision: connection.query_row(
+                    "SELECT revision FROM session_search_revision WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )?,
+                sessions: super::session_listing::read_session_window(
+                    connection,
+                    library_id,
+                    &member,
+                    commit_head,
+                    super::session_listing::SessionListingFilter {
+                        archived,
+                        order: order.unwrap_or_default(),
+                        projectless_only: projectless_only.unwrap_or(false),
+                        exclude_drafts: exclude_drafts.unwrap_or(false),
+                        project_id: project_id.as_deref(),
+                        query: query.as_deref(),
+                        native_only: native_only.unwrap_or(false),
+                        execution_refs: execution_refs.as_deref(),
+                        session_ids: session_ids.as_deref(),
+                    },
+                    &window,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::TaskWindow {
             project_id,
+            whole_library,
             include_archived,
             placement_scope,
+            lifecycle,
             order,
             window,
         } => Ok(ProjectWorkspaceReadValue::TaskWindow {
@@ -550,25 +577,32 @@ pub(super) fn read(
                 library_id,
                 &member,
                 commit_head,
-                project_id.as_deref(),
-                include_archived.unwrap_or(false),
-                placement_scope,
-                order,
+                super::task_window::TaskListing {
+                    project_id: project_id.as_deref(),
+                    whole_library,
+                    include_archived: include_archived.unwrap_or(false),
+                    placement_scope,
+                    lifecycle,
+                    order,
+                },
                 &window,
             )?,
         }),
-        ProjectWorkspaceRead::TaskWindows { project_id, lanes } => {
-            Ok(ProjectWorkspaceReadValue::TaskWindows {
-                lanes: super::task_window::read_task_lanes(
-                    connection,
-                    library_id,
-                    &member,
-                    commit_head,
-                    project_id.as_deref(),
-                    &lanes,
-                )?,
-            })
-        }
+        ProjectWorkspaceRead::TaskWindows {
+            project_id,
+            whole_library,
+            lanes,
+        } => Ok(ProjectWorkspaceReadValue::TaskWindows {
+            lanes: super::task_window::read_task_lanes(
+                connection,
+                library_id,
+                &member,
+                commit_head,
+                project_id.as_deref(),
+                whole_library,
+                &lanes,
+            )?,
+        }),
         ProjectWorkspaceRead::SidebarOverview {
             include_archived,
             pinned_window,
@@ -1065,7 +1099,7 @@ fn read_session(
                thread.thread_preview, session.created_at, session.updated_at, \
                execution.runtime_id, execution.runtime_thread_id, {}, \
                EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id), \
-               {}, {}, {} \
+               {}, {}, {}, {}, {}, {}, {}, {} \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
@@ -1078,7 +1112,7 @@ fn read_session(
                 super::member_attention::pinned_sql("session.id", "?3"),
                 super::member_attention::pinned_order_sql("session.id", "?3"),
                 super::member_attention::unread_sql("session.id", "?3"),
-                super::member_attention::remind_at_sql("session.id", "?3"),
+                super::member_attention::snoozed_until_sql("session.id", "?3"),
                 super::chat_stewardship::may_manage_sql("session.id", "?3"),
                 super::chat_stewardship::may_stop_sql(
                     "session.id",
@@ -1086,6 +1120,11 @@ fn read_session(
                     "?3",
                 ),
                 super::chat_folder::SUMMARY_COLUMN,
+                super::member_attention::settled_at_sql("session.id", "?3"),
+                super::member_attention::attention_at_sql("session"),
+                super::member_attention::snoozed_at_sql("session.id", "?3"),
+                super::member_attention::woke_at_sql("session.id", "?3"),
+                super::page_turn::chat_turn_column("session.id", "?2", "?3"),
             ),
             params![session_id, library_id,member],
             session_row,
@@ -1106,7 +1145,12 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         archived: row.get(6)?,
         archived_at: row.get(7)?,
         unread: row.get(8)?,
-        remind_at: row.get(16)?,
+        snoozed_until: row.get(16)?,
+        snoozed_at: row.get(23)?,
+        woke_at: row.get(24)?,
+        page_turn: super::page_turn::chat_turn_from_row(row)?,
+        settled_at: row.get(21)?,
+        attention_at: row.get(22)?,
         can_manage: row.get(18)?,
         can_stop: row.get(19)?,
         folder: super::chat_folder::decode_summary(row, 20)?,
@@ -1145,7 +1189,12 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         archived: row.archived == 1,
         archived_at: row.archived_at,
         unread: row.unread == 1,
-        remind_at: row.remind_at,
+        snoozed_until: row.snoozed_until,
+        snoozed_at: row.snoozed_at,
+        woke_at: row.woke_at,
+        page_turn: row.page_turn,
+        settled_at: row.settled_at,
+        attention_at: row.attention_at,
         can_manage: row.can_manage,
         can_stop: row.can_stop,
         thread_id: row.thread_id,
@@ -1452,8 +1501,10 @@ mod tests {
             &module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: Some("project-1".to_owned()),
+                whole_library: false,
                 include_archived: Some(true),
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,
@@ -1484,8 +1535,10 @@ mod tests {
             &module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: None,
+                whole_library: false,
                 include_archived: None,
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,

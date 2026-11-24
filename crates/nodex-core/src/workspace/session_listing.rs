@@ -165,6 +165,11 @@ pub(super) fn read_session_window(
     let limit_parameter = parameters.len();
     parameters.push(SqlValue::Text(member.to_owned()));
     let task_columns = summary_columns(parameters.len());
+    let page_turn = super::page_turn::chat_turn_column(
+        "window_rows.session_id",
+        "?1",
+        &format!("?{}", parameters.len()),
+    );
     // Exact Runtime candidates use the unique execution index before joining Session metadata.
     let execution_predicate = if execution_refs.is_some() {
         "AND session.id IN (SELECT execution.session_id FROM json_each(?6) wanted
@@ -220,9 +225,12 @@ pub(super) fn read_session_window(
            AND (?5 = 0 OR NOT EXISTS (SELECT 1 FROM project_session_execution_bindings execution
              WHERE execution.session_id = session.id))
            AND (?7 IS NULL OR session.id IN (SELECT value FROM json_each(?7)))
-           {execution_predicate} {projectless_predicate} {draft_predicate})
-         SELECT * FROM task_rows {cursor_predicate}
-         ORDER BY lane_order, session_id LIMIT ?{limit_parameter}"
+           {execution_predicate} {projectless_predicate} {draft_predicate}
+         ), window_rows AS MATERIALIZED (
+           SELECT * FROM task_rows {cursor_predicate}
+           ORDER BY lane_order, session_id LIMIT ?{limit_parameter}
+         )
+         SELECT window_rows.*, {page_turn} FROM window_rows ORDER BY lane_order, session_id"
     );
     let rows = connection
         .prepare(&sql)?
@@ -420,6 +428,7 @@ mod tests {
             } = read(
                 &workspace.module,
                 ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
@@ -560,6 +569,7 @@ mod tests {
             let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
                 &workspace.module,
                 ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
                     archived: false,
                     order: None,
                     projectless_only: None,
@@ -666,6 +676,7 @@ mod tests {
             let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
                 &workspace.module,
                 ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
@@ -719,6 +730,7 @@ mod tests {
         } = read(
             &workspace.module,
             ProjectWorkspaceRead::SessionWindow {
+                provenance: None,
                 order: None,
                 projectless_only: Some(true),
                 exclude_drafts: None,
@@ -822,6 +834,7 @@ mod tests {
             let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
                 &workspace.module,
                 ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
                     order: None,
                     projectless_only: None,
                     exclude_drafts: None,
@@ -870,6 +883,7 @@ mod tests {
         } = read(
             &workspace.module,
             ProjectWorkspaceRead::SessionWindow {
+                provenance: None,
                 order: None,
                 projectless_only: None,
                 exclude_drafts: None,
@@ -910,6 +924,7 @@ mod tests {
             let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
                 &workspace.module,
                 ProjectWorkspaceRead::SessionWindow {
+                    provenance: None,
                     order: Some(ProjectWorkspaceSessionOrder::Identity),
                     archived: false,
                     projectless_only: None,

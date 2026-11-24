@@ -479,7 +479,7 @@ function inboxMessage(pageId: string): InboxEntry {
   return {
     id: pageId,
     rowKind: "intake",
-    later: null,
+    snooze: null,
     pageId,
     pageKey: null,
     title: "Capture",
@@ -1633,7 +1633,7 @@ it("keeps both rows of a Page that waits as a message and as a Turn", async () =
   const turn: InboxEntry = {
     id: "page",
     rowKind: "turn",
-    later: null,
+    snooze: null,
     pageId: "page",
     pageKey: null,
     title: "Capture",
@@ -1705,14 +1705,14 @@ it("revalidates the Inbox window without reusing stale pages and hydrates the fi
   expect(hydrated.store.getState()).toMatchObject({ items: [latest], loading: false });
 });
 
-it("shows the scoped Later count and preserves the Host's order across pages", async () => {
+it("shows the scoped Snoozed count and preserves the Host's order across pages", async () => {
   const { host, runtime, saved } = await setup();
-  const scope = { kind: "project", projectId: "project-later" } as const;
+  const scope = { kind: "project", projectId: "project-snoozed" } as const;
   const aside = (id: string, until: string) => ({
     ...inboxMessage(id),
     scope,
     state: "open",
-    later: { setAt: "2026-11-04T09:00:00Z", until },
+    snoozed: { setAt: "2026-11-04T09:00:00Z", until },
   });
   const soon = aside("soon", "2026-11-05T09:00:00Z");
   const next = aside("next", "2026-11-09T09:00:00Z");
@@ -1720,20 +1720,20 @@ it("shows the scoped Later count and preserves the Host's order across pages", a
   host.onRequest = (request, reply) => {
     const { filter, after } = request.p as MobileParams<"inbox.window">;
     const items = filter === "inbox" ? [] : after ? [last] : [soon, next];
-    reply({ items, nextCursor: filter === "later" && !after ? "last" : null, laterCount: 3 });
+    reply({ items, nextCursor: filter === "snoozed" && !after ? "last" : null, snoozedCount: 3 });
   };
   const inbox = runtime.lists.inbox(saved.hostId, scope, "inbox");
-  const later = runtime.lists.inbox(saved.hostId, scope, "later");
+  const snoozed = runtime.lists.inbox(saved.hostId, scope, "snoozed");
   const detachInbox = inbox.attach();
-  const detachLater = later.attach();
+  const detachSnoozed = snoozed.attach();
   await tick();
   expect(inbox.store.getState()).toMatchObject({ items: [], summary: 3 });
-  expect(later.store.getState()).toMatchObject({ items: [soon, next], hasMore: true });
-  later.loadMore();
+  expect(snoozed.store.getState()).toMatchObject({ items: [soon, next], hasMore: true });
+  snoozed.loadMore();
   await tick();
-  expect(later.store.getState()).toMatchObject({ items: [soon, next, last], hasMore: false });
-  expect(params(host, "inbox.window")).toContainEqual({ scope, filter: "later", after: "last" });
-  detachLater();
+  expect(snoozed.store.getState()).toMatchObject({ items: [soon, next, last], hasMore: false });
+  expect(params(host, "inbox.window")).toContainEqual({ scope, filter: "snoozed", after: "last" });
+  detachSnoozed();
   detachInbox();
 });
 

@@ -114,8 +114,8 @@ export const InboxProposalActionSchema = z.discriminatedUnion("type", [
   z.looseObject({ type: z.literal("keep") }),
   z.looseObject({ type: z.literal("save_to_notes"), parentPageId: z.string().nullable() }),
   z.looseObject({
-    type: z.literal("later"),
-    remindAt: z.iso.datetime({ offset: true }),
+    type: z.literal("snooze"),
+    snoozedUntil: z.iso.datetime({ offset: true }),
   }),
   z.looseObject({
     type: z.literal("new_chat"),
@@ -229,7 +229,7 @@ const inboxEntry = {
   scope: InboxScopeSchema,
   revision: z.number().int(),
 };
-const inboxLater = z.looseObject({ setAt: isoTime, until: isoTime }).nullable();
+const inboxSnooze = z.looseObject({ setAt: isoTime, until: isoTime }).nullable();
 export const IntakeEntrySchema = z.looseObject({
   ...inboxEntry,
   rowKind: z.literal("intake"),
@@ -237,7 +237,7 @@ export const IntakeEntrySchema = z.looseObject({
   important: z.boolean(),
   waiting: z.boolean(),
   kind: z.enum(["note", "todo", "question"]).nullable(),
-  later: inboxLater,
+  snooze: inboxSnooze,
   status: z.string().nullable(),
   suggestion: z.looseObject({
     state: z.enum(["none", "waiting", "pending", "settled", "failed"]),
@@ -250,7 +250,7 @@ export const TurnEntrySchema = z.looseObject({
   ...inboxEntry,
   rowKind: z.literal("turn"),
   pageId: z.string(),
-  later: inboxLater,
+  snooze: inboxSnooze,
   turn: z.looseObject({
     episode: z.string(),
     reason: z
@@ -319,7 +319,7 @@ export type IntakeEntry = z.infer<typeof IntakeEntrySchema>;
 export const InboxWindowSchema = z.looseObject({
   items: z.array(InboxEntrySchema),
   nextCursor: z.string().nullable(),
-  laterCount: z.number().int().nonnegative().optional(),
+  snoozedCount: z.number().int().nonnegative().optional(),
 });
 export type InboxWindow = z.infer<typeof InboxWindowSchema>;
 
@@ -342,7 +342,7 @@ export const InboxDecisionSchema = z.discriminatedUnion("type", [
     proposalId: z.string(),
     revision: z.number().int(),
     keptSkillNames: z.array(z.string().min(1).max(128)).max(3).optional(),
-    remindAt: z.iso.datetime({ offset: true }).optional(),
+    snoozedUntil: z.iso.datetime({ offset: true }).optional(),
   }),
   z.looseObject({
     type: z.literal("start_chat"),
@@ -352,10 +352,10 @@ export const InboxDecisionSchema = z.discriminatedUnion("type", [
   }),
   z.looseObject({ type: z.literal("keep") }),
   z.looseObject({
-    type: z.literal("later"),
+    type: z.literal("snooze"),
     until: z.iso.datetime({ offset: true }),
   }),
-  z.looseObject({ type: z.literal("clear_later") }),
+  z.looseObject({ type: z.literal("wake") }),
   z.looseObject({ type: z.literal("save_to_notes") }),
   z.looseObject({ type: z.literal("done") }),
   z.looseObject({ type: z.literal("return") }),
@@ -621,7 +621,7 @@ export const RpcErrorSchema = z.looseObject({
     "not_found",
     "conflict",
     "rejected",
-    "inbox_remind_at_passed",
+    "inbox_snooze_time_passed",
     "unavailable",
     "capability_unavailable",
     "internal",

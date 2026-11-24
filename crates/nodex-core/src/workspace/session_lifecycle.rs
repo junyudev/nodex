@@ -615,6 +615,77 @@ pub(super) fn record_session_activity(
     )
 }
 
+/// Finishes, for the requesting Member, every chat that went quiet for them before
+/// `idle_before_ms`. Only a started root chat whose Agent is not working qualifies, and nothing
+/// they still keep in view: a pin, an unread mark or a snooze. Its settlement time is when it last came
+/// back to a person, so the Settled shelf keeps the order in which chats went quiet. A sweep can
+/// finish thousands of chats, so it invalidates every chat list instead of naming each chat.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn settle_idle_sessions(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    idle_before_ms: i64,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    use super::member_attention::{attention_at_sql, automatic_settlement_sql};
+    if idle_before_ms < 0 {
+        return Err(invalid("idle_before_ms must be a Unix millisecond instant"));
+    }
+    let now = sqlite_now(connection)?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let attention_at = attention_at_sql("session");
+    let eligible = automatic_settlement_sql("?1", "?2");
+    let completed = connection.execute(
+        &format!(
+            "INSERT INTO member_session_settled(member_id,session_id,settled_at)
+             SELECT ?2,session.id,{attention_at} FROM project_sessions session
+             LEFT JOIN project_session_threads link ON link.session_id=session.id
+             LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id
+             LEFT JOIN session_execution_observations observation ON observation.session_id=session.id
+             WHERE {eligible} AND {attention_at}<?3"
+        ),
+        params![library_id, member, idle_before_ms],
+    )?;
+    if completed == 0 {
+        return finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "settle_idle_sessions",
+            vec![],
+            vec![],
+            &now,
+        );
+    }
+    connection.execute(
+        "DELETE FROM member_session_wakes AS wake WHERE wake.member_id=?1
+         AND EXISTS(SELECT 1 FROM member_session_settled s
+           WHERE s.session_id=wake.session_id AND s.member_id=wake.member_id)",
+        [&member],
+    )?;
+    finish_lifecycle_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "settle_idle_sessions",
+        vec![],
+        vec![],
+        vec![],
+        vec![ProjectSessionInvalidationScope::All],
+        None,
+        &[],
+        now,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_lifecycle_mutation(
     connection: &Connection,

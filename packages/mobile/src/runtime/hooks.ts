@@ -56,7 +56,7 @@ export function useInbox(scope: InboxScope, filter: InboxFilter) {
   const hostId = useHostId();
   const list = lists.inbox(hostId, scope, filter);
   useEffect(() => list.attach(), [list]);
-  const { items, summary: laterCount, ...view } = useAtomValue(list.store.atom);
+  const { items, summary: snoozedCount, ...view } = useAtomValue(list.store.atom);
   const pageIds = useMemo(() => new Set(items.map((item) => item.pageId)), [items]);
   const captures = useAtomValue(outbox.store.atom);
   const pending = useMemo(
@@ -80,7 +80,7 @@ export function useInbox(scope: InboxScope, filter: InboxFilter) {
     ],
     [items, pending],
   );
-  return { ...view, laterCount, rows: inboxRows, loadMore: list.loadMore, refresh: list.refresh };
+  return { ...view, snoozedCount, rows: inboxRows, loadMore: list.loadMore, refresh: list.refresh };
 }
 
 export function useChats(input: ChatListInput) {

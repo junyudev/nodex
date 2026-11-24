@@ -127,8 +127,8 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     SaveToNotes {
         parent_page_id: Option<String>,
     },
-    Later {
-        remind_at: String,
+    Snooze {
+        snoozed_until: String,
     },
     /// Start a new chat in one active Project, or a projectless chat.
     NewChat {
@@ -325,7 +325,7 @@ pub struct AutomationInboxDecision {
     pub status: crate::automation::AutomationDecisionStatus,
     pub first_scheduled_for_ms: i64,
     pub last_scheduled_for_ms: i64,
-    /// Later decisions that fell due while this one waited.
+    /// Snooze decisions that fell due while this one waited.
     pub missed_count: u32,
     /// Why its execution failed before reaching a chat.
     pub failure_message: Option<String>,
@@ -356,7 +356,7 @@ pub enum ProjectWorkspaceInboxWindowFilter {
     /// Messages the user has handled: dispatched, filed, kept, or done.
     Processed,
     /// Intake deferred by the requesting Member until a future time.
-    Later,
+    Snoozed,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -416,13 +416,13 @@ pub struct ProjectWorkspaceInboxPageStatus {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct InboxLater {
+pub struct InboxSnooze {
     pub set_at: String,
     pub until: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct InboxLaterNotification {
+pub struct InboxSnoozeNotification {
     pub id: String,
     pub member_id: String,
     pub page_id: String,
@@ -433,7 +433,7 @@ pub struct InboxLaterNotification {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxItem {
     #[schema(required = true)]
-    pub later: Option<InboxLater>,
+    pub snooze: Option<InboxSnooze>,
     pub basis: ProjectWorkspaceInboxPageBasis,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handback: Option<InboxHandback>,
@@ -490,7 +490,7 @@ pub struct ProjectWorkspaceInboxSummary {
     pub entry_count: u32,
     /// Messages still in the Inbox; the user's goal is to bring this to zero.
     pub inbox_count: u32,
-    pub later_count: u32,
+    pub snoozed_count: u32,
     pub needs_decision_count: u32,
     pub pending_suggestion_count: u32,
     pub dispatching_count: u32,
@@ -522,6 +522,15 @@ pub struct ProjectWorkspaceInboxCounts {
     pub library_count: u32,
     /// Only active Projects whose Inbox holds at least one message.
     pub projects: Vec<ProjectWorkspaceInboxProjectCount>,
+    pub waiting: ProjectWorkspaceInboxWaiting,
+}
+
+/// Scopes with an actionable, unsnoozed question or approval Turn.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxWaiting {
+    pub library: bool,
+    /// The same Projects as the counts.
+    pub projects: std::collections::BTreeMap<String, bool>,
 }
 
 /// One Library image referenced by a message, in body reading order.

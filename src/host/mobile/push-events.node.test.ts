@@ -30,7 +30,7 @@ import { makeMobilePushEvents, type MobilePush } from "./push-events";
 
 type Audience = components["schemas"]["PhonePushAudience"];
 type Turn = components["schemas"]["CurrentTurnNotification"];
-type LaterIntent = components["schemas"]["InboxLaterNotification"];
+type SnoozeIntent = components["schemas"]["InboxSnoozeNotification"];
 
 const turn = (pageId: string, memberId: string, overrides: Partial<Turn> = {}): Turn => ({
   member_id: memberId,
@@ -116,7 +116,7 @@ const harness = Effect.fn("harness")(function* (options: {
   readonly reported?: (memberId: string) => Effect.Effect<number | null>;
   /** Every Member's current Page Turns, as Core lists them for the host. */
   readonly turns?: () => readonly Turn[];
-  readonly later?: readonly LaterIntent[];
+  readonly snoozes?: readonly SnoozeIntent[];
 }) {
   const hub = yield* PubSub.unbounded<CodexApplicationEvent>();
   const inbox = yield* PubSub.unbounded<void>();
@@ -161,8 +161,8 @@ const harness = Effect.fn("harness")(function* (options: {
             value:
               input.kind === "current_turn_notifications"
                 ? { kind: "current_turn_notifications", turns: [...(options.turns?.() ?? [])] }
-                : input.kind === "inbox_later_notifications"
-                  ? { kind: input.kind, intents: options.later ?? [] }
+                : input.kind === "inbox_snooze_notifications"
+                  ? { kind: input.kind, intents: options.snoozes ?? [] }
                   : input.kind === "read_coordinator"
                     ? { kind: "read_coordinator", session_id: null }
                     : input.kind === "read_managed_session"
@@ -245,10 +245,10 @@ it.effect("tells a phone at once when the person is already away, in the phone's
       prompt: "Run the migration?",
     });
     yield* h.publish({
-      type: "session-reminder",
+      type: "session-snooze",
       hostId: "local",
       conversation: chat("g"),
-      remindAt: "2026-11-08T09:00:00.000Z",
+      snoozedUntil: "2026-11-08T09:00:00.000Z",
       memberId: "alice",
     });
     const told = yield* Queue.takeAll(h.received);
@@ -312,7 +312,7 @@ it.effect("tells only the Member Core names, on that Member's own phones", () =>
       // Core's answer: Alice requested the Run and is asked its question; Bob owns the Page it
       // approves; Carol set the reminder; nobody is entitled to the orphan's question.
       member: (audience) =>
-        audience.kind === "reminder_owner"
+        audience.kind === "chat_snooze_owner"
           ? audience.member_id
           : audience.kind === "request" && audience.request === "approval"
             ? "bob"
@@ -331,10 +331,10 @@ it.effect("tells only the Member Core names, on that Member's own phones", () =>
     });
     yield* h.publish(finished("c"));
     yield* h.publish({
-      type: "session-reminder",
+      type: "session-snooze",
       hostId: "local",
       conversation: chat("d"),
-      remindAt: "2026-11-08T09:00:00.000Z",
+      snoozedUntil: "2026-11-08T09:00:00.000Z",
       memberId: "carol",
     });
     yield* h.publish(asked("e", "run:orphan"));
@@ -354,7 +354,7 @@ it.effect("tells only the Member Core names, on that Member's own phones", () =>
       { kind: "request", run_id: "run:a", request: "question" },
       { kind: "request", run_id: "run:b", request: "approval" },
       { kind: "run_requester", run_id: "run:c" },
-      { kind: "reminder_owner", member_id: "carol" },
+      { kind: "chat_snooze_owner", member_id: "carol" },
       { kind: "request", run_id: "run:orphan", request: "question" },
     ]);
   }),
@@ -595,7 +595,7 @@ it.effect("pushes an Inbox return to the Member Core names and settles it once",
   Effect.gen(function* () {
     const h = yield* harness({
       attendance: Effect.succeed("away"),
-      later: [
+      snoozes: [
         {
           id: "due:one",
           page_id: "page:one",
@@ -604,7 +604,7 @@ it.effect("pushes an Inbox return to the Member Core names and settles it once",
           returned_at: new Date(yield* Clock.currentTimeMillis).toISOString(),
         },
       ],
-      member: (audience) => (audience.kind === "inbox_later_owner" ? "carol" : null),
+      member: (audience) => (audience.kind === "inbox_snooze_owner" ? "carol" : null),
     });
     yield* h.inboxChanged;
     yield* h.inboxChanged;

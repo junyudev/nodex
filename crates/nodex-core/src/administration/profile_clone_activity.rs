@@ -160,8 +160,9 @@ fn settle(connection: &Connection) -> Result<(), StoreError> {
             settled_at_ms=MAX(claimed_at_ms,CAST(unixepoch('subsec')*1000 AS INTEGER))
         WHERE status='claimed';
         UPDATE core_reminder_leases SET retry_at_ms=NULL WHERE retry_at_ms IS NOT NULL;
-        DELETE FROM member_session_reminders;
-        DELETE FROM member_session_reminder_deliveries;
+        DELETE FROM member_session_snoozes;
+        DELETE FROM member_session_wakes;
+        DELETE FROM member_session_snooze_deliveries;
         DELETE FROM inbox_deferrals;
         DELETE FROM member_device_push_registrations;
         ",

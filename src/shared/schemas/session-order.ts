@@ -16,8 +16,10 @@ export const ProjectSessionPlaceCommandSchema = z
   .strict();
 export const ProjectSessionSummaryWindowInputSchema = z
   .object({
-    order: z.enum(["activity", "manual"]).optional(),
+    order: z.enum(["activity", "manual", "attention", "settlement"]).optional(),
     placementScope: z.enum(["all", "builtin"]).optional(),
+    lifecycle: z.enum(["all", "open", "settled"]).optional(),
+    wholeLibrary: z.boolean().optional(),
     includeArchived: z.boolean().optional(),
     after: z.string().min(1).nullable().optional(),
     first: z.number().int().min(1).max(200).optional(),

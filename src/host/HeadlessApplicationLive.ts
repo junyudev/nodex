@@ -52,7 +52,7 @@ import * as AgentRuntime from "./AgentRuntimeLive";
 import * as Kernel from "./HostKernel";
 import * as Presence from "./UserPresence";
 import * as HostMarkdown from "./HostMarkdown";
-import * as SessionReminders from "./SessionReminders";
+import * as SessionSnoozes from "./SessionSnoozes";
 import { headless as desktopTools } from "./HostDesktopTools";
 import { headless as notificationPresentation } from "./NotificationIntents";
 import { HostAppToolCatalog, HostToolExecutor } from "./HostToolExecutor";
@@ -251,7 +251,7 @@ export const live = (input: {
     Layer.provideMerge(applications),
   );
   // A desktop delivers its own Member's reminders; this host delivers every Member's.
-  const kernel = SessionReminders.hostedLive.pipe(
+  const kernel = SessionSnoozes.hostedLive.pipe(
     Layer.provideMerge(Kernel.live.pipe(Layer.provideMerge(tools))),
   );
   const phone = PhoneApplication.live.pipe(

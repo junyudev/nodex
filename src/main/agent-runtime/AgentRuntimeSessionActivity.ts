@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import type { AgentRootActivity } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -53,6 +54,7 @@ export interface AgentRuntimeActivityTransition {
   readonly sessionId: string;
   readonly rootThreadId: string;
   readonly before: SessionActivity | null;
+  readonly observedAt?: number;
   readonly after: SessionActivity | null;
   /** The foreground Run that ended in this change and its terminal status when observed. */
   readonly endedRun: { readonly runId: string; readonly status: string | null } | null;
@@ -104,6 +106,7 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.readback?.text === right.readback?.text &&
     left.readback?.startedByPerson === right.readback?.startedByPerson &&
     left.pendingRequestCount === right.pendingRequestCount &&
+    left.latestRequestAt === right.latestRequestAt &&
     JSON.stringify(left.activeFlags ?? []) === JSON.stringify(right.activeFlags ?? []) &&
     left.approvalPrompt === right.approvalPrompt &&
     left.backgroundTasks.length === right.backgroundTasks.length &&
@@ -133,6 +136,7 @@ const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionA
   activeRunId: root.activeRunId,
   ...(root.readback === undefined ? {} : { readback: root.readback }),
   pendingRequestCount: root.pendingRequestCount,
+  ...(root.latestRequestAt === undefined ? {} : { latestRequestAt: root.latestRequestAt }),
   ...(root.activeFlags === undefined ? {} : { activeFlags: root.activeFlags }),
   ...(root.approvalPrompt === undefined ? {} : { approvalPrompt: root.approvalPrompt }),
   backgroundTasks: root.backgroundTasks,
@@ -289,6 +293,7 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
               sessionId,
               rootThreadId,
               before: previous,
+              observedAt: yield* Clock.currentTimeMillis,
               after: next,
               endedRun: endedRunId ? { runId: endedRunId, status } : null,
               ...(replay ? { replay: true as const } : {}),

@@ -7098,7 +7098,7 @@ it.effect("persists the first side title through the real Core boundary and rest
           intent: {
             kind: "mutate_session",
             session_id: source.sessionId,
-            intent: { kind: "set_reminder", remind_at: "2020-01-01T00:00:00.000Z" },
+            intent: { kind: "set_snooze", snoozed_until: "2020-01-01T00:00:00.000Z" },
           },
         },
         undefined,
@@ -7138,16 +7138,16 @@ it.effect("persists the first side title through the real Core boundary and rest
           runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
         },
       });
-      const reminderFor = (sessionId: string) =>
+      const snoozeFor = (sessionId: string) =>
         core.workspace
           .read({ kind: "session", session_id: sessionId }, undefined, projectId)
           .pipe(
             Effect.map((snapshot) =>
-              snapshot.value.kind === "session" ? snapshot.value.session.remind_at : undefined,
+              snapshot.value.kind === "session" ? snapshot.value.session.snoozed_until : undefined,
             ),
           );
-      assert.equal(yield* reminderFor(source.sessionId), "2020-01-01T00:00:00.000Z");
-      assert.equal(yield* reminderFor(side.sessionId), null);
+      assert.equal(yield* snoozeFor(source.sessionId), "2020-01-01T00:00:00.000Z");
+      assert.equal(yield* snoozeFor(side.sessionId), null);
       yield* core.workspace.apply(
         {
           operationId: createOperationId("test.side-chat.rename"),
@@ -9071,4 +9071,86 @@ it.effect.each([true, false])(
       assert.equal((rejectedReplay as Error).message, message);
       assert.equal(fixture.imports.size, 1);
     }),
+);
+
+it.effect("reads chat replies as row text through one Core read and one execution read", () =>
+  Effect.gen(function* () {
+    const coreReads: ProjectWorkspaceRead[] = [];
+    const runtimeCalls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
+    const task = (id: string, execution: { runtime_id: string; thread_id: string } | null) => ({
+      task: { session: { id, execution_ref: execution } },
+    });
+    const workspace = {
+      read: (input: ProjectWorkspaceRead) =>
+        Effect.sync(() => {
+          coreReads.push(input);
+          return {
+            value: {
+              kind: "session_window",
+              sessions: {
+                // Core names only the chats this reader may see; session:hidden is not one.
+                items: [
+                  task("session:answered", { runtime_id: "engine", thread_id: "thread:answered" }),
+                  task("session:quiet", { runtime_id: "engine", thread_id: "thread:quiet" }),
+                  task("session:elsewhere", { runtime_id: "other", thread_id: "thread:other" }),
+                  task("session:native", null),
+                ],
+                next_cursor: null,
+              },
+            },
+          };
+        }),
+      apply: () => Effect.die("unused apply"),
+    } as unknown as CoreModules["Service"]["workspace"];
+    const f = setup(
+      {
+        connect: Effect.sync(() => ({
+          ...f.connection(),
+          request: <M extends AgentRuntimeMethod>(method: M, input: unknown) =>
+            Effect.sync(() => {
+              runtimeCalls.push({ method, input });
+              return [
+                {
+                  threadId: "thread:answered",
+                  runId: "run:1",
+                  text: "## Done\n\n**Fixed** it",
+                  completedAt: null,
+                },
+              ] as AgentRuntimeOperations[M]["output"];
+            }),
+        })),
+      },
+      [],
+      undefined,
+      workspace,
+    );
+    const owner = yield* f.owner;
+    const sessionIds = [
+      "session:answered",
+      "session:quiet",
+      "session:elsewhere",
+      "session:native",
+      "session:hidden",
+    ];
+
+    assert.deepEqual(yield* owner.replyPreviews({ sessionIds }), [
+      { sessionId: "session:answered", text: "Done Fixed it" },
+    ]);
+    assert.deepEqual(
+      coreReads.map((read) => (read.kind === "session_window" ? read.session_ids : read.kind)),
+      [sessionIds],
+    );
+    // Only the chats this execution owner runs are asked about, in one request.
+    assert.deepEqual(runtimeCalls, [
+      {
+        method: "threads.latest-replies",
+        input: { threadIds: ["thread:answered", "thread:quiet"] },
+      },
+    ]);
+    const tooMany = Array.from({ length: 101 }, (_, index) => `session:${index}`);
+    assert.equal(
+      (yield* owner.replyPreviews({ sessionIds: tooMany }).pipe(Effect.flip))._tag,
+      "AgentRuntimeApplicationError",
+    );
+  }),
 );

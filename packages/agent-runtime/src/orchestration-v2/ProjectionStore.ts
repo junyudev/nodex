@@ -730,6 +730,22 @@ export interface ProjectionRunOutcome {
   readonly completedAt: string | null;
   readonly finalAssistantItemId: TurnItemId | null;
 }
+/** Leading characters of a reply a chat list keeps; the conversation keeps the whole reply. */
+export const LATEST_REPLY_TEXT_LIMIT = 2000;
+/** Threads one latest-reply read may name. */
+export const LATEST_REPLIES_THREAD_LIMIT = 100;
+/** Settled Runs whose replies stay in the conversation; a rolled-back Run's do not. */
+const REPLY_RUN_STATUSES = ["completed", "failed", "interrupted"] as const;
+
+/** The last reply a Thread's Agent finished with: its own answer, not a subagent's or a note. */
+export interface ProjectionLatestReply {
+  readonly threadId: ThreadId;
+  readonly runId: RunId;
+  /** The reply's leading text, at most {@link LATEST_REPLY_TEXT_LIMIT} characters. */
+  readonly text: string;
+  readonly completedAt: string | null;
+}
+
 export type ProjectionRunOutcomeQuery = { readonly threadId: ThreadId } & (
   | { readonly runId: RunId; readonly messageId?: never }
   | { readonly messageId: MessageId; readonly runId?: never }
@@ -1328,6 +1344,13 @@ export interface ProjectionStoreV2Shape {
     threadId: ThreadId,
     runId: RunId,
   ) => Effect.Effect<OrchestrationV2ConversationMessage | null, ProjectionStoreV2Error>;
+  /**
+   * Each named Thread's latest reply from a settled Run, in request order; a Thread with none is
+   * left out. Reads one bounded excerpt per Thread and never decodes transcript bodies.
+   */
+  readonly getLatestReplies: (
+    threadIds: ReadonlyArray<ThreadId>,
+  ) => Effect.Effect<ReadonlyArray<ProjectionLatestReply>, ProjectionStoreV2Error>;
   /** First own admitted user turn; inherited history and queued-only messages do not name it. */
   readonly getOpeningRequest: (
     threadId: ThreadId,
@@ -7492,6 +7515,42 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return yield* decodeMessagePayload(rows[0].payload_json);
       }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
+    const getLatestReplies: ProjectionStoreV2Shape["getLatestReplies"] = (threadIds) =>
+      Effect.forEach(threadIds, (threadId) =>
+        sql<{ run_id: string; text: string; completed_at: string | null }>`
+          SELECT item.run_id, substr(json_extract(item.payload_json, '$.text'), 1, ${LATEST_REPLY_TEXT_LIMIT}) AS text,
+            run.completed_at
+          FROM orchestration_v2_projection_turn_items item
+          JOIN orchestration_v2_projection_runs run
+            ON run.run_id = item.run_id AND run.thread_id = item.thread_id
+          WHERE item.thread_id = ${threadId} AND item.type = 'assistant_message'
+            AND COALESCE(json_extract(item.payload_json, '$.responseKind'), 'final') != 'commentary'
+            AND COALESCE(json_extract(item.payload_json, '$.text'), '') != ''
+            AND run.status IN ${sql.in(REPLY_RUN_STATUSES)}
+            AND EXISTS (
+              SELECT 1 FROM orchestration_v2_projection_nodes node
+              WHERE node.node_id = item.node_id AND node.thread_id = run.thread_id
+                AND node.run_id = run.run_id
+                AND node.root_node_id = json_extract(run.payload_json, '$.rootNodeId')
+            )
+          ORDER BY run.ordinal DESC, item.ordinal DESC, item.turn_item_id DESC LIMIT 1
+        `.pipe(
+          Effect.map((rows) =>
+            rows[0] === undefined
+              ? []
+              : [
+                  {
+                    threadId,
+                    runId: RunId.make(rows[0].run_id),
+                    text: rows[0].text,
+                    completedAt: rows[0].completed_at,
+                  },
+                ],
+          ),
+          Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+        ),
+      ).pipe(Effect.map((replies) => replies.flat()));
+
     const getOpeningRequest: ProjectionStoreV2Shape["getOpeningRequest"] = (threadId) =>
       Effect.gen(function* () {
         // Projection rows are inserted in event publication order; upserts retain their rowid.
@@ -10227,6 +10286,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getQueuedRunPreview,
       getRunUserMessage,
       getOpeningRequest,
+      getLatestReplies,
       getProjectProviderSessionBindings,
       isExecutionPaused: (threadId) =>
         ExecutionPauseState.isHeld(threadId).pipe(
@@ -10317,6 +10377,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getQueuedRunPreview: readOnReader(service.getQueuedRunPreview),
       getRunUserMessage: readOnReader(service.getRunUserMessage),
       getOpeningRequest: readOnReader(service.getOpeningRequest),
+      getLatestReplies: readOnReader(service.getLatestReplies),
       getProjectProviderSessionBindings: readOnReader(service.getProjectProviderSessionBindings),
       isExecutionPaused: readOnReader(service.isExecutionPaused),
       getExecutionActors: readOnReader(service.getExecutionActors),
@@ -11838,6 +11899,56 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               ) ?? null)
             : null;
         }),
+      getLatestReplies: (threadIds) =>
+        Ref.get(replayState).pipe(
+          Effect.map(({ projections }) =>
+            threadIds.flatMap((threadId) => {
+              const projection = projections.get(threadId);
+              if (!projection) return [];
+              const runs = new Map<string, (typeof projection.runs)[number]>(
+                projection.runs
+                  .filter((run) =>
+                    (REPLY_RUN_STATUSES as ReadonlyArray<string>).includes(run.status),
+                  )
+                  .map((run) => [run.id, run] as const),
+              );
+              const runOf = (runId: string | null) =>
+                runId === null ? undefined : runs.get(runId);
+              const rootNodeIds = new Set(
+                projection.nodes
+                  .filter((node) => runOf(node.runId)?.rootNodeId === node.rootNodeId)
+                  .map((node) => node.id),
+              );
+              const latest = projection.turnItems
+                .filter(
+                  (item) =>
+                    item.type === "assistant_message" &&
+                    item.responseKind !== "commentary" &&
+                    item.text !== "" &&
+                    item.nodeId !== null &&
+                    rootNodeIds.has(item.nodeId) &&
+                    runOf(item.runId) !== undefined,
+                )
+                .toSorted(
+                  (left, right) =>
+                    runOf(right.runId)!.ordinal - runOf(left.runId)!.ordinal ||
+                    right.ordinal - left.ordinal ||
+                    right.id.localeCompare(left.id),
+                )[0];
+              const run = runOf(latest?.runId ?? null);
+              if (latest?.type !== "assistant_message" || !run) return [];
+              return [
+                {
+                  threadId,
+                  runId: run.id,
+                  text: latest.text.slice(0, LATEST_REPLY_TEXT_LIMIT),
+                  completedAt:
+                    run.completedAt === null ? null : DateTime.formatIso(run.completedAt),
+                },
+              ];
+            }),
+          ),
+        ),
       getOpeningRequest: (threadId) =>
         Effect.gen(function* () {
           const state = yield* Ref.get(replayState);

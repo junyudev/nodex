@@ -555,7 +555,7 @@ fn assert_workflow_status_repair(predecessor_version: i64) {
         Ok(())
     }).unwrap();
     if predecessor_version == 210 {
-        rewind_inbox_later(&connection).unwrap();
+        rewind_inbox_snooze(&connection).unwrap();
     } else {
         super::rewind_page_search_to_v212(&connection).unwrap();
     }

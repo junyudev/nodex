@@ -2985,6 +2985,9 @@ fn record_workflow_status_edit(
     if matches!(origin, StatusEditOrigin::Person) {
         record_person_status_edit(connection, page_id)?;
     }
+    if stage == Some("done") && previous_stage != stage {
+        crate::workspace::member_attention::settle_done_page_chat(connection, page_id, now)?;
+    }
     crate::workspace::inbox::status_changed(connection, page_id, previous_stage, stage, now)
 }
 

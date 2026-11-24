@@ -107,64 +107,82 @@ it.effect("reads the host's Inbox settings and keeps only the Member's consent i
   ),
 );
 
-it.effect("keeps a Member's pins, pin order and reminders in the Space's Core, as their own", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const collector = makeSpaceIpcCollector({ routes: () => true });
-      const calls: [string, unknown][] = [];
-      const apply = { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 4 } };
-      const record = (method: string) => (command: unknown) =>
-        Effect.sync(() => {
-          calls.push([method, command]);
-          return { value: { id: "chat" }, apply };
-        });
-      yield* Layer.build(
-        live.pipe(
-          Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-          Layer.provide(host()),
-          Layer.provide(Layer.succeed(CoreModules, {} as never)),
-          Layer.provide(
-            Layer.succeed(ProjectWorkspace, {
-              markProjectSessionUnread: record("unread"),
-              setProjectSessionPinned: record("pin"),
-              setPinnedProjectSessionOrder: record("order"),
-              setProjectSessionReminder: record("reminder"),
-              ensureDefaultDraftProjectSession: record("draft"),
-            } as never),
+it.effect(
+  "keeps a Member's pins, pin order, snoozes and settlement in the Space's Core, as their own",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        const calls: [string, unknown][] = [];
+        const apply = { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 4 } };
+        const record = (method: string) => (command: unknown) =>
+          Effect.sync(() => {
+            calls.push([method, command]);
+            return { value: { id: "chat" }, apply };
+          });
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(host()),
+            Layer.provide(Layer.succeed(CoreModules, {} as never)),
+            Layer.provide(
+              Layer.succeed(ProjectWorkspace, {
+                markProjectSessionUnread: record("unread"),
+                setProjectSessionPinned: record("pin"),
+                setPinnedProjectSessionOrder: record("order"),
+                setProjectSessionSnooze: record("snooze"),
+                setProjectSessionSettled: (command: unknown) =>
+                  Effect.sync(() => {
+                    calls.push(["settled", command]);
+                    return { value: { changedSessionIds: ["chat"] }, apply };
+                  }),
+                ensureDefaultDraftProjectSession: record("draft"),
+              } as never),
+            ),
           ),
-        ),
-      );
-      const event = {} as IpcMainInvokeEvent;
-      const operationId = createBoundedOperationId("test.attention");
-      const pin = { operationId, payload: { sessionId: "chat", pinned: true } };
-      const order = { operationId, payload: { projectId: "p", sessionIds: [] } };
-      const reminder = {
-        operationId,
-        payload: { sessionId: "chat", remindAt: "2026-11-09T09:00:00.000Z" },
-      };
-      // A New chat opens the Member's own default draft in the Space's Core.
-      const draft = { operationId, payload: { projectId: null, candidateSessionId: "draft" } };
-      for (const [channel, command] of [
-        ["project-sessions:set-pinned", pin],
-        ["project-sessions:set-pinned-order", order],
-        ["project-sessions:set-reminder", reminder],
-        ["project-sessions:ensure-default-draft", draft],
-      ] as const)
-        expect(yield* collector.invoke(channel, event, [command])).toMatchObject({
+        );
+        const event = {} as IpcMainInvokeEvent;
+        const operationId = createBoundedOperationId("test.attention");
+        const pin = { operationId, payload: { sessionId: "chat", pinned: true } };
+        const order = { operationId, payload: { projectId: "p", sessionIds: [] } };
+        const snooze = {
+          operationId,
+          payload: { sessionId: "chat", snoozedUntil: "2026-11-09T09:00:00.000Z" },
+        };
+        // A New chat opens the Member's own default draft in the Space's Core.
+        const draft = { operationId, payload: { projectId: null, candidateSessionId: "draft" } };
+        for (const [channel, command] of [
+          ["project-sessions:set-pinned", pin],
+          ["project-sessions:set-pinned-order", order],
+          ["project-sessions:set-snooze", snooze],
+          ["project-sessions:ensure-default-draft", draft],
+        ] as const)
+          expect(yield* collector.invoke(channel, event, [command])).toMatchObject({
+            ok: true,
+            value: { id: "chat" },
+          });
+        const batch = {
+          operationId,
+          payload: { sessionIds: ["chat", "already-settled"], settled: true },
+        };
+        expect(
+          yield* collector.invoke("project-sessions:set-settled", event, [batch]),
+        ).toMatchObject({
           ok: true,
-          value: { id: "chat" },
+          value: { changedSessionIds: ["chat"] },
         });
-      expect(calls).toEqual([
-        ["pin", pin],
-        ["order", order],
-        ["reminder", reminder],
-        ["draft", draft],
-      ]);
-      const malformed = yield* collector
-        .invoke("project-sessions:set-pinned", event, [{ ...pin, operationId: "" }])
-        .pipe(Effect.result);
-      expect(malformed._tag).toBe("Failure");
-      expect(calls).toHaveLength(4);
-    }),
-  ),
+        expect(calls).toEqual([
+          ["pin", pin],
+          ["order", order],
+          ["snooze", snooze],
+          ["draft", draft],
+          ["settled", batch],
+        ]);
+        const malformed = yield* collector
+          .invoke("project-sessions:set-pinned", event, [{ ...pin, operationId: "" }])
+          .pipe(Effect.result);
+        expect(malformed._tag).toBe("Failure");
+        expect(calls).toHaveLength(5);
+      }),
+    ),
 );

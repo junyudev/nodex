@@ -46,6 +46,8 @@ export const codexLinkedRootSessionFixture = ({
     },
     session: {
       activity_at: 0,
+      attention_at: 0,
+      page_turn: null,
       archived: false,
       can_manage: true,
       can_stop: true,

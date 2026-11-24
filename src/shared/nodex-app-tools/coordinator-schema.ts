@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { InboxRemindAtSchema, InboxSuggestedSkillsSchema } from "../schemas/inbox";
+import { InboxSnoozedUntilSchema, InboxSuggestedSkillsSchema } from "../schemas/inbox";
 import { MAX_INBOX_ADDITION_CHARS, MAX_INBOX_ADDITIONS } from "../inbox";
 import { toolInputSchema } from "./tool-input-schema";
 const MAX_PROMPT_CHARS = 2000;
@@ -77,7 +77,7 @@ const RawSuggestion = z.discriminatedUnion("action", [
     action: z.literal("save_to_notes"),
     parent_page_id: z.string().min(1).max(512).nullable(),
   }),
-  SuggestionFields.extend({ action: z.literal("later"), remind_at: InboxRemindAtSchema }),
+  SuggestionFields.extend({ action: z.literal("snooze"), snoozed_until: InboxSnoozedUntilSchema }),
 ]);
 export const InboxSuggestionOutput = z
   .object({

@@ -49,7 +49,7 @@ const recoveryKinds = {
   none: true,
   recovery_package: true,
   reconnect_document_subscription: true,
-  inbox_remind_at_passed: true,
+  inbox_snooze_time_passed: true,
   document_recovery_artifact: true,
   current_store_epoch: true,
   current_revision: true,
@@ -131,7 +131,7 @@ const parseRecovery = (value: unknown): CoreRecovery => {
     case "reconcile_expired_operation":
     case "none":
     case "reconnect_document_subscription":
-    case "inbox_remind_at_passed":
+    case "inbox_snooze_time_passed":
       return { kind: value.kind };
     case "recovery_package": {
       const failure = value.failure;

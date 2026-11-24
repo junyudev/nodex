@@ -6,7 +6,7 @@ export type NativeContextMenuIconKey =
   | "archive"
   | "unread"
   | "markRead"
-  | "reminder"
+  | "snooze"
   | "folder"
   | "folderOpen"
   | "project"

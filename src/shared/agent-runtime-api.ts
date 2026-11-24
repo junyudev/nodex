@@ -241,6 +241,11 @@ export type AgentRuntimeQueueReadInput = AgentRuntimeSessionTarget & { readonly 
 export type AgentRuntimeQueuePage = AgentRuntimeOperations["thread.queue"]["output"];
 export type AgentRuntimeRunInput = AgentRuntimeSessionTarget & { readonly runId: string };
 export type AgentRuntimeQueuedPreview = AgentRuntimeOperations["thread.queued-preview"]["output"];
+/** The latest reply of a chat's Agent, as the plain text its row shows under the title. */
+export interface AgentRuntimeReplyPreview {
+  readonly sessionId: string;
+  readonly text: string;
+}
 export type AgentRuntimeRunMessage = AgentRuntimeOperations["thread.run-message"]["output"];
 export type AgentRuntimePromptIndex = AgentRuntimeOperations["thread.prompt-index"]["output"];
 export type AgentRuntimeRewriteMessageInput = AgentRuntimeMessageInput & {
@@ -383,6 +388,7 @@ export interface AgentRuntimeSessionActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
+  readonly latestRequestAt?: AgentRootActivity["latestRequestAt"];
   readonly activeFlags?: AgentRootActivity["activeFlags"];
   readonly approvalPrompt?: string | null;
   readonly backgroundTasks: AgentRootActivity["backgroundTasks"];
@@ -583,6 +589,11 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:queued-preview": {
     args: [input: AgentRuntimeRunInput];
     result: AgentRuntimeQueuedPreview;
+  };
+  /** Each named chat's latest reply; a chat without one, or not readable here, is left out. */
+  "agent-runtime:session:reply-previews": {
+    args: [input: { readonly sessionIds: readonly string[] }];
+    result: readonly AgentRuntimeReplyPreview[];
   };
   "agent-runtime:session:run-message": {
     args: [input: AgentRuntimeRunInput];

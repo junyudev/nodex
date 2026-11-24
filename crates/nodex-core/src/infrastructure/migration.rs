@@ -496,6 +496,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 216,
         apply: migrate_v215_to_v216,
     },
+    MigrationStep {
+        from_revision: 216,
+        to_revision: 217,
+        apply: migrate_v216_to_v217,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2805,6 +2810,21 @@ fn migrate_v215_to_v216(
     Ok(())
 }
 
+fn migrate_v216_to_v217(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v216_to_v217.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"member_chat_lifecycle":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4288,7 +4308,7 @@ fn prepare_current_inbox_capture_columns(connection: &Connection) -> Result<(), 
         "problems",
         "inbox_note_saves",
         "inbox_deferrals",
-        "inbox_later_notifications",
+        "inbox_snooze_notifications",
         "activity_page_scopes",
         "inbox_intake",
         "inbox_rows",
@@ -4317,7 +4337,7 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
         DROP VIEW inbox_rows;
         DROP VIEW inbox_intake;
         DROP VIEW activity_page_scopes;
-        DROP TABLE inbox_later_notifications;
+        DROP TABLE inbox_snooze_notifications;
         DROP TABLE inbox_deferrals;
         DROP TABLE inbox_note_saves;
         DROP TABLE inbox_answers;
@@ -4354,7 +4374,21 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_member_chat_lifecycle_to_v216(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='member_session_settled')",
+        [],
+        |row| row.get(0),
+    )?;
+    if present {
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v217-to-v216.sql"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn rewind_agent_identity_to_v215(connection: &Connection) -> Result<(), StoreError> {
+    rewind_member_chat_lifecycle_to_v216(connection)?;
     let foreign_keys: bool =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
     let legacy: bool =
@@ -4395,7 +4429,7 @@ pub(crate) fn rewind_page_search_to_v212(connection: &Connection) -> Result<(), 
 }
 
 #[cfg(test)]
-pub(super) fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreError> {
+pub(super) fn rewind_inbox_snooze(connection: &Connection) -> Result<(), StoreError> {
     rewind_page_search_to_v212(connection)?;
     let foreign_keys: bool =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
@@ -4412,7 +4446,7 @@ pub(super) fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreErr
 
 #[cfg(test)]
 fn rewind_quiet_automation_runs(connection: &Connection) -> Result<(), StoreError> {
-    rewind_inbox_later(connection)?;
+    rewind_inbox_snooze(connection)?;
     connection.execute_batch(
         "ALTER TABLE automation_execution_runs DROP COLUMN quiet;
          PRAGMA user_version=209;",
@@ -5005,7 +5039,7 @@ mod tests {
     }
 
     #[test]
-    fn member_attention_migration_keeps_the_local_members_unread_pins_order_and_reminders() {
+    fn member_attention_migration_keeps_the_local_members_unread_pins_order_and_snoozes() {
         let (profile, _path, mut c) = rewound_v202_store(ONE_SPACE);
         let session = |id: &str,
                        pinned: i64,
@@ -5061,7 +5095,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            rows("SELECT member_id,session_id,remind_at FROM member_session_reminders"),
+            rows("SELECT member_id,session_id,snoozed_until FROM member_session_snoozes"),
             [(
                 local.clone(),
                 "first".into(),
@@ -5069,7 +5103,7 @@ mod tests {
             )]
         );
         assert_eq!(
-            rows("SELECT member_id,session_id,delivery_id FROM member_session_reminder_deliveries"),
+            rows("SELECT member_id,session_id,delivery_id FROM member_session_snooze_deliveries"),
             [(local.clone(), "loose".into(), "delivery".into())]
         );
         assert_eq!(
@@ -5445,7 +5479,7 @@ mod tests {
 
         let mut connection = Connection::open_in_memory().expect("Store");
         install_current_schema(&mut connection).expect("current Store");
-        rewind_inbox_later(&connection).expect("v210 predecessor");
+        rewind_inbox_snooze(&connection).expect("v210 predecessor");
         validate_schema_identity(&connection, 210).expect("published predecessor");
         migrate_v210_to_v211(
             &connection,
@@ -9293,6 +9327,88 @@ mod tests {
     }
 
     #[test]
+    fn member_chat_lifecycle_migration_keeps_every_chat_open_and_archive_clears_settlement() {
+        use crate::infrastructure::schema::validate_schema_identity;
+
+        let mut connection = Connection::open_in_memory().expect("Store");
+        install_current_schema(&mut connection).expect("current Store");
+        rewind_member_chat_lifecycle_to_v216(&connection).expect("v216 predecessor");
+        validate_schema_identity(&connection, 216).expect("published predecessor");
+        connection
+            .execute_batch(
+                "INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile', 'today', 'today');
+                 INSERT INTO libraries(id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'today', 'today');
+                 INSERT INTO project_sessions(id, no_thread_fallback_title, created_at, updated_at, activity_at)
+                   VALUES ('chat', 'Work', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', 1793491200000);
+                 INSERT INTO local_commits(store_epoch,operation_id,committed_at,projection_impact_json,canonical_hash,actor_json,authorizing_member_id)
+                   SELECT 'epoch','suggest-snooze','today','{}',printf('%064x',0),json_object('type','member','member_id',id),id FROM members WHERE library_id='library';
+                 INSERT INTO inbox_proposals(proposal_id,library_id,origin,state,action_json,summary,basis_json,created_at,updated_at)
+                   VALUES ('snooze','library','agent','open',json_object('type','later','remind_at','2026-11-02T09:00:00Z'),'Review','[]','today','today');",
+            )
+            .expect("v216 chat");
+        migrate_v216_to_v217(
+            &connection,
+            &MigrationContext {
+                source_revision: 216,
+                target_revision: 217,
+                source_schema_fingerprint: published_format(216).unwrap().schema_fingerprint,
+                target_schema_fingerprint: published_format(217).unwrap().schema_fingerprint,
+                backup_name: "v216.db".into(),
+                completed_at_unix_ms: 1,
+            },
+        )
+        .expect("chat lifecycle migration");
+        validate_schema_identity(&connection, 217).expect("published current Store");
+        let action: String = connection
+            .query_row(
+                "SELECT action_json FROM inbox_proposals WHERE proposal_id='snooze'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("migrated suggestion");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&action).unwrap(),
+            serde_json::json!({"type":"snooze","snoozed_until":"2026-11-02T09:00:00Z"})
+        );
+        // An existing chat starts open for every Member.
+        let (returned_at, settled): (i64, i64) = connection
+            .query_row(
+                "SELECT returned_at, (SELECT count(*) FROM member_session_settled) FROM project_sessions WHERE id = 'chat'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((returned_at, settled), (0, 0));
+        assert!(
+            connection
+                .execute(
+                    "UPDATE project_sessions SET returned_at = -1 WHERE id = 'chat'",
+                    []
+                )
+                .is_err()
+        );
+        connection
+            .execute(
+                "INSERT INTO member_session_settled(member_id, session_id, settled_at) \
+                 SELECT id, 'chat', 1 FROM members WHERE library_id = 'library'",
+                [],
+            )
+            .expect("Settled chat");
+        connection
+            .execute(
+                "UPDATE project_sessions SET archived = 1, archived_at = 'today' WHERE id = 'chat'",
+                [],
+            )
+            .unwrap();
+        let settled: i64 = connection
+            .query_row("SELECT count(*) FROM member_session_settled", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(settled, 0, "archiving clears each Member's settlement");
+    }
+
+    #[test]
     fn agent_identity_migration_preserves_instance_routing_and_opens_driver_space() {
         let directory = tempdir().expect("Profile");
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
@@ -9544,7 +9660,7 @@ mod tests {
     }
 
     #[test]
-    fn session_reminder_migration_preserves_chats_and_cancels_on_every_archive_path() {
+    fn session_snooze_migration_preserves_chats_and_cancels_on_every_archive_path() {
         let profile = tempdir().expect("Profile");
         install_intermediate_fixture(profile.path(), 197);
         let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
@@ -9555,17 +9671,17 @@ mod tests {
         let local = "(SELECT member_id FROM local_profile_members LIMIT 1)";
         let organization: (i64, i64, Option<String>) = connection
             .query_row(
-                &format!("SELECT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id AND pin.member_id={local}),EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id={local}),(SELECT remind_at FROM member_session_reminders reminder WHERE reminder.session_id=project_sessions.id) FROM project_sessions WHERE id='reminder-chat'"),
+                &format!("SELECT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=project_sessions.id AND pin.member_id={local}),EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=project_sessions.id AND attention.member_id={local}),(SELECT snoozed_until FROM member_session_snoozes reminder WHERE reminder.session_id=project_sessions.id) FROM project_sessions WHERE id='reminder-chat'"),
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
         assert_eq!(organization, (1, 1, None));
-        connection.execute(&format!("INSERT INTO member_session_reminders(member_id,session_id,remind_at) VALUES({local},'reminder-chat','2026-01-02T00:00:00.000Z')"), []).unwrap();
+        connection.execute(&format!("INSERT INTO member_session_snoozes(member_id,session_id,snoozed_until) VALUES({local},'reminder-chat','2026-01-02T00:00:00.000Z')"), []).unwrap();
         connection.execute("UPDATE project_sessions SET archived=1,archived_at='2026-01-01T00:00:00.000Z' WHERE id='reminder-chat'", []).unwrap();
         let attention: (i64, i64) = connection
             .query_row(
-                "SELECT (SELECT count(*) FROM member_session_reminders WHERE session_id='reminder-chat'),(SELECT count(*) FROM member_session_pins WHERE session_id='reminder-chat')",
+                "SELECT (SELECT count(*) FROM member_session_snoozes WHERE session_id='reminder-chat'),(SELECT count(*) FROM member_session_pins WHERE session_id='reminder-chat')",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )

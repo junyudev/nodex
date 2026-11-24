@@ -129,9 +129,9 @@ pub(super) fn admit<'a>(
     if matches!(
         intent.as_ref(),
         ProjectWorkspaceIntent::MutateSession {
-            intent: nodex_core_contracts::workspace::ProjectSessionIntent::ConsumeReminder { .. }
-                | nodex_core_contracts::workspace::ProjectSessionIntent::DeferReminderDelivery { .. }
-                | nodex_core_contracts::workspace::ProjectSessionIntent::CompleteReminderDelivery { .. }
+            intent: nodex_core_contracts::workspace::ProjectSessionIntent::ConsumeSnooze { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::DeferSnoozeDelivery { .. }
+                | nodex_core_contracts::workspace::ProjectSessionIntent::CompleteSnoozeDelivery { .. }
                 | nodex_core_contracts::workspace::ProjectSessionIntent::RecordUserMessage { .. },
             ..
         }

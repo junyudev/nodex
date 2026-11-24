@@ -231,6 +231,7 @@ it.effect(
           getQueuedRunPreview: () => Effect.succeed(null),
           getRunUserMessage: () => Effect.die("unused Run message"),
           getOpeningRequest: () => Effect.die("unused opening request"),
+          getLatestReplies: () => Effect.die("unused latest replies"),
           getProjectProviderSessionBindings: () => Effect.die("unused provider binding page"),
           getLimitRecoveryCandidates: () => Effect.die("unused getLimitRecoveryCandidates"),
           getShellSnapshot: () => Effect.die("unused getShellSnapshot"),

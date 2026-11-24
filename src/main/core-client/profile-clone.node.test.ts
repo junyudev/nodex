@@ -487,7 +487,7 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
       await workspace({
         kind: "mutate_session",
         session_id: sessionId,
-        intent: { kind: "set_reminder", remind_at: new Date(Date.now() + 60_000).toISOString() },
+        intent: { kind: "set_snooze", snoozed_until: new Date(Date.now() + 60_000).toISOString() },
       });
 
       await client.administrationApply({
@@ -605,7 +605,7 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         expect(await read({ kind: "read_pending_work_events", limit: 8 })).toMatchObject({
           events: [],
         });
-        expect(await read({ kind: "next_session_reminder" })).toMatchObject({
+        expect(await read({ kind: "next_session_snooze" })).toMatchObject({
           next_wake_at: null,
           delivery: null,
         });

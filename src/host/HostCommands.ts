@@ -17,6 +17,7 @@ import {
 import {
   ProjectSessionArchiveCommandSchema,
   ProjectSessionRenameCommandSchema,
+  ProjectSessionSettledCommandSchema,
 } from "../shared/schemas/project-session-commands";
 import { startWorkInputSchema } from "../shared/work-application";
 import {
@@ -108,6 +109,9 @@ export const executeHostCommand = (
         return yield* host.attachments.read(Inputs.HostedChatAttachmentReadSchema.parse(input));
       case "session_overview":
         return yield* sessions.overview(Inputs.AgentRuntimeOverviewSchema.parse(input));
+      // Read with the Member's invocation, so only chats they may read answer.
+      case "session_reply_previews":
+        return yield* sessions.replyPreviews(Inputs.AgentRuntimeReplyPreviewsSchema.parse(input));
       case "session_queued_preview":
         return yield* sessions.readQueuedPreview(Inputs.AgentRuntimeRunSchema.parse(input));
       case "session_run_message":
@@ -142,6 +146,10 @@ export const executeHostCommand = (
       case "session_unarchive":
         return yield* hostLocalCommit(
           sessions.unarchiveSession(ProjectSessionArchiveCommandSchema.parse(input)),
+        );
+      case "sessions_set_settled":
+        return yield* hostLocalCommit(
+          sessions.setSessionsSettled(ProjectSessionSettledCommandSchema.parse(input)),
         );
       case "session_move":
         return yield* sessions.moveSession(Inputs.AgentRuntimeSessionMoveSchema.parse(input));

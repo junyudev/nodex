@@ -26,7 +26,6 @@ export const makeSessionReader = Effect.gen(function* () {
     return {
       title: session.displayTitle,
       archived: session.archived,
-      unread: session.unread,
       sideChatSource: sourceSessionId
         ? {
             sessionId: sourceSessionId,

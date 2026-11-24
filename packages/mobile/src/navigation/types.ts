@@ -20,7 +20,7 @@ export type RootStack = {
     readonly openChat?: string;
   };
   InboxViewPicker: undefined;
-  InboxLaterPicker: {
+  InboxSnoozePicker: {
     readonly pageId: string;
     readonly expired?: boolean;
     readonly proposal?: { readonly proposalId: string; readonly revision: number };

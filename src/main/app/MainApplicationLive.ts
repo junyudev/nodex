@@ -25,7 +25,7 @@ import { HostToolExecutor } from "../../host/HostToolExecutor";
 import { make as makeHostTools } from "../agent-runtime/AgentRuntimeHostTools";
 import * as HostKernel from "../../host/HostKernel";
 import { SpacePageFileHosts } from "../page-files/SpacePageFileHosts";
-import { SessionReminderRuntime } from "../host-runtime/SessionReminderRuntime";
+import { SessionSnoozeRuntime } from "../host-runtime/SessionSnoozeRuntime";
 import { ChatSearch, live as chatSearchLive } from "../chat-search/ChatSearch";
 import { live as insightsLive } from "../insights/Insights";
 import * as Effect from "effect/Effect";
@@ -293,7 +293,7 @@ export const live: Layer.Layer<
         const projectionDelivery = yield* ProjectionDeliveryRuntime;
         const coreEventHub = yield* CoreEventHub;
         const reminderScheduler = yield* ReminderSchedulerRuntime;
-        const sessionReminders = yield* SessionReminderRuntime;
+        const sessionSnoozes = yield* SessionSnoozeRuntime;
         const projectWorkspace = yield* ProjectWorkspace;
         const browser = yield* BrowserApplication;
         const executionHosts = yield* ExecutionHostRuntime;
@@ -420,7 +420,7 @@ export const live: Layer.Layer<
                     spaceId: authority.identity.libraryId,
                   }),
               }),
-              sessionReminders.activate,
+              sessionSnoozes.activate,
               hostKernel.activate,
             ],
             { concurrency: "unbounded", discard: true },

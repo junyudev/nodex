@@ -23,7 +23,8 @@ import {
   SessionSideChatWindowInputSchema,
   ProjectSessionCreateInputSchema,
   ProjectSessionRenameInputSchema,
-  ProjectSessionReminderInputSchema,
+  ProjectSessionSnoozeInputSchema,
+  ProjectSessionSettledInputSchema,
   SessionManagedInputSchema,
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
@@ -41,6 +42,7 @@ import type {
   PageChatWindow,
   PageChatWindowInput,
   ProjectSession,
+  ProjectSessionSettledResult,
   SessionManagedState,
   ProjectSessionSummaryWindow,
   SessionSideChatWindow,
@@ -67,7 +69,9 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
-  ProjectSessionReminderCommandInput,
+  ProjectSessionSettledCommandInput,
+  ProjectSessionsSettleIdleCommandInput,
+  ProjectSessionSnoozeCommandInput,
   ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
@@ -179,11 +183,11 @@ export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceEr
 
 type ProjectWorkspaceEffect<A> = Effect.Effect<A, ProjectWorkspaceError>;
 
-/** A reminder one Member is owed, with the chat as that Member reads it. */
-export interface SessionReminderWork {
+/** A snooze one Member is owed, with the chat as that Member reads it. */
+export interface SessionSnoozeWork {
   readonly session: ProjectSession;
   readonly memberId: string;
-  readonly remindAt: string;
+  readonly snoozedUntil: string;
   readonly deliveryId: string | null;
   readonly wakeAt: string;
 }
@@ -358,31 +362,48 @@ export interface ProjectWorkspaceService {
   readonly recordProjectSessionOpened: (
     command: ProjectSessionOpenedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
-  readonly nextSessionReminder: ProjectWorkspaceEffect<SessionReminderWork | null>;
+  readonly nextSessionSnooze: ProjectWorkspaceEffect<SessionSnoozeWork | null>;
   /** How many chats the chat list shows as unread, across every Project. */
   readonly unreadChatCount: ProjectWorkspaceEffect<number>;
-  readonly consumeSessionReminder: (
+  readonly consumeSessionSnooze: (
     sessionId: string,
     memberId: string,
-    remindAt: string,
+    snoozedUntil: string,
     deliver: boolean,
   ) => ProjectWorkspaceEffect<boolean>;
-  /** Settles a claimed reminder; `unread` has Core turn the chat unread for its Member. */
-  readonly completeSessionReminder: (
+  /** Settles a claimed snooze; `unread` has Core turn the chat unread for its Member. */
+  readonly completeSessionSnooze: (
     sessionId: string,
     deliveryId: string,
     unread: boolean,
   ) => ProjectWorkspaceEffect<boolean>;
-  readonly deferSessionReminder: (
+  readonly deferSessionSnooze: (
     sessionId: string,
     deliveryId: string,
   ) => ProjectWorkspaceEffect<void>;
-  readonly setProjectSessionReminder: (
-    command: ProjectSessionReminderCommandInput,
+  readonly setProjectSessionSnooze: (
+    command: ProjectSessionSnoozeCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly markProjectSessionUnread: (
     command: ProjectSessionUnreadCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
+  /** Settles a chat for the requesting Member, or reopens it. */
+  readonly setProjectSessionSettled: (
+    command: ProjectSessionSettledCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSessionSettledResult>>;
+  /**
+   * A chat's Agent stopped and asks for its person: the chat comes back to the top of their open
+   * chats, reopening it when it was settled, and turns unread unless they already have it in view.
+   */
+  readonly recordProjectSessionAttention: (
+    sessionId: string,
+    seen: boolean,
+    askedAt: number | null,
+  ) => ProjectWorkspaceEffect<void>;
+  /** Settles every chat that asked nothing of the requesting Member since the given instant. */
+  readonly settleIdleProjectSessions: (
+    command: ProjectSessionsSettleIdleCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<null>>;
   readonly upsertProjectSessionThreadLink: (
     input: ProjectSessionThreadLinkInput,
   ) => ProjectWorkspaceEffect<ProjectSessionThreadLink>;
@@ -789,9 +810,23 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     const taskLane = (input?: ProjectSessionSummaryWindowInput) => ({
       include_archived: input?.includeArchived ?? false,
       placement_scope: input?.placementScope ?? "all",
+      lifecycle: input?.lifecycle ?? "all",
       order: input?.order ?? "activity",
       window: { after: input?.after ?? null, first: input?.first },
     });
+    /** One read spans a single scope, so its lanes agree on whether it is the whole Library. */
+    const wholeLibrary = (
+      projectId: string | null,
+      lanes: readonly (ProjectSessionSummaryWindowInput | undefined)[],
+    ): ProjectWorkspaceEffect<boolean> =>
+      evaluate("session.window.scope", () => {
+        const whole = lanes[0]?.wholeLibrary === true;
+        if (lanes.some((lane) => (lane?.wholeLibrary === true) !== whole))
+          throw new Error("Session lanes of one read share its scope");
+        if (whole && projectId !== null)
+          throw new Error("A whole-Library session read names no Project");
+        return whole;
+      });
     const summaryWindowFromCore = (
       tasks: Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "task_window" }>["tasks"],
     ): ProjectSessionSummaryWindow => ({
@@ -807,6 +842,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       const snapshot = yield* read("session.window", {
         kind: "task_window",
         project_id: projectId,
+        whole_library: yield* wholeLibrary(projectId, [input]),
         ...taskLane(input),
       });
       return yield* evaluate("session.window", () =>
@@ -823,6 +859,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       const snapshot = yield* read("session.lanes", {
         kind: "task_windows",
         project_id: projectId,
+        whole_library: yield* wholeLibrary(projectId, lanes),
         lanes: lanes.map(taskLane),
       });
       return yield* evaluate("session.lanes", () =>
@@ -1638,17 +1675,64 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
-    const setProjectSessionReminder = Effect.fn("ProjectWorkspace.setProjectSessionReminder")(
-      function* (command: ProjectSessionReminderCommandInput) {
+    const setProjectSessionSettled = Effect.fn("ProjectWorkspace.setProjectSessionSettled")(
+      function* (command: ProjectSessionSettledCommandInput) {
+        const { settled, sessionIds } = yield* evaluate("session.settled.validate", () =>
+          ProjectSessionSettledInputSchema.parse(command.payload),
+        );
+        const applied = yield* applyWithId("session.settled.set", command.operationId, {
+          kind: "set_sessions_settled",
+          session_ids: sessionIds,
+          settled,
+        });
+        return {
+          value: { changedSessionIds: applied.outcome.affected_session_ids },
+          apply: applied,
+        };
+      },
+    );
+
+    const recordProjectSessionAttention = Effect.fn(
+      "ProjectWorkspace.recordProjectSessionAttention",
+    )(function* (sessionId: string, seen: boolean, askedAt: number | null) {
+      yield* apply("session.attention.record", {
+        kind: "mutate_session",
+        session_id: sessionId,
+        intent: {
+          kind: "record_attention",
+          seen,
+          ...(askedAt === null ? {} : { asked_at: askedAt }),
+        },
+      });
+    });
+
+    const settleIdleProjectSessions = Effect.fn("ProjectWorkspace.settleIdleProjectSessions")(
+      function* (command: ProjectSessionsSettleIdleCommandInput) {
+        const idleBefore = yield* evaluate("session.idle.validate", () => {
+          const value = command.payload.idleBefore;
+          if (!Number.isSafeInteger(value) || value < 0)
+            throw new Error("Idle chats are measured from a Unix millisecond instant");
+          return value;
+        });
+        const applied = yield* applyWithId("session.idle.complete", command.operationId, {
+          kind: "settle_idle_sessions",
+          idle_before_ms: idleBefore,
+        });
+        return { value: null, apply: applied };
+      },
+    );
+
+    const setProjectSessionSnooze = Effect.fn("ProjectWorkspace.setProjectSessionSnooze")(
+      function* (command: ProjectSessionSnoozeCommandInput) {
         const { sessionId } = command.payload;
-        const { remindAt } = yield* evaluate("session.reminder.validate", () =>
-          ProjectSessionReminderInputSchema.parse({ remindAt: command.payload.remindAt }),
+        const { snoozedUntil } = yield* evaluate("session.snooze.validate", () =>
+          ProjectSessionSnoozeInputSchema.parse({ snoozedUntil: command.payload.snoozedUntil }),
         );
         yield* requireSession(sessionId);
-        const applied = yield* applyWithId("session.reminder.set", command.operationId, {
+        const applied = yield* applyWithId("session.snooze.set", command.operationId, {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "set_reminder", remind_at: remindAt },
+          intent: { kind: "set_snooze", snoozed_until: snoozedUntil },
         });
         return { value: yield* requireSession(sessionId), apply: applied };
       },
@@ -1699,13 +1783,13 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       readSessionManaged,
       readSessionStart,
       setSessionManaged,
-      setProjectSessionReminder,
+      setProjectSessionSnooze,
       unreadChatCount: read("session.unread.count", { kind: "unread_chat_count" }).pipe(
         Effect.map((snapshot) => expectVariant(snapshot, "unread_chat_count").count),
       ),
-      nextSessionReminder: read("session.reminder.next", { kind: "next_session_reminder" }).pipe(
+      nextSessionSnooze: read("session.snooze.next", { kind: "next_session_snooze" }).pipe(
         Effect.flatMap((snapshot) => {
-          const value = expectVariant(snapshot, "next_session_reminder");
+          const value = expectVariant(snapshot, "next_session_snooze");
           if (!value.session || !value.member_id || !value.next_wake_at)
             return Effect.succeed(null);
           const session = value.session;
@@ -1714,36 +1798,41 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             Effect.map((current) => ({
               session: current,
               memberId,
-              remindAt: value.delivery?.remind_at ?? session.remind_at!,
+              snoozedUntil: value.delivery?.snoozed_until ?? session.snoozed_until!,
               deliveryId: value.delivery?.delivery_id ?? null,
               wakeAt: value.next_wake_at!,
             })),
           );
         }),
       ),
-      consumeSessionReminder: (sessionId, memberId, remindAt, deliver) =>
-        applyWithId("session.reminder.consume", createOperationId("session.reminder.consume"), {
+      consumeSessionSnooze: (sessionId, memberId, snoozedUntil, deliver) =>
+        applyWithId("session.snooze.consume", createOperationId("session.snooze.consume"), {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "consume_reminder", member_id: memberId, remind_at: remindAt, deliver },
+          intent: {
+            kind: "consume_snooze",
+            member_id: memberId,
+            snoozed_until: snoozedUntil,
+            deliver,
+          },
         }).pipe(
           Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
           Effect.catchIf(isNotFound, () => Effect.succeed(false)),
         ),
-      completeSessionReminder: (sessionId, deliveryId, unread) =>
-        applyWithId("session.reminder.complete", createOperationId("session.reminder.complete"), {
+      completeSessionSnooze: (sessionId, deliveryId, unread) =>
+        applyWithId("session.snooze.complete", createOperationId("session.snooze.complete"), {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "complete_reminder_delivery", delivery_id: deliveryId, unread },
+          intent: { kind: "complete_snooze_delivery", delivery_id: deliveryId, unread },
         }).pipe(
           Effect.map((result) => result.outcome.affected_session_ids.includes(sessionId)),
           Effect.catchIf(isNotFound, () => Effect.succeed(false)),
         ),
-      deferSessionReminder: (sessionId, deliveryId) =>
-        applyWithId("session.reminder.defer", createOperationId("session.reminder.defer"), {
+      deferSessionSnooze: (sessionId, deliveryId) =>
+        applyWithId("session.snooze.defer", createOperationId("session.snooze.defer"), {
           kind: "mutate_session",
           session_id: sessionId,
-          intent: { kind: "defer_reminder_delivery", delivery_id: deliveryId },
+          intent: { kind: "defer_snooze_delivery", delivery_id: deliveryId },
         }).pipe(Effect.asVoid),
       readProjectBootstrap,
       listProjects,
@@ -1857,6 +1946,9 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       unarchiveProjectSession: (command) => setProjectSessionArchived(command, false),
       recordProjectSessionOpened,
       markProjectSessionUnread,
+      setProjectSessionSettled,
+      recordProjectSessionAttention,
+      settleIdleProjectSessions,
       upsertProjectSessionThreadLink: Effect.fn("ProjectWorkspace.upsertProjectSessionThreadLink")(
         function* (input) {
           let outcome: "rejected" | "uncertain" | "committed" = "rejected";

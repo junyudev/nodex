@@ -19,7 +19,7 @@ import {
   sessionSpeaksThroughNodex,
   turnSpeaksThroughNodex,
 } from "../coordinator/notification-session";
-import { claimInboxLaterNotification, type InboxLaterNotification } from "../NotificationIntents";
+import { claimInboxSnoozeNotification, type InboxSnoozeNotification } from "../NotificationIntents";
 import { UserPresence, anyReturned, reportedAttendanceSince } from "../UserPresence";
 import type { PushMessage, PushRecipient, PushTargets } from "./push-delivery";
 import { snapshotTurnItems } from "./transcript-projection";
@@ -45,8 +45,8 @@ export const pushAudience = (occurrence: Attention): components["schemas"]["Phon
     case "user-input-requested":
     case "async-question-requested":
       return { kind: "request", run_id: occurrence.turnId || null, request: "question" };
-    case "session-reminder":
-      return { kind: "reminder_owner", member_id: occurrence.memberId };
+    case "session-snooze":
+      return { kind: "chat_snooze_owner", member_id: occurrence.memberId };
   }
 };
 
@@ -57,7 +57,7 @@ const pushKind = (occurrence: Attention, managed: boolean): PushMessage["kind"] 
     return occurrence.status === "failed" ? "failed" : "finished";
   }
   if (managed) return null;
-  if (occurrence.type === "session-reminder") return "needs_you";
+  if (occurrence.type === "session-snooze") return "needs_you";
   return isCodexNotificationChildConversation(occurrence.conversation) ? null : "needs_you";
 };
 
@@ -164,7 +164,7 @@ export const makeMobilePushEvents = Effect.gen(function* () {
         return questionBody(sessionId);
       case "async-question-requested":
         return Effect.succeed("Nodex has a question");
-      case "session-reminder":
+      case "session-snooze":
         return Effect.succeed("You asked to come back to this chat.");
     }
   };
@@ -322,26 +322,26 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           Effect.catchCause(() => Effect.logWarning("Page Turns could not be read for phones")),
         );
 
-        const followLater = Effect.gen(function* () {
+        const followSnoozes = Effect.gen(function* () {
           const snapshot = yield* core.workspace.read(
-            { kind: "inbox_later_notifications", for_push: true },
+            { kind: "inbox_snooze_notifications", for_push: true },
             undefined,
             null,
           );
-          if (snapshot.value.kind !== "inbox_later_notifications") return;
-          for (const intent of snapshot.value.intents) yield* tellLater(intent);
+          if (snapshot.value.kind !== "inbox_snooze_notifications") return;
+          for (const intent of snapshot.value.intents) yield* tellSnooze(intent);
         }).pipe(
           Effect.catchCause(() =>
-            Effect.logWarning("Inbox reminders could not be read for phones"),
+            Effect.logWarning("Inbox snooze notifications could not be read for phones"),
           ),
         );
 
-        const tellLater = Effect.fnUntraced(function* (intent: InboxLaterNotification) {
-          const key = `later:${intent.id}`;
+        const tellSnooze = Effect.fnUntraced(function* (intent: InboxSnoozeNotification) {
+          const key = `inbox-snooze:${intent.id}`;
           if (entries.has(key)) return;
-          const settle = claimInboxLaterNotification(core, intent, true);
+          const settle = claimInboxSnoozeNotification(core, intent, true);
           const recipients = yield* targets.recipients(null, {
-            kind: "inbox_later_owner",
+            kind: "inbox_snooze_owner",
             id: intent.id,
           });
           if (!recipients.length) {
@@ -384,13 +384,13 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           );
 
         yield* followTurns;
-        yield* followLater;
+        yield* followSnoozes;
         yield* Stream.merge(
           hub.events,
           turnChanges.pipe(Stream.map(() => ({ kind: "turnsChanged" as const }))),
         ).pipe(
           Stream.runForEach((event) => {
-            if (event.kind === "turnsChanged") return Effect.andThen(followTurns, followLater);
+            if (event.kind === "turnsChanged") return Effect.andThen(followTurns, followSnoozes);
             if (event.kind === "conversationSeen")
               return withdraw(
                 event.value,

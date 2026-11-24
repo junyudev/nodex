@@ -8,8 +8,8 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type { ProjectSession } from "../shared/types";
-import type { SessionReminderWork } from "../main/project-application/ProjectWorkspace";
-import { make } from "./SessionReminders";
+import type { SessionSnoozeWork } from "../main/project-application/ProjectWorkspace";
+import { make } from "./SessionSnoozes";
 
 const chat = (id: string, due: number): ProjectSession => ({
   id,
@@ -23,7 +23,10 @@ const chat = (id: string, due: number): ProjectSession => ({
   archived: false,
   archivedAt: null,
   unread: false,
-  remindAt: DateTime.formatIso(DateTime.makeUnsafe(due)),
+  snoozedUntil: DateTime.formatIso(DateTime.makeUnsafe(due)),
+  snoozedAt: null,
+  wokeAt: null,
+  pageTurn: null,
   canManage: true,
   canStop: true,
   thread: null,
@@ -35,7 +38,7 @@ const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow,
 const memory = Effect.gen(function* () {
   const changes = yield* PubSub.unbounded<void>();
   const sessions = new Map<string, ProjectSession>();
-  const pending = new Map<string, SessionReminderWork>();
+  const pending = new Map<string, SessionSnoozeWork>();
   const notifications: string[] = [];
   const notifiedMembers: string[] = [];
   const unread: string[] = [];
@@ -43,15 +46,15 @@ const memory = Effect.gen(function* () {
   const options = {
     next: Effect.sync(() => {
       state.reads++;
-      const work = [...sessions.values()].flatMap((session): SessionReminderWork[] =>
-        session.remindAt
+      const work = [...sessions.values()].flatMap((session): SessionSnoozeWork[] =>
+        session.snoozedUntil
           ? [
               {
                 session,
                 memberId: "member",
-                remindAt: session.remindAt,
+                snoozedUntil: session.snoozedUntil,
                 deliveryId: null,
-                wakeAt: session.remindAt,
+                wakeAt: session.snoozedUntil,
               },
             ]
           : [],
@@ -68,13 +71,13 @@ const memory = Effect.gen(function* () {
           return false;
         }
         const current = sessions.get(id);
-        if (current?.remindAt !== expected) return false;
-        sessions.set(id, { ...current, remindAt: null });
+        if (current?.snoozedUntil !== expected) return false;
+        sessions.set(id, { ...current, snoozedUntil: null });
         if (deliver)
           pending.set(id, {
             session: current,
             memberId: "member",
-            remindAt: expected,
+            snoozedUntil: expected,
             deliveryId: id,
             wakeAt: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
           });
@@ -99,7 +102,7 @@ const memory = Effect.gen(function* () {
           : Effect.sync(() => unread.push(session.id)),
       ),
     isPresented: () => state.presented,
-    notify: (session: ProjectSession, _remindAt: string, memberId: string) => {
+    notify: (session: ProjectSession, _snoozedUntil: string, memberId: string) => {
       notifications.push(session.id);
       notifiedMembers.push(memberId);
     },
@@ -143,7 +146,7 @@ it.effect(
       yield* settle;
       assert.deepEqual(f.notifications, ["earlier", "later"]);
       assert.deepEqual(f.unread, f.notifications);
-      // Each reminder reaches the Member who set it, on every channel that tells them.
+      // Each snooze reaches the Member who set it, on every channel that tells them.
       assert.deepEqual(f.notifiedMembers, ["member", "member"]);
       yield* owner.wake;
       yield* settle;
@@ -162,7 +165,7 @@ it.effect(
       const first = yield* make(f.options).pipe(Effect.provideService(Scope.Scope, firstScope));
       yield* first.activate;
       yield* settle;
-      assert.equal(f.sessions.get("visible")?.remindAt, null);
+      assert.equal(f.sessions.get("visible")?.snoozedUntil, null);
       assert.lengthOf(f.notifications, 0);
       assert.lengthOf(f.unread, 0);
       f.state.presented = false;
@@ -182,7 +185,7 @@ it.effect(
     }),
 );
 
-it.effect("retains unfinished unread work across restart without blocking another reminder", () =>
+it.effect("retains unfinished unread work across restart without blocking another snooze", () =>
   Effect.gen(function* () {
     const f = yield* memory;
     f.state.failUnread = true;
@@ -191,7 +194,7 @@ it.effect("retains unfinished unread work across restart without blocking anothe
     const first = yield* make(f.options).pipe(Effect.provideService(Scope.Scope, firstScope));
     yield* first.activate;
     yield* settle;
-    assert.equal(f.sessions.get("retry")?.remindAt, null);
+    assert.equal(f.sessions.get("retry")?.snoozedUntil, null);
     assert.equal(f.pending.size, 1);
     assert.lengthOf(f.notifications, 0);
     f.state.failUnread = false;

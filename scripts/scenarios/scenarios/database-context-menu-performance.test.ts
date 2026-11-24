@@ -200,8 +200,8 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Session inspection is not part of this scenario");
   }
 
-  async setSessionReminder(): Promise<never> {
-    throw new Error("Session reminders are outside this scenario");
+  async setSessionSnooze(): Promise<never> {
+    throw new Error("Session snoozes are outside this scenario");
   }
 
   async setSessionUnread(): Promise<never> {
@@ -247,8 +247,8 @@ class PerformanceSeedPort implements ScenarioSeedPort {
   async readInbox(): Promise<never> {
     throw new Error("Inbox inspection is not part of this scenario");
   }
-  async setInboxLater(): Promise<never> {
-    throw new Error("Inbox Later is not used in this scenario");
+  async setInboxSnooze(): Promise<never> {
+    throw new Error("Inbox snoozes is not used in this scenario");
   }
 
   async readHandledMessages(): Promise<never> {

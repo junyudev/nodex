@@ -63,7 +63,8 @@ pub(super) fn read_order(
     Ok(rows)
 }
 
-/// Pins `session` at the end of `member`'s pins, keeping an existing pin where it is.
+/// Pins `session` at the end of `member`'s pins, keeping an existing pin where it is. A pinned
+/// chat is never settled, so pinning reopens it.
 pub(super) fn pin(
     connection: &Connection,
     member: &str,
@@ -76,6 +77,8 @@ pub(super) fn pin(
          ON CONFLICT(member_id, session_id) DO NOTHING",
         params![member, session_id],
     )?;
+    super::member_attention::reopen(connection, member, session_id)?;
+    super::member_attention::cancel_snooze(connection, member, session_id)?;
     sync_thread_projection(connection, session_id, now)
 }
 

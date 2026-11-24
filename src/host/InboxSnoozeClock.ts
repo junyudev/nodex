@@ -6,7 +6,7 @@ import { CoreModules } from "../main/core-runtime/CoreModules";
 import { createOperationId } from "../main/core-runtime/operation-identity";
 
 /** The Host wakes at the earliest deadline; only Core decides what is due. */
-export const makeInboxLaterReminders = Effect.fn("InboxLaterReminders.make")(function* (options: {
+export const makeInboxSnoozeClock = Effect.fn("InboxSnoozeClock.make")(function* (options: {
   readonly next: Effect.Effect<string | null, unknown>;
   readonly publishDue: (wakeAt: string) => Effect.Effect<unknown, unknown>;
   readonly changes: Stream.Stream<unknown>;
@@ -38,30 +38,34 @@ export const makeInboxLaterReminders = Effect.fn("InboxLaterReminders.make")(fun
     yield* options.publishDue(next);
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Inbox reminder delivery failed", cause).pipe(Effect.andThen(wait(30_000))),
+      Effect.logWarning("Inbox snooze notification delivery failed", cause).pipe(
+        Effect.andThen(wait(30_000)),
+      ),
     ),
   );
   yield* Effect.forever(step).pipe(Effect.forkScoped);
   return { wake };
 });
 
-export const inboxLaterClock = Effect.fn("InboxLaterReminders.clock")(function* (
+export const inboxSnoozeClock = Effect.fn("InboxSnoozeClock.clock")(function* (
   ready: Effect.Effect<boolean>,
   changes: Stream.Stream<unknown>,
 ) {
   const core = yield* CoreModules;
-  return yield* makeInboxLaterReminders({
+  return yield* makeInboxSnoozeClock({
     changes,
     next: Effect.gen(function* () {
       if (!(yield* ready)) return null;
-      const snapshot = yield* core.workspace.read({ kind: "next_inbox_later" }, undefined, null);
-      return snapshot.value.kind === "next_inbox_later" ? (snapshot.value.remind_at ?? null) : null;
+      const snapshot = yield* core.workspace.read({ kind: "next_inbox_snooze" }, undefined, null);
+      return snapshot.value.kind === "next_inbox_snooze"
+        ? (snapshot.value.snoozed_until ?? null)
+        : null;
     }),
     publishDue: (wakeAt) =>
       core.workspace.apply(
         {
-          operationId: createOperationId("inbox.later.due"),
-          intent: { kind: "publish_due_inbox_later", wake_at: wakeAt },
+          operationId: createOperationId("inbox.snoozed.due"),
+          intent: { kind: "publish_due_inbox_snooze", wake_at: wakeAt },
         },
         undefined,
         null,

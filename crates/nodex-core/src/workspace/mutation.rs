@@ -433,8 +433,8 @@ pub(super) fn apply(
                         &request_hash, intent.clone(), &assets_root),
                 ProjectWorkspaceIntent::HoldAutomationDecision {lease_id,page_id,document_id,title} => super::inbox::hold_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, lease_id, page_id, document_id, title),
                 ProjectWorkspaceIntent::RefreshAutomationDecision {dispatch_id} => super::inbox::refresh_automation_decision(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, dispatch_id),
-                intent @ (ProjectWorkspaceIntent::SetInboxLater { .. } | ProjectWorkspaceIntent::ClearInboxLater { .. } | ProjectWorkspaceIntent::PublishDueInboxLater { .. }
-                    | ProjectWorkspaceIntent::ClaimInboxLaterNotification { .. }) => super::inbox::later::apply(
+                intent @ (ProjectWorkspaceIntent::SetInboxSnooze { .. } | ProjectWorkspaceIntent::WakeInboxEntries { .. } | ProjectWorkspaceIntent::PublishDueInboxSnooze { .. }
+                    | ProjectWorkspaceIntent::ClaimInboxSnoozeNotification { .. }) => super::inbox::snooze::apply(
                         transaction, &library_id, &context, &store_epoch, &request.operation_id,
                         &request_hash, intent,
                     ),
@@ -751,6 +751,23 @@ pub(super) fn apply(
                         &request_hash,
                         section_id,
                         replacement_session_id.as_deref(),
+                    )
+                }
+                ProjectWorkspaceIntent::SetSessionsSettled { session_ids, settled } => {
+                    session_mutation::set_sessions_settled(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, session_ids, *settled,
+                    )
+                }
+                ProjectWorkspaceIntent::SettleIdleSessions { idle_before_ms } => {
+                    session_lifecycle::settle_idle_sessions(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        *idle_before_ms,
                     )
                 }
                 ProjectWorkspaceIntent::UpsertSidebarSectionHostLink { link } => {

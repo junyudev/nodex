@@ -297,7 +297,10 @@ export interface ScenarioSeedPort {
   readSession(sessionId: string): Promise<ProjectSession | null>;
   /** Threadless Session unread remains independent of native read-state identities. */
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
-  setSessionReminder(sessionId: string, remindAt: string | null): Promise<void>;
+  setSessionSnooze(sessionId: string, snoozedUntil: string | null): Promise<void>;
+  /** Core-only fixture commands for completed chat lifecycle transitions. */
+  settleSessions?(sessionIds: readonly string[]): Promise<void>;
+  deliverDueSessionSnooze?(sessionId: string): Promise<void>;
   readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult>;
   readPageChats(pageId: string): Promise<PageChatWindow>;
   createSidebarSection(input: SidebarSectionCreateInput): Promise<SidebarSectionSummary>;
@@ -313,13 +316,13 @@ export interface ScenarioSeedPort {
   proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
   dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void>;
   keepInboxEntries(pageIds: readonly string[]): Promise<void>;
-  setInboxLater(pageIds: readonly string[], until: string): Promise<void>;
+  setInboxSnooze(pageIds: readonly string[], until: string): Promise<void>;
   recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
   completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
   /** What still needs the user in one Inbox, newest first. */
   readInboxNotesPage(scope: InboxScope): Promise<string | null>;
-  readInbox(scope?: InboxScope, filter?: "inbox" | "later"): Promise<InboxWindow>;
+  readInbox(scope?: InboxScope, filter?: "inbox" | "snoozed"): Promise<InboxWindow>;
   /** One Inbox's handled messages as Activity holds them: by their newest decision, once each. */
   readHandledMessages(scope?: InboxScope): Promise<readonly InboxItem[]>;
   /** Automation transitions use Core and the Inbox application without starting Agents. */

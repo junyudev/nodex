@@ -226,7 +226,7 @@ hidden for a team connection. Transport admission alone does not enable a
 Desktop producer or execution Runtime.
 
 Core owns each Member's View preferences, collapsed occurrences, Session unread, chat
-pins and their order, chat reminders,
+pins and their order, chat snoozes,
 “Let Nodex start chats for me” consent, notification reads and claims, and retained recovery
 drafts. The same Member sees this state on every enrolled device. Core derives
 the Member from the authenticated principal; clients cannot select another person.
@@ -375,8 +375,8 @@ chat, its header, sidebar rows, sidebar menu, command palette, shortcuts, `/comp
 lists the archived chats the reader may restore. Its filter applies [chat search
 text matching](command-palette-behavior.md#text-matching) to loaded titles, Projects,
 folders, and opening previews. The list retains its order.
-Every Member pins, orders and sets reminders for any hosted chat, as their own
-attention: other Members' sidebars and reminders stay as they are. Archiving a chat ends
+Every Member pins, orders and snoozes any hosted chat, as their own
+attention: other Members' sidebars and snoozes stay as they are. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,
 reminders and unread state go, and restoring it brings none of them back. Managed by Nodex
 and Section placement are not available for hosted chats on a team desktop. Mark as
@@ -438,7 +438,7 @@ merely by arriving through the same channel as a person's message.
 
 View preferences, collapsed occurrences, Session unread state, chat pins and
 reminders, and recovery drafts belong to a Member. The Space host delivers each
-Member's due reminders by turning the chat unread for that Member only. These routes are available over HTTPS with the Member key
+Member's due snoozes by turning the chat unread for that Member only. These routes are available over HTTPS with the Member key
 derived from the principal. Shared View definitions and Session lifecycle remain
 shared. Existing personal state belongs to the local Member after migration.
 

@@ -292,8 +292,10 @@ mod tests {
             module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: None,
+                whole_library: false,
                 include_archived: None,
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     first: Some(10),

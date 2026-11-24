@@ -3,8 +3,12 @@ import { isBoundedOperationId } from "../operation-identity";
 import type {
   ProjectSessionArchiveCommandInput,
   ProjectSessionRenameCommandInput,
+  ProjectSessionSettledCommandInput,
 } from "../workspace-catalog-commands";
-import { ProjectSessionRenameInputSchema } from "./project-sessions";
+import {
+  ProjectSessionRenameInputSchema,
+  ProjectSessionSettledInputSchema,
+} from "./project-sessions";
 
 const sessionId = z.string().trim().min(1).max(512);
 const sessionCommand = <Payload extends z.ZodRawShape>(payload: Payload) =>
@@ -21,3 +25,8 @@ export const ProjectSessionRenameCommandSchema = sessionCommand({
 export const ProjectSessionArchiveCommandSchema = sessionCommand(
   {},
 ) satisfies z.ZodType<ProjectSessionArchiveCommandInput>;
+
+export const ProjectSessionSettledCommandSchema = z.strictObject({
+  operationId: z.string().refine(isBoundedOperationId),
+  payload: ProjectSessionSettledInputSchema,
+}) satisfies z.ZodType<ProjectSessionSettledCommandInput>;

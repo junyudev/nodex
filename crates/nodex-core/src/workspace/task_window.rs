@@ -4,8 +4,8 @@ use nodex_core_contracts::collection::{
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, MAX_PROJECT_WORKSPACE_TASK_LANES,
     ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskLane,
-    ProjectWorkspaceTaskPlacementScope, ProjectWorkspaceTaskSummary,
-    ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceTaskLifecycle, ProjectWorkspaceTaskOrder, ProjectWorkspaceTaskPlacementScope,
+    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
@@ -16,6 +16,36 @@ use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
+
+/// A chat that lists as a task of its own: not a side chat, not the coordinator's chat and not a
+/// child Thread's Session. Expects a `session` row and its left-joined linked `thread`.
+pub(super) const LISTED_CHAT_SQL: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
+     AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+     AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
+
+/// The chat `session` lists in the Library `library` (an SQL expression): it is outside every
+/// Project, or its Project is not archived.
+/// Whether the chat `session` sits in one of the Library's custom Sections by a person's own
+/// placement, rather than through its Project. `library` is a SQL expression.
+pub(super) fn placed_in_custom_section_sql(library: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
+           JOIN workspace_sidebar_sections section \
+             ON section.library_id = item.library_id \
+            AND section.section_id = item.section_id \
+           WHERE item.session_id = session.id AND item.library_id = {library} \
+             AND section.kind = 'custom' AND section.lifecycle = 'active')"
+    )
+}
+
+pub(super) fn listed_in_library_sql(library: &str) -> String {
+    format!(
+        "(session.project_id IS NULL OR EXISTS (\
+           SELECT 1 FROM projects project \
+           WHERE project.id = session.project_id AND project.library_id = {library} \
+             AND project.lifecycle <> 'archived'))"
+    )
+}
 
 pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session.project_id, \
              session.no_thread_fallback_title, session.activity_at, {pinned}, \
@@ -34,21 +64,27 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              thread.status_active_flags_json, thread.archived, thread.created_at, \
              thread.updated_at, thread.recency_at, thread.linked_at, \
              (SELECT execution.runtime_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), \
-             (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), {remind_at}, \
-             EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id) AS managed";
+             (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), {snoozed_until}, \
+             EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id) AS managed, \
+             {settled_at} AS settled_at, {attention_at} AS attention_at";
 
 /// Task columns as one reader sees them: their own attention and whether they may manage the chat
 /// or stop its work.
 pub(super) fn summary_columns(member_parameter: usize) -> String {
-    use super::member_attention::{pinned_order_sql, pinned_sql, remind_at_sql, unread_sql};
+    use super::member_attention::{
+        attention_at_sql, pinned_order_sql, pinned_sql, settled_at_sql, snoozed_at_sql,
+        snoozed_until_sql, unread_sql, woke_at_sql,
+    };
     let member = format!("?{member_parameter}");
     format!(
-        "{}, {} AS can_manage, {} AS can_stop, {}",
+        "{}, {} AS can_manage, {} AS can_stop, {}, {}, {}",
         TASK_SUMMARY_COLUMNS
             .replace("{pinned_order}", &pinned_order_sql("session.id", &member))
             .replace("{pinned}", &pinned_sql("session.id", &member))
             .replace("{unread}", &unread_sql("session.id", &member))
-            .replace("{remind_at}", &remind_at_sql("session.id", &member)),
+            .replace("{snoozed_until}", &snoozed_until_sql("session.id", &member))
+            .replace("{settled_at}", &settled_at_sql("session.id", &member))
+            .replace("{attention_at}", &attention_at_sql("session")),
         super::chat_stewardship::may_manage_sql("session.id", &member),
         super::chat_stewardship::may_stop_sql(
             "session.id",
@@ -56,22 +92,32 @@ pub(super) fn summary_columns(member_parameter: usize) -> String {
             &member,
         ),
         super::chat_folder::SUMMARY_COLUMN,
+        snoozed_at_sql("session.id", &member),
+        woke_at_sql("session.id", &member),
     )
 }
 
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
 
-#[allow(clippy::too_many_arguments)]
+/// Which chats one task list shows, and in what order.
+#[derive(Clone, Copy)]
+pub(super) struct TaskListing<'a> {
+    pub(super) project_id: Option<&'a str>,
+    /// Every Project's chats and every chat outside a Project; `project_id` is then absent.
+    pub(super) whole_library: bool,
+    pub(super) include_archived: bool,
+    pub(super) placement_scope: ProjectWorkspaceTaskPlacementScope,
+    pub(super) lifecycle: ProjectWorkspaceTaskLifecycle,
+    pub(super) order: ProjectWorkspaceTaskOrder,
+}
+
 pub(super) fn read_task_window(
     connection: &Connection,
     library_id: &str,
     member: &str,
     commit_head: i64,
-    project_id: Option<&str>,
-    include_archived: bool,
-    placement_scope: ProjectWorkspaceTaskPlacementScope,
-    order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder,
+    listing: TaskListing<'_>,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
     read_task_window_in_scope(
@@ -79,21 +125,20 @@ pub(super) fn read_task_window(
         library_id,
         member,
         commit_head,
-        project_id,
+        listing,
         false,
-        include_archived,
-        placement_scope,
-        order,
         request,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn read_task_lanes(
     connection: &Connection,
     library_id: &str,
     member: &str,
     commit_head: i64,
     project_id: Option<&str>,
+    whole_library: bool,
     lanes: &[ProjectWorkspaceTaskLane],
 ) -> Result<Vec<CollectionWindow<ProjectWorkspaceTaskSummary>>, StoreError> {
     if lanes.is_empty() || lanes.len() > MAX_PROJECT_WORKSPACE_TASK_LANES {
@@ -109,10 +154,14 @@ pub(super) fn read_task_lanes(
                 library_id,
                 member,
                 commit_head,
-                project_id,
-                lane.include_archived.unwrap_or(false),
-                lane.placement_scope,
-                lane.order,
+                TaskListing {
+                    project_id,
+                    whole_library,
+                    include_archived: lane.include_archived.unwrap_or(false),
+                    placement_scope: lane.placement_scope,
+                    lifecycle: lane.lifecycle,
+                    order: lane.order,
+                },
                 &lane.window,
             )
         })
@@ -132,28 +181,44 @@ pub(super) fn read_pinned_task_window(
         library_id,
         member,
         commit_head,
-        None,
+        TaskListing {
+            project_id: None,
+            whole_library: false,
+            include_archived,
+            placement_scope: ProjectWorkspaceTaskPlacementScope::All,
+            lifecycle: ProjectWorkspaceTaskLifecycle::All,
+            order: ProjectWorkspaceTaskOrder::Activity,
+        },
         true,
-        include_archived,
-        ProjectWorkspaceTaskPlacementScope::All,
-        nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Activity,
         request,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn read_task_window_in_scope(
     connection: &Connection,
     library_id: &str,
     member: &str,
     commit_head: i64,
-    project_id: Option<&str>,
+    listing: TaskListing<'_>,
     pinned_only: bool,
-    include_archived: bool,
-    placement_scope: ProjectWorkspaceTaskPlacementScope,
-    order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
+    let TaskListing {
+        project_id,
+        whole_library,
+        include_archived,
+        placement_scope,
+        lifecycle,
+        order,
+    } = listing;
+    if whole_library && project_id.is_some() {
+        return Err(invalid("A whole-Library task list names no Project"));
+    }
+    if order == ProjectWorkspaceTaskOrder::Settlement
+        && lifecycle != ProjectWorkspaceTaskLifecycle::Settled
+    {
+        return Err(invalid("Only settled chats can be ordered by settlement"));
+    }
     if !pinned_only && let Some(project_id) = project_id {
         validate_id(project_id, "project_id")?;
         let exists = connection.query_row(
@@ -167,14 +232,16 @@ fn read_task_window_in_scope(
         }
     }
     let normalized = normalize_request(request)?;
-    // Pins order each Member's lanes, so a cursor belongs to its reader.
+    // Pins and settlement order each Member's lanes, so a cursor belongs to its reader.
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v7",
+        "workspace_task_window_v8",
         member,
         project_id,
+        whole_library,
         pinned_only,
         include_archived,
         placement_scope,
+        lifecycle,
         order,
     ))?;
     let subject = CollectionCursorSubject {
@@ -208,7 +275,6 @@ fn read_task_window_in_scope(
         project_id.map_or(SqlValue::Null, |value| SqlValue::Text(value.to_owned())),
         SqlValue::Text(library_id.to_owned()),
         SqlValue::Integer(i64::from(include_archived)),
-        SqlValue::Integer(i64::from(pinned_only)),
     ];
     let cursor_predicate = coordinate
         .map(|(pin_bucket, lane_order, stable_id)| {
@@ -217,9 +283,9 @@ fn read_task_window_in_scope(
                 SqlValue::Integer(lane_order),
                 SqlValue::Text(stable_id),
             ]);
-            "WHERE pin_bucket > ?5 \
-               OR (pin_bucket = ?5 AND lane_order > ?6) \
-               OR (pin_bucket = ?5 AND lane_order = ?6 AND session_id > ?7)"
+            "WHERE pin_bucket > ?4 \
+               OR (pin_bucket = ?4 AND lane_order > ?5) \
+               OR (pin_bucket = ?4 AND lane_order = ?5 AND session_id > ?6)"
         })
         .unwrap_or_default();
     parameters.push(SqlValue::Integer(
@@ -228,64 +294,76 @@ fn read_task_window_in_scope(
     ));
     let limit_parameter = parameters.len();
     let placement_predicate = match placement_scope {
-        ProjectWorkspaceTaskPlacementScope::All => "",
+        ProjectWorkspaceTaskPlacementScope::All => String::new(),
         ProjectWorkspaceTaskPlacementScope::Builtin => {
-            "AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
-               JOIN workspace_sidebar_sections section \
-                 ON section.library_id = item.library_id \
-                AND section.section_id = item.section_id \
-               WHERE item.session_id = session.id AND item.library_id = ?2 \
-                 AND section.kind = 'custom' AND section.lifecycle = 'active')"
+            format!("AND NOT {}", placed_in_custom_section_sql("?2"))
         }
     };
-    let manual = matches!(
-        order,
-        nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual
-    );
     parameters.push(SqlValue::Text(member.to_owned()));
     let member_parameter = format!("?{}", parameters.len());
     let pinned = super::member_attention::pinned_sql("session.id", &member_parameter);
+    let settled_at = super::member_attention::settled_at_sql("session.id", &member_parameter);
+    let scope_predicate = if pinned_only {
+        pinned.clone()
+    } else if whole_library {
+        "1".to_owned()
+    } else {
+        "((?1 IS NULL AND session.project_id IS NULL) OR session.project_id = ?1)".to_owned()
+    };
+    let lifecycle_predicate = match lifecycle {
+        ProjectWorkspaceTaskLifecycle::All => String::new(),
+        ProjectWorkspaceTaskLifecycle::Open => format!("AND {settled_at} IS NULL"),
+        ProjectWorkspaceTaskLifecycle::Settled => format!("AND {settled_at} IS NOT NULL"),
+    };
     // A default draft is its Member's own, so another Member's unstarted chat never lists.
     let own_draft = format!(
         "(session.is_default_draft = 0 OR {} IS {member_parameter})",
         super::chat_stewardship::opener_sql("session.id")
     );
     let pinned_order = super::member_attention::pinned_order_sql("session.id", &member_parameter);
-    let bucket = if manual {
-        format!("CASE WHEN {pinned} THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END")
-    } else {
-        format!("CASE WHEN {pinned} THEN 0 ELSE 1 END")
+    let pinned_first = format!("CASE WHEN {pinned} THEN 0 ELSE 1 END");
+    let by_pin_then = |rest: &str| {
+        format!(
+            "CASE WHEN {pinned} THEN COALESCE({pinned_order}, 9223372036854775807) ELSE {rest} END"
+        )
     };
-    let lane_order = if manual {
-        format!(
-            "CASE WHEN {pinned} THEN COALESCE({pinned_order}, 9223372036854775807) WHEN session.manual_rank IS NOT NULL THEN session.manual_rank ELSE -session.activity_at END"
-        )
-    } else {
-        format!(
-            "CASE WHEN {pinned} THEN COALESCE({pinned_order}, 9223372036854775807) ELSE -session.activity_at END"
-        )
+    let (bucket, lane_order) = match order {
+        ProjectWorkspaceTaskOrder::Activity => (pinned_first, by_pin_then("-session.activity_at")),
+        ProjectWorkspaceTaskOrder::Attention => (
+            pinned_first,
+            by_pin_then(&format!(
+                "-{}",
+                super::member_attention::attention_at_sql("session")
+            )),
+        ),
+        ProjectWorkspaceTaskOrder::Manual => (
+            format!("CASE WHEN {pinned} THEN 0 WHEN session.manual_rank IS NULL THEN 1 ELSE 2 END"),
+            by_pin_then(
+                "CASE WHEN session.manual_rank IS NOT NULL THEN session.manual_rank ELSE -session.activity_at END",
+            ),
+        ),
+        // Pinned chats are never settled, so a settled list has no pin bucket.
+        ProjectWorkspaceTaskOrder::Settlement => ("0".to_owned(), format!("-{settled_at}")),
     };
     let task_columns = summary_columns(parameters.len());
+    let library_predicate = listed_in_library_sql("?2");
+    let page_turn =
+        super::page_turn::chat_turn_column("window_rows.session_id", "?2", &member_parameter);
     let sql = format!(
         "WITH task_rows AS (\
            SELECT {task_columns}, {bucket} AS pin_bucket, {lane_order} AS lane_order \
            FROM project_sessions session \
            LEFT JOIN project_session_threads link ON link.session_id = session.id \
            LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-           WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND ((?4 = 1 AND {pinned}) OR (?4 = 0 AND \
-             ((?1 IS NULL AND session.project_id IS NULL) OR session.project_id = ?1))) \
-             AND (session.project_id IS NULL OR EXISTS (\
-               SELECT 1 FROM projects project \
-               WHERE project.id = session.project_id AND project.library_id = ?2 \
-                 AND project.lifecycle <> 'archived'\
-             )) \
+           WHERE {LISTED_CHAT_SQL} AND {scope_predicate} AND {library_predicate} \
              AND (?3 = 1 OR session.archived = 0) \
-             AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
              AND {own_draft} \
-             {placement_predicate}\
+             {lifecycle_predicate} {placement_predicate}\
+         ), window_rows AS MATERIALIZED (\
+           SELECT * FROM task_rows {cursor_predicate} \
+           ORDER BY pin_bucket, lane_order, session_id LIMIT ?{limit_parameter}\
          ) \
-         SELECT * FROM task_rows {cursor_predicate} \
-         ORDER BY pin_bucket, lane_order, session_id LIMIT ?{limit_parameter}"
+         SELECT window_rows.*, {page_turn} FROM window_rows ORDER BY pin_bucket, lane_order, session_id"
     );
     let rows = connection
         .prepare(&sql)?
@@ -399,10 +477,15 @@ pub(super) fn task_summary_from_row(
             archived: row.get::<_, i64>(offset + 6)? == 1,
             archived_at: row.get(offset + 7)?,
             unread: row.get::<_, i64>(offset + 8)? == 1,
-            remind_at: row.get(offset + 41)?,
-            can_manage: row.get(offset + 43)?,
-            can_stop: row.get(offset + 44)?,
-            folder: super::chat_folder::decode_summary(row, offset + 45)?,
+            snoozed_until: row.get(offset + 41)?,
+            snoozed_at: row.get(offset + 48)?,
+            woke_at: row.get(offset + 49)?,
+            page_turn: super::page_turn::chat_turn_from_row(row)?,
+            settled_at: row.get(offset + 43)?,
+            attention_at: row.get(offset + 44)?,
+            can_manage: row.get(offset + 45)?,
+            can_stop: row.get(offset + 46)?,
+            folder: super::chat_folder::decode_summary(row, offset + 47)?,
             thread_id: row.get(offset + 11)?,
             execution_ref: row
                 .get::<_, Option<String>>(offset + 39)?
@@ -504,8 +587,10 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: project_id.map(str::to_owned),
+                whole_library: false,
                 include_archived: Some(false),
                 placement_scope: ProjectWorkspaceTaskPlacementScope::All,
+                lifecycle: Default::default(),
                 order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual,
                 window: CollectionWindowRequest {
                     after,
@@ -529,8 +614,10 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: project_id.map(str::to_owned),
+                whole_library: false,
                 include_archived: Some(false),
                 placement_scope,
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: CollectionWindowRequest {
                     after,
@@ -645,6 +732,7 @@ mod tests {
         let lane = |placement_scope| ProjectWorkspaceTaskLane {
             include_archived: Some(false),
             placement_scope,
+            lifecycle: Default::default(),
             order: Default::default(),
             window: CollectionWindowRequest {
                 after: None,
@@ -655,6 +743,7 @@ mod tests {
             module,
             ProjectWorkspaceRead::TaskWindows {
                 project_id: None,
+                whole_library: false,
                 lanes: vec![
                     lane(ProjectWorkspaceTaskPlacementScope::All),
                     lane(ProjectWorkspaceTaskPlacementScope::Builtin),
@@ -684,6 +773,7 @@ mod tests {
                         contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
                         read: ProjectWorkspaceRead::TaskWindows {
                             project_id: None,
+                            whole_library: false,
                             lanes: vec![lane(ProjectWorkspaceTaskPlacementScope::All); count],
                         },
                     },
@@ -710,8 +800,10 @@ mod tests {
                                 nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
                             read: ProjectWorkspaceRead::TaskWindow {
                                 project_id: None,
+                                whole_library: false,
                                 include_archived: Some(false),
                                 placement_scope,
+                                lifecycle: Default::default(),
                                 order: Default::default(),
                                 window: CollectionWindowRequest {
                                     after,

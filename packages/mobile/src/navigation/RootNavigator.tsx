@@ -13,7 +13,7 @@ import { ChatScreen } from "../features/chat/ChatScreen";
 import { ImageViewerScreen } from "../features/chat/ImageViewerScreen";
 import { useHomeState } from "../features/home/home-state";
 import { HOME_HEADER, HomeScreen } from "../features/home/HomeScreen";
-import { InboxLaterPicker } from "../features/inbox/InboxLaterPicker";
+import { InboxSnoozePicker } from "../features/inbox/InboxSnoozePicker";
 import { InboxViewPicker } from "../features/inbox/InboxViewPicker";
 import { MessageScreen } from "../features/inbox/MessageScreen";
 import { SuggestionScreen } from "../features/inbox/Suggestion";
@@ -168,8 +168,8 @@ export const RootNavigator = () => {
               options={{ ...SHEET, sheetAllowedDetents: "fitToContents" }}
             />
             <Stack.Screen
-              name="InboxLaterPicker"
-              component={InboxLaterPicker}
+              name="InboxSnoozePicker"
+              component={InboxSnoozePicker}
               options={{ ...SHEET, sheetAllowedDetents: "fitToContents" }}
             />
             <Stack.Screen name="ScopePicker" component={ScopePickerScreen} options={SHEET} />

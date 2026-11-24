@@ -76,10 +76,6 @@ const runtime = (id: string, day: number): RuntimeItem => ({
   relationshipToParent: null,
   rootThreadId: id,
   branch: null,
-  settled: false,
-  settledAt: null,
-  snoozed: false,
-  snoozedUntil: null,
   pullRequests: [],
   itemCount: 0,
   itemCountCoverage: "complete",
@@ -432,21 +428,28 @@ it.effect(
         ...runtime("active", 9),
         status: "active" as const,
         runStatus: "waiting" as const,
-        settled: false,
-        snoozed: false,
       };
       const settled = {
         ...runtime("settled", 8),
         runStatus: "completed" as const,
-        settled: true,
-        settledAt: at(8),
-        snoozed: true,
-        snoozedUntil: at(30),
         branch: "feature/search",
       };
+      const placement = bound("session:settled", "settled");
       const f = fixture({
         runtime: [active, settled],
-        bindings: [bound("session:active", "active"), bound("session:settled", "settled")],
+        bindings: [
+          bound("session:active", "active"),
+          {
+            ...placement,
+            task: {
+              ...placement.task,
+              session: {
+                ...placement.task.session,
+                settled_at: Date.parse(at(8)),
+              },
+            },
+          },
+        ],
         runtimePageSize: 1,
       });
       const first = yield* f.list({
@@ -454,7 +457,7 @@ it.effect(
         limit: 10,
         statuses: ["completed"],
         settled: true,
-        snoozed: true,
+        snoozed: false,
       });
       assert.equal(first.sessions.length, 0);
       assert.isNotNull(first.nextCursor);
@@ -463,10 +466,11 @@ it.effect(
         limit: 10,
         statuses: ["completed"],
         settled: true,
-        snoozed: true,
+        snoozed: false,
         cursor: first.nextCursor!,
       });
       assert.equal(second.sessions[0]?.sessionId, "session:settled");
+      assert.equal(second.sessions[0]?.settledAt, at(8));
       assert.equal(second.sessions[0]?.branch, "feature/search");
       assert.equal(second.sessions[0]?.itemCountCoverage, "complete");
       assert.equal(

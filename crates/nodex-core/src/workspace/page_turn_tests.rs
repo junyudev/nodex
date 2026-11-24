@@ -105,6 +105,57 @@ fn episodes_survive_repeated_observation_and_change_on_actor_reason_and_return()
     assert_eq!(turn(&w), old);
 }
 #[test]
+fn chat_summary_exposes_only_reader_attention_reasons() {
+    let w = setup();
+    let reader = local_member(&w);
+    let member = TurnActor::Member { member_id: reader };
+    for (actor, reason, visible) in [
+        (member.clone(), Some(TurnReason::Review), true),
+        (member.clone(), Some(TurnReason::Blocked), true),
+        (member.clone(), Some(TurnReason::Failed), true),
+        (member.clone(), Some(TurnReason::Stalled), true),
+        (member.clone(), Some(TurnReason::Paused), false),
+        (member.clone(), Some(TurnReason::Working), false),
+        (member, Some(TurnReason::ReadyToStart), false),
+        (TurnActor::Members, Some(TurnReason::Approval), true),
+        (TurnActor::Members, Some(TurnReason::Triage), false),
+        (TurnActor::None, None, false),
+    ] {
+        // A shared actor currently occurs only for intake. Exercise the read contract directly
+        // with persisted episodes so it can also handle a work Turn assigned to Members.
+        let signature = serde_json::json!([actor, reason, null]).to_string();
+        w.kernel
+            .writer()
+            .call(move |connection| {
+                connection.execute(
+                    "UPDATE page_turn_episodes SET signature=?1 WHERE page_id=?2",
+                    rusqlite::params![signature, PAGE],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let ProjectWorkspaceReadValue::Session { session } = read(
+            &w.module,
+            ProjectWorkspaceRead::Session {
+                session_id: "chat".into(),
+            },
+        ) else {
+            panic!("chat summary");
+        };
+        assert_eq!(
+            session.page_turn.is_some(),
+            visible,
+            "{actor:?}, {reason:?}"
+        );
+        if let Some(turn) = session.page_turn {
+            assert_eq!(turn.page_id, PAGE);
+            assert_eq!(turn.reason, reason);
+            assert_eq!(turn.actor, actor);
+        }
+    }
+}
+
+#[test]
 fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_person_stop() {
     let w = setup();
     capture(&w, 0, observation(SessionExecutionState::Unavailable));

@@ -163,7 +163,7 @@ export const makeCodexThreadNotificationHandler =
     }
 
     const settings = options.getSettings();
-    if (event.type === "session-reminder") {
+    if (event.type === "session-snooze") {
       if (
         settings.turnMode === "off" ||
         (settings.turnMode === "background" && options.isAppForegrounded()) ||
@@ -171,22 +171,22 @@ export const makeCodexThreadNotificationHandler =
       )
         return;
       const id = JSON.stringify([
-        "session-reminder",
+        "session-snooze",
         event.conversation.runtimeSessionId,
-        event.remindAt,
+        event.snoozedUntil,
       ]);
       showNotification(options, event, {
         id,
         occurrenceId: id,
-        kind: "reminder",
+        kind: "chat-snooze",
         title:
           event.conversation.title?.trim() ||
           getMainIntl().formatMessage({
-            id: "main.notification.reminder.title",
+            id: "main.notification.chatSnooze.title",
             defaultMessage: "Chat",
           }),
         body: getMainIntl().formatMessage({
-          id: "main.notification.reminder.body",
+          id: "main.notification.chatSnooze.body",
           defaultMessage: "You asked to come back to this chat.",
         }),
       });

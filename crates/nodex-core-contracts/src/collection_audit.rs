@@ -92,7 +92,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::InboxAutomaticDispatches { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
-        | ProjectWorkspaceRead::InboxLaterNotifications { .. }
+        | ProjectWorkspaceRead::InboxSnoozeNotifications { .. }
         | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,
         // Each of at most four lanes is an ordinary budgeted collection window.
         ProjectWorkspaceRead::TaskWindows { .. } => ReadBudgetPolicy::BoundedBatch,
@@ -102,8 +102,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SessionSidebarPlacements { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
-        ProjectWorkspaceRead::NextInboxLater
-        | ProjectWorkspaceRead::NextSessionReminder
+        ProjectWorkspaceRead::NextInboxSnooze
+        | ProjectWorkspaceRead::NextSessionSnooze
         | ProjectWorkspaceRead::UnreadChatCount
         | ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }

@@ -134,8 +134,8 @@ const HomeTitle = () => {
       <View accessibilityRole="tablist" className="flex-row p-1">
         <Segment
           mode="inbox"
-          label={filter === "later" ? "Later" : "Inbox"}
-          count={filter === "later" ? 0 : (shown?.count ?? 0)}
+          label={filter === "snoozed" ? "Snoozed" : "Inbox"}
+          count={filter === "snoozed" ? 0 : (shown?.count ?? 0)}
           countTone="muted"
         />
         <Segment
@@ -165,7 +165,7 @@ const HomeTrailing = () => {
     <IconButton
       color={filter === "inbox" ? "ink" : "accent"}
       label="Inbox views"
-      name={filter === "later" ? "clock" : "history"}
+      name={filter === "snoozed" ? "clock" : "history"}
       onPress={() => navigation.navigate("InboxViewPicker")}
     />
   ) : (

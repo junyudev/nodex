@@ -1602,7 +1602,7 @@ export interface components {
             readonly last_scheduled_for_ms: number;
             /**
              * Format: int32
-             * @description Later decisions that fell due while this one waited.
+             * @description Snooze decisions that fell due while this one waited.
              */
             readonly missed_count: number;
             readonly status: components["schemas"]["AutomationDecisionStatus"];
@@ -2601,7 +2601,6 @@ export interface components {
                 /** @description The user marked the message important, so it stays in view while it waits. */
                 readonly important: boolean;
                 readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
-                readonly later: components["schemas"]["InboxLater"] | null;
                 readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
                 readonly page_id: string;
                 readonly page_key?: string | null;
@@ -2613,6 +2612,7 @@ export interface components {
                 readonly revision: number;
                 readonly row_kind: components["schemas"]["InboxRowKind"];
                 readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+                readonly snooze: components["schemas"]["InboxSnooze"] | null;
                 readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
                 readonly submitted_at: string;
                 readonly suggestion_error?: string | null;
@@ -3094,7 +3094,7 @@ export interface components {
             readonly kind: "reconnect_document_subscription";
         } | {
             /** @enum {string} */
-            readonly kind: "inbox_remind_at_passed";
+            readonly kind: "inbox_snooze_time_passed";
         } | {
             /** @enum {string} */
             readonly kind: "database_view_order_preparation";
@@ -5325,7 +5325,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -5343,17 +5343,6 @@ export interface components {
             readonly reason: string;
             readonly receipt_id: string;
             readonly returned_at: string;
-        };
-        readonly InboxLater: {
-            readonly set_at: string;
-            readonly until: string;
-        };
-        readonly InboxLaterNotification: {
-            readonly id: string;
-            readonly member_id: string;
-            readonly page_id: string;
-            readonly returned_at: string;
-            readonly title: string;
         };
         /**
          * @description Bounded routing context for the suggestion Agent. It intentionally carries
@@ -5443,6 +5432,17 @@ export interface components {
             readonly project_id?: string | null;
             readonly session_id?: string | null;
             readonly skills: readonly components["schemas"]["InboxOfferedSkill"][];
+        };
+        readonly InboxSnooze: {
+            readonly set_at: string;
+            readonly until: string;
+        };
+        readonly InboxSnoozeNotification: {
+            readonly id: string;
+            readonly member_id: string;
+            readonly page_id: string;
+            readonly returned_at: string;
+            readonly title: string;
         };
         /** @description A skill the user can include when confirming a chat proposal. */
         readonly InboxSuggestedSkill: {
@@ -8786,6 +8786,16 @@ export interface components {
                 readonly section_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "set_sessions_settled";
+                readonly session_ids: readonly string[];
+                readonly settled: boolean;
+            } | {
+                /** Format: int64 */
+                readonly idle_before_ms: number;
+                /** @enum {string} */
+                readonly kind: "settle_idle_sessions";
+            } | {
+                /** @enum {string} */
                 readonly kind: "upsert_sidebar_section_host_link";
                 readonly link: components["schemas"]["ProjectWorkspaceSidebarSectionHostLink"];
             } | {
@@ -9206,22 +9216,22 @@ export interface components {
                 readonly page_ids: readonly string[];
             } | {
                 /** @enum {string} */
-                readonly kind: "set_inbox_later";
+                readonly kind: "set_inbox_snooze";
                 readonly page_ids: readonly string[];
                 readonly until: string;
             } | {
                 /** @enum {string} */
-                readonly kind: "clear_inbox_later";
+                readonly kind: "wake_inbox_entries";
                 readonly page_ids: readonly string[];
             } | {
                 /** @enum {string} */
-                readonly kind: "publish_due_inbox_later";
+                readonly kind: "publish_due_inbox_snooze";
                 readonly wake_at: string;
             } | {
                 readonly for_push: boolean;
                 readonly id: string;
                 /** @enum {string} */
-                readonly kind: "claim_inbox_later_notification";
+                readonly kind: "claim_inbox_snooze_notification";
             } | {
                 /** @enum {string} */
                 readonly kind: "mark_inbox_messages_done";
@@ -10355,7 +10365,7 @@ export interface components {
                 readonly limit: number;
             } | {
                 /** @enum {string} */
-                readonly kind: "next_session_reminder";
+                readonly kind: "next_session_snooze";
             } | {
                 /** @enum {string} */
                 readonly kind: "unread_chat_count";
@@ -10415,6 +10425,7 @@ export interface components {
                 readonly order?: components["schemas"]["ProjectWorkspaceSessionOrder"] | null;
                 readonly project_id?: string | null;
                 readonly projectless_only?: boolean | null;
+                readonly provenance?: components["schemas"]["AgentTurnProvenance"] | null;
                 readonly query?: string | null;
                 readonly session_ids?: readonly string[] | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
@@ -10422,15 +10433,23 @@ export interface components {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "task_window";
+                readonly lifecycle?: components["schemas"]["ProjectWorkspaceTaskLifecycle"];
                 readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
                 readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
                 readonly project_id?: string | null;
+                /**
+                 * @description Every Project's chats and every chat outside a Project, instead of one scope's.
+                 *     `project_id` must then be absent.
+                 */
+                readonly whole_library?: boolean;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
                 readonly kind: "task_windows";
                 readonly lanes: readonly components["schemas"]["ProjectWorkspaceTaskLane"][];
                 readonly project_id?: string | null;
+                /** @description Every Project's chats and every chat outside a Project, as in a task window read. */
+                readonly whole_library?: boolean;
             } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
@@ -10581,11 +10600,11 @@ export interface components {
                 readonly kind: "inbox_turn_notifications";
             } | {
                 /** @enum {string} */
-                readonly kind: "next_inbox_later";
+                readonly kind: "next_inbox_snooze";
             } | {
                 readonly for_push: boolean;
                 /** @enum {string} */
-                readonly kind: "inbox_later_notifications";
+                readonly kind: "inbox_snooze_notifications";
             } | {
                 /** @enum {string} */
                 readonly kind: "current_turn_notifications";
@@ -11083,12 +11102,12 @@ export interface components {
             readonly run_id: string;
         } | {
             /** @enum {string} */
-            readonly kind: "reminder_owner";
+            readonly kind: "chat_snooze_owner";
             readonly member_id: string;
         } | {
             readonly id: string;
             /** @enum {string} */
-            readonly kind: "inbox_later_owner";
+            readonly kind: "inbox_snooze_owner";
         } | {
             readonly episode: string;
             /** @enum {string} */
@@ -11280,24 +11299,30 @@ export interface components {
             readonly kind: "set_unread";
             readonly unread: boolean;
         } | {
+            /** Format: int64 */
+            readonly asked_at?: number | null;
             /** @enum {string} */
-            readonly kind: "set_reminder";
-            readonly remind_at?: string | null;
+            readonly kind: "record_attention";
+            readonly seen: boolean;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_snooze";
+            readonly snoozed_until?: string | null;
         } | {
             readonly deliver: boolean;
             /** @enum {string} */
-            readonly kind: "consume_reminder";
+            readonly kind: "consume_snooze";
             readonly member_id: string;
-            readonly remind_at: string;
+            readonly snoozed_until: string;
         } | {
             readonly delivery_id: string;
             /** @enum {string} */
-            readonly kind: "complete_reminder_delivery";
+            readonly kind: "complete_snooze_delivery";
             readonly unread: boolean;
         } | {
             readonly delivery_id: string;
             /** @enum {string} */
-            readonly kind: "defer_reminder_delivery";
+            readonly kind: "defer_snooze_delivery";
         } | {
             /** @enum {string} */
             readonly kind: "record_user_message";
@@ -11540,6 +11565,7 @@ export interface components {
             readonly library_count: number;
             /** @description Only active Projects whose Inbox holds at least one message. */
             readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxProjectCount"][];
+            readonly waiting: components["schemas"]["ProjectWorkspaceInboxWaiting"];
         };
         /** @description The exact action a proposal asks the user to authorize. */
         readonly ProjectWorkspaceInboxDispatchAction: {
@@ -11555,9 +11581,9 @@ export interface components {
             /** @enum {string} */
             readonly type: "save_to_notes";
         } | {
-            readonly remind_at: string;
+            readonly snoozed_until: string;
             /** @enum {string} */
-            readonly type: "later";
+            readonly type: "snooze";
         } | {
             /** @description Sent after the prompt unless the user drops them: how to run or what to consult, never what to deliver. */
             readonly additions?: readonly string[];
@@ -11669,7 +11695,6 @@ export interface components {
             /** @description The user marked the message important, so it stays in view while it waits. */
             readonly important: boolean;
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
-            readonly later: components["schemas"]["InboxLater"] | null;
             readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
             readonly page_id: string;
             readonly page_key?: string | null;
@@ -11681,6 +11706,7 @@ export interface components {
             readonly revision: number;
             readonly row_kind: components["schemas"]["InboxRowKind"];
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+            readonly snooze: components["schemas"]["InboxSnooze"] | null;
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
             readonly submitted_at: string;
             readonly suggestion_error?: string | null;
@@ -11912,16 +11938,24 @@ export interface components {
              */
             readonly inbox_count: number;
             /** Format: int32 */
-            readonly later_count: number;
-            /** Format: int32 */
             readonly needs_decision_count: number;
             readonly notes_page_id?: string | null;
             /** Format: int32 */
             readonly pending_suggestion_count: number;
+            /** Format: int32 */
+            readonly snoozed_count: number;
             readonly view_id?: string | null;
         };
+        /** @description Scopes with an actionable, unsnoozed question or approval Turn. */
+        readonly ProjectWorkspaceInboxWaiting: {
+            readonly library: boolean;
+            /** @description The same Projects as the counts. */
+            readonly projects: {
+                readonly [key: string]: boolean;
+            };
+        };
         /** @enum {string} */
-        readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed" | "later";
+        readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed" | "snoozed";
         readonly ProjectWorkspaceIntent: {
             readonly initialize_only: boolean;
             /** @enum {string} */
@@ -12203,6 +12237,16 @@ export interface components {
             readonly kind: "archive_sidebar_section_sessions";
             readonly replacement_session_id?: string | null;
             readonly section_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_sessions_settled";
+            readonly session_ids: readonly string[];
+            readonly settled: boolean;
+        } | {
+            /** Format: int64 */
+            readonly idle_before_ms: number;
+            /** @enum {string} */
+            readonly kind: "settle_idle_sessions";
         } | {
             /** @enum {string} */
             readonly kind: "upsert_sidebar_section_host_link";
@@ -12625,22 +12669,22 @@ export interface components {
             readonly page_ids: readonly string[];
         } | {
             /** @enum {string} */
-            readonly kind: "set_inbox_later";
+            readonly kind: "set_inbox_snooze";
             readonly page_ids: readonly string[];
             readonly until: string;
         } | {
             /** @enum {string} */
-            readonly kind: "clear_inbox_later";
+            readonly kind: "wake_inbox_entries";
             readonly page_ids: readonly string[];
         } | {
             /** @enum {string} */
-            readonly kind: "publish_due_inbox_later";
+            readonly kind: "publish_due_inbox_snooze";
             readonly wake_at: string;
         } | {
             readonly for_push: boolean;
             readonly id: string;
             /** @enum {string} */
-            readonly kind: "claim_inbox_later_notification";
+            readonly kind: "claim_inbox_snooze_notification";
         } | {
             /** @enum {string} */
             readonly kind: "mark_inbox_messages_done";
@@ -12970,17 +13014,17 @@ export interface components {
             readonly kind: "after";
             readonly session_id: string;
         };
-        readonly ProjectWorkspaceSessionReminderDelivery: {
-            readonly delivery_id: string;
-            readonly remind_at: string;
-        };
         /** @description Durable placement for joining bounded live activity without loading Session rows. */
         readonly ProjectWorkspaceSessionSidebarPlacement: {
             readonly project_id?: string | null;
-            readonly remind_at?: string | null;
             readonly section_id?: string | null;
             readonly session_id: string;
+            readonly snoozed_until?: string | null;
             readonly unread: boolean;
+        };
+        readonly ProjectWorkspaceSessionSnoozeDelivery: {
+            readonly delivery_id: string;
+            readonly snoozed_until: string;
         };
         /** @description A chat its Inbox decision has not started yet, with the reason it could not. */
         readonly ProjectWorkspaceSessionStart: {
@@ -13001,6 +13045,12 @@ export interface components {
             readonly archived: boolean;
             readonly archived_at?: string | null;
             /**
+             * Format: int64
+             * @description When the chat last came back to a person, in Unix milliseconds: the later of its activity
+             *     and its Agent last stopping to ask for someone. Open chats order by it.
+             */
+            readonly attention_at: number;
+            /**
              * @description The reader may manage this chat: rename, archive or restore it, move it, compact or clear
              *     its context and merge it back. They started it, or they own the Space.
              */
@@ -13017,14 +13067,31 @@ export interface components {
             readonly id: string;
             readonly managed: boolean;
             readonly no_thread_fallback_title: string;
+            readonly page_turn: components["schemas"]["PageTurn"] | null;
             readonly pinned: boolean;
             /** Format: int64 */
             readonly pinned_order?: number | null;
             readonly project_id?: string | null;
-            readonly remind_at?: string | null;
+            /**
+             * Format: int64
+             * @description When the reader settled this chat, in Unix milliseconds, or null while it is open for
+             *     them. A chat that went idle and was finished for them carries when it last came back.
+             */
+            readonly settled_at?: number | null;
+            /**
+             * Format: int64
+             * @description When the reader set their current snooze, in Unix milliseconds.
+             */
+            readonly snoozed_at?: number | null;
+            readonly snoozed_until?: string | null;
             readonly thread_id?: string | null;
             readonly unread: boolean;
             readonly updated_at: string;
+            /**
+             * Format: int64
+             * @description When the reader's snooze came due and has yet to be seen, in Unix milliseconds.
+             */
+            readonly woke_at?: number | null;
         };
         readonly ProjectWorkspaceSidebarProjectItem: {
             readonly appearance: components["schemas"]["ProjectAppearance"];
@@ -13151,12 +13218,18 @@ export interface components {
         /** @description One lane of a scope's task list, as a single task window read would ask for it. */
         readonly ProjectWorkspaceTaskLane: {
             readonly include_archived?: boolean | null;
+            readonly lifecycle?: components["schemas"]["ProjectWorkspaceTaskLifecycle"];
             readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
             readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
             readonly window: components["schemas"]["CollectionWindowRequest"];
         };
+        /**
+         * @description Which chats a task list shows by the reader's own settlement state.
+         * @enum {string}
+         */
+        readonly ProjectWorkspaceTaskLifecycle: "all" | "open" | "settled";
         /** @enum {string} */
-        readonly ProjectWorkspaceTaskOrder: "activity" | "manual";
+        readonly ProjectWorkspaceTaskOrder: "activity" | "manual" | "attention" | "settlement";
         /** @enum {string} */
         readonly ProjectWorkspaceTaskPlacementScope: "all" | "builtin";
         readonly ProjectWorkspaceTaskSummary: {
@@ -14861,9 +14934,9 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "read_open_event_batches";
                 } | {
-                    readonly delivery?: components["schemas"]["ProjectWorkspaceSessionReminderDelivery"] | null;
+                    readonly delivery?: components["schemas"]["ProjectWorkspaceSessionSnoozeDelivery"] | null;
                     /** @enum {string} */
-                    readonly kind: "next_session_reminder";
+                    readonly kind: "next_session_snooze";
                     readonly member_id?: string | null;
                     readonly next_wake_at?: string | null;
                     readonly session?: components["schemas"]["ProjectWorkspaceSessionSummary"] | null;
@@ -15057,12 +15130,12 @@ export interface components {
                     readonly kind: "chat_message_inbound";
                 } | {
                     /** @enum {string} */
-                    readonly kind: "next_inbox_later";
-                    readonly remind_at?: string | null;
+                    readonly kind: "next_inbox_snooze";
+                    readonly snoozed_until?: string | null;
                 } | {
-                    readonly intents: readonly components["schemas"]["InboxLaterNotification"][];
+                    readonly intents: readonly components["schemas"]["InboxSnoozeNotification"][];
                     /** @enum {string} */
-                    readonly kind: "inbox_later_notifications";
+                    readonly kind: "inbox_snooze_notifications";
                 } | {
                     readonly intents: readonly components["schemas"]["InboxTurnNotification"][];
                     /** @enum {string} */

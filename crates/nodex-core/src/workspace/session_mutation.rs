@@ -97,7 +97,19 @@ pub(super) fn mutate_session(
             &authority,
             *unread,
         ),
-        ProjectSessionIntent::SetReminder { remind_at } => set_session_reminder(
+        ProjectSessionIntent::RecordAttention { seen, asked_at } => record_session_attention(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            session_id,
+            &authority,
+            *seen,
+            *asked_at,
+        ),
+        ProjectSessionIntent::SetSnooze { snoozed_until } => set_session_snooze(
             connection,
             library_id,
             context,
@@ -107,17 +119,17 @@ pub(super) fn mutate_session(
             session_id,
             &authority,
             &crate::infrastructure::actors::requesting_member(connection, context)?,
-            remind_at.as_deref(),
+            snoozed_until.as_deref(),
             None,
             false,
         ),
-        ProjectSessionIntent::ConsumeReminder {
+        ProjectSessionIntent::ConsumeSnooze {
             member_id,
-            remind_at,
+            snoozed_until,
             deliver,
         } => {
             validate_id("member_id", member_id)?;
-            set_session_reminder(
+            set_session_snooze(
                 connection,
                 library_id,
                 context,
@@ -128,13 +140,13 @@ pub(super) fn mutate_session(
                 &authority,
                 member_id,
                 None,
-                Some(remind_at),
+                Some(snoozed_until),
                 *deliver,
             )
         }
-        ProjectSessionIntent::DeferReminderDelivery { delivery_id } => {
+        ProjectSessionIntent::DeferSnoozeDelivery { delivery_id } => {
             validate_id("delivery_id", delivery_id)?;
-            connection.execute("UPDATE member_session_reminder_deliveries SET next_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 seconds') WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
+            connection.execute("UPDATE member_session_snooze_deliveries SET next_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 seconds') WHERE delivery_id=?1 AND session_id=?2", params![delivery_id,session_id])?;
             finish_session_mutation(
                 connection,
                 library_id,
@@ -142,7 +154,7 @@ pub(super) fn mutate_session(
                 store_epoch,
                 operation_id,
                 request_hash,
-                "defer_session_reminder",
+                "defer_session_snooze",
                 session_id,
                 &authority,
                 Vec::new(),
@@ -150,12 +162,12 @@ pub(super) fn mutate_session(
                 sqlite_now(connection)?,
             )
         }
-        ProjectSessionIntent::CompleteReminderDelivery {
+        ProjectSessionIntent::CompleteSnoozeDelivery {
             delivery_id,
             unread,
         } => {
             validate_id("delivery_id", delivery_id)?;
-            let member: Option<String> = connection.query_row("DELETE FROM member_session_reminder_deliveries WHERE delivery_id=?1 AND session_id=?2 RETURNING member_id", params![delivery_id,session_id], |row| row.get(0)).optional()?;
+            let member: Option<String> = connection.query_row("DELETE FROM member_session_snooze_deliveries WHERE delivery_id=?1 AND session_id=?2 RETURNING member_id", params![delivery_id,session_id], |row| row.get(0)).optional()?;
             if *unread && let Some(member) = &member {
                 super::member_attention::set_unread(connection, member, session_id, true)?;
             }
@@ -167,7 +179,7 @@ pub(super) fn mutate_session(
                 store_epoch,
                 operation_id,
                 request_hash,
-                "complete_session_reminder",
+                "complete_session_snooze",
                 session_id,
                 &authority,
                 Vec::new(),
@@ -495,9 +507,155 @@ fn set_session_unread(
     )
 }
 
-/// Reminder instants have one canonical UTC millisecond representation in storage and projections.
+/// Settling a chat ends the requesting Member's pin, snooze and unread state. Reopening
+/// leaves the chat's shared activity and attention time alone, so it returns exactly where it was.
 #[allow(clippy::too_many_arguments)]
-fn set_session_reminder(
+pub(super) fn set_sessions_settled(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_ids: &[String],
+    settled: bool,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    use super::member_attention;
+    if !(1..=200).contains(&session_ids.len())
+        || session_ids.iter().collect::<BTreeSet<_>>().len() != session_ids.len()
+    {
+        return Err(invalid("Choose 1–200 distinct Session ids"));
+    }
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    let now = sqlite_now(connection)?;
+    let at_ms = store_clock_ms(connection, &now)?;
+    let mut changed_ids = Vec::new();
+    let mut projects = BTreeSet::new();
+    let mut threads = Vec::new();
+    let mut scopes = Vec::new();
+    for id in session_ids {
+        validate_id("session_id", id)?;
+        let authority = require_session(connection, library_id, id)?;
+        let changed = if settled {
+            !authority.archived && member_attention::settle_chat(connection, &member, id, at_ms)?
+        } else {
+            member_attention::reopen(connection, &member, id)?
+        };
+        if !changed {
+            continue;
+        }
+        if settled {
+            super::sidebar_pins::unpin(connection, &member, id, &now)?;
+            member_attention::cancel_snooze(connection, &member, id)?;
+            member_attention::set_unread(connection, &member, id, false)?;
+        }
+        let scope = project_session_scope(authority.project_id.as_deref());
+        if !scopes.contains(&scope) {
+            scopes.push(scope);
+        }
+        projects.extend(authority.project_id);
+        threads.extend(authority.thread_id);
+        changed_ids.push(id.clone());
+    }
+    if changed_ids.is_empty() {
+        return super::mutation::finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "set_sessions_settled",
+            vec![],
+            vec![],
+            &now,
+        );
+    }
+    super::session_lifecycle::finish_lifecycle_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "set_sessions_settled",
+        projects.into_iter().collect(),
+        changed_ids,
+        threads,
+        scopes,
+        None,
+        &[],
+        now,
+    )
+}
+
+/// The chat's Agent stopped and asks for the requesting Member. Its attention time is shared, so
+/// the chat comes back for everyone; it reopens, and turns unread, only for that Member.
+#[allow(clippy::too_many_arguments)]
+fn record_session_attention(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_id: &str,
+    authority: &SessionAuthority,
+    seen: bool,
+    asked_at: Option<i64>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let now = sqlite_now(connection)?;
+    if authority.archived {
+        return finish_session_mutation(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "record_session_attention",
+            session_id,
+            authority,
+            Vec::new(),
+            SessionInvalidationKind::None,
+            now,
+        );
+    }
+    connection.execute(
+        "UPDATE project_sessions SET returned_at = max(returned_at, ?2) WHERE id = ?1",
+        params![session_id, store_clock_ms(connection, &now)?],
+    )?;
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    if let Some(asked_at) = asked_at {
+        if asked_at < 0 {
+            return Err(invalid("asked_at must be a Unix millisecond instant"));
+        }
+        super::member_attention::wake_for_request(connection, &member, session_id, asked_at)?;
+    }
+    super::member_attention::reopen(connection, &member, session_id)?;
+    if seen {
+        super::member_attention::clear_woke(connection, &member, session_id)?;
+    } else {
+        super::member_attention::set_unread(connection, &member, session_id, true)?;
+    }
+    finish_session_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "record_session_attention",
+        session_id,
+        authority,
+        authority.thread_id.iter().cloned().collect(),
+        SessionInvalidationKind::SummaryAndDetail,
+        now,
+    )
+}
+
+/// Snooze deadlines have one canonical UTC millisecond representation in storage and projections.
+#[allow(clippy::too_many_arguments)]
+fn set_session_snooze(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
@@ -507,7 +665,7 @@ fn set_session_reminder(
     session_id: &str,
     authority: &SessionAuthority,
     member: &str,
-    remind_at: Option<&str>,
+    snoozed_until: Option<&str>,
     expected: Option<&str>,
     deliver: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
@@ -515,17 +673,21 @@ fn set_session_reminder(
     let now = sqlite_now(connection)?;
     let clock =
         DateTime::parse_from_rfc3339(&now).map_err(|_| corrupt("Store clock is invalid"))?;
-    let normalized = remind_at
+    let normalized = snoozed_until
         .map(|value| {
             let instant = DateTime::parse_from_rfc3339(value)
-                .map_err(|_| invalid("remind_at must be an ISO 8601 instant with an offset"))?;
+                .map_err(|_| invalid("snoozed_until must be an ISO 8601 instant with an offset"))?;
             if instant > clock + Duration::days(366) {
                 return Err(invalid(
-                    "remind_at must be no more than 366 days in the future",
+                    "snoozed_until must be no more than 366 days in the future",
                 ));
             }
-            if authority.archived {
-                return Err(invalid("Archived Sessions cannot have a reminder"));
+            let settled: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM member_session_settled WHERE member_id=?1 AND session_id=?2)",
+                params![member,session_id], |row| row.get(0),
+            )?;
+            if authority.archived || settled {
+                return Err(invalid("Only open chats can have a snooze"));
             }
             Ok(instant
                 .to_utc()
@@ -533,31 +695,47 @@ fn set_session_reminder(
         })
         .transpose()?;
     let changed = match (expected, normalized.as_deref()) {
-        // The host claims only the exact reminder it observed coming due.
+        // The host claims only the exact snooze it observed coming due.
         (Some(expected), _) => connection.execute(
-            "DELETE FROM member_session_reminders WHERE member_id = ?1 AND session_id = ?2 \
-             AND remind_at = ?3 AND remind_at <= ?4 \
+            "DELETE FROM member_session_snoozes WHERE member_id = ?1 AND session_id = ?2 \
+             AND snoozed_until = ?3 AND julianday(snoozed_until) <= julianday(?4) \
              AND EXISTS (SELECT 1 FROM project_sessions WHERE id = ?2 AND archived = 0)",
             params![member, session_id, expected, now],
         )?,
-        (None, Some(remind_at)) => {
-            connection.execute(
-                "INSERT INTO member_session_reminders(member_id, session_id, remind_at) VALUES (?1, ?2, ?3) \
-                 ON CONFLICT(member_id, session_id) DO UPDATE SET remind_at = excluded.remind_at \
-                 WHERE remind_at IS NOT excluded.remind_at",
-                params![member, session_id, remind_at],
-            )? + connection.execute(
-                "DELETE FROM member_session_reminder_deliveries WHERE member_id = ?1 AND session_id = ?2",
-                params![member, session_id],
-            )?
+        (None, Some(snoozed_until)) => {
+            super::member_attention::snooze_chat(
+                connection,
+                member,
+                session_id,
+                snoozed_until,
+                &now,
+            )?;
+            super::inbox::snooze::link_chat_turns(
+                connection,
+                member,
+                session_id,
+                snoozed_until,
+                &now,
+            )?;
+            1
         }
-        (None, None) => super::member_attention::cancel_reminder(connection, member, session_id)?,
+        (None, None) => super::member_attention::cancel_snooze(connection, member, session_id)?,
     };
-    if changed > 0 && deliver {
-        connection.execute("INSERT INTO member_session_reminder_deliveries(delivery_id,member_id,session_id,remind_at,next_attempt_at) VALUES (?1,?2,?3,?4,?5)", params![operation_id,member,session_id,expected,now])?;
+    if changed > 0 && expected.is_some() {
+        super::member_attention::record_woke(connection, member, session_id, &now)?;
+        let linked: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM inbox_deferrals WHERE linked_session_id=?1 AND member_id=?2)",
+            params![session_id,member], |row| row.get(0),
+        )?;
+        if linked {
+            super::member_attention::invalidate(connection, session_id, true)?;
+        }
     }
-    // A reminder that comes due brings its chat back to the top, like a person's message. Chat
-    // order is shared, so only a personal Space's one Member reorders it with their reminder.
+    if changed > 0 && deliver {
+        connection.execute("INSERT INTO member_session_snooze_deliveries(delivery_id,member_id,session_id,snoozed_until,next_attempt_at) VALUES (?1,?2,?3,?4,?5)", params![operation_id,member,session_id,expected,now])?;
+    }
+    // A snooze that comes due brings its chat back to the top, like a person's message. Chat
+    // order is shared, so only a personal Space's one Member reorders it with their snooze.
     if changed > 0
         && expected.is_some()
         && crate::infrastructure::actors::is_personal(connection, library_id)?
@@ -572,9 +750,9 @@ fn set_session_reminder(
         operation_id,
         request_hash,
         if expected.is_some() {
-            "consume_session_reminder"
+            "consume_session_snooze"
         } else {
-            "set_session_reminder"
+            "set_session_snooze"
         },
         session_id,
         authority,
@@ -981,8 +1159,9 @@ pub(super) fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {
     )))
 }
 
-/// A person's newly accepted message becomes the Session's activity and ends their reminder.
-/// Receipts keep retries and restarts idempotent. Returns whether the Session changed.
+/// A person's newly accepted message becomes the Session's activity, ends their snooze and
+/// reopens the chat for them. Receipts keep retries and restarts idempotent. Returns whether the
+/// Session changed.
 pub(super) fn accept_person_message(
     connection: &Connection,
     session_id: &str,
@@ -1001,8 +1180,10 @@ pub(super) fn accept_person_message(
     connection.execute("INSERT INTO session_requesting_members(session_id,message_id,member_id,accepted_at) VALUES(?1,?2,?3,?4)",params![session_id,message_id,member,now])?;
     connection.execute("INSERT OR IGNORE INTO page_turn_dirty SELECT page_id FROM page_active_chats WHERE session_id=?1",[session_id])?;
     let moved = super::session_order::raise_activity(connection, session_id, now)?;
-    let cancelled = super::member_attention::cancel_reminder(connection, member, session_id)?;
-    Ok(moved || cancelled > 0)
+    let cancelled = super::member_attention::cancel_snooze(connection, member, session_id)?;
+    let reopened = super::member_attention::reopen(connection, member, session_id)?;
+    let seen = super::member_attention::clear_woke(connection, member, session_id)?;
+    Ok(moved || cancelled > 0 || reopened || seen)
 }
 
 pub(super) fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
@@ -1010,6 +1191,17 @@ pub(super) fn sqlite_now(connection: &Connection) -> Result<String, StoreError> 
         .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
             row.get::<_, String>(0)
         })
+        .map_err(Into::into)
+}
+
+/// A Store clock reading (RFC 3339) in Unix milliseconds.
+pub(super) fn store_clock_ms(connection: &Connection, now: &str) -> Result<i64, StoreError> {
+    connection
+        .query_row(
+            "SELECT CAST(round(unixepoch(?1, 'subsec') * 1000) AS INTEGER)",
+            [now],
+            |row| row.get::<_, i64>(0),
+        )
         .map_err(Into::into)
 }
 

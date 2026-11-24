@@ -384,10 +384,10 @@ export const makeLists = Effect.gen(function* () {
         connection,
         hostId,
         ...cache(hostId, key, InboxWindowSchema),
-        summarize: (page) => page?.laterCount ?? 0,
+        summarize: (page) => page?.snoozedCount ?? 0,
         read: (after) => connection.rpc.request("inbox.window", { scope, filter, after }),
         id: inboxEntryKey,
-        project: (items) => (filter === "later" ? items : [...items].reverse()),
+        project: (items) => (filter === "snoozed" ? items : [...items].reverse()),
         observe: (items) =>
           hostId
             ? outbox.observeWindow(

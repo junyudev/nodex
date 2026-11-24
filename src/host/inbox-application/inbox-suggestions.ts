@@ -136,11 +136,11 @@ export const renderInboxRoutingRequest = (input: {
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       allowed_actions:
         context.scope.kind === "project"
-          ? ["keep", "save_to_notes", "later", "new_chat", "send_to_chat", "plan"]
+          ? ["keep", "save_to_notes", "snooze", "new_chat", "send_to_chat", "plan"]
           : [
               "keep",
               "save_to_notes",
-              "later",
+              "snooze",
               "new_chat",
               "send_to_chat",
               "move_to_project",
@@ -174,7 +174,7 @@ export const renderInboxRoutingRequest = (input: {
   };
   const prompt = (routingData: typeof data) => `Routing request
 Submit with inbox_suggest; echo request_id and generation exactly. Cover all page_ids exactly once, using only the supplied actions and target IDs. grouped/refine requires one action; a correction revises only its supplied proposal and members.
-save_to_notes: use for notes, references and fragments that ask for no work. Set parent_page_id to a fitting Page in notes_outline or null for the Inbox’s Notes page. Never create sections. Use null Project, chat and prompt fields and explicit_request false. keep means Add to Todo: hold work without a time, with null targets/prompt; later: null targets/prompt, explicit_request false, and required remind_at as a future offset-bearing ISO 8601 instant. Propose later only when the message says to wait until a resolvable time. Use keep with kind todo for someday or when no time can be resolved. Use the request clock and time zone to resolve relative dates. new_chat: project_id (nullable in Library) and prompt; send_to_chat: only session_id and prompt; move_to_project: only project_id. Only new_chat sets chat_instance_id/chat_model/chat_effort, using an offered choice; otherwise these are null. Only chat actions have additions; otherwise []. explicit_request is a required boolean on every suggestion. plan: null targets/prompt/chat fields, no additions, explicit_request false, and steps [{key,project_id,title,body,agent:{instance_id,model,effort}|null,blocked_by:[key]}]. Plans have 2–8 unique step keys, only eligible Projects (a Project Inbox stays in its Project), offered Agent choices or null for the chat default, and acyclic prerequisites naming other steps. Step titles are at most 120 characters and bodies at most 4000. Only plans carry steps. Plans always wait for the user.
+save_to_notes: use for notes, references and fragments that ask for no work. Set parent_page_id to a fitting Page in notes_outline or null for the Inbox’s Notes page. Never create sections. Use null Project, chat and prompt fields and explicit_request false. keep means Add to Todo: hold work without a time, with null targets/prompt; snooze: null targets/prompt, explicit_request false, and required snoozed_until as a future offset-bearing ISO 8601 instant. Propose snooze only when the message says to wait until a resolvable time. Use keep with kind todo for someday or when no time can be resolved. Use the request clock and time zone to resolve relative dates. new_chat: project_id (nullable in Library) and prompt; send_to_chat: only session_id and prompt; move_to_project: only project_id. Only new_chat sets chat_instance_id/chat_model/chat_effort, using an offered choice; otherwise these are null. Only chat actions have additions; otherwise []. explicit_request is a required boolean on every suggestion. plan: null targets/prompt/chat fields, no additions, explicit_request false, and steps [{key,project_id,title,body,agent:{instance_id,model,effort}|null,blocked_by:[key]}]. Plans have 2–8 unique step keys, only eligible Projects (a Project Inbox stays in its Project), offered Agent choices or null for the chat default, and acyclic prerequisites naming other steps. Step titles are at most 120 characters and bodies at most 4000. Only plans carry steps. Plans always wait for the user.
 ${agents === null ? "No Agent choices are offered for this request. chat_instance_id, chat_model and chat_effort must all be null, including for new_chat; every plan step agent must also be null. Choices from earlier requests or list_agent_models do not apply.\n" : ""}For explicit_request true, use at most 30 words in prompt and no additions or skills.
 For other chat actions, propose at most three useful skills as {name,reason}. Match an exact name in skill_offers for that project_id and chat_instance_id (null is the Inbox default), or for that session_id. Keep dollar invocations from the user in the prompt; for explicit requests the unchanged original carries them. Never repeat them as optional skills. Put all skill advice in skills, never as dollar or slash invocations in prompt or additions. Use [] for other actions or when no skill fits.
 Budgets: at most 16 suggestions/titles/members; prompt 2000, summary 200, rationale 600, provisional message title 80 characters; at most 12 additions of 600 characters. summary is nonempty; rationale may be null. Titles name only provisional messages. The whole response is at most 48 KiB.
@@ -376,16 +376,16 @@ export const validateInboxSuggestions = (
         };
         break;
       }
-      case "later":
+      case "snooze":
         if (
           raw.explicit_request ||
           raw.project_id !== null ||
           raw.session_id !== null ||
           raw.prompt !== null ||
-          Date.parse(raw.remind_at) <= Date.now()
+          Date.parse(raw.snoozed_until) <= Date.now()
         )
-          reject("Later needs a future return time, with no execution fields or consent");
-        action = { type: "later", remindAt: raw.remind_at };
+          reject("Snooze needs a future return time, with no execution fields or consent");
+        action = { type: "snooze", snoozedUntil: raw.snoozed_until };
         break;
       case "save_to_notes":
         if (

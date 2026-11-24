@@ -117,17 +117,17 @@ export function buildCodexAsyncQuestionNotificationId(
   return JSON.stringify(["async-question", hostId, threadId, turnId, questionId]);
 }
 
-export interface SessionReminderNotificationEvent {
-  type: "session-reminder";
+export interface SessionSnoozeNotificationEvent {
+  type: "session-snooze";
   hostId: string;
   conversation: CodexNotificationConversationFacts;
-  remindAt: string;
+  snoozedUntil: string;
   /** The Member who asked to come back to the chat; only they hear about it. */
   memberId: string;
 }
 
 export type CodexThreadNotificationEvent =
-  | SessionReminderNotificationEvent
+  | SessionSnoozeNotificationEvent
   | CodexAsyncQuestionNotificationEvent
   | CodexAsyncQuestionResolvedNotificationEvent
   | CodexTurnCompletedNotificationEvent

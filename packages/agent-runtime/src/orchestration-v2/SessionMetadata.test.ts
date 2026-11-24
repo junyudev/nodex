@@ -4,7 +4,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { readSessionMetadata } from "./SessionMetadata.ts";
 
-it.effect("projects provenance, explicit settlement and snooze wake rules", () =>
+it.effect("projects execution provenance and excludes held messages from the latest Run", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const payload = {
@@ -40,8 +40,6 @@ it.effect("projects provenance, explicit settlement and snooze wake rules", () =
     assert.equal(first.providerDriver, "claudeAgent");
     assert.equal(first.itemCount, 0);
     assert.equal(first.itemCountCoverage, "local");
-    assert.equal(first.settled, true);
-    assert.equal(first.snoozed, true);
     assert.equal(first.worktreePath, "/isolated/worktree");
     assert.equal(first.pullRequests[0]?.number, 3);
     assert.equal(first.parentThreadId, "parent");
@@ -55,7 +53,7 @@ it.effect("projects provenance, explicit settlement and snooze wake rules", () =
     assert.equal(held.runStatus, "running");
     yield* sql`UPDATE orchestration_v2_projection_runs SET status='completed',completed_at='2026-10-02' WHERE run_id='run'`;
     const completed = yield* read();
-    assert.equal(completed.snoozed, false);
+    assert.equal(completed.runStatus, "completed");
     assert.equal(completed.activeRunId, null);
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

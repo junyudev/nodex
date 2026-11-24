@@ -11,7 +11,7 @@ use nodex_core_contracts::{
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn invalid(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
@@ -292,6 +292,38 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
         .collect()
 }
 
+// Leave room in a workspace event for both Session and Project identities.
+const MAX_CHAT_TURN_INVALIDATIONS: usize = 128;
+const CHAT_ATTENTION_REASON: &str = "(episode.signature ->> '$[1]' IN ('question','approval','review','blocked','failed','stalled'))";
+
+/// The persisted episode contains everything an attention Turn needs. Snoozing that episode
+/// changes when the Inbox shows it, while the chat still has the same current Turn.
+pub(super) fn chat_turn_column(session: &str, library: &str, member: &str) -> String {
+    format!(
+        "(SELECT json_object('page_id', episode.page_id, 'actor', json(episode.signature -> '$[0]'),
+                  'reason', episode.signature ->> '$[1]', 'since', episode.since,
+                  'episode', episode.episode, 'hold', NULL)
+          FROM page_active_chats active
+          JOIN page_turn_episodes episode ON episode.page_id = active.page_id
+          JOIN blocks block ON block.id = active.page_id
+          WHERE active.session_id = {session} AND block.library_id = {library}
+            AND block.lifecycle = 'active'
+            AND (episode.signature ->> '$[0].kind' = 'members'
+              OR (episode.signature ->> '$[0].kind' = 'member'
+                AND episode.signature ->> '$[0].member_id' = {member}))
+            AND {CHAT_ATTENTION_REASON}
+          ORDER BY (episode.signature ->> '$[1]' IN ('question','approval')) DESC,
+            episode.since DESC, episode.page_id
+          LIMIT 1) AS page_turn"
+    )
+}
+
+pub(super) fn chat_turn_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Option<PageTurn>> {
+    row.get::<_, Option<String>>("page_turn")?
+        .map(decode)
+        .transpose()
+}
+
 fn signature(actor: &TurnActor, reason: Option<TurnReason>, facts: &Facts) -> String {
     // Page key is presentation metadata, not a new actor; queue position is part of its actor.
     let actor = match actor {
@@ -397,18 +429,24 @@ pub(crate) fn turns(
         .collect()
 }
 
+#[derive(Default)]
+pub(crate) struct TurnRefresh {
+    affected: Vec<String>,
+    changed: Vec<String>,
+}
+
 /// Migration uses the same decision as ordinary commits, without manufacturing Work events.
 pub(crate) fn initialize(
     connection: &Connection,
     identity: &str,
     now: &str,
-) -> Result<Vec<String>, StoreError> {
+) -> Result<TurnRefresh, StoreError> {
     let dirty = connection
         .prepare("SELECT page_id FROM page_turn_dirty ORDER BY page_id")?
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if dirty.is_empty() {
-        return Ok(vec![]);
+        return Ok(TurnRefresh::default());
     }
     let mut affected = dirty.clone();
     let reverse = connection.prepare("SELECT DISTINCT membership.page_block_id FROM json_each(?1) dirty JOIN data_source_relation_edges edge ON edge.target_page_block_id=dirty.value AND edge.property_id='blocked_by' JOIN data_source_page_memberships membership ON membership.id=edge.source_membership_id")?.query_map([json!(dirty).to_string()], |r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -417,6 +455,7 @@ pub(crate) fn initialize(
     affected.dedup();
     // Non-Page Blocks also participate in lifecycle writes; they have no Turn.
     affected=connection.prepare("SELECT page.block_id FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value ORDER BY page.block_id")?.query_map([json!(affected).to_string()],|row|row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut changed = Vec::new();
     // Derive in bounded batches, even for a Source lifecycle mutation.
     for chunk in affected.chunks(200) {
         let ids = chunk.iter().map(String::as_str).collect::<Vec<_>>();
@@ -425,7 +464,10 @@ pub(crate) fn initialize(
             let (actor, reason) = choose(&facts);
             let signature = signature(&actor, reason, &facts);
             let episode = crate::domain::identity::stable_uuid_v7("page-turn", identity, &id);
-            connection.execute("INSERT INTO page_turn_episodes(page_id,signature,episode,since) VALUES(?1,?2,?3,?4) ON CONFLICT(page_id) DO UPDATE SET signature=excluded.signature,episode=excluded.episode,since=excluded.since WHERE page_turn_episodes.signature<>excluded.signature",params![id,signature,episode,now])?;
+            let updated = connection.execute("INSERT INTO page_turn_episodes(page_id,signature,episode,since) VALUES(?1,?2,?3,?4) ON CONFLICT(page_id) DO UPDATE SET signature=excluded.signature,episode=excluded.episode,since=excluded.since WHERE page_turn_episodes.signature<>excluded.signature",params![id,signature,episode,now])?;
+            if updated > 0 {
+                changed.push(id);
+            }
         }
     }
     if connection.query_row(
@@ -436,7 +478,7 @@ pub(crate) fn initialize(
         connection.execute("INSERT INTO page_turn_notification_intents(member_id,page_id,episode,created_at) SELECT json_extract(episode.signature,'$[0].member_id'),episode.page_id,episode.episode,episode.since FROM page_turn_episodes episode JOIN inbox_rows rows ON rows.page_id=episode.page_id AND rows.row_kind='turn' WHERE json_extract(episode.signature,'$[1]') IN ('question','approval') AND episode.page_id IN (SELECT value FROM json_each(?1)) ON CONFLICT DO NOTHING",[json!(affected).to_string()])?;
     }
     connection.execute("DELETE FROM page_turn_dirty", [])?;
-    Ok(affected)
+    Ok(TurnRefresh { affected, changed })
 }
 
 /// Runs once at the semantic commit boundary, before LocalCommit evidence is sealed.
@@ -448,7 +490,10 @@ pub(crate) fn reconcile(connection: &Connection, commit: &CommitContext) -> Resu
     )? {
         return Ok(());
     }
-    let mut ids = initialize(
+    let TurnRefresh {
+        affected: mut ids,
+        changed,
+    } = initialize(
         connection,
         &format!("{}:{}", commit.store_epoch(), commit.commit_seq()),
         commit.committed_at(),
@@ -456,46 +501,80 @@ pub(crate) fn reconcile(connection: &Connection, commit: &CommitContext) -> Resu
     if ids.is_empty() {
         return Ok(());
     }
-    connection.execute(
-        "DELETE FROM inbox_deferrals AS deferral
-        WHERE deferral.page_id IN (SELECT value FROM json_each(?1))
-          AND NOT EXISTS(SELECT 1 FROM inbox_member_rows row
-              WHERE row.page_id=deferral.page_id AND row.member_id=deferral.member_id
-                AND row.episode=deferral.episode AND row.in_inbox=1)",
-        [json!(ids).to_string()],
-    )?;
+    super::inbox::snooze::retire_episodes(connection, &ids)?;
+    // Related chats can have held this Turn before the Active chat changed. Refresh their
+    // lists too. Scope by the chat's Project, which can differ from the Page's Project.
+    let chats = connection
+        .prepare(&format!(
+            "SELECT DISTINCT session.id, session.project_id
+         FROM json_each(?1) affected
+         JOIN page_turn_episodes episode ON episode.page_id=affected.value
+         JOIN project_session_pages link ON link.page_id=episode.page_id
+         JOIN project_sessions session ON session.id=link.session_id
+         WHERE {CHAT_ATTENTION_REASON} OR episode.page_id IN (SELECT value FROM json_each(?2))
+         ORDER BY session.id LIMIT {limit}",
+            limit = MAX_CHAT_TURN_INVALIDATIONS + 1,
+        ))?
+        .query_map(
+            params![json!(ids).to_string(), json!(changed).to_string()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let scopes = if chats.len() > MAX_CHAT_TURN_INVALIDATIONS {
+        vec![ProjectSessionInvalidationScope::All]
+    } else {
+        chats
+            .iter()
+            .map(|(_, project)| project.as_deref())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(super::mutation::project_session_scope)
+            .collect()
+    };
+    let sessions: Vec<_> = chats
+        .into_iter()
+        .take(MAX_CHAT_TURN_INVALIDATIONS)
+        .map(|(id, _)| id)
+        .collect();
+
     let impacts=connection.prepare("SELECT projection_impact_json FROM local_commit_effects WHERE store_epoch=?1 AND commit_seq=?2")?.query_map(params![commit.store_epoch(),commit.commit_seq()],|r|decode::<ProjectionImpact>(r.get(0)?))?.collect::<rusqlite::Result<Vec<_>>>()?;
     if impacts
         .iter()
         .any(|impact| matches!(impact, ProjectionImpact::All))
     {
+        ids.clear();
+    } else {
+        ids.retain(|id| !impacts.iter().any(|impact|matches!(impact,ProjectionImpact::Resources { page_ids,.. } if page_ids.contains(id))));
+    }
+    if ids.is_empty() && scopes.is_empty() {
         return Ok(());
     }
-    ids.retain(|id| !impacts.iter().any(|impact|matches!(impact,ProjectionImpact::Resources { page_ids,.. } if page_ids.contains(id))));
-    if ids.is_empty() {
-        return Ok(());
-    }
-    let impact = crate::infrastructure::projection_impact::expand_database_coordinates(
-        connection,
-        ProjectionImpact::Resources {
-            page_ids: ids.clone(),
-            database_ids: vec![],
-            data_source_ids: vec![],
-            view_ids: vec![],
-            document_heads: vec![],
-        },
-    )?;
-    // Supplemental Turn changes need authority-scoped read repairs, not row patches:
-    // metadata mutations such as Page-key renames intentionally avoid per-row payloads.
-    let libraries = connection.prepare("SELECT DISTINCT page.library_id FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value")?.query_map([json!(ids).to_string()], |row| row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    for library in libraries {
-        crate::database::record_local_projection_read_repairs(
-            connection, commit, &library, &impact,
+    let impact = if ids.is_empty() {
+        ProjectionImpact::None
+    } else {
+        let impact = crate::infrastructure::projection_impact::expand_database_coordinates(
+            connection,
+            ProjectionImpact::Resources {
+                page_ids: ids.clone(),
+                database_ids: vec![],
+                data_source_ids: vec![],
+                view_ids: vec![],
+                document_heads: vec![],
+            },
         )?;
-    }
+        // Supplemental Turn changes need authority-scoped read repairs, not row patches:
+        // metadata mutations such as Page-key renames intentionally avoid per-row payloads.
+        let libraries = connection.prepare("SELECT DISTINCT page.library_id FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value")?.query_map([json!(ids).to_string()], |row| row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        for library in libraries {
+            crate::database::record_local_projection_read_repairs(
+                connection, commit, &library, &impact,
+            )?;
+        }
+        impact
+    };
     crate::infrastructure::event_log::append_change_log(connection, crate::infrastructure::event_log::NewChangeLogEntry {
         project_id:None, store_epoch:commit.store_epoch(),kind:"project_workspace.changed",operation_id:Some(commit.operation_id()),block_ids:&ids,document_ids:&[],database_block_ids:&[],
-        payload_json:&json!({"module":"project_workspace","kind":"workspace_changed","operationKind":"page_turn","inboxChanged":true,"projectIds":[],"sessionIds":[],"threadIds":[],"sessionSummaryScopes":[],"sessionDetailIds":[]}).to_string(),
+        payload_json:&json!({"module":"project_workspace","kind":"workspace_changed","operationKind":"page_turn","inboxChanged":true,"projectIds":[],"sessionIds":[],"threadIds":[],"sessionSummaryScopes":scopes,"sessionDetailIds":sessions}).to_string(),
         projection_impact:&impact,committed_at:commit.committed_at(),
     }, commit)?;
     Ok(())

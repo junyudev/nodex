@@ -1,3 +1,4 @@
+import { SessionSettlementIdsSchema } from "../schemas/project-sessions";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key";
@@ -61,9 +62,9 @@ export const sessionControlSchemas = {
       .optional(),
     idempotencyKey,
   }),
-  set_session_reminder: z.strictObject({
+  set_session_snooze: z.strictObject({
     sessionId: id.optional(),
-    remindAt: z.iso.datetime({ offset: true }).nullable(),
+    until: z.iso.datetime({ offset: true }).nullable(),
     idempotencyKey,
   }),
   set_session_unread: z.strictObject({
@@ -71,15 +72,22 @@ export const sessionControlSchemas = {
     unread: z.boolean(),
     idempotencyKey,
   }),
+  set_session_settled: z.strictObject({
+    sessionIds: SessionSettlementIdsSchema,
+    settled: z.boolean(),
+    idempotencyKey,
+  }),
   session_queue: sessionQueueSchema,
 };
 const descriptions: Record<keyof typeof sessionControlSchemas, string> = {
   stop_session:
     "Stop a Session's running work as the user's Stop does: end its current turn, hold queued messages and stop delegated tasks. Idle Sessions are unchanged. The calling Session cannot stop itself. Use only when the user authorized it. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
-  set_session_reminder:
-    "Remind the user to return to a chat by marking it unread at remindAt, an ISO 8601 instant with an offset no more than 366 days ahead, or null to clear. Omit sessionId for your calling Session. A user message or archive cancels it. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
+  set_session_snooze:
+    "Snooze a chat for the Member you act for. Set until to an ISO 8601 instant with an offset up to 366 days ahead, or null to wake it. It becomes unread at that time. A new question, approval request, or failed Run wakes it early, as do a pin, settlement, or a message from the Member. Omit sessionId for your calling Session. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
   set_session_unread:
     "Mark a Nodex Session read or unread, as its sidebar shows. Omit sessionId for your calling Session. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
+  set_session_settled:
+    "Settle 1–200 distinct chats for the Member you act for, or reopen them with settled: false. Settling moves each chat to their Settled shelf, unpins it, and ends its snooze. The result includes only the IDs whose settlement changed. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
   session_queue:
     "Manage messages queued behind a Session's active turn, or a Runtime child's via execution.threadId. list: delivery order; read: one by queuedId; edit: replace text, keeping attachments; remove: drop a message; reorder: before beforeId, or last with null; steer: send it into the active turn. Runtime deliveries (delegated_completion and notification) are read-only. Writes fail once it has started. Reuse idempotencyKey and identical arguments to retry without repeating the change.",
 };

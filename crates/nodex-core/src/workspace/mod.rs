@@ -55,7 +55,7 @@ pub(crate) use inbox_serialization::{
 mod inbox_tests;
 mod managed_worktree_lifecycle;
 mod managed_worktree_window;
-mod member_attention;
+pub(crate) mod member_attention;
 mod mutation;
 mod page_chat;
 mod page_create;
@@ -71,8 +71,10 @@ mod session_listing;
 mod session_mutation;
 mod session_order;
 #[cfg(test)]
-mod session_reminder_tests;
+mod session_settled_tests;
 mod session_side_chats;
+#[cfg(test)]
+mod session_snooze_tests;
 mod session_usage;
 mod sidebar;
 mod sidebar_builtin;

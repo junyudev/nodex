@@ -217,8 +217,10 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: Some("project:default".into()),
+                whole_library: false,
                 include_archived: Some(false),
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: kind,
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     after,
@@ -566,8 +568,10 @@ mod tests {
                     contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
                     read: ProjectWorkspaceRead::TaskWindow {
                         project_id: Some("project:default".into()),
+                        whole_library: false,
                         include_archived: Some(false),
                         placement_scope: Default::default(),
+                        lifecycle: Default::default(),
                         order: other,
                         window: nodex_core_contracts::collection::CollectionWindowRequest {
                             after: first.next_cursor,

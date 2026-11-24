@@ -5,7 +5,7 @@ import {
   decisionReversal,
   entryChatSession,
   entrySignature,
-  laterLabel,
+  snoozeLabel,
   messageChat,
   proposalAcceptance,
   proposalAction,
@@ -46,7 +46,7 @@ const message = (
 ): InboxEntry => ({
   id: "m1",
   rowKind: "intake",
-  later: null,
+  snooze: null,
   pageId: "m1",
   pageKey: null,
   title: "t",
@@ -211,8 +211,8 @@ describe("decisionReversal", () => {
   it("offers a way back from a decision that only clears the message", () => {
     expect(decisionReversal({ type: "done" })).toBeNull();
     expect(decisionReversal({ type: "keep" })).toBeNull();
-    expect(decisionReversal({ type: "later", until: "2099-01-01T09:00:00Z" })).toEqual({
-      type: "clear_later",
+    expect(decisionReversal({ type: "snooze", until: "2099-01-01T09:00:00Z" })).toEqual({
+      type: "wake",
     });
   });
 
@@ -401,24 +401,24 @@ it("accepts exactly the skill names left checked after review", () => {
   });
 });
 
-it("offers and confirms Later through the exact proposal the person reviewed", () => {
-  const action = { type: "later", remindAt: "2099-01-01T09:00:00Z" } as const;
-  expect(proposalAction(action).label).toMatch(/^Later · Jan 1, 2099,/);
+it("offers and confirms Snooze through the exact proposal the person reviewed", () => {
+  const action = { type: "snooze", snoozedUntil: "2099-01-01T09:00:00Z" } as const;
+  expect(proposalAction(action).label).toMatch(/^Snooze · Jan 1, 2099,/);
   expect(proposalAcceptance(proposal({ action, revision: 4 }))).toEqual({
     decision: { type: "accept", proposalId: "p1", revision: 4 },
-    done: "Set aside",
+    done: "Snoozed",
   });
 });
 
 it("shows a return time while set aside and the original set-aside date after returning", () => {
   const setAt = new Date(2026, 10, 4, 10);
   const now = new Date(2026, 10, 5, 12);
-  const later = { setAt: setAt.toISOString(), until: new Date(2026, 10, 6, 9).toISOString() };
-  expect(laterLabel(message({ waiting: true, later }), now)).toMatch(/^Tomorrow,/);
-  const returned = { ...later, until: now.toISOString() };
+  const snooze = { setAt: setAt.toISOString(), until: new Date(2026, 10, 6, 9).toISOString() };
+  expect(snoozeLabel(message({ waiting: true, snooze }), now)).toMatch(/^Tomorrow,/);
+  const returned = { ...snooze, until: now.toISOString() };
   const date = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(setAt);
-  expect(laterLabel(message({ waiting: true, later: returned }), now)).toBe(
-    `Back from Later · set aside ${date}`,
+  expect(snoozeLabel(message({ waiting: true, snooze: returned }), now)).toBe(
+    `Back from snooze · set ${date}`,
   );
-  expect(laterLabel(message({ waiting: false, later: null }), now)).toBeNull();
+  expect(snoozeLabel(message({ waiting: false, snooze: null }), now)).toBeNull();
 });

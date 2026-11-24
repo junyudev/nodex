@@ -896,7 +896,7 @@ CREATE TABLE "project_sessions" (
   updated_at TEXT NOT NULL,
   is_default_draft INTEGER NOT NULL DEFAULT 0 CHECK (is_default_draft IN (0, 1)),
   activity_at INTEGER NOT NULL,
-  manual_rank INTEGER,
+  manual_rank INTEGER, returned_at INTEGER NOT NULL DEFAULT 0 CHECK (returned_at >= 0),
   CHECK (activity_at >= CAST(round(unixepoch(created_at, 'subsec') * 1000) AS INTEGER)),
   CHECK (archived IN (0, 1))
 );
@@ -5886,11 +5886,11 @@ CREATE TABLE inbox_deferrals (
   member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
   episode TEXT NOT NULL,
   set_at TEXT NOT NULL,
-  until_at TEXT NOT NULL,
+  until_at TEXT NOT NULL, linked_session_id TEXT REFERENCES project_sessions(id) ON DELETE SET NULL,
   PRIMARY KEY(page_id,member_id,episode)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX inbox_deferrals_due ON inbox_deferrals(until_at,page_id,member_id);
-CREATE TABLE inbox_later_notifications (
+CREATE TABLE inbox_snooze_notifications (
   id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   page_id TEXT NOT NULL,
@@ -5902,7 +5902,7 @@ CREATE TABLE inbox_later_notifications (
   UNIQUE(page_id,member_id,episode),
   FOREIGN KEY(page_id,member_id,episode) REFERENCES inbox_deferrals(page_id,member_id,episode) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
-CREATE INDEX inbox_later_notifications_member ON inbox_later_notifications(library_id,member_id,claimed,returned_at);
+CREATE INDEX inbox_snooze_notifications_member ON inbox_snooze_notifications(library_id,member_id,claimed,returned_at);
 CREATE TRIGGER turn_intake_added AFTER INSERT ON inbox_entries
 BEGIN INSERT OR IGNORE INTO page_turn_dirty VALUES(NEW.page_id); END;
 CREATE TRIGGER turn_intake_removed AFTER DELETE ON inbox_entries
@@ -5987,13 +5987,31 @@ WHEN OLD.finalized=1 AND (OLD.actor_json IS NOT NEW.actor_json OR OLD.authorizin
 BEGIN SELECT RAISE(ABORT,'Committed actors are immutable'); END;
 CREATE TRIGGER mutation_actors_are_immutable BEFORE UPDATE ON mutation_actors
 BEGIN SELECT RAISE(ABORT,'Mutation actors are immutable'); END;
+CREATE TABLE member_session_wakes (
+ member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+ session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
+ woke_at INTEGER NOT NULL CHECK(woke_at >= 0),
+ PRIMARY KEY(member_id,session_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX inbox_deferrals_linked_session ON inbox_deferrals(linked_session_id,member_id)
+ WHERE linked_session_id IS NOT NULL;
+
+-- Cross-surface changes publish their invalidation when the enclosing commit seals.
+CREATE TABLE session_attention_dirty (
+ session_id TEXT PRIMARY KEY,
+ inbox_changed INTEGER NOT NULL CHECK(inbox_changed IN (0,1))
+) WITHOUT ROWID, STRICT;
+
 CREATE TRIGGER project_sessions_clear_member_attention AFTER UPDATE OF archived ON project_sessions
 WHEN NEW.archived=1
 BEGIN
   DELETE FROM member_session_unread WHERE session_id=NEW.id;
   DELETE FROM member_session_pins WHERE session_id=NEW.id;
-  DELETE FROM member_session_reminders WHERE session_id=NEW.id;
-  DELETE FROM member_session_reminder_deliveries WHERE session_id=NEW.id;
+  DELETE FROM member_session_snoozes WHERE session_id=NEW.id;
+  DELETE FROM member_session_snooze_deliveries WHERE session_id=NEW.id;
+  DELETE FROM member_session_wakes WHERE session_id=NEW.id;
+  DELETE FROM member_session_settled WHERE session_id=NEW.id;
 END;
 CREATE TABLE member_session_pins (
  member_id TEXT NOT NULL REFERENCES members(id),
@@ -6003,22 +6021,29 @@ CREATE TABLE member_session_pins (
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX member_session_pin_order ON member_session_pins(member_id,pinned_order,session_id);
 CREATE INDEX member_session_pin_session ON member_session_pins(session_id);
-CREATE TABLE member_session_reminders (
+CREATE TABLE member_session_snoozes (
  member_id TEXT NOT NULL REFERENCES members(id),
  session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
- remind_at TEXT NOT NULL,
+ snoozed_until TEXT NOT NULL, snoozed_at INTEGER CHECK(snoozed_at >= 0),
  PRIMARY KEY(member_id,session_id)
 ) WITHOUT ROWID, STRICT;
-CREATE INDEX member_session_reminder_due ON member_session_reminders(remind_at,session_id,member_id);
-CREATE TABLE member_session_reminder_deliveries (
+CREATE INDEX member_session_snooze_due ON member_session_snoozes(snoozed_until,session_id,member_id);
+CREATE TABLE member_session_snooze_deliveries (
  delivery_id TEXT PRIMARY KEY,
  member_id TEXT NOT NULL REFERENCES members(id),
  session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
- remind_at TEXT NOT NULL,
+ snoozed_until TEXT NOT NULL,
  next_attempt_at TEXT NOT NULL,
  UNIQUE(member_id,session_id)
 ) WITHOUT ROWID, STRICT;
-CREATE INDEX member_session_reminder_delivery_due ON member_session_reminder_deliveries(next_attempt_at,delivery_id);
+CREATE INDEX member_session_snooze_delivery_due ON member_session_snooze_deliveries(next_attempt_at,delivery_id);
+CREATE TABLE member_session_settled (
+ member_id TEXT NOT NULL REFERENCES members(id),
+ session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
+ settled_at INTEGER NOT NULL CHECK(settled_at >= 0),
+ PRIMARY KEY(member_id,session_id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX member_session_settled_order ON member_session_settled(member_id,settled_at DESC,session_id);
 CREATE TRIGGER member_session_pin_clears_manual_rank AFTER INSERT ON member_session_pins
 BEGIN
   UPDATE project_sessions SET manual_rank = NULL WHERE id = NEW.session_id;
@@ -6089,4 +6114,4 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=216;
+PRAGMA user_version=217;

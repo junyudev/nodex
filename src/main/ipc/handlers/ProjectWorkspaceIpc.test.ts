@@ -19,6 +19,7 @@ import type {
 } from "../../../shared/types";
 import type {
   ProjectSessionOpenedCommandInput,
+  ProjectSessionSettledCommandInput,
   ProjectSessionManagedCommandInput,
   BuiltinSidebarReorderCommandInput,
 } from "../../../shared/workspace-catalog-commands";
@@ -128,6 +129,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     };
     const updateInputs: ProjectUpdateCommandInput[] = [];
     const openedInputs: ProjectSessionOpenedCommandInput[] = [];
+    const settlementInputs: ProjectSessionSettledCommandInput[] = [];
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const placementInputs: (readonly string[])[] = [];
     const placements: readonly SessionSidebarPlacement[] = [
@@ -136,7 +138,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         projectId: project.id,
         sectionId: "section:one",
         unread: true,
-        remindAt: null,
+        snoozedUntil: null,
       },
     ];
     let managedState: SessionManagedState = { managed: false, since: null };
@@ -151,6 +153,11 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         Effect.sync(() => {
           linkedPageInputs.push(input);
           return linkedPageResult;
+        }),
+      setProjectSessionSettled: (command: ProjectSessionSettledCommandInput) =>
+        Effect.sync(() => {
+          settlementInputs.push(command);
+          return { value: { changedSessionIds: ["session:one"] }, apply: applied };
         }),
       recordProjectSessionOpened: (command: ProjectSessionOpenedCommandInput) =>
         Effect.sync(() => {
@@ -321,11 +328,13 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       ).pipe(Effect.isFailure),
     );
 
-    assert.strictEqual(handlers.size, 61);
+    assert.strictEqual(handlers.size, 63);
     assert.isTrue(handlers.has("workspace:tasks:lanes"));
+    assert.isTrue(handlers.has("project-sessions:set-settled"));
+    assert.isTrue(handlers.has("project-sessions:settle-idle"));
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:start"));
-    assert.isTrue(handlers.has("project-sessions:set-reminder"));
+    assert.isTrue(handlers.has("project-sessions:set-snooze"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
     assert.isTrue(handlers.has("project-session-threads:detach"));
@@ -419,6 +428,20 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       value: undefined,
       localCommit: { status: "committed", commit: applied.commit, delivery: null },
     });
+
+    const batch = {
+      operationId: createBoundedOperationId("workspace.sessions.settled", 1_800_000_000_000),
+      payload: { sessionIds: ["session:one", "session:two"], settled: true },
+    };
+    assert.deepEqual(
+      yield* handlers.get("project-sessions:set-settled")!(rendererEvent(17), batch),
+      {
+        ok: true,
+        value: { changedSessionIds: ["session:one"] },
+        localCommit: { status: "committed", commit: applied.commit, delivery: null },
+      },
+    );
+    assert.deepEqual(settlementInputs, [batch]);
 
     const pinnedOrder = yield* handlers.get("sidebar:builtin-order:list")!(
       rendererEvent(17),

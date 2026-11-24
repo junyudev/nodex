@@ -415,18 +415,18 @@ describe("Codex thread notification handler", () => {
   });
 });
 
-test("chat reminders respect settings and presentation and open their exact Session", () => {
+test("chat snoozes respect settings and presentation and open their exact Session", () => {
   const runtime = setup({ turnMode: "always", questionsEnabled: true, readbackEnabled: true });
   const event = {
-    type: "session-reminder" as const,
+    type: "session-snooze" as const,
     hostId: "local",
-    remindAt: "2026-11-02T09:00:00.000Z",
+    snoozedUntil: "2026-11-02T09:00:00.000Z",
     memberId: "member",
     conversation: conversation({ title: "Return here", runtimeSessionId: "chat" }),
   };
   runtime.source.eventListener!(event);
   expect(runtime.shown[0]).toMatchObject({
-    kind: "reminder",
+    kind: "chat-snooze",
     title: "Return here",
     body: "You asked to come back to this chat.",
     navigationPath: "session:chat/thread:thread-1",

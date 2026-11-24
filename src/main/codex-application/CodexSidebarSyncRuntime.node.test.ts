@@ -112,7 +112,7 @@ const archivedTask = (id: string, pinned: boolean) => ({
       display_title: id,
       activity_at: 1,
       unread: false,
-      remind_at: null,
+      snoozed_until: null,
     },
     thread: {
       thread_id: `thread-${id}`,
@@ -136,7 +136,7 @@ const archivedRuntimeTask = (id: string) => ({
       display_title: id,
       activity_at: 5,
       unread: false,
-      remind_at: null,
+      snoozed_until: null,
       created_at: "2026-11-01T00:00:00.000Z",
       updated_at: "2026-11-02T00:00:00.000Z",
       execution_ref: { runtime_id: "runtime-a", thread_id: `runtime-thread-${id}` },

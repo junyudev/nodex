@@ -96,6 +96,8 @@ pub enum HostOperation {
     SessionAttachment,
     SessionOverview,
     SessionQueuedPreview,
+    /// The latest reply of each chat the Member names and may read, as row text.
+    SessionReplyPreviews,
     SessionRunMessage,
     /// A new hosted chat a Member starts, with or without a Project; Core makes them its owner.
     SessionStart,
@@ -118,6 +120,8 @@ pub enum HostOperation {
     SessionArchive,
     SessionUnarchive,
     SessionMove,
+    /// Settlement belongs to the requesting Member.
+    SessionsSetSettled,
     WorkStart,
     WorkspaceRefresh,
     CoordinatorOpen,
@@ -404,11 +408,11 @@ pub enum PhonePushAudience {
     RunRequester {
         run_id: String,
     },
-    /// A chat reminder belongs to the Member who set it, as Core's reminder delivery names them.
-    ReminderOwner {
+    /// A chat snooze belongs to the Member who set it, as Core's snooze delivery names them.
+    ChatSnoozeOwner {
         member_id: String,
     },
-    InboxLaterOwner {
+    InboxSnoozeOwner {
         id: String,
     },
     /// A Page Turn belongs to the Member whose move it is, while that episode is current.

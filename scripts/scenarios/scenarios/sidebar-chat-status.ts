@@ -21,7 +21,7 @@ type ChatRecipe = {
   readonly projectKey: keyof typeof PROJECTS;
   readonly title: string;
   readonly inReview?: boolean;
-  readonly reminder?: "pending" | "due";
+  readonly snooze?: "pending" | "due";
 } & (
   | {
       readonly thread: Pick<
@@ -34,17 +34,17 @@ type ChatRecipe = {
 );
 
 const CHATS = {
-  pendingReminder: {
+  pendingSnooze: {
     projectKey: "statusProject",
-    title: "Reminder set",
+    title: "Snoozed chat",
     unread: false,
-    reminder: "pending",
+    snooze: "pending",
   },
-  dueReminder: {
+  dueSnooze: {
     projectKey: "statusProject",
-    title: "Reminder due",
+    title: "Snooze ended",
     unread: false,
-    reminder: "due",
+    snooze: "due",
   },
   waitingApproval: {
     projectKey: "statusProject",
@@ -183,11 +183,11 @@ const materialize = async (
     entityIdsByKey[key] = chat.sessionId;
     if (chat.threadId) entityIdsByKey[`${key}Thread`] = chat.threadId;
     if (recipe.unread) await port.setSessionUnread(chat.sessionId, true);
-    if (recipe.reminder)
-      await port.setSessionReminder(
+    if (recipe.snooze)
+      await port.setSessionSnooze(
         chat.sessionId,
         new Date(
-          Date.now() + (recipe.reminder === "pending" ? 60 * 60 * 1000 : -60 * 1000),
+          Date.now() + (recipe.snooze === "pending" ? 60 * 60 * 1000 : -60 * 1000),
         ).toISOString(),
       );
     if (!recipe.inReview) continue;
@@ -223,19 +223,19 @@ const inspect = async (
       session.projectId !== requireId(manifest, recipe.projectKey) ||
       session.displayTitle !== recipe.title ||
       session.archived ||
-      (recipe.reminder !== "due" && session.unread !== Boolean(recipe.unread))
+      (recipe.snooze !== "due" && session.unread !== Boolean(recipe.unread))
     ) {
       throw new Error(`sidebar/chat-status Chat ${key} did not materialize`);
     }
-    if (recipe.reminder === "pending" && !session.remindAt) {
-      throw new Error(`sidebar/chat-status Chat ${key} must have a pending reminder`);
+    if (recipe.snooze === "pending" && !session.snoozedUntil) {
+      throw new Error(`sidebar/chat-status Chat ${key} must have a pending snooze`);
     }
     if (
-      recipe.reminder === "due" &&
-      session.remindAt &&
-      Date.parse(session.remindAt) > Date.now()
+      recipe.snooze === "due" &&
+      session.snoozedUntil &&
+      Date.parse(session.snoozedUntil) > Date.now()
     ) {
-      throw new Error(`sidebar/chat-status Chat ${key} must have an overdue reminder`);
+      throw new Error(`sidebar/chat-status Chat ${key} must have an overdue snooze`);
     }
     if (!recipe.thread && session.thread !== null) {
       throw new Error(`sidebar/chat-status Chat ${key} must be threadless`);

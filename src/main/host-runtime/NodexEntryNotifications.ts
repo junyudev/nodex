@@ -90,7 +90,7 @@ export const presentation = Layer.effect(
       });
     };
     return {
-      publishLater: (intent) =>
+      publishSnooze: (intent) =>
         Effect.gen(function* () {
           const { notifications: preferences } = yield* settings.snapshot().pipe(Effect.orDie);
           const payload = turnNotification(

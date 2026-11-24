@@ -74,18 +74,18 @@ export function useAcceptProposal() {
       decision,
       done,
       (cause) => {
-        if (proposal.action.type !== "later" || !navigation.isFocused()) return false;
+        if (proposal.action.type !== "snooze" || !navigation.isFocused()) return false;
         return handlePassedReturnTime(cause, () => {
           if (onExpired) onExpired();
           else
-            navigation.navigate("InboxLaterPicker", {
+            navigation.navigate("InboxSnoozePicker", {
               pageId,
               expired: true,
               proposal: { proposalId: proposal.proposalId, revision: proposal.revision },
             });
         });
       },
-      proposal.action.type === "later" ? { type: "clear_later" } : undefined,
+      proposal.action.type === "snooze" ? { type: "wake" } : undefined,
     );
   };
 }
@@ -411,7 +411,7 @@ export const SuggestionScreen = ({ route, navigation }: ScreenProps<"Suggestion"
               if (navigation.isFocused()) navigation.goBack();
             }}
             onExpired={() =>
-              navigation.replace("InboxLaterPicker", {
+              navigation.replace("InboxSnoozePicker", {
                 pageId: message.id,
                 expired: true,
                 proposal: {

@@ -7,7 +7,7 @@ Active
 ## Purpose
 
 This document is the source of truth for Nodex OS-level notifications produced
-by Codex task lifecycle events, Agent Runtime Sessions, and chat reminders, for the in-app
+by Codex task lifecycle events, Agent Runtime Sessions, and chat snoozes, for the in-app
 [Readback](#readback) that shows how an agent understood a request, and for the presence that
 decides whether anyone needs telling. Phone notifications consume the same
 occurrences and presence; their delivery rules are in
@@ -475,23 +475,31 @@ on. Linux launchers that support counts show it; Windows has no app badge. The
 first count after launch replaces a badge an earlier run left behind, and
 closing the Profile clears it.
 
-## Chat reminders
+## Chat snoozes
 
-A chat reminder is one nullable instant on its Session. At the chosen time, Desktop
-compares and clears the exact stored instant before delivery. A concurrent reschedule
-survives, and another timer, window, or restarted host cannot deliver the consumed
-reminder again. Core retains unfinished unread delivery across a host restart or
-unavailable native identity. Failed unread delivery is deferred without blocking
-other reminders; notification settlement consumes that delivery once. Rescheduling,
-clearing, a user message, or archive cancels unfinished delivery too.
-Archived chats have no reminder. A user-authored message cancels the
-reminder; Agent messages and merely reading the chat leave it in place.
+A Member can snooze any open chat, including one asking for a question or approval.
+The snooze defers that request. Core records when it was set, unpins the chat, and
+sets the same return time on the Member's current Inbox Turn if this is its Active
+chat. Wake on either surface ends both deferrals. Pinning, settling, archiving, or
+the Member sending a message ends their chat snooze.
 
-One Profile-scoped Desktop owner arms a single timer for the earliest reminder. Core
-organization changes from any window, Agent tool, or CLI re-arm it. Startup, restored
-Core connectivity, and system resume catch up overdue reminders without periodic
-polling. A seen conversation consumes the reminder without an unread write or
-notification, using the same [presence](#presence) as Session task notifications.
+A new question, approval, or failed Run after that time wakes the snooze for the
+Member whose attention Core records. The desktop and Space host Runtime observer
+currently record attention for the Profile's local Member. Each Member's snooze
+linked to a Page Turn also retires when that Member's episode changes. Ordinary
+completion preserves the chat snooze.
+
+At its chosen time, Core claims the exact snooze before delivery and records a Woke
+marker. The Member's next view, message, settlement, or snooze clears the marker.
+An early Wake leaves no Woke marker. Core retains unfinished unread delivery across
+a host restart or unavailable native identity. A concurrent reschedule survives and
+another timer, window or restarted host cannot deliver the consumed snooze again.
+
+One Profile-scoped Desktop owner arms a single timer for the earliest snooze. Core
+organization changes re-arm it. Startup, restored Core connectivity and system resume
+catch up overdue snoozes without periodic polling. A seen conversation consumes the
+snooze without an unread write or notification, using the same [presence](#presence)
+as Session task notifications.
 
 Otherwise delivery uses the same unread owner as `set_session_unread`: Core for
 Runtime Sessions and threadless drafts, authenticated Codex identity read state for
@@ -502,8 +510,8 @@ Native notification attempts settle before presentation and are not replayed aft
 restart. System permission or process termination can prevent visible delivery.
 The existing turn notification preference and native authorization gate apply;
 suppressed or denied presentation does not undo the unread transition. Seeing the chat
-dismisses its reminder notification through the ordinary notification lifecycle. The
-Member who set the reminder receives it on their phones while they are away; see
+dismisses its snooze notification through the ordinary notification lifecycle. The
+Member who snoozed the chat receives the notification on their phones while they are away; see
 [Nodex Mobile Behavior](mobile-companion-behavior.md#notifications).
 
 Handback updates intake and its badge without creating a desktop notification of
@@ -516,5 +524,5 @@ needs the Member. Core
 records a notification intent for that Member. The notification uses the Page's title and
 says `Back in your Inbox`. Desktop applies the Member's notification preferences and
 opens the Inbox at the message on activation. The Member's phones can receive the same
-reminder through push. A Page in Done or Canceled, or a message that has been handled,
-erased or archived, produces no reminder. Returning a message by hand is quiet.
+notification through push. A Page in Done or Canceled, or a message that has been handled,
+erased or archived, produces no notification. Returning a message by hand is quiet.

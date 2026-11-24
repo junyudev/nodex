@@ -149,8 +149,8 @@ Inbox that Space has, the other linked Spaces, and Settings.
   prompt a chat would receive, what the suggestion adds of its own, why it was made, who wrote it, and
   the Agent it chose. Plans include every Page, its Project and prerequisites.
   Opening the message lays out the same content in place.
-- Opening intake shows its whole message, with `Start chat`, `Mark done`, `Keep`, `Later`,
-  `Important`, `Ask for a suggestion` and `Delete`. `Later` offers one hour, three hours, the next
+- Opening intake shows its whole message, with `Start chat`, `Mark done`, `Keep`, `Snooze`,
+  `Important`, `Ask for a suggestion` and `Delete`. `Snoozed` offers one hour, three hours, the next
   9:00 AM at least three hours away, and Monday at 9:00 AM of the following week.
   Duplicate times appear once. Decisions that can be undone offer `Undo` for a few seconds.
   On a team Space, its host starts the chat with your authority, even while your laptop is closed.
@@ -160,9 +160,9 @@ Inbox that Space has, the other linked Spaces, and Settings.
   refused decision needs a new one, and a delivery that may have arrived is opened to check, never
   sent again from the phone. A chat opened before its host starts it says so and follows the Run
   once it starts.
-- The history control switches between the Inbox, `Later` and handled messages. It shows how many
+- The history control switches between the Inbox, `Snoozed` and handled messages. It shows how many
   of the Member's message and Turn rows are set aside in the chosen Inbox. Handled
-  shows intake Pages whose messages no longer wait for routing or recovery. `Later` shows each return time,
+  shows intake Pages whose messages no longer wait for routing or recovery. `Snoozed` shows each return time,
   soonest first. Open a message there to return it, change the time, keep it, mark it done
   or dispatch it. A message that returns shows when it was set aside. A Later suggestion
   includes a time. When that time has passed, the Member can confirm with a new one.
@@ -280,8 +280,7 @@ Member attention changes invalidate the same Core-projected stream.
   notifications while its host runs: the personal desktop with Nodex open, or `nodex serve`. The
   phone needs no direct network path to the host for them.
 - The phone hears about exactly what the desktop considers worth telling, decided once for both: a
-  chat finishing, failing or stopping, asking for an approval or an answer, a chat reminder coming
-  due, and a Page Turn becoming yours: a question or approval a chat Nodex manages waits on, or a
+  chat finishing, failing or stopping, asking for an approval or an answer, a chat snooze ending, and a Page Turn becoming yours: a question or approval a chat Nodex manages waits on, or a
   review, block, failure or stall Nodex asks you to look at. Work that continues by itself, such as
   a queued follow-up or delegated work that will wake the chat, is not a finish. Child and
   background work that is absent from the chat list does not notify independently, a side chat's
@@ -316,7 +315,7 @@ Member attention changes invalidate the same Core-projected stream.
   reply, or “Finished” (“Stopped” for a stopped Run) when there is none. A failed Run says “Run
   failed”.
 - Settings on the phone has separate switches for when a chat needs you and when it finishes, and a
-  running chat offers them once. Reminders follow the first. The Space's Devices settings mark a
+  running chat offers them once. Chat snooze notifications follow the first. The Space's Devices settings mark a
   phone with notifications on, and never show where they are sent.
 - The phone registers again on every connection to a Space, which also tells a Space about switches
   changed while connected elsewhere; turning both off withdraws from each Space as the phone next

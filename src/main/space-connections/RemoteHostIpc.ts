@@ -103,6 +103,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:session:overview", (_, input) =>
       call<"agent-runtime:session:overview">("session_overview", input),
     );
+    yield* ipc.handleQuery("agent-runtime:session:reply-previews", (_, input) =>
+      call<"agent-runtime:session:reply-previews">("session_reply_previews", input),
+    );
     yield* ipc.handleQuery("agent-runtime:session:queued-preview", (_, input) =>
       call<"agent-runtime:session:queued-preview">("session_queued_preview", input),
     );

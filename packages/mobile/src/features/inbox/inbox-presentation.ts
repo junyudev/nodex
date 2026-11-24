@@ -6,11 +6,11 @@ import type {
 } from "@nodex/mobile-protocol";
 
 import type { IconName } from "../../ui/icons";
-import { formatLaterTime, formatSetAsideDate } from "./inbox-later-time";
+import { formatInboxSnoozeTime, formatSetAsideDate } from "./inbox-snooze-time";
 
 /** What puts a decision back when it clears a message without a Host undo of its own. */
 export const decisionReversal = (decision: InboxDecision): InboxDecision | null =>
-  decision.type === "later" ? { type: "clear_later" } : null;
+  decision.type === "snooze" ? { type: "wake" } : null;
 
 /** The one decision a suggestion asks for: its verb and glyph, wherever it is offered. */
 export const proposalAction = (
@@ -28,8 +28,11 @@ export const proposalAction = (
       return { label: "Run", icon: "run" };
     case "plan":
       return { label: "Start plan", icon: "run" };
-    case "later":
-      return { label: `Later · ${formatLaterTime(action.remindAt, now)}`, icon: "clock" };
+    case "snooze":
+      return {
+        label: `Snooze · ${formatInboxSnoozeTime(action.snoozedUntil, now)}`,
+        icon: "clock",
+      };
     case "keep":
       return { label: "Add to Todo", icon: "todo" };
     case "save_to_notes":
@@ -50,7 +53,7 @@ export const proposalDestination = (action: InboxProposalAction): string | null 
       return action.name;
     case "plan":
       return null;
-    case "later":
+    case "snooze":
     case "save_to_notes":
     case "keep":
       return null;
@@ -70,7 +73,7 @@ export const proposalHeadline = (action: InboxProposalAction, now = new Date()):
       return action.name ? `Run ${action.name}` : "Run this Automation";
     case "plan":
       return "Start a plan";
-    case "later":
+    case "snooze":
       return proposalAction(action, now).label;
     case "keep":
       return "Add to Todo";
@@ -111,8 +114,8 @@ export const proposalAcceptance = (
       : {}),
   },
   done:
-    proposal.action.type === "later"
-      ? "Set aside"
+    proposal.action.type === "snooze"
+      ? "Snoozed"
       : proposal.action.type === "keep"
         ? "Added to Todo"
         : proposal.action.type === "save_to_notes"
@@ -181,12 +184,12 @@ export function outcomeLabel(message: InboxEntry): string | null {
 }
 
 /** Show when an Inbox row returns or when it was set aside. */
-export function laterLabel(message: InboxEntry, now: Date): string | null {
-  if ((message.rowKind !== "intake" && message.rowKind !== "turn") || !message.later) return null;
-  const { later } = message;
-  return Date.parse(later.until) > now.getTime()
-    ? formatLaterTime(later.until, now)
-    : `Back from Later · set aside ${formatSetAsideDate(new Date(later.setAt), now)}`;
+export function snoozeLabel(message: InboxEntry, now: Date): string | null {
+  if ((message.rowKind !== "intake" && message.rowKind !== "turn") || !message.snooze) return null;
+  const { snooze } = message;
+  return Date.parse(snooze.until) > now.getTime()
+    ? formatInboxSnoozeTime(snooze.until, now)
+    : `Back from snooze · set ${formatSetAsideDate(new Date(snooze.setAt), now)}`;
 }
 
 /** Who a message came from, when it was not the person themself. */

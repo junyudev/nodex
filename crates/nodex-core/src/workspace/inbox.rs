@@ -13,8 +13,6 @@ pub(super) mod event_automation;
 pub(super) mod github;
 #[path = "inbox_handback.rs"]
 pub(super) mod handback;
-#[path = "inbox_later.rs"]
-pub(super) mod later;
 #[path = "inbox_nodex.rs"]
 pub(super) mod nodex;
 #[path = "inbox_notes.rs"]
@@ -27,6 +25,8 @@ pub(super) mod reliable;
 mod reply;
 #[path = "inbox_scheduled.rs"]
 pub(crate) mod scheduled;
+#[path = "inbox_snooze.rs"]
+pub(super) mod snooze;
 pub(super) use reliable::{
     apply_reliable, read_pending_request_ids, read_requests, stop_suggestion,
 };
@@ -1539,7 +1539,7 @@ fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
         }
         ProjectWorkspaceInboxDispatchAction::Keep => "Add to Todo".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SaveToNotes { .. } => "Save to Notes".to_owned(),
-        ProjectWorkspaceInboxDispatchAction::Later { .. } => "Set aside".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::Snooze { .. } => "Set aside".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
             "Send to an existing chat".to_owned()
@@ -1622,8 +1622,8 @@ fn apply_confirmation(
             effects.page_ids = page_ids.to_vec();
             Ok(effects)
         }
-        ProjectWorkspaceInboxDispatchAction::Later { .. } => {
-            Err(internal("Later must be confirmed as a Member deferral"))
+        ProjectWorkspaceInboxDispatchAction::Snooze { .. } => {
+            Err(internal("Snooze must be confirmed as a Member deferral"))
         }
         ProjectWorkspaceInboxDispatchAction::SaveToNotes { .. } => {
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
@@ -1992,7 +1992,7 @@ fn forget_proposals(
             connection.execute("UPDATE inbox_entries SET suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE current_proposal_id=?1 AND page_id NOT IN (SELECT value FROM json_each(?3))",params![proposal_id,now,page_ids_json])?;
             continue;
         }
-        let handled = state == "completed" && action != "later";
+        let handled = state == "completed" && action != "snooze";
         connection.execute(
             "UPDATE inbox_entries SET current_proposal_id = NULL, \
                suggestion_state = CASE WHEN ?2 THEN suggestion_state ELSE 'none' END, \
@@ -2747,9 +2747,9 @@ fn normalize_action(
             notes::validate_destination(connection, library_id, scope, parent_page_id.as_deref())?;
             Ok(action.clone())
         }
-        ProjectWorkspaceInboxDispatchAction::Later { remind_at } => {
-            Ok(ProjectWorkspaceInboxDispatchAction::Later {
-                remind_at: later::normalize_time(remind_at)?,
+        ProjectWorkspaceInboxDispatchAction::Snooze { snoozed_until } => {
+            Ok(ProjectWorkspaceInboxDispatchAction::Snooze {
+                snoozed_until: snooze::normalize_time(snoozed_until)?,
             })
         }
         ProjectWorkspaceInboxDispatchAction::NewChat {

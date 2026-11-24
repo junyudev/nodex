@@ -86,6 +86,7 @@ import {
   DispatchModeLimitSchema,
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import {
+  LATEST_REPLIES_THREAD_LIMIT,
   ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
   ProjectionStoreV2,
   SubagentOverviewItem,
@@ -568,6 +569,12 @@ const AgentRequest = Schema.Union([
   request("thread.message-turn", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("thread.run-message", Schema.Struct({ threadId: ThreadId, runId: RunId })),
   request("thread.opening-request", Schema.Struct({ threadId: ThreadId })),
+  request(
+    "threads.latest-replies",
+    Schema.Struct({
+      threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(LATEST_REPLIES_THREAD_LIMIT)),
+    }),
+  ),
   request("project.close", Schema.Struct({ projectId: ProjectId })),
   request(
     "shell.read",
@@ -1241,6 +1248,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* projections
           .getRunUserMessage(input.input.threadId, input.input.runId)
           .pipe(Effect.flatMap(encodeQueuedMessage));
+      case "threads.latest-replies":
+        return yield* projections.getLatestReplies(input.input.threadIds);
       case "thread.opening-request":
         return yield* projections
           .getOpeningRequest(input.input.threadId)

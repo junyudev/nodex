@@ -41,7 +41,7 @@ import type {
   InboxSendResult,
   InboxSetImportantInput,
   InboxSetKindInput,
-  InboxSetLaterInput,
+  InboxSetSnoozeInput,
   InboxSummary,
   InboxSummaryInput,
   InboxWindow,
@@ -59,7 +59,7 @@ import {
   InboxSendInputSchema,
   InboxSetImportantInputSchema,
   InboxSetKindInputSchema,
-  InboxSetLaterInputSchema,
+  InboxSetSnoozeInputSchema,
   InboxSuggestionRequestInputSchema,
   InboxSuggestionStopInputSchema,
   InboxSummaryInputSchema,
@@ -198,8 +198,8 @@ export class InboxApplication extends Context.Service<
       input: InboxPageIdsInput,
       operationId?: string,
     ) => InboxMutation<InboxDecisionResult>;
-    readonly clearLater: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
-    readonly setLater: (input: InboxSetLaterInput, operationId?: string) => InboxMutation;
+    readonly wake: (input: InboxPageIdsInput, operationId?: string) => InboxMutation;
+    readonly setSnooze: (input: InboxSetSnoozeInput, operationId?: string) => InboxMutation;
     readonly markDone: (
       input: InboxPageIdsInput,
       operationId?: string,
@@ -796,26 +796,26 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const clearLater = Effect.fn("InboxApplication.clearLater")(function* (
+  const wake = Effect.fn("InboxApplication.wake")(function* (
     input: InboxPageIdsInput,
     operationId?: string,
   ) {
-    const parsed = yield* parse("clear-later", () => InboxPageIdsInputSchema.parse(input));
+    const parsed = yield* parse("wake", () => InboxPageIdsInputSchema.parse(input));
     return yield* mutate(
-      "clear-later",
-      { kind: "clear_inbox_later", page_ids: [...parsed.pageIds] },
+      "wake",
+      { kind: "wake_inbox_entries", page_ids: [...parsed.pageIds] },
       operationId,
     );
   });
 
-  const setLater = Effect.fn("InboxApplication.setLater")(function* (
-    input: InboxSetLaterInput,
+  const setSnooze = Effect.fn("InboxApplication.setSnooze")(function* (
+    input: InboxSetSnoozeInput,
     operationId?: string,
   ) {
-    const parsed = yield* parse("later", () => InboxSetLaterInputSchema.parse(input));
+    const parsed = yield* parse("snooze", () => InboxSetSnoozeInputSchema.parse(input));
     return yield* mutate(
-      "later",
-      { kind: "set_inbox_later", page_ids: [...parsed.pageIds], until: parsed.until },
+      "snooze",
+      { kind: "set_inbox_snooze", page_ids: [...parsed.pageIds], until: parsed.until },
       operationId,
     );
   });
@@ -1385,8 +1385,8 @@ export const make = Effect.gen(function* () {
     undo,
     dispatch,
     keep,
-    setLater,
-    clearLater,
+    setSnooze,
+    wake,
     markDone,
     returnMessages,
     setKind,

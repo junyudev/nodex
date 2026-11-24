@@ -1,20 +1,25 @@
 use chrono::{DateTime, Datelike, SecondsFormat, Timelike, Utc};
 use nodex_core_contracts::CoreErrorRecovery;
-use nodex_core_contracts::inbox::{InboxLater, InboxLaterNotification};
+use nodex_core_contracts::inbox::{InboxSnooze, InboxSnoozeNotification};
 use nodex_core_contracts::workspace::ProjectWorkspaceIntent;
 
+use serde_json::json;
+
 use super::*;
+use crate::workspace::member_attention;
 
 const PENDING: &str = "
     FROM inbox_deferrals deferral
     JOIN inbox_member_rows rows ON rows.page_id=deferral.page_id
       AND rows.member_id=deferral.member_id AND rows.episode=deferral.episode AND rows.in_inbox=1
-    LEFT JOIN inbox_later_notifications intent ON intent.page_id=deferral.page_id
+    LEFT JOIN inbox_snooze_notifications intent ON intent.page_id=deferral.page_id
       AND intent.member_id=deferral.member_id AND intent.episode=deferral.episode
     WHERE rows.library_id=?1 AND intent.id IS NULL
+      AND NOT EXISTS(SELECT 1 FROM member_session_snoozes snooze
+        WHERE snooze.session_id=deferral.linked_session_id AND snooze.member_id=deferral.member_id)
 ";
 const CURRENT_NOTIFICATIONS: &str = "
-    FROM inbox_later_notifications intent
+    FROM inbox_snooze_notifications intent
     JOIN inbox_member_rows rows ON rows.page_id=intent.page_id
       AND rows.member_id=intent.member_id AND rows.episode=intent.episode AND rows.in_inbox=1
     WHERE intent.library_id=?1 AND (
@@ -27,10 +32,10 @@ fn canonical(instant: DateTime<Utc>) -> String {
 
 fn parse(value: &str) -> Result<DateTime<Utc>, StoreError> {
     let instant = DateTime::parse_from_rfc3339(value)
-        .map_err(|_| invalid("remind_at must be an ISO 8601 instant with an offset"))?
+        .map_err(|_| invalid("snoozed_until must be an ISO 8601 instant with an offset"))?
         .to_utc();
     if !(0..=9999).contains(&instant.year()) || instant.nanosecond() >= 1_000_000_000 {
-        return Err(invalid("remind_at must name a representable instant"));
+        return Err(invalid("snoozed_until must name a representable instant"));
     }
     Ok(instant)
 }
@@ -55,7 +60,7 @@ pub(super) fn set_entries(
     let now = normalize_time(now)?;
     if until <= now {
         return Err(invalid("Choose a return time in the future")
-            .with_recovery(CoreErrorRecovery::InboxRemindAtPassed));
+            .with_recovery(CoreErrorRecovery::InboxSnoozeTimePassed));
     }
     let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     for page in pages {
@@ -71,26 +76,114 @@ pub(super) fn set_entries(
                AND (rows.row_kind='turn' OR (rows.row_kind='intake' AND entry.source_kind<>'automation'))",
             params![page,member], |row| row.get(0),
         ).optional()?.ok_or_else(|| conflict("Only eligible Pages waiting for you can be set aside"))?;
-        connection.execute(
-            "DELETE FROM inbox_deferrals WHERE page_id=?1 AND member_id=?2",
-            params![page, member],
-        )?;
-        connection.execute(
-            "INSERT INTO inbox_deferrals(page_id,member_id,episode,set_at,until_at) VALUES(?1,?2,?3,?4,?5)",
-            params![page,member,episode,now,until],
-        )?;
-        connection.execute(
-            "UPDATE page_turn_notification_intents SET claimed_at=?4
-            WHERE page_id=?1 AND member_id=?2 AND episode=?3 AND claimed_at IS NULL",
-            params![page, member, episode, now],
-        )?;
-        // Standing consent applies to newly offered work. Deferring an existing offer
-        // withdraws its automatic admission without changing the offer or its basis.
-        connection.execute(
-            "UPDATE inbox_proposals SET auto_confirm_pending=0 WHERE auto_confirm_pending=1
-             AND proposal_id=(SELECT current_proposal_id FROM inbox_entries WHERE page_id=?1 AND author_member_id=?2)",
-            params![page,member],
-        )?;
+        let chat: Option<String> = connection
+            .query_row(
+                "SELECT active.session_id FROM page_active_chats active
+             JOIN project_sessions session ON session.id=active.session_id AND session.archived=0
+             WHERE active.page_id=?1",
+                [page],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(chat) = chat {
+            member_attention::reopen(connection, &member, &chat)?;
+            member_attention::snooze_chat(connection, &member, &chat, &until, &now)?;
+            link_chat_turns(connection, &member, &chat, &until, &now)?;
+        } else {
+            set_episode(connection, page, &member, &episode, &until, &now, None)?;
+        }
+    }
+    Ok(())
+}
+
+fn set_episode(
+    connection: &Connection,
+    page: &str,
+    member: &str,
+    episode: &str,
+    until: &str,
+    now: &str,
+    chat: Option<&str>,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "DELETE FROM inbox_deferrals WHERE page_id=?1 AND member_id=?2",
+        params![page, member],
+    )?;
+    connection.execute(
+        "INSERT INTO inbox_deferrals(page_id,member_id,episode,set_at,until_at,linked_session_id)
+         VALUES(?1,?2,?3,?4,?5,?6)",
+        params![page, member, episode, now, until, chat],
+    )?;
+    connection.execute(
+        "UPDATE page_turn_notification_intents SET claimed_at=?4
+         WHERE page_id=?1 AND member_id=?2 AND episode=?3 AND claimed_at IS NULL",
+        params![page, member, episode, now],
+    )?;
+    // Deferring an offer withdraws standing consent for that decision.
+    connection.execute(
+        "UPDATE inbox_proposals SET auto_confirm_pending=0 WHERE auto_confirm_pending=1
+         AND proposal_id=(SELECT current_proposal_id FROM inbox_entries WHERE page_id=?1 AND author_member_id=?2)",
+        params![page,member],
+    )?;
+    Ok(())
+}
+
+/// The active chat and the Member's current Page Turn share a return time.
+pub(in crate::workspace) fn link_chat_turns(
+    connection: &Connection,
+    member: &str,
+    chat: &str,
+    until: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    let until = normalize_time(until)?;
+    let now = normalize_time(now)?;
+    let turns = connection.prepare(
+        "SELECT row.page_id,row.episode FROM page_active_chats active
+         JOIN inbox_member_rows row ON row.page_id=active.page_id AND row.member_id=?2 AND row.in_inbox=1
+         LEFT JOIN inbox_entries entry ON row.row_kind='intake' AND entry.page_id=row.page_id
+         WHERE active.session_id=?1 AND (row.row_kind='turn' OR
+           (row.row_kind='intake' AND entry.source_kind<>'automation'))",
+    )?.query_map(params![chat,member], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (page, episode) in &turns {
+        set_episode(connection, page, member, episode, &until, &now, Some(chat))?;
+    }
+    if !turns.is_empty() {
+        member_attention::invalidate(connection, chat, true)?;
+    }
+    Ok(())
+}
+
+pub(in crate::workspace) fn retire_episodes(
+    connection: &Connection,
+    page_ids: &[String],
+) -> Result<(), StoreError> {
+    let expired = connection.prepare(
+        "DELETE FROM inbox_deferrals AS deferral
+         WHERE deferral.page_id IN (SELECT value FROM json_each(?1))
+           AND (NOT EXISTS(SELECT 1 FROM inbox_member_rows row
+              WHERE row.page_id=deferral.page_id AND row.member_id=deferral.member_id
+                AND row.episode=deferral.episode AND row.in_inbox=1)
+           OR (deferral.linked_session_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM page_active_chats active
+              WHERE active.page_id=deferral.page_id AND active.session_id=deferral.linked_session_id)))
+         RETURNING linked_session_id,member_id",
+    )?.query_map([json!(page_ids).to_string()], |row| Ok((row.get::<_, Option<String>>(0)?,row.get::<_,String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (chat, member) in expired {
+        if let Some(chat) = chat {
+            // A new episode retires only its own deferral. A chat shared by several
+            // Pages stays snoozed while another linked episode still defers it.
+            let removed = connection.execute(
+                "DELETE FROM member_session_snoozes
+                 WHERE member_id=?1 AND session_id=?2 AND NOT EXISTS(
+                   SELECT 1 FROM inbox_deferrals WHERE member_id=?1 AND linked_session_id=?2)",
+                params![member, chat],
+            )?;
+            if removed > 0 {
+                member_attention::invalidate(connection, &chat, true)?;
+            }
+        }
     }
     Ok(())
 }
@@ -99,7 +192,7 @@ pub(in crate::workspace) fn record(
     connection: &Connection,
     page: &str,
     member: &str,
-) -> Result<Option<InboxLater>, StoreError> {
+) -> Result<Option<InboxSnooze>, StoreError> {
     Ok(connection
         .query_row(
             "SELECT deferral.set_at,deferral.until_at FROM inbox_deferrals deferral JOIN inbox_member_rows rows
@@ -107,7 +200,7 @@ pub(in crate::workspace) fn record(
              WHERE deferral.page_id=?1 AND deferral.member_id=?2 AND rows.in_inbox=1",
             params![page, member],
             |row| {
-                Ok(InboxLater {
+                Ok(InboxSnooze {
                     set_at: row.get(0)?,
                     until: row.get(1)?,
                 })
@@ -136,7 +229,7 @@ pub(in crate::workspace) fn notifications(
     context: &BoundModuleContext,
     library_id: &str,
     for_push: bool,
-) -> Result<Vec<InboxLaterNotification>, StoreError> {
+) -> Result<Vec<InboxSnoozeNotification>, StoreError> {
     if for_push {
         require_host(context)?;
     } else {
@@ -147,7 +240,7 @@ pub(in crate::workspace) fn notifications(
         "SELECT intent.id,intent.member_id,intent.page_id,intent.returned_at,
          COALESCE((SELECT substr(m.title,1,512) FROM pages p JOIN document_materializations m ON m.document_id=p.document_id WHERE p.block_id=intent.page_id),'')
          {CURRENT_NOTIFICATIONS} ORDER BY intent.returned_at,intent.id LIMIT 100"
-    ))?.query_map(params![library_id,member,for_push], |row| Ok(InboxLaterNotification {
+    ))?.query_map(params![library_id,member,for_push], |row| Ok(InboxSnoozeNotification {
         id: row.get(0)?, member_id: row.get(1)?, page_id: row.get(2)?, returned_at: row.get(3)?, title: row.get(4)?,
     }))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }
@@ -188,26 +281,30 @@ pub(in crate::workspace) fn apply(
         |_| {
             let mut effects = simple_effects("inbox_write", &now);
             match intent {
-                ProjectWorkspaceIntent::SetInboxLater { page_ids, until } => {
+                ProjectWorkspaceIntent::SetInboxSnooze { page_ids, until } => {
                     let pages = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
                     set_entries(connection, context, &pages, until, &now)?;
                     effects.page_ids = pages;
                 }
-                ProjectWorkspaceIntent::ClearInboxLater { page_ids } => {
+                ProjectWorkspaceIntent::WakeInboxEntries { page_ids } => {
                     require_decision_authority(context)?;
                     let pages = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
                     let member =
                         crate::infrastructure::actors::requesting_member(connection, context)?;
                     for page in &pages {
-                        connection.execute(
-                            "DELETE FROM inbox_deferrals WHERE page_id=?1 AND member_id=?2",
-                            params![page, member],
-                        )?;
+                        let chats = connection.prepare(
+                            "DELETE FROM inbox_deferrals WHERE page_id=?1 AND member_id=?2 RETURNING linked_session_id",
+                        )?.query_map(params![page, member], |row| row.get::<_,Option<String>>(0))?
+                            .collect::<rusqlite::Result<Vec<_>>>()?;
+                        for chat in chats.into_iter().flatten() {
+                            member_attention::cancel_snooze(connection, &member, &chat)?;
+                            member_attention::invalidate(connection, &chat, true)?;
+                        }
                     }
                     effects.page_ids = pages;
                 }
-                ProjectWorkspaceIntent::PublishDueInboxLater { wake_at } => {
-                    effects.operation_kind = "inbox_later_due";
+                ProjectWorkspaceIntent::PublishDueInboxSnooze { wake_at } => {
+                    effects.operation_kind = "inbox_snooze_due";
                     require_host(context)?;
                     let cutoff = normalize_time(&now)?;
                     let wake_at = normalize_time(wake_at)?;
@@ -231,7 +328,7 @@ pub(in crate::workspace) fn apply(
                     for (page, member, episode, until) in due {
                         let id = stable_uuid_v7(operation_id, &member, &page);
                         connection.execute(
-                            "INSERT INTO inbox_later_notifications(id,library_id,page_id,member_id,episode,returned_at)
+                            "INSERT INTO inbox_snooze_notifications(id,library_id,page_id,member_id,episode,returned_at)
                              VALUES(?1,?2,?3,?4,?5,?6)",
                             params![id,library_id,page,member,episode,until],
                         )?;
@@ -240,7 +337,7 @@ pub(in crate::workspace) fn apply(
                     effects.page_ids.sort_unstable();
                     effects.page_ids.dedup();
                 }
-                ProjectWorkspaceIntent::ClaimInboxLaterNotification { id, for_push } => {
+                ProjectWorkspaceIntent::ClaimInboxSnoozeNotification { id, for_push } => {
                     if *for_push {
                         require_host(context)?;
                     } else {
@@ -257,15 +354,17 @@ pub(in crate::workspace) fn apply(
                             |row| row.get::<_, String>(0),
                         )
                         .optional()?
-                        .ok_or_else(|| conflict("This Inbox reminder was already settled"))?;
+                        .ok_or_else(|| {
+                            conflict("This Inbox snooze notification was already claimed")
+                        })?;
                     let claimed = if *for_push { "push_claimed" } else { "claimed" };
                     connection.execute(
-                        &format!("UPDATE inbox_later_notifications SET {claimed}=1 WHERE id=?1"),
+                        &format!("UPDATE inbox_snooze_notifications SET {claimed}=1 WHERE id=?1"),
                         [id],
                     )?;
                     effects.page_ids.push(page);
                 }
-                _ => return Err(internal("Invalid Inbox Later command")),
+                _ => return Err(internal("Invalid Inbox snoozes command")),
             }
             Ok(effects)
         },

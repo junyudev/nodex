@@ -36,14 +36,14 @@ it("applies preferences to episode notifications", () => {
     turnNotification(occurrence, "always", true, away)?.id,
   );
 });
-it.effect("claims Turn and Later intents once and opens each Inbox message on click", () =>
+it.effect("claims Turn and Snooze intents once and opens each Inbox message on click", () =>
   Effect.gen(function* () {
     let episode = "one";
     const claimed = new Set<string>();
-    const later = {
+    const snooze = {
       id: "returned",
       member_id: "member",
-      page_id: "later-page",
+      page_id: "snoozed-page",
       title: "Renew the certificate",
       returned_at: "2026-11-12T09:00:00Z",
     };
@@ -59,8 +59,8 @@ it.effect("claims Turn and Later intents once and opens each Inbox message on cl
           read: (input: { kind: string }) =>
             Effect.succeed({
               value:
-                input.kind === "inbox_later_notifications"
-                  ? { kind: input.kind, intents: [later] }
+                input.kind === "inbox_snooze_notifications"
+                  ? { kind: input.kind, intents: [snooze] }
                   : input.kind === "inbox_turn_notifications"
                     ? {
                         kind: input.kind,
@@ -79,7 +79,7 @@ it.effect("claims Turn and Later intents once and opens each Inbox message on cl
           apply: (input: { intent: { kind: string } }) =>
             Effect.sync(() => {
               const id =
-                input.intent.kind === "claim_inbox_later_notification" ? later.id : episode;
+                input.intent.kind === "claim_inbox_snooze_notification" ? snooze.id : episode;
               const duplicate = claimed.has(id);
               claimed.add(id);
               return { receipt: { duplicate }, outcome: { inbox_write: { replay: duplicate } } };
@@ -121,7 +121,7 @@ it.effect("claims Turn and Later intents once and opens each Inbox message on cl
     yield* service.drain;
     assert.lengthOf(shown, 2);
     expect(shown[0]).toMatchObject({
-      title: later.title,
+      title: snooze.title,
       body: "Back in your Inbox",
     });
     episode = "two";
@@ -130,7 +130,7 @@ it.effect("claims Turn and Later intents once and opens each Inbox message on cl
     clickHandlers[0]?.({ actionType: "open" });
     expect(clicks[0]).toMatchObject({
       spaceId: "personal",
-      inboxEntry: { pageId: later.page_id, scope: { kind: "all" } },
+      inboxEntry: { pageId: snooze.page_id, scope: { kind: "all" } },
     });
     expect(clicks[0]).not.toHaveProperty("inboxEntry.turnEpisode");
     clickHandlers[2]?.({ actionType: "open" });

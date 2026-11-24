@@ -5396,13 +5396,13 @@ mod scheduled {
         let error = apply_host_error(
             &workspace.module,
             "later-automation",
-            ProjectWorkspaceIntent::SetInboxLater {
+            ProjectWorkspaceIntent::SetInboxSnooze {
                 page_ids: vec!["page:ordinary".into(), held.page_id],
                 until: "2099-01-01T00:00:00Z".into(),
             },
         );
         assert_eq!(error, CoreErrorCode::InvalidInput);
-        assert_eq!(summary(&workspace.module).later_count, 0);
+        assert_eq!(summary(&workspace.module).snoozed_count, 0);
         assert_eq!(
             count(
                 &workspace,
@@ -8662,8 +8662,8 @@ fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_basel
     assert_eq!(status_of(&w, "page:first-handoff").as_deref(), Some("done"));
 }
 
-#[path = "inbox_later_tests.rs"]
-mod later;
+#[path = "inbox_snooze_tests.rs"]
+mod snooze;
 
 #[test]
 fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {

@@ -29,28 +29,31 @@ describe("inbox/triage scenario", () => {
           inboxTriageTwoChats: { pageId: facts.inboxTriageTwoChats.pageId, sessionIds: [null] },
         }),
       ).toThrow("inbox/triage facts are invalid");
-      const [all, project, later] = await Promise.all([
+      const [all, project, snoozed] = await Promise.all([
         context.seed.readInbox(),
         context.seed.readInbox(projectInbox(context.manifest.projectId)),
-        context.seed.readInbox(undefined, "later"),
+        context.seed.readInbox(undefined, "snoozed"),
       ]);
       expect(all.items.filter((item) => item.rowKind === "intake")).toHaveLength(14);
-      expect(later.items.map(({ pageId, later }) => ({ pageId, until: later?.until }))).toEqual([
-        { pageId: context.manifest.pageIdsByKey.laterTimed, until: expect.any(String) },
-      ]);
-      const returned = all.items.find(
-        ({ pageId }) => pageId === context.manifest.pageIdsByKey.laterReturned,
+      expect(snoozed.items.map(({ pageId, snooze }) => ({ pageId, until: snooze?.until }))).toEqual(
+        [{ pageId: context.manifest.pageIdsByKey.snoozedTimed, until: expect.any(String) }],
       );
-      expect(Date.parse(returned?.later?.until ?? "")).toBeLessThanOrEqual(Date.now());
+      const returned = all.items.find(
+        ({ pageId }) => pageId === context.manifest.pageIdsByKey.snoozeReturned,
+      );
+      expect(Date.parse(returned?.snooze?.until ?? "")).toBeLessThanOrEqual(Date.now());
       expect(
         all.items
           .filter((item) => item.rowKind === "turn")
           .map((item) => ({ pageId: item.pageId, reason: item.turn?.turn.reason })),
       ).toEqual([{ pageId: facts.inboxMovedNoChat.pageId, reason: "review" }]);
       expect(
-        all.items.find(({ pageId }) => pageId === context.manifest.pageIdsByKey.laterSuggested)
+        all.items.find(({ pageId }) => pageId === context.manifest.pageIdsByKey.snoozeSuggested)
           ?.proposal,
-      ).toMatchObject({ state: "open", action: { type: "later", remindAt: expect.any(String) } });
+      ).toMatchObject({
+        state: "open",
+        action: { type: "snooze", snoozedUntil: expect.any(String) },
+      });
       const pending = [...all.items, ...project.items];
       expect(
         all.items.find((item) => item.pageId === context.manifest.pageIdsByKey.newChatSuggestion)

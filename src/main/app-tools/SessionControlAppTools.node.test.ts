@@ -128,15 +128,21 @@ const fixture = Effect.gen(function* () {
             backendBinding: { driver: "codex", instanceId: "codex" },
           },
         })),
-      setProjectSessionReminder: (input: {
-        payload: { sessionId: string; remindAt: string | null };
+      setProjectSessionSnooze: (input: {
+        payload: { sessionId: string; snoozedUntil: string | null };
       }) =>
         Effect.sync(() => {
-          record("core-reminder", input);
+          record("core-snooze", input);
           return {
-            value: { remindAt: input.payload.remindAt },
+            value: { snoozedUntil: input.payload.snoozedUntil },
             apply: { receipt: "core-receipt" },
           };
+        }),
+      setProjectSessionSettled: (input: unknown) =>
+        Effect.gen(function* () {
+          assert.isNotNull(yield* CoreApplicationAgent);
+          record("core-settlement", input);
+          return { value: { changedSessionIds: ["target"] }, apply: { receipt: "core-receipt" } };
         }),
       markProjectSessionUnread: (input: { payload: { sessionId: string; unread: boolean } }) =>
         Effect.sync(() => {
@@ -511,26 +517,64 @@ it.effect("carries the admission ceiling to Runtime queue and Stop controls", ()
   }),
 );
 
-it.effect("sets, clears and exactly replays reminders for Runtime, native and draft Sessions", () =>
+it.effect(
+  "snoozes, wakes and exactly replays those commands for Runtime, native and draft Sessions",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      for (const backend of ["runtime", "native", "draft"] as const) {
+        f.setBackend(backend);
+        for (const snoozedUntil of ["2026-11-02T09:00:00.000Z", null]) {
+          const args = {
+            sessionId: "target",
+            until: snoozedUntil,
+            idempotencyKey: `${backend}-${snoozedUntil}`,
+          };
+          const first = yield* f.execute("set_session_snooze", args);
+          assert.equal(first.structuredContent?.snoozedUntil, snoozedUntil);
+          f.nextTurn();
+          assert.deepEqual(yield* f.execute("set_session_snooze", args), first);
+        }
+      }
+      assert.lengthOf(
+        f.calls.filter((call) => call.name === "core-snooze"),
+        6,
+      );
+      assert.lengthOf(
+        f.calls.filter((call) => call.name === "native-unread" || call.name === "core-unread"),
+        0,
+      );
+    }),
+);
+
+it.effect("settles a batch through Core and returns the exact changed ids on retry", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    for (const backend of ["runtime", "native", "draft"] as const) {
-      f.setBackend(backend);
-      for (const remindAt of ["2026-11-02T09:00:00.000Z", null]) {
-        const args = { sessionId: "target", remindAt, idempotencyKey: `${backend}-${remindAt}` };
-        const first = yield* f.execute("set_session_reminder", args);
-        assert.equal(first.structuredContent?.remindAt, remindAt);
-        f.nextTurn();
-        assert.deepEqual(yield* f.execute("set_session_reminder", args), first);
-      }
-    }
-    assert.lengthOf(
-      f.calls.filter((call) => call.name === "core-reminder"),
-      6,
+    const args = {
+      sessionIds: ["target", "already-settled"],
+      settled: true,
+      idempotencyKey: "batch",
+    };
+    const first = yield* f.execute("set_session_settled", args);
+    assert.deepEqual(first.structuredContent?.changedSessionIds, ["target"]);
+    f.nextTurn();
+    assert.deepEqual(yield* f.execute("set_session_settled", args), first);
+    assert.deepEqual(
+      f.calls.filter((call) => call.name === "core-settlement"),
+      [
+        {
+          name: "core-settlement",
+          input: {
+            operationId: first.structuredContent?.operationId,
+            payload: { sessionIds: args.sessionIds, settled: true },
+          },
+        },
+      ],
     );
-    assert.lengthOf(
-      f.calls.filter((call) => call.name === "native-unread" || call.name === "core-unread"),
-      0,
-    );
+    const invalid = yield* f.execute("set_session_settled", {
+      sessionIds: ["target", "target"],
+      settled: false,
+    });
+    assert.isTrue(invalid.isError);
   }),
 );

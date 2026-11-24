@@ -26,9 +26,9 @@ const roundUpToMinute = (time: number): Date => {
 };
 
 /** The same local calendar choices as chat reminders. */
-export function inboxLaterPresets(
+export function inboxSnoozePresets(
   now: Date,
-): readonly { readonly label: string; readonly remindAt: string }[] {
+): readonly { readonly label: string; readonly snoozedUntil: string }[] {
   const today = morning(now, 0);
   const thisMorning = today.getTime() - now.getTime() >= 3 * HOUR;
   const nextMorning = thisMorning ? today : morning(now, 1);
@@ -50,12 +50,12 @@ export function inboxLaterPresets(
     const instant = at.toISOString();
     if (!choices.has(instant)) choices.set(instant, label);
   }
-  return Array.from(choices, ([remindAt, label]) => ({ label, remindAt }));
+  return Array.from(choices, ([snoozedUntil, label]) => ({ label, snoozedUntil }));
 }
 
 /** A scheduled return as it reads on the phone, in the viewer's local time. */
-export function formatLaterTime(remindAt: string, now: Date): string {
-  const date = new Date(remindAt);
+export function formatInboxSnoozeTime(snoozedUntil: string, now: Date): string {
+  const date = new Date(snoozedUntil);
   const day = localDay(date, 0).getTime();
   const label =
     day === localDay(now, 0).getTime()

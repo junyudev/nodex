@@ -1,4 +1,5 @@
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
+import type { PageTurn } from "./page-turn";
 import type { PageAssignee, PageWork, WorkSummary } from "./work-graph";
 import type { RemoteSignalBlock } from "./product-analytics/remote-signals";
 import type { WorkflowStatusValue } from "./workflow-status";
@@ -1168,7 +1169,18 @@ export interface ProjectSession {
   archived: boolean;
   archivedAt: string | null;
   unread: boolean;
-  remindAt: string | null;
+  snoozedUntil: string | null;
+  /** Unix milliseconds when this Member set their current snooze. */
+  snoozedAt: number | null;
+  /** Unix milliseconds when this Member's snooze came due and has yet to be seen. */
+  wokeAt: number | null;
+  /** This Page Turn currently asks the reader, and this is its Active chat. */
+  pageTurn: PageTurn | null;
+  /** When this Member settled the chat, in Unix ms; absent or null while it is open. */
+  settledAt?: number | null;
+  /** When the chat last came back to a person, in Unix ms: its Agent stopped and asked for them,
+   * or its Session activity when that is later. Absent on rows read before Core reported it. */
+  attentionAt?: number;
   /** This Member may manage the chat (rename, archive or restore, move, compact or clear it, merge
    * it back): they started it, or they own the Space. Always true in a personal Space. */
   canManage: boolean;
@@ -1206,7 +1218,15 @@ export interface ProjectSessionSummary {
   archived: boolean;
   archivedAt: string | null;
   unread: boolean;
-  remindAt: string | null;
+  snoozedUntil: string | null;
+  /** Unix milliseconds when this Member set their current snooze. */
+  snoozedAt: number | null;
+  /** Unix milliseconds when this Member's snooze came due and has yet to be seen. */
+  wokeAt: number | null;
+  /** This Page Turn currently asks the reader, and this is its Active chat. */
+  pageTurn: PageTurn | null;
+  settledAt?: number | null;
+  attentionAt?: number;
   canManage: boolean;
   canStop: boolean;
   thread: ProjectSessionThreadSummary | null;
@@ -1231,10 +1251,22 @@ export type ProjectSessionPlacement = {
   readonly sessionId: string;
 };
 
+/** Which chats a list holds: the ones still open for the reader, the ones they settled, or both. */
+export type ProjectSessionLifecycle = "all" | "open" | "settled";
+
+/**
+ * How a chat list is ordered. `attention` keeps pins first, then the chat that came back to a
+ * person most recently; `settlement` lists settled chats, most recently settled first.
+ */
+export type ProjectSessionSummaryOrder = "activity" | "manual" | "attention" | "settlement";
+
 export interface ProjectSessionSummaryWindowInput extends ProjectSessionListOptions {
-  order?: "activity" | "manual";
+  order?: ProjectSessionSummaryOrder;
   /** Builtin sidebar lanes exclude direct custom Section placements before pagination. */
   placementScope?: CoreProtocolComponents["schemas"]["ProjectWorkspaceTaskPlacementScope"];
+  lifecycle?: ProjectSessionLifecycle;
+  /** List every Project's chats and the projectless ones together; the Project must be null. */
+  wholeLibrary?: boolean;
   after?: string | null;
   first?: number;
 }
@@ -1304,12 +1336,21 @@ export interface SessionManagedInput {
   managed: boolean;
 }
 
-export interface ProjectSessionReminderInput {
-  remindAt: string | null;
+export interface ProjectSessionSnoozeInput {
+  snoozedUntil: string | null;
 }
 
 export interface ProjectSessionUnreadInput {
   unread: boolean;
+}
+
+export interface ProjectSessionSettledInput {
+  sessionIds: readonly string[];
+  settled: boolean;
+}
+
+export interface ProjectSessionSettledResult {
+  changedSessionIds: readonly string[];
 }
 
 export type ProjectSessionForkTarget = "local" | "newWorktree";
@@ -1452,7 +1493,15 @@ export interface CodexSidebarThreadItem {
   pinned: boolean;
   pinnedOrder: number | null;
   unread: boolean;
-  remindAt: string | null;
+  snoozedUntil: string | null;
+  /** Unix milliseconds when this Member set their current snooze. */
+  snoozedAt: number | null;
+  /** Unix milliseconds when this Member's snooze came due and has yet to be seen. */
+  wokeAt: number | null;
+  /** When this Member settled the chat, in Unix ms. */
+  settledAt?: number | null;
+  /** When the chat last came back to a person, in Unix ms. */
+  attentionAt?: number;
   needsAttention?: boolean;
   archived: boolean;
   statusType: CodexThreadStatusType;
@@ -1897,7 +1946,7 @@ export interface UpdateThreadNotificationSettingsInput {
   readbackEnabled?: boolean;
 }
 
-export type DesktopNotificationKind = "turn-complete" | "question" | "reminder" | "nodex";
+export type DesktopNotificationKind = "turn-complete" | "question" | "chat-snooze" | "nodex";
 
 export interface DesktopNotificationAction {
   id: string;

@@ -1,4 +1,5 @@
 import { ProjectSessionPlacementSchema } from "./session-order";
+import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../chat-reply-preview";
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
 import { RUNTIME_WORK_ID_PATTERN } from "../diagnostics/runtime-work";
@@ -379,6 +380,9 @@ export const AgentRuntimeQueueReadSchema = AgentRuntimeTargetSchema.extend({
   cursor: id.optional(),
 });
 export const AgentRuntimeRunSchema = AgentRuntimeTargetSchema.extend({ runId: id });
+export const AgentRuntimeReplyPreviewsSchema = z
+  .object({ sessionIds: z.array(id).min(1).max(CHAT_REPLY_PREVIEW_BATCH_LIMIT) })
+  .strict();
 export const AgentRuntimeItemSchema = AgentRuntimeTargetSchema.extend({
   itemId: id,
   sourceThreadId: id.optional(),

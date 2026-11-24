@@ -6,21 +6,21 @@ use nodex_core_contracts::sources::ActivityFilter;
 const FUTURE: &str = "2099-01-01T00:00:00Z";
 const PAST: &str = "2001-01-02T00:00:00.000000000Z";
 
-fn later(pages: &[&str], until: &str) -> ProjectWorkspaceIntent {
-    ProjectWorkspaceIntent::SetInboxLater {
+fn snooze(pages: &[&str], until: &str) -> ProjectWorkspaceIntent {
+    ProjectWorkspaceIntent::SetInboxSnooze {
         page_ids: pages.iter().map(|id| (*id).into()).collect(),
         until: until.into(),
     }
 }
 
 fn clear(page: &str) -> ProjectWorkspaceIntent {
-    ProjectWorkspaceIntent::ClearInboxLater {
+    ProjectWorkspaceIntent::WakeInboxEntries {
         page_ids: vec![page.into()],
     }
 }
 
 fn publish_due() -> ProjectWorkspaceIntent {
-    ProjectWorkspaceIntent::PublishDueInboxLater {
+    ProjectWorkspaceIntent::PublishDueInboxSnooze {
         wake_at: PAST.into(),
     }
 }
@@ -48,34 +48,34 @@ fn intake(m: &ProjectWorkspaceModule, page: &str) -> ProjectWorkspaceInboxItem {
 }
 
 #[test]
-fn later_window_orders_replaces_and_pages_within_its_scope() {
+fn snooze_window_orders_replaces_and_pages_within_its_scope() {
     let workspace = seeded_workspace();
     let m = &workspace.module;
     for name in ["early", "late", "last"] {
         send_to(m, name, name, Some(PROJECT));
     }
     send(m, "unscoped", "Only in the Library");
-    apply_host(m, "later-unscoped", later(&["page:unscoped"], FUTURE));
+    apply_host(m, "snooze-unscoped", snooze(&["page:unscoped"], FUTURE));
     apply_host(
         m,
-        "later-early",
-        later(&["page:early"], "2099-01-01T10:00:00+08:00"),
+        "snooze-early",
+        snooze(&["page:early"], "2099-01-01T10:00:00+08:00"),
     );
-    apply_host(m, "later-late", later(&["page:late"], FUTURE));
+    apply_host(m, "snooze-late", snooze(&["page:late"], FUTURE));
     apply_host(
         m,
-        "later-replace",
-        later(&["page:late"], "2099-01-01T03:00:00Z"),
+        "snooze-replace",
+        snooze(&["page:late"], "2099-01-01T03:00:00Z"),
     );
     apply_host(
         m,
-        "later-last",
-        later(&["page:last"], "2099-01-01T04:00:00Z"),
+        "snooze-last",
+        snooze(&["page:last"], "2099-01-01T04:00:00Z"),
     );
 
     let read = |scope, after| ProjectWorkspaceRead::InboxWindow {
         scope,
-        filter: ProjectWorkspaceInboxWindowFilter::Later,
+        filter: ProjectWorkspaceInboxWindowFilter::Snoozed,
         window: CollectionWindowRequest {
             first: Some(2),
             after,
@@ -84,7 +84,7 @@ fn later_window_orders_replaces_and_pages_within_its_scope() {
     let ProjectWorkspaceReadValue::InboxWindow { items } =
         read_host(m, read(project_scope(), None))
     else {
-        panic!("Later window")
+        panic!("Snooze window")
     };
     assert_eq!(
         items
@@ -95,18 +95,18 @@ fn later_window_orders_replaces_and_pages_within_its_scope() {
         ["page:early", "page:late"]
     );
     assert_eq!(
-        items.items[0].later.as_ref().unwrap().until,
+        items.items[0].snooze.as_ref().unwrap().until,
         "2099-01-01T02:00:00.000000000Z"
     );
     assert_eq!(
-        items.items[1].later.as_ref().unwrap().until,
+        items.items[1].snooze.as_ref().unwrap().until,
         "2099-01-01T03:00:00.000000000Z"
     );
     let cursor = items.next_cursor.unwrap();
     let ProjectWorkspaceReadValue::InboxWindow { items } =
         read_host(m, read(project_scope(), Some(cursor.clone())))
     else {
-        panic!("Later continuation")
+        panic!("Snooze continuation")
     };
     assert_eq!(items.items[0].page_id, "page:last");
     assert!(items.next_cursor.is_none());
@@ -125,7 +125,7 @@ fn later_window_orders_replaces_and_pages_within_its_scope() {
         (
             summary.entry_count,
             summary.inbox_count,
-            summary.later_count
+            summary.snoozed_count
         ),
         (0, 0, 3)
     );
@@ -138,8 +138,8 @@ fn later_window_orders_replaces_and_pages_within_its_scope() {
         .is_empty()
     );
     assert!(activity_in(m, project_scope(), ActivityFilter::Messages).is_empty());
-    apply_host(m, "clear-later", clear("page:early"));
-    assert!(intake(m, "page:early").later.is_none());
+    apply_host(m, "wake", clear("page:early"));
+    assert!(intake(m, "page:early").snooze.is_none());
     assert_eq!(summary_in(m, project_scope()).inbox_count, 1);
 }
 
@@ -159,12 +159,12 @@ fn membership_and_order_follow_the_deadline_without_a_due_write() {
     );
     let until = chrono::Utc::now() + chrono::TimeDelta::seconds(2);
     let deadline = until.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
-    apply_host(m, "later-timed", later(&["page:timed"], &deadline));
+    apply_host(m, "snooze-timed", snooze(&["page:timed"], &deadline));
     let before = summary_in(m, project_scope());
     assert_eq!(
         (
             before.inbox_count,
-            before.later_count,
+            before.snoozed_count,
             before.important_count
         ),
         (1, 1, 0)
@@ -187,11 +187,15 @@ fn membership_and_order_follow_the_deadline_without_a_due_write() {
     let stream = window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox);
     assert_eq!(stream[0].page_id, "page:timed");
     assert!(stream[0].waiting);
-    assert_eq!(stream[0].later.as_ref().unwrap().until, deadline);
+    assert_eq!(stream[0].snooze.as_ref().unwrap().until, deadline);
     assert!(stream[0].important);
     let after = summary_in(m, project_scope());
     assert_eq!(
-        (after.inbox_count, after.later_count, after.important_count),
+        (
+            after.inbox_count,
+            after.snoozed_count,
+            after.important_count
+        ),
         (2, 0, 1)
     );
     assert_eq!(after.important[0].page_id, "page:timed");
@@ -202,12 +206,15 @@ fn membership_and_order_follow_the_deadline_without_a_due_write() {
     };
     assert_eq!(counts.projects[0].inbox_count, 2);
     assert_eq!(
-        count(&workspace, "SELECT count(*) FROM inbox_later_notifications"),
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_snooze_notifications"
+        ),
         0
     );
     assert!(activity_in(m, project_scope(), ActivityFilter::Messages).is_empty());
     keep(m, "page:timed");
-    assert!(intake(m, "page:timed").later.is_none());
+    assert!(intake(m, "page:timed").snooze.is_none());
 }
 
 #[test]
@@ -222,7 +229,7 @@ fn due_intents_are_claimed_once_and_suppressed_for_terminal_or_handled_pages() {
     apply_host(
         m,
         "defer-all",
-        later(
+        snooze(
             &[
                 "page:timed",
                 "page:done",
@@ -251,26 +258,26 @@ fn due_intents_are_claimed_once_and_suppressed_for_terminal_or_handled_pages() {
     apply_host(m, "due", publish_due());
     apply_host(m, "due", publish_due());
     apply_host(m, "due-again", publish_due());
-    let ProjectWorkspaceReadValue::NextInboxLater { remind_at } =
-        read_host(m, ProjectWorkspaceRead::NextInboxLater)
+    let ProjectWorkspaceReadValue::NextInboxSnooze { snoozed_until } =
+        read_host(m, ProjectWorkspaceRead::NextInboxSnooze)
     else {
-        panic!("next reminder")
+        panic!("next snooze")
     };
-    assert!(remind_at.is_none());
+    assert!(snoozed_until.is_none());
     set_status_by_hand(&workspace, "page:done", "triage");
     set_status_by_hand(&workspace, "page:canceled", "triage");
     change_message_lifecycle(&workspace, "page:archived", "unarchive");
     apply_host(m, "due-after-reopening", publish_due());
     for for_push in [false, true] {
-        let ProjectWorkspaceReadValue::InboxLaterNotifications { intents } = read_host(
+        let ProjectWorkspaceReadValue::InboxSnoozeNotifications { intents } = read_host(
             m,
-            ProjectWorkspaceRead::InboxLaterNotifications { for_push },
+            ProjectWorkspaceRead::InboxSnoozeNotifications { for_push },
         ) else {
             panic!("notification intents")
         };
         assert_eq!(intents.len(), 1);
         assert_eq!(intents[0].page_id, "page:timed");
-        let claim = ProjectWorkspaceIntent::ClaimInboxLaterNotification {
+        let claim = ProjectWorkspaceIntent::ClaimInboxSnoozeNotification {
             id: intents[0].id.clone(),
             for_push,
         };
@@ -281,7 +288,10 @@ fn due_intents_are_claimed_once_and_suppressed_for_terminal_or_handled_pages() {
         );
     }
     assert_eq!(
-        count(&workspace, "SELECT count(*) FROM inbox_later_notifications"),
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_snooze_notifications"
+        ),
         1
     );
 }
@@ -309,7 +319,7 @@ fn changing_the_intake_owner_hands_the_move_over_and_discards_the_deferral() {
         ..host()
     };
     send(m, "shared", "Shared message");
-    apply_host(m, "defer-owner", later(&["page:shared"], FUTURE));
+    apply_host(m, "defer-owner", snooze(&["page:shared"], FUTURE));
     let read_bob = |filter| {
         let ProjectWorkspaceReadValue::InboxWindow { items } = m
             .read(
@@ -335,7 +345,7 @@ fn changing_the_intake_owner_hands_the_move_over_and_discards_the_deferral() {
     };
     assert_eq!(summary(m).inbox_count, 0);
     assert!(read_bob(ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
-    assert!(read_bob(ProjectWorkspaceInboxWindowFilter::Later).is_empty());
+    assert!(read_bob(ProjectWorkspaceInboxWindowFilter::Snoozed).is_empty());
     let transfer = |owner: &str, operation: &str| {
         use nodex_core_contracts::{LIBRARY_CONTRACT_VERSION, library::*};
         let (encoded, revision) = w.kernel.readers().read_default(|c| {
@@ -370,9 +380,12 @@ fn changing_the_intake_owner_hands_the_move_over_and_discards_the_deferral() {
     assert_eq!(count(&w, "SELECT count(*) FROM inbox_deferrals"), 0);
     assert_eq!(read_bob(ProjectWorkspaceInboxWindowFilter::Inbox).len(), 1);
     assert_eq!(summary(m).inbox_count, 0);
-    m.apply(&bob, request("defer-bob", later(&["page:shared"], FUTURE)))
+    m.apply(&bob, request("defer-bob", snooze(&["page:shared"], FUTURE)))
         .unwrap();
-    assert_eq!(read_bob(ProjectWorkspaceInboxWindowFilter::Later).len(), 1);
+    assert_eq!(
+        read_bob(ProjectWorkspaceInboxWindowFilter::Snoozed).len(),
+        1
+    );
     // Removing the Owner makes the routing decision available to the active Members.
     w.kernel
         .writer()
@@ -397,22 +410,22 @@ fn changing_the_intake_owner_hands_the_move_over_and_discards_the_deferral() {
 fn confirmation_refuses_expired_advice_and_accepts_a_reviewed_override() {
     let workspace = seeded_workspace();
     let m = &workspace.module;
-    send(m, "defer", "Remind me about this next week.");
-    let action = |time: &str| ProjectWorkspaceInboxDispatchAction::Later {
-        remind_at: time.into(),
+    send(m, "defer", "Snooze this until next week.");
+    let action = |time: &str| ProjectWorkspaceInboxDispatchAction::Snooze {
+        snoozed_until: time.into(),
     };
     propose(
         m,
-        "proposal:later",
+        "proposal:snooze",
         &pending(m)[0],
         action("2000-01-01T00:00:00Z"),
     );
     let confirmation =
         |override_action, confirmed_by| ProjectWorkspaceIntent::ConfirmInboxDispatch {
             expected_store_epoch: "epoch-1".into(),
-            proposal_id: "proposal:later".into(),
+            proposal_id: "proposal:snooze".into(),
             expected_revision: 1,
-            basis: proposal_basis(m, "proposal:later"),
+            basis: proposal_basis(m, "proposal:snooze"),
             action: override_action,
             session_id: None,
             execution_selection: None,
@@ -428,13 +441,13 @@ fn confirmation_refuses_expired_advice_and_accepts_a_reviewed_override() {
             ),
         )
         .unwrap_err();
-    assert_eq!(error.recovery, CoreErrorRecovery::InboxRemindAtPassed);
+    assert_eq!(error.recovery, CoreErrorRecovery::InboxSnoozeTimePassed);
     assert!(intake(m, "page:defer").waiting);
     assert!(
         m.apply(
             &host(),
             request(
-                "auto-later",
+                "auto-snooze",
                 confirmation(
                     Some(action("2099-01-01T00:00:00Z")),
                     InboxConfirmedBy::Nodex
@@ -448,7 +461,7 @@ fn confirmation_refuses_expired_advice_and_accepts_a_reviewed_override() {
         "confirm-future",
         confirmation(Some(action("2099-01-01T00:00:00Z")), InboxConfirmedBy::User),
     );
-    assert!(window(m, ProjectWorkspaceInboxWindowFilter::Later)[0].waiting);
+    assert!(window(m, ProjectWorkspaceInboxWindowFilter::Snoozed)[0].waiting);
     assert_eq!(
         intake(m, "page:defer").proposal.unwrap().state,
         ProjectWorkspaceInboxProposalState::Completed
@@ -492,7 +505,7 @@ fn deferral_preserves_group_advice_and_a_running_request() {
     send(m, "waiting", "Still waiting");
     grouped_request(m, "request:waiting", vec!["page:waiting".into()]);
     let before = requests(m);
-    apply_host(m, "defer", later(&["page:first", "page:waiting"], FUTURE));
+    apply_host(m, "defer", snooze(&["page:first", "page:waiting"], FUTURE));
     assert_eq!(
         intake(m, "page:first").proposal.unwrap().state,
         ProjectWorkspaceInboxProposalState::Open
@@ -533,11 +546,11 @@ fn deferral_preserves_group_advice_and_a_running_request() {
         intake(m, "page:waiting").proposal.unwrap().proposal_id,
         "proposal:arrived"
     );
-    assert!(intake(m, "page:waiting").later.is_some());
+    assert!(intake(m, "page:waiting").snooze.is_some());
 }
 
 #[test]
-fn a_work_turn_can_wait_until_later_and_the_next_episode_breaks_through() {
+fn a_work_turn_can_wait_until_snooze_and_the_next_episode_breaks_through() {
     let workspace = seeded_workspace();
     let m = &workspace.module;
     send_to(m, "review-later", "Review the summary", Some(PROJECT));
@@ -549,15 +562,19 @@ fn a_work_turn_can_wait_until_later_and_the_next_episode_breaks_through() {
         nodex_core_contracts::inbox::InboxRowKind::Turn
     );
     let episode = before.turn.unwrap().turn.episode;
-    apply_host(m, "defer-review", later(&[page], FUTURE));
+    apply_host(m, "defer-review", snooze(&[page], FUTURE));
     assert!(window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
-    let deferred = window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Later);
+    let deferred = window_in(
+        m,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Snoozed,
+    );
     assert_eq!(deferred.len(), 1);
     assert_eq!(
         deferred[0].row_kind,
         nodex_core_contracts::inbox::InboxRowKind::Turn
     );
-    assert!(deferred[0].later.is_some());
+    assert!(deferred[0].snooze.is_some());
     set_status_by_hand(&workspace, page, "triage");
     let returned = window_in(m, project_scope(), ProjectWorkspaceInboxWindowFilter::Inbox);
     assert_eq!(returned.len(), 1);
@@ -565,7 +582,7 @@ fn a_work_turn_can_wait_until_later_and_the_next_episode_breaks_through() {
         returned[0].row_kind,
         nodex_core_contracts::inbox::InboxRowKind::Intake
     );
-    assert!(returned[0].later.is_none());
+    assert!(returned[0].snooze.is_none());
     assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_deferrals"), 0);
     let ProjectWorkspaceReadValue::PageTurns { turns } = read_host(
         m,
@@ -576,4 +593,246 @@ fn a_work_turn_can_wait_until_later_and_the_next_episode_breaks_through() {
         panic!("Page Turns");
     };
     assert_ne!(turns[0].episode, episode);
+}
+
+/// Seed a work destination so the tests can exercise Status and Inbox decisions independently
+/// of provider launch.
+fn bind_active_chat(workspace: &TestWorkspace, page: &str, session: &str) {
+    let page = page.to_owned();
+    let session = session.to_owned();
+    workspace
+        .kernel
+        .writer()
+        .call(move |c| {
+            let now = super::super::session_mutation::sqlite_now(c)?;
+            super::super::page_chat::link_pages(c, &session, std::slice::from_ref(&page), &now)?;
+            super::super::page_chat::set_active_chats(c, &session, &[page], &now)
+        })
+        .unwrap();
+}
+
+fn chat_summary(
+    m: &ProjectWorkspaceModule,
+    session: &str,
+) -> nodex_core_contracts::workspace::ProjectWorkspaceSessionSummary {
+    let ProjectWorkspaceReadValue::Session { session } = read_host(
+        m,
+        ProjectWorkspaceRead::Session {
+            session_id: session.into(),
+        },
+    ) else {
+        panic!("chat summary")
+    };
+    session
+}
+
+fn chat_snooze(until: Option<&str>) -> ProjectWorkspaceIntent {
+    ProjectWorkspaceIntent::MutateSession {
+        session_id: "chat".into(),
+        intent: ProjectSessionIntent::SetSnooze {
+            snoozed_until: until.map(str::to_owned),
+        },
+    }
+}
+
+#[test]
+fn inbox_and_active_chat_share_snoozes_and_wake_each_other() {
+    let w = seeded_workspace();
+    let m = &w.module;
+    let page = "page:linked";
+    send_to(m, "linked", "Review linked work", Some(PROJECT));
+    create_session_thread(m, "chat-start", "chat", "thread", Some(PROJECT), 1);
+    bind_active_chat(&w, page, "chat");
+    set_status_by_hand(&w, page, "review");
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(2))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    apply_host(m, "snooze-chat", chat_snooze(Some(&deadline)));
+    let deferral = intake(m, page).snooze.expect("the Inbox Turn is deferred");
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(&deferral.until).unwrap(),
+        chrono::DateTime::parse_from_rfc3339(&deadline).unwrap()
+    );
+    apply_host(m, "wake-inbox", clear(page));
+    assert!(chat_summary(m, "chat").snoozed_until.is_none());
+    assert!(chat_summary(m, "chat").woke_at.is_none());
+
+    apply_host(m, "snooze-inbox", snooze(&[page], &deadline));
+    let chat = chat_summary(m, "chat");
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(&chat.snoozed_until.unwrap()).unwrap(),
+        chrono::DateTime::parse_from_rfc3339(&deadline).unwrap()
+    );
+    assert!(chat.snoozed_at.is_some());
+    apply_host(m, "wake-chat", chat_snooze(None));
+    assert!(intake(m, page).snooze.is_none());
+
+    apply_host(m, "timed", snooze(&[page], &deadline));
+    past_deferrals(&w);
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute("UPDATE member_session_snoozes SET snoozed_until=?1", [PAST])?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(summary_in(m, project_scope()).snoozed_count, 1);
+    apply_host(
+        m,
+        "consume-linked",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "chat".into(),
+            intent: ProjectSessionIntent::ConsumeSnooze {
+                member_id: super::super::test_support::local_member(&w),
+                snoozed_until: PAST.into(),
+                deliver: true,
+            },
+        },
+    );
+    assert!(chat_summary(m, "chat").woke_at.is_some());
+    assert_eq!(summary_in(m, project_scope()).snoozed_count, 0);
+    assert_eq!(summary_in(m, project_scope()).inbox_count, 1);
+
+    apply_host(m, "snooze-again", snooze(&[page], &deadline));
+    set_status_by_hand(&w, page, "triage");
+    assert!(intake(m, page).snooze.is_none());
+    assert!(chat_summary(m, "chat").snoozed_until.is_none());
+    assert!(chat_summary(m, "chat").woke_at.is_none());
+}
+
+#[test]
+fn done_settles_the_active_chat_for_each_eligible_member() {
+    use nodex_core_contracts::workspace::{
+        ProjectWorkspaceSessionSummary, ProjectWorkspaceSidebarSectionItemRef,
+    };
+
+    let w = seeded_workspace();
+    let m = &w.module;
+    w.kernel
+        .writer()
+        .call(|c| {
+            c.execute_batch(
+                "UPDATE libraries SET space_kind='team';
+                 INSERT INTO members(id,library_id,display_name,lifecycle,role)
+                 VALUES('bob','library-1','Bob','active','member');",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    for name in [
+        "eligible",
+        "pinned",
+        "unread",
+        "snoozed",
+        "filed",
+        "working",
+        "waiting",
+        "unstarted",
+    ] {
+        send_to(m, name, name, Some(PROJECT));
+        let page = format!("page:{name}");
+        if name == "unstarted" {
+            apply_host(
+                m,
+                "draft",
+                ProjectWorkspaceIntent::CreateSession {
+                    session_id: name.into(),
+                    project_id: Some(PROJECT.into()),
+                    title: "Draft".into(),
+                    initial_page_ids: vec![],
+                },
+            );
+        } else {
+            create_session_thread(
+                m,
+                &format!("start:{name}"),
+                name,
+                &format!("thread:{name}"),
+                Some(PROJECT),
+                1,
+            );
+        }
+        bind_active_chat(&w, &page, name);
+        set_status_by_hand(&w, &page, "review");
+    }
+    create_session_thread(m, "related", "related", "thread:related", Some(PROJECT), 1);
+    w.kernel.writer().call(|c| {
+        let now = super::super::session_mutation::sqlite_now(c)?;
+        super::super::page_chat::link_pages(c, "related", &["page:eligible".into()], &now)?;
+        c.execute("UPDATE codex_threads SET status_type='active' WHERE thread_id IN ('thread:working','thread:waiting')", [])?;
+        c.execute(r#"UPDATE codex_threads SET status_active_flags_json='["waitingOnUserInput"]'
+            WHERE thread_id='thread:waiting'"#, [])?;
+        Ok(())
+    }).unwrap();
+    for (session, intent) in [
+        ("pinned", ProjectSessionIntent::SetPinned { pinned: true }),
+        ("unread", ProjectSessionIntent::SetUnread { unread: true }),
+        (
+            "snoozed",
+            ProjectSessionIntent::SetSnooze {
+                snoozed_until: Some("2020-01-01T00:00:00Z".into()),
+            },
+        ),
+    ] {
+        apply_host(
+            m,
+            &format!("protect:{session}"),
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: session.into(),
+                intent,
+            },
+        );
+    }
+    apply_host(
+        m,
+        "file",
+        ProjectWorkspaceIntent::CreateSidebarSection {
+            section_id: "filed".into(),
+            name: "Filed".into(),
+            initial_item: Some(ProjectWorkspaceSidebarSectionItemRef::Session {
+                session_id: "filed".into(),
+            }),
+        },
+    );
+
+    for name in [
+        "eligible",
+        "pinned",
+        "unread",
+        "snoozed",
+        "filed",
+        "working",
+        "waiting",
+        "unstarted",
+    ] {
+        set_status_by_hand(&w, &format!("page:{name}"), "done");
+        let local: ProjectWorkspaceSessionSummary = chat_summary(m, name);
+        // A Section only arranges chats; one filed there settles like any other.
+        assert_eq!(
+            local.settled_at.is_some(),
+            name == "eligible" || name == "filed",
+            "{name}"
+        );
+    }
+    assert!(chat_summary(m, "related").settled_at.is_none());
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM member_session_settled WHERE member_id='bob' AND session_id IN ('eligible','pinned','unread','snoozed','filed')"
+        ),
+        5
+    );
+
+    // Repeating the same Status or moving back out of Done leaves the Member's decision alone.
+    apply_host(
+        m,
+        "reopen",
+        ProjectWorkspaceIntent::SetSessionsSettled {
+            session_ids: vec!["eligible".into()],
+            settled: false,
+        },
+    );
+    set_status_by_hand(&w, "page:eligible", "done");
+    set_status_by_hand(&w, "page:eligible", "review");
+    assert!(chat_summary(m, "eligible").settled_at.is_none());
 }

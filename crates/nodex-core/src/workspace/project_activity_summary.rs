@@ -232,8 +232,10 @@ mod tests {
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: Some("project:a".to_owned()),
+                whole_library: false,
                 include_archived: Some(false),
                 placement_scope: Default::default(),
+                lifecycle: Default::default(),
                 order: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     after: None,
