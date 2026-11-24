@@ -411,18 +411,12 @@ function codexActivity(native, item) {
 }
 async function answerPasskeys(prompt, server, native) {
   const recipe = plan();
-  const terminal =
-    /^Delegated tasks? (\S+(?:, \S+)*) reached (?:a terminal state|terminal states)\./u.exec(
-      prompt,
-    );
-  if (terminal) {
-    for (const taskId of terminal[1].split(", "))
-      await callTool(server, "task_status", { taskId }, native);
-    return "I've reviewed the delegated result and will fold it into the passkey rollout.";
-  }
   if (kind === "codex") {
-    const child = recipe.children.find((entry) => entry.task === prompt);
+    const child = recipe.children.find(
+      (entry) => entry.task === prompt || entry.followUp?.task === prompt,
+    );
     if (!child) return "Release notes updated with the passkey rollout plan.";
+    const work = child.task === prompt ? child : child.followUp;
     // One app-server process serves Threads in different working directories.
     const workspace = load().threads[native.threadId].cwd;
     const source = fs.readFileSync(path.join(workspace, "README.md"), "utf8");
@@ -445,12 +439,12 @@ async function answerPasskeys(prompt, server, native) {
       durationMs: 1,
       processId: null,
     });
-    record({ event: "child.ready", key: child.key, ...native });
+    record({ event: "child.ready", key: work.key, ...native });
     const started = Date.now();
     while (
       recipe.clock === "manual"
-        ? !fs.existsSync(path.join(home, "gates", child.key))
-        : Date.now() - started < child.durationMs
+        ? !fs.existsSync(path.join(home, "gates", work.key))
+        : Date.now() - started < work.durationMs
     ) {
       await delay(25);
       state = load();
@@ -460,19 +454,36 @@ async function answerPasskeys(prompt, server, native) {
       )
         return;
     }
-    const target = path.join(workspace, child.file);
+    const target = path.join(workspace, work.file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, `# ${child.title}\n\n${child.summary}\n`);
+    fs.writeFileSync(target, `# ${child.title}\n\n${work.summary}\n`);
     codexActivity(native, {
       type: "fileChange",
       id: randomUUID(),
       status: "completed",
-      changes: [{ path: target, kind: { type: "add" }, diff: `+${child.summary}` }],
+      changes: [{ path: target, kind: { type: "add" }, diff: `+${work.summary}` }],
     });
-    if (child.fail) throw new Error(child.summary);
-    return child.summary;
+    if (work.fail) throw new Error(work.summary);
+    return work.summary;
   }
   const marker = path.join(home, `parent-${recipe.parentSession}.json`);
+  const finishedTaskIds = [...prompt.matchAll(/^Delegated task (\S+) (?:\(|\[|reached )/gmu)].map(
+    ([, taskId]) => taskId,
+  );
+  if (finishedTaskIds.length > 0 && fs.existsSync(marker)) {
+    const { followUpTargetTaskId } = JSON.parse(fs.readFileSync(marker, "utf8"));
+    for (const taskId of finishedTaskIds) {
+      const result = await callTool(server, "task_status", { taskId });
+      if (taskId !== followUpTargetTaskId || result.status !== "completed") continue;
+      const followUp = recipe.children.find((entry) => entry.followUp).followUp;
+      await callTool(server, "task_send", {
+        taskId,
+        message: followUp.task,
+        idempotencyKey: `lumen:${taskId}:${followUp.key}`,
+      });
+    }
+    return "I've reviewed the delegated result and will fold it into the passkey rollout.";
+  }
   if (fs.existsSync(marker))
     return "The passkey work is underway; I'll keep the rollout coordinated.";
   fs.writeFileSync(marker, "{}");
@@ -503,6 +514,8 @@ async function answerPasskeys(prompt, server, native) {
       mode: "async",
       idempotencyKey: `lumen:${nativeSessionId}:${child.key}`,
     });
+    if (child.followUp)
+      fs.writeFileSync(marker, JSON.stringify({ followUpTargetTaskId: result.taskId }));
     record({
       event: "child.delegated",
       key: child.key,

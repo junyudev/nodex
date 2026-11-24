@@ -12,9 +12,9 @@ import { parseScenarioManifest } from "../../scripts/scenarios/contracts";
 import { waitForCodexRuntimeCatalog } from "./support/agent-runtime-catalog";
 import { invokeIpc } from "./support/editor-scenario";
 import { waitForDraftScene } from "./support/new-chat-draft";
-import { openSubagentsPanel } from "./support/subagents-panel";
+import { openSubagentsPanel, selectSubagentsList } from "./support/subagents-panel";
 
-test("a Claude chat delegates to Codex and OpenCode and names each Agent wherever it shows their work", async ({}, testInfo) => {
+test("a Claude chat delegates across providers and shows one subagent while its task history grows", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({
     label: "agent-cross-provider-delegation",
@@ -22,6 +22,16 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     environment: { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "./scripted-agent-runtime" },
   });
   const root = crossProviderRuntimeRoot(harness.profile.nodexHome);
+  const releaseGate = (key: string) => fs.writeFileSync(path.join(root, "gates", key), "release");
+  const nativePeerLog = path.join(root, "native.jsonl");
+  const nativeEvents = () =>
+    fs.existsSync(nativePeerLog)
+      ? fs
+          .readFileSync(nativePeerLog, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+      : [];
   try {
     const manifest = await materializeDevelopmentSeed({
       scenarioId: CROSS_PROVIDER_SCENARIO_ID,
@@ -64,6 +74,8 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     const active = (await overview()).active.items;
     const webauthn = active.find((task) => task.title === "WebAuthn routes");
     if (!webauthn?.childThreadId) throw new Error("WebAuthn child identity missing");
+    const migration = active.find((task) => task.title === "Credentials migration");
+    if (!migration?.childThreadId) throw new Error("Credentials migration child identity missing");
     const parent = await invokeIpc(page, "project-sessions:get", parentSession);
     expect(parent?.executionRef?.threadId).toBeTruthy();
     await expect
@@ -76,15 +88,7 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
       .toBe(parent!.executionRef!.threadId);
     // Gate every child at its native Run; none can finish because a slow machine took longer.
     await expect
-      .poll(
-        () =>
-          fs
-            .readFileSync(path.join(root, "native.jsonl"), "utf8")
-            .split("\n")
-            .filter(Boolean)
-            .map((line) => JSON.parse(line))
-            .filter((entry) => entry.event === "child.ready").length,
-      )
+      .poll(() => nativeEvents().filter((entry) => entry.event === "child.ready").length)
       .toBe(4);
     // The subagent's card marks the harness that runs it and names it with the model. The
     // parent's finished turn folds its work away; unfold it while the children still run.
@@ -95,7 +99,7 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     const card = page.getByRole("dialog", { name: "WebAuthn routes details" });
     await expect(card.locator('[data-agent-identity="codex"]')).toHaveText("Codex · GPT-6.1 Sol");
     await page.mouse.move(0, 0);
-    fs.writeFileSync(path.join(root, "gates/webauthn"), "release");
+    releaseGate("webauthn");
     await expect
       .poll(
         async () =>
@@ -108,14 +112,16 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
       { timeout: 30_000 },
     );
     await openSubagentsPanel(page);
+    const panel = page.locator("[data-subagents-panel-overview]");
     const row = (name: string) =>
       page.getByRole("button", { name: `Open subagent ${name}`, exact: true });
     // The overview opens as a map: the lead counts what is back, and each card names the
     // harness that runs its subagent, with an edge drawn by how that work stands.
-    const node = (name: string) =>
-      page.locator("[data-delegation-node]").filter({ has: row(name) });
-    await expect(page.locator("[data-delegation-lead]")).toContainText("Claude Code · lead");
-    await expect(page.locator("[data-delegation-lead]")).toContainText("Delegating · 1/4 back");
+    const map = panel.locator("[data-delegation-map]");
+    const node = (name: string) => map.locator("[data-delegation-node]").filter({ has: row(name) });
+    const lead = map.locator("[data-delegation-lead]");
+    await expect(lead).toContainText("Claude Code · lead");
+    await expect(lead).toContainText("Delegating · 1/4 back");
     await expect(node("WebAuthn routes").locator('[data-agent-driver="codex"]')).toContainText(
       "GPT-6.1 Sol · Extra High",
     );
@@ -143,17 +149,88 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
       model: "gpt-6.1-sol",
       options: expect.arrayContaining([{ id: "reasoningEffort", value: "xhigh" }]),
     });
-    for (const key of ["credentials", "tests", "docs"])
-      fs.writeFileSync(path.join(root, "gates", key), "release");
-    await expect
-      .poll(
-        async () =>
-          (await overview()).terminal.items.filter((task) => task.origin === "app_owned").length,
-      )
-      .toBe(4);
+    await detail.getByRole("button", { name: "Back to subagents" }).click();
+
+    // Let the other three subagents settle so the migration follow-up is the only live work.
+    for (const key of ["tests", "docs"]) releaseGate(key);
+    await expect(lead).toContainText("Delegating · 3/4 back");
     expect(
       (await overview()).terminal.items.find((task) => task.title === "Sign-in tests")?.status,
     ).toBe("failed");
+    releaseGate("credentials");
+
+    const findFollowUp = () =>
+      nativeEvents().find((entry) => entry.event === "tool.result" && entry.name === "task_send");
+    await expect
+      .poll(() => findFollowUp()?.result)
+      .toMatchObject({
+        conversationTaskId: migration.id,
+        taskId: expect.any(String),
+        delivery: "started",
+      });
+    expect(findFollowUp()?.result.taskId).not.toBe(migration.id);
+    const migrationReady = nativeEvents().find(
+      (entry) => entry.event === "child.ready" && entry.key === "credentials",
+    );
+    if (!migrationReady) throw new Error("Original migration native turn missing");
+    const followUpReady = () =>
+      nativeEvents().find(
+        (entry) => entry.event === "child.ready" && entry.key === "credentials-down",
+      );
+    await expect.poll(followUpReady).toMatchObject({
+      kind: "codex",
+      threadId: migrationReady.threadId,
+      turnId: expect.any(String),
+    });
+    expect(followUpReady().turnId).not.toBe(migrationReady.turnId);
+
+    const unfoldParentWork = async () => {
+      for (const toggle of await scene.locator('[data-agent-body-toggle="true"]').all()) {
+        if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+      }
+    };
+    const migrationCards = scene
+      .getByTestId("delegated-task-group")
+      .getByRole("button", { name: "Credentials migration", exact: true });
+    await unfoldParentWork();
+    await expect(migrationCards).toHaveCount(2);
+    // Each transcript card keeps its own turn: the first one is back while the follow-up runs.
+    const migrationDetails = page.getByRole("dialog", { name: "Credentials migration details" });
+    for (const [index, status] of ["Done", "Running"].entries()) {
+      await migrationCards.nth(index).hover();
+      await expect(migrationDetails.getByText(status, { exact: true })).toBeVisible();
+      await page.mouse.move(0, 0);
+      await expect(migrationDetails).toBeHidden();
+    }
+
+    const migrationNode = node("Credentials migration");
+    await expect(migrationNode).toHaveCount(1);
+    await expect(migrationNode).toHaveAttribute("data-delegation-edge", "flowing");
+    await expect(lead).toContainText("Delegating · 3/4 back");
+
+    const migrationRow = panel.locator(row("Credentials migration"));
+    const activeSection = panel.locator('[data-subagent-overview-section="active"]');
+    const doneSection = panel.locator('[data-subagent-overview-section="done"]');
+    await selectSubagentsList(page);
+    await expect(migrationRow).toHaveCount(1);
+    await expect(
+      activeSection.getByRole("button", { name: "Open subagent Credentials migration" }),
+    ).toBeVisible();
+
+    await panel.getByRole("radio", { name: "Map", exact: true }).click();
+    releaseGate("credentials-down");
+    await expect(migrationNode).toHaveCount(1);
+    await expect(migrationNode).toHaveAttribute("data-delegation-edge", "returned");
+    await expect(lead).toContainText("All 4 back");
+
+    await selectSubagentsList(page);
+    await expect(migrationRow).toHaveCount(1);
+    await expect(
+      doneSection.getByRole("button", { name: "Open subagent Credentials migration" }),
+    ).toBeVisible();
+
+    await unfoldParentWork();
+    await expect(migrationCards).toHaveCount(2);
     const release = await invokeIpc(page, "project-sessions:get", releaseNotesSession);
     if (!release?.executionRef) throw new Error("Release notes did not receive its message");
     await page
@@ -174,9 +251,9 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
       body: Buffer.from(await readBoundedElectronRuntimeLogs(harness.profile)),
       contentType: "text/plain",
     });
-    if (fs.existsSync(path.join(root, "native.jsonl")))
+    if (fs.existsSync(nativePeerLog))
       await testInfo.attach("native-peer", {
-        path: path.join(root, "native.jsonl"),
+        path: nativePeerLog,
         contentType: "text/plain",
       });
     throw error;

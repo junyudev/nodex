@@ -660,10 +660,12 @@ migration and sign-in tests to GPT-6.1 Sol / High, and passkey documentation to
 OpenCode's GLM-5.3-Flash Free. Open a running child from Subagents, then return
 to the parent to watch its reports arrive. Children settle about 6 seconds
 (migration), 8 seconds (tests fail), 12 seconds (routes), and 20 seconds (docs)
-after their native Runs start. **Release notes** receives a message sent by
-the Claude chat. These native peers exercise production delegation, delivery,
-and projection; their workspace edits are illustrative fixture files, and no
-model calls or credentials are used.
+after their native Runs start. When the migration report arrives, Claude asks
+the same subagent for a standalone down migration. That follow-up settles
+about 5 seconds after its Run starts. **Release notes** receives a message sent
+by the Claude chat. These native peers exercise production delegation, delivery,
+and projection with illustrative workspace edits. The seed runs without model
+calls or credentials.
 
 The seed receipt in `dev-home.json` opts this home into scripted execution.
 Only the launcher for this seed sets `NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT`
@@ -679,8 +681,8 @@ Thread or transcript during seeding.
 
 `tests/e2e/agent-cross-provider-delegation.spec.ts` consumes this same seed
 with `runtimeClock: "manual"`. Files under `scripted-agent-runtime/gates/`
-(`webauthn`, `credentials`, `tests`, `docs`) release the corresponding native
-Runs, so assertions do not depend on those development delays:
+(`webauthn`, `credentials`, `credentials-down`, `tests`, `docs`) release the
+corresponding native Runs, so assertions do not depend on those development delays:
 
 ```bash
 vp run test:e2e tests/e2e/agent-cross-provider-delegation.spec.ts

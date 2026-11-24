@@ -62,6 +62,13 @@ export const prepareCrossProviderDelegationRuntime = async (input: {
       },
       file: "migrations/passkey-credentials.md",
       summary: "Added a reversible credentials migration with an account backfill.",
+      followUp: {
+        key: "credentials-down",
+        durationMs: 5_000,
+        task: "Also add a standalone down migration for rollback.",
+        file: "migrations/passkey-credentials-down.md",
+        summary: "Added a standalone down migration for rolling back passkey credentials.",
+      },
     },
     {
       key: "docs",
