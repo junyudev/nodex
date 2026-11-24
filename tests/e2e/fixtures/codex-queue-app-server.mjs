@@ -199,6 +199,10 @@ const scheduleAutomaticCompletion = (turnId) => {
 };
 
 // A Turn whose prompt names this marker stays open for a test to stream into and complete.
+let controlledTurnStarted = () => {};
+export function onControlledTurnStarted(listener) {
+  controlledTurnStarted = listener;
+}
 const controlledPrompt = process.env.NODEX_FAKE_CODEX_CONTROLLED_PROMPT?.trim() || null;
 
 const startTurn = (params, source = "turn/start") => {
@@ -228,8 +232,8 @@ const startTurn = (params, source = "turn/start") => {
     if (controlled) {
       state = readState();
       state.controlledTurnId = next.id;
-      state.controlledTurnPid = process.pid;
       persist();
+      controlledTurnStarted(next.id, state.executedCommands ?? 0);
     }
     if (params.queuedSubmissionId != null) {
       const timestamp = Date.now();

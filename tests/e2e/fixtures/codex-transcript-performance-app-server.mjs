@@ -20,17 +20,13 @@ const writeState = (state) => {
 };
 const record = (command) => fs.appendFileSync(logPath, `${JSON.stringify({ method: "fixture-command", params: command })}\n`);
 /** Runs a command in the Turn's own process; anything else leaves it for later. */
-const handle = (command, state) => {
+const handle = (command, state, turnId) => {
   const threadId = state.thread?.id;
   // Streams go into the Turn the app started for the controlled prompt, as a model's reply would.
   const turn = state.turns.find(
-    (entry) => entry.id === state.controlledTurnId && entry.status === "inProgress",
+    (entry) => entry.id === turnId && entry.status === "inProgress",
   );
-  // A command that arrives before the app started the controlled prompt's Turn waits for it.
-  if (!threadId || !turn) return false;
-  // Every app-server process of the Profile reads the channel; only the Turn's own one answers,
-  // and it may start after the test wrote its commands.
-  if (state.controlledTurnPid !== process.pid) return false;
+  if (!threadId || !turn || state.controlledTurnId !== turnId) return false;
   state.executedCommands = (state.executedCommands ?? 0) + 1;
   const message = (id, phase) => ({
     type: "agentMessage", id, text: "", phase, delivery: null, memoryCitation: null, questions: null,
@@ -118,18 +114,27 @@ const handle = (command, state) => {
 
 fs.mkdirSync(path.dirname(commandPath), { recursive: true });
 if (!fs.existsSync(commandPath)) fs.writeFileSync(commandPath, "");
-// The executed count is durable, so a restarted native process never replays a command.
-setInterval(() => {
-  const commands = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean);
-  for (;;) {
-    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    const next = state.executedCommands ?? 0;
-    if (next >= commands.length || !handle(JSON.parse(commands[next]), state)) break;
-  }
-}, 10);
 // Cold resumes normally keep controlled streams alive; interaction scenarios
 // can opt into automatic completion for ordinary follow-up submissions.
 if (JSON.parse(fs.readFileSync(statePath, "utf8")).turnSequence > 0)
   process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS =
     process.env.NODEX_FAKE_CODEX_RESUMED_COMPLETION_DELAY_MS ?? "120000";
-await import(pathToFileURL(baseFixture).href);
+const { onControlledTurnStarted } = await import(pathToFileURL(baseFixture).href);
+onControlledTurnStarted((turnId, executedCommands) => {
+  let next = executedCommands;
+  // Only the Turn's peer reads the command channel. Windows cannot replace the shared state
+  // file while another peer holds it open, so idle/catalog peers must not poll it.
+  const timer = setInterval(() => {
+    // The writer can still be appending the final record. Its newline publishes a full command.
+    const commands = fs.readFileSync(commandPath, "utf8").split("\n").slice(0, -1).filter(Boolean);
+    while (next < commands.length) {
+      const command = JSON.parse(commands[next]);
+      const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+      if (!handle(command, state, turnId) || command.type === "complete") {
+        clearInterval(timer);
+        return;
+      }
+      next += 1;
+    }
+  }, 10);
+});
