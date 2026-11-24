@@ -3,9 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { z } from "zod";
 import {
+  providerKeyApi,
   providerKeyBaseUrl,
+  providerKeyEndpointOf,
   providerKeyModels,
   providerKeyPreset,
+  ProviderKeyModelSchema,
   type ProviderKeyResult,
 } from "../../../shared/provider-keys";
 import { getMainIntl } from "../../i18n/main-intl";
@@ -22,6 +25,17 @@ const ModelEntrySchema = z.object({
     .refine((id) => !id.includes("\0")),
   display_name: z.string().nullish().catch(null),
   name: z.string().nullish().catch(null),
+});
+const CodexModelTraitsSchema = z.object({
+  context_window: ProviderKeyModelSchema.shape.contextWindow.catch(undefined),
+  input_modalities: z.array(z.string()).optional().catch(undefined),
+  effort: z
+    .object({
+      supported_levels: ProviderKeyModelSchema.shape.reasoningEfforts.catch(undefined),
+      default_level: ProviderKeyModelSchema.shape.defaultReasoningEffort.catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
 });
 const ModelListSchema = z.object({
   data: z.array(z.unknown()),
@@ -115,10 +129,10 @@ export const providerKeyModelDiscovery =
         { provider },
       ),
     };
-    const fallback =
-      target.preset === "custom"
-        ? undefined
-        : preset.endpoints.find(({ id }) => id === target.endpoint)?.modelsUrl;
+    // Codex speaks the provider's OpenAI-compatible API, so its models list there.
+    const codex = providerKeyApi(target.agent) === "responses";
+    const fallback = providerKeyEndpointOf(target)?.modelsUrl;
+    const listing = `${base}${codex ? "" : "/v1"}/models`;
 
     return Effect.tryPromise({
       catch: (cause) => (cause === rejected ? rejected : unreachable),
@@ -143,19 +157,21 @@ export const providerKeyModelDiscovery =
           const body = await readJson(response);
           if (isAuthFailure(body)) throw rejected;
           const page = ModelListSchema.safeParse(body);
-          return page.success ? page.data : null;
+          return page.success ? page.data : undefined;
         };
 
-        let url = new URL(`${base}/v1/models`);
-        let page = await read(url, anthropic);
+        const headers = codex ? bearer : anthropic;
+        let url = new URL(listing);
+        let page = await read(url, headers);
         const pages = [];
-        if (!page && fallback) {
+        if (fallback && fallback !== listing && (page === null || (!codex && !page))) {
           page = await read(new URL(fallback), bearer);
           if (page) pages.push(page);
         } else {
           for (let index = 0; page && index < MAX_PAGES; index += 1) {
             pages.push(page);
             if (
+              codex ||
               !page.has_more ||
               !page.last_id ||
               page.last_id.includes(apiKey) ||
@@ -166,7 +182,7 @@ export const providerKeyModelDiscovery =
             const nextUrl = new URL(url);
             nextUrl.searchParams.set("after_id", page.last_id);
             url = nextUrl;
-            page = await read(url, anthropic);
+            page = await read(url, headers);
           }
         }
 
@@ -175,17 +191,35 @@ export const providerKeyModelDiscovery =
             const model = ModelEntrySchema.safeParse(entry);
             if (!model.success || model.data.id.includes(apiKey)) return [];
             const { id, display_name, name } = model.data;
-            const label = (display_name?.trim() || name?.trim())?.slice(0, 128);
+            const label = display_name?.trim() || name?.trim();
+            const traits = codex ? CodexModelTraitsSchema.safeParse(entry).data : undefined;
+            const efforts = traits?.effort?.supported_levels?.filter(
+              (effort) => !effort.includes(apiKey),
+            );
+            const defaultEffort = traits?.effort?.default_level;
             return [
               {
                 id,
-                name: label && !label.includes(apiKey) && !label.includes("\0") ? label : null,
+                name:
+                  label && !label.includes(apiKey) && !label.includes("\0")
+                    ? label.slice(0, 128)
+                    : null,
+                contextWindow: traits?.context_window,
+                reasoningEfforts: efforts?.length ? efforts : undefined,
+                defaultReasoningEffort: defaultEffort?.includes(apiKey) ? undefined : defaultEffort,
+                images: traits?.input_modalities?.includes("image"),
               },
             ];
           }),
         );
-        const models = providerKeyModels(target.preset, listed).flatMap(({ id, name }) =>
-          name ? [{ id, name: name.slice(0, 128) }] : [],
+        const models = providerKeyModels(target.preset, listed).flatMap(({ name, ...model }) =>
+          name
+            ? [
+                codex
+                  ? { ...model, name: name.slice(0, 128) }
+                  : { id: model.id, name: name.slice(0, 128) },
+              ]
+            : [],
         );
         if (models.length) return { ok: true, models } as const;
         const alternative = target.preset === "custom" ? manualModels : preset.models;

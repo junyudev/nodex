@@ -13,6 +13,7 @@ What's new, right in the app
 ### Changed
 
 - Nodex's model guide now covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4 Neon, each judged on its own. Inbox suggestions send backend and systems work to GPT-6.2 Sol and can give UI work to Gemini 4 Neon when the Claude budget runs low. GPT-6.1 models and OpenCode's free models no longer carry a guide note, so the Inbox's plan no longer marks free models `Free`.
+- API keys now run on Nodex's built-in Codex. Codex talks to the provider's OpenAI Responses API and knows each model's context window and reasoning levels, such as DeepSeek's Low, High and Max, and connecting a key no longer downloads Claude Code. Choose **Runs on: Claude Code** when connecting to keep using Claude Code, or for an endpoint that only serves the Anthropic Messages API; keys you already connected keep running on Claude Code with their chats.
 
 ### Fixed
 

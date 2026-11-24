@@ -40,7 +40,7 @@ describe("API key form", () => {
   it("sends a preset's endpoint, or a custom URL with any typed models", () => {
     expect(
       providerKeyConnectInput({ ...initialProviderKeyDraft("zhipu"), apiKey: " k1 " }, "zh"),
-    ).toEqual({ target: { preset: "zhipu", endpoint: "china" }, apiKey: "k1" });
+    ).toEqual({ target: { preset: "zhipu", endpoint: "china", agent: "codex" }, apiKey: "k1" });
     expect(
       providerKeyConnectInput(
         {
@@ -52,7 +52,7 @@ describe("API key form", () => {
         "en",
       ),
     ).toEqual({
-      target: { preset: "custom", baseUrl: "https://gw.example.com/anthropic" },
+      target: { preset: "custom", baseUrl: "https://gw.example.com/anthropic", agent: "codex" },
       apiKey: "k2",
       models: [
         { id: "qwen3-coder-plus", name: "Qwen3 Coder Plus" },
@@ -74,6 +74,7 @@ describe("API key connections", () => {
   const connection = {
     id: "c1",
     preset: "moonshot",
+    agent: "codex",
     endpoint: "china",
     baseUrl: null,
     displayName: "Kimi",
@@ -91,6 +92,7 @@ describe("API key connections", () => {
       providerKeyDetail({
         ...connection,
         preset: "custom",
+        agent: "codex",
         endpoint: null,
         baseUrl: "https://gw.example.com:8443/anthropic",
         keyHint: "",

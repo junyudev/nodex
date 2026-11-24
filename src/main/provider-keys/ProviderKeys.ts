@@ -109,6 +109,7 @@ export function makeProviderKeys(
         {
           id: randomUUID(),
           preset: target.preset,
+          agent: target.agent,
           endpoint: target.preset === "custom" ? null : target.endpoint,
           baseUrl: target.preset === "custom" ? providerKeyBaseUrl(target) : null,
           displayName: uniqueName(

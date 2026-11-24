@@ -1,6 +1,6 @@
 /** Isolated launches keep shell/tool variables and use only their own provider credentials. */
 const userProviderVariable =
-  /^(?:OPENAI_|ANTHROPIC_|AZURE_OPENAI_|CODEX_|CLAUDE_)|^(?:CLAUDECODE|NODEX_GATEWAY_API_KEY)$/iu;
+  /^(?:OPENAI_|ANTHROPIC_|AZURE_OPENAI_|CODEX_|CLAUDE_)|^(?:CLAUDECODE|NODEX_GATEWAY_API_KEY|NODEX_CODEX_LAUNCH_ARGS)$/iu;
 
 export function isolatedProviderEnvironment(
   inherited: Readonly<Record<string, string | undefined>>,

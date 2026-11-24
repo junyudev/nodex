@@ -319,9 +319,11 @@ part of that identity; a different native profile requires a new instance.
 ### API Key Connection
 
 An API Key Connection is a person's own key for a model provider, such as DeepSeek or a team
-gateway, that Nodex runs as an Agent Instance it declares itself on its built-in Claude Code. The key
-is stored only encrypted with the system keychain's protection; the connection's identity, provider, endpoint and models live in
-the Profile. It is distinct from Nodex credits, which spend the Nodex account's balance.
+gateway, that Nodex runs as an Agent Instance it declares itself on its built-in Codex or Claude
+Code. Which of the two it runs on is chosen when connecting and fixes the API it speaks to the
+provider. The key is stored only encrypted with the system keychain's protection; the connection's
+identity, provider, endpoint, Agent and models live in the Profile. It is distinct from Nodex
+credits, which spend the Nodex account's balance.
 
 ### Model Selection
 

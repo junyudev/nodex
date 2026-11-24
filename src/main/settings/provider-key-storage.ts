@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { claudeAgent } from "../../shared/agents/claude";
 import {
   PROVIDER_KEY_LIMIT,
   PROVIDER_KEY_MODEL_LIMIT,
@@ -13,10 +14,19 @@ import {
   type AgentEnvironmentStorage,
 } from "./agent-environment-storage";
 
+/** Connections saved before the Agent choice existed ran on Claude Code, and keep its history. */
+const StoredTargetSchema = z.preprocess(
+  (value) =>
+    value !== null && typeof value === "object" && !("agent" in value)
+      ? { ...value, agent: claudeAgent.driver }
+      : value,
+  ProviderKeyTargetSchema,
+);
+
 const StoredConnectionSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]{1,64}$/u),
-    target: ProviderKeyTargetSchema,
+    target: StoredTargetSchema,
     displayName: z.string().min(1).max(128),
     enabled: z.boolean(),
     models: z.array(ProviderKeyModelSchema).min(1).max(PROVIDER_KEY_MODEL_LIMIT),
@@ -46,6 +56,7 @@ export function presentProviderKeys(stored: readonly StoredConnection[]) {
       ({ target, id, displayName, enabled, models, keyHint }): ProviderKeyConnection => ({
         id,
         preset: target.preset,
+        agent: target.agent,
         displayName,
         enabled,
         models,

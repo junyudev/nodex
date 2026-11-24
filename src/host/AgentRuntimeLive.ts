@@ -4,7 +4,10 @@ import { CODEX_BINDING, codexAgent } from "../shared/agents/codex";
 import { declaredSubscriptionAgents } from "../shared/subscription-usage";
 
 import { ExecutionNode } from "./ExecutionNodeLive";
-import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
+import {
+  providerKeyComponentDemand,
+  providerKeyProviders,
+} from "../main/agent-runtime/provider-key-providers";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
@@ -22,7 +25,7 @@ import { CodexVisualizationState } from "../main/codex-application/CodexVisualiz
 import { CodexConversations } from "../main/codex-application/CodexConversations";
 import { projectCodexConversationThreadSettings } from "../main/codex-application/CodexConversationSnapshotProjection";
 import { codexVisualizationPassiveParts } from "../shared/codex-visualization-passive-context";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { delimiter, isAbsolute, join } from "node:path";
 import * as NodeServices from "../main/platform/node/NodeServices";
 import type {
@@ -228,6 +231,7 @@ const supervisor = Layer.effectContext(
       const snapshot = yield* settings.snapshot().pipe(Effect.option);
       if (Option.isNone(snapshot)) return;
       const { providerKeys, modelPolicy } = snapshot.value;
+      const keyDemand = providerKeyComponentDemand(providerKeys.connections);
       const managed = isProviderOn(modelPolicy, {
         instanceId: "nodex",
         driver: "codex",
@@ -237,16 +241,17 @@ const supervisor = Layer.effectContext(
         : null;
       if (
         offersCodex &&
-        needsCodexComponentForAccounts({
-          usesExternalExecutable: platform.usesExternalExecutable,
-          accountPresent: !platform.usesExternalExecutable && (yield* platform.accountPresent),
-          creditModels: managed?.access.models ?? [],
-        })
+        (keyDemand.codex ||
+          needsCodexComponentForAccounts({
+            usesExternalExecutable: platform.usesExternalExecutable,
+            accountPresent: !platform.usesExternalExecutable && (yield* platform.accountPresent),
+            creditModels: managed?.access.models ?? [],
+          }))
       )
         yield* components.request("codex");
       if (
         claudeCode &&
-        (providerKeys.connections.some(({ enabled }) => enabled) ||
+        (keyDemand.claudeCode ||
           managed?.access.models.some((entry) =>
             NODEX_MODELS.some(({ id, protocol }) => id === entry.id && protocol === "anthropic"),
           ))
@@ -701,19 +706,23 @@ const supervisor = Layer.effectContext(
         : availability;
       const managedPackage =
         managedAvailability.status === "available" ? managedAvailability.package : undefined;
-      const managed = managedNodexProviders({
-        home: config.nodexHome,
+      const managedEnvironment =
+        platform.usesExternalExecutable && managedPackage?.additionalSearchPaths.length
+          ? {
+              ...environment,
+              PATH: [...managedPackage.additionalSearchPaths, environment.PATH ?? ""]
+                .filter(Boolean)
+                .join(config.platform === "win32" ? ";" : ":"),
+            }
+          : environment;
+      const managedCodex = {
         codexBinary: managedPackage?.binaryPath,
         codexUnavailable: unavailableConfiguration(managedAvailability),
-        environment:
-          platform.usesExternalExecutable && managedPackage?.additionalSearchPaths.length
-            ? {
-                ...environment,
-                PATH: [...managedPackage.additionalSearchPaths, environment.PATH ?? ""]
-                  .filter(Boolean)
-                  .join(config.platform === "win32" ? ";" : ":"),
-              }
-            : environment,
+      };
+      const managed = managedNodexProviders({
+        ...managedCodex,
+        home: config.nodexHome,
+        environment: managedEnvironment,
         managed: isProviderOn(snapshot.modelPolicy, {
           instanceId: "nodex",
           driver: "codex",
@@ -730,9 +739,11 @@ const supervisor = Layer.effectContext(
             Effect.map((key) => Option.map(key, (value) => [id, value] as const)),
           ),
       );
-      const keyProviders = providerKeyProviders({
+      const { providers: keyProviders, catalogs } = providerKeyProviders({
+        ...managedCodex,
         home: config.nodexHome,
         environment,
+        codexEnvironment: managedEnvironment,
         connections: snapshot.providerKeys.connections,
         keys: new Map(keys.flatMap((key) => (Option.isSome(key) ? [key.value] : []))),
       });
@@ -764,6 +775,16 @@ const supervisor = Layer.effectContext(
       for (const provider of Object.values(keyProviders)) {
         if (provider.enabled)
           yield* fs.makeDirectory(provider.config.homePath, { recursive: true, mode: 0o700 });
+      }
+      for (const { path, contents } of catalogs) {
+        if (yield* fs.exists(path)) continue;
+        const temporary = `${path}.${randomUUID()}.tmp`;
+        yield* fs
+          .writeFileString(temporary, contents, { mode: 0o600 })
+          .pipe(
+            Effect.andThen(fs.rename(temporary, path)),
+            Effect.ensuring(fs.remove(temporary, { force: true }).pipe(Effect.ignore)),
+          );
       }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),

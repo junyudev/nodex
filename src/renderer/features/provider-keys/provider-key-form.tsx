@@ -1,10 +1,15 @@
 import { useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
-import { ActivitySpinnerIcon, ProviderKeyIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, AgentProviderIcon, ProviderKeyIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { agentDefinition } from "../../../shared/agents/registry";
 import {
+  PROVIDER_KEY_AGENTS,
+  PROVIDER_KEY_API_EXAMPLE_URLS,
+  PROVIDER_KEY_API_NAMES,
+  providerKeyApi,
   PROVIDER_KEY_PRESETS,
   PROVIDER_KEY_REGION_MESSAGES,
   providerKeyPreset,
@@ -171,6 +176,10 @@ export function ProviderKeyForm({
   };
 
   const invalid = (field: Field) => (failure?.field === field ? true : undefined);
+  const runsOn = intl.formatMessage({
+    id: "providerKeys.providerKeyForm.runsOn",
+    defaultMessage: "Runs on",
+  });
   const apiKeyLabel = intl.formatMessage({
     id: "providerKeys.providerKeyForm.apiKey",
     defaultMessage: "API key",
@@ -216,7 +225,7 @@ export function ProviderKeyForm({
           })}
           aria-invalid={invalid("baseUrl")}
           className="h-8 text-sm"
-          placeholder="https://example.com/anthropic"
+          placeholder={PROVIDER_KEY_API_EXAMPLE_URLS[providerKeyApi(draft.agent)]}
           spellCheck={false}
           value={draft.baseUrl}
           onChange={(event) => change({ baseUrl: event.target.value })}
@@ -282,7 +291,38 @@ export function ProviderKeyForm({
           onChange={(event) => change({ modelsText: event.target.value })}
         />
       ) : null}
-      <div className="flex min-h-5 items-center gap-3 text-xs">
+      <div className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex items-center gap-2 text-xs text-token-description-foreground">
+          <span aria-hidden="true">{runsOn}</span>
+          <Segmented
+            label={runsOn}
+            small
+            value={draft.agent}
+            options={PROVIDER_KEY_AGENTS.map((agent) => ({
+              value: agent,
+              label: agentDefinition(agent).label,
+              icon: <AgentProviderIcon kind={agent} className="size-3 shrink-0" />,
+            }))}
+            onChange={(agent) => change({ agent })}
+          />
+        </div>
+        {preset.endpoints.length > 1 && endpoint ? (
+          <Segmented
+            label={intl.formatMessage({
+              id: "providerKeys.providerKeyForm.region",
+              defaultMessage: "Region",
+            })}
+            small
+            value={endpoint.id}
+            options={preset.endpoints.map((option) => ({
+              value: option.id,
+              label: intl.formatMessage(PROVIDER_KEY_REGION_MESSAGES[option.id]),
+            }))}
+            onChange={(id) => change({ endpoints: { ...draft.endpoints, [draft.preset]: id } })}
+          />
+        ) : null}
+      </div>
+      <div className="flex min-h-5 items-center text-xs">
         {failure ? (
           <p role="alert" className="m-0 min-w-0 flex-1 text-danger">
             {failure.message}
@@ -304,8 +344,9 @@ export function ProviderKeyForm({
               </a>
             ) : (
               <FormattedMessage
-                id="providerKeys.providerKeyForm.anyAnthropicEndpoint"
-                defaultMessage="Any endpoint that serves the Anthropic Messages API"
+                id="providerKeys.providerKeyForm.anyApiEndpoint"
+                defaultMessage="Any {api} endpoint"
+                values={{ api: PROVIDER_KEY_API_NAMES[providerKeyApi(draft.agent)] }}
               />
             )}
             {" · "}
@@ -315,23 +356,6 @@ export function ProviderKeyForm({
             />
           </p>
         )}
-        {preset.endpoints.length > 1 && endpoint ? (
-          <div className="shrink-0">
-            <Segmented
-              label={intl.formatMessage({
-                id: "providerKeys.providerKeyForm.region",
-                defaultMessage: "Region",
-              })}
-              small
-              value={endpoint.id}
-              options={preset.endpoints.map((option) => ({
-                value: option.id,
-                label: intl.formatMessage(PROVIDER_KEY_REGION_MESSAGES[option.id]),
-              }))}
-              onChange={(id) => change({ endpoints: { ...draft.endpoints, [draft.preset]: id } })}
-            />
-          </div>
-        ) : null}
       </div>
     </form>
   );

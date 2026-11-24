@@ -22,7 +22,7 @@ const press = async (element: HTMLElement) =>
   });
 
 describe("API key form", () => {
-  test("connects the chosen provider and starts again for the next key", async () => {
+  test("connects the chosen provider on Codex and starts again for the next key", async () => {
     const connect = vi.fn(async (_input: ProviderKeyConnectInput) => connected);
     const onConnected = vi.fn();
     const view = render(<ProviderKeyForm keys={{ connect }} onConnected={onConnected} />);
@@ -35,7 +35,7 @@ describe("API key form", () => {
 
     await waitFor(() => expect(onConnected).toHaveBeenCalledWith("c1"));
     expect(connect).toHaveBeenCalledWith({
-      target: { preset: "minimax", endpoint: "international" },
+      target: { preset: "minimax", endpoint: "international", agent: "codex" },
       apiKey: "mm-0123456789",
     });
     expect((view.getByLabelText("MiniMax API key") as HTMLInputElement).value).toBe("");
@@ -70,6 +70,8 @@ describe("API key form", () => {
     const view = render(<ProviderKeyForm keys={{ connect }} onConnected={vi.fn()} />);
 
     await press(view.getByRole("radio", { name: "Other" }));
+    // An endpoint that serves the Anthropic Messages API runs on Claude Code.
+    await press(view.getByRole("radio", { name: "Claude Code" }));
     await press(view.getByRole("button", { name: "Connect" }));
     expect((await view.findByRole("alert")).textContent).toBe("Enter the endpoint’s base URL.");
     expect(connect).not.toHaveBeenCalled();
@@ -83,7 +85,11 @@ describe("API key form", () => {
 
     await waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
     expect(connect).toHaveBeenLastCalledWith({
-      target: { preset: "custom", baseUrl: "https://gw.example.com/anthropic" },
+      target: {
+        preset: "custom",
+        baseUrl: "https://gw.example.com/anthropic",
+        agent: "claudeAgent",
+      },
       apiKey: "gw-key-0123",
       models: [{ id: "qwen3-coder-plus", name: "Qwen3 Coder Plus" }],
     });

@@ -156,8 +156,7 @@
   "src/main/agent-runtime/provider-key-providers.ts": {
     "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
     "literals": {
-      "claude": 1,
-      "claudeAgent": 1
+      "claude": 1
     }
   },
   "src/main/agent-skill-setup.ts": {
@@ -357,7 +356,7 @@
   "src/main/nodex-account/managed-providers.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
-      "codex": 2,
+      "codex": 1,
       "claude": 1,
       "claudeAgent": 1
     }

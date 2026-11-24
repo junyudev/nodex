@@ -565,6 +565,7 @@ describe("first-run Agents", () => {
     const connection = {
       id: "c1",
       preset: "deepseek",
+      agent: "codex",
       endpoint: "international",
       baseUrl: null,
       displayName: "DeepSeek",

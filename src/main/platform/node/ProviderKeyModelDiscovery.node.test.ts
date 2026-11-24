@@ -4,8 +4,12 @@ import { expect, it } from "@effect/vitest";
 import { vi } from "vitest";
 import { providerKeyModelDiscovery } from "./ProviderKeyModelDiscovery";
 
-const custom = { preset: "custom", baseUrl: "https://gateway.example/anthropic" } as const;
-const deepseek = { preset: "deepseek", endpoint: "international" } as const;
+const custom = {
+  preset: "custom",
+  baseUrl: "https://gateway.example/anthropic",
+  agent: "claudeAgent",
+} as const;
+const deepseek = { preset: "deepseek", endpoint: "international", agent: "claudeAgent" } as const;
 const keyText = "test-secret-value";
 const key = Redacted.make(keyText);
 
@@ -82,7 +86,9 @@ it.effect.each([
   Effect.gen(function* () {
     const request = vi.fn<typeof fetch>().mockImplementation(async () => response());
     const discover = providerKeyModelDiscovery(request);
-    expect(yield* discover({ preset: "zhipu", endpoint: "china" }, key)).toMatchObject({
+    expect(
+      yield* discover({ preset: "zhipu", endpoint: "china", agent: "claudeAgent" }, key),
+    ).toMatchObject({
       ok: false,
       reason: "rejected",
     });
@@ -130,5 +136,104 @@ it.effect("classifies network and server failures as unreachable even with typed
         reason: "unreachable",
       });
     }
+  }),
+);
+
+it.effect("discovers Codex models and merges listed Responses traits over preset traits", () =>
+  Effect.gen(function* () {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: "deepseek-flash",
+            display_name: "DeepSeek Flash",
+            context_window: 900_000,
+            input_modalities: ["text"],
+            effort: { supported_levels: ["low", "max"], default_level: "low" },
+          },
+          {
+            id: "deepseek-v4-pro",
+            context_window: -1,
+            input_modalities: "not an array",
+            effort: { default_level: "a".repeat(40) },
+          },
+        ],
+        has_more: true,
+        last_id: "deepseek-v4-pro",
+      }),
+    );
+    const result = yield* providerKeyModelDiscovery(request)({ ...deepseek, agent: "codex" }, key);
+    expect(result).toEqual({
+      ok: true,
+      models: [
+        {
+          id: "deepseek-v4-pro",
+          name: "DeepSeek V4 Pro",
+          contextWindow: 1_048_576,
+          reasoningEfforts: ["low", "high", "max"],
+          defaultReasoningEffort: "high",
+        },
+        {
+          id: "deepseek-flash",
+          name: "DeepSeek Flash",
+          contextWindow: 900_000,
+          images: false,
+          reasoningEfforts: ["low", "max"],
+          defaultReasoningEffort: "low",
+        },
+      ],
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]?.[0].toString()).toBe("https://api.deepseek.com/models");
+    expect(request.mock.calls[0]?.[1]).toMatchObject({
+      redirect: "error",
+      headers: { Authorization: `Bearer ${keyText}` },
+    });
+  }),
+);
+
+it.effect.each([404, 405])(
+  "tries the preset's alternate Responses listing after HTTP %i",
+  (status) =>
+    Effect.gen(function* () {
+      const request = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(null, { status }))
+        .mockResolvedValueOnce(
+          Response.json({
+            data: [{ id: "glm-5.3", input_modalities: ["text", "image"] }],
+          }),
+        );
+      const result = yield* providerKeyModelDiscovery(request)(
+        { preset: "zhipu", endpoint: "china", agent: "codex" },
+        key,
+      );
+      expect(result).toMatchObject({ ok: true, models: [{ id: "glm-5.3", images: true }] });
+      expect(request.mock.calls.map(([url]) => url.toString())).toEqual([
+        "https://open.bigmodel.cn/api/v1/models",
+        "https://open.bigmodel.cn/api/paas/v4/models",
+      ]);
+      expect(request.mock.calls[1]?.[1]?.headers).toEqual({ Authorization: `Bearer ${keyText}` });
+    }),
+);
+
+it.effect("ignores reflected credentials in Responses model traits and labels", () =>
+  Effect.gen(function* () {
+    const discover = providerKeyModelDiscovery(async () =>
+      Response.json({
+        data: [
+          {
+            id: "custom-model",
+            display_name: "a".repeat(124) + keyText,
+            effort: { supported_levels: ["low", keyText], default_level: keyText },
+          },
+        ],
+      }),
+    );
+    const result = yield* discover({ ...custom, agent: "codex" }, key);
+    expect(result).toEqual({
+      ok: true,
+      models: [{ id: "custom-model", name: "Custom Model", reasoningEfforts: ["low"] }],
+    });
   }),
 );

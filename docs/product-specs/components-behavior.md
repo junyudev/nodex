@@ -25,8 +25,8 @@ update channel of its own. A Component is the same on every computer that runs t
 | Component      | Provides                                                                         | Installs          |
 | -------------- | -------------------------------------------------------------------------------- | ----------------- |
 | Desktop Tools  | Browser Use, control of existing browser profiles, Computer Use                  | When Nodex starts |
-| Codex          | Codex accessed with a ChatGPT account, an API key or Nodex credits               | On first use      |
-| Claude Code    | Claude models accessed with an API key or Nodex credits                          | On first use      |
+| Codex          | Codex with a ChatGPT account, an API key or Nodex credits; API key connections   | On first use      |
+| Claude Code    | Claude models with Nodex credits; API key connections that run on Claude Code    | On first use      |
 | Document Tools | Managed Python and libraries for Word, PowerPoint, spreadsheets, PDFs and images | On first use      |
 
 Components install after the app on macOS with Apple silicon.
@@ -72,8 +72,9 @@ the Agent has taken up its installed Component, the Agent's own check says wheth
   Codex, a new chat starts with another available Agent or asks the person to connect one.
   An executable chosen in **Settings → Agents → Codex** supplies ordinary Codex chats.
   Nodex credits still use the Component.
-- **Claude Code.** Connecting an API key or gaining access to Claude models through Nodex credits
-  is its first use. These models stay visible in the composer while Claude Code installs, cannot be
+- **Claude Code.** Connecting an API key that runs on Claude Code or gaining access to Claude
+  models through Nodex credits is its first use. An API key that runs on Codex requests Codex the
+  same way. These models stay visible in the composer while Claude Code installs, cannot be
   sent to until it is ready, and become selectable by themselves. The picker offers a retry after
   a failure that will not retry by itself, and a link to Components when Claude Code is turned
   off. A person's own Claude Code installation never uses or requests this Component.

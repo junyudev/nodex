@@ -22,7 +22,7 @@ describe("provider keys", () => {
         { id: "deepseek-v4-pro", name: "" },
         { id: "deepseek-v5-preview" },
         { id: "deepseek-flash" },
-      ]),
+      ]).map(({ id, name }) => ({ id, name })),
     ).toEqual([
       { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
       { id: "deepseek-flash", name: "DeepSeek V4.1 Flash" },
@@ -40,6 +40,25 @@ describe("provider keys", () => {
         { id: "text-embedding-3" },
       ]),
     ).toEqual([{ id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }]);
+  });
+
+  it("keeps what the provider says about a model over what Nodex knows", () => {
+    expect(
+      providerKeyModels("deepseek", [
+        { id: "deepseek-flash", contextWindow: 524_288, images: false },
+        { id: "deepseek-v5-preview", reasoningEfforts: ["low", "high"] },
+      ]),
+    ).toEqual([
+      {
+        id: "deepseek-flash",
+        name: "DeepSeek V4.1 Flash",
+        contextWindow: 524_288,
+        reasoningEfforts: ["low", "high", "max"],
+        defaultReasoningEffort: "high",
+        images: false,
+      },
+      { id: "deepseek-v5-preview", name: "DeepSeek V5 Preview", reasoningEfforts: ["low", "high"] },
+    ]);
   });
 
   it("names unlisted models readably", () => {
@@ -74,15 +93,26 @@ describe("provider keys", () => {
   });
 
   it("resolves endpoints and validates custom ones", () => {
-    expect(providerKeyBaseUrl({ preset: "moonshot", endpoint: "international" })).toBe(
-      "https://api.moonshot.ai/anthropic",
-    );
-    expect(providerKeyBaseUrl({ preset: "custom", baseUrl: " https://gw.example.com/v1/ " })).toBe(
-      "https://gw.example.com/v1",
-    );
-    expect(providerKeyDefaultName({ preset: "custom", baseUrl: "https://api.example.com/a" })).toBe(
-      "example.com",
-    );
+    expect(
+      providerKeyBaseUrl({ preset: "moonshot", endpoint: "international", agent: "claudeAgent" }),
+    ).toBe("https://api.moonshot.ai/anthropic");
+    expect(
+      providerKeyBaseUrl({ preset: "moonshot", endpoint: "international", agent: "codex" }),
+    ).toBe("https://api.moonshot.ai/v1");
+    expect(
+      providerKeyBaseUrl({
+        preset: "custom",
+        baseUrl: " https://gw.example.com/v1/ ",
+        agent: "codex",
+      }),
+    ).toBe("https://gw.example.com/v1");
+    expect(
+      providerKeyDefaultName({
+        preset: "custom",
+        baseUrl: "https://api.example.com/a",
+        agent: "codex",
+      }),
+    ).toBe("example.com");
     expect(providerKeyBaseUrlProblem("http://localhost:3000/anthropic")).toBeNull();
     expect(providerKeyBaseUrlProblem("example.com/anthropic")).toBe("invalid");
     expect(providerKeyBaseUrlProblem("http://example.com")).toBe("insecure");
@@ -91,13 +121,13 @@ describe("provider keys", () => {
     expect(providerKeyBaseUrlProblem("https://example.com/path#fragment")).toBe("query");
     expect(
       ProviderKeyConnectInputSchema.safeParse({
-        target: { preset: "deepseek", endpoint: "china" },
+        target: { preset: "deepseek", endpoint: "china", agent: "codex" },
         apiKey: "sk-123",
       }).success,
     ).toBe(false);
     expect(
       ProviderKeyConnectInputSchema.safeParse({
-        target: { preset: "zhipu", endpoint: "china" },
+        target: { preset: "zhipu", endpoint: "china", agent: "codex" },
         apiKey: "sk-123",
       }).success,
     ).toBe(true);

@@ -106,7 +106,11 @@ it.effect(
             unknown
           >;
 
-        const target = { preset: "custom", baseUrl: "https://gateway.example/" };
+        const target = {
+          preset: "custom",
+          baseUrl: "https://gateway.example/",
+          agent: "claudeAgent",
+        };
         const original = "test-key-original";
         const replacement = "test-key-replaced";
         for (const [operation, input] of [
@@ -141,6 +145,7 @@ it.effect(
           {
             id,
             preset: "custom",
+            agent: "claudeAgent",
             endpoint: null,
             baseUrl: "https://gateway.example",
             displayName: "gateway.example",

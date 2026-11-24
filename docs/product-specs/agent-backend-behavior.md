@@ -182,33 +182,46 @@ usage updates leave the Agent's checked identity intact.
 ## API keys
 
 A person can connect a model provider with their own API key: DeepSeek, Kimi, GLM and MiniMax, or
-any other endpoint that serves the Anthropic Messages API, such as a team gateway. Providers with a
-China and an international service offer both; the form starts on the one matching the app's
-language. Each connection is a Profile-local Agent instance that Nodex declares itself: it runs on
-Nodex-managed Claude Code, pointed at the provider's endpoint and using its own configuration,
-account and history. Its models are listed under the connection's name, with the provider's mark,
-and default on like any provider's.
+any other endpoint, such as a team gateway. Providers with a China and an international service
+offer both; the form starts on the one matching the app's language. Each connection is a
+Profile-local Agent instance that Nodex declares itself, with its own configuration, account and
+history. Its models are listed under the connection's name, with the provider's mark, and default
+on like any provider's.
 
-On Apple silicon, enabling an API key connection or access to Claude models with Nodex credits
-requests the Claude Code Component in the background. These connections become ready when Claude
-Code finishes installing. If the Component is off, the connection points to **Settings → General →
-Components**. Regular Claude connections use the person's own executable.
+A connection runs on Nodex's built-in Codex or Claude Code, chosen under **Runs on** when it is
+connected; Codex is the default. The choice fixes the API the provider is spoken to in: Codex uses
+the provider's OpenAI Responses API and Claude Code its Anthropic Messages API, so a custom endpoint
+must serve the one its Agent speaks. The choice never changes afterwards, because each Agent keeps
+its own native history; running a key on the other Agent is a second connection. Connections saved
+before the choice existed run on Claude Code.
 
-Connecting sends one model-list request with the key: to the endpoint's Anthropic-compatible list,
-then the provider's own list when that one does not answer. A refused key, an unreachable endpoint
-and an endpoint that lists no models fail with their own message, and nothing is saved. The listed
-chat models become the connection's models, the provider's known ones first; a provider that lists
-nothing usable offers its known models, and a custom endpoint that lists none takes the model IDs the
-person types. Claude Code's own model names, which it uses for subagents and quick work, point at the
-connection's first model, and at its lightest one for quick work. `Check again` reads the list again
-with the saved key.
+A Codex connection runs the Codex that Nodex manages, isolated in the connection's own home and
+pointed at the provider. Nodex describes each of the connection's models to Codex: its context
+window, its reasoning effort names, the provider's default effort and whether it reads images, as
+the provider lists them or as Nodex knows them, so Codex never runs a provider model on another
+model's settings. Codex's own quick work runs on the connection's lightest model, and features that
+need OpenAI's service, such as web search, are off. On Apple silicon, enabling a Codex connection
+requests the Codex Component; a Claude Code connection, or access to Claude models with Nodex
+credits, requests the Claude Code Component in the background. A connection becomes ready when its
+Agent finishes installing. If the Component is off, the connection points to **Settings → General →
+Components**. A Claude Code connection points Claude Code's own model names, which it uses for
+subagents and quick work, at the connection's first model, and at its lightest one for quick work.
+Regular Claude connections use the person's own executable.
 
-The key is stored only encrypted, with a key the system keychain protects, and is never returned to a window; Settings shows its
-last four characters. Replacing a key checks the new one first, and a refused key leaves the old one
-in place. Turning a connection off removes its instance from new work without forgetting it;
-removing it also removes its key. A custom endpoint must use `https://`, or `http://` to this
-computer, and cannot carry credentials in its URL. Requests already sent to a provider are billed by
-that provider.
+Connecting sends one model-list request with the key in the Agent's API: the provider's
+OpenAI-compatible list for Codex, falling back to the provider's documented list; the
+Anthropic-compatible list for Claude Code, falling back to the provider's own. A refused key, an
+unreachable endpoint and an endpoint that lists no models fail with their own message, and nothing
+is saved. The listed chat models become the connection's models, the provider's known ones first; a
+provider that lists nothing usable offers its known models, and a custom endpoint that lists none
+takes the model IDs the person types. `Check again` reads the list again with the saved key.
+
+The key is stored only encrypted, with a key the system keychain protects, and is never returned to
+a window; Settings shows its last four characters. Replacing a key checks the new one first, and a
+refused key leaves the old one in place. Turning a connection off removes its instance from new work
+without forgetting it; removing it also removes its key. A custom endpoint must use `https://`, or
+`http://` to this computer, and cannot carry credentials in its URL. Requests already sent to a
+provider are billed by that provider.
 
 ## Existing connected native history
 

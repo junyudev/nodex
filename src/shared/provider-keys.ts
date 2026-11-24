@@ -1,19 +1,49 @@
 import { z } from "zod";
 import { defineMessages } from "./i18n/messages";
+import { codexAgent } from "./agents/codex";
+import { claudeAgent } from "./agents/claude";
 
 /**
- * Model providers a person can connect with their own API key. Each serves an Anthropic-compatible
- * endpoint. Nodex runs its models through managed Claude Code and encrypts keys with the system
- * keychain.
+ * Model providers a person can connect with their own API key. Each serves both the OpenAI
+ * Responses API and the Anthropic Messages API. Nodex runs a connection on its built-in Codex or
+ * Claude Code and encrypts keys with the system keychain.
  */
 export type ProviderKeyPresetId = "deepseek" | "moonshot" | "zhipu" | "minimax" | "custom";
+
+export const PROVIDER_KEY_AGENTS = [codexAgent.driver, claudeAgent.driver] as const;
+
+/**
+ * The Agent a connection runs on, which also fixes the API it speaks to the provider: Codex the
+ * OpenAI Responses API, Claude Code the Anthropic Messages API. It is chosen when connecting and
+ * never changes, because each keeps its own native history.
+ */
+export type ProviderKeyAgent = (typeof PROVIDER_KEY_AGENTS)[number];
+/** New connections run on the Codex Nodex ships with, so there is nothing to install. */
+export const DEFAULT_PROVIDER_KEY_AGENT: ProviderKeyAgent = codexAgent.driver;
+
+/** The API a provider is spoken to in, which the connection's Agent fixes. */
+export type ProviderKeyApi = "responses" | "anthropic";
+export const providerKeyApi = (agent: ProviderKeyAgent): ProviderKeyApi =>
+  agent === codexAgent.driver ? "responses" : "anthropic";
+/** Product names, the same in every language. */
+export const PROVIDER_KEY_API_NAMES: Readonly<Record<ProviderKeyApi, string>> = {
+  responses: "OpenAI Responses API",
+  anthropic: "Anthropic Messages API",
+};
+/** What a custom endpoint's base URL usually looks like for each API. */
+export const PROVIDER_KEY_API_EXAMPLE_URLS: Readonly<Record<ProviderKeyApi, string>> = {
+  responses: "https://example.com/v1",
+  anthropic: "https://example.com/anthropic",
+};
 
 export interface ProviderKeyEndpoint {
   /** The service's region; a preset with both offers the choice. */
   readonly id: "china" | "international";
+  /** Codex's OpenAI Responses base URL: requests go to `<responsesUrl>/responses`. */
+  readonly responsesUrl: string;
   /** Claude Code's `ANTHROPIC_BASE_URL`. */
-  readonly baseUrl: string;
-  /** An OpenAI-compatible model list, read when the Anthropic-compatible one doesn't answer. */
+  readonly anthropicUrl: string;
+  /** An OpenAI-compatible model list to try when the Agent’s model endpoint is unavailable. */
   readonly modelsUrl?: string;
   /** Where the person creates a key for this endpoint. */
   readonly keyUrl: string;
@@ -22,6 +52,13 @@ export interface ProviderKeyEndpoint {
 export interface ProviderKeyModel {
   readonly id: string;
   readonly name: string;
+  /** Tokens the model reads at once, as the provider lists it. */
+  readonly contextWindow?: number;
+  /** The provider's own reasoning effort names, lightest first. */
+  readonly reasoningEfforts?: readonly string[];
+  readonly defaultReasoningEffort?: string;
+  /** The model reads images as well as text. */
+  readonly images?: boolean;
 }
 
 export interface ProviderKeyPreset {
@@ -35,6 +72,12 @@ export interface ProviderKeyPreset {
   readonly includes: RegExp;
   /** How the provider's keys begin, when they share a prefix. */
   readonly keyPlaceholder?: string;
+  /** How Codex should drive the provider's models, where the provider documents it. */
+  readonly codex?: {
+    readonly shell?: "shell_command" | "unified_exec";
+    readonly applyPatch?: "freeform";
+    readonly truncation?: "tokens" | "bytes";
+  };
 }
 
 export const PROVIDER_KEY_REGION_MESSAGES = defineMessages({
@@ -51,17 +94,32 @@ export const PROVIDER_KEY_PRESETS: readonly ProviderKeyPreset[] = [
     endpoints: [
       {
         id: "international",
-        baseUrl: "https://api.deepseek.com/anthropic",
+        responsesUrl: "https://api.deepseek.com",
         modelsUrl: "https://api.deepseek.com/models",
+        anthropicUrl: "https://api.deepseek.com/anthropic",
         keyUrl: "https://platform.deepseek.com/api_keys",
       },
     ],
     models: [
-      { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-      { id: "deepseek-flash", name: "DeepSeek V4.1 Flash" },
+      {
+        id: "deepseek-v4-pro",
+        name: "DeepSeek V4 Pro",
+        contextWindow: 1_048_576,
+        reasoningEfforts: ["low", "high", "max"],
+        defaultReasoningEffort: "high",
+      },
+      {
+        id: "deepseek-flash",
+        name: "DeepSeek V4.1 Flash",
+        contextWindow: 1_048_576,
+        reasoningEfforts: ["low", "high", "max"],
+        defaultReasoningEffort: "high",
+        images: true,
+      },
     ],
     includes: /^deepseek-(?!.*(?:vision|exp))/iu,
     keyPlaceholder: "sk-…",
+    codex: { shell: "shell_command", applyPatch: "freeform", truncation: "tokens" },
   },
   {
     id: "moonshot",
@@ -69,14 +127,16 @@ export const PROVIDER_KEY_PRESETS: readonly ProviderKeyPreset[] = [
     endpoints: [
       {
         id: "china",
-        baseUrl: "https://api.moonshot.cn/anthropic",
+        responsesUrl: "https://api.moonshot.cn/v1",
         modelsUrl: "https://api.moonshot.cn/v1/models",
+        anthropicUrl: "https://api.moonshot.cn/anthropic",
         keyUrl: "https://platform.moonshot.cn/console/api-keys",
       },
       {
         id: "international",
-        baseUrl: "https://api.moonshot.ai/anthropic",
+        responsesUrl: "https://api.moonshot.ai/v1",
         modelsUrl: "https://api.moonshot.ai/v1/models",
+        anthropicUrl: "https://api.moonshot.ai/anthropic",
         keyUrl: "https://platform.moonshot.ai/console/api-keys",
       },
     ],
@@ -94,13 +154,15 @@ export const PROVIDER_KEY_PRESETS: readonly ProviderKeyPreset[] = [
     endpoints: [
       {
         id: "china",
-        baseUrl: "https://open.bigmodel.cn/api/anthropic",
+        responsesUrl: "https://open.bigmodel.cn/api/v1",
+        anthropicUrl: "https://open.bigmodel.cn/api/anthropic",
         modelsUrl: "https://open.bigmodel.cn/api/paas/v4/models",
         keyUrl: "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys",
       },
       {
         id: "international",
-        baseUrl: "https://api.z.ai/api/anthropic",
+        responsesUrl: "https://api.z.ai/api/v1",
+        anthropicUrl: "https://api.z.ai/api/anthropic",
         modelsUrl: "https://api.z.ai/api/paas/v4/models",
         keyUrl: "https://z.ai/manage-apikey/apikey-list",
       },
@@ -117,12 +179,14 @@ export const PROVIDER_KEY_PRESETS: readonly ProviderKeyPreset[] = [
     endpoints: [
       {
         id: "china",
-        baseUrl: "https://api.minimaxi.com/anthropic",
+        responsesUrl: "https://api.minimaxi.com/v1",
+        anthropicUrl: "https://api.minimaxi.com/anthropic",
         keyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
       },
       {
         id: "international",
-        baseUrl: "https://api.minimax.io/anthropic",
+        responsesUrl: "https://api.minimax.io/v1",
+        anthropicUrl: "https://api.minimax.io/anthropic",
         keyUrl: "https://platform.minimax.io/user-center/basic-information/interface-key",
       },
     ],
@@ -152,9 +216,10 @@ export const PROVIDER_KEY_MODEL_LIMIT = 64;
 export interface ProviderKeyConnection {
   readonly id: string;
   readonly preset: ProviderKeyPresetId;
+  readonly agent: ProviderKeyAgent;
   /** A preset endpoint; null for a custom connection. */
   readonly endpoint: ProviderKeyEndpoint["id"] | null;
-  /** A custom connection's own Anthropic-compatible base URL; null for a preset. */
+  /** A custom connection's own base URL, serving its Agent's API; null for a preset. */
   readonly baseUrl: string | null;
   readonly displayName: string;
   readonly enabled: boolean;
@@ -219,19 +284,38 @@ const BaseUrlSchema = text(2048).superRefine((value, context) => {
       message: PROVIDER_KEY_BASE_URL_PROBLEM_MESSAGES[problem].defaultMessage as string,
     });
 });
-export const ProviderKeyModelSchema = z.object({ id: text(256), name: text(128) }).strict();
+/** A reasoning effort name as a provider may list it, such as `high` or `max`. */
+export const isProviderKeyReasoningEffort = (value: string): boolean =>
+  /^[a-z][a-z0-9_-]{0,31}$/u.test(value);
+const effort = z.string().refine(isProviderKeyReasoningEffort);
+export const ProviderKeyModelSchema = z
+  .object({
+    id: text(256),
+    name: text(128),
+    contextWindow: z.number().int().min(1024).max(100_000_000).optional(),
+    reasoningEfforts: z.array(effort).min(1).max(12).readonly().optional(),
+    defaultReasoningEffort: effort.optional(),
+    images: z.boolean().optional(),
+  })
+  .strict();
 const ModelsSchema = z
   .array(ProviderKeyModelSchema)
   .max(PROVIDER_KEY_MODEL_LIMIT)
   .refine((models) => new Set(models.map(({ id }) => id)).size === models.length);
 const ApiKeySchema = text(4096).refine((value) => !/\s/u.test(value), "A key has no spaces.");
 
-/** Where a connection sends requests; identical for checking a key and for saving it. */
+const AgentSchema = z.enum(PROVIDER_KEY_AGENTS);
+
+/**
+ * Where a connection sends requests and in which API; identical for checking a key and for saving
+ * it.
+ */
 export const ProviderKeyTargetSchema = z.discriminatedUnion("preset", [
   z
     .object({
       preset: z.enum(["deepseek", "moonshot", "zhipu", "minimax"]),
       endpoint: z.enum(["china", "international"]),
+      agent: AgentSchema,
     })
     .strict()
     .refine(
@@ -239,7 +323,7 @@ export const ProviderKeyTargetSchema = z.discriminatedUnion("preset", [
         providerKeyPreset(preset).endpoints.some(({ id }) => id === endpoint),
       "That provider has no such endpoint.",
     ),
-  z.object({ preset: z.literal("custom"), baseUrl: BaseUrlSchema }).strict(),
+  z.object({ preset: z.literal("custom"), baseUrl: BaseUrlSchema, agent: AgentSchema }).strict(),
 ]);
 export type ProviderKeyTarget = z.infer<typeof ProviderKeyTargetSchema>;
 
@@ -309,20 +393,32 @@ export const providerKeyPresetOfInstanceId = (instanceId: string): ProviderKeyPr
 export const providerKeyConnectionIdOfInstanceId = (instanceId: string): string | null =>
   RUNTIME_INSTANCE_PATTERN.exec(instanceId)?.[2] ?? null;
 
-/** The endpoint a saved connection or a check sends requests to. */
+/** A preset target's endpoint; null for a custom one. */
+export function providerKeyEndpointOf(target: ProviderKeyTarget): ProviderKeyEndpoint | null {
+  if (target.preset === "custom") return null;
+  const preset = providerKeyPreset(target.preset);
+  return preset.endpoints.find(({ id }) => id === target.endpoint) ?? preset.endpoints[0]!;
+}
+
+/**
+ * The base URL a saved connection or a check sends requests to, in its Agent's API: Codex's
+ * Responses base, or Claude Code's `ANTHROPIC_BASE_URL`.
+ */
 export function providerKeyBaseUrl(target: ProviderKeyTarget): string {
   if (target.preset === "custom") return target.baseUrl.trim().replace(/\/+$/u, "");
-  const preset = providerKeyPreset(target.preset);
-  return (preset.endpoints.find(({ id }) => id === target.endpoint) ?? preset.endpoints[0]!)
-    .baseUrl;
+  const endpoint = providerKeyEndpointOf(target)!;
+  return providerKeyApi(target.agent) === "responses"
+    ? endpoint.responsesUrl
+    : endpoint.anthropicUrl;
 }
 
 export function providerKeyTarget(connection: ProviderKeyConnection): ProviderKeyTarget {
   return connection.preset === "custom"
-    ? { preset: "custom", baseUrl: connection.baseUrl ?? "" }
+    ? { preset: "custom", baseUrl: connection.baseUrl ?? "", agent: connection.agent }
     : {
         preset: connection.preset,
         endpoint: connection.endpoint ?? providerKeyPreset(connection.preset).endpoints[0]!.id,
+        agent: connection.agent,
       };
 }
 
@@ -374,13 +470,19 @@ export function providerKeyModelName(presetId: ProviderKeyPresetId, id: string):
   return words.join(" ");
 }
 
+/** What a provider's model list said about one model. */
+export type ProviderKeyListedModel = Omit<ProviderKeyModel, "name"> & {
+  readonly name?: string | null;
+};
+
 /**
  * The models a connection offers from what the provider listed: its chat models, the preset's
- * known ones first in their order, then the rest as listed.
+ * known ones first in their order, then the rest as listed. What the provider says about a model
+ * wins over what Nodex knows of it.
  */
 export function providerKeyModels(
   presetId: ProviderKeyPresetId,
-  listed: readonly { readonly id: string; readonly name?: string | null }[],
+  listed: readonly ProviderKeyListedModel[],
 ): ProviderKeyModel[] {
   const preset = providerKeyPreset(presetId);
   const seen = new Set<string>();
@@ -391,10 +493,21 @@ export function providerKeyModels(
       return true;
     })
     // A listed name that only repeats the id says no more than the id does.
-    .map(({ id, name }) => ({
-      id,
-      name: name?.trim() && name.trim() !== id ? name.trim() : providerKeyModelName(presetId, id),
-    }));
+    .map(({ id, name, ...listedTraits }): ProviderKeyModel => {
+      const {
+        name: _known,
+        id: _id,
+        ...knownTraits
+      } = preset.models.find((model) => model.id === id) ?? ({ id, name: "" } as ProviderKeyModel);
+      return {
+        ...knownTraits,
+        ...Object.fromEntries(
+          Object.entries(listedTraits).filter(([, value]) => value !== undefined),
+        ),
+        id,
+        name: name?.trim() && name.trim() !== id ? name.trim() : providerKeyModelName(presetId, id),
+      };
+    });
   const rank = (id: string) => {
     const index = preset.models.findIndex((model) => model.id === id);
     return index === -1 ? preset.models.length : index;
@@ -418,7 +531,7 @@ export function providerKeyClaudeModelEnvironment(
 ): Readonly<Record<string, string>> {
   const main = models[0]?.id;
   if (!main) return {};
-  const quick = models.find(({ id }) => /flash|turbo|fast|mini|lite|air|highspeed/iu.test(id))?.id;
+  const quick = providerKeyQuickModel(models)?.id;
   return {
     ANTHROPIC_MODEL: main,
     ANTHROPIC_DEFAULT_OPUS_MODEL: main,
@@ -431,3 +544,9 @@ export function providerKeyClaudeModelEnvironment(
 /** The last four characters of a key; shorter keys show nothing. */
 export const providerKeyHint = (apiKey: string): string =>
   apiKey.trim().length >= 12 ? apiKey.trim().slice(-4) : "";
+
+/** The connection's lightest-sounding model, for an Agent's quick work; null when none sounds light. */
+export const providerKeyQuickModel = (
+  models: readonly ProviderKeyModel[],
+): ProviderKeyModel | null =>
+  models.find(({ id }) => /flash|turbo|fast|mini|lite|air|highspeed/iu.test(id)) ?? null;

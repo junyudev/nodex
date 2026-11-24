@@ -18,8 +18,11 @@ import {
   type NodexSettingsDisclosureState,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
+import { agentDefinition } from "../../../shared/agents/registry";
 import {
+  PROVIDER_KEY_API_NAMES,
   PROVIDER_KEY_LIMIT,
+  providerKeyApi,
   providerKeyBaseUrl,
   providerKeyTarget,
   type ProviderKeyConnection,
@@ -314,10 +317,16 @@ function ConnectionDetail({
           id: "providerKeys.providerKeysSettingsSection.endpoint",
           defaultMessage: "Endpoint",
         })}
-        description={intl.formatMessage({
-          id: "providerKeys.providerKeysSettingsSection.runsOnBuiltInClaudeCode",
-          defaultMessage: "Runs on Nodex’s built-in Claude Code, so there’s nothing to install.",
-        })}
+        description={intl.formatMessage(
+          {
+            id: "providerKeys.providerKeysSettingsSection.runsOnBuiltInAgent",
+            defaultMessage: "Runs on Nodex’s built-in {agent}, through the {api}.",
+          },
+          {
+            agent: agentDefinition(connection.agent).label,
+            api: PROVIDER_KEY_API_NAMES[providerKeyApi(connection.agent)],
+          },
+        )}
       >
         <span className="max-w-[min(22rem,40vw)] truncate font-mono text-xs text-token-text-secondary">
           {providerKeyBaseUrl(providerKeyTarget(connection))}
@@ -462,7 +471,17 @@ export function ProviderKeysSettingsSection({
   const connections = keys.settings?.connections ?? [];
   const providers = useAgentRuntimeProviders();
   const components = useAppComponents();
-  const claudeCode = components.state?.components.find(({ id }) => id === "claude-code");
+  const runtimeOf = (connection: ProviderKeyConnection) =>
+    providers.data?.find(
+      ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
+    );
+  // Each connection waits on the Component that supplies the Agent it runs on.
+  const component = (connection: ProviderKeyConnection) => {
+    const source = runtimeOf(connection)?.installationSource;
+    return source?.kind === "component"
+      ? components.state?.components.find(({ id }) => id === source.id)
+      : undefined;
+  };
   const anchored = providerKeyConnectionOfAnchor(anchor);
   const [expanded, setExpanded] = useState<string | null>(anchored);
   const [adding, setAdding] = useState(false);
@@ -500,13 +519,7 @@ export function ProviderKeysSettingsSection({
           key={connection.id}
           connection={connection}
           componentStatus={
-            providerComponentSetup(
-              providers.data?.find(
-                ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
-              ),
-              claudeCode,
-              intl,
-            )?.title
+            providerComponentSetup(runtimeOf(connection), component(connection), intl)?.title
           }
           keys={keys}
           expanded={expanded === connection.id}

@@ -5,6 +5,8 @@ import {
   providerKeyBaseUrlProblem,
   providerKeyModelName,
   providerKeyPreset,
+  DEFAULT_PROVIDER_KEY_AGENT,
+  type ProviderKeyAgent,
   type ProviderKeyConnectInput,
   type ProviderKeyEndpoint,
   type ProviderKeyFailureReason,
@@ -14,6 +16,8 @@ import {
 
 export interface ProviderKeyDraft {
   readonly preset: ProviderKeyPresetId;
+  /** The Agent the connection will run on, which fixes the API its endpoint must serve. */
+  readonly agent: ProviderKeyAgent;
   /** The chosen endpoint of each preset that offers more than one. */
   readonly endpoints: Readonly<Partial<Record<ProviderKeyPresetId, ProviderKeyEndpoint["id"]>>>;
   readonly baseUrl: string;
@@ -24,7 +28,14 @@ export interface ProviderKeyDraft {
 
 export const initialProviderKeyDraft = (
   preset: ProviderKeyPresetId = "deepseek",
-): ProviderKeyDraft => ({ preset, endpoints: {}, baseUrl: "", apiKey: "", modelsText: "" });
+): ProviderKeyDraft => ({
+  preset,
+  agent: DEFAULT_PROVIDER_KEY_AGENT,
+  endpoints: {},
+  baseUrl: "",
+  apiKey: "",
+  modelsText: "",
+});
 
 /**
  * Providers with a China and an international service start on the one that matches the app's
@@ -101,13 +112,17 @@ export function providerKeyConnectInput(
   if (draft.preset === "custom") {
     const models = parseTypedModels("custom", draft.modelsText);
     return {
-      target: { preset: "custom", baseUrl: draft.baseUrl.trim() },
+      target: { preset: "custom", baseUrl: draft.baseUrl.trim(), agent: draft.agent },
       apiKey,
       ...(models.length ? { models: [...models] } : {}),
     };
   }
   return {
-    target: { preset: draft.preset, endpoint: providerKeyEndpoint(draft, language)!.id },
+    target: {
+      preset: draft.preset,
+      endpoint: providerKeyEndpoint(draft, language)!.id,
+      agent: draft.agent,
+    },
     apiKey,
   };
 }
