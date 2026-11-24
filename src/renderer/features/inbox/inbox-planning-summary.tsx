@@ -2,7 +2,7 @@ import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
-import { AgentProviderIcon, PauseIcon } from "@/components/shared/icons";
+import { AgentInstanceIcon, PauseIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import { UsageMeterCard, UsageRingGlyph } from "@/components/workbench/workbench-rail-usage-meter";
@@ -67,6 +67,11 @@ function budgetText(budget: InboxPlanningBudget, intl: IntlShape): string {
       ]
         .filter(Boolean)
         .join(" · ");
+    case "balance":
+      return intl.formatMessage(
+        { id: "inbox.inboxPlanningSummary.balanceLeft", defaultMessage: "{amount} left" },
+        { amount: budget.amount },
+      );
     case "spent":
       return [
         intl.formatMessage({
@@ -100,10 +105,20 @@ function BudgetRing({
 }) {
   const intl = useIntl();
   const { budget, usage } = model;
-  const mark = <AgentProviderIcon kind={model.kind} className="fill-current" />;
-  const track = budget.kind === "spent" ? "spent" : budget.kind === "left" ? "solid" : "dotted";
-  // An Agent that reports no windows has no card to show.
-  if (usage.windows.length === 0)
+  const mark = (
+    <AgentInstanceIcon
+      binding={{ driver: model.kind, instanceId: model.instanceId }}
+      className="fill-current"
+    />
+  );
+  const track =
+    budget.kind === "spent"
+      ? "spent"
+      : budget.kind === "left" || budget.kind === "balance"
+        ? "solid"
+        : "dotted";
+  // An Agent that reports neither windows nor a balance has no card to show.
+  if (usage.windows.length === 0 && !usage.balance)
     return (
       <span className="inline-flex shrink-0 text-token-foreground">
         <UsageRingGlyph provider={model.kind} mark={mark} track={track} />
@@ -137,7 +152,13 @@ function BudgetRing({
                   severity: budget.severity,
                   faded: budget.readAgo !== null,
                 }
-              : null
+              : budget.kind === "balance" && usage.level
+                ? {
+                    percent: usage.level.remainingPercent,
+                    severity: usage.level.severity,
+                    faded: usage.stale,
+                  }
+                : null
           }
         />
       </button>
@@ -163,7 +184,7 @@ function ModelRow({
           <span
             className={cn(
               "ml-auto shrink-0 text-token-description-foreground tabular-nums",
-              budget.kind === "left" && BUDGET_TONE[budget.severity],
+              (budget.kind === "left" || budget.kind === "balance") && BUDGET_TONE[budget.severity],
               budget.kind === "left" && budget.readAgo && "opacity-60",
               budget.kind === "spent" && "text-(--red-text)",
             )}

@@ -292,6 +292,8 @@ type QueryEndpointPolicy =
   | "app-components:read"
   | "opencode-setup:read"
   | "provider-keys:read"
+  | "provider-keys:usage:read"
+  | "provider-keys:usage:refresh"
   | "nodex-account:read"
   | "settings:codex-executable:get"
   | "settings:codex-home:get"

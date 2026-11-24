@@ -800,11 +800,13 @@ chats stay in the Project.
   model guide among the models suggestions are offered on each Agent able to
   take a chat, at most twelve an Agent, with the guide's note in one line, then
   each other such Agent by name. Each line carries its Agent's mark in the
-  rail's usage ring and what is left of that Agent's weekly window, or of its
-  longest window, named, when it has no weekly one; a window that limits one
-  model only stays in the Agent's usage card, which the ring opens on hover as
-  the rail's does when the Agent reports any windows. Without the guide, the
-  list is `Budgets`: each Agent once, with its budget alone.
+  rail's usage ring, an API key connection's being its provider's, and what is
+  left of that Agent's weekly window, or of its longest window, named, when it
+  has no weekly one; an API key connection with a prepaid balance reads the
+  amount left, such as `¥2.90 left`, and `Used up` at zero. A window that limits
+  one model only stays in the Agent's usage card, which the ring opens on hover
+  as the rail's does when the Agent reports any windows or a balance. Without
+  the guide, the list is `Budgets`: each Agent once, with its budget alone.
 - Nothing is claimed that is not known. A window that has reset since it was
   read reads `Reset since read`, an Agent that reports no usage reads
   `Not reported`, and an old reading is faded, as on the rail, and says how

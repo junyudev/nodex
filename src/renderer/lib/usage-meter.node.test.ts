@@ -63,6 +63,7 @@ const reading = (overrides: Partial<UsageReading> = {}): UsageReading => ({
   observedAt: NOW - 5 * 60_000,
   readFailed: false,
   credits: null,
+  balance: null,
   ...overrides,
 });
 

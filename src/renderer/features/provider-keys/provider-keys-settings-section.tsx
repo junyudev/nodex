@@ -32,6 +32,8 @@ import { providerKeyAnchor, providerKeyConnectionOfAnchor } from "./provider-key
 import { ProviderKeyForm } from "./provider-key-form";
 import { parseTypedModels } from "./provider-key-form-model";
 import { providerKeyDetail, providerKeysSummary } from "./provider-keys-model";
+import { providerKeyBalanceLabel } from "./provider-key-usage-model";
+import { useProviderKeyUsageAccounts } from "./use-provider-key-usage-accounts";
 import { useProviderKeys, type ProviderKeysController } from "./use-provider-keys";
 
 const ADD_KEY_ID = "provider-key-add";
@@ -396,6 +398,7 @@ function ConnectionDetail({
 function ConnectionRow({
   connection,
   componentStatus,
+  balance,
   keys,
   expanded,
   onToggle,
@@ -403,6 +406,8 @@ function ConnectionRow({
 }: {
   readonly connection: ProviderKeyConnection;
   readonly componentStatus?: string;
+  /** What the provider says is left, such as `¥2.90 left`; null when it says nothing. */
+  readonly balance: string | null;
   readonly keys: ProviderKeysController;
   readonly expanded: boolean;
   readonly onToggle: () => void;
@@ -419,7 +424,7 @@ function ConnectionRow({
           <span className="truncate">{connection.displayName}</span>
         </span>
       }
-      detail={componentStatus ?? providerKeyDetail(connection, intl)}
+      detail={componentStatus ?? providerKeyDetail(connection, intl, balance)}
       expanded={expanded}
       onExpandedChange={onToggle}
       controls={
@@ -471,6 +476,7 @@ export function ProviderKeysSettingsSection({
   const connections = keys.settings?.connections ?? [];
   const providers = useAgentRuntimeProviders();
   const components = useAppComponents();
+  const usage = useProviderKeyUsageAccounts();
   const runtimeOf = (connection: ProviderKeyConnection) =>
     providers.data?.find(
       ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
@@ -521,6 +527,10 @@ export function ProviderKeysSettingsSection({
           componentStatus={
             providerComponentSetup(runtimeOf(connection), component(connection), intl)?.title
           }
+          balance={providerKeyBalanceLabel(
+            usage?.accounts.find((account) => account.connection.id === connection.id)?.usage,
+            intl,
+          )}
           keys={keys}
           expanded={expanded === connection.id}
           onToggle={() =>

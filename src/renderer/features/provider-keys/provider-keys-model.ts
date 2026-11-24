@@ -18,10 +18,14 @@ const modelCount = (count: number, intl: IntlShape) =>
 
 const keyHint = (hint: string) => `••••${hint}`;
 
-/** A connection's secondary line: what it offers, which key, and where it sends requests. */
+/**
+ * A connection's secondary line: what is left to spend, what it offers, which key, and where it
+ * sends requests.
+ */
 export function providerKeyDetail(
   connection: ProviderKeyConnection,
   intl: IntlShape = getIntl(),
+  balance: string | null = null,
 ): string {
   const preset = providerKeyPreset(connection.preset);
   const place =
@@ -32,6 +36,7 @@ export function providerKeyDetail(
           intl.formatMessage(PROVIDER_KEY_REGION_MESSAGES[connection.endpoint])
         : null;
   return [
+    balance,
     modelCount(connection.models.length, intl),
     connection.keyHint ? keyHint(connection.keyHint) : null,
     place,

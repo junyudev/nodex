@@ -31,6 +31,9 @@ import { makeChangelogFeedRequest } from "../platform/electron/ChangelogFeedNetw
 import * as ProductAnalyticsIpc from "../ipc/handlers/ProductAnalyticsIpc";
 import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
 import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
+import * as ProviderKeyUsageIpc from "../ipc/handlers/ProviderKeyUsageIpc";
+import * as ProviderKeyUsage from "../provider-keys/ProviderKeyUsage";
+import { providerKeyUsageReader } from "../platform/node/ProviderKeyUsageReader";
 import * as AntigravityRuntimeIpc from "../ipc/handlers/AntigravityRuntimeIpc";
 import * as AntigravityInstallation from "../agent-runtime/AgentRuntimeAntigravityInstallation";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
@@ -115,6 +118,7 @@ export const live = Layer.mergeAll(
   WindowsStartupIpc.live,
   NodexAccountIpc.live,
   ProviderKeysIpc.live,
+  ProviderKeyUsageIpc.live.pipe(Layer.provide(ProviderKeyUsage.live(providerKeyUsageReader()))),
   AntigravityRuntimeIpc.live.pipe(Layer.provide(AntigravityInstallation.live)),
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),

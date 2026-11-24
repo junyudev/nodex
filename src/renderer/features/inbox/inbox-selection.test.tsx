@@ -40,6 +40,10 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
     refresh: () => {},
   }),
 }));
+// API key balances are another surface's concern; these Agents report none.
+vi.mock("@/features/provider-keys/use-provider-key-usage-accounts", () => ({
+  useProviderKeyUsageAccounts: () => null,
+}));
 vi.mock("@/lib/renderer-transport", () => ({
   resolveRendererTransport: () => ({
     subscribeAgentSettingsChanges: (listener: () => void) => {

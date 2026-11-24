@@ -10,6 +10,7 @@ import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   describeUsageMeter,
   formatUsageAge,
+  formatUsageBalance,
   runtimeUsageReading,
   type UsageMeterView,
   type UsageSeverity,
@@ -34,6 +35,8 @@ export type InboxPlanningBudget =
       readonly readAgo: string | null;
     }
   | { readonly kind: "spent"; readonly window: string | null }
+  /** A prepaid balance, such as an API key's, with the amount left. */
+  | { readonly kind: "balance"; readonly amount: string; readonly severity: UsageSeverity }
   /** The window reset after it was read, so what is left now is not known. */
   | { readonly kind: "reset" }
   /** The Agent reports no budget. */
@@ -42,8 +45,9 @@ export type InboxPlanningBudget =
 /** One line of what a suggestion chooses among: a guide family on one Agent, or an Agent. */
 export interface InboxPlanningModel {
   readonly key: string;
-  /** The Agent's mark. */
+  /** The Agent's mark: its instance's own, such as an API key provider's, else its runtime's. */
   readonly kind: AgentBackendBinding["driver"];
+  readonly instanceId: string;
   /** The guide's family, with its Agent when that says more than the mark; else the Agent. */
   readonly title: string;
   /** What the guide says the family does well, in one line. */
@@ -91,6 +95,14 @@ export function inboxPlanningBudget(usage: UsageMeterView, now: number): InboxPl
   const window =
     account.find(isWeekly) ??
     account.toSorted((left, right) => (right.durationMins ?? 0) - (left.durationMins ?? 0))[0];
+  if (!window && usage.balance)
+    return usage.balance.severity === "exhausted"
+      ? { kind: "spent", window: null }
+      : {
+          kind: "balance",
+          amount: formatUsageBalance(usage.balance),
+          severity: usage.balance.severity,
+        };
   if (usage.status === "unmetered" || !window) return { kind: "unknown" };
   if (window.state === "elapsed") return { kind: "reset" };
   const named = isWeekly(window) ? null : window.label;
@@ -122,7 +134,11 @@ export function inboxPlanningModels(
     .flatMap((provider): InboxPlanningModel[] => {
       const { agent, named } = inboxAgentIdentity(catalog, provider.instanceId);
       const kind = provider.driver;
-      const usage = describeUsageMeter(runtimeUsageReading(provider, false), now);
+      const { instanceId } = provider;
+      const usage = describeUsageMeter(
+        catalog.usageOf?.(instanceId) ?? runtimeUsageReading(provider, false),
+        now,
+      );
       const budget = inboxPlanningBudget(usage, now);
       // Only the models a suggestion is actually offered speak for the Agent.
       const offered = new Set(
@@ -130,10 +146,11 @@ export function inboxPlanningModels(
       );
       const families = useModelGuide ? INBOX_MODEL_GUIDE.filter((entry) => offered.has(entry)) : [];
       if (families.length === 0)
-        return [{ key: provider.instanceId, kind, title: agent, summary: null, budget, usage }];
+        return [{ key: instanceId, kind, instanceId, title: agent, summary: null, budget, usage }];
       return families.map((entry) => ({
-        key: `${provider.instanceId}:${entry.family}`,
+        key: `${instanceId}:${entry.family}`,
         kind,
+        instanceId,
         title: named ? `${entry.family} · ${agent}` : entry.family,
         summary: intl.formatMessage(entry.summaryMessage),
         budget,

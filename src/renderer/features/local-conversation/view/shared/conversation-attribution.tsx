@@ -1,6 +1,6 @@
 import { FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { AgentInstanceIcon } from "@/components/shared/icons/provider-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { conversationIdentityQueryOptions } from "@/lib/conversation-identity";
@@ -66,7 +66,15 @@ function ConversationReference({
   const agent = useAgentIdentity(identity.agent);
   const reference = (
     <>
-      {agent?.driver ? <AgentProviderIcon kind={agent.driver} className="size-3 shrink-0" /> : null}
+      {agent?.driver ? (
+        <AgentInstanceIcon
+          binding={{
+            driver: agent.driver,
+            instanceId: identity.agent?.providerInstanceId ?? undefined,
+          }}
+          className="size-3 shrink-0"
+        />
+      ) : null}
       <span className="min-w-0 truncate">{identity.title}</span>
     </>
   );

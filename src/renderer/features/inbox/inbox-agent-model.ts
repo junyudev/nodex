@@ -1,4 +1,5 @@
 import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
+import type { UsageReading } from "@/lib/usage-meter";
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
@@ -45,12 +46,19 @@ export interface InboxAgentCatalog {
   /** `loading` until the first catalog read lands; a failed read keeps what it had. */
   readonly state: "loading" | "ready" | "error";
   readonly instances: readonly Instance[];
+  /**
+   * Usage an Agent's catalog row doesn't carry, by instance, such as an API key connection's
+   * balance that Main reads from its provider.
+   */
+  readonly usageOf?: (instanceId: string) => UsageReading | null;
 }
 
 /** What an Inbox Agent will run on, as the Inbox says it before anything runs. */
 export interface InboxAgentPresentation {
   readonly status: "ready" | "checking" | "unavailable";
   readonly kind: AgentBackendBinding["driver"] | null;
+  /** The Agent instance, so an instance with a mark of its own, such as an API key, shows it. */
+  readonly instanceId: string | null;
   /** The Agent's name, such as `Codex` or a Claude account's name. */
   readonly agent: string;
   /** Whether the name says more than the Agent's mark, as a second account's name does. */
@@ -74,11 +82,16 @@ const agentName = (catalog: InboxAgentCatalog, instanceId: string) => {
 export function inboxAgentIdentity(
   catalog: InboxAgentCatalog,
   instanceId: string,
-): Pick<InboxAgentPresentation, "agent" | "kind" | "named"> {
+): Pick<InboxAgentPresentation, "agent" | "kind" | "instanceId" | "named"> {
   const agent = agentName(catalog, instanceId);
   const provider = catalog.providers.find((candidate) => candidate.instanceId === instanceId);
   const kind = provider ? provider.driver : null;
-  return { agent, kind, named: !kind || agentRuntimeQualifier({ driver: kind }, agent) !== null };
+  return {
+    agent,
+    kind,
+    instanceId: provider ? instanceId : null,
+    named: !kind || agentRuntimeQualifier({ driver: kind }, agent) !== null,
+  };
 }
 
 const effortDescriptor = (model: ProviderModel | undefined) =>
@@ -117,7 +130,7 @@ export function describeInboxAgent(
   intl: IntlShape = getIntl(),
 ): InboxAgentPresentation {
   const choice = resolveInboxAgentChoice(catalog.providers, requested, purpose);
-  const { agent, kind, named } = inboxAgentIdentity(catalog, choice.instanceId);
+  const { agent, kind, instanceId, named } = inboxAgentIdentity(catalog, choice.instanceId);
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
   );
@@ -128,6 +141,7 @@ export function describeInboxAgent(
   ): InboxAgentPresentation => ({
     status,
     kind,
+    instanceId,
     agent,
     named,
     detail,

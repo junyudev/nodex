@@ -21,6 +21,7 @@ export function makeTestApplicationSettings(input?: {
     threadNotificationSettingsChanges: Stream.never,
     telemetrySettingsChanges: Stream.empty,
     acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
+    providerKeySettingsChanges: Stream.empty,
     providerKeySecret: () => Effect.die("Unused API key"),
     agentProfileLaunchConfiguration: () => Effect.die("Unused Agent profile"),
     snapshot: () =>

@@ -1533,6 +1533,14 @@ export interface IpcApi
     result: import("./nodex-account").NodexAccountSnapshot;
   };
   "nodex-account:refresh": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "provider-keys:usage:read": {
+    args: [];
+    result: import("./provider-key-usage").ProviderKeyUsageSnapshot;
+  };
+  "provider-keys:usage:refresh": {
+    args: [connectionId?: string];
+    result: import("./provider-key-usage").ProviderKeyUsageSnapshot;
+  };
   "provider-keys:read": {
     args: [];
     result: import("./provider-keys").ProviderKeySettings;
@@ -3272,6 +3280,7 @@ export interface IpcEvents {
   "skills:composer-invalidated": { readonly hostId: string };
   "codex:plugins:changed": [PluginManagementChanged];
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
+  "provider-keys:usage-changed": import("./provider-key-usage").ProviderKeyUsageSnapshot;
   "provider-keys:changed": import("./provider-keys").ProviderKeySettings;
   "antigravity-runtime:changed": import("./antigravity-runtime").AntigravityRuntimeSnapshot;
   "app-components:changed": import("./app-components").AppComponentsState;

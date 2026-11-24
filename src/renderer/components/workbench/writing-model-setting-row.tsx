@@ -3,7 +3,7 @@ import { useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentRuntimeWritingModel } from "../../../shared/agent-runtime-settings";
 import { AgentModelPicker } from "@/components/shared/agent-runtime/agent-model-picker";
-import { AgentProviderIcon } from "@/components/shared/icons";
+import { AgentInstanceIcon } from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { NodexSettingsRow } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
@@ -68,7 +68,10 @@ export function WritingModelSettingRow() {
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 {presentation.kind ? (
-                  <AgentProviderIcon kind={presentation.kind} className="size-3.5 shrink-0" />
+                  <AgentInstanceIcon
+                    binding={{ driver: presentation.kind, instanceId: choice?.instanceId }}
+                    className="size-3.5 shrink-0"
+                  />
                 ) : null}
                 <span className="min-w-0 truncate">{presentation.line}</span>
               </span>

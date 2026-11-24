@@ -25,6 +25,7 @@ function normalizeNullable(value: string | null | undefined): string {
 export const queryKeys = {
   /** The Profile's API key connections. */
   providerKeys: () => spaceQueryKey(["providerKeys"] as const),
+  providerKeyUsage: () => spaceQueryKey(["providerKeyUsage"] as const),
   /** Agent command lines found on this computer. */
   agentRuntime: {
     providers: () => spaceQueryKey(["agentRuntime", "providers"] as const),

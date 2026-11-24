@@ -6,6 +6,7 @@ import { NodexHoverCard } from "@/components/ui/hover-card";
 import { UsageRingGlyph } from "@/components/workbench/workbench-rail-usage-meter";
 import type { UsageSeverity } from "@/lib/usage-meter";
 import { cn } from "@/lib/utils";
+import { balanceGaugePercent, nextBalanceGauge, type BalanceGauge } from "@/lib/balance-gauge";
 import { resolveNodexAccountView } from "./nodex-account-identity";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { formatNodexCredits } from "../../../shared/nodex-models";
@@ -14,22 +15,12 @@ import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-accou
 type Account = ReturnType<typeof useNodexAccount>;
 
 /** Credits as of the last top-up and now; a top-up refills the gauge. */
-export interface CreditGauge {
-  readonly baseline: number;
-  readonly balance: number;
-}
-
-export function nextCreditGauge(previous: CreditGauge | null, balance: number): CreditGauge {
-  const refilled = !previous || previous.baseline <= 0 || balance > previous.balance + 0.125;
-  return { baseline: refilled ? Math.max(balance, 0) : previous.baseline, balance };
-}
+export type CreditGauge = BalanceGauge;
+export const nextCreditGauge = nextBalanceGauge;
 
 /** Remaining share since the last top-up, and how loudly the rail should say so. */
 export function describeCreditGauge(gauge: CreditGauge) {
-  const percent =
-    gauge.baseline > 0
-      ? Math.round(Math.max(0, Math.min(1, gauge.balance / gauge.baseline)) * 100)
-      : 0;
+  const percent = balanceGaugePercent(gauge);
   const severity: UsageSeverity =
     gauge.balance < 1
       ? "exhausted"

@@ -178,6 +178,60 @@ describe("what suggestions choose a new chat's model among", () => {
   });
 });
 
+describe("an API key connection's budget", () => {
+  const deepseek: Provider = {
+    ...claudeProvider(),
+    instanceId: "key_deepseek_c1",
+    displayName: "DeepSeek",
+    driver: "codex",
+    models: [model("deepseek-flash", "DeepSeek V4.1 Flash", true)],
+  };
+  const balance =
+    (amount: number, remainingPercent: number | null = 40) =>
+    (instanceId: string) =>
+      instanceId === "key_deepseek_c1"
+        ? {
+            ...runtimeUsageReading(deepseek, false),
+            instanceId,
+            balance: { amount, currency: "CNY", remainingPercent },
+          }
+        : null;
+
+  test("is its provider's balance, under the provider's own mark", () => {
+    const [line] = inboxPlanningModels(
+      { ...catalog([deepseek]), usageOf: balance(2.9) },
+      false,
+      NOW,
+    );
+    expect(line).toMatchObject({
+      title: "DeepSeek",
+      instanceId: "key_deepseek_c1",
+      budget: { kind: "balance", amount: "¥2.90", severity: "normal" },
+    });
+    expect(line?.usage?.level).toEqual({ remainingPercent: 40, severity: "normal" });
+  });
+
+  test("runs low against its last top-up and is spent at zero", () => {
+    const [low] = inboxPlanningModels(
+      { ...catalog([deepseek]), usageOf: balance(1, 8) },
+      false,
+      NOW,
+    );
+    expect(low?.budget).toMatchObject({ kind: "balance", severity: "critical" });
+    const [spent] = inboxPlanningModels(
+      { ...catalog([deepseek]), usageOf: balance(0) },
+      false,
+      NOW,
+    );
+    expect(spent?.budget).toEqual({ kind: "spent", window: null });
+  });
+
+  test("says nothing it was not told", () => {
+    const [unread] = inboxPlanningModels(catalog([deepseek]), false, NOW);
+    expect(unread?.budget).toEqual({ kind: "unknown" });
+  });
+});
+
 describe("what is left of an Agent's budget", () => {
   test("is the weekly window, even when a session window has less", () => {
     expect(budgetOf(codex([session(95), weekly("secondary", 40)]))).toEqual({

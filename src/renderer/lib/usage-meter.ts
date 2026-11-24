@@ -32,6 +32,11 @@ export interface UsageWindowReading {
 
 export interface UsageReading {
   readonly provider: UsageProvider;
+  /**
+   * The one Agent instance this account belongs to, such as an API key connection, so its meter
+   * shows that instance's mark; absent for an account several instances share.
+   */
+  readonly instanceId?: string;
   /** Identifies the account whose quota this is, so two readers of one account share a meter. */
   readonly key: string;
   readonly title: string;
@@ -46,10 +51,21 @@ export interface UsageReading {
   readonly readFailed: boolean;
   /** Prepaid credits that carry the account past a used-up window; null when it has none. */
   readonly credits: UsageCredits | null;
+  /** A prepaid money balance the account spends from; null when it has none. */
+  readonly balance: UsageBalance | null;
 }
 
 /** A positive balance, or an account whose credits never run out. */
 export type UsageCredits = number | "unlimited";
+
+export interface UsageBalance {
+  /** In the currency's major unit; zero or less is used up. */
+  readonly amount: number;
+  /** An ISO 4217 code. */
+  readonly currency: string;
+  /** What is left of the balance since it was last topped up; null until that is known. */
+  readonly remainingPercent: number | null;
+}
 
 export type UsageSeverity = "normal" | "low" | "critical" | "exhausted";
 
@@ -66,15 +82,23 @@ export type UsageWindowView = UsageWindowReading &
 
 export type MeasuredUsageWindowView = Extract<UsageWindowView, { state: "measured" }>;
 
+export interface UsageBalanceView extends UsageBalance {
+  readonly severity: UsageSeverity;
+}
+
 export interface UsageMeterView {
   readonly reading: UsageReading;
   /**
-   * `measured`: at least one window still describes now. `unread`: nothing current is known.
-   * `unmetered`: the account has no subscription windows.
+   * `measured`: at least one window still describes now, or a balance is known. `unread`: nothing
+   * current is known. `unmetered`: the account has no subscription windows.
    */
   readonly status: "measured" | "unread" | "unmetered";
   /** The account window with the least left: the one that stops work first. */
   readonly binding: MeasuredUsageWindowView | null;
+  /** The balance and how loudly it should speak; null without one. */
+  readonly balance: UsageBalanceView | null;
+  /** What the meter's ring draws: the binding window, else the balance since its last top-up. */
+  readonly level: { readonly remainingPercent: number; readonly severity: UsageSeverity } | null;
   readonly windows: readonly UsageWindowView[];
   /** The reading is old enough that use elsewhere on the account may have moved it. */
   readonly stale: boolean;
@@ -236,6 +260,35 @@ export function resolveUsageSeverity(remainingPercent: number): UsageSeverity {
   return "normal";
 }
 
+/**
+ * A balance is used up at zero; before that it runs low only against what it was last topped up
+ * to, since an amount alone says nothing about how fast it is spent.
+ */
+export function resolveBalanceSeverity(balance: UsageBalance): UsageSeverity {
+  if (balance.amount <= 0) return "exhausted";
+  if (balance.remainingPercent === null) return "normal";
+  if (balance.remainingPercent <= 10) return "critical";
+  if (balance.remainingPercent <= 25) return "low";
+  return "normal";
+}
+
+/** An amount of money in its own currency's symbol: `¥2.90`, `$12.40`. */
+export function formatUsageBalance(
+  balance: Pick<UsageBalance, "amount" | "currency">,
+  locale: string = getIntl().locale,
+): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: balance.currency,
+      currencyDisplay: "narrowSymbol",
+      maximumFractionDigits: 2,
+    }).format(balance.amount);
+  } catch {
+    return `${getIntl().formatNumber(balance.amount, { maximumFractionDigits: 2 })} ${balance.currency}`;
+  }
+}
+
 function compareWindows(left: UsageWindowReading, right: UsageWindowReading): number {
   if (left.scope !== right.scope) return left.scope === "account" ? -1 : 1;
   return (left.durationMins ?? Infinity) - (right.durationMins ?? Infinity);
@@ -265,7 +318,10 @@ export function describeUsageMeter(
         least === null || window.remainingPercent < least.remainingPercent ? window : least,
       null,
     ) ?? null;
-  const status = !reading.metered ? "unmetered" : binding ? "measured" : "unread";
+  const balance = reading.balance
+    ? { ...reading.balance, severity: resolveBalanceSeverity(reading.balance) }
+    : null;
+  const status = !reading.metered ? "unmetered" : binding || balance ? "measured" : "unread";
   const staleAt =
     reading.observedAt === null ? null : reading.observedAt + USAGE_READING_STALE_AFTER_MS;
   const stale = status === "measured" && staleAt !== null && staleAt <= now;
@@ -277,6 +333,15 @@ export function describeUsageMeter(
     reading,
     status,
     binding,
+    balance,
+    level: binding
+      ? { remainingPercent: binding.remainingPercent, severity: binding.severity }
+      : balance
+        ? {
+            remainingPercent: balance.amount <= 0 ? 0 : (balance.remainingPercent ?? 100),
+            severity: balance.severity,
+          }
+        : null,
     windows,
     stale,
     nextChangeAt: upcoming.length > 0 ? Math.min(...upcoming) : null,
@@ -318,6 +383,21 @@ export function describeUsageMeterLabel(view: UsageMeterView, now: number = Date
         plan:
           reading.plan ??
           getIntl().formatMessage({ id: "lib.usageMeter.account", defaultMessage: "this account" }),
+      },
+    );
+  }
+  if (!binding && view.balance) {
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.balanceSummary", defaultMessage: "{title}: {balance} left{failed}" },
+      {
+        title: reading.title,
+        balance: formatUsageBalance(view.balance),
+        failed: reading.readFailed
+          ? getIntl().formatMessage({
+              id: "lib.usageMeter.balanceReadFailed",
+              defaultMessage: ", couldn’t refresh",
+            })
+          : "",
       },
     );
   }
@@ -416,10 +496,22 @@ export function describeUsageProvenance(
   }
   const age = reading.observedAt === null ? "" : ` ${formatUsageAge(reading.observedAt, now)}`;
   return {
-    status: getIntl().formatMessage(
-      { id: "lib.usageMeter.provenance", defaultMessage: "Account limits · read on {host}{age}" },
-      { host: hostLabel, age },
-    ),
+    status:
+      reading.windows.length === 0 && reading.balance
+        ? getIntl().formatMessage(
+            {
+              id: "lib.usageMeter.balanceProvenance",
+              defaultMessage: "Account balance · read on {host}{age}",
+            },
+            { host: hostLabel, age },
+          )
+        : getIntl().formatMessage(
+            {
+              id: "lib.usageMeter.provenance",
+              defaultMessage: "Account limits · read on {host}{age}",
+            },
+            { host: hostLabel, age },
+          ),
     detail: null,
   };
 }
@@ -525,6 +617,7 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
       observedAt: null,
       readFailed: false,
       credits: null,
+      balance: null,
     };
   }
   const limits = snapshot.rateLimits;
@@ -542,6 +635,7 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
     observedAt: snapshot.rateLimitsUpdatedAt ?? null,
     readFailed: snapshot.rateLimitsReadFailed ?? false,
     credits: codexCredits(account.planType, limits?.credits),
+    balance: null,
   };
 }
 
@@ -597,6 +691,7 @@ export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boole
     readFailed: readFailed || limits?.unavailable?.reason === "probeFailed",
     // The Agent catalog reports windows only; the signed-in account's own reading has credits.
     credits: null,
+    balance: null,
   };
 }
 

@@ -4,7 +4,6 @@ import { useRef, useState, type ReactElement } from "react";
 import { agentModelKey } from "@/lib/agent-model-selection";
 import {
   AgentInstanceIcon,
-  AgentProviderIcon,
   ChevronDownIcon,
   RefreshIcon,
   SettingsGeneralIcon,
@@ -484,8 +483,8 @@ export function AgentModelPickerView({
                   changeOpen(false);
                 }}
               >
-                <AgentProviderIcon
-                  kind={setup.kind}
+                <AgentInstanceIcon
+                  binding={{ driver: setup.kind, instanceId: setup.instanceId ?? undefined }}
                   className="size-3.5 text-token-text-secondary"
                 />
                 <span className="min-w-0 truncate">{setup.label}</span>{" "}

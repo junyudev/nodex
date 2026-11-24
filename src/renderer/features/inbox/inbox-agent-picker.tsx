@@ -1,4 +1,5 @@
 import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
+import { useProviderKeyUsageAccounts } from "../provider-keys/use-provider-key-usage-accounts";
 import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactElement } from "react";
 import {
   DEFAULT_INBOX_SETTINGS,
@@ -10,7 +11,7 @@ import {
   AgentModelPicker,
   type AgentModelCatalogPresentation,
 } from "@/components/shared/agent-runtime/agent-model-picker";
-import { AgentProviderIcon, CompactChevronDownIcon } from "@/components/shared/icons";
+import { AgentInstanceIcon, CompactChevronDownIcon } from "@/components/shared/icons";
 import { NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
@@ -60,8 +61,10 @@ export function useInboxAgents(): InboxAgents {
   const { instances } = useAgentInstances();
   const settingsQuery = useInboxSettingsQuery();
   const update = useUpdateInboxSettings();
+  const keyUsage = useProviderKeyUsageAccounts();
   return {
     providers: catalog.data ?? [],
+    ...(keyUsage ? { usageOf: keyUsage.readingOf } : {}),
     state: catalog.data ? "ready" : catalog.error ? "error" : "loading",
     readFailed: Boolean(catalog.error),
     instances,
@@ -104,7 +107,13 @@ export function InboxAgentLabel({
   return (
     <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
       {presentation.kind ? (
-        <AgentProviderIcon kind={presentation.kind} className="size-3.5 shrink-0" />
+        <AgentInstanceIcon
+          binding={{
+            driver: presentation.kind,
+            instanceId: presentation.instanceId ?? undefined,
+          }}
+          className="size-3.5 shrink-0"
+        />
       ) : null}
       <span className={cn("min-w-0", !full && "truncate")}>
         {full ? inboxAgentLine(presentation) : inboxAgentShortLine(presentation)}

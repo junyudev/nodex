@@ -62,6 +62,11 @@ export interface RendererTransport {
   ) => () => void;
   subscribeAgentRuntimeCatalogChanges: (callback: () => void) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
+  subscribeProviderKeyUsageChanges?: (
+    callback: (
+      snapshot: import("../../shared/provider-key-usage").ProviderKeyUsageSnapshot,
+    ) => void,
+  ) => () => void;
   subscribeProviderKeyChanges: (
     callback: (settings: import("../../shared/provider-keys").ProviderKeySettings) => void,
   ) => () => void;

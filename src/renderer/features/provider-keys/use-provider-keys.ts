@@ -37,14 +37,23 @@ export interface ProviderKeysController {
   readonly remove: (id: string) => Promise<void>;
 }
 
-/** The Profile's API key connections; Main owns the keys, and every window sees each change. */
-export function useProviderKeys(runtime: ProviderKeysRuntime = providerKeysRuntime) {
+/**
+ * The Profile's API key connections; Main owns the keys, and every window sees each change. A
+ * window that runs no chats on this computer, such as a team Space's, leaves them unread.
+ */
+export function useProviderKeys(
+  runtime: ProviderKeysRuntime = providerKeysRuntime,
+  { enabled = true }: { readonly enabled?: boolean } = {},
+) {
   const client = useQueryClient();
   const queryKey = queryKeys.providerKeys();
-  const query = useQuery({ queryKey, queryFn: runtime.read });
+  const query = useQuery({ queryKey, queryFn: runtime.read, enabled });
   useEffect(
-    () => runtime.subscribe((settings) => client.setQueryData(queryKeys.providerKeys(), settings)),
-    [client, runtime],
+    () =>
+      enabled
+        ? runtime.subscribe((settings) => client.setQueryData(queryKeys.providerKeys(), settings))
+        : undefined,
+    [client, runtime, enabled],
   );
   const settle = async (result: ProviderKeyResult) => {
     if (result.ok) {

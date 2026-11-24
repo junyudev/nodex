@@ -1,6 +1,8 @@
 import { useSubscriptionUsage } from "@/lib/use-subscription-usage";
 import { subscriptionUsageAccounts } from "@/lib/usage-meter";
 import { subscriptionMeters } from "../../../shared/subscription-usage";
+import { providerKeyMeterPreference } from "../../../shared/provider-key-usage";
+import { useProviderKeyUsageAccounts } from "@/features/provider-keys/use-provider-key-usage-accounts";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { NodexSwitch } from "@/components/ui/button";
@@ -18,10 +20,14 @@ export function UsageMeterSettingRows() {
   const intl = useIntl();
   const subscription = useSubscriptionUsage();
   const reported = subscriptionUsageAccounts(subscription?.snapshot);
+  const keyUsage = useProviderKeyUsageAccounts();
   const meters = new Map<string, (typeof defaultMeters)[number][1]>(defaultMeters);
   for (const { reading } of reported) {
     if (!meters.has(reading.provider)) meters.set(reading.provider, reading.title);
   }
+  // Each API key connection that reports a balance or plan has its own meter.
+  for (const { connection } of keyUsage?.accounts ?? [])
+    meters.set(providerKeyMeterPreference(connection.id), connection.displayName);
   const {
     settings,
     isLoading,

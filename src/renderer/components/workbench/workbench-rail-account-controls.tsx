@@ -6,6 +6,8 @@ import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
 import { subscriptionMeter, subscriptionMeters } from "../../../shared/subscription-usage";
+import { providerKeyMeterPreference } from "../../../shared/provider-key-usage";
+import { useProviderKeyUsageAccounts } from "@/features/provider-keys/use-provider-key-usage-accounts";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
 import { NodexCreditMeter } from "@/features/nodex-account/nodex-credit-meter";
 import { NodexButton } from "@/components/ui/button";
@@ -289,13 +291,41 @@ function SubscriptionUsageMeter({
 }
 
 /**
+ * A meter for each API key connection whose provider reports its balance or plan, unless turned
+ * off in Settings. Opening one asks the provider again.
+ */
+function ProviderKeyUsageMeters({
+  meters,
+}: {
+  readonly meters: Readonly<Record<string, boolean>>;
+}) {
+  const usage = useProviderKeyUsageAccounts();
+  if (!usage) return null;
+  return usage.accounts
+    .filter(({ connection }) => meters[providerKeyMeterPreference(connection.id)] !== false)
+    .map(({ connection, reading }) => (
+      <span
+        key={reading.key}
+        className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none"
+      >
+        <RailUsageMeter
+          reading={reading}
+          onOpenChange={(open) => {
+            if (open) void usage.refresh(connection.id).catch(() => {});
+          }}
+        />
+      </span>
+    ));
+}
+
+/**
  * App-wide controls at the foot of the navigation rail, read from the bottom up: the account
  * menu, which shows the current Space and the Nodex Account, the Nodex credit meter while signed
  * in, then the Codex account control (its usage meter when signed in, an open Codex
  * ring that signs in when signed out, an unread Codex meter while the account is unknown), then
  * one usage meter per subscription account (an unread Claude meter until Main has read
- * any). The slots that always exist sit lowest, so subscription meters coming and going never move
- * them.
+ * any), then one per API key connection that reports its usage. The slots that always exist sit
+ * lowest, so meters coming and going never move them.
  */
 export function WorkbenchRailAccountControls({
   onOpenSettings,
@@ -417,6 +447,7 @@ export function WorkbenchRailAccountControls({
       className="mt-auto flex flex-col items-center gap-2"
     >
       <div data-workbench-rail-account="" className="contents">
+        {subscriptionUsage ? <ProviderKeyUsageMeters meters={meters} /> : null}
         {subscriptionUsage
           ? subscriptionAccounts
               .filter(({ reading }) => meters[reading.provider] !== false)

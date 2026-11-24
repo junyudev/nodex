@@ -216,6 +216,15 @@ is saved. The listed chat models become the connection's models, the provider's 
 provider that lists nothing usable offers its known models, and a custom endpoint that lists none
 takes the model IDs the person types. `Check again` reads the list again with the saved key.
 
+Where the provider reports it, Nodex reads what is left on the account behind the key with the
+saved key: the prepaid balance for DeepSeek and Kimi, and the five-hour and weekly windows of a
+MiniMax plan key. GLM and custom endpoints report nothing. A connection that reports usage shows it
+beside its name in Settings, on its own rail meter and in the Inbox's plan, as
+[Workbench Shell](workbench-shell.md) describes. Nodex reads it when Nodex starts and when the
+connection changes, after work on the connection, when its meter's card opens, no more than once a
+minute, and every 15 minutes otherwise. A failed read keeps the previous reading and marks it as not
+refreshed.
+
 The key is stored only encrypted, with a key the system keychain protects, and is never returned to
 a window; Settings shows its last four characters. Replacing a key checks the new one first, and a
 refused key leaves the old one in place. Turning a connection off removes its instance from new work

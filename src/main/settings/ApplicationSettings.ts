@@ -172,6 +172,12 @@ export type ProviderKeySettingsMutation =
   | { readonly connection: ProviderKeyConnection; readonly key?: Redacted.Redacted }
   | { readonly removeId: string };
 
+export interface ProviderKeySettingsChange {
+  readonly settings: ProviderKeySettings;
+  /** A replacement can have the same key hint as the previous key. */
+  readonly savedKeyId?: string;
+}
+
 export type ApplicationSettingsCommand =
   | { readonly type: "update-terminal-shell"; readonly input: TerminalShellSettings }
   | { readonly type: "update-backup"; readonly input: UpdateBackupSettingsInput }
@@ -251,6 +257,7 @@ export class ApplicationSettings extends Context.Service<
       ReturnType<typeof getAgentProfileLaunchConfiguration<Driver>>,
       ApplicationSettingsError
     >;
+    readonly providerKeySettingsChanges: Stream.Stream<ProviderKeySettingsChange>;
     readonly providerKeySecret: (
       id: string,
     ) => Effect.Effect<Redacted.Redacted, ApplicationSettingsError>;
@@ -486,6 +493,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   // Keep disable edges even if a slow observer sees an immediate re-enable; backpressure avoids loss.
   const threadNotificationChanges = yield* PubSub.bounded<ThreadNotificationSettings>(16);
   yield* Effect.addFinalizer(() => PubSub.shutdown(threadNotificationChanges));
+  // A replaced key retires its old usage reading, so every change reaches observers; backpressure avoids loss.
+  const providerKeyChanges = yield* PubSub.bounded<ProviderKeySettingsChange>(16);
+  yield* Effect.addFinalizer(() => PubSub.shutdown(providerKeyChanges));
   const telemetryChanges = yield* PubSub.sliding<TelemetrySettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(telemetryChanges));
   // Home and executable stay fixed for this Main lifetime; saved changes apply after restart.
@@ -567,6 +577,18 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           getAgentProfileLaunchConfiguration(source, driver, instanceId),
         ),
       ),
+    providerKeySettingsChanges: Stream.unwrap(
+      writes.withPermit(
+        Effect.gen(function* () {
+          const changes = yield* PubSub.subscribe(providerKeyChanges);
+          const current = yield* Effect.option(readUnlocked());
+          const initial = Stream.fromIterable(
+            current._tag === "Some" ? [{ settings: current.value.providerKeys }] : [],
+          );
+          return Stream.concat(initial, Stream.fromSubscription(changes));
+        }),
+      ),
+    ),
     providerKeySecret: (id) =>
       writes.withPermit(
         attempt("provider-key-secret", () => Redacted.make(getProviderKeySecret(source, id))),
@@ -597,6 +619,13 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           const snapshot = yield* readUnlocked();
           if (snapshot.composerPredictions.enabled !== previousComposerPredictions.enabled) {
             yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
+          }
+          if (command.type === "update-provider-keys") {
+            const input = command.input;
+            yield* PubSub.publish(providerKeyChanges, {
+              settings: snapshot.providerKeys,
+              ...("connection" in input && input.key ? { savedKeyId: input.connection.id } : {}),
+            });
           }
           if (command.type === "update-thread-notifications")
             yield* PubSub.publish(threadNotificationChanges, snapshot.notifications);

@@ -1,3 +1,4 @@
+import type { ProviderKeyUsageSnapshot } from "../../shared/provider-key-usage";
 import type {
   ProviderKeyConnectInput,
   ProviderKeyResult,
@@ -59,4 +60,12 @@ export const providerKeysRuntime: ProviderKeysRuntime = {
   refreshModels: (input) => invokePlainCommand(refreshCommand, input),
   remove: (input) => invokePlainCommand(removeCommand, input),
   subscribe: (listener) => resolveRendererTransport().subscribeProviderKeyChanges(listener),
+};
+
+export const providerKeyUsageRuntime = {
+  read: () => invokeRendererQuery("provider-keys:usage:read"),
+  refresh: (connectionId?: string) =>
+    invokeRendererQuery("provider-keys:usage:refresh", connectionId),
+  subscribe: (listener: (snapshot: ProviderKeyUsageSnapshot) => void) =>
+    resolveRendererTransport().subscribeProviderKeyUsageChanges?.(listener),
 };

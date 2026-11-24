@@ -1,6 +1,6 @@
 import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
-import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { AgentInstanceIcon } from "@/components/shared/icons/provider-icons";
 import { subscriptionMeter } from "../../../shared/subscription-usage";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
@@ -10,9 +10,11 @@ import {
   describeUsageProvenance,
   formatRateLimitResetLabel,
   formatUsageCountdown,
+  formatUsageBalance,
   formatUsageCredits,
   formatUsageMoment,
   formatUsagePlan,
+  type UsageBalanceView,
   type UsageCredits,
   type UsageMeterView,
   type UsageProvider,
@@ -87,15 +89,18 @@ function usageHostLabel(intl: IntlShape): string {
       });
 }
 
+/** The account's mark: its one Agent instance's when it has one, else its runtime's. */
 function UsageProviderMark({
   provider,
+  instanceId,
   className,
 }: {
   readonly provider: UsageProvider;
+  readonly instanceId?: string;
   readonly className?: string;
 }) {
   const driver = subscriptionMeter(provider)?.driver ?? provider;
-  return <AgentProviderIcon kind={driver} className={className} />;
+  return <AgentInstanceIcon binding={{ driver, instanceId }} className={className} />;
 }
 
 /**
@@ -107,6 +112,7 @@ function UsageProviderMark({
  */
 export function UsageRingGlyph({
   provider,
+  instanceId,
   mark,
   track,
   arc,
@@ -114,6 +120,8 @@ export function UsageRingGlyph({
   pulse = false,
 }: {
   readonly provider: UsageProvider;
+  /** The one Agent instance the account belongs to, whose mark the ring shows. */
+  readonly instanceId?: string;
   /** Replaces the provider mark, as for Nodex's own credit ring. */
   readonly mark?: ReactNode;
   readonly track: UsageRingTrack;
@@ -189,7 +197,9 @@ export function UsageRingGlyph({
           (track === "dotted" || arc?.faded) && "opacity-60",
         )}
       >
-        {mark ?? <UsageProviderMark provider={provider} className="fill-current" />}
+        {mark ?? (
+          <UsageProviderMark provider={provider} instanceId={instanceId} className="fill-current" />
+        )}
       </span>
       {alert ? (
         <span
@@ -202,22 +212,23 @@ export function UsageRingGlyph({
 }
 
 function UsageRing({ view }: { readonly view: UsageMeterView }) {
-  const { binding } = view;
+  const { level } = view;
   return (
     <UsageRingGlyph
       provider={view.reading.provider}
+      instanceId={view.reading.instanceId}
       track={
         view.status === "unread"
           ? "dotted"
           : view.creditsInUse
             ? "credits"
-            : binding?.severity === "exhausted"
+            : level?.severity === "exhausted"
               ? "spent"
               : "solid"
       }
       arc={
-        binding
-          ? { percent: binding.remainingPercent, severity: binding.severity, faded: view.stale }
+        level
+          ? { percent: level.remainingPercent, severity: level.severity, faded: view.stale }
           : null
       }
       alert={view.reading.readFailed}
@@ -240,6 +251,48 @@ function UsageRowHeading({
       <span className="shrink-0 text-sm font-medium text-token-foreground">{label}</span>
       {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
       <span className="ml-auto shrink-0 tabular-nums">{children}</span>
+    </div>
+  );
+}
+
+/** A level as a thin bar: full when nothing is spent, colored only once it runs low. */
+function UsageLevelBar({
+  label,
+  valueText,
+  remainingPercent,
+  severity,
+  faded,
+}: {
+  readonly label: string;
+  readonly valueText: string;
+  readonly remainingPercent: number;
+  readonly severity: UsageSeverity;
+  readonly faded: boolean;
+}) {
+  return (
+    <div
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={remainingPercent}
+      aria-valuetext={valueText}
+      className={cn(
+        "h-1 overflow-hidden rounded-full",
+        severity === "exhausted" ? "bg-(--red-text)/20" : "bg-token-foreground/10",
+      )}
+    >
+      {remainingPercent > 0 ? (
+        <div
+          className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
+          style={{
+            width: `${remainingPercent}%`,
+            backgroundColor:
+              severity === "normal" ? "var(--color-token-foreground)" : SEVERITY_TONE[severity],
+            opacity: faded ? 0.4 : severity === "normal" ? 0.55 : 1,
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -322,19 +375,15 @@ function UsageWindowRow({
       {window.state === "elapsed" ? (
         <div aria-hidden="true" className="h-1 rounded-full bg-token-foreground/5" />
       ) : (
-        <div
-          role="meter"
-          aria-label={intl.formatMessage(
+        <UsageLevelBar
+          label={intl.formatMessage(
             {
               id: "workbench.workbenchRailUsageMeter.windowUsageRemaining",
               defaultMessage: "{window} usage remaining",
             },
             { window: window.label },
           )}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={window.remainingPercent}
-          aria-valuetext={
+          valueText={
             exhausted
               ? intl.formatMessage({
                   id: "workbench.workbenchRailUsageMeter.limitReached",
@@ -348,25 +397,10 @@ function UsageWindowRow({
                   { percent: window.remainingPercent },
                 )
           }
-          className={cn(
-            "h-1 overflow-hidden rounded-full",
-            exhausted ? "bg-(--red-text)/20" : "bg-token-foreground/10",
-          )}
-        >
-          {window.remainingPercent > 0 ? (
-            <div
-              className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
-              style={{
-                width: `${window.remainingPercent}%`,
-                backgroundColor:
-                  window.severity === "normal"
-                    ? "var(--color-token-foreground)"
-                    : SEVERITY_TONE[window.severity],
-                opacity: faded ? 0.4 : window.severity === "normal" ? 0.55 : 1,
-              }}
-            />
-          ) : null}
-        </div>
+          remainingPercent={window.remainingPercent}
+          severity={window.severity}
+          faded={faded}
+        />
       )}
     </div>
   );
@@ -412,6 +446,82 @@ function UsageCreditsRow({
         />
       )}
     </UsageRowHeading>
+  );
+}
+
+/**
+ * A prepaid money balance. Its bar measures what is left of the last top-up, since a balance has
+ * no full mark of its own; until a top-up is known it shows the amount alone.
+ */
+function UsageBalanceRow({
+  balance,
+  faded,
+}: {
+  readonly balance: UsageBalanceView;
+  readonly faded: boolean;
+}) {
+  const intl = useIntl();
+  const amount = formatUsageBalance(balance, intl.locale);
+  const usedUp = balance.severity === "exhausted";
+  const sinceTopUp = intl.formatMessage({
+    id: "workbench.workbenchRailUsageMeter.sinceLastTopUp",
+    defaultMessage: "Since last top-up",
+  });
+  return (
+    <div data-usage-balance={balance.currency} className="flex flex-col gap-1.5">
+      <UsageRowHeading
+        label={intl.formatMessage({
+          id: "workbench.workbenchRailUsageMeter.balance",
+          defaultMessage: "Balance",
+        })}
+        meta={balance.remainingPercent !== null && !usedUp ? sinceTopUp : null}
+      >
+        {usedUp ? (
+          <span className="font-medium text-(--red-text)">
+            {intl.formatMessage({
+              id: "workbench.workbenchRailUsageMeter.balanceUsedUp",
+              defaultMessage: "Used up",
+            })}
+          </span>
+        ) : (
+          <FormattedMessage
+            id="workbench.workbenchRailUsageMeter.remainingBalance"
+            defaultMessage="<amount>{balance}</amount> left"
+            values={{
+              balance: amount,
+              amount: (chunks) => (
+                <span
+                  className={cn(
+                    "text-sm font-medium text-token-foreground",
+                    SEVERITY_TEXT[balance.severity],
+                  )}
+                >
+                  {chunks}
+                </span>
+              ),
+            }}
+          />
+        )}
+      </UsageRowHeading>
+      {balance.remainingPercent !== null || usedUp ? (
+        <UsageLevelBar
+          label={intl.formatMessage({
+            id: "workbench.workbenchRailUsageMeter.balanceRemaining",
+            defaultMessage: "Balance remaining since last top-up",
+          })}
+          valueText={intl.formatMessage(
+            {
+              id: "workbench.workbenchRailUsageMeter.balanceLeft",
+              defaultMessage: "{balance} left",
+            },
+            { balance: amount },
+          )}
+          remainingPercent={usedUp ? 0 : (balance.remainingPercent ?? 100)}
+          severity={balance.severity}
+          faded={faded}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -464,7 +574,11 @@ export function UsageMeterCard({
   return (
     <div data-usage-card={reading.provider} className="flex w-76 flex-col">
       <div className="flex items-center gap-2.5 py-2.5 pr-2 pl-3">
-        <UsageProviderMark provider={reading.provider} className="size-4" />
+        <UsageProviderMark
+          provider={reading.provider}
+          instanceId={reading.instanceId}
+          className="size-4"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
             <span className="shrink-0 text-sm font-medium text-token-foreground">
@@ -484,7 +598,7 @@ export function UsageMeterCard({
         </div>
         {action}
       </div>
-      {view.windows.length > 0 || reading.credits !== null || empty || children ? (
+      {view.windows.length > 0 || reading.credits !== null || view.balance || empty || children ? (
         <section
           aria-label={intl.formatMessage({
             id: "workbench.workbenchRailUsageMeter.usageRemaining",
@@ -498,6 +612,7 @@ export function UsageMeterCard({
           {reading.credits !== null ? (
             <UsageCreditsRow credits={reading.credits} inUse={view.creditsInUse} />
           ) : null}
+          {view.balance ? <UsageBalanceRow balance={view.balance} faded={view.stale} /> : null}
           {empty ? <p className="m-0 text-xs text-token-text-secondary">{empty}</p> : null}
           {children}
         </section>
