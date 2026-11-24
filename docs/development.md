@@ -955,6 +955,8 @@ or use a pull request when the change should be recorded or verified before it
 merges (the root `AGENTS.md` describes when). Main CI then runs the complete gate
 on pushes to `main`, and Nightly builds only commits whose Main CI passed, so the
 complete check happens after merge without holding up the next change.
+Both tiers use authenticated `gh` to flag a failure in the latest completed Main CI
+run on `origin/main` when the lookup finishes before the summary.
 
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,

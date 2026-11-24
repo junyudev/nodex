@@ -32,6 +32,7 @@ import {
 } from "../tooling/machine-budget.ts";
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
 import { vitePlusCommand } from "../vite-plus-command.ts";
+import { readMainCiNotice } from "./check-changed-main-ci.ts";
 import {
   changesRustWorkspace,
   deferNativeTests,
@@ -497,6 +498,8 @@ async function checkChanged(
   mkdirSync(generated, { recursive: true });
   const staging = mkdtempSync(path.join(generated, "check-changed-"));
   const steps: StepResult[] = [];
+  const mainCiLookup = new AbortController();
+  let mainCiNotice: string | undefined;
   let digests: ReturnType<typeof stampDigests> | undefined;
   let comparison: ReturnType<typeof readChangedPaths> | undefined;
   let record: RunRecord | undefined;
@@ -521,6 +524,9 @@ async function checkChanged(
       suiteTimeoutMs,
     } = parseCheckArguments(args, process.env);
     const context = { root, directory: staging, timeoutMs, signal };
+    void readMainCiNotice(root, AbortSignal.any([signal, mainCiLookup.signal])).then((notice) => {
+      mainCiNotice = notice;
+    });
     const install = await runStep(
       "install dependencies",
       vitePlusCommand(["install", "--frozen-lockfile"]),
@@ -666,9 +672,11 @@ async function checkChanged(
     return signal.aborted ? 130 : 1;
   } finally {
     await digests?.flush();
+    // Display only evidence ready when validation ends.
+    mainCiLookup.abort();
     record ??= createRecord();
     try {
-      write(formatSummary(record));
+      write(formatSummary(record, mainCiNotice));
       const runDirectory = path.join(resolvePrimaryCheckoutRoot(root), "cache.local/check-changed");
       mkdirSync(runDirectory, { recursive: true });
       appendFileSync(path.join(runDirectory, "runs.jsonl"), JSON.stringify(record) + "\n");

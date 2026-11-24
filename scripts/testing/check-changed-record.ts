@@ -177,7 +177,7 @@ const topCounts = <T extends { readonly count: number }>(
     .map((item) => `${label(item)} (${item.count})`)
     .join(", ");
 
-export function formatSummary(record: RunRecord): string {
+export function formatSummary(record: RunRecord, mainCiNotice?: string): string {
   const width = Math.max(4, ...record.steps.map(({ name }) => name.length));
   const line = (name: string, outcome: string, run: string, queue: string, details: string) =>
     [name.padEnd(width), outcome.padEnd(7), run.padStart(8), queue.padStart(8), details]
@@ -235,6 +235,7 @@ export function formatSummary(record: RunRecord): string {
           "Fast check skips the full lint ratchet, repository-wide static contracts, unselected tests, and full Rust gates. CI runs those gates.",
         ]
       : []),
+    ...(mainCiNotice ? ["", mainCiNotice] : []),
     "",
   ].join("\n");
 }

@@ -12,6 +12,11 @@ import { classifyChangedPaths } from "../ci/classify-change.ts";
 import { selectTouchedRustPackageNames } from "../ci/run-affected-rust.ts";
 import { STATIC_GROUPS } from "../ci/ci-gate-plan.ts";
 import {
+  formatMainCiNotice,
+  githubOriginRepository,
+  latestFailedMainCiRun,
+} from "./check-changed-main-ci.ts";
+import {
   deferNativeTests,
   findFocusedTests,
   observedChangedInput,
@@ -28,12 +33,74 @@ import {
   queueTime,
   readChangedPaths,
   selectComparisonBase,
+  type RunRecord,
 } from "./check-changed-record.ts";
 import { parseCheckArguments, runStep, runStepQueue, validationLanes } from "./check-changed.ts";
 import { readSelectionEvidence, recordTestObservability, savePass } from "./test-cache-store.ts";
 
 const remote = "refs/remotes/origin/main";
 const local = "refs/heads/main";
+
+describe("Main CI notice", () => {
+  const run = {
+    head_branch: "main",
+    status: "completed",
+    conclusion: "failure",
+    head_sha: "0123456789abcdef0123456789abcdef01234567",
+    html_url: "https://github.com/example/nodex/actions/runs/42",
+    id: 42,
+    run_attempt: 2,
+  } as const;
+
+  it("scopes the lookup to the GitHub repository named by origin", () => {
+    expect(githubOriginRepository("git@github.com:example/nodex.git\n")).toBe("example/nodex");
+    expect(githubOriginRepository("https://github.com/example/nodex.git")).toBe("example/nodex");
+    expect(githubOriginRepository("ssh://git@github.com/example/nodex.git")).toBe("example/nodex");
+    expect(
+      githubOriginRepository("https://github.com.example.com/example/nodex.git"),
+    ).toBeUndefined();
+  });
+
+  it("ignores an older failure after a successful run", () => {
+    expect(
+      latestFailedMainCiRun({ workflow_runs: [{ ...run, conclusion: "success" }, run] }),
+    ).toBeUndefined();
+  });
+
+  it.each(["cancelled", "skipped"])("looks past a %s run to the newest verdict", (conclusion) => {
+    expect(latestFailedMainCiRun({ workflow_runs: [{ ...run, conclusion }, run] })).toEqual(run);
+  });
+
+  it("reports a timed-out run as a failure", () => {
+    const timedOut = { ...run, conclusion: "timed_out" };
+    expect(latestFailedMainCiRun({ workflow_runs: [timedOut] })).toEqual(timedOut);
+  });
+
+  it("skips missing or unusable run data", () => {
+    expect(latestFailedMainCiRun({ workflow_runs: [] })).toBeUndefined();
+    expect(latestFailedMainCiRun({ workflow_runs: [{ ...run, head_sha: "" }] })).toBeUndefined();
+  });
+
+  it("summarizes the failed run, its failing jobs, and the optional issue", () => {
+    expect(latestFailedMainCiRun({ workflow_runs: [run] })).toEqual(run);
+    const jobs = [
+      { name: "main static contracts / types", conclusion: "failure" },
+      { name: "main app tests / unit", conclusion: "success" },
+      { name: "main rust checks / tests", conclusion: "timed_out" },
+      { name: "main app tests / renderer", conclusion: "skipped" },
+    ];
+    const notice = [
+      `Main CI failed on 0123456 (${run.html_url}).`,
+      "Failing jobs — main static contracts / types, main rust checks / tests",
+      "Local failures that match this run predate the current change.",
+    ].join("\n");
+    expect(formatMainCiNotice(run, jobs)).toBe(notice);
+    const issue = { number: 9, url: "https://github.com/example/nodex/issues/9" };
+    expect(formatMainCiNotice(run, jobs, issue)).toBe(
+      `${notice}\nTracking issue #9 — ${issue.url}`,
+    );
+  });
+});
 
 function deferred() {
   let resolve!: () => void;
@@ -603,7 +670,7 @@ it("excludes wall-clock time only when every active step is waiting", () => {
 });
 
 it("summarizes cache reach, top causes, skipped steps, and total time", () => {
-  const output = formatSummary({
+  const record: RunRecord = {
     startedAt: "today",
     worktree: "/repo",
     base: "base",
@@ -631,11 +698,14 @@ it("summarizes cache reach, top causes, skipped steps, and total time", () => {
       },
       { name: "rust", outcome: "skipped", reason: "no Rust paths changed", runMs: 0, queueMs: 0 },
     ],
-  });
+  };
+  const output = formatSummary(record);
   expect(output).toContain("5/10 hits · 80.0% cacheable · misses: source.ts (3)");
   expect(output).toContain("always run: untracked file read (2)");
   expect(output).toContain("no Rust paths changed");
   expect(output).toContain("Total wall time: 4.00s");
+  const notice = "Main CI failed on 0123456.";
+  expect(formatSummary(record, notice)).toBe(`${output}\n${notice}\n`);
 });
 
 it("excludes a suite's semantic admission wait from its running-time limit", async () => {
