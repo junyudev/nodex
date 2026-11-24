@@ -2979,7 +2979,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         const pluginsBySession = new Map<
           string,
           {
-            readonly plugins: Plugins;
+            readonly plugins: Plugins | undefined;
             readonly scope: Scope.Closeable;
             readonly revision: import("@nodex/provider-core/server/ExecutionHost").SessionPluginAttachment["revision"];
           }
@@ -3006,15 +3006,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               ),
             );
           const delivery = attachment.plugins;
-          if (!delivery) {
-            yield* Scope.close(scope, Exit.void);
-            return undefined;
-          }
-          const plugins: Plugins = {
-            delivery,
-            stdio: ({ name, url, bearerToken }) =>
-              acpStdioMcpServer(self, name, url, "Bearer " + bearerToken),
-          };
+          const plugins: Plugins | undefined = delivery
+            ? {
+                delivery,
+                stdio: ({ name, url, bearerToken }) =>
+                  acpStdioMcpServer(self, name, url, "Bearer " + bearerToken),
+              }
+            : undefined;
+          // A Session that started without plugins still needs to check for them later.
           return { plugins, scope, revision: attachment.revision };
         });
         const rememberPlugins = Effect.fnUntraced(function* (
@@ -8369,7 +8368,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           );
           const activated = yield* activate({
             ...options,
-            ...(attachment ? { plugins: attachment.plugins } : {}),
+            ...(attachment?.plugins ? { plugins: attachment.plugins } : {}),
           }).pipe(
             Effect.onError(() =>
               attachment ? Scope.close(attachment.scope, Exit.void) : Effect.void,
@@ -9282,7 +9281,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   .filter((part) => part !== undefined)
                   .join("\n\n");
           const pluginInstructions = acpPluginSkillInstructions(
-            Boolean(pluginsBySession.get(sessionId)?.plugins.delivery.skillCatalog),
+            Boolean(pluginsBySession.get(sessionId)?.plugins?.delivery.skillCatalog),
           );
           const instructionState = {
             interactionMode: turnInput.runtimePolicy.interactionMode,
@@ -9684,7 +9683,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             const pluginsChanged =
               canReactivate && attachment !== undefined &&
               (yield* attachment.revision.pipe(Effect.orElseSucceed(() => null))) !==
-                attachment.plugins.delivery.revision;
+                (attachment.plugins?.delivery.revision ?? null);
             const needsSessionActivation =
               (yield* Ref.get(activeSessionId)) !== requestedSessionId ||
               restartAfterInterrupt !== undefined ||

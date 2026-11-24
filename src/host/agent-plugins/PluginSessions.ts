@@ -10,7 +10,10 @@ import type {
   SessionPlugins,
   SessionPluginsRequest,
 } from "../../shared/agent-plugins/session-plugins";
-import type { PluginMcpBrokerService } from "./broker/contract";
+import {
+  DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS,
+  type PluginMcpBrokerService,
+} from "./broker/contract";
 import {
   includesProject,
   pluginRevision,
@@ -22,7 +25,8 @@ import type { SkillProjectionStore } from "./SkillProjection";
 import { PluginSessionPreparationError } from "./PluginSessionPreparationError";
 import type { PluginCatalogCache } from "./PluginCatalogCache";
 
-const lifetime = 8 * 60 * 60 * 1000;
+// Rotate before the broker's lease limit, measured by the same monotonic clock.
+const renewAfterNs = BigInt(DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS - 60_000) * 1_000_000n;
 // A reply waits briefly for a reread in progress, then starts with the plugins already read.
 const replyCatalogWait = { maxWait: "5 seconds" } as const;
 // A Codex thread needs current out-of-scope overrides; answer within the Runtime's 30 s deadline.
@@ -30,7 +34,7 @@ const codexCatalogWait = { maxWait: "20 seconds", freshOnly: true } as const;
 
 type Attachment = { projectId: string | null } & (
   | { revision: null }
-  | { revision: string; scope: Scope.Closeable; expiresAt: number }
+  | { revision: string; scope: Scope.Closeable; renewAt: bigint }
 );
 
 export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (input: {
@@ -43,7 +47,6 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
   const owner = yield* Effect.scope;
   const lanes = yield* RcMap.make({ lookup: (_id: string) => Semaphore.make(1) });
   const attachments = new Map<string, Attachment>();
-  const publishedRevisions = new Map<string | null, string | null>();
 
   const serial = <A, E>(id: string, operation: Effect.Effect<A, E>) =>
     Effect.scoped(
@@ -68,12 +71,11 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       Effect.gen(function* () {
         const attachment = attachments.get(id);
         if (!attachment) return null;
-        const current = yield* input.catalog.read(attachment.projectId, replyCatalogWait);
-        if (!current) return attachment.revision;
-        const next = current.revision;
+        yield* input.catalog.read(attachment.projectId, replyCatalogWait);
+        const next = input.catalog.latestRevision(attachment.projectId) ?? attachment.revision;
         if (attachment.revision === null) return next;
-        const now = yield* Clock.currentTimeMillis;
-        if (next === attachment.revision && now < attachment.expiresAt) return next;
+        const now = yield* Clock.monotonicTimeNanos;
+        if (next === attachment.revision && now < attachment.renewAt) return next;
         yield* release(id);
         return next === attachment.revision ? null : next;
       }),
@@ -81,17 +83,16 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
   yield* input.catalog.published.pipe(
     Stream.runForEach(({ projectId, revision: next }) =>
       Effect.gen(function* () {
-        publishedRevisions.set(projectId, next);
         if (next === null) return;
         for (const [id, attachment] of [...attachments]) {
           if (attachment.projectId !== projectId || attachment.revision === null) continue;
           yield* serial(
             id,
             Effect.suspend(() => {
-              const published = publishedRevisions.get(projectId);
+              const current = input.catalog.latestRevision(projectId);
               return attachments.get(id) === attachment &&
-                published &&
-                attachment.revision !== published
+                current !== null &&
+                attachment.revision !== current
                 ? release(id)
                 : Effect.void;
             }),
@@ -287,17 +288,23 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
         return yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
             const scope = yield* Scope.fork(owner);
-            const now = yield* Clock.currentTimeMillis;
+            const now = yield* Clock.monotonicTimeNanos;
             attachments.set(id, {
               projectId,
               scope,
               revision: snapshot.revision,
-              expiresAt: now + lifetime - 60_000,
+              renewAt: now + renewAfterNs,
             });
-            return yield* restore(prepare(id, request, snapshot, base)).pipe(
+            const prepared = yield* restore(prepare(id, request, snapshot, base)).pipe(
               Scope.provide(scope),
               Effect.onError(() => release(id)),
             );
+            // A newer catalog can finish loading before its publication reaches this Session.
+            const current = input.catalog.latestRevision(projectId);
+            if (current === null || current === snapshot.revision) return prepared;
+            yield* release(id);
+            attachments.set(id, { projectId, revision: null });
+            return null;
           }),
         );
       }),

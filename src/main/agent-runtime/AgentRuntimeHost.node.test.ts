@@ -240,6 +240,7 @@ const makeFixture = Effect.fnUntraced(function* ({
           plugins: {
             skillProjections: { acquire: () => Effect.succeed(null) },
             catalog: {
+              latestRevision: () => pluginCatalog?.revision ?? null,
               read: () =>
                 pluginCatalog
                   ? Effect.succeed(pluginCatalog)

@@ -1489,10 +1489,10 @@ describe("AcpAdapterV2", () => {
   );
 
   it.live.each([false, true])(
-    "refreshes instructions and Desktop Tools routing (reactivation=%s)",
+    "refreshes plugins, instructions and Desktop Tools routing (reactivation=%s)",
     (canReactivate) =>
       Effect.gen(function* () {
-        const revision = yield* Ref.make("1");
+        const revision = yield* Ref.make<string | null>(canReactivate ? null : "1");
         type Native = AcpSessionRuntime.AcpSessionRuntime["Service"];
         let createTerminal: Parameters<Native["handleCreateTerminal"]>[0] | undefined;
         let waitForTerminal: Parameters<Native["handleTerminalWaitForExit"]>[0] | undefined;
@@ -1582,19 +1582,22 @@ describe("AcpAdapterV2", () => {
                 Ref.get(revision).pipe(
                   Effect.map((currentRevision) => ({
                     revision: Ref.get(revision),
-                    plugins: {
-                      revision: currentRevision,
-                      pluginIds: [],
-                      skillsRoot: null,
-                      skills: [],
-                      codexDisabledPluginIds: [],
-                      skillCatalog: {
-                        name: "nodex_plugin_skills",
-                        url: "http://127.0.0.1:1/catalog",
-                        bearerToken: "catalog-token",
-                      },
-                      mcpServers: [],
-                    },
+                    plugins:
+                      currentRevision === null
+                        ? null
+                        : {
+                            revision: currentRevision,
+                            pluginIds: [],
+                            skillsRoot: null,
+                            skills: [],
+                            codexDisabledPluginIds: [],
+                            skillCatalog: {
+                              name: "nodex_plugin_skills",
+                              url: "http://127.0.0.1:1/catalog",
+                              bearerToken: "catalog-token",
+                            },
+                            mcpServers: [],
+                          },
                   })),
                 ),
             }),
@@ -1677,7 +1680,13 @@ describe("AcpAdapterV2", () => {
         const command = yield* runTurn(0, defaultPolicy, "/compact");
         assert.isTrue(command.prompt.startsWith("/compact"));
         assert.notInclude(command.prompt, "<nodex_instructions>");
+        assert.isUndefined(command.reactivatedServers);
+        yield* Ref.set(revision, "1");
         const firstDefault = yield* runTurn(1, defaultPolicy, "First default request.");
+        assert.deepEqual(
+          firstDefault.reactivatedServers,
+          canReactivate ? ["nodex_app", "nodex_plugin_skills"] : undefined,
+        );
         assert.include(firstDefault.prompt, "<nodex_instructions>");
         assert.include(firstDefault.prompt, "Nodex interaction mode: Default");
         assert.notInclude(firstDefault.prompt, "node_repl");
@@ -4052,7 +4061,7 @@ describe("AcpAdapterV2", () => {
             openPlugins: ({ threadId }) =>
               Effect.sync(() => {
                 pluginOwners.push(threadId);
-                return { plugins: null, revision: Effect.succeed("1") };
+                return { plugins: null, revision: Effect.succeed(null) };
               }),
           }),
         );

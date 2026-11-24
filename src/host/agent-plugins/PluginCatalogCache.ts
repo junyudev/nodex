@@ -32,6 +32,8 @@ export interface PluginCatalogCache {
     projectId: string | null,
     options: { readonly maxWait: Duration.Input; readonly freshOnly?: boolean },
   ) => Effect.Effect<PluginCatalogSnapshot | null>;
+  /** The latest loaded revision, without waiting for a catalog read or publication. */
+  readonly latestRevision: (projectId: string | null) => string | null;
   /** Emits when a Project's catalog revision changes. */
   readonly published: Stream.Stream<{
     readonly projectId: string | null;
@@ -150,5 +152,9 @@ export const makePluginCatalogCache = Effect.fn("PluginCatalogCache.make")(funct
     return freshOnly && cell.stale ? null : (cell.latest?.snapshot ?? null);
   });
 
-  return { read, published: Stream.fromPubSub(publications) };
+  return {
+    read,
+    latestRevision: (projectId) => cells.get(projectId)?.latest?.snapshot.revision ?? null,
+    published: Stream.fromPubSub(publications),
+  };
 });

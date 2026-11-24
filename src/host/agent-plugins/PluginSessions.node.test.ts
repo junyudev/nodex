@@ -19,7 +19,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, vi } from "vitest";
-import { PluginMcpFailure, type PluginMcpBrokerService } from "./broker/contract";
+import {
+  DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS,
+  PluginMcpFailure,
+  type PluginMcpBrokerService,
+} from "./broker/contract";
 import { makeFolderMarketplace } from "./FolderMarketplace";
 import {
   ALL_PROJECTS,
@@ -168,6 +172,10 @@ it.effect(
         projectIds: ["project-a"],
       };
       let codexAvailable = false;
+      const snapshot = () =>
+        codexAvailable
+          ? pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }])
+          : null;
       const sessions = yield* makePluginSessions({
         home,
         skillProjections: yield* makeSkillProjectionStore(home),
@@ -175,12 +183,8 @@ it.effect(
         broker,
         catalog: {
           published: Stream.empty,
-          read: () =>
-            Effect.sync(() =>
-              codexAvailable
-                ? pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }])
-                : null,
-            ),
+          latestRevision: () => snapshot()?.revision ?? null,
+          read: () => Effect.sync(snapshot),
         },
       });
       const request = { threadId: "thread", projectId: null, backend: "claude" } as const;
@@ -224,7 +228,7 @@ const unusedBroker = {
   revokeLease: () => Effect.die("Unexpected MCP revocation"),
 } satisfies Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
 
-it.effect("retains degraded attachments and revokes delivered leases on publication", () =>
+it.effect("withdraws superseded leases before delivery and on publication", () =>
   Effect.gen(function* () {
     const home = yield* withHome;
     const root = join(home, "source");
@@ -237,21 +241,37 @@ it.effect("retains degraded attachments and revokes delivered leases on publicat
     const second = pluginCatalogSnapshot([]);
     let snapshot: PluginCatalogSnapshot | null = null;
     const revoked = yield* Deferred.make<void>();
+    const preparing = yield* Deferred.make<void>();
+    const finishPreparing = yield* Deferred.make<void>();
     const revokedServers: string[] = [];
     const published = yield* PubSub.unbounded<Stream.Success<PluginCatalogCache["published"]>>();
     const sessions = yield* makePluginSessions({
       home,
       skillProjections: yield* makeSkillProjectionStore(home),
       spaceId: "space",
-      catalog: { read: () => Effect.sync(() => snapshot), published: Stream.fromPubSub(published) },
+      catalog: {
+        read: () => Effect.sync(() => snapshot),
+        latestRevision: () => snapshot?.revision ?? null,
+        published: Stream.fromPubSub(published),
+      },
       broker: {
         ...unusedBroker,
-        openLease: ({ serverKey }) =>
-          Effect.succeed({ id: serverKey, url: "http://localhost/lease", bearerToken: "token" }),
+        openLease: ({ serverKey, principal }) =>
+          Effect.gen(function* () {
+            if (principal.id === "opening" && serverKey === "public") {
+              yield* Deferred.succeed(preparing, undefined);
+              yield* Deferred.await(finishPreparing).pipe(Effect.interruptible);
+            }
+            return {
+              id: principal.id + "/" + serverKey,
+              url: "http://localhost/lease",
+              bearerToken: "token",
+            };
+          }),
         revokeLease: (id) =>
           Effect.gen(function* () {
             revokedServers.push(id);
-            if (revokedServers.length === 2) yield* Deferred.succeed(revoked, undefined);
+            if (revokedServers.length === 4) yield* Deferred.succeed(revoked, undefined);
           }),
       },
     });
@@ -267,12 +287,52 @@ it.effect("retains degraded attachments and revokes delivered leases on publicat
     expect(yield* sessions.revision("delivered")).toBe(first.revision);
     expect(revokedServers).toEqual([]);
 
+    snapshot = first;
+    const opening = yield* sessions.open("opening", claude).pipe(Effect.forkScoped);
+    yield* Deferred.await(preparing);
+
+    // The new revision has loaded, but the publication has yet to be delivered.
     snapshot = second;
+    yield* Deferred.succeed(finishPreparing, undefined);
+    expect(yield* Fiber.join(opening)).toBeNull();
+    expect(revokedServers.toSorted()).toEqual(["opening/gauge", "opening/public"]);
+    expect(yield* sessions.revision("opening")).toBe(second.revision);
+
     yield* PubSub.publish(published, { projectId: claude.projectId, revision: second.revision });
     yield* Deferred.await(revoked);
-    expect(revokedServers.toSorted()).toEqual(["gauge", "public"]);
+    expect(revokedServers.toSorted()).toEqual([
+      "delivered/gauge",
+      "delivered/public",
+      "opening/gauge",
+      "opening/public",
+    ]);
     expect(yield* sessions.revision("delivered")).toBeNull();
     expect(yield* sessions.revision("degraded")).toBe(second.revision);
+  }),
+);
+
+it.effect("requests attachment renewal before broker expiry even if wall time moves backward", () =>
+  Effect.gen(function* () {
+    const home = yield* withHome;
+    const snapshot = pluginCatalogSnapshot([]);
+    const sessions = yield* makePluginSessions({
+      home,
+      skillProjections: yield* makeSkillProjectionStore(home),
+      spaceId: "space",
+      catalog: {
+        read: () => Effect.succeed(snapshot),
+        latestRevision: () => snapshot.revision,
+        published: Stream.empty,
+      },
+      broker: unusedBroker,
+    });
+
+    expect((yield* sessions.open("aging", claude))?.revision).toBe(snapshot.revision);
+    yield* TestClock.adjust(DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS - 60_000 - 1);
+    yield* TestClock.setTime(0);
+    expect(yield* sessions.revision("aging")).toBe(snapshot.revision);
+    yield* TestClock.adjust(1);
+    expect(yield* sessions.revision("aging")).toBeNull();
   }),
 );
 
@@ -282,12 +342,15 @@ it.effect("opens and closes another attachment while a Session's catalog read is
     const reading = yield* Deferred.make<void>();
     const slow = yield* Deferred.make<PluginCatalogSnapshot>();
     const ready = pluginCatalogSnapshot([]);
+    let slowRevision: string | null = null;
     const sessions = yield* makePluginSessions({
       home,
       skillProjections: yield* makeSkillProjectionStore(home),
       spaceId: "space",
       catalog: {
         published: Stream.empty,
+        latestRevision: (projectId) =>
+          projectId === claude.projectId ? slowRevision : ready.revision,
         read: (projectId) =>
           projectId === claude.projectId
             ? Deferred.succeed(reading, undefined).pipe(Effect.andThen(Deferred.await(slow)))
@@ -303,6 +366,7 @@ it.effect("opens and closes another attachment while a Session's catalog read is
     yield* sessions.close("other");
     expect(yield* sessions.revision("other")).toBeNull();
     expect(opening.pollUnsafe()).toBeUndefined();
+    slowRevision = ready.revision;
     yield* Deferred.succeed(slow, ready);
     expect((yield* Fiber.join(opening))?.revision).toBe(ready.revision);
   }),
@@ -361,14 +425,16 @@ it.effect("shares a single in-flight projection across Projects and Runtime conn
           revoked.push(id);
         }),
     } satisfies Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
+    const snapshotFor = (projectId: string | null) =>
+      projectId === "project-b" ? snapshotB : snapshotA;
     const options = {
       home,
       skillProjections,
       spaceId: "space",
       broker,
       catalog: {
-        read: (projectId: string | null) =>
-          Effect.succeed(projectId === "project-b" ? snapshotB : snapshotA),
+        read: (projectId: string | null) => Effect.succeed(snapshotFor(projectId)),
+        latestRevision: (projectId: string | null) => snapshotFor(projectId).revision,
         published: Stream.empty,
       },
     };
@@ -486,7 +552,11 @@ for (const failure of ["skills", "MCP"] as const) {
         home,
         skillProjections: yield* makeSkillProjectionStore(home),
         spaceId: "space",
-        catalog: { read: () => Effect.succeed(snapshot), published: Stream.empty },
+        catalog: {
+          read: () => Effect.succeed(snapshot),
+          latestRevision: () => snapshot.revision,
+          published: Stream.empty,
+        },
         broker: {
           ...unusedBroker,
           openLease: ({ pluginId, serverKey, principal }) =>
