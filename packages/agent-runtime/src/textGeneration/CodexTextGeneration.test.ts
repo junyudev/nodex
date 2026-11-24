@@ -10,6 +10,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import { createModelSelection } from "@nodex/runtime-shared/model";
+import { parse as parseToml } from "smol-toml";
 import { expect } from "vite-plus/test";
 
 import { CodexSettings, ProviderInstanceId, TextGenerationError } from "@nodex/runtime-contracts";
@@ -42,6 +43,7 @@ interface FakeCodexInput {
   forbidArg?: string | ReadonlyArray<string>;
   stdinMustContain?: string;
   stdinMustNotContain?: string;
+  reportConnection?: boolean;
 }
 
 // The stub walks argv the way the shell script it replaced did: `--image`,
@@ -59,6 +61,7 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
     forbidArg: input.forbidArg ?? null,
     stdinMustContain: input.stdinMustContain ?? null,
     stdinMustNotContain: input.stdinMustNotContain ?? null,
+    reportConnection: input.reportConnection ?? false,
     stderr: input.stderr ?? null,
     output: input.output,
     exitCode: input.exitCode ?? 0,
@@ -132,7 +135,13 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
         '  fail("stdin contained forbidden content", 4);',
         "}",
         'if (check.stderr !== null) process.stderr.write(check.stderr + "\\n");',
-        'if (outputPath !== null) NodeFS.writeFileSync(outputPath, check.output + "\\n");',
+        "if (outputPath !== null) {",
+        "  const output = check.reportConnection ? JSON.stringify({",
+        '    overrides: args.filter((_, index) => args[index - 1] === "--config"),',
+        '    secrets: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith("NODEX_CODEX_UTILITY_SECRET_"))),',
+        "  }) : check.output;",
+        '  NodeFS.writeFileSync(outputPath, output + "\\n");',
+        "}",
         "process.exitCode = check.exitCode;",
         "",
       ].join("\n"),
@@ -146,17 +155,32 @@ function withFakeCodexEnv<A, E, R>(
     environment?: NodeJS.ProcessEnv;
     models?: ReadonlyArray<string>;
     managedRuntime?: boolean;
+    configToml?: string;
+    useSettingsHome?: boolean;
   },
   effectFn: (textGeneration: TextGeneration.TextGeneration["Service"]) => Effect.Effect<A, E, R>,
 ) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "widgets-codex-text-" });
     const codexPath = yield* makeFakeCodexBinary(tempDir, input);
-    const config = decodeCodexSettings({ binaryPath: codexPath, launchArgs: input.launchArgs });
+    if (input.configToml !== undefined) {
+      yield* fs.writeFileString(path.join(tempDir, "config.toml"), input.configToml);
+    }
+    const config = decodeCodexSettings({
+      binaryPath: codexPath,
+      launchArgs: input.launchArgs,
+      ...(input.useSettingsHome ? { homePath: tempDir } : {}),
+    });
+    const environment = {
+      ...process.env,
+      CODEX_HOME: input.useSettingsHome ? path.join(tempDir, "unused") : tempDir,
+      ...input.environment,
+    };
     const textGeneration = yield* makeCodexTextGeneration(
       config,
-      input.environment === undefined ? undefined : { ...process.env, ...input.environment },
+      environment,
       Effect.succeed(
         (input.models ?? []).map((slug) => ({
           slug,
@@ -168,7 +192,7 @@ function withFakeCodexEnv<A, E, R>(
       input.managedRuntime
         ? Effect.succeed({
             config,
-            environment: input.environment ?? process.env,
+            environment,
             revision: "test",
           })
         : undefined,
@@ -318,11 +342,107 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
     );
   });
 
+  it.effect.each([true, false])(
+    "keeps connection settings from the effective Codex home with an explicit instance path set to %s",
+    (useSettingsHome) =>
+      withFakeCodexEnv(
+        {
+          output: "",
+          useSettingsHome,
+          reportConnection: true,
+          configToml: `model_provider = "gateway.edge"
+openai_base_url = "https://api.example.test/v1"
+chatgpt_base_url = "https://chat.example.test/backend-api"
+forced_login_method = "chatgpt"
+forced_chatgpt_workspace_id = ["workspace-one", "workspace-two"]
+cli_auth_credentials_store = "keyring"
+developer_instructions = "user instructions"
+model_instructions_file = "/tmp/instructions.md"
+personality = "friendly"
+notify = ["notify-user"]
+
+[skills]
+include_instructions = true
+
+[features]
+multi_agent = true
+
+[mcp_servers.user_tools]
+command = "user-tools"
+
+[model_providers."gateway.edge"]
+name = 'Example "Gateway"'
+base_url = "https://gateway.example.test/v1"
+env_key = "GATEWAY_API_KEY"
+wire_api = "responses"
+requires_openai_auth = true
+supports_websockets = true
+env_key_instructions = "configure the key"
+http_headers = { "X-Access-Token" = "fixture-inline-token" }
+env_http_headers = { "X-Workspace" = "GATEWAY_WORKSPACE" }
+
+[model_providers.unselected]
+base_url = "https://unused.example.test/v1?key=fixture-unused-secret"
+`,
+          requireArg: "--ignore-user-config",
+        },
+        (generation) =>
+          Effect.gen(function* () {
+            const result = yield* generation.generateStructured({
+              cwd: process.cwd(),
+              prompt: "Suggest a title",
+              modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+              outputSchema: { type: "object" },
+            });
+            const { overrides, secrets } = Schema.decodeUnknownSync(
+              Schema.Struct({
+                overrides: Schema.Array(Schema.String),
+                secrets: Schema.Record(Schema.String, Schema.String),
+              }),
+            )(result);
+            const config = parseToml(overrides.join("\n"));
+            const [secretRef] = Object.keys(secrets);
+            expect(secretRef).toMatch(/^NODEX_CODEX_UTILITY_SECRET_/);
+            expect(Object.values(secrets)).toEqual(["fixture-inline-token"]);
+            expect(config).toEqual({
+              model_provider: "gateway.edge",
+              openai_base_url: "https://api.example.test/v1",
+              chatgpt_base_url: "https://chat.example.test/backend-api",
+              forced_login_method: "chatgpt",
+              forced_chatgpt_workspace_id: ["workspace-one", "workspace-two"],
+              cli_auth_credentials_store: "keyring",
+              model_providers: {
+                "gateway.edge": {
+                  name: 'Example "Gateway"',
+                  base_url: "https://gateway.example.test/v1",
+                  env_key: "GATEWAY_API_KEY",
+                  wire_api: "responses",
+                  requires_openai_auth: true,
+                  supports_websockets: true,
+                  env_http_headers: {
+                    "x-access-token": secretRef,
+                    "x-workspace": "GATEWAY_WORKSPACE",
+                  },
+                },
+              },
+              skills: { include_instructions: false },
+              project_doc_max_bytes: 0,
+              shell_environment_policy: { exclude: ["NODEX_CODEX_UTILITY_SECRET_*"] },
+              approval_policy: "never",
+              model_reasoning_effort: "low",
+            });
+            expect(overrides.join("\n")).not.toContain("fixture-inline-token");
+            expect(overrides.join("\n")).not.toContain("fixture-unused-secret");
+          }),
+      ),
+  );
+
   it.effect("preserves managed provider launch overrides for isolated structured generation", () =>
     withFakeCodexEnv(
       {
         output: JSON.stringify({ title: "Managed title" }),
         managedRuntime: true,
+        configToml: 'openai_base_url = "https://user-gateway.example.test/v1"',
         launchArgs:
           "-c 'model_provider=\"openai_token_sharing\"' -c 'model_providers.openai_token_sharing.env_key=\"ACCESS_TOKEN\"' --strict-config --listen off",
         requireArg: [
@@ -333,7 +453,7 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
           '-c model_providers.openai_token_sharing.env_key="ACCESS_TOKEN"',
           "--strict-config",
         ],
-        forbidArg: "--listen",
+        forbidArg: ["--listen", '--config openai_base_url="https://user-gateway.example.test/v1"'],
       },
       (generation) =>
         generation.generateStructured({

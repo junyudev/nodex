@@ -79,7 +79,12 @@ for (const driver of ["codex", "claude"] as const) {
         const generation =
           driver === "codex"
             ? yield* makeCodexTextGeneration(
-                Schema.decodeSync(CodexSettings)({ enabled: true, binaryPath }),
+                // A home of its own keeps the person's real Codex configuration out of the argv.
+                Schema.decodeSync(CodexSettings)({
+                  enabled: true,
+                  binaryPath,
+                  homePath: directory,
+                }),
                 environment,
               )
             : yield* makeClaudeTextGeneration(

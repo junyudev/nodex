@@ -318,7 +318,11 @@ Structured generation that Nodex writes, such as chat titles, leaves out the per
 customizations: project instructions, skills, plugins, hooks, MCP servers and commands. It keeps
 what reaches the model, so it connects the way the person's chats do: their account, endpoint,
 and the proxy or certificates their Agent's settings define. On a person's own Claude Code this
-is Claude Code's safe mode; a Nodex-managed installation reads none of its settings files.
+is Claude Code's safe mode; a Nodex-managed installation reads none of its settings files. Codex
+skips the person's `config.toml` except its model provider and endpoints, sign-in method and
+workspace, and credential storage. A header or token written inline there reaches Codex through
+its environment rather than its command line, and an endpoint whose URL carries credentials or
+a query is refused.
 OpenCode utility requests run in temporary sessions that refuse every tool and answer in the JSON
 their prompt asks for. They still load OpenCode's own configuration and project instructions, stop
 at the caller's time limit, and are removed once they settle, so they never join OpenCode's history.
