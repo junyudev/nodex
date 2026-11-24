@@ -46,8 +46,9 @@ out-of-scope overrides.
 
 For every other Agent, the Host resolves the Session's plugins once when the
 Session opens: it reads each in-scope plugin's installed package from the Codex
-plugin cache, generates an immutable skills-only directory for the resolved set,
-and opens a revocable broker lease for each plugin MCP server it can run. One
+plugin cache, shares one immutable skills-only directory among Sessions with the
+same resolved Skills (kept while a Session holds it, cleared when idle and at
+startup), and opens a revocable broker lease for each plugin MCP server it can run. One
 Session plugin contract (`src/shared/agent-plugins/session-plugins.ts`) crosses the
 Host and Agent Runtime boundary for all backends. Each adapter maps it to its native
 form. When the resolved set changes, its revision changes, leases are revoked, and
@@ -58,8 +59,8 @@ Plugins are an addition to a reply, never a condition for it. The Host keeps the
 catalog it has read for each Project and rereads it in the background when plugin state may
 have changed; it revokes the leases of Sessions whose resolved set changed once the reread
 publishes. Opening Session plugins waits only briefly for a reread in progress, then uses the
-latest catalog, or none before the first read. One plugin that cannot be prepared is left out
-of the Session. Codex Sessions are the exception: their out-of-scope overrides wait for the
+latest catalog, or none before the first read. A plugin's Skills or servers that cannot be
+prepared are left out of the Session on their own. Codex Sessions are the exception: their out-of-scope overrides wait for the
 catalog, because a Codex thread cannot start without its plugin inventory anyway.
 
 The broker runs stdio servers and HTTP servers that need no sign-in. Servers that

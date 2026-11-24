@@ -272,9 +272,23 @@ export function copyPackageSubtrees(
   directory: string,
   subtrees: readonly { readonly source: string; readonly target: string }[],
 ) {
-  return io(async (signal) => {
+  const source = io(async (signal) => {
     const root = await canonicalRoot(directory);
-    const { entries, children } = await inventory(root, signal);
+    return { root, ...(await inventory(root, signal)) };
+  });
+  return Effect.flatMap(source, ({ root, entries, children }) =>
+    copySubtrees(root, entries, children, subtrees),
+  );
+}
+
+function copySubtrees(
+  root: string,
+  entries: ReadonlyMap<string, Entry>,
+  children: ReadonlyMap<string, readonly string[]>,
+  subtrees: readonly { readonly source: string; readonly target: string }[],
+) {
+  // Wait for destination writes to finish before the caller can clean up staging.
+  return io(async (signal) => {
     let count = 0;
     let bytes = 0;
     async function copy(source: string, target: string, ancestors: readonly string[]) {

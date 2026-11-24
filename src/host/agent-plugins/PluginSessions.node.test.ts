@@ -4,10 +4,21 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { TestClock } from "effect/testing";
+import {
+  mkdir,
+  mkdtemp,
+  opendir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { PluginMcpFailure, type PluginMcpBrokerService } from "./broker/contract";
 import { makeFolderMarketplace } from "./FolderMarketplace";
 import {
@@ -20,11 +31,25 @@ import {
 } from "./PluginCatalog";
 import { makePluginSessions } from "./PluginSessions";
 import type { PluginCatalogCache } from "./PluginCatalogCache";
+import { makeSkillProjectionStore, SKILL_PROJECTION_IDLE_TTL } from "./SkillProjection";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, opendir: vi.fn(fs.opendir), rm: vi.fn(fs.rm) };
+});
 
 const withHome = Effect.acquireRelease(
   Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-plugins-"))),
   (home) => Effect.promise(() => rm(home, { recursive: true, force: true })),
 );
+function latch() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, resolve: release };
+}
+
 const put = async (file: string, content: string) => {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, content);
@@ -145,6 +170,7 @@ it.effect(
       let codexAvailable = false;
       const sessions = yield* makePluginSessions({
         home,
+        skillProjections: yield* makeSkillProjectionStore(home),
         spaceId: "space",
         broker,
         catalog: {
@@ -215,6 +241,7 @@ it.effect("retains degraded attachments and revokes delivered leases on publicat
     const published = yield* PubSub.unbounded<Stream.Success<PluginCatalogCache["published"]>>();
     const sessions = yield* makePluginSessions({
       home,
+      skillProjections: yield* makeSkillProjectionStore(home),
       spaceId: "space",
       catalog: { read: () => Effect.sync(() => snapshot), published: Stream.fromPubSub(published) },
       broker: {
@@ -257,6 +284,7 @@ it.effect("opens and closes another attachment while a Session's catalog read is
     const ready = pluginCatalogSnapshot([]);
     const sessions = yield* makePluginSessions({
       home,
+      skillProjections: yield* makeSkillProjectionStore(home),
       spaceId: "space",
       catalog: {
         published: Stream.empty,
@@ -280,71 +308,234 @@ it.effect("opens and closes another attachment while a Session's catalog read is
   }),
 );
 
+it.effect("shares a single in-flight projection across Projects and Runtime connections", () =>
+  Effect.gen(function* () {
+    const home = yield* withHome;
+    const parent = join(home, "plugin-sessions");
+    const root = join(home, "source");
+    const extraRoot = join(home, "extra");
+    yield* Effect.promise(async () => {
+      await fixture(root);
+      await fixture(extraRoot);
+      await put(
+        join(root, "skills/other/SKILL.md"),
+        "---\nname: other\ndescription: Another skill.\n---\nRead it.\n",
+      );
+      await put(join(parent, "old-random/skills/old/SKILL.md"), "An old projection");
+      await put(join(parent, ".tmp-leftover/partial"), "An unfinished projection");
+    });
+    const first = yield* pluginReader.read(root);
+    const extra = yield* pluginReader.read(extraRoot);
+    if (first.status !== "loaded" || extra.status !== "loaded")
+      throw new Error("Fixtures did not load.");
+    const plugin = {
+      id: "example@local",
+      root,
+      scope: ALL_PROJECTS,
+      package: { ...first.package, mcpServers: [] },
+    };
+    const extraPlugin = {
+      id: "extra@local",
+      root: extraRoot,
+      scope: { kind: "projects", projectIds: ["project-c"] } as const,
+      package: { ...extra.package, mcpServers: [] },
+    };
+    const snapshotA = pluginCatalogSnapshot([plugin, extraPlugin]);
+    const snapshotB = pluginCatalogSnapshot([
+      { ...plugin, package: { ...plugin.package, skills: plugin.package.skills.toReversed() } },
+    ]);
+    const skillProjections = yield* makeSkillProjectionStore(home);
+    expect(yield* Effect.promise(() => readdir(parent))).toEqual([]);
+    const catalogs: Parameters<PluginMcpBrokerService["openSkillCatalog"]>[0][] = [];
+    const revoked: string[] = [];
+    const broker = {
+      ...unusedBroker,
+      openSkillCatalog: (source) =>
+        Effect.sync(() => {
+          catalogs.push(source);
+          const id = "catalog-" + catalogs.length;
+          return { id, url: "http://localhost/lease", bearerToken: id };
+        }),
+      revokeLease: (id) =>
+        Effect.sync(() => {
+          revoked.push(id);
+        }),
+    } satisfies Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
+    const options = {
+      home,
+      skillProjections,
+      spaceId: "space",
+      broker,
+      catalog: {
+        read: (projectId: string | null) =>
+          Effect.succeed(projectId === "project-b" ? snapshotB : snapshotA),
+        published: Stream.empty,
+      },
+    };
+    const sessions = yield* makePluginSessions(options);
+    const secondConnection = yield* makePluginSessions(options);
+    const requestB = { ...claude, backend: "acp", projectId: "project-b" };
+    const canonicalRoot = yield* Effect.promise(() => realpath(root));
+    const fs = yield* Effect.promise(() =>
+      vi.importActual<typeof import("node:fs/promises")>("node:fs/promises"),
+    );
+    const started = latch();
+    const resume = latch();
+    const removed = latch();
+    let inventories = 0;
+    let sharedRoot: string | null = null;
+    vi.mocked(opendir).mockImplementation(async (path, options) => {
+      if (path === canonicalRoot && ++inventories === 1) {
+        started.resolve();
+        await resume.promise;
+      }
+      return fs.opendir(path, options);
+    });
+    vi.mocked(rm).mockImplementation(async (path, options) => {
+      await fs.rm(path, options);
+      if (path === sharedRoot) removed.resolve();
+    });
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        resume.resolve();
+        vi.mocked(opendir).mockReset();
+        vi.mocked(rm).mockReset();
+      }),
+    );
+
+    const opening = yield* sessions.open("first", claude).pipe(Effect.forkScoped);
+    yield* Effect.promise(() => started.promise);
+    const concurrent = yield* secondConnection
+      .open("second", requestB)
+      .pipe(Effect.forkScoped({ startImmediately: true }));
+    expect(concurrent.pollUnsafe()).toBeUndefined();
+    expect(inventories).toBe(1);
+    expect(yield* Effect.promise(() => readdir(parent))).toEqual([
+      expect.stringMatching(/^\.tmp-/u),
+    ]);
+    resume.resolve();
+    const attached = yield* Fiber.join(opening);
+    const second = yield* Fiber.join(concurrent);
+    if (!attached?.skillsRoot || !second) throw new Error("Sessions did not attach.");
+    sharedRoot = attached.skillsRoot;
+    expect(second.skillsRoot).toBe(sharedRoot);
+    expect(second.skills).toEqual(attached.skills);
+    expect(second.revision).not.toBe(attached.revision);
+    expect(attached.skills.map(({ alias }) => alias)).toEqual(["gauge", "other"]);
+    expect(inventories).toBe(1);
+
+    yield* sessions.close("first");
+    yield* TestClock.adjust(SKILL_PROJECTION_IDLE_TTL);
+    expect(yield* Effect.promise(() => readdir(sharedRoot!))).toContain("skills");
+    yield* secondConnection.close("second");
+    const reused = yield* sessions.open("reused", requestB);
+    expect(reused?.skillsRoot).toBe(sharedRoot);
+    expect(second.skillCatalog?.bearerToken).toBe("catalog-1");
+    expect(reused?.skillCatalog?.bearerToken).toBe("catalog-2");
+    expect(catalogs.map((catalog) => catalog.map(([, source]) => source.packageRoot))).toEqual([
+      [sharedRoot],
+      [sharedRoot],
+    ]);
+    expect(inventories).toBe(1);
+    yield* sessions.close("reused");
+    expect(revoked).toEqual(["catalog-1", "catalog-2"]);
+    yield* TestClock.adjust(SKILL_PROJECTION_IDLE_TTL);
+    yield* Effect.promise(() => removed.promise);
+    expect(yield* Effect.promise(() => readdir(parent))).toEqual([]);
+
+    const other = yield* sessions.open("other", { ...claude, projectId: "project-c" });
+    expect(other?.skillsRoot).toEqual(expect.any(String));
+    expect(other?.skillsRoot).not.toBe(sharedRoot);
+    expect(other?.skills.map(({ alias }) => alias)).toEqual([
+      "gauge",
+      "other",
+      expect.stringMatching(/^gauge-[a-f0-9]{12}$/u),
+    ]);
+  }),
+);
+
 for (const failure of ["skills", "MCP"] as const) {
-  it.effect(
-    `skips the plugin whose ${failure} preparation fails and cleans up its partial output`,
-    () =>
-      Effect.gen(function* () {
-        const home = yield* withHome;
-        const broken = join(home, "broken");
-        const healthy = join(home, "healthy");
-        const brokenSkill = join(broken, "skills/z-other/SKILL.md");
-        yield* Effect.promise(async () => {
-          await fixture(broken);
-          await fixture(healthy);
-          await put(
-            brokenSkill,
-            "---\nname: z-other\ndescription: Another skill.\n---\nRead it.\n",
-          );
-        });
-        const brokenResult = yield* pluginReader.read(broken);
-        const healthyResult = yield* pluginReader.read(healthy);
-        if (brokenResult.status !== "loaded" || healthyResult.status !== "loaded")
-          throw new Error("Fixtures did not load.");
-        if (failure === "skills") yield* Effect.promise(() => rm(brokenSkill));
+  it.effect(`leaves out only a plugin's ${failure} when they cannot be prepared`, () =>
+    Effect.gen(function* () {
+      const home = yield* withHome;
+      const broken = join(home, "broken");
+      const healthy = join(home, "healthy");
+      const brokenSkill = join(broken, "skills/z-other/SKILL.md");
+      yield* Effect.promise(async () => {
+        await fixture(broken);
+        await fixture(healthy);
+        await put(brokenSkill, "---\nname: z-other\ndescription: Another skill.\n---\nRead it.\n");
+      });
+      const brokenResult = yield* pluginReader.read(broken);
+      const healthyResult = yield* pluginReader.read(healthy);
+      if (brokenResult.status !== "loaded" || healthyResult.status !== "loaded")
+        throw new Error("Fixtures did not load.");
+      if (failure === "skills") yield* Effect.promise(() => rm(brokenSkill));
 
-        const snapshot = pluginCatalogSnapshot([
-          { id: "broken@local", root: broken, scope: ALL_PROJECTS, package: brokenResult.package },
-          {
-            id: "healthy@local",
-            root: healthy,
-            scope: ALL_PROJECTS,
-            package: healthyResult.package,
-          },
-        ]);
-        const revoked: string[] = [];
-        const sessions = yield* makePluginSessions({
-          home,
-          spaceId: "space",
-          catalog: { read: () => Effect.succeed(snapshot), published: Stream.empty },
-          broker: {
-            ...unusedBroker,
-            openLease: ({ pluginId, serverKey }) =>
-              failure === "MCP" && pluginId === "broken@local" && serverKey === "public"
-                ? Effect.fail(new PluginMcpFailure("server_inactive"))
-                : Effect.succeed({
-                    id: pluginId + "/" + serverKey,
-                    url: "http://localhost/lease",
-                    bearerToken: "token",
-                  }),
-            revokeLease: (id) =>
-              Effect.sync(() => {
-                revoked.push(id);
-              }),
-          },
-        });
+      const snapshot = pluginCatalogSnapshot([
+        { id: "broken@local", root: broken, scope: ALL_PROJECTS, package: brokenResult.package },
+        {
+          id: "healthy@local",
+          root: healthy,
+          scope: ALL_PROJECTS,
+          package: healthyResult.package,
+        },
+      ]);
+      const revoked: string[] = [];
+      const sessions = yield* makePluginSessions({
+        home,
+        skillProjections: yield* makeSkillProjectionStore(home),
+        spaceId: "space",
+        catalog: { read: () => Effect.succeed(snapshot), published: Stream.empty },
+        broker: {
+          ...unusedBroker,
+          openLease: ({ pluginId, serverKey, principal }) =>
+            failure === "MCP" &&
+            principal.id === "attachment" &&
+            pluginId === "broken@local" &&
+            serverKey === "public"
+              ? Effect.fail(new PluginMcpFailure("server_inactive"))
+              : Effect.succeed({
+                  id: pluginId + "/" + serverKey,
+                  url: "http://localhost/lease",
+                  bearerToken: "token",
+                }),
+          revokeLease: (id) =>
+            Effect.sync(() => {
+              revoked.push(id);
+            }),
+        },
+      });
 
-        const attached = yield* sessions.open("attachment", claude);
-        expect(attached?.pluginIds).toEqual(["healthy@local"]);
+      const attached = yield* sessions.open("attachment", claude);
+      const allSkills = ["gauge", "z-other", expect.stringMatching(/^gauge-[a-f0-9]{12}$/u)];
+      expect(attached?.pluginIds).toEqual(["broken@local", "healthy@local"]);
+      if (failure === "skills") {
+        // The broken package's Skills are left out; its servers still reach the Session.
         expect(attached?.skills.map(({ alias }) => alias)).toEqual(["gauge"]);
+        expect(yield* Effect.promise(() => readdir(join(attached!.skillsRoot!, "skills")))).toEqual(
+          ["gauge"],
+        );
+        expect(attached?.mcpServers.map(({ pluginId }) => pluginId)).toEqual([
+          "broken@local",
+          "broken@local",
+          "healthy@local",
+          "healthy@local",
+        ]);
+        expect(revoked).toEqual([]);
+      } else {
+        // A server lease that fails leaves out that plugin's servers; its Skills stay.
+        expect(attached?.skills.map(({ alias }) => alias)).toEqual(allSkills);
         expect(attached?.mcpServers.map(({ pluginId }) => pluginId)).toEqual([
           "healthy@local",
           "healthy@local",
         ]);
-        expect(yield* Effect.promise(() => readdir(join(attached!.skillsRoot!, "skills")))).toEqual(
-          ["gauge"],
-        );
-        expect(revoked).toEqual(failure === "MCP" ? ["broken@local/gauge"] : []);
-      }),
+        expect(revoked).toEqual(["broken@local/gauge"]);
+      }
+      // Another Session with the same plugins shares the projection.
+      const another = yield* sessions.open("another", claude);
+      expect(another?.skillsRoot).toBe(attached?.skillsRoot);
+      expect(another?.skills).toEqual(attached?.skills);
+    }),
   );
 }

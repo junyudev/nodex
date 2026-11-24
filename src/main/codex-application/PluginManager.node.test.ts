@@ -31,6 +31,7 @@ import {
 } from "../settings/ApplicationSettings";
 import { pluginReader } from "../../host/agent-plugins/PluginCatalog";
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
+import { makeSkillProjectionStore } from "../../host/agent-plugins/SkillProjection";
 import { makePluginCatalogCache } from "../../host/agent-plugins/PluginCatalogCache";
 import { pluginSummary } from "../../shared/test-fixtures/plugins";
 import type { PluginSummary } from "../../shared/codex-plugin-management";
@@ -2393,6 +2394,7 @@ it.effect(
           const options = {
             home: profile,
             spaceId: "space",
+            skillProjections: yield* makeSkillProjectionStore(profile),
             catalog: yield* makePluginCatalogCache({
               load: manager.loadCatalog,
               invalidations: manager.catalogInvalidations,

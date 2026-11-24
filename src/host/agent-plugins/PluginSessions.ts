@@ -18,7 +18,7 @@ import {
   type CatalogPlugin,
   type PluginCatalogSnapshot,
 } from "./PluginCatalog";
-import { makeSkillProjection } from "./SkillProjection";
+import type { SkillProjectionStore } from "./SkillProjection";
 import { PluginSessionPreparationError } from "./PluginSessionPreparationError";
 import type { PluginCatalogCache } from "./PluginCatalogCache";
 
@@ -37,6 +37,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
   readonly home: string;
   readonly spaceId: string;
   readonly catalog: PluginCatalogCache;
+  readonly skillProjections: SkillProjectionStore;
   readonly broker: Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
 }) {
   const owner = yield* Effect.scope;
@@ -147,6 +148,15 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
     );
   });
 
+  const acquireProjection = (plugins: readonly CatalogPlugin[]) =>
+    input.skillProjections
+      .acquire(plugins)
+      .pipe(
+        Effect.mapError(
+          () => new PluginSessionPreparationError("Could not prepare the Session’s plugin Skills."),
+        ),
+      );
+
   const prepare = Effect.fnUntraced(function* (
     id: string,
     request: SessionPluginsRequest,
@@ -154,43 +164,36 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
     base: SessionPlugins,
   ) {
     const eligible = entries.filter(({ scope }) => includesProject(scope, request.projectId));
-    const projection = yield* makeSkillProjection(input.home, revision, eligible).pipe(
-      Effect.mapError(
-        () => new PluginSessionPreparationError("Could not prepare the Session’s plugin Skills."),
-      ),
-    );
+    // Skills come from one projection shared by every Session with the same eligible plugins;
+    // MCP servers are leased per Session. A component that cannot be prepared is left out.
+    const projection = yield* acquireProjection(eligible);
     const sessionScope = yield* Effect.scope;
-    const prepared = yield* Effect.forEach(
+    const servers = yield* Effect.forEach(
       eligible,
       Effect.fnUntraced(function* (plugin) {
         const scope = yield* Scope.fork(sessionScope);
-        return yield* Effect.gen(function* () {
-          const skills = projection ? yield* projection.project(plugin) : [];
-          const servers = yield* openPluginServers(id, request, plugin);
-          return { plugin, skills, servers };
-        }).pipe(
+        return yield* openPluginServers(id, request, plugin).pipe(
           Scope.provide(scope),
           Effect.catch((error) =>
             Scope.close(scope, Exit.fail(error)).pipe(
-              Effect.andThen(Effect.logWarning("Skipped a plugin while preparing the Session")),
+              Effect.andThen(Effect.logWarning("Left a plugin's MCP servers out of the Session")),
               Effect.annotateLogs({ pluginId: plugin.id }),
-              Effect.as(null),
+              Effect.as([]),
             ),
           ),
         );
       }),
-    );
-    const delivered = prepared.filter((plugin) => plugin !== null);
-    const skills = delivered.flatMap((plugin) => plugin.skills);
-    const skillsRoot = skills.length ? (projection?.root ?? null) : null;
-    const catalogEntries = skillsRoot
-      ? delivered.flatMap(({ plugin, skills }) => {
-          if (!skills.length) return [];
-          return [
+    ).pipe(Effect.map((perPlugin) => perPlugin.flat()));
+    const skillsRoot = projection?.root ?? null;
+    const skills = projection ? [...projection.skillsByPlugin.values()].flat() : [];
+    const catalogEntries = projection
+      ? Array.from(
+          projection.skillsByPlugin,
+          ([id, skills]) =>
             [
-              plugin.id,
+              id,
               {
-                packageRoot: skillsRoot,
+                packageRoot: projection.root,
                 servers: [],
                 generation: revision,
                 dataRoot: "",
@@ -203,8 +206,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
                 })),
               },
             ] as const,
-          ];
-        })
+        )
       : [];
     const skillCatalog =
       request.backend === "acp" && catalogEntries.length
@@ -226,13 +228,14 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       ...base,
       skillsRoot,
       skills,
-      mcpServers: delivered.flatMap((plugin) => plugin.servers),
-      pluginIds: delivered
+      mcpServers: servers,
+      pluginIds: eligible
         .filter(
-          ({ plugin: { package: pkg } }) =>
-            pkg && (pkg.skills.some(({ valid }) => valid) || pkg.mcpServers.some(runnableServer)),
+          ({ id: pluginId }) =>
+            projection?.skillsByPlugin.has(pluginId) ||
+            servers.some((server) => server.pluginId === pluginId),
         )
-        .map(({ plugin }) => plugin.id),
+        .map(({ id: pluginId }) => pluginId),
       ...(skillCatalog
         ? {
             skillCatalog: {

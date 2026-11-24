@@ -43,9 +43,8 @@ export interface SessionPlugins {
   /** Changes whenever the resolved set changes. Backends refresh at their next safe point. */
   readonly revision: string;
   /**
-   * Generated, immutable, skills-only plugin directory for this revision:
-   * `.claude-plugin/plugin.json` and `skills/<alias>/`. Null when no in-scope plugin
-   * has skills or the backend is Codex.
+   * Shared, immutable plugin directory for the delivered Skills, with
+   * `.claude-plugin/plugin.json` and `skills/<alias>/`. Null when no Skills are delivered.
    */
   readonly skillsRoot: string | null;
   readonly skills: readonly SessionPluginSkill[];

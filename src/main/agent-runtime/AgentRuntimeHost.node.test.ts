@@ -238,6 +238,7 @@ const makeFixture = Effect.fnUntraced(function* ({
     ...(readThread
       ? {
           plugins: {
+            skillProjections: { acquire: () => Effect.succeed(null) },
             catalog: {
               read: () =>
                 pluginCatalog

@@ -62,6 +62,7 @@ import {
 } from "../main/agent-runtime/AgentRuntimeApplication";
 import { AgentChatWorktrees } from "../main/codex-application/AgentChatWorktrees";
 import { makePluginMcpBroker, PluginMcpBroker } from "./agent-plugins/broker";
+import { makeSkillProjectionStore } from "./agent-plugins/SkillProjection";
 import { make as makeHost } from "../main/agent-runtime/AgentRuntimeHost";
 import { HostDesktopTools } from "./HostDesktopTools";
 import {
@@ -291,6 +292,13 @@ const supervisor = Layer.effectContext(
     const desktop = yield* HostDesktopTools;
     const broker = yield* PluginMcpBroker;
     const pluginCatalog = Option.getOrUndefined(yield* Effect.serviceOption(PluginCatalogSource));
+    const plugins = pluginCatalog
+      ? {
+          catalog: pluginCatalog,
+          broker,
+          skillProjections: yield* makeSkillProjectionStore(config.nodexHome),
+        }
+      : undefined;
     const pip = desktop.pip;
     const appToolCatalog = yield* HostAppToolCatalog;
     const hostPolicy = Option.getOrUndefined(yield* Effect.serviceOption(HostAgentPolicy));
@@ -765,7 +773,7 @@ const supervisor = Layer.effectContext(
         pausedThreadIds: yield* heldThreadIds(modules),
         modelPolicy: snapshot.modelPolicy,
         subagentsMayDelegate: snapshot.agentRuntime.subagentsMayDelegate,
-        host: { tools: appToolCatalog, ...(pluginCatalog ? { sessionPlugins: true } : {}) },
+        host: { tools: appToolCatalog, ...(plugins ? { sessionPlugins: true } : {}) },
       };
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
       return { configuration, environment, executable };
@@ -810,7 +818,7 @@ const supervisor = Layer.effectContext(
         const configuration = prepared.get(connection.identity);
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
-          ...(pluginCatalog ? { plugins: { catalog: pluginCatalog, broker } } : {}),
+          ...(plugins ? { plugins } : {}),
           desktop,
           workspaceEnvironment: workspace.environment,
           presentation,

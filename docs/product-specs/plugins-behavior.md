@@ -103,9 +103,10 @@ Manage, Update from folder for a plugin added from a folder, Uninstall). The gea
   an installed plugin. A Claude Code, Antigravity or ACP reply waits at most five seconds for a
   reread in progress, then starts with the plugins Nodex last read, or without plugins before
   Nodex has read any. It picks up the rest at a later reply; a Claude Code chat with background
-  work running waits until that work is done. A plugin whose skills or servers cannot be
-  prepared is left out of the reply, and the others still reach it. A Codex chat waits for the
-  plugins instead, because Codex needs them to start.
+  work running waits until that work is done. Chats with the same plugins share one prepared
+  copy of their skills, so opening several chats at once copies nothing again. A plugin's
+  skills or servers that cannot be prepared are left out of the reply, and the rest still
+  reach it. A Codex chat waits for the plugins instead, because Codex needs them to start.
 
 ### Plugin apps
 
