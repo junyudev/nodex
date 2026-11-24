@@ -175,6 +175,14 @@ files remain Nightly-owned. Vitest configuration, TypeScript project
 configuration, lockfiles, CI orchestration, and deleted files promote selection
 to `full`.
 
+## Static jobs
+
+The reusable workflow schedules types, UI contracts, and repository contracts
+in separate Linux jobs. Selected source ownership, CI contracts, dependency
+security, generated resources, and landing checks share one job and one
+dependency install. Each group still reports its own command timing, and the
+shared job fails if any selected check fails.
+
 ## Dependency security
 
 The `dependency-security` static group runs `vp pm audit --level low` through the

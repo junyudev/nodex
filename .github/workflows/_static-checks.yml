@@ -28,6 +28,21 @@ jobs:
       fail-fast: false
       matrix:
         group: ${{ fromJSON(inputs.groups_json) }}
+        # These short groups share setup and run only when selected by the caller.
+        exclude:
+          - group: source-ownership
+          - group: ci-contracts
+          - group: dependency-security
+          - group: generated
+          - group: landing
+        include: >-
+          ${{ fromJSON((
+            contains(fromJSON(inputs.groups_json), 'source-ownership') ||
+            contains(fromJSON(inputs.groups_json), 'ci-contracts') ||
+            contains(fromJSON(inputs.groups_json), 'dependency-security') ||
+            contains(fromJSON(inputs.groups_json), 'generated') ||
+            contains(fromJSON(inputs.groups_json), 'landing')
+          ) && '[{"group":"quick-contracts"}]' || '[]') }}
     runs-on: ubuntu-latest
     env:
       CI_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
@@ -39,21 +54,34 @@ jobs:
           ref: ${{ inputs.source_sha || github.sha }}
       - uses: ./.github/actions/setup-vite-plus
       - run: vp install --frozen-lockfile
-      - name: Run static group
+      - name: Run integrated check
+        if: matrix.group == 'types'
+        run: vp exec tsx scripts/ci/run-timed.ts --name static-types -- vp run check
+      - name: Run static groups
+        if: matrix.group != 'types'
         env:
           STATIC_GROUP: ${{ matrix.group }}
+          STATIC_GROUPS_JSON: ${{ inputs.groups_json }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${STATIC_GROUP}" == "types" ]]; then
-            vp exec tsx scripts/ci/run-timed.ts \
-              --name "static-${STATIC_GROUP}" \
-              -- vp run check
-            exit 0
+          groups="${STATIC_GROUP}"
+          if [[ "${STATIC_GROUP}" == "quick-contracts" ]]; then
+            groups="$(node -e '
+              const dedicated = ["types", "ui-contracts", "repository-contracts"];
+              for (const group of JSON.parse(process.env.STATIC_GROUPS_JSON)) {
+                if (!dedicated.includes(group)) console.log(group);
+              }
+            ')"
+            [[ -n "${groups}" ]]
           fi
-          vp exec tsx scripts/ci/run-timed.ts \
-            --name "static-${STATIC_GROUP}" \
-            -- vp exec tsx scripts/ci/verify-static.ts --group "${STATIC_GROUP}"
+          status=0
+          while IFS= read -r group; do
+            vp exec tsx scripts/ci/run-timed.ts \
+              --name "static-${group}" \
+              -- vp exec tsx scripts/ci/verify-static.ts --group "${group}" || status=1
+          done <<< "${groups}"
+          exit "${status}"
       - name: Upload static timings
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
