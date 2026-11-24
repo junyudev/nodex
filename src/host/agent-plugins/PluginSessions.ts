@@ -127,7 +127,7 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
               principal: { kind: "agent-session", id },
             },
             installation,
-            { approval: () => Effect.succeed("allow"), httpBinding: "mcp-session" },
+            { approval: () => Effect.succeed("allow") },
           ),
           (lease) => input.broker.revokeLease(lease.id),
         );

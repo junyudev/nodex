@@ -135,7 +135,7 @@ const connectionFetch =
       else outgoing.end();
     });
 
-const attach = Effect.fnUntraced(function* (lease: PluginMcpLease, pooled = false) {
+const attach = Effect.fnUntraced(function* (lease: PluginMcpLease) {
   const agent = yield* Effect.acquireRelease(
     Effect.sync(() => new Agent({ keepAlive: true, maxSockets: 1 })),
     (agent) => Effect.sync(() => agent.destroy()),
@@ -149,7 +149,6 @@ const attach = Effect.fnUntraced(function* (lease: PluginMcpLease, pooled = fals
     requestInit: { headers: { Authorization: "Bearer " + lease.bearerToken } },
   });
   yield* Effect.promise(() => client.connect(transport));
-  expect(transport.sessionId !== undefined).toBe(pooled);
   return client;
 });
 
@@ -284,12 +283,15 @@ it.live(
     }),
 );
 
-it.live("rejects replay of a bound bearer on a different HTTP connection", () =>
+it.live("rejects replay of a view bearer on a different HTTP connection", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
     const installation = httpInstallation(fixture.url);
-    const lease = yield* broker.openLease(scope, installation);
+    const lease = yield* broker.openLease(
+      { ...scope, principal: { kind: "interface-view", id: "view-1" } },
+      installation,
+    );
     const client = yield* attach(lease);
     const replay = yield* Effect.promise(() =>
       fetch(lease.url, {
@@ -303,51 +305,56 @@ it.live("rejects replay of a bound bearer on a different HTTP connection", () =>
   }),
 );
 
-it.live("binds a pooled HTTP client to its issued MCP session across sockets", () =>
+it.live("keeps an Agent lease usable from discovery through reconnect", () =>
   Effect.gen(function* () {
     const fixture = yield* httpFixture;
     const broker = yield* make();
     const installation = httpInstallation(fixture.url);
-    const lease = yield* broker.openLease(scope, installation, { httpBinding: "mcp-session" });
-    const post = (method: string, sessionId?: string, params?: unknown) =>
-      Effect.promise(() =>
-        fetch(lease.url, {
+    const lease = yield* broker.openLease(scope, installation);
+    const post = (method: string, params?: unknown) =>
+      Effect.promise(async () => {
+        const response = await fetch(lease.url, {
           method: "POST",
           headers: {
             Authorization: "Bearer " + lease.bearerToken,
             Accept: "application/json, text/event-stream",
             "Content-Type": "application/json",
             Connection: "close",
-            ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
           },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        }),
-      );
+        });
+        return {
+          status: response.status,
+          sessionId: response.headers.get("Mcp-Session-Id"),
+          body: (await response.json()) as unknown,
+        };
+      });
 
-    const initialized = yield* post("initialize", undefined, {
-      protocolVersion: "2025-03-26",
-      capabilities: {},
-      clientInfo: { name: "test", version: "1" },
+    const discovery = yield* post("server/discover");
+    const initialize = () =>
+      post("initialize", {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      });
+    expect(yield* initialize()).toMatchObject({
+      status: 200,
+      body: { result: { protocolVersion: "2025-03-26" } },
     });
-    expect(initialized.status).toBe(200);
-    const sessionId = initialized.headers.get("Mcp-Session-Id");
-    if (!sessionId) return yield* Effect.die("The initialized lease must issue an MCP session ID.");
-    yield* Effect.promise(() => initialized.text());
+    expect(discovery.sessionId).toBeNull();
+    expect(yield* post("tools/list")).toMatchObject({
+      status: 200,
+      body: {
+        result: { tools: expect.arrayContaining([expect.objectContaining({ name: "inspect" })]) },
+      },
+    });
+    expect(yield* initialize()).toMatchObject({ status: 200, sessionId: null });
 
-    for (const replay of [undefined, "another-session"]) {
-      const response = yield* post("tools/list", replay);
-      expect(response.status).toBe(401);
-      yield* Effect.promise(() => response.text());
-    }
-    const listed = yield* post("tools/list", sessionId);
-    expect(listed.status).toBe(200);
-    expect(yield* Effect.promise(() => listed.json())).toMatchObject({
-      result: { tools: expect.arrayContaining([expect.objectContaining({ name: "inspect" })]) },
-    });
     yield* broker.revokeLease(lease.id);
-    const revoked = yield* post("tools/list", sessionId);
-    expect(revoked.status).toBe(401);
-    yield* Effect.promise(() => revoked.text());
+    expect(yield* post("tools/list")).toMatchObject({
+      status: 401,
+      body: { error: { data: { reason: "lease_revoked" } } },
+    });
   }).pipe(Effect.scoped),
 );
 
@@ -603,7 +610,7 @@ it.live("serves only current Project skills and contains and bounds package read
     const lease = yield* broker.openSkillCatalog([["enabled", first]], {
       authorize: Effect.sync(() => authorized),
     });
-    const client = yield* attach(lease, true);
+    const client = yield* attach(lease);
     expect((yield* Effect.promise(() => client.listTools())).tools.map(({ name }) => name)).toEqual(
       ["list_plugin_skills", "read_plugin_skill"],
     );

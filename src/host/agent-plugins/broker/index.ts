@@ -10,6 +10,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import type { PluginMcpLease, PluginMcpLeaseScope } from "../../../shared/agent-plugins/mcp-lease";
 import {
+  DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS,
   PluginMcpFailure,
   type PluginMcpApproval,
   type PluginMcpBrokerService,
@@ -28,7 +29,6 @@ export type {
   PluginMcpProject,
 } from "../../../shared/agent-plugins/mcp-lease";
 
-const defaultLifetimeMs = 8 * 60 * 60 * 1000;
 const DEFAULT_SHUTDOWN_GRACE_MS = 35_000;
 
 const keyFor = (scope: PluginMcpLeaseScope) =>
@@ -55,9 +55,8 @@ type Credential = {
   readonly secret: Buffer;
   readonly key: string;
   readonly expiresAt: bigint;
-  readonly httpBinding: "mcp-session" | undefined;
+  readonly bindToConnection: boolean;
   connection?: symbol;
-  sessionId?: string;
   lease?: Lease;
 };
 type LiveLease = {
@@ -264,21 +263,14 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       ),
   );
 
-  const origin = yield* listen((id, token, connection, sessionId) => {
+  const origin = yield* listen((id, token, connection) => {
     const credential = authenticate(id, token);
-    if (!credential) return undefined;
-    if (credential.httpBinding === "mcp-session") {
-      if (sessionId !== credential.sessionId) return undefined;
-      if (!credential.lease) return new PluginMcpFailure("lease_revoked");
-      if (credential.sessionId !== undefined) return { projection: projection(credential.lease) };
-      // Pooled clients can change sockets. Only the first attachment receives the session ID.
-      credential.sessionId = randomBytes(32).toString("base64url");
-      return { projection: projection(credential.lease), sessionId: credential.sessionId };
-    }
-    if (credential.connection && credential.connection !== connection) return undefined;
+    if (!credential || (credential.connection && credential.connection !== connection))
+      return undefined;
     if (!credential.lease) return new PluginMcpFailure("lease_revoked");
-    credential.connection = connection;
-    return { projection: projection(credential.lease) };
+    // Agent MCP HTTP is stateless. Discovery and reconnects can use different sockets.
+    if (credential.bindToConnection) credential.connection = connection;
+    return projection(credential.lease);
   }).pipe(Scope.provide(owner));
 
   const revokeLease: PluginMcpBrokerService["revokeLease"] = (id) =>
@@ -296,7 +288,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
   const issue = Effect.fnUntraced(function* (
     key: string,
     maxLifetimeMs: number,
-    httpBinding: Credential["httpBinding"],
+    bindToConnection: boolean,
     makeLease: (live: LiveLease) => Lease,
   ) {
     const id = randomBytes(18).toString("base64url");
@@ -307,7 +299,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       secret: Buffer.from(bearerToken),
       key,
       expiresAt,
-      httpBinding,
+      bindToConnection,
     };
     credential.lease = makeLease({ credential, revoked, authorize: Effect.succeed(true) });
     credentials.set(id, credential);
@@ -326,7 +318,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
       Effect.uninterruptible(
         Effect.suspend(() => {
           if (closed) return Effect.fail(new PluginMcpFailure("broker_closed"));
-          return issue("", defaultLifetimeMs, "mcp-session", (live) => ({
+          return issue("", DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS, false, (live) => ({
             ...live,
             kind: "catalog",
             source,
@@ -342,8 +334,7 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
     {
       approval = () => Effect.succeed("ask" as const),
       authorize = Effect.succeed(true),
-      maxLifetimeMs = defaultLifetimeMs,
-      httpBinding,
+      maxLifetimeMs = DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS,
     }: PluginMcpLeaseOptions = {},
   ) =>
     gate.withPermit(
@@ -376,14 +367,19 @@ export const makePluginMcpBroker = Effect.fn("PluginMcpBroker.make")(function* (
             upstreams.set(key, entry);
           }
           entry.refs++;
-          return yield* issue(key, maxLifetimeMs, httpBinding, (live) => ({
-            ...live,
-            kind: "server",
-            scope,
-            entry,
-            approval,
-            authorize,
-          }));
+          return yield* issue(
+            key,
+            maxLifetimeMs,
+            scope.principal.kind === "interface-view",
+            (live) => ({
+              ...live,
+              kind: "server",
+              scope,
+              entry,
+              approval,
+              authorize,
+            }),
+          );
         }),
       ),
     );

@@ -9,6 +9,8 @@ import type {
 } from "../../../shared/agent-plugins/mcp-lease";
 import type { AgentPluginMcpServer, AgentPluginSkill } from "../../../shared/agent-plugins/types";
 
+export const DEFAULT_PLUGIN_MCP_LEASE_LIFETIME_MS = 8 * 60 * 60 * 1_000;
+
 export class PluginMcpFailure extends Data.TaggedError("PluginMcpFailure")<{
   readonly code: PluginMcpFailureCode;
 }> {
@@ -61,8 +63,6 @@ export interface PluginMcpBrokerOptions {
 export interface PluginMcpLeaseOptions {
   readonly approval?: PluginMcpApproval;
   readonly authorize?: Effect.Effect<boolean>;
-  /** Bind a client that pools HTTP sockets to one MCP session issued on its first connection. */
-  readonly httpBinding?: "mcp-session";
   /** Maximum lifetime in milliseconds from issuance. Defaults to eight hours. */
   readonly maxLifetimeMs?: number;
 }

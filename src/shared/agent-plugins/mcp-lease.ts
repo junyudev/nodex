@@ -15,7 +15,7 @@ export interface PluginMcpLeaseScope {
   readonly principal: PluginMcpPrincipal;
 }
 
-/** The first authenticated HTTP connection binds the bearer. Keep it in trusted delivery code. */
+/** A scoped broker credential. Keep its bearer in trusted delivery code. */
 export interface PluginMcpLease {
   readonly id: string;
   readonly url: string;
