@@ -44,16 +44,17 @@ const makeEvents = () => {
 
 const makeWebSocketServer = Effect.fn("makeWebSocketServer")(function* () {
   const server = yield* Effect.acquireRelease(
-    Effect.sync(() => new WebSocketServer({ port: 0 })),
+    Effect.callback<WebSocketServer>((resume) => {
+      const server: WebSocketServer = new WebSocketServer({ port: 0 }, () => {
+        resume(Effect.succeed(server));
+      });
+    }),
     (server) =>
       Effect.callback<void>((resume) => {
         for (const peer of server.clients) peer.terminate();
         server.close(() => resume(Effect.void));
       }),
   );
-  yield* Effect.callback<void>((resume) => {
-    server.once("listening", () => resume(Effect.void));
-  });
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Missing server port");
   return {
