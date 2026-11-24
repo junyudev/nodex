@@ -65,7 +65,7 @@ Electron E2E, stress, performance, or macOS runtime in the merge loop.
 
 The `main complete` summary and the `main-ci-verdict` artifact carry the same
 JSON. Version 1 contains `runId`, `runAttempt`, `status` (`success` or `failure`),
-`range`, `commits` (oldest first, each with `sha` and `subject`), `failingGates`
+`range`, `commits` (oldest first, each with `sha`, `subject`, and Git `author`), `failingGates`
 (each with `id` and `result`), and `failingJobs` (each with `name`, `result`,
 `url`, `failedSteps`, and `failedTests`). Read the named artifact from the
 current run attempt. It is replaced on reruns.
@@ -78,6 +78,15 @@ basis before routing failures automatically. A null `failingJobs` or
 `failedTests` means GitHub evidence could not be read. An empty list means
 that no matching job or named test failure was found. Test names come from
 recognized Vitest, Cargo and nextest failure lines.
+
+### Red-main issue
+
+When verification fails on a push to `main`, the aggregate job opens a
+`main-ci-red` issue with the verdict and run link, creating the label as needed.
+Further red runs add their verdicts to the open issue. A green push comments
+with the verified commit and run, then closes the issue. Cancelled runs and
+manual dispatches leave the issue alone. A new issue starts Nodex's fix-forward
+automation. Only the aggregate job has issue-write permission.
 
 ## Windows tier
 

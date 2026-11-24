@@ -187,6 +187,37 @@ export const verifyMainCiBaseContract = (workflow: UnknownRecord): void => {
   ) {
     throw new Error("Main CI must publish the verdict even when verification fails.");
   }
+
+  const issue = steps.find(
+    (step) => step.run === "node --no-warnings scripts/ci/update-main-ci-issue.ts",
+  );
+  const issueEnv = requireRecord(issue?.env, "Main CI red-main issue environment");
+  const permissions = requireRecord(complete.permissions, "Main CI complete permissions");
+  const workflowPermissions = requireRecord(workflow.permissions, "Main CI workflow permissions");
+  const otherIssueWriters = Object.entries(jobs).some(
+    ([id, job]) =>
+      id !== "complete" &&
+      isRecord(job) &&
+      (job.permissions === "write-all" ||
+        (isRecord(job.permissions) && job.permissions.issues === "write")),
+  );
+  if (
+    Object.keys(permissions).length !== 3 ||
+    permissions.actions !== "read" ||
+    permissions.contents !== "read" ||
+    permissions.issues !== "write" ||
+    workflowPermissions.issues !== undefined ||
+    otherIssueWriters ||
+    report?.id !== "verdict" ||
+    issueEnv.GITHUB_TOKEN !== "${{ github.token }}" ||
+    issueEnv.CI_GATE_OUTCOME !== "${{ steps.verify.outcome }}" ||
+    issue?.if !==
+      "${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.verdict.outcome == 'success' && (steps.verify.outcome == 'failure' || success()) }}"
+  ) {
+    throw new Error(
+      "Only Main CI complete may update the red-main issue for a finished main push.",
+    );
+  }
 };
 
 const referencedNeeds = (value: unknown): ReadonlySet<string> => {

@@ -162,7 +162,10 @@ test("writes the landed range and failure evidence to the artifact and step summ
       schemaVersion: 1,
       status: "failure",
       range: { basis: "last-green", baseSha: base, headSha: head },
-      commits: [{ sha: git("rev-parse", "HEAD~1") }, { sha: head, subject: "Latest push" }],
+      commits: [
+        { sha: git("rev-parse", "HEAD~1"), subject: "Replaced pending push", author: "CI Fixture" },
+        { sha: head, subject: "Latest push", author: "CI Fixture" },
+      ],
       failingGates: [
         { id: "app-tests", result: "failure" },
         { id: "windows-checks", result: "failure" },
