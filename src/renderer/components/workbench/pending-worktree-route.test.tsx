@@ -93,7 +93,6 @@ function makeEntry(overrides: Partial<StartConversationEntry> = {}): StartConver
     worktreeGitRoot: null,
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
     ...overrides,
   };
 }

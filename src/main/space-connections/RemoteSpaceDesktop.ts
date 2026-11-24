@@ -250,9 +250,6 @@ const readModels = Layer.effectDiscard(
       projects.readPageChatActivitySummaries(input),
     );
     yield* ipc.handleQuery("page-chats:list", (_, input) => projects.listPageChatWindow(input));
-    yield* ipc.handleQuery("sidebar:builtin-order:list", (_, lane, input) =>
-      projects.listBuiltinSidebarOrder(lane, input),
-    );
     yield* ipc.handleQuery("sidebar-sections:list", (_, input) =>
       projects.listSidebarSections(input),
     );

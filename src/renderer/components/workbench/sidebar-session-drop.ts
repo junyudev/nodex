@@ -7,10 +7,7 @@ import {
 import { readSidebarSectionContainerId } from "../../../shared/sidebar-sections";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
-import {
-  listAllSidebarSectionItems,
-  readSidebarPinnedSessionOrder,
-} from "@/lib/sidebar-sections-api";
+import { listAllSidebarSectionItems } from "@/lib/sidebar-sections-api";
 import type { ProjectSession, ProjectSessionPlacement } from "@/lib/types";
 import type { WorkbenchSessionCatalog } from "@/lib/use-workbench-session-catalog";
 import {
@@ -35,23 +32,6 @@ export async function resolveSidebarDropSession(
   if (sessionId) return await catalog.readCurrent(sessionId);
   if (drop.threadId === null) return null;
   return await catalog.ensureThreadSession(drop.threadId);
-}
-
-async function pinSidebarSessionAtBoundary(
-  sessionId: string,
-  beforeSessionId: string | null | undefined,
-): Promise<void> {
-  await workspaceSessionCommands.setPinned(sessionId, { pinned: true });
-  if (beforeSessionId === undefined || beforeSessionId === null) return;
-  const order = await readSidebarPinnedSessionOrder();
-  const remaining = order.sessionIds.filter((id) => id !== sessionId);
-  const beforeIndex = remaining.indexOf(beforeSessionId);
-  if (beforeIndex < 0) throw new Error("Pinned chat position changed. Try the move again.");
-  await workspaceSessionCommands.reorderPinned(order.orderRevision, [
-    ...remaining.slice(0, beforeIndex),
-    sessionId,
-    ...remaining.slice(beforeIndex),
-  ]);
 }
 
 /**
@@ -140,13 +120,12 @@ export async function moveSidebarSession({
   }
 
   // The root Pinned lane owns projectless chats; Project pin lanes keep their Project.
-  // Pinning clears direct Section placement.
+  // Pinning clears direct Section placement and joins the end of the pins, so the chat then
+  // takes its drop position exactly like a chat placed in any other lane.
   if (target.pinned) {
-    await pinSidebarSessionAtBoundary(session.id, drop.beforeItemId);
-    return;
-  }
-  // Keep the Section placement until the execution owner's Project move succeeds.
-  if (readSidebarSectionContainerId(drop.sourceContainerId) !== null) {
+    await workspaceSessionCommands.setPinned(session.id, { pinned: true });
+  } else if (readSidebarSectionContainerId(drop.sourceContainerId) !== null) {
+    // Keep the Section placement until the execution owner's Project move succeeds.
     await workspaceSidebarCommands.moveItem({
       item: { kind: "session", sessionId: session.id },
       sectionId: null,

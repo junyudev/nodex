@@ -102,6 +102,7 @@ export function SidebarChatLaneSection({
   forcedVisibleKey,
   actions,
   renderThread,
+  renderRows,
 }: {
   shelf: SidebarChatShelf;
   threadKeys: readonly string[];
@@ -118,6 +119,8 @@ export function SidebarChatLaneSection({
   forcedVisibleKey: string | null;
   actions?: ReactNode;
   renderThread: (threadKey: string) => ReactNode;
+  /** Renders the visible rows together, for a lane whose rows drag into a new order. */
+  renderRows?: (visibleThreadKeys: readonly string[]) => ReactNode;
 }) {
   const intl = useIntl();
   const heading = intl.formatMessage(SHELF_HEADINGS[shelf]);
@@ -168,7 +171,9 @@ export function SidebarChatLaneSection({
             <div className="isolate flex flex-col [contain:layout]">
               <div className="flex flex-col" role="list" aria-label={heading}>
                 <SidebarPaginatedRows>
-                  {pagination.visibleItems.map((threadKey) => renderThread(threadKey))}
+                  {renderRows
+                    ? renderRows(pagination.visibleItems)
+                    : pagination.visibleItems.map((threadKey) => renderThread(threadKey))}
                   {pagination.visibleItems.length === 0 || state.kind === "error" ? (
                     <ShelfFallback shelf={shelf} state={state} onRetry={onRetry} />
                   ) : null}

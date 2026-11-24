@@ -3497,13 +3497,44 @@ export function renderWorkbench({
         sessionId: string;
       };
       return completeWorkspaceCommand(command, command, () => {
-        const projectKey = Object.keys(sessionState).find((key) =>
-          sessionState[key]?.some((session) => session.id === sessionId),
-        );
-        if (!projectKey) return { changed: false, value: undefined };
+        const moved = Object.values(sessionState)
+          .flat()
+          .find((session) => session.id === sessionId);
+        if (moved?.pinned) {
+          // A pinned chat moves within the one pin order every pinned lane shows a part of.
+          const pins = Object.values(sessionState)
+            .flat()
+            .filter((session) => session.pinned && session.id !== sessionId)
+            .sort((left, right) => (left.pinnedOrder ?? 0) - (right.pinnedOrder ?? 0));
+          const anchor = pins.findIndex((session) => session.id === placement.sessionId);
+          if (anchor < 0) return { changed: false, value: undefined };
+          pins.splice(anchor + Number(placement.kind === "after"), 0, moved);
+          const rankBySessionId = new Map(pins.map((session, rank) => [session.id, rank]));
+          const reranked = <Item extends { pinnedOrder: number | null }>(
+            item: Item,
+            id: string | null | undefined,
+          ): Item => {
+            const rank = id ? rankBySessionId.get(id) : undefined;
+            return rank === undefined || rank === item.pinnedOrder
+              ? item
+              : { ...item, pinnedOrder: rank };
+          };
+          sessionState = Object.fromEntries(
+            Object.entries(sessionState).map(([scope, sessions]) => [
+              scope,
+              sortProjectSessionsForTest(sessions.map((session) => reranked(session, session.id))),
+            ]),
+          );
+          sidebarItemState = sidebarItemState.map((item) => reranked(item, item.sessionId));
+          return { changed: true, value: undefined };
+        }
+        const projectKey = moved
+          ? Object.keys(sessionState).find((key) =>
+              sessionState[key]?.some((session) => session.id === sessionId),
+            )
+          : undefined;
+        if (!moved || !projectKey) return { changed: false, value: undefined };
         const current = sessionState[projectKey] ?? [];
-        const moved = current.find((session) => session.id === sessionId);
-        if (!moved) return { changed: false, value: undefined };
         const next = current.filter((session) => session.id !== sessionId);
         const anchor = next.findIndex((session) => session.id === placement.sessionId);
         if (anchor < 0) return { changed: false, value: undefined };
@@ -4236,33 +4267,6 @@ export function renderWorkbench({
     if (channel === "project-sessions:settle-idle") {
       const command = readWorkspaceCommandEnvelope(channel, args);
       return completeWorkspaceCommand(command, command, () => ({ changed: false, value: null }));
-    }
-    if (channel === "project-sessions:set-pinned-order") {
-      const command = readWorkspaceCommandEnvelope(channel, args);
-      const projectId = String(command.payload.projectId);
-      const orderedSessionIds = Array.isArray(command.payload.orderedSessionIds)
-        ? command.payload.orderedSessionIds.map(String)
-        : [];
-      return completeWorkspaceCommand(command, command, () => {
-        const sessions = sessionState[projectId] ?? [];
-        const pinnedOrder = new Map(
-          orderedSessionIds.map((sessionId, index) => [sessionId, index]),
-        );
-        const next = sessions.map((session) => {
-          const order = pinnedOrder.get(session.id);
-          if (order === undefined) return session;
-          return { ...session, pinned: true, pinnedOrder: order };
-        });
-        const changed = next.some(
-          (session, index) =>
-            session.pinned !== sessions[index]?.pinned ||
-            session.pinnedOrder !== sessions[index]?.pinnedOrder,
-        );
-        if (changed) {
-          sessionState = { ...sessionState, [projectId]: sortProjectSessionsForTest(next) };
-        }
-        return { changed, value: undefined };
-      });
     }
     if (channel === "codex:thread:archive") {
       const threadId = String(args[0]);

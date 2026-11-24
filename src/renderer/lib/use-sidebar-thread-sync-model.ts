@@ -20,7 +20,6 @@ import {
 } from "./api";
 import {
   readCodexSidebarSnapshot,
-  reorderCodexSidebarPinnedThreads,
   setCodexSidebarThreadPinned,
   synchronizeCodexSidebar,
 } from "./codex-sidebar-runtime";
@@ -80,7 +79,6 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
   applySnapshot: (snapshot: CodexSidebarSnapshot) => void;
   refresh: () => Promise<CodexSidebarSnapshot>;
   setPinned: (threadId: string, pinned: boolean) => Promise<CodexSidebarSnapshot>;
-  reorderPinned: (orderedThreadIds: readonly string[]) => Promise<CodexSidebarSnapshot>;
 } {
   const { projects } = input;
   // This desktop's own native chats; a window whose chats run on its Space host has none to sync.
@@ -315,15 +313,6 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
     [applySnapshot],
   );
 
-  const reorderPinned = useCallback(
-    async (orderedThreadIds: readonly string[]) => {
-      const refreshed = await reorderCodexSidebarPinnedThreads(orderedThreadIds);
-      applySnapshot(refreshed);
-      return refreshed;
-    },
-    [applySnapshot],
-  );
-
   return {
     snapshot,
     model,
@@ -331,6 +320,5 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
     applySnapshot,
     refresh,
     setPinned,
-    reorderPinned,
   };
 }

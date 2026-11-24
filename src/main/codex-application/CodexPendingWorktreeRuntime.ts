@@ -94,10 +94,6 @@ export class CodexPendingWorktreeRuntime extends Context.Service<
     readonly cancel: (pendingWorktreeId: string) => Effect.Effect<void>;
     readonly rename: (pendingWorktreeId: string, label: string) => Effect.Effect<void>;
     readonly setPinned: (pendingWorktreeId: string, isPinned: boolean) => Effect.Effect<void>;
-    readonly setPinnedBeforeThreadId: (
-      pendingWorktreeId: string,
-      beforeThreadId: string | null,
-    ) => Effect.Effect<void>;
     readonly clearAttention: (pendingWorktreeId: string) => Effect.Effect<void>;
   }
 >()("nodex/main/codex-application/CodexPendingWorktreeRuntime") {}
@@ -778,15 +774,6 @@ export const make: Effect.Effect<
     setPinned: (pendingWorktreeId, isPinned) =>
       Effect.sync(() => {
         updateMetadata(pendingWorktreeId, { type: "isPinned", isPinned });
-        if (isPinned) return;
-        updateMetadata(pendingWorktreeId, {
-          type: "pinnedBeforeThreadId",
-          beforeThreadId: null,
-        });
-      }),
-    setPinnedBeforeThreadId: (pendingWorktreeId, beforeThreadId) =>
-      Effect.sync(() => {
-        updateMetadata(pendingWorktreeId, { type: "pinnedBeforeThreadId", beforeThreadId });
       }),
     clearAttention: (pendingWorktreeId) =>
       Effect.sync(() => {

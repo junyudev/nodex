@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::test_support::enroll_remote_member;
 use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
 use nodex_core_contracts::library::*;
 
@@ -19,45 +20,6 @@ fn board(w: &TestWorkspace) {
             page_key_prefix: None,
         },
     );
-}
-
-fn requesting_member(w: &TestWorkspace) -> nodex_core_contracts::BoundModuleContext {
-    use nodex_core_contracts::{AdapterKind, team::*};
-    let membership = crate::library::LibraryMembership::new(&w.kernel, "library-1".into());
-    membership.prepare_hosting().unwrap();
-    let invite = membership
-        .invite(
-            InviteRequest {
-                role: MemberRole::Member,
-                member_id: None,
-            },
-            ListenerInfo {
-                peer_policy: Default::default(),
-                routes: vec![],
-                url: "https://localhost".into(),
-                fingerprint: "test".into(),
-            },
-        )
-        .unwrap();
-    let enrolled = membership
-        .enroll(EnrollmentRequest {
-            form_factor: Default::default(),
-            code: invite.code,
-            device_label: "Laptop".into(),
-            display_name: "Bob".into(),
-        })
-        .unwrap();
-    let session = membership
-        .session(SessionRequest {
-            device_credential: enrolled.device_credential,
-        })
-        .unwrap();
-    nodex_core_contracts::BoundModuleContext {
-        adapter: AdapterKind::RemoteMember,
-        principal: Some(session.principal),
-        project_id: None,
-        ..context()
-    }
 }
 
 fn attribution(w: &TestWorkspace, page: &str) -> (serde_json::Value, Option<String>) {
@@ -102,7 +64,7 @@ fn intake(w: &TestWorkspace, github: bool) -> ProjectWorkspaceInboxItem {
             )],
         );
     } else {
-        let author = requesting_member(w);
+        let author = enroll_remote_member(w, "Bob");
         w.module
             .apply(
                 &author,

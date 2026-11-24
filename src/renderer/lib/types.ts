@@ -72,7 +72,6 @@ export type {
   ProjectSessionForkResult,
   ProjectSessionListOptions,
   ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
   ProjectSessionPlacement,
   WorkbenchTabProjection,
   WorkbenchProjectionDbViewTabConfig,

@@ -350,14 +350,13 @@ it.effect("materializes the Session before pinning a discovered Thread", () =>
         },
       });
 
-      yield* service.setPinned(" thread-discovered ", true, "thread-before");
+      yield* service.setPinned(" thread-discovered ", true);
 
       assert.deepEqual(events, ["session:ensured", "pin:applied", "sidebar:published"]);
       assert.deepEqual((applied[0] as { intent: unknown }).intent, {
         kind: "set_thread_pinned",
         thread_id: "thread-discovered",
         pinned: true,
-        placement: { kind: "before", thread_id: "thread-before" },
       });
     }),
   ),

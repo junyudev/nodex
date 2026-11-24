@@ -387,20 +387,6 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* invokeEffectQuery("sidebar:builtin-order:list", (_, lane, input) =>
-      projects.listBuiltinSidebarOrder(lane, input),
-    );
-    yield* handleLocalCommitCommand("sidebar:builtin-order:reorder", (event, command) =>
-      authorize(event).pipe(
-        Effect.andThen(
-          catalogCommand(
-            "sidebar:builtin-order:reorder",
-            command,
-            projects.reorderBuiltinSidebarItems(command),
-          ),
-        ),
-      ),
-    );
     yield* invokeEffectQuery("sidebar-sections:list", (_, input) =>
       projects.listSidebarSections(input),
     );
@@ -671,17 +657,6 @@ export const live: Layer.Layer<
             "project-sessions:set-pinned",
             command,
             projectSessions.setPinned(command),
-          ),
-        ),
-      ),
-    );
-    yield* handleLocalCommitCommand("project-sessions:set-pinned-order", (event, command) =>
-      authorize(event).pipe(
-        Effect.andThen(
-          catalogCommand(
-            "project-sessions:set-pinned-order",
-            command,
-            projects.setPinnedProjectSessionOrder(command),
           ),
         ),
       ),

@@ -1,4 +1,5 @@
-use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent};
+use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent, MemberRole};
+use nodex_core_contracts::team::{EnrollmentRequest, InviteRequest, ListenerInfo, SessionRequest};
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
     ProjectWorkspaceThreadPatch,
@@ -81,6 +82,47 @@ pub(super) fn seeded_workspace() -> TestWorkspace {
     let workspace = library_only_workspace();
     workspace.module.seed_rootless_default_project_for_test();
     workspace
+}
+
+pub(super) fn enroll_remote_member(
+    workspace: &TestWorkspace,
+    display_name: &str,
+) -> BoundModuleContext {
+    let membership = crate::library::LibraryMembership::new(&workspace.kernel, "library-1".into());
+    membership.prepare_hosting().unwrap();
+    let invite = membership
+        .invite(
+            InviteRequest {
+                role: MemberRole::Member,
+                member_id: None,
+            },
+            ListenerInfo {
+                peer_policy: Default::default(),
+                routes: vec![],
+                url: "https://localhost".into(),
+                fingerprint: "test".into(),
+            },
+        )
+        .unwrap();
+    let enrolled = membership
+        .enroll(EnrollmentRequest {
+            form_factor: Default::default(),
+            code: invite.code,
+            device_label: "Laptop".into(),
+            display_name: display_name.into(),
+        })
+        .unwrap();
+    let session = membership
+        .session(SessionRequest {
+            device_credential: enrolled.device_credential,
+        })
+        .unwrap();
+    BoundModuleContext {
+        adapter: AdapterKind::RemoteMember,
+        principal: Some(session.principal),
+        project_id: None,
+        ..context()
+    }
 }
 
 pub(super) fn request(

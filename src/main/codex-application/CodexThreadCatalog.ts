@@ -63,7 +63,6 @@ export class CodexThreadCatalog extends Context.Service<
     readonly setPinned: (
       threadId: string,
       pinned: boolean,
-      beforeThreadId?: string | null,
     ) => Effect.Effect<CodexSidebarSnapshot, CodexThreadCatalogError>;
     readonly reorderPinned: (
       orderedThreadIds: readonly string[],
@@ -401,7 +400,7 @@ export const make = (): Effect.Effect<
         sidebar
           .ensureSession(threadId)
           .pipe(Effect.mapError((cause) => error("ensure-session", cause))),
-      setPinned: (threadId, pinned, beforeThreadId) => {
+      setPinned: (threadId, pinned) => {
         const normalized = threadId.trim();
         if (!normalized) return runOwned(readSnapshot());
         return runMutation(
@@ -415,14 +414,6 @@ export const make = (): Effect.Effect<
                 kind: "set_thread_pinned",
                 thread_id: normalized,
                 pinned,
-                ...(!pinned || beforeThreadId === undefined
-                  ? {}
-                  : {
-                      placement:
-                        beforeThreadId === null
-                          ? { kind: "end" as const }
-                          : { kind: "before" as const, thread_id: beforeThreadId },
-                    }),
               },
             });
             return yield* publish({

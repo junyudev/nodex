@@ -279,13 +279,14 @@ pub fn authorize(
                 )
             )
         }
+        // Core's writer lets a remote Member place only their own pins.
         // A Member opens a default draft of their own; Core keeps each Member's draft theirs.
         // A Member finishes only their own idle chats.
         "workspace_apply" => matches!(
             kind,
             "move_session"
+                | "place_session"
                 | "ensure_default_draft_session"
-                | "reorder_pinned_sessions"
                 | "settle_idle_sessions"
                 | "set_sessions_settled"
                 | "set_inbox_routing_consent"
@@ -446,7 +447,7 @@ mod inbox_tests {
         }
         for kind in [
             "move_session",
-            "reorder_pinned_sessions",
+            "place_session",
             "ensure_default_draft_session",
             "settle_idle_sessions",
         ] {

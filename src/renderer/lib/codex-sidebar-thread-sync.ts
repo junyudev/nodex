@@ -9,10 +9,7 @@ import {
   codexSidebarProjectThreadContainerId,
   type CodexSidebarThreadContainerId,
 } from "../../shared/codex-sidebar-thread-move";
-import {
-  CODEX_AGENT_BACKEND_BINDING,
-  isCodexAgentBackendBinding,
-} from "../../shared/agent-backend";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 
 export interface CodexSidebarProjectGroup {
   project: Project;
@@ -28,11 +25,6 @@ export interface CodexSidebarThreadSyncModel {
   projectlessThreadKeys: string[];
 }
 
-export interface CodexPendingPinnedBeforeThreadUpdate {
-  pendingWorktreeId: string;
-  beforeThreadId: string | null;
-}
-
 export function isCodexSidebarRootThread(
   thread: { readonly parentThreadId?: string | null } | null | undefined,
 ): boolean {
@@ -41,11 +33,6 @@ export function isCodexSidebarRootThread(
 
 export function isCodexSidebarThreadItemVisible(item: CodexSidebarThreadItem): boolean {
   return item.kind === "remote" || isCodexSidebarRootThread(item);
-}
-
-/** Cross-container and canonical-order mutation remains owned by the Codex backend. */
-export function isCodexSidebarThreadItemReorderable(item: CodexSidebarThreadItem): boolean {
-  return isCodexAgentBackendBinding(item.backendBinding);
 }
 
 export function codexSidebarLocalThreadKey(threadIdentity: string): string {
@@ -108,7 +95,6 @@ export function mergePendingWorktreesIntoSidebarSnapshot(
           : { kind: "remote-worktree", hostId: entry.hostId, path: worktreePath, phase },
         pendingWorktreeId: entry.id,
         clientThreadId: entry.clientThreadId,
-        pinnedBeforeThreadId: entry.pinnedBeforeThreadId,
         hostId: entry.hostId,
         threadId: entry.clientThreadId,
         parentThreadId: null,
@@ -148,50 +134,34 @@ export function mergePendingWorktreesIntoSidebarSnapshot(
   };
 }
 
-/** Exact `we`: insert pending pinned rows into the persisted real-thread order. */
+/** Show pending pins in snapshot order after the realized pins. */
 export function orderCodexSidebarPinnedThreadKeys(input: {
   threadKeys: readonly string[];
   pinnedThreadIds: readonly string[];
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
 }): string[] {
-  const pinnedThreadIds = new Set(input.pinnedThreadIds);
   const realThreadKeyById = new Map<string, string>();
-  const pendingKeysByBeforeThreadId = new Map<string | null, string[]>();
+  const pendingKeys: string[] = [];
 
   for (const threadKey of input.threadKeys) {
     const item = input.itemsByKey.get(threadKey);
     if (!item?.pinned) continue;
     if (item.pendingWorktreeId) {
-      const beforeThreadId = item.pinnedBeforeThreadId ?? null;
-      const pendingKeys = pendingKeysByBeforeThreadId.get(beforeThreadId) ?? [];
       pendingKeys.push(threadKey);
-      pendingKeysByBeforeThreadId.set(beforeThreadId, pendingKeys);
       continue;
     }
-    if (pinnedThreadIds.has(item.threadId)) {
-      realThreadKeyById.set(item.threadId, threadKey);
-    }
+    realThreadKeyById.set(item.threadId, threadKey);
   }
 
   const orderedKeys: string[] = [];
-  const appendPendingBefore = (threadId: string | null) => {
-    const keys = pendingKeysByBeforeThreadId.get(threadId);
-    if (!keys) return;
-    orderedKeys.push(...keys);
-    pendingKeysByBeforeThreadId.delete(threadId);
-  };
   for (const threadId of input.pinnedThreadIds) {
-    appendPendingBefore(threadId);
     const threadKey = realThreadKeyById.get(threadId);
     if (threadKey) orderedKeys.push(threadKey);
   }
-  appendPendingBefore(null);
-  for (const keys of pendingKeysByBeforeThreadId.values()) orderedKeys.push(...keys);
-  return orderedKeys;
+  return [...orderedKeys, ...pendingKeys];
 }
 
-/** Exact `X`: pending rows do not enter the persisted real pinned-thread array. */
-export function listRealThreadIdsForSidebarKeys(
+function listRealThreadIdsForSidebarKeys(
   threadKeys: readonly string[],
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>,
 ): string[] {
@@ -199,37 +169,6 @@ export function listRealThreadIdsForSidebarKeys(
     const item = itemsByKey.get(threadKey);
     return item && !item.pendingWorktreeId ? [item.threadId] : [];
   });
-}
-
-/** Exact `Z`/`Te`: each pending row points to the next realized thread after reorder. */
-export function listPendingPinnedBeforeThreadUpdates(input: {
-  sortablePinnedThreadKeys: readonly string[];
-  itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
-}): CodexPendingPinnedBeforeThreadUpdate[] {
-  const updates: CodexPendingPinnedBeforeThreadUpdate[] = [];
-  for (const [index, threadKey] of input.sortablePinnedThreadKeys.entries()) {
-    const item = input.itemsByKey.get(threadKey);
-    if (!item?.pendingWorktreeId) continue;
-    let beforeThreadId: string | null = null;
-    for (
-      let nextIndex = index + 1;
-      nextIndex < input.sortablePinnedThreadKeys.length;
-      nextIndex += 1
-    ) {
-      const nextKey = input.sortablePinnedThreadKeys[nextIndex];
-      if (!nextKey) continue;
-      const nextItem = input.itemsByKey.get(nextKey);
-      if (!nextItem || nextItem.pendingWorktreeId) continue;
-      beforeThreadId = nextItem.threadId;
-      break;
-    }
-    if ((item.pinnedBeforeThreadId ?? null) === beforeThreadId) continue;
-    updates.push({
-      pendingWorktreeId: item.pendingWorktreeId,
-      beforeThreadId,
-    });
-  }
-  return updates;
 }
 
 function sameUniqueStringSet(left: readonly string[], right: readonly string[]): boolean {
@@ -264,56 +203,6 @@ export function replaceVisibleCodexSidebarThreadKeyOrder(input: {
     nextVisibleIndex += 1;
     return replacement ?? threadKey;
   });
-}
-
-export function listReorderableCodexSidebarChatKeys(input: {
-  visibleThreadKeys: readonly string[];
-  getSessionId: (threadKey: string) => string | null;
-}): string[] {
-  return input.visibleThreadKeys.filter((threadKey) => input.getSessionId(threadKey) !== null);
-}
-
-/** Exact visible-slot replacement used before persisting the real pinned IDs. */
-export function mergeVisibleCodexPinnedThreadOrder(input: {
-  pinnedThreadIds: readonly string[];
-  visibleThreadKeys: readonly string[];
-  nextVisibleThreadKeys: readonly string[];
-  itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
-}): string[] {
-  const pinnedThreadIdSet = new Set(input.pinnedThreadIds);
-  const visibleThreadIds = listRealThreadIdsForSidebarKeys(
-    input.visibleThreadKeys,
-    input.itemsByKey,
-  ).filter((threadId) => pinnedThreadIdSet.has(threadId));
-  const nextVisibleThreadIds = listRealThreadIdsForSidebarKeys(
-    input.nextVisibleThreadKeys,
-    input.itemsByKey,
-  ).filter((threadId) => pinnedThreadIdSet.has(threadId));
-  const visibleThreadIdSet = new Set(visibleThreadIds);
-  let nextIndex = 0;
-  return input.pinnedThreadIds.flatMap((threadId) => {
-    if (!visibleThreadIdSet.has(threadId)) return [threadId];
-    const replacement = nextVisibleThreadIds[nextIndex];
-    nextIndex += 1;
-    return replacement ? [replacement] : [];
-  });
-}
-
-export function buildCodexSidebarPinnedReorderMutation(input: {
-  pinnedThreadIds: readonly string[];
-  visibleThreadKeys: readonly string[];
-  nextVisibleThreadKeys: readonly string[];
-  itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
-}): {
-  pendingUpdates: CodexPendingPinnedBeforeThreadUpdate[];
-  pinnedThreadIds: string[];
-} {
-  const pendingUpdates = listPendingPinnedBeforeThreadUpdates({
-    sortablePinnedThreadKeys: input.nextVisibleThreadKeys,
-    itemsByKey: input.itemsByKey,
-  });
-  const pinnedThreadIds = mergeVisibleCodexPinnedThreadOrder(input);
-  return { pendingUpdates, pinnedThreadIds };
 }
 
 type SidebarThreadSortSession = Pick<
@@ -392,7 +281,7 @@ export function sortSidebarThreadKeysForDisplay(input: {
     .map((entry) => entry.key);
 }
 
-/** Merge durable Session pins before applying pending-worktree anchors. */
+/** Sort realized pins by Session order and append pending pins. */
 export function orderSidebarPinnedSessionKeys(input: {
   threadKeys: readonly string[];
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;

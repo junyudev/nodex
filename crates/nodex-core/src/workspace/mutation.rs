@@ -955,19 +955,6 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::RecordSessionActivity { entries } => session_lifecycle::record_session_activity(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, entries,
                 ),
-                ProjectWorkspaceIntent::ReorderPinnedSessions {
-                    project_id,
-                    session_ids,
-                } => session_lifecycle::reorder_pinned_sessions(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    project_id.as_deref(),
-                    session_ids,
-                ),
                 ProjectWorkspaceIntent::UpsertThread { thread_id, patch } => thread::upsert_thread(
                     transaction,
                     &library_id,
@@ -4614,9 +4601,11 @@ mod tests {
                 &context(),
                 request(
                     "workspace-session-reorder-pinned",
-                    ProjectWorkspaceIntent::ReorderPinnedSessions {
-                        project_id: Some("project-native".to_owned()),
-                        session_ids: vec!["session-b".to_owned(), "session-a".to_owned()],
+                    ProjectWorkspaceIntent::PlaceSession {
+                        session_id: "session-b".to_owned(),
+                        placement: nodex_core_contracts::workspace::ProjectWorkspaceSessionPlacement::Before {
+                            session_id: "session-a".to_owned(),
+                        },
                     },
                 ),
             )

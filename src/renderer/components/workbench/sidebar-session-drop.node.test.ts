@@ -10,20 +10,14 @@ import type { SidebarThreadDropRequest } from "./sidebar-thread-reorder";
 
 const commands = vi.hoisted(() => ({
   listItems: vi.fn<() => Promise<SidebarSectionItem[]>>(),
-  readPinnedOrder: vi.fn(async () => ({
-    orderRevision: "pins:3",
-    sessionIds: ["session-draft", "session-beta", "session-alpha"],
-  })),
   moveItem: vi.fn(async (_input: unknown) => undefined),
   moveSession: vi.fn(async (_input: unknown) => undefined),
   place: vi.fn(async (_sessionId: string, _placement: unknown) => undefined),
   setPinned: vi.fn(async (_sessionId: string, _input: unknown) => undefined),
-  reorderPinned: vi.fn(async (_revision: string, _sessionIds: readonly string[]) => undefined),
 }));
 
 vi.mock("@/lib/sidebar-sections-api", () => ({
   listAllSidebarSectionItems: commands.listItems,
-  readSidebarPinnedSessionOrder: commands.readPinnedOrder,
 }));
 vi.mock("@/lib/agent-runtime-runtime", () => ({
   agentRuntimeRuntime: { moveSession: commands.moveSession },
@@ -33,7 +27,6 @@ vi.mock("@/lib/workspace-catalog-commands", () => ({
   workspaceSessionCommands: {
     place: commands.place,
     setPinned: commands.setPinned,
-    reorderPinned: commands.reorderPinned,
   },
 }));
 
@@ -422,17 +415,25 @@ describe("Sidebar Session moves", () => {
     );
   });
 
-  test("inserts into Pinned at a Session boundary while retaining draft and other Project slots", async () => {
+  test("pins a chat at the drop boundary by placing it beside the pin below it", async () => {
+    const events: string[] = [];
     const moveNativeThread = vi.fn(async (_input: SidebarThreadDropRequest) => ({
       operationId: "move-alpha",
       projectionRevision: 5,
     }));
+    commands.setPinned.mockImplementationOnce(async () => {
+      events.push("pin");
+    });
+    commands.place.mockImplementationOnce(async () => {
+      events.push("place");
+    });
     await moveSidebarSession({
       drop: {
         ...drop,
         targetContainerId: "pinned",
         beforeThreadId: "runtime-root-beta",
         beforeItemId: "session-beta",
+        targetItemIds: ["session-draft", "session-beta"],
       },
       session: nativeSession,
       moveNativeThread,
@@ -440,23 +441,12 @@ describe("Sidebar Session moves", () => {
     expect(moveNativeThread).toHaveBeenCalledWith(
       expect.objectContaining({ beforeThreadId: null, useDefaultOrder: true }),
     );
+    expect(events).toEqual(["pin", "place"]);
     expect(commands.setPinned).toHaveBeenCalledWith(nativeSession.id, { pinned: true });
-    expect(commands.reorderPinned).toHaveBeenCalledWith("pins:3", [
-      "session-draft",
-      nativeSession.id,
-      "session-beta",
-    ]);
-  });
-
-  test("surfaces a concurrent Pinned reorder conflict instead of silently accepting the wrong position", async () => {
-    commands.reorderPinned.mockRejectedValueOnce(new Error("Pinned order changed"));
-    await expect(
-      moveSidebarSession({
-        drop: { ...drop, targetContainerId: "pinned", beforeItemId: "session-beta" },
-        session: nativeSession,
-        moveNativeThread: vi.fn(async () => ({ operationId: "move-alpha", projectionRevision: 5 })),
-      }),
-    ).rejects.toThrow("Pinned order changed");
+    expect(commands.place).toHaveBeenCalledWith(nativeSession.id, {
+      kind: "before",
+      sessionId: "session-beta",
+    });
   });
 });
 

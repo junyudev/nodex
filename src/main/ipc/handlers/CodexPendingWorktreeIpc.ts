@@ -187,22 +187,6 @@ export const live: Layer.Layer<
         ),
     );
     yield* handlePlainCommand(
-      "codex:pending-worktree:set-pinned-before-thread",
-      (_, hostId, pendingWorktreeId, beforeThreadId) =>
-        requireOwned(hostId, pendingWorktreeId).pipe(
-          Effect.andThen(
-            validate("set-pinned-before-thread", () =>
-              beforeThreadId === null
-                ? null
-                : requireIdentifier(beforeThreadId, "Before thread id"),
-            ),
-          ),
-          Effect.flatMap((validated) =>
-            pending.setPinnedBeforeThreadId(pendingWorktreeId, validated),
-          ),
-        ),
-    );
-    yield* handlePlainCommand(
       "codex:pending-worktree:clear-attention",
       (_, hostId, pendingWorktreeId) =>
         requireOwned(hostId, pendingWorktreeId).pipe(

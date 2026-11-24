@@ -17,7 +17,6 @@ import type {
   ProjectSessionCreateInput,
   ProjectSessionPlacement,
   ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
   ProjectSessionSettledInput,
@@ -123,20 +122,6 @@ export const workspaceCatalogCommandDefinitions = {
   sessionSetManaged: defineLocalCommitRendererCommand({
     key: "workspace.session.set-managed",
     channel: "project-sessions:set-managed",
-    authority: "core",
-    owner: "workbench-session-catalog",
-    protocol: receiptFenced("pending"),
-  }),
-  sessionSetPinnedOrder: defineLocalCommitRendererCommand({
-    key: "workspace.session.set-pinned-order",
-    channel: "project-sessions:set-pinned-order",
-    authority: "core",
-    owner: "workbench-session-catalog",
-    protocol: receiptFenced("pending"),
-  }),
-  sessionReorderPinned: defineLocalCommitRendererCommand({
-    key: "workspace.session.reorder-pinned",
-    channel: "sidebar:builtin-order:reorder",
     authority: "core",
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
@@ -269,8 +254,6 @@ const {
   sessionPlace: sessionPlaceCommand,
   sessionSetPinned: sessionSetPinnedCommand,
   sessionSetManaged: sessionSetManagedCommand,
-  sessionSetPinnedOrder: sessionSetPinnedOrderCommand,
-  sessionReorderPinned: sessionReorderPinnedCommand,
   sessionArchive: sessionArchiveCommand,
   sessionUnarchive: sessionUnarchiveCommand,
   sessionRecordOpened: sessionRecordOpenedCommand,
@@ -395,20 +378,6 @@ export const workspaceSessionCommands = {
       await invokeLocalCommitCommand(sessionSetManagedCommand, {
         operationId: operation("session.set-managed"),
         payload: { sessionId, ...input },
-      })
-    ).value,
-  setPinnedOrder: async (projectId: string, input: ProjectSessionPinnedOrderInput) =>
-    (
-      await invokeLocalCommitCommand(sessionSetPinnedOrderCommand, {
-        operationId: operation("session.set-pinned-order"),
-        payload: { projectId, ...input },
-      })
-    ).value,
-  reorderPinned: async (expectedOrderRevision: string, sessionIds: readonly string[]) =>
-    (
-      await invokeLocalCommitCommand(sessionReorderPinnedCommand, {
-        operationId: operation("session.reorder-pinned"),
-        payload: { lane: "pinned_sessions", expectedOrderRevision, itemIds: sessionIds },
       })
     ).value,
   archive: async (sessionId: string) =>

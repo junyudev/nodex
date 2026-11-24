@@ -65,7 +65,6 @@ import type {
   ProjectSessionDeleteCommandInput,
   ProjectSessionEnsureDefaultDraftCommandInput,
   ProjectSessionPinnedCommandInput,
-  ProjectSessionPinnedOrderCommandInput,
   ProjectSessionRenameCommandInput,
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
@@ -350,9 +349,6 @@ export interface ProjectWorkspaceService {
   readonly setProjectSessionPinned: (
     command: ProjectSessionPinnedCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
-  readonly setPinnedProjectSessionOrder: (
-    command: ProjectSessionPinnedOrderCommandInput,
-  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly archiveProjectSession: (
     command: ProjectSessionArchiveCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
@@ -516,10 +512,6 @@ export interface ProjectWorkspaceService {
   readonly setThreadPinned: (
     threadId: string,
     pinned: boolean,
-    beforeThreadId?: string | null,
-  ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceSidebar>;
-  readonly reorderPinnedThreads: (
-    orderedThreadIds: readonly string[],
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceSidebar>;
 }
 
@@ -1621,17 +1613,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
-    const setPinnedProjectSessionOrder = Effect.fn("ProjectWorkspace.setPinnedProjectSessionOrder")(
-      function* (command: ProjectSessionPinnedOrderCommandInput) {
-        const applied = yield* applyWithId("session.pinned.reorder", command.operationId, {
-          kind: "reorder_pinned_sessions",
-          project_id: command.payload.projectId,
-          session_ids: command.payload.orderedSessionIds,
-        });
-        return { value: undefined, apply: applied };
-      },
-    );
-
     const setProjectSessionArchived = Effect.fn("ProjectWorkspace.setProjectSessionArchived")(
       function* (command: ProjectSessionArchiveCommandInput, archived: boolean) {
         const { sessionId } = command.payload;
@@ -1941,7 +1922,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       deleteProjectSession,
       placeProjectSession,
       setProjectSessionPinned,
-      setPinnedProjectSessionOrder,
       archiveProjectSession: (command) => setProjectSessionArchived(command, true),
       unarchiveProjectSession: (command) => setProjectSessionArchived(command, false),
       recordProjectSessionOpened,
@@ -2364,34 +2344,15 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           new Error(`Updated Core background process not found: ${input.id}`),
         );
       }),
-      setThreadPinned: Effect.fn("ProjectWorkspace.setThreadPinned")(
-        function* (threadId, pinned, beforeThreadId) {
-          yield* apply("thread.pinned.set", {
-            kind: "set_thread_pinned",
-            thread_id: threadId,
-            pinned,
-            ...(!pinned || beforeThreadId === undefined
-              ? {}
-              : {
-                  placement:
-                    beforeThreadId === null
-                      ? { kind: "end" as const }
-                      : { kind: "before" as const, thread_id: beforeThreadId },
-                }),
-          }).pipe(Effect.catch((error) => (isNotFound(error) ? Effect.void : Effect.fail(error))));
-          const thread = yield* getThread(threadId);
-          return mutationSidebarReceipt(thread ? [thread] : []);
-        },
-      ),
-      reorderPinnedThreads: Effect.fn("ProjectWorkspace.reorderPinnedThreads")(
-        function* (orderedThreadIds) {
-          yield* apply("thread.pinned.reorder", {
-            kind: "reorder_pinned_threads",
-            thread_ids: [...orderedThreadIds],
-          });
-          return mutationSidebarReceipt();
-        },
-      ),
+      setThreadPinned: Effect.fn("ProjectWorkspace.setThreadPinned")(function* (threadId, pinned) {
+        yield* apply("thread.pinned.set", {
+          kind: "set_thread_pinned",
+          thread_id: threadId,
+          pinned,
+        }).pipe(Effect.catch((error) => (isNotFound(error) ? Effect.void : Effect.fail(error))));
+        const thread = yield* getThread(threadId);
+        return mutationSidebarReceipt(thread ? [thread] : []);
+      }),
     } satisfies ProjectWorkspaceService);
 
     return service;

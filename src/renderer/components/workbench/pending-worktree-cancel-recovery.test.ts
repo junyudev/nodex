@@ -62,7 +62,6 @@ function makeEntry(): StartConversationEntry {
     worktreeGitRoot: null,
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
   };
 }
 

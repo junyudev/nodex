@@ -376,7 +376,9 @@ lists the archived chats the reader may restore. Its filter applies [chat search
 text matching](command-palette-behavior.md#text-matching) to loaded titles, Projects,
 folders, and opening previews. The list retains its order.
 Every Member pins, orders and snoozes any hosted chat, as their own
-attention: other Members' sidebars and snoozes stay as they are. Archiving a chat ends
+attention: other Members' sidebars and snoozes stay as they are. A Member drags their pins
+into any order; the `Manual order` of unpinned chats is the host's, which a Member's sidebar
+shows but does not rearrange. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,
 reminders and unread state go, and restoring it brings none of them back. Managed by Nodex
 and Section placement are not available for hosted chats on a team desktop. Mark as

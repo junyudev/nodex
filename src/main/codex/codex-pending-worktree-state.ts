@@ -24,7 +24,6 @@ export const CODEX_PENDING_WORKTREE_CONTINUE_WITHOUT_SETUP_OUTPUT =
 
 export type CodexPendingWorktreeMetadataUpdate =
   | { readonly type: "isPinned"; readonly isPinned: boolean }
-  | { readonly type: "pinnedBeforeThreadId"; readonly beforeThreadId: string | null }
   | { readonly type: "label"; readonly label: string }
   | { readonly type: "labelEdited"; readonly labelEdited: boolean }
   | { readonly type: "needsAttention"; readonly needsAttention: boolean };
@@ -358,7 +357,6 @@ function createPendingWorktree(
     worktreeGitRoot: null,
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
   };
   let nextState = withEntry(state, entry);
   const clientThreadId = clientThreadIdForEntry(entry);
@@ -672,11 +670,6 @@ function updatePendingWorktreeMetadata(
   switch (update.type) {
     case "isPinned":
       return { state: withEntry(state, { ...entry, isPinned: update.isPinned }), effects: [] };
-    case "pinnedBeforeThreadId":
-      return {
-        state: withEntry(state, { ...entry, pinnedBeforeThreadId: update.beforeThreadId }),
-        effects: [],
-      };
     case "label":
       return { state: withEntry(state, { ...entry, label: update.label }), effects: [] };
     case "labelEdited":

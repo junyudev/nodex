@@ -196,7 +196,6 @@ export type CodexPendingWorktreeEntry = CodexPendingWorktreeRequest & {
   readonly worktreeGitRoot: string | null;
   readonly needsAttention: boolean;
   readonly isPinned: boolean;
-  readonly pinnedBeforeThreadId: string | null;
 };
 
 export type CodexPendingWorktreeThreadResolution =

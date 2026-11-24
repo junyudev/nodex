@@ -13,6 +13,8 @@ export const SIDEBAR_CHAT_LANES = ["pinned", "active", "working", "snoozed"] as 
 export interface SidebarLifecycleChat {
   readonly id: string;
   readonly pinned: boolean;
+  /** Its place among the reader's pins, which they arrange themselves. */
+  readonly pinnedOrder: number | null;
   readonly snoozedUntil: string | null;
   /** When the reader snoozed it, in Unix ms. */
   readonly snoozedAt: number | null;
@@ -119,6 +121,16 @@ export function sidebarLaneOrder(
     working: lanes.working.map((chat) => chat.id),
     snoozed: lanes.snoozed.map((chat) => chat.id),
   };
+}
+
+/**
+ * What the reader set on a chat: its pin, its place among their pins, and its snooze. A change
+ * means they acted on it, so it moves at once even while the lanes hold still.
+ */
+export function sidebarChatReaderMark(
+  chat: Pick<SidebarLifecycleChat, "pinned" | "pinnedOrder" | "snoozedUntil">,
+): string {
+  return `${chat.pinned}|${chat.pinnedOrder ?? ""}|${chat.snoozedUntil ?? ""}`;
 }
 
 /**

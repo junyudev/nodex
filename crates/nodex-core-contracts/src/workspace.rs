@@ -2481,19 +2481,18 @@ pub enum ProjectWorkspaceIntent {
     MoveSession {
         session_id: String,
         project_id: Option<String>,
+        /// The host may place the chat at a boundary in the destination's manual order.
         #[serde(default)]
         placement: Option<ProjectWorkspaceSessionPlacement>,
     },
+    /// Places a pinned chat in its Member's pin order or any other chat in its lane's manual order.
+    /// Remote Members may place their own pins.
     PlaceSession {
         session_id: String,
         placement: ProjectWorkspaceSessionPlacement,
     },
     RecordSessionActivity {
         entries: Vec<ProjectWorkspaceSessionActivityEntry>,
-    },
-    ReorderPinnedSessions {
-        project_id: Option<String>,
-        session_ids: Vec<String>,
     },
     UpsertThread {
         thread_id: String,

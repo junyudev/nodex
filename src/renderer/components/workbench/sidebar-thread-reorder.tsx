@@ -1614,6 +1614,7 @@ export function SidebarThreadReorderRows({
   visibleThreadKeys: string[];
   sortableThreadKeys: string[];
   onVisibleThreadOrderChange: (change: {
+    activeThreadKey: string;
     visibleThreadKeys: string[];
     nextVisibleThreadKeys: string[];
   }) => Promise<void>;

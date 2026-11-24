@@ -21,7 +21,6 @@ import type {
   ProjectSessionOpenedCommandInput,
   ProjectSessionSettledCommandInput,
   ProjectSessionManagedCommandInput,
-  BuiltinSidebarReorderCommandInput,
 } from "../../../shared/workspace-catalog-commands";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
@@ -130,7 +129,6 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     const updateInputs: ProjectUpdateCommandInput[] = [];
     const openedInputs: ProjectSessionOpenedCommandInput[] = [];
     const settlementInputs: ProjectSessionSettledCommandInput[] = [];
-    const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const placementInputs: (readonly string[])[] = [];
     const placements: readonly SessionSidebarPlacement[] = [
       {
@@ -169,26 +167,10 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
           sideChatInputs.push({ sourceSessionId, input });
           return sideChatWindow;
         }),
-      listBuiltinSidebarOrder: () =>
-        Effect.succeed({
-          orderRevision: "pins:3",
-          items: [
-            { kind: "session", sessionId: "session:draft", title: "New chat" },
-            { kind: "session", sessionId: "session:attached", title: "Chat" },
-          ],
-          nextCursor: null,
-          hasMore: false,
-          projectionRevision: 17,
-        }),
       readSessionSidebarPlacements: (sessionIds: readonly string[]) =>
         Effect.sync(() => {
           placementInputs.push(sessionIds);
           return placements;
-        }),
-      reorderBuiltinSidebarItems: (command: BuiltinSidebarReorderCommandInput) =>
-        Effect.sync(() => {
-          pinnedOrderInputs.push(command);
-          return { value: undefined, apply: applied };
         }),
       readSessionManaged: (sessionId: string) => {
         assert.equal(sessionId, "session:one");
@@ -328,7 +310,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       ).pipe(Effect.isFailure),
     );
 
-    assert.strictEqual(handlers.size, 63);
+    assert.strictEqual(handlers.size, 60);
     assert.isTrue(handlers.has("workspace:tasks:lanes"));
     assert.isTrue(handlers.has("project-sessions:set-settled"));
     assert.isTrue(handlers.has("project-sessions:settle-idle"));
@@ -443,20 +425,6 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     );
     assert.deepEqual(settlementInputs, [batch]);
 
-    const pinnedOrder = yield* handlers.get("sidebar:builtin-order:list")!(
-      rendererEvent(17),
-      "pinned_sessions",
-    );
-    assert.deepEqual(pinnedOrder, {
-      orderRevision: "pins:3",
-      items: [
-        { kind: "session", sessionId: "session:draft", title: "New chat" },
-        { kind: "session", sessionId: "session:attached", title: "Chat" },
-      ],
-      nextCursor: null,
-      hasMore: false,
-      projectionRevision: 17,
-    });
     // Collapsed Projects and Sections read live chats' placement in one bounded query.
     assert.deepEqual(
       yield* handlers.get("sidebar-sections:sessions:placements")!(rendererEvent(17), [
@@ -465,24 +433,6 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       placements,
     );
     assert.deepEqual(placementInputs, [["session:one"]]);
-    const pinnedCommand: BuiltinSidebarReorderCommandInput = {
-      operationId: createBoundedOperationId("workspace.session.reorder-pinned", 1_800_000_000_000),
-      payload: {
-        lane: "pinned_sessions",
-        expectedOrderRevision: "pins:3",
-        itemIds: ["session:attached", "session:draft"],
-      },
-    };
-    const pinnedResult = yield* handlers.get("sidebar:builtin-order:reorder")!(
-      rendererEvent(17),
-      pinnedCommand,
-    );
-    assert.deepEqual(pinnedOrderInputs, [pinnedCommand]);
-    assert.deepEqual(pinnedResult, {
-      ok: true,
-      value: undefined,
-      localCommit: { status: "committed", commit: applied.commit, delivery: null },
-    });
 
     const input = {
       operationId: createBoundedOperationId("workspace.project.rename", 1_800_000_000_000),

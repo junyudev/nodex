@@ -150,7 +150,6 @@ describe("Codex pending worktree state", () => {
     expect(entry?.worktreeGitRoot).toBe(null);
     expect(entry?.needsAttention).toBe(false);
     expect(entry?.isPinned).toBe(false);
-    expect(entry?.pinnedBeforeThreadId).toBe(null);
     expect(effectTypes(secondEffects)).toBe("startWorktree");
     expect(duplicateEffects.length).toBe(0);
     expect(publishCount).toBe(2);

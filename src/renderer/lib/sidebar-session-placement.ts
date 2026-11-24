@@ -1,6 +1,24 @@
 import type { ProjectSessionPlacement } from "./types";
 
 /**
+ * Every lane sorts its chats by durable Session, whichever Agent runs them and whether or not
+ * they are pinned. Rows still waiting for a Session, and rows leaving the list, stay in place.
+ */
+export function listSortableSidebarSessionKeys({
+  threadKeys,
+  getSessionId,
+  excludedKeys,
+}: {
+  threadKeys: readonly string[];
+  getSessionId: (threadKey: string) => string | null;
+  excludedKeys?: ReadonlySet<string>;
+}): string[] {
+  return threadKeys.filter(
+    (threadKey) => !excludedKeys?.has(threadKey) && getSessionId(threadKey) !== null,
+  );
+}
+
+/**
  * Resolves a same-lane drop to one Session placement. The anchor is the chat now directly below
  * the moved chat, or the one directly above it when it lands last; Core applies the placement to
  * the complete lane, including chats beyond the loaded page.

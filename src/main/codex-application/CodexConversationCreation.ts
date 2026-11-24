@@ -164,9 +164,7 @@ export const make: Effect.Effect<
     if (entry.isPinned) {
       yield* sidebar.ensureSession(threadId).pipe(
         Effect.flatMap((session) =>
-          session
-            ? workspace.setThreadPinned(threadId, true, entry.pinnedBeforeThreadId)
-            : Effect.void,
+          session ? workspace.setThreadPinned(threadId, true) : Effect.void,
         ),
         Effect.catchCause(warn("pin-thread")),
       );

@@ -70,7 +70,6 @@ function pendingWorktree(
     worktreeGitRoot: null,
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
     ...overrides,
   };
 }

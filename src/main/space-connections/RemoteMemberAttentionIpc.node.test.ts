@@ -115,10 +115,11 @@ it.effect(
         const collector = makeSpaceIpcCollector({ routes: () => true });
         const calls: [string, unknown][] = [];
         const apply = { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 4 } };
-        const record = (method: string) => (command: unknown) =>
+        const chat = { id: "chat" };
+        const record = (method: string, value: unknown) => (command: unknown) =>
           Effect.sync(() => {
             calls.push([method, command]);
-            return { value: { id: "chat" }, apply };
+            return { value, apply };
           });
         yield* Layer.build(
           live.pipe(
@@ -127,16 +128,12 @@ it.effect(
             Layer.provide(Layer.succeed(CoreModules, {} as never)),
             Layer.provide(
               Layer.succeed(ProjectWorkspace, {
-                markProjectSessionUnread: record("unread"),
-                setProjectSessionPinned: record("pin"),
-                setPinnedProjectSessionOrder: record("order"),
-                setProjectSessionSnooze: record("snooze"),
-                setProjectSessionSettled: (command: unknown) =>
-                  Effect.sync(() => {
-                    calls.push(["settled", command]);
-                    return { value: { changedSessionIds: ["chat"] }, apply };
-                  }),
-                ensureDefaultDraftProjectSession: record("draft"),
+                markProjectSessionUnread: record("unread", chat),
+                setProjectSessionPinned: record("pin", chat),
+                placeProjectSession: record("place", undefined),
+                setProjectSessionSnooze: record("snooze", chat),
+                setProjectSessionSettled: record("settled", { changedSessionIds: ["chat"] }),
+                ensureDefaultDraftProjectSession: record("draft", chat),
               } as never),
             ),
           ),
@@ -144,36 +141,35 @@ it.effect(
         const event = {} as IpcMainInvokeEvent;
         const operationId = createBoundedOperationId("test.attention");
         const pin = { operationId, payload: { sessionId: "chat", pinned: true } };
-        const order = { operationId, payload: { projectId: "p", sessionIds: [] } };
+        const place = {
+          operationId,
+          payload: { sessionId: "chat", placement: { kind: "before", sessionId: "other-pin" } },
+        };
         const snooze = {
           operationId,
           payload: { sessionId: "chat", snoozedUntil: "2026-11-09T09:00:00.000Z" },
         };
         // A New chat opens the Member's own default draft in the Space's Core.
         const draft = { operationId, payload: { projectId: null, candidateSessionId: "draft" } };
-        for (const [channel, command] of [
-          ["project-sessions:set-pinned", pin],
-          ["project-sessions:set-pinned-order", order],
-          ["project-sessions:set-snooze", snooze],
-          ["project-sessions:ensure-default-draft", draft],
-        ] as const)
-          expect(yield* collector.invoke(channel, event, [command])).toMatchObject({
-            ok: true,
-            value: { id: "chat" },
-          });
         const batch = {
           operationId,
           payload: { sessionIds: ["chat", "already-settled"], settled: true },
         };
-        expect(
-          yield* collector.invoke("project-sessions:set-settled", event, [batch]),
-        ).toMatchObject({
-          ok: true,
-          value: { changedSessionIds: ["chat"] },
-        });
+        for (const [channel, command, value] of [
+          ["project-sessions:set-pinned", pin, chat],
+          ["project-sessions:place", place, undefined],
+          ["project-sessions:set-snooze", snooze, chat],
+          ["project-sessions:ensure-default-draft", draft, chat],
+          ["project-sessions:set-settled", batch, { changedSessionIds: ["chat"] }],
+        ] as const)
+          expect(yield* collector.invoke(channel, event, [command])).toMatchObject({
+            ok: true,
+            value,
+            localCommit: apply,
+          });
         expect(calls).toEqual([
           ["pin", pin],
-          ["order", order],
+          ["place", place],
           ["snooze", snooze],
           ["draft", draft],
           ["settled", batch],
@@ -182,6 +178,12 @@ it.effect(
           .invoke("project-sessions:set-pinned", event, [{ ...pin, operationId: "" }])
           .pipe(Effect.result);
         expect(malformed._tag).toBe("Failure");
+        const missingAnchor = yield* collector
+          .invoke("project-sessions:place", event, [
+            { ...place, payload: { sessionId: "chat", placement: { kind: "before" } } },
+          ])
+          .pipe(Effect.result);
+        expect(missingAnchor._tag).toBe("Failure");
         expect(calls).toHaveLength(5);
       }),
     ),

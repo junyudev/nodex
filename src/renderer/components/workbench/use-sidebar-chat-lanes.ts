@@ -3,6 +3,7 @@ import {
   anchorSidebarChat,
   holdSidebarLanes,
   partitionSidebarChats,
+  sidebarChatReaderMark,
   sidebarLaneOrder,
   type SidebarChatAnchor,
   type SidebarChatLane,
@@ -16,12 +17,11 @@ interface LaneHold {
   readonly marks: ReadonlyMap<string, string>;
 }
 
-const markOf = (chat: SidebarLifecycleChat) => `${chat.pinned}|${chat.snoozedUntil ?? ""}`;
-
 /**
  * The reader's open chats in lanes, steady under their eyes. The chat on screen keeps the place it
  * had when they opened it, and while `holding` (they point at or work in the sidebar) every row
- * they saw keeps its place until they leave. A chat they pin, unpin or snooze moves at once.
+ * they saw keeps its place until they leave. A chat they pin, unpin, reorder among their pins or
+ * snooze moves at once.
  */
 export function useSidebarChatLanes<Chat extends SidebarLifecycleChat>({
   chats,
@@ -52,7 +52,7 @@ export function useSidebarChatLanes<Chat extends SidebarLifecycleChat>({
   if (holding && hold === null)
     setHold({
       order: sidebarLaneOrder(fresh),
-      marks: new Map(chats.map((chat) => [chat.id, markOf(chat)])),
+      marks: new Map(chats.map((chat) => [chat.id, sidebarChatReaderMark(chat)])),
     });
   if (!holding && hold !== null) setHold(null);
 
@@ -61,7 +61,9 @@ export function useSidebarChatLanes<Chat extends SidebarLifecycleChat>({
       .filter((chat) => {
         const mark = hold?.marks.get(chat.id);
         // A chat the reader just opened shows even when it arrived during the hold.
-        return mark === undefined ? chat.id === activeSessionId : mark !== markOf(chat);
+        return mark === undefined
+          ? chat.id === activeSessionId
+          : mark !== sidebarChatReaderMark(chat);
       })
       .map((chat) => chat.id),
   );

@@ -2,6 +2,7 @@ import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { within, act, fireEvent, waitFor } from "@testing-library/react";
+import { readCurrentProjectSessionDetail } from "@/lib/project-session-query-cache";
 import { type CodexSidebarSyncResult, type CodexSidebarThreadItem } from "@/lib/types";
 import {
   fixtureSessionActivityAt,
@@ -23,6 +24,7 @@ import {
   openProjectBoard,
   renderWorkbench,
   rendererCommandPayload,
+  setSidebarOrganizeForTest,
 } from "./workbench-testkit/workbench-shell-harness";
 
 async function ensureProjectRowExpanded(
@@ -1170,6 +1172,97 @@ describe("workbench session shell / sidebar-projects", () => {
     ).toBe(true);
   });
 
+  test.each([
+    { lane: "Project pins", projectId: "alpha", kind: "Runtime chat" },
+    { lane: "Project pins", projectId: "alpha", kind: "draft" },
+    { lane: "root Pinned", projectId: null, kind: "Runtime chat" },
+    { lane: "root Pinned", projectId: null, kind: "draft" },
+    { lane: "Project pins", projectId: "alpha", kind: "Codex chat" },
+    { lane: "root Pinned", projectId: null, kind: "Codex chat" },
+    // Arranged by attention, one Pinned lane lists every Project's pins.
+    { lane: "attention Pinned", projectId: "alpha", kind: "Runtime chat" },
+    { lane: "attention Pinned", projectId: "alpha", kind: "draft" },
+  ])("reorders a pinned $kind by dragging it within $lane", async ({ lane, projectId, kind }) => {
+    const byAttention = lane === "attention Pinned";
+    if (byAttention) setSidebarOrganizeForTest("attention");
+    const sibling = makeAttachedSession({
+      id: "session:pinned-sibling",
+      projectId,
+      threadId: "thread:pinned-sibling",
+      executionRef: null,
+      title: "Pinned sibling",
+      pinned: true,
+      pinnedOrder: 0,
+    });
+    const dragged = {
+      id: "session:pinned-dragged",
+      projectId,
+      title: "Pinned drag source",
+      pinned: true,
+      pinnedOrder: 1,
+    };
+    const source =
+      kind === "Codex chat"
+        ? makeAttachedSession({ ...dragged, threadId: "thread:pinned-dragged", executionRef: null })
+        : makeSession({
+            ...dragged,
+            executionRef:
+              kind === "Runtime chat"
+                ? { runtimeId: "runtime:test", threadId: "runtime-thread:pinned-dragged" }
+                : null,
+          });
+    const screen = renderWorkbench({
+      sessionsByProject: projectId === null ? { alpha: [] } : { [projectId]: [sibling, source] },
+      projectlessSessions: projectId === null ? [sibling, source] : [],
+      sidebarSnapshotItems: [sibling, ...(source.thread ? [source] : [])].map(
+        makeSidebarSnapshotItemForSession,
+      ),
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    const section =
+      projectId === null || byAttention
+        ? getSidebarSection(screen.container, "Pinned")
+        : getSidebarProjectGroup(getSidebarSection(screen.container, "Projects"), projectId);
+    expect(getThreadRowTitles(section)).toEqual([sibling.displayTitle, source.displayTitle]);
+    const sourceRow = getThreadRow(section, source.displayTitle);
+    const siblingRow = getThreadRow(section, sibling.displayTitle);
+    // jsdom has no layout. Let the sibling row and its surrounding drop zone overlap.
+    const laneDropZone = byAttention
+      ? null
+      : projectId === null
+        ? section.parentElement
+        : siblingRow.closest('[aria-roledescription="sortable"]')?.parentElement?.parentElement;
+    if (laneDropZone) laneDropZone.getBoundingClientRect = () => new DOMRect(10, 20, 180, 60);
+    [siblingRow, sourceRow].forEach((row, index) => {
+      const measuredRow = row.closest('[aria-roledescription="sortable"]')?.parentElement ?? row;
+      measuredRow.getBoundingClientRect = () => new DOMRect(20, 20 + index * 30, 160, 30);
+    });
+
+    const pointer = { clientX: 100, isPrimary: true, pointerId: 1, pointerType: "mouse" };
+    try {
+      await act(async () => {
+        fireEvent.pointerDown(sourceRow, { ...pointer, button: 0, clientY: 65 });
+        fireEvent.pointerMove(document, { ...pointer, buttons: 1, clientY: 56 });
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.pointerMove(document, { ...pointer, buttons: 1, clientY: 32 });
+        await Promise.resolve();
+      });
+    } finally {
+      await act(async () => {
+        fireEvent.pointerUp(document, { ...pointer, button: 0, clientY: 32 });
+        await Promise.resolve();
+      });
+    }
+
+    expect(getThreadRowTitles(section)).toEqual([source.displayTitle, sibling.displayTitle]);
+    const persisted = await readCurrentProjectSessionDetail(source.id);
+    expect(persisted?.pinnedOrder).toBe(0);
+  });
+
   test("renders Chats in canonical TaskWindow order", async () => {
     const chatA = makeAttachedSession({
       id: "session:chat:a",
@@ -1331,7 +1424,6 @@ describe("workbench session shell / sidebar-projects", () => {
       runLocation: { kind: "local-worktree", path: null, phase: "pending" },
       pendingWorktreeId: "pending-worktree:beta-pending",
       clientThreadId: "client-new-thread:beta-pending",
-      pinnedBeforeThreadId: null,
       hostId: "local",
       threadId: "client-new-thread:beta-pending",
       parentThreadId: null,

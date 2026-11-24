@@ -1323,10 +1323,6 @@ export interface ProjectSessionPinnedInput {
   pinned: boolean;
 }
 
-export interface ProjectSessionPinnedOrderInput {
-  orderedSessionIds: string[];
-}
-
 export interface SessionManagedState {
   managed: boolean;
   since: string | null;
@@ -1478,7 +1474,6 @@ export interface CodexSidebarThreadItem {
   runLocation: CodexSidebarRunLocation;
   pendingWorktreeId?: string;
   clientThreadId?: string;
-  pinnedBeforeThreadId?: string | null;
   hostId: string;
   threadId: string;
   parentThreadId: string | null;

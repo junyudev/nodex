@@ -326,7 +326,6 @@ type QueryEndpointPolicy =
   | "sidebar-sections:sessions:placements"
   | "sidebar-sections:items:list"
   | "sidebar-sections:list"
-  | "sidebar:builtin-order:list"
   | "terminal-session:snapshot"
   | "thread-terminal-snapshot"
   | "workspace-directory-entries"
@@ -526,7 +525,6 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "project-sessions:rename"
   | "project-sessions:place"
   | "project-sessions:set-pinned"
-  | "project-sessions:set-pinned-order"
   | "project-sessions:unarchive"
   | "project-sessions:update"
   | "projects:create"
@@ -543,8 +541,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "sidebar-sections:restore"
   | "sidebar-sections:sessions:archive-all"
   | "sidebar-sections:sessions:create"
-  | "sidebar-sections:sessions:reorder"
-  | "sidebar:builtin-order:reorder";
+  | "sidebar-sections:sessions:reorder";
 
 type MainRevisionCommandEndpointPolicy =
   | "persisted-atom:update"
@@ -730,7 +727,6 @@ type PlainResultCommandEndpointPolicy =
   | "codex:pending-worktree:resolve-thread"
   | "codex:pending-worktree:retry"
   | "codex:pending-worktree:set-pinned"
-  | "codex:pending-worktree:set-pinned-before-thread"
   | "codex:pending-worktree:work-locally"
   | "codex:personality:set"
   | "automations:create"
@@ -752,7 +748,6 @@ type PlainResultCommandEndpointPolicy =
   | "codex:thread:side-chat:discard"
   | "codex:thread:side-chat:start"
   | "codex:thread:unarchive"
-  | "codex:threads:pinned:reorder"
   | "codex:threads:pinned:set"
   | "codex:turn:interrupt"
   | "codex:turn:steer"

@@ -21,6 +21,7 @@ function chat(id: string, overrides: Partial<SidebarLifecycleChat> = {}): Sideba
   return {
     id,
     pinned: false,
+    pinnedOrder: null,
     snoozedUntil: null,
     snoozedAt: null,
     attentionAt: 0,

@@ -58,7 +58,6 @@ function makeEntry(overrides: Partial<StableWorktreeEntry> = {}): StableWorktree
     worktreeGitRoot: null,
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
     ...overrides,
     sourceWorkspaceRoots: overrides.sourceWorkspaceRoots ?? ["/repo/nodex"],
   };

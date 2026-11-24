@@ -187,16 +187,6 @@ export function codexRendererNativeRequestAdmission(
   return "allowed";
 }
 
-function requireNonBlankStringArray(value: unknown, label: string): string[] {
-  if (
-    !Array.isArray(value) ||
-    value.some((item) => typeof item !== "string" || item.trim().length === 0)
-  ) {
-    throw new Error(`${label} must contain only non-empty strings`);
-  }
-  return [...value];
-}
-
 async function showDirectoryPicker(
   event: IpcMainInvokeEvent,
   options: OpenDialogOptions,
@@ -636,20 +626,6 @@ export const live = Layer.effectDiscard(
             (cause) => new CodexIpcError({ operation: "codex:threads:pinned:set", cause }),
           ),
         ),
-    );
-
-    registerEffectPlainCommand("codex:threads:pinned:reorder", (_, orderedThreadIds) =>
-      Effect.try({
-        try: () => requireNonBlankStringArray(orderedThreadIds, "Pinned thread order"),
-        catch: (cause) => new CodexIpcError({ operation: "codex:threads:pinned:reorder", cause }),
-      }).pipe(
-        Effect.flatMap(threadCatalog.reorderPinned),
-        Effect.mapError((cause) =>
-          cause instanceof CodexIpcError
-            ? cause
-            : new CodexIpcError({ operation: "codex:threads:pinned:reorder", cause }),
-        ),
-      ),
     );
 
     registerEffectPlainCommand("codex:thread:ensure-session", (_, threadId: string) =>

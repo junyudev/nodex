@@ -98,14 +98,6 @@ const createPendingWorktreeCommand = defineRendererCommand({
   protocol: { kind: "pending_operation" },
 });
 
-const setPendingWorktreePinnedBeforeThreadCommand = defineRendererCommand({
-  key: "pending_worktree.set_pinned_before_thread",
-  channel: "codex:pending-worktree:set-pinned-before-thread",
-  authority: "main",
-  owner: "PendingWorktreeRuntime",
-  protocol: { kind: "pending_operation" },
-});
-
 export function listPendingWorktrees(): Promise<CodexPendingWorktreeEntry[]> {
   return invokeRendererQuery("codex:pending-worktrees:list");
 }
@@ -134,19 +126,6 @@ export function setPendingWorktreePinned(
   isPinned: boolean,
 ): Promise<void> {
   return invokePlainCommand(setPendingWorktreePinnedCommand, hostId, pendingWorktreeId, isPinned);
-}
-
-export function setPendingWorktreePinnedBeforeThread(
-  hostId: string,
-  pendingWorktreeId: string,
-  beforeThreadId: string | null,
-): Promise<void> {
-  return invokePlainCommand(
-    setPendingWorktreePinnedBeforeThreadCommand,
-    hostId,
-    pendingWorktreeId,
-    beforeThreadId,
-  );
 }
 
 export function clearPendingWorktreeAttention(

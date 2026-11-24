@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../shared/inbox";
 import { isBoundedOperationId } from "../../shared/operation-identity";
 import { UpdateInboxSettingsInputSchema } from "../../shared/schemas/inbox";
+import { ProjectSessionPlaceCommandSchema } from "../../shared/schemas/session-order";
 import { rendererLocalCommitApply } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import {
@@ -50,8 +51,8 @@ export const live = Layer.effectDiscard(
         return yield* read;
       }),
     );
-    // A chat's unread state, pins, snoozes and settlement are each Member's own, on every chat
-    // they read.
+    // A chat's unread state, pins and their order, snoozes and settlement are each Member's own,
+    // on every chat they read.
     const own = <Value>(
       command: { readonly operationId: string },
       task: Effect.Effect<ProjectWorkspaceCommandResult<Value>, unknown>,
@@ -74,8 +75,13 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleLocalCommitCommand("project-sessions:set-pinned", (_, command) =>
       own(command, projects.setProjectSessionPinned(command)),
     );
-    yield* ipc.handleLocalCommitCommand("project-sessions:set-pinned-order", (_, command) =>
-      own(command, projects.setPinnedProjectSessionOrder(command)),
+    yield* ipc.handleLocalCommitCommand("project-sessions:place", (_, command) =>
+      own(
+        command,
+        Effect.try(() => ProjectSessionPlaceCommandSchema.parse(command)).pipe(
+          Effect.flatMap(projects.placeProjectSession),
+        ),
+      ),
     );
     yield* ipc.handleLocalCommitCommand("project-sessions:set-snooze", (_, command) =>
       own(command, projects.setProjectSessionSnooze(command)),

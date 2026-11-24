@@ -94,7 +94,6 @@ const request = (): Extract<
   worktreeGitRoot: "/worktree",
   needsAttention: false,
   isPinned: false,
-  pinnedBeforeThreadId: null,
 });
 
 it.effect.each([
@@ -314,16 +313,9 @@ it.effect.each([
           Effect.provideService(
             ProjectWorkspace,
             ProjectWorkspace.of({
-              setThreadPinned: (
-                threadId: string,
-                isPinned: boolean,
-                beforeThreadId: string | null,
-              ) =>
+              setThreadPinned: (threadId: string, isPinned: boolean) =>
                 Effect.sync(() => {
-                  assert.deepEqual(
-                    [threadId, isPinned, beforeThreadId],
-                    ["thread-created", true, "thread-before"],
-                  );
+                  assert.deepEqual([threadId, isPinned], ["thread-created", true]);
                   launchEvents.push("pin:applied");
                 }),
             } as never),
@@ -375,7 +367,6 @@ it.effect.each([
               threadStartHostId: targetHostId,
               projectSessionId: withOrigin ? target.sessionId : null,
               isPinned: pinned,
-              pinnedBeforeThreadId: "thread-before",
               startConversationParamsInput,
             },
             "/worktree",

@@ -19,14 +19,6 @@ const setPinnedThreadCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
-const reorderPinnedThreadsCommand = defineRendererCommand({
-  key: "codex_sidebar.threads.reorder_pinned",
-  channel: "codex:threads:pinned:reorder",
-  authority: "main",
-  owner: "CodexSidebar",
-  protocol: { kind: "returned_value" },
-});
-
 export function readCodexSidebarSnapshot(): Promise<CodexSidebarSnapshot> {
   return invokeRendererQuery("codex:sidebar:snapshot", { refresh: false });
 }
@@ -43,10 +35,4 @@ export function setCodexSidebarThreadPinned(
   pinned: boolean,
 ): Promise<CodexSidebarSnapshot> {
   return invokePlainCommand(setPinnedThreadCommand, threadId, { pinned });
-}
-
-export function reorderCodexSidebarPinnedThreads(
-  orderedThreadIds: readonly string[],
-): Promise<CodexSidebarSnapshot> {
-  return invokePlainCommand(reorderPinnedThreadsCommand, [...orderedThreadIds]);
 }

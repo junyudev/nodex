@@ -8,7 +8,6 @@ import type {
   ProjectSessionCreateInput,
   ProjectSessionPlacement,
   ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
   ProjectSessionSettledInput,
@@ -96,10 +95,6 @@ export interface ProjectSessionPlaceCommandPayload {
   readonly placement: ProjectSessionPlacement;
 }
 
-export interface ProjectSessionPinnedOrderCommandPayload extends ProjectSessionPinnedOrderInput {
-  readonly projectId: string;
-}
-
 export type ProjectSessionCreateCommandInput =
   OperationIdentifiedCommand<ProjectSessionCreateCommandPayload>;
 export type ProjectSessionEnsureDefaultDraftCommandInput =
@@ -114,8 +109,6 @@ export type ProjectSessionPlaceCommandInput =
   OperationIdentifiedCommand<ProjectSessionPlaceCommandPayload>;
 export type ProjectSessionPinnedCommandInput =
   OperationIdentifiedCommand<ProjectSessionPinnedCommandPayload>;
-export type ProjectSessionPinnedOrderCommandInput =
-  OperationIdentifiedCommand<ProjectSessionPinnedOrderCommandPayload>;
 export type ProjectSessionArchiveCommandInput =
   OperationIdentifiedCommand<ProjectSessionIdentityPayload>;
 export type ProjectSessionOpenedCommandInput =

@@ -154,8 +154,6 @@ import type {
   LibraryBlockPropertyMutationRequestV2,
 } from "./block-property-mutations-v2";
 import type {
-  BuiltinSidebarLane,
-  BuiltinSidebarOrderWindow,
   SessionSidebarPlacement,
   SidebarSectionItemWindow,
   SidebarSectionItemWindowInput,
@@ -482,7 +480,6 @@ import type {
   ProjectSessionDeleteCommandInput,
   ProjectSessionEnsureDefaultDraftCommandInput,
   ProjectSessionPinnedCommandInput,
-  ProjectSessionPinnedOrderCommandInput,
   ProjectSessionRenameCommandInput,
   ProjectSessionPlaceCommandInput,
   ProjectSessionUnreadCommandInput,
@@ -492,7 +489,6 @@ import type {
   ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
-  BuiltinSidebarReorderCommandInput,
   SidebarSectionCreateCommandInput,
   SidebarSectionDeleteCommandInput,
   SidebarSectionMoveItemCommandInput,
@@ -1248,14 +1244,6 @@ export interface IpcApi
     args: [command: ProjectLifecycleCommandInput];
     result: CoreLocalCommitResult<ProjectLifecycleCommittedValue, ProjectLifecycleCommandRejected>;
   };
-  "sidebar:builtin-order:list": {
-    args: [lane: BuiltinSidebarLane, input?: Pick<SidebarSectionWindowInput, "after" | "first">];
-    result: BuiltinSidebarOrderWindow;
-  };
-  "sidebar:builtin-order:reorder": {
-    args: [command: BuiltinSidebarReorderCommandInput];
-    result: CoreLocalCommitResult<void>;
-  };
   "sidebar-sections:list": {
     args: [input?: SidebarSectionWindowInput];
     result: SidebarSectionWindow;
@@ -1359,10 +1347,6 @@ export interface IpcApi
   "project-sessions:set-pinned": {
     args: [command: ProjectSessionPinnedCommandInput];
     result: CoreLocalCommitResult<ProjectSession>;
-  };
-  "project-sessions:set-pinned-order": {
-    args: [command: ProjectSessionPinnedOrderCommandInput];
-    result: CoreLocalCommitResult<void>;
   };
   "project-sessions:archive": {
     args: [command: ProjectSessionArchiveCommandInput];
@@ -2571,10 +2555,6 @@ export interface IpcApi
     args: [threadId: string, input: { pinned: boolean }];
     result: CodexSidebarSnapshot;
   };
-  "codex:threads:pinned:reorder": {
-    args: [orderedThreadIds: string[]];
-    result: CodexSidebarSnapshot;
-  };
   "codex:thread:ensure-session": {
     args: [threadId: string];
     result: ProjectSession | null;
@@ -3001,10 +2981,6 @@ export interface IpcApi
   };
   "codex:pending-worktree:set-pinned": {
     args: [hostId: string, pendingWorktreeId: string, isPinned: boolean];
-    result: void;
-  };
-  "codex:pending-worktree:set-pinned-before-thread": {
-    args: [hostId: string, pendingWorktreeId: string, beforeThreadId: string | null];
     result: void;
   };
   "codex:pending-worktree:clear-attention": {

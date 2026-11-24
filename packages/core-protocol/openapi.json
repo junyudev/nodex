@@ -36701,7 +36701,8 @@
                   "placement": {
                     "oneOf": [
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
+                        "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement",
+                        "description": "The host may place the chat at a boundary in the destination's manual order."
                       },
                       {
                         "type": "null"
@@ -36721,6 +36722,7 @@
               },
               {
                 "type": "object",
+                "description": "Places a pinned chat in its Member's pin order or any other chat in its lane's manual order.\nRemote Members may place their own pins.",
                 "required": [
                   "session_id",
                   "placement",
@@ -36759,33 +36761,6 @@
                     "enum": [
                       "record_session_activity"
                     ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "session_ids",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "reorder_pinned_sessions"
-                    ]
-                  },
-                  "project_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "session_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
                   }
                 }
               },
@@ -51418,7 +51393,8 @@
               "placement": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement"
+                    "$ref": "#/components/schemas/ProjectWorkspaceSessionPlacement",
+                    "description": "The host may place the chat at a boundary in the destination's manual order."
                   },
                   {
                     "type": "null"
@@ -51438,6 +51414,7 @@
           },
           {
             "type": "object",
+            "description": "Places a pinned chat in its Member's pin order or any other chat in its lane's manual order.\nRemote Members may place their own pins.",
             "required": [
               "session_id",
               "placement",
@@ -51476,33 +51453,6 @@
                 "enum": [
                   "record_session_activity"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "session_ids",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "reorder_pinned_sessions"
-                ]
-              },
-              "project_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "session_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               }
             }
           },

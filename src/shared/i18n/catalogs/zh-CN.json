@@ -10079,8 +10079,6 @@
   "workbench.workbenchSessionSidebar.pinned": "已置顶",
   "workbench.workbenchSessionSidebar.pinnedChats": "已置顶聊天",
   "workbench.workbenchSessionSidebar.projects": "项目",
-  "workbench.workbenchSessionSidebar.reorderPendingChatFailed": "无法调整待处理聊天的顺序",
-  "workbench.workbenchSessionSidebar.reorderPinnedChatsFailed": "无法调整已置顶聊天的顺序",
   "workbench.workbenchSessionSidebar.reorderProjectFailed": "无法调整项目顺序",
   "workbench.workbenchSessionSidebar.reorderTaskFailed": "无法调整任务顺序",
   "workbench.workbenchSessionSidebar.retryChats": "重试加载聊天",

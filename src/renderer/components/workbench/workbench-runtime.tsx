@@ -1688,7 +1688,6 @@ export function WorkbenchRuntime({
     applySnapshot: applySidebarThreadSnapshot,
     model: sidebarThreadModel,
     refresh: refreshSidebarThreadSnapshot,
-    reorderPinned: reorderPinnedSidebarThreads,
     setPinned: setSidebarThreadPinned,
   } = useSidebarThreadSyncModel({
     projects,
@@ -6113,7 +6112,6 @@ export function WorkbenchRuntime({
     lifecycle: sidebarChatLifecycle,
     onPlaceSession: sessionCatalog.place,
     onMoveSidebarThread: moveSidebarThreadForSidebar,
-    onReorderPinnedThreads: reorderPinnedSidebarThreads,
     sidebarArchivePendingKeys,
   };
 

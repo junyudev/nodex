@@ -71,18 +71,15 @@ function makeSyncResult(
 
 type SidebarThreadSyncActions = Pick<
   ReturnType<typeof useSidebarThreadSyncModel>,
-  "applySnapshot" | "refresh" | "reorderPinned" | "setPinned"
+  "applySnapshot" | "refresh" | "setPinned"
 >;
 
 function Harness(props: {
   projects: Project[];
   onSnapshot: (snapshot: CodexSidebarSnapshot) => void;
   onActions?: (actions: SidebarThreadSyncActions) => void;
-  onReorderPinned?: (
-    reorder: (orderedThreadIds: readonly string[]) => Promise<CodexSidebarSnapshot>,
-  ) => void;
 }) {
-  const { onActions, onReorderPinned, onSnapshot, projects } = props;
+  const { onActions, onSnapshot, projects } = props;
   const state = useSidebarThreadSyncModel({
     projects,
   });
@@ -90,16 +87,12 @@ function Harness(props: {
     onSnapshot(state.snapshot);
   }, [onSnapshot, state.snapshot]);
   useEffect(() => {
-    onReorderPinned?.(state.reorderPinned);
-  }, [onReorderPinned, state.reorderPinned]);
-  useEffect(() => {
     onActions?.({
       applySnapshot: state.applySnapshot,
       refresh: state.refresh,
-      reorderPinned: state.reorderPinned,
       setPinned: state.setPinned,
     });
-  }, [onActions, state.applySnapshot, state.refresh, state.reorderPinned, state.setPinned]);
+  }, [onActions, state.applySnapshot, state.refresh, state.setPinned]);
   return createElement("div", { "data-count": state.snapshot.items.length });
 }
 
@@ -112,7 +105,6 @@ describe("useSidebarThreadSyncModel", () => {
         if (channel === "codex:sidebar:snapshot") return emptySnapshot;
         if (channel === "codex:sidebar:sync") return syncResult;
         if (channel === "codex:threads:pinned:set") return syncResult.snapshot;
-        if (channel === "codex:threads:pinned:reorder") return syncResult.snapshot;
         return null;
       },
       on: (channel: string, listener: (...args: unknown[]) => void) => {
@@ -198,39 +190,6 @@ describe("useSidebarThreadSyncModel", () => {
     });
   });
 
-  test("persists the exact realized pinned-thread order through the sidebar boundary", async () => {
-    let reorderPinned:
-      | ((orderedThreadIds: readonly string[]) => Promise<CodexSidebarSnapshot>)
-      | null = null;
-    render(
-      createElement(TestQueryProvider, {
-        client: createTestQueryClient(),
-        children: createElement(Harness, {
-          projects: [makeProject("alpha")],
-          onSnapshot: () => undefined,
-          onReorderPinned: (reorder) => {
-            reorderPinned = reorder;
-          },
-        }),
-      }),
-    );
-    await waitFor(() => {
-      expect(reorderPinned !== null).toBe(true);
-    });
-
-    await act(async () => {
-      await reorderPinned?.(["thread-b", "thread-a"]);
-    });
-
-    expect(
-      invokeCalls.some(
-        (call) =>
-          JSON.stringify(call) ===
-          JSON.stringify(["codex:threads:pinned:reorder", ["thread-b", "thread-a"]]),
-      ),
-    ).toBe(true);
-  });
-
   test("keeps sidebar mutation actions stable across snapshot updates", async () => {
     const actionSnapshots: SidebarThreadSyncActions[] = [];
     const snapshots: CodexSidebarSnapshot[] = [];
@@ -272,7 +231,6 @@ describe("useSidebarThreadSyncModel", () => {
     const updatedActions = actionSnapshots.at(-1);
     expect(updatedActions?.applySnapshot).toBe(initialActions?.applySnapshot);
     expect(updatedActions?.refresh).toBe(initialActions?.refresh);
-    expect(updatedActions?.reorderPinned).toBe(initialActions?.reorderPinned);
     expect(updatedActions?.setPinned).toBe(initialActions?.setPinned);
   });
 

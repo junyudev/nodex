@@ -1,11 +1,9 @@
-use std::collections::HashSet;
-
 use nodex_core_contracts::workspace::{
     ProjectSessionInvalidationScope, ProjectWorkspaceSessionActivityEntry,
     ProjectWorkspaceSessionPlacement,
 };
 
-use nodex_core_contracts::BoundModuleContext;
+use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -219,7 +217,7 @@ pub(super) fn delete_session(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     // A Member deletes only a side chat of their own.
-    if context.adapter == nodex_core_contracts::AdapterKind::RemoteMember {
+    if context.adapter == AdapterKind::RemoteMember {
         let principal = context.principal.as_ref().ok_or_else(|| {
             StoreError::new(
                 StoreErrorCode::Unauthorized,
@@ -322,6 +320,9 @@ pub(super) fn move_session(
     project_id: Option<&str>,
     placement: Option<&ProjectWorkspaceSessionPlacement>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    if placement.is_some() {
+        require_manual_placement_authority(context)?;
+    }
     validate_id("session_id", session_id)?;
     if let Some(project_id) = project_id {
         validate_id("project_id", project_id)?;
@@ -464,60 +465,8 @@ pub(super) fn move_session(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn reorder_pinned_sessions(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    project_id: Option<&str>,
-    session_ids: &[String],
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    if session_ids.len() > MAX_SESSIONS_PER_LANE {
-        return Err(invalid("Pinned Session order exceeds its bound"));
-    }
-    if let Some(id) = project_id {
-        validate_id("project_id", id)?;
-        require_project(connection, library_id, id, true)?;
-    }
-    for id in session_ids {
-        validate_id("session_id", id)?;
-    }
-    let now = sqlite_now(connection)?;
-    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
-    let current = super::sidebar_pins::read_order(connection, library_id, &member)?;
-    let eligible = current
-        .iter()
-        .filter(|row| row.project_id.as_deref() == project_id)
-        .map(|row| row.id.as_str())
-        .collect::<HashSet<_>>();
-    let selected = session_ids
-        .iter()
-        .filter(|id| eligible.contains(id.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    super::sidebar_pins::reorder_subset(connection, library_id, &member, &selected, &now)?;
-    let pins = super::sidebar_pins::read_order(connection, library_id, &member)?;
-    finish_lifecycle_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "reorder_pinned_sessions",
-        project_id.into_iter().map(str::to_owned).collect(),
-        pins.iter().map(|p| p.id.clone()).collect(),
-        pins.iter().filter_map(|p| p.thread_id.clone()).collect(),
-        vec![ProjectSessionInvalidationScope::All],
-        project_id,
-        &[],
-        now,
-    )
-}
-
+/// A pinned chat moves within its Member's pin order. Any other chat moves within its lane's
+/// manual order, which only the host can arrange.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn place_session(
     connection: &Connection,
@@ -529,10 +478,47 @@ pub(super) fn place_session(
     session_id: &str,
     placement: &ProjectWorkspaceSessionPlacement,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let member = crate::infrastructure::actors::requesting_member(connection, context)?;
+    if super::sidebar_pins::is_pinned(connection, &member, session_id)? {
+        let now = sqlite_now(connection)?;
+        let Some(change) = super::sidebar_pins::place(
+            connection, library_id, &member, session_id, placement, &now,
+        )?
+        else {
+            return finish_no_op(
+                connection,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "place_session",
+                vec![],
+                vec![],
+                &now,
+            );
+        };
+        return finish_lifecycle_mutation(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "place_session",
+            change.project_ids,
+            change.session_ids,
+            change.thread_ids,
+            vec![ProjectSessionInvalidationScope::All],
+            change.moved_project_id.as_deref(),
+            &[],
+            now,
+        );
+    }
+    require_manual_placement_authority(context)?;
     let authority = require_session(connection, library_id, session_id)?;
     super::session_order::place(
         connection,
-        &crate::infrastructure::actors::requesting_member(connection, context)?,
+        &member,
         session_id,
         authority.project_id.as_deref(),
         placement,
@@ -553,6 +539,17 @@ pub(super) fn place_session(
         &[],
         sqlite_now(connection)?,
     )
+}
+
+fn require_manual_placement_authority(context: &BoundModuleContext) -> Result<(), StoreError> {
+    if context.adapter == AdapterKind::RemoteMember {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Remote Members can only reorder their own pinned chats",
+            false,
+        ));
+    }
+    Ok(())
 }
 
 /// The activity relay is replayable and tolerates Sessions deleted between catalog pages.

@@ -8886,11 +8886,6 @@ export interface components {
                 readonly kind: "record_session_activity";
             } | {
                 /** @enum {string} */
-                readonly kind: "reorder_pinned_sessions";
-                readonly project_id?: string | null;
-                readonly session_ids: readonly string[];
-            } | {
-                /** @enum {string} */
                 readonly kind: "upsert_thread";
                 readonly patch: components["schemas"]["ProjectWorkspaceThreadPatch"];
                 readonly thread_id: string;
@@ -12337,11 +12332,6 @@ export interface components {
             readonly entries: readonly components["schemas"]["ProjectWorkspaceSessionActivityEntry"][];
             /** @enum {string} */
             readonly kind: "record_session_activity";
-        } | {
-            /** @enum {string} */
-            readonly kind: "reorder_pinned_sessions";
-            readonly project_id?: string | null;
-            readonly session_ids: readonly string[];
         } | {
             /** @enum {string} */
             readonly kind: "upsert_thread";

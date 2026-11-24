@@ -53,7 +53,6 @@ function pendingWorktree(
     worktreeGitRoot: "/tmp/worktree",
     needsAttention: false,
     isPinned: false,
-    pinnedBeforeThreadId: null,
     ...overrides,
   };
 }

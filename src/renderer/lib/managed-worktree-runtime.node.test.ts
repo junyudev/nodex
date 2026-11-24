@@ -32,7 +32,6 @@ import {
   consumeForkSidePanelTransfer,
   createPendingWorktree,
   pendingWorktreeRouteTransport,
-  setPendingWorktreePinnedBeforeThread,
 } from "./pending-worktree-runtime";
 
 describe("managed Worktree renderer owners", () => {
@@ -212,9 +211,6 @@ describe("managed Worktree renderer owners", () => {
       }),
     ).resolves.toEqual({ pendingWorktreeId: "pending-1", clientThreadId: null });
     await expect(
-      setPendingWorktreePinnedBeforeThread("local", "pending-1", "thread-2"),
-    ).resolves.toBeUndefined();
-    await expect(
       consumeForkSidePanelTransfer({
         routeKind: "local-thread",
         targetConversationId: "thread-1",
@@ -240,7 +236,6 @@ describe("managed Worktree renderer owners", () => {
           prompt: "",
         },
       ],
-      ["codex:pending-worktree:set-pinned-before-thread", "local", "pending-1", "thread-2"],
       [
         "codex:fork-side-panel-transfer:consume",
         {
@@ -251,20 +246,10 @@ describe("managed Worktree renderer owners", () => {
         },
       ],
     ]);
-    expect(
-      definitionsFor(
-        "codex:pending-worktree:create",
-        "codex:pending-worktree:set-pinned-before-thread",
-      ),
-    ).toMatchObject([
+    expect(definitionsFor("codex:pending-worktree:create")).toMatchObject([
       {
         channel: "codex:pending-worktree:create",
         authority: "external",
-        protocol: { kind: "pending_operation" },
-      },
-      {
-        channel: "codex:pending-worktree:set-pinned-before-thread",
-        authority: "main",
         protocol: { kind: "pending_operation" },
       },
     ]);

@@ -116,7 +116,6 @@ describe("codex pending worktree init item", () => {
       worktreeGitRoot: "/worktree",
       needsAttention: false,
       isPinned: false,
-      pinnedBeforeThreadId: null,
     });
 
     expect(item?.id).toBe("local:pending-1:2");
@@ -151,7 +150,6 @@ describe("codex pending worktree setup repair", () => {
       worktreeGitRoot: "/worktree",
       needsAttention: true,
       isPinned: false,
-      pinnedBeforeThreadId: null,
     };
 
     expect(canCreateCodexPendingWorktreeSetupRepair(entry)).toBe(true);
