@@ -58,6 +58,8 @@ import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalState
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
+import * as ConversationIdentityIpc from "../ipc/handlers/ConversationIdentityIpc";
+import * as ConversationIdentityQuery from "../conversation-application/ConversationIdentityQuery";
 import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
 import * as SubscriptionUsageIpc from "../ipc/handlers/SubscriptionUsageIpc";
 import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
@@ -163,6 +165,7 @@ export const live = Layer.mergeAll(
   SpaceAdministrationIpc.live,
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
+  ConversationIdentityIpc.live.pipe(Layer.provide(ConversationIdentityQuery.live)),
   ChatMemberActionsIpc.live,
   SubscriptionUsageIpc.live,
   AgentAccountsIpc.live.pipe(Layer.provide(AgentAccounts.live)),

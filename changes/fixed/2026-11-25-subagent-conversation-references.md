@@ -1,0 +1,1 @@
+Conversation references now resolve titles and navigation through the correct execution owner, including nested Subagents and provider-created child threads. Runtime references stay within their root Chat, native Codex references retain their execution host, and unknown references no longer trigger requests to the wrong provider.

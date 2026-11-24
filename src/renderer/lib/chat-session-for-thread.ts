@@ -1,5 +1,5 @@
 import { getIntl } from "@/lib/i18n";
-import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
+import type { ConversationIdentity } from "../../shared/conversation-identity";
 
 interface ThreadBoundSession {
   readonly id: string;
@@ -10,14 +10,13 @@ interface ThreadBoundSession {
 
 export interface ChatSessionForThreadPorts<S extends ThreadBoundSession> {
   readonly knownSessions: readonly S[];
-  /** The Session an Agent Runtime root Thread already belongs to. */
-  readonly readAgentThreadSessionId: (threadId: string) => Promise<string | null | undefined>;
+  readonly readConversationIdentity: (threadId: string) => Promise<ConversationIdentity | null>;
   readonly resolveSessionById: (sessionId: string) => Promise<S>;
   /** Admits a native Codex Thread as a Session. */
   readonly ensureThreadSession: (threadId: string) => Promise<S | null | undefined>;
 }
 
-/** Finds the chat a Thread belongs to: a known Session, its Runtime Session, or an admitted Thread. */
+/** Finds the owning Session; only an identified native Codex conversation may be admitted. */
 export async function resolveChatSessionForThreadId<S extends ThreadBoundSession>(
   threadId: string,
   ports: ChatSessionForThreadPorts<S>,
@@ -30,18 +29,15 @@ export async function resolveChatSessionForThreadId<S extends ThreadBoundSession
       !session.archived,
   );
   if (known) return known;
-  if (isAgentExecutionThreadId(normalizedThreadId)) {
-    const sessionId = await ports.readAgentThreadSessionId(normalizedThreadId);
-    if (!sessionId)
-      throw new Error(
-        getIntl().formatMessage({
-          id: "lib.chatSessionForThread.unavailable",
-          defaultMessage: "This chat is no longer available",
-        }),
-      );
-    return await ports.resolveSessionById(sessionId);
-  }
-  const materialized = await ports.ensureThreadSession(normalizedThreadId);
+  const identity = await ports.readConversationIdentity(normalizedThreadId);
+  const materialized =
+    !identity || identity.archived
+      ? null
+      : identity.sessionId
+        ? await ports.resolveSessionById(identity.sessionId)
+        : identity.execution === "native-codex"
+          ? await ports.ensureThreadSession(identity.threadId)
+          : null;
   if (!materialized || materialized.archived)
     throw new Error(
       getIntl().formatMessage({

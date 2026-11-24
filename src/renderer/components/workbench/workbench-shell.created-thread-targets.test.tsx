@@ -11,6 +11,7 @@ import {
 } from "../../features/local-conversation/view/conversation-markdown-targets.test-fixtures";
 import type { ThreadStageActions } from "../../features/local-conversation/thread-stage-types";
 import type { AgentRuntimeConversation } from "../../../shared/agent-runtime-api";
+import type { ConversationIdentity } from "../../../shared/conversation-identity";
 import { makeAttachedSession } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   waitForLastThreadStageActions,
@@ -68,6 +69,128 @@ function inspections() {
 }
 
 describe("created chat Session-bound Workbench navigation", () => {
+  test("a bare Runtime child reference opens through its owning Session without native discovery", async () => {
+    const source = remoteSession("source", "Source", "source-thread");
+    const root = namedSession("root", "Actual root", "nodex:thread:root");
+    const childId = "thread:task:child";
+    childThread(childId, "nodex:thread:root", "Child");
+    const view = renderWorkbench({
+      sessionsByProject: { alpha: [source, root] },
+      initialSelectedSessionId: source.id,
+    });
+    await settleAsyncRender();
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) => {
+      if (channel === "conversation:identity:get") {
+        if (args[0] !== childId) return null;
+        return {
+          execution: "agent-runtime",
+          threadId: childId,
+          sessionId: root.id,
+          title: "Child",
+          role: "subagent",
+          agent: null,
+          archived: false,
+          host: null,
+        } satisfies ConversationIdentity;
+      }
+      return base?.(channel, ...args);
+    });
+    const open = (await waitForLastThreadStageActions())
+      .onOpenThread as ThreadStageActions["onOpenThread"];
+
+    await act(async () => {
+      await open(childId);
+    });
+
+    await waitFor(() => expect(getConnectedThreadStagePropsByThreadId(childId)).toBeDefined());
+    expect(headerTitle(view)).toBe("Actual root");
+    expect(inspections()).toEqual([
+      ["agent-runtime:session:inspect", { sessionId: root.id, threadId: childId }],
+    ]);
+    expect(
+      invokeCalls.some(
+        ([channel]) =>
+          channel === "codex:thread:summary:get" ||
+          channel === "codex:thread:ensure-session" ||
+          channel === "codex:created-thread:resolve",
+      ),
+    ).toBe(false);
+    expect(hydrateSelectedSubagentCalls).toEqual([]);
+  });
+
+  test("a known native parent's Subagent action discovers its child only on that parent's host", async () => {
+    const rootId = "019a0000-0000-7000-8000-000000000001";
+    const childId = "019a0000-0000-7000-8000-000000000002";
+    const source = remoteSession("source", "Native root", rootId);
+    childThread(childId, rootId, "Native child");
+    renderWorkbench({
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: source.id,
+    });
+    await settleAsyncRender();
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) =>
+      channel === "conversation:identity:get" ? null : base?.(channel, ...args),
+    );
+    const open = (await waitForLastThreadStageActions())
+      .onOpenThread as ThreadStageActions["onOpenThread"];
+
+    await act(async () => {
+      await open(childId, {
+        subagent: {
+          conversationId: childId,
+          displayName: "Native child",
+          agentRole: null,
+          spawnModel: null,
+          status: "active",
+          statusSummary: null,
+          diffStats: null,
+          canInteract: false,
+        },
+      });
+    });
+
+    expect(hydrateSelectedSubagentCalls).toEqual([
+      { rootThreadId: rootId, threadId: childId, expectedHostId: "remote" },
+    ]);
+    expect(invokeCalls).not.toContainEqual(["conversation:identity:get", childId]);
+    expect(inspections()).toEqual([]);
+  });
+
+  test("an unknown bare reference cannot discover or admit a native conversation", async () => {
+    const source = remoteSession("source", "Source", "source-thread");
+    const view = renderWorkbench({
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: source.id,
+    });
+    await settleAsyncRender();
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) =>
+      channel === "conversation:identity:get" ? null : base?.(channel, ...args),
+    );
+    const open = (await waitForLastThreadStageActions())
+      .onOpenThread as ThreadStageActions["onOpenThread"];
+
+    await act(async () => {
+      await expect(open("thread:task:deleted-child")).rejects.toThrow(
+        "This chat is no longer available",
+      );
+    });
+
+    expect(headerTitle(view)).toBe("Source");
+    expect(inspections()).toEqual([]);
+    expect(
+      invokeCalls.some(
+        ([channel]) =>
+          channel === "codex:thread:summary:get" ||
+          channel === "codex:thread:ensure-session" ||
+          channel === "codex:created-thread:resolve",
+      ),
+    ).toBe(false);
+    expect(hydrateSelectedSubagentCalls).toEqual([]);
+  });
+
   test("a Thread from another cached Session cannot borrow the selected Session binding", async () => {
     const source = namedSession("source", "Source", "source-thread");
     const other = namedSession("other", "Other chat", "same");

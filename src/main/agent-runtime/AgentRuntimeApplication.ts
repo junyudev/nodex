@@ -4993,6 +4993,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const session = read.value.session;
           const chat = thread.id === thread.lineage.rootThreadId;
           const identity: ConversationIdentity = {
+            execution: "agent-runtime",
             threadId: thread.id,
             sessionId: bound.sessionId,
             title: (chat ? session.display_title : thread.title).trim() || session.display_title,

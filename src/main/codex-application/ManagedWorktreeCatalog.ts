@@ -11,7 +11,7 @@ import type {
   ManagedWorktreeSettings,
   UpdateManagedWorktreeSettingsInput,
 } from "../../shared/types";
-import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { isAgentExecutionRootThreadId } from "../../shared/agent-runtime-api";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import type {
   DesktopManagedWorktreeSummary,
@@ -140,7 +140,7 @@ export const make = (
       operation: "inspect-thread" | "restore-thread",
     ): Effect.Effect<ManagedThreadContext | null, ManagedWorktreeCatalogError> =>
       Effect.gen(function* () {
-        if (isAgentExecutionThreadId(threadId))
+        if (isAgentExecutionRootThreadId(threadId))
           return yield* resolveAgentChatContext(threadId, operation);
         const thread = yield* project(operation, workspace.getThread(threadId));
         const worktreeGitRoot = thread?.managedWorktreePath?.trim();
@@ -491,7 +491,7 @@ export const make = (
                 (entry) =>
                   normalizeWorktreePathForIdentity(entry.worktreeGitRoot) === normalizedPath,
               ),
-            ).filter((owner) => isAgentExecutionThreadId(owner.ownerThreadId));
+            ).filter((owner) => isAgentExecutionRootThreadId(owner.ownerThreadId));
             if (agentOwners.length > 0) {
               const source = yield* agentChats.source.pipe(
                 Effect.mapError((cause) => fail("delete", cause)),

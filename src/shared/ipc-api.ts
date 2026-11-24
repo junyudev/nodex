@@ -2608,6 +2608,10 @@ export interface IpcApi
     result: { readonly status: "saved" | "cancelled" };
   };
 
+  "conversation:identity:get": {
+    args: [threadId: string];
+    result: import("./conversation-identity").ConversationIdentity | null;
+  };
   "codex:thread:summary:get": {
     args: [threadId: string];
     result: CodexThreadSummary | null;

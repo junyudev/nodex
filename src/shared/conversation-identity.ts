@@ -20,10 +20,8 @@ export interface ConversationAgent {
  * answered a question, stopped a Run or was forked from. References resolve live, so a renamed
  * chat shows its current title and a chat handed to another Agent shows its current lead.
  */
-export interface ConversationIdentity {
+interface ConversationIdentityPresentation {
   readonly threadId: string;
-  /** The Session that owns the conversation; opening it addresses this Session. */
-  readonly sessionId: string | null;
   /** A chat's Session title, or a subagent's own name. */
   readonly title: string;
   /** A subagent belongs to the conversation that delegated it, inside the same Session. */
@@ -34,3 +32,19 @@ export interface ConversationIdentity {
   /** Set when the conversation runs on another machine, such as an SSH execution host. */
   readonly host: { readonly id: string; readonly name: string } | null;
 }
+
+/** Execution ownership, independent of the Agent currently running the conversation. */
+export type ConversationIdentity = ConversationIdentityPresentation &
+  (
+    | {
+        readonly execution: "agent-runtime";
+        /** A descendant opens in the Session bound to its execution root. */
+        readonly sessionId: string;
+      }
+    | {
+        readonly execution: "native-codex";
+        readonly sessionId: string | null;
+        /** Local hosts are explicit too; a product Session does not imply Runtime ownership. */
+        readonly executionHostId: string;
+      }
+  );

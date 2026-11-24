@@ -6065,6 +6065,7 @@ it.effect("names a chat by its Session and a subagent by its own title, each wit
 
     const chat = yield* owner.identify(launched.threadId);
     assert.deepInclude(chat, {
+      execution: "agent-runtime",
       threadId: launched.threadId,
       sessionId: launched.sessionId,
       title: "Passkey sign-in",
@@ -6073,6 +6074,7 @@ it.effect("names a chat by its Session and a subagent by its own title, each wit
       host: null,
     });
     assert.deepEqual(yield* owner.identify("child"), {
+      execution: "agent-runtime",
       threadId: "child",
       sessionId: launched.sessionId,
       title: "WebAuthn routes",

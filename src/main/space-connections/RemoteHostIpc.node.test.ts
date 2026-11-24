@@ -30,6 +30,7 @@ import { executeHostCommand } from "../../host/HostCommands";
 import { HostInvocation } from "../../host/HostInvocation";
 import { InboxApplicationError } from "../../host/inbox-application/InboxApplication";
 import type { IpcApi } from "../../shared/ipc-api";
+import type { ConversationIdentity } from "../../shared/conversation-identity";
 import { live } from "./RemoteHostIpc";
 import { makeSpaceIpcCollector } from "./SpaceIpcCollector";
 import type { components } from "@nodex/core-protocol";
@@ -849,14 +850,93 @@ it.effect(
     ),
 );
 
-it.effect("names a hosted transcript's sender by its host, as the Member reads it", () =>
+it.effect("resolves hosted conversation references on their host regardless of ID shape", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { calls, invoke } = yield* recordingHost;
-      yield* invoke("agent-runtime:thread:identity", { threadId: "sender" });
-      expect(calls).toEqual([{ operation: "thread_identity", input: { threadId: "sender" } }]);
+      const threadIds = [
+        "nodex:thread:root",
+        "thread:task:child",
+        "thread:provider:codex:native-thread:child",
+        "019aa111-2222-7333-8444-555555555555",
+      ];
+      for (const threadId of threadIds)
+        expect(yield* invoke("conversation:identity:get", threadId)).toBeNull();
+      expect(calls).toEqual(
+        threadIds.map((threadId) => ({ operation: "thread_identity", input: { threadId } })),
+      );
     }),
   ),
+);
+
+it.effect(
+  "retains the host's conversation ownership and Member authority without local fallback",
+  () =>
+    Effect.gen(function* () {
+      const sender: ConversationIdentity = {
+        execution: "agent-runtime",
+        threadId: "thread:task:sender",
+        sessionId: "host-session",
+        title: "Delegated research",
+        role: "subagent",
+        agent: null,
+        archived: false,
+        host: null,
+      };
+      const received: { threadId: string; invocation: string | null }[] = [];
+      const host = {
+        sessions: {
+          identify: (threadId: string) =>
+            Effect.flatMap(HostInvocation, (invocation) => {
+              received.push({ threadId, invocation });
+              return threadId === "thread:task:denied"
+                ? Effect.fail(
+                    new AgentRuntimeApplicationError({
+                      operation: "identify",
+                      message: "The Member may not read this chat",
+                    }),
+                  )
+                : Effect.succeed(threadId === sender.threadId ? sender : null);
+            }),
+        },
+      } as unknown as HeadlessHost["Service"];
+      const client = {
+        hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
+          // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
+          Effect.runPromise(
+            executeHostCommand(host, { id: "identity-call", credential: "proof:bob", call }).pipe(
+              Effect.map((value) => ({ status: "ok" as const, value: value ?? null })),
+            ),
+          ),
+      };
+      const collector = makeSpaceIpcCollector({ routes: () => true });
+      yield* Layer.build(
+        live.pipe(
+          Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+          Layer.provide(
+            Layer.succeed(
+              CoreSessionAccess,
+              CoreSessionAccess.of({
+                handshake: Effect.die("No handshake is needed"),
+                use: (_operation, run) => Effect.promise((signal) => run(client as never, signal)),
+              }),
+            ),
+          ),
+          Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
+          Layer.provide(memberLibrary()),
+        ),
+      );
+      const identify = (threadId: string) =>
+        collector.invoke("conversation:identity:get", {} as IpcMainInvokeEvent, [threadId]);
+      expect(yield* identify(sender.threadId)).toEqual(sender);
+      expect(yield* identify("019aa111-2222-7333-8444-555555555555")).toBeNull();
+      expect((yield* Effect.exit(identify("thread:task:denied")))._tag).toBe("Failure");
+      expect(received).toEqual([
+        { threadId: sender.threadId, invocation: "proof:bob" },
+        { threadId: "019aa111-2222-7333-8444-555555555555", invocation: "proof:bob" },
+        { threadId: "thread:task:denied", invocation: "proof:bob" },
+      ]);
+    }).pipe(Effect.scoped),
 );
 
 it.effect("a team window's chat pickers search the host's chats with the Member's invocation", () =>

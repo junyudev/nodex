@@ -1021,6 +1021,13 @@ Adapters retain backend identity and capability boundaries. Presentation reuse n
 Codex protocol authority for another backend. Product capabilities belong to
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
 
+Main resolves conversation reference identity from Core-admitted native bindings
+or Runtime-owned lineage and returns an explicit execution discriminator. Renderers
+use that resolved owner for navigation; ID prefixes, Agent driver and the presence
+of a Session do not establish execution ownership. Reference reads never perform
+native discovery. Native Codex ingress separately validates UUID syntax and the
+durable driver and instance binding before reaching its app-server.
+
 The Runtime instance reference supplies the Agent identity at every product boundary.
 Core stores its open driver and exact instance ID. Desktop resolves Profile configuration
 and presentation through the provider snapshot and the shared Agent definition registry.

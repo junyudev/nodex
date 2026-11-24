@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import type * as Scope from "effect/Scope";
-import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { isAgentExecutionRootThreadId } from "../../shared/agent-runtime-api";
 import type { DesktopManagedWorktreeLifecycleConsumer } from "../core-client/project-workspace-adapter";
 
 /** An Agent chat working in a managed worktree, described like a native Thread consumer. */
@@ -79,7 +79,7 @@ export const agentChatWorktreeConsumers = (
   chats: AgentChatWorktrees["Service"],
   owners: readonly ManagedWorktreeOwner[],
 ): Effect.Effect<readonly AgentChatWorktreeConsumer[], unknown> => {
-  const agentOwners = owners.filter((owner) => isAgentExecutionThreadId(owner.ownerThreadId));
+  const agentOwners = owners.filter((owner) => isAgentExecutionRootThreadId(owner.ownerThreadId));
   if (agentOwners.length === 0) return Effect.succeed([]);
   return chats.source.pipe(Effect.flatMap((source) => source.consumers(agentOwners)));
 };
