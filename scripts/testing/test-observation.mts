@@ -5,14 +5,12 @@ import dgram from "node:dgram";
 import { channel } from "node:diagnostics_channel";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
-import http from "node:http";
-import http2 from "node:http2";
-import https from "node:https";
-import { registerHooks, syncBuiltinESMExports } from "node:module";
+import type { RequestOptions } from "node:http";
+import Module, { registerHooks, syncBuiltinESMExports } from "node:module";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import tls from "node:tls";
+import type { ConnectionOptions } from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import workers from "node:worker_threads";
@@ -66,12 +64,14 @@ export interface TestObservation {
   readonly pathEvidence: readonly ObservedPath[];
   readonly unobservable: Readonly<Record<string, readonly string[]>>;
   readonly nativeResolution: boolean;
+  readonly missingModuleCandidates: readonly string[];
 }
 
 interface Observation {
   readonly file: string;
   readonly recordPath: string;
   readonly pool: string;
+  readonly child?: boolean;
   readonly root: string;
   readonly directory: string;
   readonly temporary: readonly string[];
@@ -82,12 +82,15 @@ interface Observation {
   readonly snapshots: Map<string, ObservedPath>;
   readonly reasons: Map<Reason, Set<string>>;
   nativeResolution: boolean;
+  readonly missingModuleCandidates: Set<string>;
   pending: number;
+  pendingChildren: number;
   finished: boolean;
 }
 
 // Native, host-realm originals. The recorder and its output must never become inputs.
 const raw = {
+  readFile: fs.readFileSync,
   stat: fs.statSync,
   lstat: fs.lstatSync,
   fstat: fs.fstatSync,
@@ -100,6 +103,7 @@ const raw = {
   writeFile: fs.writeFileSync,
   rename: fs.renameSync,
 };
+const observedRuntime = process.env.NODEX_TEST_OBSERVATION_RUNTIME;
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const virtualStore = path.join(repositoryRoot, "node_modules", ".pnpm");
 const virtualStoreUrl = pathToFileURL(virtualStore + path.sep).href;
@@ -178,6 +182,7 @@ function publish(observation: Observation) {
     worker: { pid: process.pid, threadId: workers.threadId },
     reads: [...reads].sort(),
     nativeResolution: observation.nativeResolution,
+    missingModuleCandidates: [...observation.missingModuleCandidates].sort(),
     probes: Object.fromEntries(probes),
     listings: [...snapshots.values()].filter(({ kind }) => isListing(kind)),
     pathEvidence: [...snapshots.values()].filter(({ kind }) => !isListing(kind)),
@@ -363,6 +368,15 @@ export function pathSnapshot(filename: string, kind: ReadKind, options: unknown)
 function recordRead(observation: Observation, filename: string, kind: ReadKind, options: unknown) {
   try {
     if (runnerCache(observation, filename)) return;
+    // The engine validates this exact executable's regular-file bytes.
+    if (
+      filename === observedRuntime &&
+      filename === process.execPath &&
+      (kind === "content" || kind === "exists") &&
+      raw.realpath(filename) === filename &&
+      raw.stat(filename).isFile()
+    )
+      return;
     const name = relative(observation.root, filename) || ".";
     if (kind === "content" && observation.reads.has(name))
       return { state: "file" } satisfies PathEvidence;
@@ -761,6 +775,185 @@ function subprocess(observation: Observation, executable: unknown) {
   block(observation, "subprocess", typeof executable === "string" ? executable : "<unknown>");
 }
 
+const inheritedCa = process.env.NODE_EXTRA_CA_CERTS;
+const childObservationEnv = "NODEX_TEST_OBSERVATION_CHILD";
+const inheritedNodeOption = /^(?:--use-system-ca|--max-old-space-size=\d+)$/u;
+const safeCliFlag = /^(?:--no-warnings|--expose-gc|--disable-warning=[\w-]+)$/u;
+
+interface ChildObservation {
+  readonly file: string;
+  readonly root: string;
+  readonly recordPath: string;
+  readonly created: readonly string[];
+  readonly entry?: string;
+}
+
+const pipeOrIgnore = (entry: unknown) =>
+  entry === undefined ||
+  entry === null ||
+  entry === "pipe" ||
+  entry === "ignore" ||
+  entry === "overlapped";
+const safeChildStdio = (stdio: unknown) =>
+  Array.isArray(stdio)
+    ? stdio.every((entry, index) => pipeOrIgnore(entry) || (index === 3 && entry === "ipc"))
+    : pipeOrIgnore(stdio);
+
+function childInvocation(
+  observation: Observation,
+  file: unknown,
+  args: readonly unknown[],
+  cwdValue: unknown,
+  env: ReadonlyMap<string, string>,
+  stdio: unknown,
+) {
+  if (
+    observation.child ||
+    file !== process.execPath ||
+    !safeChildStdio(stdio) ||
+    (process.versions.electron && env.get("ELECTRON_RUN_AS_NODE") !== "1") ||
+    env
+      .get("NODE_OPTIONS")
+      ?.trim()
+      .split(/\s+/u)
+      .some((flag) => flag && !inheritedNodeOption.test(flag)) ||
+    [...env.keys()].some((name) =>
+      /^(?:DYLD_|LD_|NODE_ICU_DATA$|NODE_V8_COVERAGE$|OPENSSL_CONF$)/u.test(name),
+    )
+  )
+    return;
+  const cwd = cwdValue == null ? process.cwd() : processPath(cwdValue);
+  if (!cwd) return;
+  const ca = env.get("NODE_EXTRA_CA_CERTS");
+  // The suite validates the inherited CA file; changing its spelling or cwd
+  // can make Node open a different file before the preload runs.
+  if (ca && (ca !== inheritedCa || (!path.isAbsolute(ca) && cwd !== observation.root))) return;
+  const withinCreated = (filename: string) => {
+    const canonical = tryRealpath(filename);
+    return [...observation.created].some((created) => inside(created, canonical));
+  };
+  if (!withinCreated(cwd) && classify(observation, cwd) !== cwd) return;
+  const entryArgument = args.findIndex((arg) => typeof arg !== "string" || !safeCliFlag.test(arg));
+  if (entryArgument < 0) return;
+  const first = args[entryArgument];
+  if (typeof first !== "string") return;
+  const entry =
+    !first.startsWith("-") && /\.[cm]?[jt]s$/u.test(first) ? path.resolve(cwd, first) : undefined;
+  if (!entry && (first !== "-e" || typeof args[entryArgument + 1] !== "string")) return;
+  if (entry) {
+    if (!withinCreated(entry) && (!inside(observation.root, entry) || tryRealpath(entry) !== entry))
+      return;
+    // Node searches extensions for a missing CJS main. Accept a real entry file.
+    if (!raw.stat(entry, { throwIfNoEntry: false })?.isFile()) return;
+  }
+  const child: ChildObservation = {
+    file: observation.file,
+    root: observation.root,
+    recordPath: path.join(observation.directory, "children", randomUUID() + ".json"),
+    created: [...observation.created],
+    entry,
+  };
+  const input = child.recordPath + ".input";
+  raw.mkdir(path.dirname(input), { recursive: true });
+  raw.writeFile(input, JSON.stringify(child));
+  return {
+    // CLI preload runs before the entry even if the caller supplied a minimal env.
+    args: ["--import", pathToFileURL(import.meta.filename).href, ...args],
+    input,
+    collect() {
+      try {
+        const result = JSON.parse(raw.readFile(child.recordPath, "utf8")) as TestObservation;
+        if (result.version !== 2 || result.file !== observation.file)
+          throw new Error("Wrong child observation");
+        for (const [reason, details] of Object.entries(result.unobservable))
+          for (const detail of details) block(observation, reason as Reason, detail);
+        for (const read of result.reads) observation.reads.add(read);
+        for (const candidate of result.missingModuleCandidates)
+          observation.missingModuleCandidates.add(candidate);
+        for (const entry of [...result.pathEvidence, ...result.listings]) {
+          const { mode, recursive, bufferSize } = entry.evidence;
+          const key = JSON.stringify([entry.path, entry.kind, mode, recursive, bufferSize]);
+          const previous = observation.snapshots.get(key);
+          if (previous && JSON.stringify(previous.evidence) !== JSON.stringify(entry.evidence))
+            block(observation, "unstable filesystem input", entry.path);
+          observation.snapshots.set(key, entry);
+        }
+        observation.nativeResolution ||= result.nativeResolution;
+      } catch {
+        block(observation, "subprocess", "missing or unreadable Node child observation");
+      }
+    },
+  };
+}
+
+function hookChildProcess() {
+  intercept(childProcess.ChildProcess.prototype, "spawn", {
+    apply(original, receiver: childProcess.ChildProcess, args) {
+      const observation = current();
+      if (!observation) return Reflect.apply(original, receiver, args);
+      const options = args[0] as
+        | {
+            file?: string;
+            args?: string[];
+            cwd?: string;
+            envPairs?: string[];
+            stdio?: unknown;
+          }
+        | undefined;
+      let child: ReturnType<typeof childInvocation>;
+      if (options?.args && Array.isArray(options.envPairs)) {
+        const env = new Map(
+          options.envPairs.map((pair) => {
+            const i = pair.indexOf("=");
+            return [pair.slice(0, i), pair.slice(i + 1)];
+          }),
+        );
+        try {
+          child = withinRecorder(() =>
+            childInvocation(
+              observation,
+              options.file,
+              options.args!.slice(1),
+              options.cwd,
+              env,
+              options.stdio,
+            ),
+          );
+        } catch {
+          // Qualification is optional. Let Node handle the caller's original invocation.
+        }
+      }
+      if (!child || !options?.args || !options.envPairs) {
+        subprocess(observation, options?.file);
+        return Reflect.apply(original, receiver, args);
+      }
+      const normalized = {
+        ...options,
+        args: [options.args[0], ...child.args],
+        envPairs: [
+          ...options.envPairs.filter((pair) => !pair.startsWith(childObservationEnv + "=")),
+          childObservationEnv + "=" + child.input,
+        ],
+      };
+      const collect = child.collect;
+      observation.pendingChildren++;
+      const completed = (code: number | null) => {
+        observation.pendingChildren--;
+        if (code === 0) withinRecorder(collect);
+        else subprocess(observation, options.file);
+      };
+      receiver.prependOnceListener("close", completed);
+      try {
+        return Reflect.apply(original, receiver, [normalized]);
+      } catch (error) {
+        receiver.removeListener("close", completed);
+        completed(null);
+        throw error;
+      }
+    },
+  });
+}
+
 function loopback(host: string) {
   const name = host.toLowerCase().replace(/^\[|\]$|\.$/gu, "");
   if (name === "localhost" || name === "::1") return true;
@@ -771,7 +964,7 @@ function loopback(host: string) {
 }
 
 function connect(observation: Observation, host: unknown) {
-  if (typeof host !== "string" || !loopback(host))
+  if (observation.child || typeof host !== "string" || !loopback(host))
     block(observation, "network", typeof host === "string" ? host : "<unknown host>");
 }
 
@@ -792,21 +985,24 @@ function inspectDestination(observation: Observation, args: unknown[]) {
       observation,
       typeof args[1] === "string"
         ? args[1]
-        : ((args[1] as tls.ConnectionOptions | undefined)?.host ?? "localhost"),
+        : ((args[1] as ConnectionOptions | undefined)?.host ?? "localhost"),
     );
   if (first && typeof first === "object") {
-    const options = first as net.TcpNetConnectOpts & net.IpcNetConnectOpts & tls.ConnectionOptions;
-    if (options.path || options.socket) return;
+    const options = first as net.TcpNetConnectOpts & net.IpcNetConnectOpts & ConnectionOptions;
+    if (options.path || options.socket) {
+      if (observation.child) block(observation, "network", "Node child socket");
+      return;
+    }
     return connect(observation, options.host ?? options.servername ?? "localhost");
   }
   if (typeof first !== "string") return connect(observation, undefined);
   // net.connect accepts numeric strings as ports and other strings as local IPC paths.
-  if (/^\d+$/u.test(first))
+  if (observation.child || /^\d+$/u.test(first))
     connect(
       observation,
       typeof args[1] === "string"
         ? args[1]
-        : ((args[1] as tls.ConnectionOptions | undefined)?.host ?? "localhost"),
+        : ((args[1] as ConnectionOptions | undefined)?.host ?? "localhost"),
     );
 }
 
@@ -818,25 +1014,73 @@ function onCall(
   observe(owner, method, "sync", (observation, args) => call(observation, args));
 }
 
+function hookSyncChild(method: "spawnSync" | "execFileSync") {
+  intercept(childProcess, method, {
+    apply(original, receiver, args) {
+      const observation = current();
+      if (!observation) return Reflect.apply(original, receiver, args);
+      const [file, argv, opts] = args;
+      const options = (Array.isArray(argv) ? opts : argv) as
+        | {
+            shell?: string | boolean;
+            cwd?: string | URL;
+            env?: NodeJS.ProcessEnv;
+            stdio?: unknown;
+          }
+        | undefined;
+      let child: ReturnType<typeof childInvocation>;
+      const originalEnv = options?.env ?? process.env;
+      if (!options?.shell && Array.isArray(argv)) {
+        try {
+          const env = new Map<string, string>();
+          // Node accepts inherited enumerable environment keys as well.
+          for (const name in originalEnv) {
+            if (originalEnv[name] !== undefined) env.set(name, String(originalEnv[name]));
+          }
+          child = withinRecorder(() =>
+            childInvocation(observation, file, argv, options?.cwd, env, options?.stdio),
+          );
+          if (child) {
+            const nextOptions = {
+              ...options,
+              env: { ...Object.fromEntries(env), [childObservationEnv]: child.input },
+            };
+            const result: unknown = Reflect.apply(original, receiver, [
+              file,
+              child.args,
+              nextOptions,
+            ]);
+            if (method === "execFileSync" || (result as { status?: number })?.status === 0)
+              withinRecorder(child.collect);
+            else subprocess(observation, file);
+            return result;
+          }
+        } catch (error) {
+          if (child) {
+            subprocess(observation, file);
+            throw error;
+          }
+          // Let the original function validate options that we cannot inspect.
+        }
+      }
+      subprocess(observation, options?.shell ? shellExecutable(options.shell) : file);
+      return Reflect.apply(original, receiver, args);
+    },
+  });
+}
+
+const shellExecutable = (shell: unknown) =>
+  typeof shell === "string"
+    ? shell
+    : process.platform === "win32"
+      ? (process.env.ComSpec ?? "cmd.exe")
+      : "/bin/sh";
+
 function hookExecution() {
-  onCall(childProcess.ChildProcess.prototype, "spawn", (observation, [options]) =>
-    subprocess(observation, (options as { file?: unknown } | undefined)?.file),
-  );
-  const shellExecutable = (shell: unknown) =>
-    typeof shell === "string"
-      ? shell
-      : process.platform === "win32"
-        ? (process.env.ComSpec ?? "cmd.exe")
-        : "/bin/sh";
-  for (const method of ["spawnSync", "execFileSync"]) {
-    onCall(childProcess, method, (observation, [file, argsOrOptions, options]) => {
-      const { shell } =
-        ((Array.isArray(argsOrOptions) ? options : argsOrOptions) as {
-          shell?: unknown;
-        }) ?? {};
-      subprocess(observation, shell ? shellExecutable(shell) : file);
-    });
-  }
+  hookChildProcess();
+  onCall(process, "execve", (observation, [file]) => subprocess(observation, file));
+  hookSyncChild("spawnSync");
+  hookSyncChild("execFileSync");
   onCall(childProcess, "execSync", (observation, [, options]) =>
     subprocess(observation, shellExecutable((options as { shell?: string } | undefined)?.shell)),
   );
@@ -861,6 +1105,12 @@ function hookExecution() {
 }
 
 function hookNetwork() {
+  // Node's HTTP ESM facade reads lazy exports and initializes Undici even for
+  // filesystem-only children. Patch the underlying builtin exports directly.
+  const http = process.getBuiltinModule("node:http");
+  const https = process.getBuiltinModule("node:https");
+  const http2 = process.getBuiltinModule("node:http2");
+  const tls = process.getBuiltinModule("node:tls");
   onCall(net.Socket.prototype, "connect", inspectDestination);
   intercept(net.Socket.prototype, "emit", {
     apply(original, receiver, args) {
@@ -877,7 +1127,7 @@ function hookNetwork() {
       onCall(protocol, method, (observation, args) => {
         const [first, second] = args;
         const options = (second && typeof second === "object" ? second : first) as
-          | http.RequestOptions
+          | RequestOptions
           | undefined;
         if (!options?.socketPath)
           connect(observation, options?.hostname ?? options?.host ?? urlHost(first) ?? "localhost");
@@ -931,38 +1181,149 @@ function hookNativeFilesystem() {
   );
 }
 
+// Node's CJS resolve hook does not expose require.resolve({ paths }) or the
+// global lookup directories. The pinned loader passes the actual search list
+// here, after trying package self-resolution. If the seam changes, the public
+// resolve hook still treats the failed lookup as opaque.
+const cjs = Module as typeof Module & { _extensions: Record<string, unknown> };
+let cjsLookup: { specifier: string; missing?: readonly string[] } | undefined;
+const barePackage = /^(?:@[\w.-]+\/)?[\w][\w.-]*$/u;
+
+export function missingModuleCandidate(filename: string) {
+  try {
+    raw.lstat(filename);
+    return false;
+  } catch (error) {
+    return missing(error);
+  }
+}
+
+function cjsMissingCandidates(request: string, directories: unknown) {
+  const absolute = path.isAbsolute(request);
+  const direct = absolute || /^\.\.?\//u.test(request);
+  if ((!direct && !barePackage.test(request)) || /[\\%?#]|\/$/u.test(request)) return;
+  if (!absolute && (!Array.isArray(directories) || !directories.length)) return;
+  const extensions = Object.keys(cjs._extensions);
+  if (extensions.some((extension) => !/^\.[\w.]+$/u.test(extension))) return;
+  const candidates: string[] = [];
+  for (const directory of absolute ? [""] : (directories as unknown[])) {
+    if (typeof directory !== "string" || (!absolute && !path.isAbsolute(directory))) return;
+    const base = path.resolve(directory, request);
+    // A present package or directory can redirect through exports or its main
+    // field. Only the wholly absent branch is closed by this candidate set.
+    candidates.push(base, ...extensions.map((extension) => base + extension));
+  }
+  if (candidates.every(missingModuleCandidate)) return candidates;
+}
+
+function esmMissingCandidates(request: string, importer: string) {
+  if (!barePackage.test(request)) return;
+  // ESM searches node_modules up the importing file's ancestry, with no CJS
+  // global folders. A present package is allowed to redirect via exports.
+  const candidates: string[] = [];
+  for (let directory = path.dirname(importer); ; directory = path.dirname(directory)) {
+    candidates.push(path.join(directory, "node_modules", request));
+    if (directory === path.dirname(directory)) break;
+  }
+  if (candidates.every(missingModuleCandidate)) return candidates;
+}
+
+function recordPackageScope(observation: Observation, importer: string) {
+  if (inside(virtualStore, importer)) return true;
+  if (!inside(observation.root, importer) || tryRealpath(importer) !== importer) return false;
+  for (
+    let directory = path.dirname(importer);
+    inside(observation.root, directory);
+    directory = path.dirname(directory)
+  ) {
+    const manifest = path.join(directory, "package.json");
+    const evidence = recordRead(observation, manifest, "content", undefined);
+    if (evidence?.state === "file") return true;
+    if (evidence?.state !== "absent" || directory === observation.root) return false;
+  }
+  return false;
+}
+
+function recordFailedResolution(
+  observation: Observation,
+  specifier: string,
+  context: { parentURL?: string; conditions?: readonly string[] },
+  cjsCandidates: readonly string[] | undefined,
+  error: unknown,
+) {
+  const failure = error as (NodeJS.ErrnoException & { url?: string }) | null;
+  const parent = processPath({ href: context.parentURL });
+  const commonJS = context.conditions?.includes("require");
+  const explicitPath = /^(?:\.\.?\/|\/|file:)/u.test(specifier);
+  if (!commonJS && failure?.code === "ERR_MODULE_NOT_FOUND" && failure.url && explicitPath) {
+    const filename = processPath({ href: failure.url });
+    if (!filename || !inside(observation.root, filename)) return false;
+    return recordRead(observation, filename, "content", undefined)?.state === "absent";
+  }
+  if (!parent) return false;
+  const candidates =
+    commonJS && failure?.code === "MODULE_NOT_FOUND"
+      ? cjsCandidates
+      : !commonJS && failure?.code === "ERR_MODULE_NOT_FOUND" && !failure.url
+        ? esmMissingCandidates(specifier, parent)
+        : undefined;
+  if (!candidates || !recordPackageScope(observation, parent)) return false;
+  for (const candidate of candidates) observation.missingModuleCandidates.add(candidate);
+  return true;
+}
+
 function hookNativeResolution() {
+  intercept(cjs, "_findPath", {
+    apply(original, receiver, args) {
+      const result: unknown = Reflect.apply(original, receiver, args);
+      const lookup = cjsLookup;
+      if (lookup && result === false && args[0] === lookup.specifier)
+        lookup.missing = withinRecorder(() => cjsMissingCandidates(lookup.specifier, args[1]));
+      return result;
+    },
+  });
   registerHooks({
     resolve(specifier, context, next) {
       const observation = current();
+      if (!observation) return next(specifier, context);
+      const previousLookup = cjsLookup;
+      const lookup = { specifier, missing: undefined as readonly string[] | undefined };
+      cjsLookup = context.conditions?.includes("require") ? lookup : undefined;
       try {
         const result = next(specifier, context);
-        if (
-          !observation ||
-          result.url.startsWith("node:") ||
-          result.url.startsWith(virtualStoreUrl)
-        )
-          return result;
+        if (result.url.startsWith("node:") || result.url.startsWith(virtualStoreUrl)) return result;
         const filename = processPath({ href: result.url });
         if (filename === import.meta.filename) return result;
         if (filename) {
           if (withinRecorder(() => recordRead(observation, filename, "content", undefined)))
             observation.nativeResolution = true;
         } else {
-          block(observation, "module resolution", "untracked native module URL");
+          const scheme = /^[\w+.-]+:/u.exec(result.url)?.[0] ?? "<unknown>";
+          block(observation, "module resolution", "untracked native module URL " + scheme);
         }
         return result;
       } catch (error) {
-        // The native loader doesn't expose its unsuccessful path probes.
-        if (observation) block(observation, "module resolution", "failed native lookup");
+        withinRecorder(() => {
+          try {
+            if (recordFailedResolution(observation, specifier, context, lookup.missing, error))
+              return;
+          } catch {
+            // Keep the original loader error when it cannot be fingerprinted.
+          }
+          const request = barePackage.test(specifier) ? " " + specifier : "";
+          const code = (error as NodeJS.ErrnoException | null)?.code ?? "failed native lookup";
+          block(observation, "module resolution", code + request);
+        });
         throw error;
+      } finally {
+        cjsLookup = previousLookup;
       }
     },
   });
 }
 
 // Node preloads the hooks before Vitest's VM loader snapshots named builtin exports.
-if (process.env.NODEX_TEST_OBSERVATIONS) {
+if (process.env.NODEX_TEST_OBSERVATIONS || process.env[childObservationEnv]) {
   hookFilesystem();
   hookExecution();
   hookNetwork();
@@ -976,6 +1337,10 @@ export function beginTestObservation(
   directory: string,
   realm: typeof globalThis,
 ) {
+  if (active?.child) {
+    block(active, "file attribution", "nested test runner");
+    return;
+  }
   if (active) {
     block(active, "file attribution", "overlapping setup");
     endTestObservation(path.resolve(active.root, active.file));
@@ -1002,12 +1367,26 @@ export function beginTestObservation(
     tracing = true;
   }
   const root = process.env.NODEX_TEST_OBSERVATION_ROOT ?? repositoryRoot;
-  active = {
-    file: relative(root, file),
-    recordPath: path.join(directory, digest(relative(root, file)) + "-" + randomUUID() + ".json"),
+  const name = relative(root, file);
+  active = newObservation(
+    name,
     pool,
     root,
-    directory,
+    path.join(directory, digest(name) + "-" + randomUUID() + ".json"),
+  );
+  onCall(realm, "fetch", (observation, [request]) => {
+    const host = urlHost(request);
+    if (host) connect(observation, host);
+  });
+}
+
+function newObservation(file: string, pool: string, root: string, recordPath: string): Observation {
+  return {
+    file,
+    recordPath,
+    pool,
+    root,
+    directory: path.dirname(recordPath),
     temporary: [...new Set([os.tmpdir(), "/tmp"].map((value) => tryRealpath(path.resolve(value))))],
     created: new Set(),
     descriptors: new Map(),
@@ -1023,15 +1402,59 @@ export function beginTestObservation(
     ],
     snapshots: new Map(),
     nativeResolution: false,
+    missingModuleCandidates: new Set(),
     reasons: new Map(),
     pending: 0,
+    pendingChildren: 0,
     finished: false,
   };
-  onCall(realm, "fetch", (observation, [request]) => {
+}
+
+function beginChildObservation(input: string) {
+  const child = JSON.parse(raw.readFile(input, "utf8")) as ChildObservation;
+  delete process.env[childObservationEnv];
+  // A descendant must prove its own work. Until there is a transitive merge
+  // protocol, a child that launches anything reports an opaque operation.
+  const observation = {
+    ...newObservation(child.file, "child", child.root, child.recordPath),
+    child: true,
+  };
+  for (const filename of child.created) observation.created.add(filename);
+  hookNativeResolution();
+  hookNativeFilesystem();
+  onCall(Module, "register", (owner) => block(owner, "module resolution", "custom loader"));
+  onCall(Module, "registerHooks", (owner) => block(owner, "module resolution", "custom loader"));
+  onCall(process, "binding", (owner) =>
+    block(owner, "native filesystem", "Node child process binding"),
+  );
+  onCall(net.Server.prototype, "listen", (owner) => block(owner, "network", "Node child listener"));
+  onCall(dgram.Socket.prototype, "bind", (owner) => block(owner, "network", "Node child listener"));
+  onCall(process, "loadEnvFile", (owner) =>
+    block(owner, "native filesystem", "Node child environment file"),
+  );
+  onCall(globalThis, "fetch", (owner, [request]) => {
     const host = urlHost(request);
-    if (host) connect(observation, host);
+    if (host) connect(owner, host);
+  });
+  syncBuiltinESMExports();
+  active = observation;
+  if (child.entry) recordRead(observation, child.entry, "content", undefined);
+
+  // Observe exit handlers too. Abrupt termination, or a child that never
+  // completes, cannot publish a usable observation.
+  intercept(process, "emit", {
+    apply(original, receiver, args) {
+      if (args[0] !== "exit" || !(process as NodeJS.Process & { _exiting?: boolean })._exiting)
+        return Reflect.apply(original, receiver, args);
+      const result: unknown = Reflect.apply(original, receiver, args);
+      if (args[1] === 0) endTestObservation(path.resolve(child.root, child.file));
+      return result;
+    },
   });
 }
+
+const childObservation = process.env[childObservationEnv];
+if (childObservation) beginChildObservation(childObservation);
 
 /** Runs after Vitest has awaited file hooks and snapshot writes. */
 export function endTestObservation(file: string) {
@@ -1040,6 +1463,8 @@ export function endTestObservation(file: string) {
   active = undefined;
   if (observation.file !== relative(observation.root, file))
     block(observation, "file attribution", "unexpected file end");
+  if (observation.pendingChildren)
+    block(observation, "subprocess", "Node child was still running at file end");
   if (observation.pending)
     block(observation, "unfinished filesystem operation", String(observation.pending));
   observation.finished = true;

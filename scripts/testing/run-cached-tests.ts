@@ -98,7 +98,8 @@ async function collectSuiteInputs(
   const resultsRoot = path.dirname(path.dirname(directory));
   if (electron) await prepareElectronRuntime({ projectRoot: root });
   const caPath = env.NODE_EXTRA_CA_CERTS;
-  const [manifest, epoch, workspace, extra, ca] = await Promise.all([
+  const command = runtimeCommand(suite, [], { cwd: root, env, signal }).command;
+  const [manifest, epoch, workspace, extra, ca, executable] = await Promise.all([
     discoverSuiteManifest(suite, filters, false, { cwd: root, env, signal }),
     cacheEpoch(directory),
     context.workspace?.() ?? workspaceInputs(root, resultsRoot),
@@ -109,12 +110,13 @@ async function collectSuiteInputs(
         : Promise.resolve(undefined)
     ).catch(() => undefined),
     caPath ? binaryIdentity(path.resolve(root, caPath), digests).catch(() => undefined) : undefined,
+    binaryIdentity(command, digests).catch(() => undefined),
   ]);
   const { files, isolated, runtime, configDependencies } = manifest;
   // File hits require isolated Vitest realms and a complete record for every collected spec.
   if ((!browser && !isolated) || !files.length || files.some((file) => !workspace.files.has(file)))
     return undefined;
-  if (((browser || electron) && !extra) || (caPath && !ca)) return undefined;
+  if (!executable || ((browser || electron) && !extra) || (caPath && !ca)) return undefined;
   const hash = fileHasher(root, digests);
   const configInputs = configDependencies.map((file) => relativeInput(root, file));
   if (configInputs.some((file) => file === undefined)) return undefined;
@@ -126,7 +128,7 @@ async function collectSuiteInputs(
     workspace,
     hash,
     runtime,
-    [extra?.digest, ca?.digest, browser ? files : undefined],
+    [executable.digest, extra?.digest, ca?.digest, browser ? files : undefined],
     configInputs.flatMap((file) => (file && !file.startsWith("node_modules/.pnpm/") ? [file] : [])),
   );
   if (!globalKey) return undefined;
@@ -140,18 +142,21 @@ async function collectSuiteInputs(
     hash,
     browser,
     async stable() {
-      const [current, sameHashes, sameRuntime, currentEpoch, sameCa] = await Promise.all([
-        workspaceInputs(root, resultsRoot),
-        hash.unchanged(),
-        extra?.unchanged(),
-        cacheEpoch(directory),
-        ca?.unchanged(),
-      ]);
+      const [current, sameHashes, sameRuntime, currentEpoch, sameCa, sameExecutable] =
+        await Promise.all([
+          workspaceInputs(root, resultsRoot),
+          hash.unchanged(),
+          extra?.unchanged(),
+          cacheEpoch(directory),
+          ca?.unchanged(),
+          executable.unchanged(),
+        ]);
       return (
         current.topology === workspace.topology &&
         sameHashes &&
         sameRuntime !== false &&
         sameCa !== false &&
+        sameExecutable &&
         currentEpoch === epoch
       );
     },
@@ -255,6 +260,11 @@ async function executeBatch(
                     NODE_COMPILE_CACHE: nodeCompileCache,
                     NODEX_TEST_OBSERVATIONS: path.join(staging, "observations"),
                     NODEX_TEST_OBSERVATION_ROOT: root,
+                    NODEX_TEST_OBSERVATION_RUNTIME: runtimeCommand(suite, [], {
+                      cwd: root,
+                      env,
+                      signal,
+                    }).command,
                   }),
             },
             signal,
@@ -320,6 +330,7 @@ function comparablePass(pass: CachedPass) {
     pairs(pass.local?.probes),
     pairs(pass.local?.globs),
     pass.local?.topology,
+    pass.local?.missingModules,
     pass.local?.observed?.toSorted((a, b) => observationKey(a).localeCompare(observationKey(b))),
   ]);
 }
@@ -460,6 +471,8 @@ export async function runCachedSuite(
   const env: NodeJS.ProcessEnv = { ...testRuntimeEnvironment(context.env), NODEX_TEST_TIER: tier };
   delete env.NODEX_TEST_OBSERVATIONS;
   delete env.NODEX_TEST_OBSERVATION_ROOT;
+  delete env.NODEX_TEST_OBSERVATION_RUNTIME;
+  delete env.NODEX_TEST_OBSERVATION_CHILD;
   delete env.NODEX_TEST_TRANSFORM_CACHES;
   const runUncached = async () => {
     const staging = await mkdtemp(path.join(os.tmpdir(), "nodex-test-uncached-"));

@@ -347,6 +347,20 @@ export async function changedPassInputs(
     if (entry.path !== "." && !portablePath(entry.path)) throw new CorruptCachedPass(file);
     if (!(await workspace.reader.matches(entry))) changed.push(entry.path);
   }
+  const missing = pass.local?.missingModules;
+  if (missing) {
+    if (
+      typeof missing.root !== "string" ||
+      !path.isAbsolute(missing.root) ||
+      !Array.isArray(missing.candidates) ||
+      !missing.candidates.every(
+        (candidate) => typeof candidate === "string" && path.isAbsolute(candidate),
+      )
+    )
+      throw new CorruptCachedPass(file);
+    if (!(await workspace.reader.matchesMissingModules(missing)))
+      changed.push("native module lookup candidates");
+  }
   return [...new Set(changed)];
 }
 

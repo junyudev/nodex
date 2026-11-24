@@ -1,6 +1,11 @@
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
-import { pathSnapshot, type ObservedPath, type ReadKind } from "./test-observation.mts";
+import {
+  missingModuleCandidate,
+  pathSnapshot,
+  type ObservedPath,
+  type ReadKind,
+} from "./test-observation.mts";
 import { relativeInput } from "./test-cache-policy.ts";
 
 export const cleanId = (id: string) => id.split(/[?#]/u, 1)[0];
@@ -12,6 +17,10 @@ export interface LocalInputs {
   readonly globs: Readonly<Record<string, readonly string[]>>;
   readonly topology?: string;
   readonly observed?: readonly ObservedPath[];
+  readonly missingModules?: {
+    readonly root: string;
+    readonly candidates: readonly string[];
+  };
 }
 
 export function portablePath(file: string) {
@@ -115,8 +124,15 @@ export function localInputReader(root: string) {
   const matches = (entry: ObservedPath) => matchesKey(observationKey(entry), entry.evidence);
   const matchesKey = async (key: string, expected: ObservedPath["evidence"]) =>
     (await observation(key)) === JSON.stringify(expected);
+  const missingModule = memoize(async (candidate) => missingModuleCandidate(candidate));
+  const matchesMissingModules = async ({
+    root: recordedRoot,
+    candidates,
+  }: NonNullable<LocalInputs["missingModules"]>) =>
+    root === recordedRoot && (await Promise.all(candidates.map(missingModule))).every(Boolean);
   return {
     state,
+    matchesMissingModules,
     glob,
     matches,
     async unchanged(accepted: readonly LocalInputs[]) {
@@ -137,7 +153,11 @@ export function localInputReader(root: string) {
           return members !== undefined && sameMembers(expected, members);
         }),
       ]);
-      return checks.every(Boolean);
+      const missing = accepted.flatMap(({ missingModules }) =>
+        missingModules ? [missingModules] : [],
+      );
+      const missingMatches = await Promise.all(missing.map(current.matchesMissingModules));
+      return checks.every(Boolean) && missingMatches.every(Boolean);
     },
   };
 }

@@ -51,8 +51,10 @@ test("reads back its own output", () => {
   }
 });
 
-test("spawns the current Node executable", async () => {
-  const [code] = await once(spawn(process.execPath, ["-e", ""], { stdio: "ignore" }), "exit");
+test("spawns an external command", async () => {
+  const command = process.platform === "win32" ? "cmd.exe" : "/bin/sh";
+  const args = process.platform === "win32" ? ["/c", "exit 0"] : ["-c", "exit 0"];
+  const [code] = await once(spawn(command, args, { stdio: "ignore" }), "exit");
   expect(code).toBe(0);
   const laterRead = readFileSync(new NodeURL("./import-only.test.ts", import.meta.url));
   expect(laterRead.byteLength).toBeGreaterThan(0);

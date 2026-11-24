@@ -34,6 +34,7 @@ async function readObservations(directory: string | undefined) {
 }
 
 function withObservation(
+  root: string,
   entry: TestEvidence,
   observation: TestObservation | undefined,
 ): TestEvidence {
@@ -49,7 +50,17 @@ function withObservation(
     ...entry,
     deps: [...new Set([...entry.deps, ...observation.reads])].sort(),
     broadTopology: entry.broadTopology || observation.nativeResolution,
-    local: { ...entry.local, observed: [...observation.pathEvidence, ...observation.listings] },
+    local: {
+      ...entry.local,
+      observed: [...observation.pathEvidence, ...observation.listings],
+      ...(observation.missingModuleCandidates.length
+        ? {
+            // CJS can search directories above the checkout and in the user's
+            // global package locations. Reuse the proof only from this checkout.
+            missingModules: { root, candidates: observation.missingModuleCandidates },
+          }
+        : {}),
+    },
   };
 }
 
@@ -166,7 +177,7 @@ export async function runCacheBatch(
   }
   if (!observe) return evidence;
   const observations = await readObservations(process.env.NODEX_TEST_OBSERVATIONS);
-  return evidence.map((entry) => withObservation(entry, observations.get(entry.file)));
+  return evidence.map((entry) => withObservation(root, entry, observations.get(entry.file)));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename) {

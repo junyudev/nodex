@@ -1248,10 +1248,18 @@ recorded inputs still match. Vitest and Vite supply the loaded modules and
 resolution evidence. The runtime recorder adds files read, path probes, and
 directory listings. Chromium records browser requests, Vite inputs, and
 optimizer sources. Install and runtime identity are shared across the units in
-a suite. Electron keys also cover the rebuilt native addon. Operations with
-unobserved inputs, including subprocesses and workspace-built native
-executables, always run. The recorder stops collecting new inputs once a file
-has an unobservable operation. Missing or unstable evidence also requires execution.
+a suite, including the executable's bytes. Electron keys also cover the
+rebuilt native addon. Failed native lookups can be reused when the recorder
+can recheck every candidate that could satisfy the lookup. Negative package
+lookups that search outside the workspace retain their checkout binding.
+
+The recorder follows direct launches of the suite's Node executable and
+merges their evidence when they exit successfully. Custom loaders, inherited
+stdio, nested launches, and child network connections require execution.
+System subprocesses, workspace-built native executables, and ambient
+filesystem inputs also require execution. The recorder stops collecting new
+inputs once a file has an unobservable operation. Missing or unstable evidence
+requires execution.
 
 Each eligible pass retains checkout-relative evidence under
 `cache.local/test-results/` in the primary checkout. `NODEX_BUILD_CACHE_DIR`
