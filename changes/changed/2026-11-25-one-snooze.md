@@ -1,0 +1,1 @@
+**Remind me** on chats and **Later** in the Inbox are now one **Snooze**. **Wake** ends a chat’s snooze early, the Inbox’s **Snoozed** view lists items by when they’ll return, and pinning a chat lives in its menu.

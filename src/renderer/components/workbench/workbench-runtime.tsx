@@ -252,9 +252,19 @@ import {
 } from "@/lib/workbench-scene-presentation";
 import {
   projectSessionProjectionsByProject,
+  useWorkbenchLibrarySessionLane,
   useWorkbenchSessionCatalog,
   useWorkbenchSessionCollections,
 } from "@/lib/use-workbench-session-catalog";
+import {
+  DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
+  resolveAutoSettleIdleBefore,
+  type SidebarAutoSettleDays,
+  type SidebarOptionalShelf,
+  type SidebarOrganize,
+} from "@/lib/sidebar-chat-lifecycle";
+import { workspaceSessionCommands } from "@/lib/workspace-catalog-commands";
+import type { SidebarChatLifecycle } from "./workbench-session-sidebar";
 import {
   createWorkbenchSceneNavigator,
   type PresentWorkbenchPanelSurfaceInput,
@@ -529,6 +539,10 @@ export interface WorkbenchRuntimeProps {
     collapsibleSections?: SidebarCollapsibleSectionsState;
     listExtraPages?: SidebarListExtraPagesState;
     chatOrder?: SidebarChatOrder;
+    organize?: SidebarOrganize;
+    scopeProjectId?: string | null;
+    hiddenShelves?: readonly SidebarOptionalShelf[];
+    autoSettleDays?: SidebarAutoSettleDays;
   };
   pageStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
   pageStagePersistRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -574,6 +588,10 @@ export interface WorkbenchRuntimeProps {
   ) => void;
   setSidebarListExtraPages?: (listId: SidebarListId, extraPages: number) => void;
   setSidebarChatOrder?: (chatOrder: SidebarChatOrder) => void;
+  setSidebarOrganize?: (organize: SidebarOrganize) => void;
+  setSidebarScopeProjectId?: (projectId: string | null) => void;
+  setSidebarHiddenShelves?: (shelves: readonly SidebarOptionalShelf[]) => void;
+  setSidebarAutoSettleDays?: (days: SidebarAutoSettleDays) => void;
   recentPageSessions?: readonly RecentPageSession[];
   projectPickerOpenTick?: number;
   taskSearchOpenTick?: number;
@@ -584,6 +602,13 @@ export interface WorkbenchRuntimeProps {
 
 const EMPTY_RECENT_PAGE_SESSIONS: readonly RecentPageSession[] = [];
 const ignoreSidebarChatOrderChange = (_chatOrder: SidebarChatOrder) => {};
+const ignoreSidebarOrganizeChange = (_organize: SidebarOrganize) => {};
+const ignoreSidebarScopeChange = (_projectId: string | null) => {};
+const ignoreSidebarHiddenShelvesChange = (_shelves: readonly SidebarOptionalShelf[]) => {};
+const NO_HIDDEN_SHELVES: readonly SidebarOptionalShelf[] = [];
+const ignoreSidebarAutoSettleDaysChange = (_days: SidebarAutoSettleDays) => {};
+/** How often an open window settles long-idle chats. */
+const IDLE_CHAT_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 export function WorkbenchRuntime({
   windowSessionId,
@@ -626,6 +651,10 @@ export function WorkbenchRuntime({
   setSidebarCollapsibleSectionCollapsed,
   setSidebarListExtraPages,
   setSidebarChatOrder,
+  setSidebarOrganize,
+  setSidebarScopeProjectId,
+  setSidebarHiddenShelves,
+  setSidebarAutoSettleDays,
   onNavigationStateChange,
   onRegisterCommandPort,
   commandKeymapState,
@@ -883,6 +912,7 @@ export function WorkbenchRuntime({
       ? projectAgentDockSessionQuery.data
       : null;
   const sidebarChatOrder = sidebar?.chatOrder ?? "activity";
+  // The sidebar lists the chats still open for their reader; settled ones share the Settled shelf.
   const sidebarSessionCollections = useWorkbenchSessionCollections({
     projects,
     expandedProjectIds,
@@ -890,7 +920,46 @@ export function WorkbenchRuntime({
     resolveScene: sessionCatalog.resolveScene,
     placementScope: "builtin",
     order: sidebarChatOrder,
+    lifecycle: "open",
   });
+  const sidebarOrganize = sidebar?.organize ?? "attention";
+  // Lanes show one Project only while that Project is still listed.
+  const sidebarScopeProjectId =
+    sidebarOrganize === "attention" &&
+    sidebar?.scopeProjectId &&
+    projects.some((project) => project.id === sidebar.scopeProjectId)
+      ? sidebar.scopeProjectId
+      : null;
+  const sidebarAutoSettleDays =
+    sidebar?.autoSettleDays === undefined
+      ? DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS
+      : sidebar.autoSettleDays;
+  const sidebarOpenLane = useWorkbenchLibrarySessionLane({
+    projectId: sidebarScopeProjectId,
+    order: "attention",
+    lifecycle: "open",
+    enabled: sidebarOrganize === "attention",
+    resolveScene: sessionCatalog.resolveScene,
+  });
+  const sidebarSettledLane = useWorkbenchLibrarySessionLane({
+    projectId: sidebarScopeProjectId,
+    order: "settlement",
+    lifecycle: "settled",
+    enabled: sidebar?.collapsibleSections?.settled === false,
+    resolveScene: sessionCatalog.resolveScene,
+  });
+  // An open window keeps the person's lists tidy: chats that asked nothing of them for the days
+  // they chose settle. Core skips pinned, unread, snoozed and working chats.
+  useEffect(() => {
+    if (sidebarAutoSettleDays === null) return;
+    const sweep = () =>
+      void workspaceSessionCommands
+        .settleIdle(resolveAutoSettleIdleBefore(Date.now(), sidebarAutoSettleDays))
+        .catch(() => undefined);
+    sweep();
+    const timer = window.setInterval(sweep, IDLE_CHAT_SWEEP_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [sidebarAutoSettleDays]);
   const sessionCollectionsByProject = sessionCatalog.collectionsByProject;
   const projectlessSessionCollection = sessionCatalog.projectlessCollection;
   const sessionsByProject = useMemo<Record<string, ProjectSession[]>>(
@@ -2524,11 +2593,53 @@ export function WorkbenchRuntime({
     selectProject,
     selectSession,
     selectSidebarThread,
-    setSessionReminder,
+    setSessionSnooze,
+    openNextChatNeedingReader,
+    reportVisibleChats,
+    stepChat,
+    settleSessions,
+    acceptSessionWork,
+    toggleSessionSettled,
     toggleSessionPin,
     toggleSessionUnread,
     toggleSidebarThreadPinned,
   } = sidebarController;
+  const changeSidebarOrganize = setSidebarOrganize ?? ignoreSidebarOrganizeChange;
+  // React Compiler keeps these stable; a manual memo here would name a dependency it cannot hold.
+  const chatLifecycleCommands = {
+    toggleSessionSettled,
+    stepChat,
+    openNextChatNeedingReader,
+    toggleOrganize: () =>
+      changeSidebarOrganize(sidebarOrganize === "attention" ? "project" : "attention"),
+  };
+  const sidebarChatLifecycle: SidebarChatLifecycle = {
+    organize: sidebarOrganize,
+    onOrganizeChange: changeSidebarOrganize,
+    scopeProjectId: sidebarScopeProjectId,
+    onScopeChange: setSidebarScopeProjectId ?? ignoreSidebarScopeChange,
+    hiddenShelves: sidebar?.hiddenShelves ?? NO_HIDDEN_SHELVES,
+    onHiddenShelvesChange: setSidebarHiddenShelves ?? ignoreSidebarHiddenShelvesChange,
+    autoSettleDays: sidebarAutoSettleDays,
+    onAutoSettleDaysChange: setSidebarAutoSettleDays ?? ignoreSidebarAutoSettleDaysChange,
+    openLane: sidebarOpenLane,
+    settledLane: sidebarSettledLane,
+    onToggleSessionSettled: toggleSessionSettled,
+    onSnoozeSession: setSessionSnooze,
+    onSettleSessions: settleSessions,
+    onAcceptSessionWork: acceptSessionWork,
+    onVisibleChatsChange: reportVisibleChats,
+    snoozeShortcutLabel: formatCommandShortcutLabel(
+      commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
+      "snoozeThread",
+      "CmdOrCtrl+Alt+Z",
+    ),
+    organizeShortcutLabel: formatCommandShortcutLabel(
+      commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
+      "toggleSidebarOrganize",
+      "CmdOrCtrl+Alt+U",
+    ),
+  };
 
   useEffect(() => {
     if (
@@ -3054,6 +3165,7 @@ export function WorkbenchRuntime({
     archiveSession,
     toggleSessionPin,
     toggleSessionUnread,
+    chatLifecycle: chatLifecycleCommands,
     refreshProjectSessions,
     resolveForkLocalEnvironmentConfigPath,
     closePendingWorktreeRoute,
@@ -5898,8 +6010,8 @@ export function WorkbenchRuntime({
           onToggleThreadPin: async () => {
             await toggleSessionPin(activeRenderSession);
           },
-          onSetThreadReminder: async (remindAt) => {
-            await setSessionReminder(activeRenderSession, remindAt);
+          onSetThreadSnooze: async (snoozedUntil) => {
+            await setSessionSnooze(activeRenderSession, snoozedUntil);
           },
           commandKeymapState,
           isMac: isMacPlatform,
@@ -5998,6 +6110,7 @@ export function WorkbenchRuntime({
     onSetPinnedProjectOrder,
     chatOrder: sidebarChatOrder,
     onChatOrderChange: setSidebarChatOrder ?? ignoreSidebarChatOrderChange,
+    lifecycle: sidebarChatLifecycle,
     onPlaceSession: sessionCatalog.place,
     onMoveSidebarThread: moveSidebarThreadForSidebar,
     onReorderPinnedThreads: reorderPinnedSidebarThreads,

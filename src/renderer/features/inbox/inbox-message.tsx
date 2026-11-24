@@ -37,7 +37,7 @@ import { StatusIcon } from "@/lib/status-presentation";
 import type { PageChatActivitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS, InboxIconAction } from "./inbox-icon-action";
-import { describeBackFromLater } from "./inbox-later";
+import { describeBackFromSnooze } from "./inbox-snooze";
 import { useInboxClock } from "./use-inbox-clock";
 import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
 import { InboxMessageDocument } from "./inbox-message-document";
@@ -276,7 +276,9 @@ export function InboxMessage({
   const fromUser = item.source.kind === "user";
   // A message that was set aside says so while it waits again, so its age is no surprise.
   const now = new Date(useInboxClock());
-  const backFromLater = item.waiting ? describeBackFromLater(item.later, now, intl.locale) : null;
+  const backFromSnooze = item.waiting
+    ? describeBackFromSnooze(item.snooze, now, intl.locale)
+    : null;
   const status = inboxPageStatusMark(item);
   const chats = linkedChats && linkedChats.relatedCount > 0 ? linkedChats : null;
   // Where the message's Page already stands, read before its words: its Board status once it
@@ -450,13 +452,13 @@ export function InboxMessage({
           )}
         </p>
       ) : null}
-      {backFromLater ? (
+      {backFromSnooze ? (
         <p
-          data-testid="inbox-back-from-later"
+          data-testid="inbox-back-from-snooze"
           className="flex max-w-[80%] items-center gap-1 px-1 text-xs text-token-description-foreground"
         >
           <ClockIcon className="icon-2xs shrink-0" />
-          <span className="truncate">{backFromLater}</span>
+          <span className="truncate">{backFromSnooze}</span>
         </p>
       ) : null}
       {/* Where the message belongs, then who sent it: read before its words, on one line. */}

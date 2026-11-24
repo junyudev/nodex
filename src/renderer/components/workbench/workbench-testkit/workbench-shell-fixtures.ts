@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import type { SidebarCollapsibleSectionsState } from "@/lib/use-workbench-profile-preferences";
+import { makeDefaultSidebarCollapsibleSectionsState } from "@/lib/sidebar-section-prefs";
 import { parseWorkbenchProjectionTabConfig } from "../../../../shared/schemas/project-sessions";
 import { makeWorkbenchPanelLayout } from "../../../../shared/workbench-panel-layout";
 import {
@@ -22,12 +23,8 @@ import {
 
 export type ProjectSession = WorkbenchSessionRenderProjection;
 
-export const DEFAULT_SIDEBAR_COLLAPSIBLE_SECTIONS: SidebarCollapsibleSectionsState = {
-  pinned: false,
-  pages: false,
-  projects: false,
-  chats: false,
-};
+export const DEFAULT_SIDEBAR_COLLAPSIBLE_SECTIONS: SidebarCollapsibleSectionsState =
+  makeDefaultSidebarCollapsibleSectionsState();
 
 export const DEFAULT_TEST_CODEX_MODELS: CodexModelOption[] = [
   {
@@ -533,7 +530,10 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     pinnedOrder: sessionOverrides.pinnedOrder ?? (databaseViewStarter ? 0 : null),
     archived: sessionOverrides.archived ?? false,
     archivedAt: sessionOverrides.archivedAt ?? null,
-    remindAt: sessionOverrides.remindAt ?? null,
+    snoozedUntil: sessionOverrides.snoozedUntil ?? null,
+    snoozedAt: sessionOverrides.snoozedAt ?? null,
+    wokeAt: sessionOverrides.wokeAt ?? null,
+    pageTurn: sessionOverrides.pageTurn ?? null,
     canManage: true,
     canStop: true,
     unread: sessionOverrides.unread ?? false,
@@ -638,7 +638,9 @@ export function makeSidebarSnapshotItemForSession(session: ProjectSession): Code
     pinned: session.pinned,
     pinnedOrder: session.pinnedOrder,
     unread: session.unread,
-    remindAt: session.remindAt,
+    snoozedUntil: session.snoozedUntil,
+    snoozedAt: session.snoozedAt ?? null,
+    wokeAt: session.wokeAt ?? null,
     archived: session.archived || session.thread.archived,
     statusType: "notLoaded",
     statusActiveFlags: [],

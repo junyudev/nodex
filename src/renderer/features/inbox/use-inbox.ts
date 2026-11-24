@@ -22,7 +22,7 @@ import {
   readInboxSettings,
   readInboxSummary,
   readInboxWindow,
-  readInboxLaterWindow,
+  readInboxSnoozeWindow,
   readInboxActivity,
   updateInboxSettings,
 } from "@/lib/inbox-runtime";
@@ -70,7 +70,11 @@ export function useInboxSummary(scope: InboxScope) {
   });
 }
 
-const NO_COUNTS: InboxCounts = { library: 0, projects: {} };
+const NO_COUNTS: InboxCounts = {
+  library: 0,
+  projects: {},
+  waiting: { library: false, projects: {} },
+};
 
 /** Messages waiting in the Library Inbox and each Project's Inbox, for navigation badges. */
 export function useInboxCounts(): InboxCounts {
@@ -126,14 +130,14 @@ export function useInboxStream(scope: InboxScope) {
 }
 
 /**
- * What was set aside, read while Later shows: timed messages soonest first, then someday. Each
+ * What was set aside, read while Snoozed shows: timed messages soonest first, then someday. Each
  * further page reaches messages that come back later.
  */
-export function useInboxLater(scope: InboxScope, enabled: boolean) {
+export function useInboxSnooze(scope: InboxScope, enabled: boolean) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.inbox.later(inboxScopeKey(scope)),
+    queryKey: queryKeys.inbox.snoozed(inboxScopeKey(scope)),
     queryFn: ({ pageParam }) =>
-      readInboxLaterWindow({ scope, after: pageParam, first: INBOX_WINDOW_SIZE }),
+      readInboxSnoozeWindow({ scope, after: pageParam, first: INBOX_WINDOW_SIZE }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 2_000,

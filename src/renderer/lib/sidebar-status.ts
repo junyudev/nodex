@@ -9,11 +9,30 @@ export type SidebarRowLiveStatus = "attention" | "running" | "background" | "unr
 
 /**
  * Resting statuses are what the person left behind in a chat with nothing live: an unsent draft, or
- * a reminder to come back. They use a quiet tone so they never compete with live statuses.
+ * a snooze. They use a quiet tone so they never compete with live statuses.
  */
-export type SidebarRowRestingStatus = "draft" | "reminder";
+export type SidebarRowRestingStatus = "draft" | "snoozed";
 
-export type SidebarRowStatus = SidebarRowLiveStatus | SidebarRowRestingStatus;
+/**
+ * An unread chat that came back because its snooze came due shows why: the reader asked for it.
+ */
+export type SidebarRowWokeStatus = "woke";
+
+export type SidebarRowStatus =
+  | SidebarRowLiveStatus
+  | SidebarRowRestingStatus
+  | SidebarRowWokeStatus;
+
+/** The glyph a row shows: an unread chat that woke from a snooze says so until it is read. */
+export function resolveSidebarRowGlyph(input: {
+  readonly live: SidebarRowLiveStatus | null;
+  readonly wokeAt: number | null | undefined;
+  readonly hasDraft: boolean;
+  readonly snoozedUntil: string | null | undefined;
+}): SidebarRowStatus | null {
+  if (input.live === "unread" && input.wokeAt != null) return "woke";
+  return input.live ?? resolveSidebarRowRestingStatus(input);
+}
 
 /** A collapsed group summarizes its chats with the same glyphs as a row. */
 export type SidebarGroupStatus = Extract<SidebarRowLiveStatus, "attention" | "unread" | "running">;
@@ -54,14 +73,14 @@ export function resolveSidebarRowStatus(input: {
 
 /**
  * A chat with nothing live rests on what its person left behind. A draft is the more concrete
- * trace, so it outranks a reminder; both outrank the linked Page's status.
+ * trace, so it outranks a snooze; both outrank the linked Page's status.
  */
 export function resolveSidebarRowRestingStatus(input: {
   readonly hasDraft: boolean;
-  readonly remindAt: string | null | undefined;
+  readonly snoozedUntil: string | null | undefined;
 }): SidebarRowRestingStatus | null {
   if (input.hasDraft) return "draft";
-  return input.remindAt ? "reminder" : null;
+  return input.snoozedUntil ? "snoozed" : null;
 }
 
 /**

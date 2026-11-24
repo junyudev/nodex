@@ -212,19 +212,19 @@ describe("ThreadStageHeader", () => {
     });
   });
 
-  test("sets, states and cancels the chat's reminder from Remind me", async () => {
-    const onSetThreadReminder = vi.fn(async (_remindAt: string | null) => {});
-    const remindAt = new Date(Date.now() + 2 * 60 * 60 * 1_000).toISOString();
+  test("sets, states and cancels the chat's snooze from Snooze", async () => {
+    const onSetThreadSnooze = vi.fn(async (_snoozedUntil: string | null) => {});
+    const snoozedUntil = new Date(Date.now() + 2 * 60 * 60 * 1_000).toISOString();
     const view = render(
       <ThreadStageHeader
-        model={buildModel({ remindAt })}
-        actions={{ ...buildActions(), onSetThreadReminder }}
+        model={buildModel({ snoozedUntil })}
+        actions={{ ...buildActions(), onSetThreadSnooze }}
       />,
     );
-    const openRemindMe = async () => {
+    const openSnooze = async () => {
       await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
       await act(async () => {
-        fireEvent.keyDown(view.getByRole("menuitem", { name: "Remind me" }), {
+        fireEvent.keyDown(view.getByRole("menuitem", { name: "Snooze" }), {
           key: "ArrowRight",
         });
         await Promise.resolve();
@@ -232,23 +232,25 @@ describe("ThreadStageHeader", () => {
       await settleAsyncRender();
     };
 
-    await openRemindMe();
-    expect(view.getByRole("menuitem", { name: /^Reminds you (today|tomorrow) at / })).toBeTruthy();
+    await openSnooze();
+    expect(
+      view.getByRole("menuitem", { name: /^Snoozed until (today|tomorrow) at / }),
+    ).toBeTruthy();
     const openedAt = Date.now();
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "In 1 hour" }));
+      fireEvent.click(view.getByRole("menuitem", { name: /^In 1 hour/ }));
       await Promise.resolve();
     });
-    const chosen = Date.parse(onSetThreadReminder.mock.calls[0]?.[0] ?? "");
+    const chosen = Date.parse(onSetThreadSnooze.mock.calls[0]?.[0] ?? "");
     expect(chosen - openedAt).toBeGreaterThanOrEqual(59 * 60 * 1_000);
     expect(chosen - openedAt).toBeLessThanOrEqual(61 * 60 * 1_000);
 
-    await openRemindMe();
+    await openSnooze();
     await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "Cancel reminder" }));
+      fireEvent.click(view.getByRole("menuitem", { name: "Wake" }));
       await Promise.resolve();
     });
-    expect(onSetThreadReminder).toHaveBeenLastCalledWith(null);
+    expect(onSetThreadSnooze).toHaveBeenLastCalledWith(null);
   });
 
   test("opens Copy as a separate submenu with Codex item ordering", async () => {

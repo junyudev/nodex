@@ -37,7 +37,8 @@ const GLYPHS: Record<TurnReason, ComponentType<{ className?: string }>> = {
   starting: ClockIcon,
   waiting_on_prerequisite: ClockIcon,
 };
-const PAGE_TURN_TONE_CLASS_NAME: Record<PageTurnTone, string> = {
+/** The colour of a Turn's words wherever they appear: the chip, a chat row's preview. */
+export const PAGE_TURN_TONE_CLASS_NAME: Record<PageTurnTone, string> = {
   attention: "text-token-warning-foreground",
   danger: "text-danger",
   quiet: "text-token-text-secondary",

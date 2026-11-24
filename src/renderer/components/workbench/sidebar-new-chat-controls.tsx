@@ -21,6 +21,7 @@ import {
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { cn } from "@/lib/utils";
+import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 
 export const SIDEBAR_NEW_CHAT_ROW_CLASS =
   "focus-visible:outline-token-border relative h-[var(--height-token-nav-row)] px-row-x py-row-y cursor-interaction shrink-0 items-center overflow-hidden rounded-lg text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 gap-2 flex w-full hover:bg-token-list-hover-background group";
@@ -31,7 +32,7 @@ export const SIDEBAR_COLLAPSED_CHROME_BUTTON_CLASS =
 export const SIDEBAR_SCROLL_AREA_CLASS =
   "sidebar-scroll-fade-mask relative isolate flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto pt-1 [contain:layout_paint]";
 
-const SIDEBAR_HEADER_TOOL_BUTTON_CLASS =
+export const SIDEBAR_HEADER_TOOL_BUTTON_CLASS =
   "no-drag flex size-7 cursor-interaction items-center justify-center rounded-lg text-(--color-text-secondary-ghost) select-none outline-none hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) active:bg-(--color-background-secondary-ghost-active) focus-visible:ring-2 focus-visible:ring-token-focus-border aria-expanded:bg-(--color-background-secondary-ghost-hover) aria-expanded:text-(--color-text-secondary-ghost-hover)";
 
 interface SidebarScrollChromeState {
@@ -107,6 +108,8 @@ export function useSidebarScrollChrome() {
 export interface SidebarInboxEntry {
   readonly active: boolean;
   readonly count: number;
+  /** Something in it asks the reader for an answer or an approval. */
+  readonly waiting?: boolean;
   readonly shortcutLabel: string;
   readonly onOpen: () => void;
 }
@@ -133,6 +136,7 @@ export function WorkbenchSidebarHeader({
   scrolledContentUnderHeader,
   onSearch,
   inlineSearch,
+  tools,
   children,
 }: {
   title: string;
@@ -140,6 +144,8 @@ export function WorkbenchSidebarHeader({
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
   inlineSearch?: WorkbenchSidebarInlineSearch;
+  /** The destination's own header tools, ahead of Search. */
+  tools?: ReactNode;
   /** Primary rows pinned under the title; destinations without them scroll from the title. */
   children?: ReactNode;
 }) {
@@ -166,6 +172,7 @@ export function WorkbenchSidebarHeader({
           {title}
         </h2>
         <div className="flex shrink-0 items-center gap-1">
+          {tools}
           <NodexTooltip
             tooltipContent={searchLabel}
             shortcutLabel={searchShortcutLabel}
@@ -216,6 +223,17 @@ export function SidebarInboxButton({ entry }: { entry: SidebarInboxEntry }) {
             <FormattedMessage id="workbench.sidebarNewChatControls.inbox" defaultMessage="Inbox" />
           </span>
         </div>
+        {entry.waiting ? (
+          <span className="group-hover:hidden group-focus-visible:hidden">
+            <SidebarStatusIndicator
+              status="attention"
+              label={intl.formatMessage({
+                id: "workbench.sidebarNewChatControls.inboxWaiting",
+                defaultMessage: "Something in the Inbox waits for your answer",
+              })}
+            />
+          </span>
+        ) : null}
         {entry.count > 0 ? (
           <span
             aria-label={intl.formatMessage(

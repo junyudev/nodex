@@ -1,16 +1,16 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { Project, ProjectSession } from "@/lib/types";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
-import { chatReminderPresets } from "@/lib/chat-reminder";
+import { chatSnoozePresets } from "@/lib/chat-snooze";
 import {
   SESSION_CONTEXT_MENU_ACTION_IDS,
   buildSessionContextMenuItems,
   readSessionMoveToProjectActionId,
   readSessionOpenInActionId,
-  readSessionRemindAtActionId,
+  readSessionSnoozedUntilActionId,
   resolveSessionProjectMoveContainers,
   sessionMoveToProjectActionId,
-  sessionRemindAtActionId,
+  sessionSnoozedUntilActionId,
 } from "./session-context-menu-model";
 
 /** Wednesday afternoon, local time. */
@@ -29,7 +29,10 @@ function makeSession(overrides: Partial<ProjectSession> = {}): ProjectSession {
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
-    remindAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    wokeAt: null,
+    pageTurn: null,
     canManage: true,
     canStop: true,
     unread: false,
@@ -159,9 +162,10 @@ describe("session context menu model", () => {
       SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
       SESSION_CONTEXT_MENU_ACTION_IDS.rename,
       SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
-      "session.remind",
-      ...chatReminderPresets(MENU_OPENED_AT).map((preset) =>
-        sessionRemindAtActionId(preset.remindAt),
+      SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled,
+      "session.snooze",
+      ...chatSnoozePresets(MENU_OPENED_AT).map((preset) =>
+        sessionSnoozedUntilActionId(preset.snoozedUntil),
       ),
       SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
       SESSION_CONTEXT_MENU_ACTION_IDS.archive,
@@ -195,12 +199,13 @@ describe("session context menu model", () => {
   test("shows the exact command accelerators without registering global shortcuts", () => {
     const items = buildSessionContextMenuItems({ session: makeSession() });
     const accelerators = items
-      .slice(0, 6)
+      .slice(0, 7)
       .map((item) => (item.type === "separator" ? null : item.accelerator));
     expect(accelerators).toEqual([
       "Alt+CommandOrControl+P",
       "Alt+CommandOrControl+R",
       "Shift+CommandOrControl+U",
+      "Alt+CommandOrControl+E",
       undefined,
       undefined,
       "Shift+CommandOrControl+A",
@@ -358,18 +363,18 @@ describe("session context menu model", () => {
     expect(items[2]?.type === "separator" ? null : items[2]?.label).toBe("Mark as read");
   });
 
-  test("offers reminder presets, and for a pending reminder says when and offers to cancel", () => {
-    const remindMenu = (remindAt: string | null) => {
+  test("offers snooze presets, and for a pending snooze says when and offers to cancel", () => {
+    const snoozeMenu = (snoozedUntil: string | null) => {
       const item = buildSessionContextMenuItems({
-        session: makeSession({ remindAt }),
+        session: makeSession({ snoozedUntil }),
         now: MENU_OPENED_AT,
-      }).find((candidate) => candidate.type === "submenu" && candidate.id === "session.remind");
-      if (item?.type !== "submenu") throw new Error("Remind me submenu missing");
+      }).find((candidate) => candidate.type === "submenu" && candidate.id === "session.snooze");
+      if (item?.type !== "submenu") throw new Error("Snooze submenu missing");
       return item;
     };
 
-    const fresh = remindMenu(null);
-    expect(fresh).toMatchObject({ label: "Remind me", iconKey: "reminder" });
+    const fresh = snoozeMenu(null);
+    expect(fresh).toMatchObject({ label: "Snooze", iconKey: "snooze" });
     expect(fresh.submenu.map((item) => (item.type === "separator" ? "—" : item.label))).toEqual([
       "In 1 hour",
       "In 3 hours",
@@ -377,26 +382,25 @@ describe("session context menu model", () => {
       "Next week, Mon 9:00 AM",
     ]);
     const tomorrow = fresh.submenu[2];
-    expect(tomorrow?.type === "separator" ? null : readSessionRemindAtActionId(tomorrow!.id)).toBe(
-      new Date(2026, 10, 5, 9).toISOString(),
-    );
+    expect(
+      tomorrow?.type === "separator" ? null : readSessionSnoozedUntilActionId(tomorrow!.id),
+    ).toBe(new Date(2026, 10, 5, 9).toISOString());
 
-    const pending = remindMenu(new Date(2026, 10, 5, 9).toISOString());
+    const pending = snoozeMenu(new Date(2026, 10, 5, 9).toISOString());
     expect(pending.submenu.map((item) => (item.type === "separator" ? "—" : item.label))).toEqual([
-      "Reminds you tomorrow at 9:00 AM",
+      "Snoozed until tomorrow at 9:00 AM",
+      "Wake",
       "—",
       "In 1 hour",
       "In 3 hours",
       "Tomorrow, 9:00 AM",
       "Next week, Mon 9:00 AM",
-      "—",
-      "Cancel reminder",
     ]);
     expect(pending.submenu[0]).toMatchObject({ enabled: false });
-    expect(pending.submenu.at(-1)).toMatchObject({
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder,
+    expect(pending.submenu[1]).toMatchObject({
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.wake,
     });
-    expect(readSessionRemindAtActionId("session.remindAt:not-a-time")).toBeNull();
-    expect(readSessionRemindAtActionId(SESSION_CONTEXT_MENU_ACTION_IDS.markUnread)).toBeNull();
+    expect(readSessionSnoozedUntilActionId("session.snoozedUntil:not-a-time")).toBeNull();
+    expect(readSessionSnoozedUntilActionId(SESSION_CONTEXT_MENU_ACTION_IDS.markUnread)).toBeNull();
   });
 });

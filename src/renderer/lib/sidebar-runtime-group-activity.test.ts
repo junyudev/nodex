@@ -11,7 +11,7 @@ const placement = (
   unread = false,
   projectId: string | null = "project",
   sectionId: string | null = "section",
-): SessionSidebarPlacement => ({ sessionId, unread, projectId, sectionId, remindAt: null });
+): SessionSidebarPlacement => ({ sessionId, unread, projectId, sectionId, snoozedUntil: null });
 
 const core = {
   projectId: "project",

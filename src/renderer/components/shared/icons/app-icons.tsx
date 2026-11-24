@@ -1270,6 +1270,28 @@ export function SidebarCreatedIcon({ className }: IconProps) {
   return <SideChatGlyph className={cn("icon-xs", className)} />;
 }
 
+/** Two sliders: adjusts what a view shows. */
+export function SidebarViewOptionsIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      className={cn("icon-xs", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M3.5 6.5h6M15 6.5h1.5M3.5 13.5h1.5M10.5 13.5h6" />
+      <circle cx="12.25" cy="6.5" r="2.25" />
+      <circle cx="7.75" cy="13.5" r="2.25" />
+    </svg>
+  );
+}
+
 export function SidebarUpdatedIcon({ className }: IconProps) {
   return (
     <svg

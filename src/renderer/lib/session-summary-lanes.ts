@@ -8,9 +8,22 @@ interface PendingLane {
   readonly reject: (error: unknown) => void;
 }
 
-/** Lanes asked for in the current task, by scope; a renderer document reads one Space. */
-const pendingByScope = new Map<string | null, PendingLane[]>();
+interface PendingScope {
+  readonly projectId: string | null;
+  readonly lanes: PendingLane[];
+}
+
+/**
+ * Lanes asked for in the current task, by scope; a renderer document reads one Space. One Core
+ * read spans one scope, so the whole Library's chats never batch with the projectless ones.
+ */
+const pendingByScope = new Map<string, PendingScope>();
 let flushScheduled = false;
+
+function scopeKey(projectId: string | null, input: ProjectSessionSummaryWindowInput): string {
+  if (input.wholeLibrary) return "library";
+  return projectId === null ? "projectless" : `project:${projectId}`;
+}
 
 async function readLanes(projectId: string | null, lanes: readonly PendingLane[]): Promise<void> {
   try {
@@ -33,7 +46,7 @@ function flush(): void {
   flushScheduled = false;
   const batches = [...pendingByScope];
   pendingByScope.clear();
-  for (const [projectId, lanes] of batches) {
+  for (const [, { projectId, lanes }] of batches) {
     for (let start = 0; start < lanes.length; start += MAX_PROJECT_SESSION_SUMMARY_LANES) {
       void readLanes(projectId, lanes.slice(start, start + MAX_PROJECT_SESSION_SUMMARY_LANES));
     }
@@ -50,9 +63,10 @@ export function readSessionSummaryLane(
   input: ProjectSessionSummaryWindowInput,
 ): Promise<ProjectSessionSummaryWindow> {
   return new Promise((resolve, reject) => {
-    const lanes = pendingByScope.get(projectId);
-    if (lanes) lanes.push({ input, resolve, reject });
-    else pendingByScope.set(projectId, [{ input, resolve, reject }]);
+    const key = scopeKey(projectId, input);
+    const scope = pendingByScope.get(key);
+    if (scope) scope.lanes.push({ input, resolve, reject });
+    else pendingByScope.set(key, { projectId, lanes: [{ input, resolve, reject }] });
     if (flushScheduled) return;
     flushScheduled = true;
     queueMicrotask(flush);

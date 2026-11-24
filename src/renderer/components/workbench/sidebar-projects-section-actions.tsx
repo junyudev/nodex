@@ -3,9 +3,9 @@ import { useState } from "react";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import {
   ArchiveIcon,
+  MoonIcon,
   ProjectActionsIcon,
   ProjectCollapseAllIcon,
-  ProjectFolderIcon,
   ProjectRemovedIcon,
   ProjectReopenPreviousIcon,
   SidebarManualOrderIcon,
@@ -18,10 +18,14 @@ import {
   NodexDropdownMenu,
   NodexDropdownRadioGroup,
   NodexDropdownRadioItem,
-  NodexDropdownSelectedIcon,
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import type { SidebarProjectGroupCollapseAction } from "@/lib/sidebar-project-group-collapse-action";
+import {
+  SIDEBAR_AUTO_SETTLE_DAY_OPTIONS,
+  type SidebarAutoSettleDays,
+  type SidebarOrganize,
+} from "@/lib/sidebar-chat-lifecycle";
 import { normalizeSidebarChatOrder, type SidebarChatOrder } from "@/lib/sidebar-section-prefs";
 import { CodexSidebarActionButton } from "./codex-sidebar";
 import { SidebarProjectAddButton } from "./sidebar-project-add-button";
@@ -32,6 +36,9 @@ const PROJECT_SIDEBAR_MENU_ICON_CLASS = "icon-xs";
 export function SidebarProjectsSectionActions({
   chatOrder,
   onChatOrderChange,
+  organize,
+  autoSettleDays,
+  onAutoSettleDaysChange,
   projectGroupCollapseAction,
   onProjectGroupCollapseAction,
   onCreateProject,
@@ -39,6 +46,9 @@ export function SidebarProjectsSectionActions({
 }: {
   chatOrder: SidebarChatOrder;
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  organize: SidebarOrganize;
+  autoSettleDays: SidebarAutoSettleDays;
+  onAutoSettleDaysChange: (days: SidebarAutoSettleDays) => void;
   projectGroupCollapseAction?: SidebarProjectGroupCollapseAction | null;
   onProjectGroupCollapseAction?: (action: SidebarProjectGroupCollapseAction) => void;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
@@ -77,6 +87,9 @@ export function SidebarProjectsSectionActions({
       <SidebarProjectOptionsMenu
         chatOrder={chatOrder}
         onChatOrderChange={onChatOrderChange}
+        organize={organize}
+        autoSettleDays={autoSettleDays}
+        onAutoSettleDaysChange={onAutoSettleDaysChange}
         onOpenRemovedProjects={() => setRemovedProjectsOpen(true)}
       />
       <SidebarProjectAddButton
@@ -108,13 +121,22 @@ const SIDEBAR_CHAT_ORDER_OPTIONS = [
   Icon: typeof SidebarUpdatedIcon;
 }[];
 
+/** Radio values are strings; "never" stands for leaving idle chats open. */
+const AUTO_SETTLE_NEVER = "never";
+
 function SidebarProjectOptionsMenu({
   chatOrder,
   onChatOrderChange,
+  organize,
+  autoSettleDays,
+  onAutoSettleDaysChange,
   onOpenRemovedProjects,
 }: {
   chatOrder: SidebarChatOrder;
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  organize: SidebarOrganize;
+  autoSettleDays: SidebarAutoSettleDays;
+  onAutoSettleDaysChange: (days: SidebarAutoSettleDays) => void;
   onOpenRemovedProjects: () => void;
 }) {
   const intl = useIntl();
@@ -161,56 +183,69 @@ function SidebarProjectOptionsMenu({
         />
       </NodexDropdownItem>
       <NodexDropdownSeparator paddingClassName="pt-1 pb-2" />
-      <NodexDropdownFlyoutSubmenuItem
-        label={intl.formatMessage({
-          id: "workbench.sidebarProjectsSectionActions.organize",
-          defaultMessage: "Organize sidebar",
-        })}
-        contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
-        leftSlot={<ProjectFolderIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-      >
-        <NodexDropdownItem
-          disabled
-          leftSlot={<ProjectFolderIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-          rightSlot={<NodexDropdownSelectedIcon />}
-        >
-          <FormattedMessage
-            id="workbench.sidebarProjectsSectionActions.byProject"
-            defaultMessage="By project"
-          />
-        </NodexDropdownItem>
-        <NodexDropdownItem
-          disabled
+      {/* Arranged by attention, chats order themselves by when each came back. */}
+      {organize === "project" ? (
+        <NodexDropdownFlyoutSubmenuItem
+          label={intl.formatMessage({
+            id: "workbench.sidebarProjectsSectionActions.sort",
+            defaultMessage: "Sort chats by",
+          })}
+          contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
           leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
         >
-          <FormattedMessage
-            id="workbench.sidebarProjectsSectionActions.chronological"
-            defaultMessage="Chronological list"
-          />
-        </NodexDropdownItem>
-      </NodexDropdownFlyoutSubmenuItem>
+          <NodexDropdownRadioGroup
+            value={chatOrder}
+            onValueChange={(value) => onChatOrderChange(normalizeSidebarChatOrder(value))}
+          >
+            {SIDEBAR_CHAT_ORDER_OPTIONS.map(({ order, label, Icon }) => (
+              <NodexDropdownRadioItem
+                key={order}
+                value={order}
+                leftSlot={<Icon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
+                data-app-action-sidebar-chat-order={order}
+              >
+                {intl.formatMessage(label)}
+              </NodexDropdownRadioItem>
+            ))}
+          </NodexDropdownRadioGroup>
+        </NodexDropdownFlyoutSubmenuItem>
+      ) : null}
       <NodexDropdownFlyoutSubmenuItem
         label={intl.formatMessage({
-          id: "workbench.sidebarProjectsSectionActions.sort",
-          defaultMessage: "Sort chats by",
+          id: "workbench.sidebarProjectsSectionActions.autoSettle",
+          defaultMessage: "Settle idle chats",
         })}
         contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
-        leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
+        leftSlot={<MoonIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
       >
         <NodexDropdownRadioGroup
-          value={chatOrder}
-          onValueChange={(value) => onChatOrderChange(normalizeSidebarChatOrder(value))}
+          value={autoSettleDays === null ? AUTO_SETTLE_NEVER : String(autoSettleDays)}
+          onValueChange={(value) =>
+            onAutoSettleDaysChange(value === AUTO_SETTLE_NEVER ? null : Number(value))
+          }
         >
-          {SIDEBAR_CHAT_ORDER_OPTIONS.map(({ order, label, Icon }) => (
+          {SIDEBAR_AUTO_SETTLE_DAY_OPTIONS.map((days) => (
             <NodexDropdownRadioItem
-              key={order}
-              value={order}
-              leftSlot={<Icon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
-              data-app-action-sidebar-chat-order={order}
+              key={days}
+              value={String(days)}
+              data-app-action-sidebar-auto-settle={days}
             >
-              {intl.formatMessage(label)}
+              <FormattedMessage
+                id="workbench.sidebarProjectsSectionActions.autoSettleAfter"
+                defaultMessage="{days, plural, one {After # day} other {After # days}}"
+                values={{ days }}
+              />
             </NodexDropdownRadioItem>
           ))}
+          <NodexDropdownRadioItem
+            value={AUTO_SETTLE_NEVER}
+            data-app-action-sidebar-auto-settle="never"
+          >
+            <FormattedMessage
+              id="workbench.sidebarProjectsSectionActions.autoSettleNever"
+              defaultMessage="Never"
+            />
+          </NodexDropdownRadioItem>
         </NodexDropdownRadioGroup>
       </NodexDropdownFlyoutSubmenuItem>
     </NodexDropdownMenu>

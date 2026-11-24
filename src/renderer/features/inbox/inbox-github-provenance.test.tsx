@@ -11,7 +11,7 @@ vi.mock("./inbox-message-document", () => ({
 const item: InboxItem = {
   pageId: "page",
   rowKind: "intake",
-  later: null,
+  snooze: null,
   turn: null,
   basis: { pageId: "page", contentHash: "hash" },
   pageKey: null,

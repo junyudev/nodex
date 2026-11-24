@@ -4,7 +4,7 @@ import type { TurnReason } from "../../../shared/page-turn";
 
 export const turnRow = (reason: TurnReason, options: string[] = []): InboxItem => ({
   rowKind: "turn",
-  later: null,
+  snooze: null,
   pageId: "page",
   pageKey: "NODEX-1",
   pageStatus: null,
@@ -58,5 +58,5 @@ export const turnRowHandlers = () => ({
   onAccept: vi.fn().mockResolvedValue(undefined),
   onStart: vi.fn().mockResolvedValue(undefined),
   onOpenPR: vi.fn(),
-  onLater: vi.fn(),
+  onSnooze: vi.fn(),
 });

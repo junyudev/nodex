@@ -51,7 +51,7 @@ import { InboxMessageEditor } from "./inbox-message-editor";
 import { InboxPlanSteps } from "./inbox-plan-steps";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
-import { InboxLaterMenu } from "./inbox-later-menu";
+import { SnoozeMenu } from "@/components/shared/snooze-menu";
 import {
   describeInboxAction,
   describeInboxAutomationDecision,
@@ -670,8 +670,8 @@ export function InboxTriage({
       />
     ) : null;
   // An automation's waiting run is run, skipped or handed elsewhere; it is never set aside.
-  const laterAction = item.automationDecision ? null : (
-    <InboxLaterMenu onChoose={(remindAt) => void actions.later([item.pageId], remindAt)} />
+  const snoozeAction = item.automationDecision ? null : (
+    <SnoozeMenu onChoose={(snoozedUntil) => void actions.snooze([item.pageId], snoozedUntil)} />
   );
   // Done with an automation's waiting run means it does not run this time.
   const doneAction = offers.done ? (
@@ -834,7 +834,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {laterAction}
+                {snoozeAction}
                 {holdAction}
                 {doneAction}
                 {handleManuallyAction}
@@ -856,10 +856,11 @@ export function InboxTriage({
         );
         const newChat = proposal.action.type === "new_chat";
         const executesDecision = proposal.action.type === "execute_decision";
-        const proposedLater = proposal.action.type === "later" ? proposal.action : null;
+        const proposedSnooze = proposal.action.type === "snooze" ? proposal.action : null;
         // A time Nodex proposed may have come and gone while the suggestion waited.
-        const laterPassed =
-          proposedLater?.remindAt != null && Date.parse(proposedLater.remindAt) <= now.getTime();
+        const snoozeTimePassed =
+          proposedSnooze?.snoozedUntil != null &&
+          Date.parse(proposedSnooze.snoozedUntil) <= now.getTime();
         // A Heartbeat's run continues its chat on that chat's own Agent.
         const choosesModel =
           newChat || (executesDecision && taskAgent !== null && !automationDecision?.heartbeat);
@@ -947,7 +948,7 @@ export function InboxTriage({
                     onClick={askAgain}
                   />
                 ) : null}
-                {proposedLater ? null : laterAction}
+                {proposedSnooze ? null : snoozeAction}
                 {holdAction}
                 {doneAction}
               </InboxIconActions>
@@ -964,7 +965,7 @@ export function InboxTriage({
                           id: "inbox.inboxTriage.spaceHostUnavailable",
                           defaultMessage: "Space host unavailable",
                         })
-                      : laterPassed
+                      : snoozeTimePassed
                         ? intl.formatMessage({
                             id: "inbox.inboxTriage.thatTimeHasPassedChoose",
                             defaultMessage: "That time has passed. Choose another.",
@@ -1001,15 +1002,15 @@ export function InboxTriage({
                       variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
                     />
-                  ) : proposedLater ? (
-                    <InboxLaterMenu
+                  ) : proposedSnooze ? (
+                    <SnoozeMenu
                       label={intl.formatMessage({
                         id: "inbox.inboxTriage.chooseAnotherTime",
                         defaultMessage: "Choose another time",
                       })}
-                      current={laterPassed ? undefined : proposedLater.remindAt}
-                      onChoose={(remindAt) =>
-                        void actions.confirm(proposal, { type: "later", remindAt })
+                      current={snoozeTimePassed ? undefined : proposedSnooze.snoozedUntil}
+                      onChoose={(snoozedUntil) =>
+                        void actions.confirm(proposal, { type: "snooze", snoozedUntil })
                       }
                       trigger={
                         <NodexButton
@@ -1084,7 +1085,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {laterAction}
+                {snoozeAction}
                 {holdAction}
                 {doneAction}
               </InboxIconActions>
@@ -1134,7 +1135,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {laterAction}
+                {snoozeAction}
                 {holdAction}
                 {doneAction}
               </InboxIconActions>
@@ -1224,7 +1225,7 @@ export function InboxTriage({
                     onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                   />
                 ) : null}
-                {laterAction}
+                {snoozeAction}
                 {holdAction}
                 {doneAction}
               </InboxIconActions>

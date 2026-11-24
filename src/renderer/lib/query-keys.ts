@@ -177,6 +177,7 @@ export const queryKeys = {
       projectId: string | null,
       placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
       order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
+      lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]> = "all",
     ) =>
       spaceQueryKey([
         "projectSessions",
@@ -184,7 +185,19 @@ export const queryKeys = {
         normalizeNullable(projectId),
         placementScope,
         order,
+        lifecycle,
       ] as const),
+    /** A chat's latest reply as row text, as of when the chat last came back to a person. */
+    replyPreview: (sessionId: string, attentionAt: number) =>
+      spaceQueryKey(["projectSessions", "replyPreview", sessionId, attentionAt] as const),
+    /** Every Project's chats and the projectless ones in one list; any chat's change touches it. */
+    librarySummariesAll: () => spaceQueryKey(["projectSessions", "librarySummaries"] as const),
+    librarySummaries: (
+      projectId: string | null,
+      order: NonNullable<ProjectSessionSummaryWindowInput["order"]>,
+      lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>,
+    ) =>
+      spaceQueryKey(["projectSessions", "librarySummaries", projectId, order, lifecycle] as const),
     detail: (sessionId: string) => spaceQueryKey(["projectSessions", "detail", sessionId] as const),
     start: (sessionId: string) => spaceQueryKey(["projectSessions", "start", sessionId] as const),
     sideChats: (sourceSessionId: string) =>
@@ -200,7 +213,7 @@ export const queryKeys = {
     summary: (scope: string) => spaceQueryKey(["inbox", "summary", scope] as const),
     counts: () => spaceQueryKey(["inbox", "counts"] as const),
     window: (scope: string) => spaceQueryKey(["inbox", "window", scope] as const),
-    later: (scope: string) => spaceQueryKey(["inbox", "later", scope] as const),
+    snoozed: (scope: string) => spaceQueryKey(["inbox", "snoozed", scope] as const),
     settings: () => spaceQueryKey(["inbox", "settings"] as const),
     activity: (scope: string, filter: string) =>
       spaceQueryKey(["inbox", "activity", scope, filter] as const),

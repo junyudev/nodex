@@ -46,7 +46,9 @@ function makeThreadItem(overrides: Partial<CodexSidebarThreadItem> = {}): CodexS
     pinned: false,
     pinnedOrder: null,
     unread: false,
-    remindAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    wokeAt: null,
     archived: false,
     statusType: "notLoaded",
     statusActiveFlags: [],
@@ -116,9 +118,9 @@ describe("codex sidebar thread hover card", () => {
     expect(hoverCardText.includes("feat/thread-tools")).toBe(true);
   });
 
-  test("rests a quiet chat on its unsent draft, then on its reminder, and lists both", async () => {
+  test("rests a quiet chat on its unsent draft, then on its snooze, and lists both", async () => {
     const store = createMaitaiStore();
-    const remindAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+    const snoozedUntil = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
     const renderRow = (item: CodexSidebarThreadItem) => (
       <TestMaitaiRoot store={store}>
         <NodexHoverCardProvider>
@@ -130,7 +132,7 @@ describe("codex sidebar thread hover card", () => {
     );
     let view!: ReturnType<typeof renderWithoutRoot>;
     await act(async () => {
-      view = renderWithoutRoot(renderRow(makeThreadItem({ remindAt })));
+      view = renderWithoutRoot(renderRow(makeThreadItem({ snoozedUntil })));
     });
     const slotStatus = () =>
       view.container
@@ -138,18 +140,16 @@ describe("codex sidebar thread hover card", () => {
         ?.getAttribute("data-app-action-sidebar-thread-status");
     const hoverCard = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
 
-    expect(slotStatus()).toBe("reminder");
+    expect(slotStatus()).toBe("snoozed");
     expect(
       view.getByRole("button", {
         name: "X Plan Codex terminal reverse engineer",
-        description: /^Reminder for /,
+        description: /^Snoozed until /,
       }),
     ).not.toBeNull();
     expect(
-      textContent(
-        hoverCard().querySelector("[data-app-action-sidebar-thread-hover-card-reminder]")!,
-      ),
-    ).toMatch(/^Reminds you (today|tomorrow) at /);
+      textContent(hoverCard().querySelector("[data-app-action-sidebar-thread-hover-card-snooze]")!),
+    ).toMatch(/^Snoozed until (today|tomorrow) at /);
 
     // The person starts a reply in this chat's Composer and leaves it unsent.
     const writeDraft = (prompt: string) =>
@@ -175,13 +175,13 @@ describe("codex sidebar thread hover card", () => {
       expect(
         view.getByRole("button", {
           name: "X Plan Codex terminal reverse engineer",
-          description: /^Unsent draft, Reminder for /,
+          description: /^Unsent draft, Snoozed until /,
         }),
       ).not.toBeNull();
 
       // News outranks anything the person left behind.
       await act(async () => {
-        view.rerender(renderRow(makeThreadItem({ remindAt, unread: true })));
+        view.rerender(renderRow(makeThreadItem({ snoozedUntil, unread: true })));
       });
       expect(slotStatus()).toBe("unread");
     } finally {

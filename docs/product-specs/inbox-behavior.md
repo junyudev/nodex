@@ -386,8 +386,9 @@ Turn still defers it.
 
 - `Snooze`, the clock in a message's action row, in a Turn row's actions and in the selection
   bar, opens one menu: `In 1 hour`, `In 3 hours`, the next 9:00 AM at least three hours away,
-  and Monday 9:00 AM of the following week. They are the times chat Snooze offers, counted
-  from when the menu opens. A message still waiting for advice can be set aside at once. An
+  and Monday 9:00 AM of the following week, each with the time it brings the item back beside
+  its name, then `Custom…` for any later date and time. They are the times chat Snooze offers,
+  counted from when the menu opens. A message still waiting for advice can be set aside at once. An
   Automation's waiting run offers no Snooze. Answers and Problems also keep their own actions.
 - A message then says `Snoozed · tomorrow at 9:00 AM` in its place before it folds away; a Turn
   row simply leaves. Either way a toast confirms the time and offers `Undo`.

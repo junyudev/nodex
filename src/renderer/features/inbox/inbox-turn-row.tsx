@@ -13,8 +13,8 @@ import {
 } from "@/components/shared/icons";
 import { Reply } from "@/components/shared/icons/generic-icons";
 import { InboxIconAction } from "./inbox-icon-action";
-import { describeBackFromLater } from "./inbox-later";
-import { InboxLaterMenu } from "./inbox-later-menu";
+import { describeBackFromSnooze } from "./inbox-snooze";
+import { SnoozeMenu } from "@/components/shared/snooze-menu";
 import { useInboxClock } from "./use-inbox-clock";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument } from "@/components/board/nfm-renderer";
@@ -41,7 +41,7 @@ export function InboxTurnRow({
   onAccept,
   onStart,
   onOpenPR,
-  onLater,
+  onSnooze,
 }: {
   readonly item: InboxItem;
   /** Names the work's Project, where rows from every Project share the stream. */
@@ -54,13 +54,17 @@ export function InboxTurnRow({
   readonly onStart: () => Promise<unknown>;
   readonly onOpenPR: () => void;
   /** Sets this move aside until a time; a new reason to need the reader shows at once. */
-  readonly onLater: (until: string) => void;
+  readonly onSnooze: (until: string) => void;
 }) {
   const intl = useIntl();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hostAvailable = useSpaceHostAvailable();
-  const backFromLater = describeBackFromLater(item.later, new Date(useInboxClock()), intl.locale);
+  const backFromSnooze = describeBackFromSnooze(
+    item.snooze,
+    new Date(useInboxClock()),
+    intl.locale,
+  );
   const data = item.turn;
   if (!data) return null;
   const reason = data.turn.reason;
@@ -110,13 +114,13 @@ export function InboxTurnRow({
       : null);
   return (
     <div className="flex flex-col items-start gap-1">
-      {backFromLater ? (
+      {backFromSnooze ? (
         <p
-          data-testid="inbox-back-from-later"
+          data-testid="inbox-back-from-snooze"
           className="flex max-w-[80%] items-center gap-1 px-1 text-xs text-token-description-foreground"
         >
           <ClockIcon className="icon-2xs shrink-0" />
-          <span className="truncate">{backFromLater}</span>
+          <span className="truncate">{backFromSnooze}</span>
         </p>
       ) : null}
       {project ? <div className="flex max-w-[80%] min-w-0 px-1">{project}</div> : null}
@@ -165,7 +169,7 @@ export function InboxTurnRow({
             </p>
           ) : null}
           <div className="ml-auto flex min-h-6 flex-wrap items-center justify-end gap-1.5">
-            <InboxLaterMenu onChoose={onLater} />
+            <SnoozeMenu onChoose={onSnooze} />
             {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
             {chat === "glance" ? (
               <InboxIconAction

@@ -20,7 +20,8 @@ import type {
   ProjectSessionPinnedOrderInput,
   ProjectSessionRenameInput,
   ProjectSessionUnreadInput,
-  ProjectSessionReminderInput,
+  ProjectSessionSettledInput,
+  ProjectSessionSnoozeInput,
   ProjectSessionUpdateInput,
   SessionManagedInput,
 } from "../../shared/types";
@@ -161,9 +162,9 @@ export const workspaceCatalogCommandDefinitions = {
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
   }),
-  sessionSetReminder: defineLocalCommitRendererCommand({
-    key: "workspace.session.set-reminder",
-    channel: "project-sessions:set-reminder",
+  sessionSetSnooze: defineLocalCommitRendererCommand({
+    key: "workspace.session.set-snooze",
+    channel: "project-sessions:set-snooze",
     authority: "core",
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
@@ -171,6 +172,20 @@ export const workspaceCatalogCommandDefinitions = {
   sessionMarkUnread: defineLocalCommitRendererCommand({
     key: "workspace.session.mark-unread",
     channel: "project-sessions:mark-unread",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
+  sessionSetSettled: defineLocalCommitRendererCommand({
+    key: "workspace.session.set-settled",
+    channel: "project-sessions:set-settled",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
+  sessionSettleIdle: defineLocalCommitRendererCommand({
+    key: "workspace.session.settle-idle",
+    channel: "project-sessions:settle-idle",
     authority: "core",
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
@@ -260,7 +275,9 @@ const {
   sessionUnarchive: sessionUnarchiveCommand,
   sessionRecordOpened: sessionRecordOpenedCommand,
   sessionMarkUnread: sessionMarkUnreadCommand,
-  sessionSetReminder: sessionSetReminderCommand,
+  sessionSetSettled: sessionSetSettledCommand,
+  sessionSettleIdle: sessionSettleIdleCommand,
+  sessionSetSnooze: sessionSetSnoozeCommand,
   sidebarCreate: sidebarCreateCommand,
   sidebarRename: sidebarRenameCommand,
   sidebarDelete: sidebarDeleteCommand,
@@ -415,10 +432,10 @@ export const workspaceSessionCommands = {
         payload: { sessionId },
       })
     ).value,
-  setReminder: async (sessionId: string, input: ProjectSessionReminderInput) =>
+  setSnooze: async (sessionId: string, input: ProjectSessionSnoozeInput) =>
     (
-      await invokeLocalCommitCommand(sessionSetReminderCommand, {
-        operationId: operation("session.set-reminder"),
+      await invokeLocalCommitCommand(sessionSetSnoozeCommand, {
+        operationId: operation("session.set-snooze"),
         payload: { sessionId, ...input },
       })
     ).value,
@@ -427,6 +444,21 @@ export const workspaceSessionCommands = {
       await invokeLocalCommitCommand(sessionMarkUnreadCommand, {
         operationId: operation("session.mark-unread"),
         payload: { sessionId, ...input },
+      })
+    ).value,
+  /** Settles every chat that asked nothing of this Member since `idleBefore` (Unix ms). */
+  settleIdle: async (idleBefore: number) => {
+    await invokeLocalCommitCommand(sessionSettleIdleCommand, {
+      operationId: operation("session.settle-idle"),
+      payload: { idleBefore },
+    });
+  },
+  /** Settles the chat for this Member, or reopens it. */
+  setSettled: async (input: ProjectSessionSettledInput) =>
+    (
+      await invokeLocalCommitCommand(sessionSetSettledCommand, {
+        operationId: operation("session.set-settled"),
+        payload: input,
       })
     ).value,
 };

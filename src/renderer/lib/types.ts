@@ -85,7 +85,7 @@ export type {
   ProjectSessionThreadLink,
   ProjectSessionThreadLinkInput,
   ProjectSessionUnreadInput,
-  ProjectSessionReminderInput,
+  ProjectSessionSnoozeInput,
   ProjectSessionUpdateInput,
   WorkspaceDirectoryEntriesInput,
   WorkspaceDirectoryEntriesResult,

@@ -585,6 +585,26 @@ export const CODEX_COMMAND_REGISTRY = [
     "app",
     ["CmdOrCtrl+Shift+U"],
   ),
+  command("settleThread", "Settle chat", "Settle the current chat, or reopen it", 66, "app", [
+    "CmdOrCtrl+Alt+E",
+  ]),
+  command("snoozeThread", "Snooze chat", "Choose when the current chat comes back", 66.5, "app", [
+    "CmdOrCtrl+Alt+Z",
+  ]),
+  command("nextThread", "Next chat", "Open the next chat in the sidebar", 67, "app", [
+    "CmdOrCtrl+Alt+Down",
+  ]),
+  command("previousThread", "Previous chat", "Open the previous chat in the sidebar", 68, "app", [
+    "CmdOrCtrl+Alt+Up",
+  ]),
+  command(
+    "nextThreadNeedingAttention",
+    "Next chat needing you",
+    "Open the next chat that is waiting on you or has news",
+    69,
+    "app",
+    ["CmdOrCtrl+Alt+A"],
+  ),
   command("findInThread", "Find", "Find in the current chat, review, or project view", 70, "app", [
     "CmdOrCtrl+F",
   ]),
@@ -697,6 +717,14 @@ export const CODEX_COMMAND_REGISTRY = [
   command("toggleSidebar", "Toggle sidebar", "Show or hide the sidebar", 170, "app", [
     "CmdOrCtrl+B",
   ]),
+  command(
+    "toggleSidebarOrganize",
+    "Arrange chats by attention",
+    "Arrange the sidebar's chats by attention, or group them by project",
+    175,
+    "app",
+    ["CmdOrCtrl+Alt+U"],
+  ),
   command("toggleSidePanel", "Toggle side panel", "Show or hide the side panel", 180, "app", [
     "CmdOrCtrl+Alt+B",
   ]),
@@ -1112,6 +1140,30 @@ const COMMAND_TITLE_MESSAGES = defineMessages({
     id: "command.toggleThreadUnread.title",
     defaultMessage: "Toggle unread",
   },
+  settleThread: {
+    id: "command.settleThread.title",
+    defaultMessage: "Settle chat",
+  },
+  snoozeThread: {
+    id: "command.snoozeThread.title",
+    defaultMessage: "Snooze chat",
+  },
+  nextThread: {
+    id: "command.nextThread.title",
+    defaultMessage: "Next chat",
+  },
+  previousThread: {
+    id: "command.previousThread.title",
+    defaultMessage: "Previous chat",
+  },
+  nextThreadNeedingAttention: {
+    id: "command.nextThreadNeedingAttention.title",
+    defaultMessage: "Next chat needing you",
+  },
+  toggleSidebarOrganize: {
+    id: "command.toggleSidebarOrganize.title",
+    defaultMessage: "Arrange chats by attention",
+  },
   findInThread: {
     id: "command.findInThread.title",
     defaultMessage: "Find",
@@ -1398,6 +1450,30 @@ const COMMAND_DESCRIPTION_MESSAGES = defineMessages({
   toggleThreadUnread: {
     id: "command.toggleThreadUnread.description",
     defaultMessage: "Mark the current chat unread to come back to it, or read",
+  },
+  settleThread: {
+    id: "command.settleThread.description",
+    defaultMessage: "Settle the current chat, or reopen it",
+  },
+  snoozeThread: {
+    id: "command.snoozeThread.description",
+    defaultMessage: "Choose when the current chat comes back",
+  },
+  nextThread: {
+    id: "command.nextThread.description",
+    defaultMessage: "Open the next chat in the sidebar",
+  },
+  previousThread: {
+    id: "command.previousThread.description",
+    defaultMessage: "Open the previous chat in the sidebar",
+  },
+  nextThreadNeedingAttention: {
+    id: "command.nextThreadNeedingAttention.description",
+    defaultMessage: "Open the next chat that is waiting on you or has news",
+  },
+  toggleSidebarOrganize: {
+    id: "command.toggleSidebarOrganize.description",
+    defaultMessage: "Arrange the sidebar's chats by attention, or group them by project",
   },
   findInThread: {
     id: "command.findInThread.description",

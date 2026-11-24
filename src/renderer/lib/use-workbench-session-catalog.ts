@@ -25,6 +25,7 @@ import {
   type WorkbenchSceneSnapshot,
 } from "../../shared/workbench-scene";
 import {
+  applyProjectSessionSettled,
   getCachedProjectSessionDetail,
   prefetchProjectSessionDetail,
   readCurrentProjectSessionDetail,
@@ -35,6 +36,7 @@ import {
   setProjectSessionSummaries,
 } from "./project-session-query-cache";
 import {
+  librarySessionSummariesQueryOptions,
   projectSessionDetailQueryOptions,
   projectSessionSummariesQueryOptions,
 } from "./query-options";
@@ -156,11 +158,16 @@ export interface WorkbenchSessionCatalog {
   readonly prefetch: (sessionId: string) => Promise<ProjectSession | null>;
   readonly readCurrent: (sessionId: string) => Promise<ProjectSession | null>;
   readonly place: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
-  readonly setReminder: (
+  readonly setSnooze: (
     session: ProjectSession,
-    remindAt: string | null,
+    snoozedUntil: string | null,
   ) => Promise<ProjectSession | null>;
   readonly markUnread: (session: ProjectSession, unread: boolean) => Promise<ProjectSession | null>;
+  /** Settles the chat for this Member, or reopens it. */
+  readonly setSettled: (
+    sessionIds: readonly string[],
+    settled: boolean,
+  ) => Promise<readonly string[]>;
   readonly setPinned: (session: ProjectSession, pinned: boolean) => Promise<ProjectSession | null>;
   readonly setManaged: (session: ProjectSession, managed: boolean) => Promise<void>;
   readonly rename: (session: ProjectSession, title: string) => Promise<ProjectSession>;
@@ -194,6 +201,60 @@ function sessionCollectionErrorMessage(error: unknown): string {
   });
 }
 
+/** One list's rows with how far its read has got. */
+function buildSessionCollection(
+  query: WorkbenchSessionSummaryQueryState | undefined,
+  presentSummary: (summary: ProjectSessionSummary) => WorkbenchSessionPresentation,
+): WorkbenchSessionCollection {
+  const presentations = (query?.data?.items ?? []).map(presentSummary);
+  const projections = presentations.map(presentWorkbenchSession);
+
+  if (!query) {
+    return {
+      presentations,
+      projections,
+      projectionRevision: null,
+      state: { kind: "idle" },
+      hasMore: false,
+    };
+  }
+
+  if (query.data !== undefined) {
+    return {
+      presentations,
+      projections,
+      projectionRevision: query.data.projectionRevision,
+      state: {
+        kind: "ready",
+        refreshing: query.isFetching,
+        refreshError: query.error ? sessionCollectionErrorMessage(query.error) : null,
+      },
+      hasMore: query.data.hasMore,
+    };
+  }
+
+  if (query.error) {
+    return {
+      presentations,
+      projections,
+      projectionRevision: null,
+      state: {
+        kind: "error",
+        message: sessionCollectionErrorMessage(query.error),
+      },
+      hasMore: false,
+    };
+  }
+
+  return {
+    presentations,
+    projections,
+    projectionRevision: null,
+    state: { kind: "loading" },
+    hasMore: false,
+  };
+}
+
 export type WorkbenchSessionCollections = Pick<
   WorkbenchSessionCatalog,
   | "collectionsByProject"
@@ -212,6 +273,7 @@ export function useWorkbenchSessionCollections({
   resolveScene,
   placementScope,
   order = "activity",
+  lifecycle = "all",
 }: {
   projects: readonly Project[];
   expandedProjectIds: ReadonlySet<string>;
@@ -219,6 +281,8 @@ export function useWorkbenchSessionCollections({
   resolveScene: WorkbenchSessionCatalog["resolveScene"];
   placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]>;
   order?: NonNullable<ProjectSessionSummaryWindowInput["order"]>;
+  /** The sidebar lists only chats still open for the reader; pickers list every chat. */
+  lifecycle?: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>;
 }): WorkbenchSessionCollections {
   const queryClient = useQueryClient();
   const projectScopeIds = useMemo(
@@ -233,7 +297,7 @@ export function useWorkbenchSessionCollections({
 
   const summaryState = useQueries({
     queries: projectScopeIds.map((projectId) =>
-      projectSessionSummariesQueryOptions(projectId, placementScope, order),
+      projectSessionSummariesQueryOptions(projectId, placementScope, order, lifecycle),
     ),
     combine: (results) => ({
       queriesByScope: Object.fromEntries(
@@ -263,55 +327,8 @@ export function useWorkbenchSessionCollections({
   );
 
   const buildCollection = useCallback(
-    (query: WorkbenchSessionSummaryQueryState | undefined): WorkbenchSessionCollection => {
-      const presentations = (query?.data?.items ?? []).map(presentSummary);
-      const projections = presentations.map(presentWorkbenchSession);
-
-      if (!query) {
-        return {
-          presentations,
-          projections,
-          projectionRevision: null,
-          state: { kind: "idle" },
-          hasMore: false,
-        };
-      }
-
-      if (query.data !== undefined) {
-        return {
-          presentations,
-          projections,
-          projectionRevision: query.data.projectionRevision,
-          state: {
-            kind: "ready",
-            refreshing: query.isFetching,
-            refreshError: query.error ? sessionCollectionErrorMessage(query.error) : null,
-          },
-          hasMore: query.data.hasMore,
-        };
-      }
-
-      if (query.error) {
-        return {
-          presentations,
-          projections,
-          projectionRevision: null,
-          state: {
-            kind: "error",
-            message: sessionCollectionErrorMessage(query.error),
-          },
-          hasMore: false,
-        };
-      }
-
-      return {
-        presentations,
-        projections,
-        projectionRevision: null,
-        state: { kind: "loading" },
-        hasMore: false,
-      };
-    },
+    (query: WorkbenchSessionSummaryQueryState | undefined): WorkbenchSessionCollection =>
+      buildSessionCollection(query, presentSummary),
     [presentSummary],
   );
   const collectionsByProject = useMemo<Record<string, WorkbenchSessionCollection>>(
@@ -330,21 +347,31 @@ export function useWorkbenchSessionCollections({
   );
   const refresh = useCallback(
     async (projectId: string | null): Promise<readonly WorkbenchSessionPresentation[]> => {
-      const result = await listWorkbenchSessions(projectId, { first: 50, placementScope, order });
+      const result = await listWorkbenchSessions(projectId, {
+        first: 50,
+        placementScope,
+        order,
+        lifecycle,
+      });
       const installed = queryClient.setQueryData<ProjectSessionSummaryWindow>(
-        queryKeys.projectSessions.summaries(projectId, placementScope, order),
+        queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle),
         (current) => preferNewestProjectSessionSummaryWindow(current, result),
       );
       return (installed ?? result).items.map(presentSummary);
     },
-    [order, placementScope, presentSummary, queryClient],
+    [lifecycle, order, placementScope, presentSummary, queryClient],
   );
   const refreshThrough = useCallback(
     async (
       projectId: string | null,
       projectionRevision: number,
     ): Promise<ProjectSessionSummaryWindow> => {
-      const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order);
+      const queryKey = queryKeys.projectSessions.summaries(
+        projectId,
+        placementScope,
+        order,
+        lifecycle,
+      );
       const previous = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
       const canonical = await readProjectSessionSummaryWindowThrough({
         previousItemCount: previous?.items.length ?? 0,
@@ -354,6 +381,7 @@ export function useWorkbenchSessionCollections({
             first,
             placementScope,
             order,
+            lifecycle,
             ...(after === null ? {} : { after }),
           }),
       });
@@ -362,24 +390,29 @@ export function useWorkbenchSessionCollections({
       );
       return installed ?? canonical;
     },
-    [order, placementScope, queryClient],
+    [lifecycle, order, placementScope, queryClient],
   );
   const retryCollection = useCallback(
     async (projectId: string | null): Promise<void> => {
       await queryClient.refetchQueries({
-        queryKey: queryKeys.projectSessions.summaries(projectId, placementScope, order),
+        queryKey: queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle),
         exact: true,
       });
     },
-    [order, placementScope, queryClient],
+    [lifecycle, order, placementScope, queryClient],
   );
 
   const loadMore = useCallback(
     async (projectId: string | null): Promise<void> => {
-      const key = `${scopeKey(projectId)}:${placementScope}:${order}`;
+      const key = `${scopeKey(projectId)}:${placementScope}:${order}:${lifecycle}`;
       if (loadInFlightRef.current.has(key)) return;
 
-      const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order);
+      const queryKey = queryKeys.projectSessions.summaries(
+        projectId,
+        placementScope,
+        order,
+        lifecycle,
+      );
       const current = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
       if (!current?.nextCursor) return;
 
@@ -391,6 +424,7 @@ export function useWorkbenchSessionCollections({
             first: 50,
             placementScope,
             order,
+            lifecycle,
           });
           queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
             if (!latest || latest.nextCursor !== current.nextCursor) {
@@ -416,7 +450,7 @@ export function useWorkbenchSessionCollections({
         },
       );
     },
-    [order, placementScope, queryClient],
+    [lifecycle, order, placementScope, queryClient],
   );
 
   return {
@@ -427,6 +461,108 @@ export function useWorkbenchSessionCollections({
     retryCollection,
     loadMore,
   };
+}
+
+export interface WorkbenchLibrarySessionLane {
+  readonly collection: WorkbenchSessionCollection;
+  readonly loadMore: () => Promise<void>;
+  readonly retry: () => Promise<void>;
+}
+
+const IDLE_LIBRARY_SESSION_COLLECTION: WorkbenchSessionCollection = {
+  presentations: [],
+  projections: [],
+  projectionRevision: null,
+  state: { kind: "idle" },
+  hasMore: false,
+};
+
+/**
+ * Reads the Member's open chats or Settled shelf for one Project or the whole Library.
+ * A hidden lane does not fetch.
+ */
+export function useWorkbenchLibrarySessionLane({
+  projectId,
+  order,
+  lifecycle,
+  enabled,
+  resolveScene,
+}: {
+  projectId: string | null;
+  order: NonNullable<ProjectSessionSummaryWindowInput["order"]>;
+  lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>;
+  enabled: boolean;
+  resolveScene: WorkbenchSessionCatalog["resolveScene"];
+}): WorkbenchLibrarySessionLane {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    ...librarySessionSummariesQueryOptions(projectId, order, lifecycle),
+    enabled,
+  });
+  const loadingRef = useRef(new Set<string | null>());
+  const presentSummary = useCallback(
+    (summary: ProjectSessionSummary): WorkbenchSessionPresentation => {
+      const detail = getCachedProjectSessionDetail(queryClient, summary.id);
+      const domain = projectSessionSummaryToDomain(summary, detail ?? undefined);
+      return { domain, scene: resolveScene(domain) };
+    },
+    [queryClient, resolveScene],
+  );
+  const collection = useMemo(
+    () =>
+      enabled
+        ? buildSessionCollection(
+            { data: query.data, error: query.error, isFetching: query.isFetching },
+            presentSummary,
+          )
+        : IDLE_LIBRARY_SESSION_COLLECTION,
+    [enabled, presentSummary, query.data, query.error, query.isFetching],
+  );
+  const loadMore = useCallback(async (): Promise<void> => {
+    if (loadingRef.current.has(projectId)) return;
+    const queryKey = queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle);
+    const current = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
+    if (!current?.nextCursor) return;
+    loadingRef.current.add(projectId);
+    await runWithCleanup(
+      async () => {
+        const next = await listWorkbenchSessions(projectId, {
+          after: current.nextCursor,
+          first: 50,
+          wholeLibrary: projectId === null,
+          placementScope: "all",
+          order,
+          lifecycle,
+        });
+        queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
+          if (
+            !latest ||
+            latest.nextCursor !== current.nextCursor ||
+            latest.projectionRevision !== current.projectionRevision ||
+            next.projectionRevision !== current.projectionRevision
+          )
+            return latest;
+          const knownIds = new Set(latest.items.map((item) => item.id));
+          return {
+            ...next,
+            items: [...latest.items, ...next.items.filter((item) => !knownIds.has(item.id))],
+          };
+        });
+      },
+      {
+        cleanup: () => {
+          loadingRef.current.delete(projectId);
+        },
+      },
+    );
+  }, [lifecycle, order, projectId, queryClient]);
+  const retry = useCallback(async (): Promise<void> => {
+    await queryClient.refetchQueries({
+      queryKey: queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle),
+      exact: true,
+    });
+  }, [lifecycle, order, projectId, queryClient]);
+  return useMemo(() => ({ collection, loadMore, retry }), [collection, loadMore, retry]);
 }
 
 export function useWorkbenchSessionCatalog({
@@ -545,9 +681,12 @@ export function useWorkbenchSessionCatalog({
     async (sessionId: string) => await prefetchProjectSessionDetail(queryClient, sessionId),
     [queryClient],
   );
-  const setReminder = useCallback(
-    async (session: ProjectSession, remindAt: string | null): Promise<ProjectSession | null> => {
-      const updated = await workspaceSessionCommands.setReminder(session.id, { remindAt });
+  const setSnooze = useCallback(
+    async (
+      session: ProjectSession,
+      snoozedUntil: string | null,
+    ): Promise<ProjectSession | null> => {
+      const updated = await workspaceSessionCommands.setSnooze(session.id, { snoozedUntil });
       seedProjectSessionDetail(queryClient, updated);
       return updated;
     },
@@ -558,6 +697,23 @@ export function useWorkbenchSessionCatalog({
       const updated = await workspaceSessionCommands.markUnread(session.id, { unread });
       seedProjectSessionDetail(queryClient, updated);
       return updated;
+    },
+    [queryClient],
+  );
+  const setSettled = useCallback(
+    async (sessionIds: readonly string[], settled: boolean): Promise<readonly string[]> => {
+      const rollback = applyProjectSessionSettled(
+        queryClient,
+        sessionIds,
+        settled ? Date.now() : null,
+      );
+      try {
+        const result = await workspaceSessionCommands.setSettled({ sessionIds, settled });
+        return result.changedSessionIds;
+      } catch (error) {
+        rollback();
+        throw error;
+      }
     },
     [queryClient],
   );
@@ -834,7 +990,8 @@ export function useWorkbenchSessionCatalog({
     readCurrent: readCurrentProjectSessionDetail,
     place,
     markUnread,
-    setReminder,
+    setSettled,
+    setSnooze,
     setPinned,
     setManaged,
     rename,

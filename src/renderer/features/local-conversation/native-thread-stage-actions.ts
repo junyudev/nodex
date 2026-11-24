@@ -27,7 +27,7 @@ export function composeNativeThreadStageActions(
     onRequestRenameThread: host.onRequestRenameThread,
     onArchiveThread: host.onArchiveThread,
     onToggleThreadPin: host.onToggleThreadPin,
-    onSetThreadReminder: host.onSetThreadReminder,
+    onSetThreadSnooze: host.onSetThreadSnooze,
     onOpenThread: host.onOpenThread,
     onOpenTurnDiffReview: host.onOpenTurnDiffReview,
     onOpenTurnDiffFileInSidePanel: host.onOpenTurnDiffFileInSidePanel,

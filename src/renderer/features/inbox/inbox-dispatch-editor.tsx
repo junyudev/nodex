@@ -40,7 +40,7 @@ const ACTION_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
     id: "inbox.inboxDispatchEditor.saveToNotes",
     defaultMessage: "Save to Notes",
   }),
-  later: defineMessage({ id: "inbox.inboxDispatchEditor.later", defaultMessage: "Later" }),
+  snooze: defineMessage({ id: "inbox.inboxDispatchEditor.snooze", defaultMessage: "Snooze" }),
   new_chat: defineMessage({ id: "inbox.inboxDispatchEditor.newChat", defaultMessage: "New chat" }),
   send_to_chat: defineMessage({
     id: "inbox.inboxDispatchEditor.sendToChat",
@@ -60,7 +60,7 @@ const CONFIRM_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
     id: "inbox.inboxDispatchEditor.saveToNotes",
     defaultMessage: "Save to Notes",
   }),
-  later: defineMessage({ id: "inbox.inboxDispatchEditor.later", defaultMessage: "Later" }),
+  snooze: defineMessage({ id: "inbox.inboxDispatchEditor.snooze", defaultMessage: "Snooze" }),
   new_chat: defineMessage({
     id: "inbox.inboxDispatchEditor.startChat",
     defaultMessage: "Start chat",
@@ -86,12 +86,12 @@ const actionTypesFor = (decisionId: string | null | undefined): readonly ActionT
   (Object.keys(ACTION_LABELS) as ActionType[]).filter(
     (type) =>
       type !== "plan" &&
-      type !== "later" &&
+      type !== "snooze" &&
       (decisionId ? type !== "keep" && type !== "save_to_notes" : type !== "execute_decision"),
   );
 
 export interface InboxDispatchDraft {
-  readonly remindAt?: string;
+  readonly snoozedUntil?: string;
   readonly parentPageId?: string | null;
   readonly plan?: Extract<InboxDispatchAction, { type: "plan" }>;
   readonly proposal?: InboxProposal;
@@ -126,10 +126,10 @@ export function draftFromAction(
         sessionId: null,
         prompt: fallbackPrompt,
       };
-    case "later":
+    case "snooze":
       return {
-        type: "later",
-        remindAt: action.remindAt,
+        type: "snooze",
+        snoozedUntil: action.snoozedUntil,
         projectId: null,
         sessionId: null,
         prompt: fallbackPrompt,
@@ -220,8 +220,8 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
   switch (draft.type) {
     case "plan":
       return draft.plan ?? null;
-    case "later":
-      return draft.remindAt ? { type: "later", remindAt: draft.remindAt } : null;
+    case "snooze":
+      return draft.snoozedUntil ? { type: "snooze", snoozedUntil: draft.snoozedUntil } : null;
     case "save_to_notes":
       return { type: "save_to_notes", parentPageId: draft.parentPageId ?? null };
     case "keep":

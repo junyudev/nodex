@@ -4,8 +4,8 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { openNodexMenu, render } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
 import type { InboxItem } from "../../../shared/inbox";
-import { formatLaterTime } from "./inbox-later";
-import { InboxLaterView, type InboxLaterHandlers } from "./inbox-later-view";
+import { formatInboxSnoozeTime } from "./inbox-snooze";
+import { InboxSnoozeView, type InboxSnoozeHandlers } from "./inbox-snooze-view";
 
 const setAside = (pageId: string, title: string, until: string): InboxItem =>
   ({
@@ -20,12 +20,12 @@ const setAside = (pageId: string, title: string, until: string): InboxItem =>
     waiting: true,
     scope: { kind: "library" },
     location: { kind: "inbox" },
-    later: { setAt: "2026-11-03T10:00:00.000Z", until },
+    snooze: { setAt: "2026-11-03T10:00:00.000Z", until },
   }) as InboxItem;
 
 const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString();
 
-const handlers = (): InboxLaterHandlers => ({
+const handlers = (): InboxSnoozeHandlers => ({
   onOpenPage: vi.fn(),
   onReturn: vi.fn(),
   onReschedule: vi.fn(),
@@ -34,24 +34,24 @@ const handlers = (): InboxLaterHandlers => ({
   onDelete: vi.fn(),
 });
 
-const renderLater = (items: readonly InboxItem[], commands = handlers()) => {
+const renderSnooze = (items: readonly InboxItem[], commands = handlers()) => {
   render(
     <TestQueryProvider>
-      <InboxLaterView items={items} {...commands} />
+      <InboxSnoozeView items={items} {...commands} />
     </TestQueryProvider>,
   );
   return commands;
 };
 
-describe("InboxLaterView", () => {
-  test("says what Later is for while nothing is set aside", () => {
-    renderLater([]);
+describe("InboxSnoozeView", () => {
+  test("says what Snoozed is for while nothing is set aside", () => {
+    renderSnooze([]);
     expect(screen.getByText("Nothing set aside")).toBeTruthy();
   });
 
   test("lists timed messages under their day", () => {
     const soon = new Date(Date.now() + 86_400_000 * 30).toISOString();
-    renderLater([
+    renderSnooze([
       setAside("2", "Read the paper", tomorrow()),
       setAside("1", "Renew the certificate", soon),
     ]);
@@ -62,31 +62,31 @@ describe("InboxLaterView", () => {
   });
 
   test("a message returns to the Inbox now, or changes when it comes back", async () => {
-    const commands = renderLater([setAside("1", "Read the paper", tomorrow())]);
+    const commands = renderSnooze([setAside("1", "Read the paper", tomorrow())]);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Return to Inbox" }));
       await Promise.resolve();
     });
     expect(commands.onReturn).toHaveBeenCalledWith("1");
     await openNodexMenu(screen.getByRole("button", { name: "Change time" }));
-    const option = await screen.findByRole("menuitem", { name: "In 3 hours" });
+    const option = await screen.findByRole("menuitem", { name: /^In 3 hours/ });
     await act(async () => {
       fireEvent.click(option);
       await Promise.resolve();
     });
-    const [pageId, remindAt] = vi.mocked(commands.onReschedule).mock.calls[0]!;
+    const [pageId, snoozedUntil] = vi.mocked(commands.onReschedule).mock.calls[0]!;
     expect(pageId).toBe("1");
-    expect(Date.parse(remindAt!)).toBeGreaterThan(Date.now());
+    expect(Date.parse(snoozedUntil!)).toBeGreaterThan(Date.now());
   });
 
   test("opening a line shows the message and the rest of its actions", async () => {
     const until = tomorrow();
-    const commands = renderLater([setAside("1", "Read the paper", until)]);
+    const commands = renderSnooze([setAside("1", "Read the paper", until)]);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Read the paper/ }));
       await Promise.resolve();
     });
-    expect(screen.getByText(`Returns ${formatLaterTime(until, new Date())}`)).toBeTruthy();
+    expect(screen.getByText(`Returns ${formatInboxSnoozeTime(until, new Date())}`)).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
       await Promise.resolve();

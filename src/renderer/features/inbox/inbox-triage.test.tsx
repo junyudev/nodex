@@ -52,7 +52,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   rowKind: "intake",
-  later: null,
+  snooze: null,
   turn: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
@@ -87,8 +87,8 @@ const actions = (): InboxActions => ({
   dispatch: vi.fn(async () => true),
   keep: vi.fn(async () => true),
   saveToNotes: vi.fn(async () => true),
-  clearLater: vi.fn(async () => true),
-  later: vi.fn(async () => true),
+  wake: vi.fn(async () => true),
+  snooze: vi.fn(async () => true),
   delete: vi.fn(async () => true),
   setState: vi.fn(async () => true),
   setKind: vi.fn(async () => true),
@@ -1008,7 +1008,7 @@ describe("Holding a message", () => {
   });
 });
 
-describe("Later", () => {
+describe("Snooze", () => {
   const choose = async (trigger: string, choice: string | RegExp) => {
     await openNodexMenu(screen.getByRole("button", { name: trigger }));
     const option = await screen.findByRole("menuitem", { name: choice });
@@ -1020,15 +1020,15 @@ describe("Later", () => {
 
   test("a waiting message is set aside until a chosen time", async () => {
     const commands = renderTriage({ item: item({ proposal: null, suggestionState: "none" }) });
-    await choose("Later", "In 1 hour");
-    const [pageIds, remindAt] = vi.mocked(commands.later).mock.calls[0]!;
+    await choose("Snooze", /^In 1 hour/);
+    const [pageIds, snoozedUntil] = vi.mocked(commands.snooze).mock.calls[0]!;
     expect(pageIds).toEqual(["page:1"]);
-    expect(Date.parse(remindAt!)).toBeGreaterThan(Date.now());
+    expect(Date.parse(snoozedUntil!)).toBeGreaterThan(Date.now());
   });
 
   test("a message can be set aside while its advice is still on the way", () => {
     renderTriage({ item: item({ proposal: null, suggestionState: "pending" }) });
-    expect(screen.getByRole("button", { name: "Later" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Snooze" })).toBeTruthy();
   });
 
   test("an automation's waiting run is never set aside", () => {
@@ -1047,38 +1047,38 @@ describe("Later", () => {
         },
       }),
     });
-    expect(screen.queryByRole("button", { name: "Later" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Snooze" })).toBeNull();
   });
 
-  test("Nodex's Later suggestion names its time and confirms as proposed", async () => {
-    const remindAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  test("Nodex's Snooze suggestion names its time and confirms as proposed", async () => {
+    const snoozedUntil = new Date(Date.now() + 3 * 86_400_000).toISOString();
     const later = proposal({
-      action: { type: "later", remindAt },
+      action: { type: "snooze", snoozedUntil },
       summary: "This can wait until after the release.",
     });
     const commands = renderTriage({ item: item({ proposal: later }) });
-    // The decision covers Later, so the row does not offer it a second time.
-    expect(screen.queryByRole("button", { name: "Later" })).toBeNull();
-    const decision = screen.getByRole("button", { name: /^Later · / });
+    // The decision covers Snooze, so the row does not offer it a second time.
+    expect(screen.queryByRole("button", { name: "Snooze" })).toBeNull();
+    const decision = screen.getByRole("button", { name: /^Snooze · / });
     await act(async () => {
       fireEvent.click(decision);
       await Promise.resolve();
     });
     expect(commands.confirm).toHaveBeenCalledWith(later);
-    await choose("Choose another time", "In 3 hours");
+    await choose("Choose another time", /^In 3 hours/);
     expect(commands.confirm).toHaveBeenLastCalledWith(later, {
-      type: "later",
-      remindAt: expect.any(String),
+      type: "snooze",
+      snoozedUntil: expect.any(String),
     });
   });
 
   test("a suggested time that has passed asks for another instead of confirming", () => {
     const later = proposal({
-      action: { type: "later", remindAt: "2020-01-01T09:00:00.000Z" },
+      action: { type: "snooze", snoozedUntil: "2020-01-01T09:00:00.000Z" },
       summary: "This can wait.",
     });
     renderTriage({ item: item({ proposal: later }) });
-    expect(screen.getByRole("button", { name: /^Later · / })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: /^Snooze · / })).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Choose another time" })).toBeTruthy();
   });
 });

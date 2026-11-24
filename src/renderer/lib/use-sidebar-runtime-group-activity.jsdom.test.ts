@@ -65,7 +65,7 @@ describe("sidebar Runtime placement query", () => {
         projectId: "project",
         sectionId: "inherited",
         unread: false,
-        remindAt: null,
+        snoozedUntil: null,
       },
     ];
     mocks.read.mockReset().mockImplementation(async () => placements);
@@ -92,7 +92,7 @@ describe("sidebar Runtime placement query", () => {
           projectId: "moved",
           sectionId: "direct",
           unread: true,
-          remindAt: null,
+          snoozedUntil: null,
         },
       ];
       await act(async () => {

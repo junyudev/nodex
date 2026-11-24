@@ -397,7 +397,7 @@ describe("resolveNodexToolActivity", () => {
     expect(label(call("set_session_pinned", { pinned: true }))).toBe("Pinned chat");
     expect(label(call("set_session_pinned", { pinned: false }))).toBe("Unpinned chat");
     expect(label(call("set_session_archived", { archived: false }))).toBe("Restored chat");
-    expect(label(call("set_session_reminder", { remindAt: null }))).toBe("Cleared chat reminder");
+    expect(label(call("set_session_snooze", { until: null }))).toBe("Woke chat");
     expect(label(call("set_session_unread", { unread: false }))).toBe("Marked chat read");
   });
 

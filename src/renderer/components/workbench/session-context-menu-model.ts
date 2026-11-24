@@ -17,13 +17,13 @@ import {
   type SessionExecutionLocation,
 } from "@/lib/session-execution";
 import { sessionForkDestinations, type SessionForkDestination } from "@/lib/session-fork";
-import { chatReminderPresets, describeChatReminder } from "@/lib/chat-reminder";
+import { chatSnoozePresets, describeChatSnooze } from "@/lib/chat-snooze";
 import { isHostedChat } from "@/lib/hosted-chat";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
 export const SESSION_CONTEXT_MENU_OPEN_IN_PREFIX = "session.openIn:";
-export const SESSION_CONTEXT_MENU_REMIND_AT_PREFIX = "session.remindAt:";
+export const SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX = "session.snoozedUntil:";
 
 export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   togglePin: "session.togglePin",
@@ -34,7 +34,8 @@ export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   fork: "session.fork",
   forkInNewWorktree: "session.forkInNewWorktree",
   markUnread: "session.markUnread",
-  clearReminder: "session.clearReminder",
+  toggleSettled: "session.toggleSettled",
+  wake: "session.wake",
   copyWorkingDirectory: "session.copyWorkingDirectory",
   copyDeeplink: "session.copyDeeplink",
   copyConversationMarkdown: "session.copyConversationMarkdown",
@@ -48,7 +49,7 @@ export type SessionContextMenuActionId =
   | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX}${string}`
   | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX}${string}`
   | `${typeof SESSION_CONTEXT_MENU_OPEN_IN_PREFIX}${FileLinkOpenerId}`
-  | `${typeof SESSION_CONTEXT_MENU_REMIND_AT_PREFIX}${string}`;
+  | `${typeof SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX}${string}`;
 
 export interface SessionContextMenuOpenInTarget {
   readonly id: FileLinkOpenerId;
@@ -65,7 +66,7 @@ export interface SessionContextMenuInput {
   /** Runtime location comes from its execution owner; native location defaults to Core metadata. */
   location?: SessionExecutionLocation | null;
   forkDestinations?: readonly SessionForkDestination[];
-  /** Reminder presets and descriptions are relative to when the menu opens. */
+  /** Snooze presets and descriptions are relative to when the menu opens. */
   now?: Date;
 }
 
@@ -91,51 +92,50 @@ export function sessionOpenInActionId(openerId: FileLinkOpenerId): SessionContex
   return `${SESSION_CONTEXT_MENU_OPEN_IN_PREFIX}${openerId}`;
 }
 
-/** A reminder preset carries its instant, so the chosen time is the one the menu showed. */
-export function sessionRemindAtActionId(remindAt: string): SessionContextMenuActionId {
-  return `${SESSION_CONTEXT_MENU_REMIND_AT_PREFIX}${remindAt}`;
+/** A snooze preset carries its instant, so the chosen time is the one the menu showed. */
+export function sessionSnoozedUntilActionId(snoozedUntil: string): SessionContextMenuActionId {
+  return `${SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX}${snoozedUntil}`;
 }
 
-export function readSessionRemindAtActionId(actionId: string): string | null {
-  if (!actionId.startsWith(SESSION_CONTEXT_MENU_REMIND_AT_PREFIX)) return null;
-  const remindAt = actionId.slice(SESSION_CONTEXT_MENU_REMIND_AT_PREFIX.length).trim();
-  return remindAt && Number.isFinite(Date.parse(remindAt)) ? remindAt : null;
+export function readSessionSnoozedUntilActionId(actionId: string): string | null {
+  if (!actionId.startsWith(SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX)) return null;
+  const snoozedUntil = actionId.slice(SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX.length).trim();
+  return snoozedUntil && Number.isFinite(Date.parse(snoozedUntil)) ? snoozedUntil : null;
 }
 
-/** intl.formatMessage({ id: "workbench.sessionContextMenuModel.remindMe", defaultMessage: "Remind me" }) offers the presets; a pending reminder first says when, and can be cancelled. */
-function buildSessionReminderSubmenu(remindAt: string | null, now: Date): NativeContextMenuItem {
+/** intl.formatMessage({ id: "workbench.sessionContextMenuModel.snooze", defaultMessage: "Snooze" }) offers the presets; a pending snooze first says when, with Wake beside it, as every Snooze menu does. */
+function buildSessionSnoozeSubmenu(snoozedUntil: string | null, now: Date): NativeContextMenuItem {
   const intl = getIntl();
-  const presets: NativeContextMenuItem[] = chatReminderPresets(now).map((preset) => ({
-    id: sessionRemindAtActionId(preset.remindAt),
+  const presets: NativeContextMenuItem[] = chatSnoozePresets(now).map((preset) => ({
+    id: sessionSnoozedUntilActionId(preset.snoozedUntil),
     label: preset.label,
     enabled: true,
   }));
   return {
-    id: "session.remind",
+    id: "session.snooze",
     type: "submenu",
     label: intl.formatMessage({
-      id: "workbench.sessionContextMenuModel.remindMe",
-      defaultMessage: "Remind me",
+      id: "workbench.sessionContextMenuModel.snooze",
+      defaultMessage: "Snooze",
     }),
-    iconKey: "reminder",
-    submenu: remindAt
+    iconKey: "snooze",
+    submenu: snoozedUntil
       ? [
           {
-            id: "session.reminderStatus",
-            label: describeChatReminder(remindAt, now),
+            id: "session.snoozeStatus",
+            label: describeChatSnooze(snoozedUntil, now),
             enabled: false,
           },
-          { type: "separator" },
-          ...presets,
-          { type: "separator" },
           {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder,
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.wake,
             label: intl.formatMessage({
-              id: "workbench.sessionContextMenuModel.cancelReminder",
-              defaultMessage: "Cancel reminder",
+              id: "workbench.sessionContextMenuModel.wake",
+              defaultMessage: "Wake",
             }),
             enabled: true,
           },
+          { type: "separator" },
+          ...presets,
         ]
       : presets,
   };
@@ -377,7 +377,7 @@ export function buildSessionContextMenuItems(
     iconKey: "unread",
     accelerator: "Shift+CommandOrControl+U",
   };
-  // Pins and reminders are each Member's own. The chat's owner or a Space Owner renames and
+  // Pins and snoozes are each Member's own. The chat's owner or a Space Owner renames and
   // archives a chat every Member shares; Nodex management stays out of a team Space's chats.
   const lifecycleItems: NativeContextMenuItem[] = [
     {
@@ -410,7 +410,28 @@ export function buildSessionContextMenuItems(
         ]
       : []),
     markUnread,
-    buildSessionReminderSubmenu(session.remindAt, input.now ?? new Date()),
+    // Settlement is each Member's own, like their pins: it tidies their lists and changes no one else's.
+    ...(session.archived
+      ? []
+      : [
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled,
+            label:
+              session.settledAt != null
+                ? intl.formatMessage({
+                    id: "workbench.sessionContextMenuModel.reopen",
+                    defaultMessage: "Reopen",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.sessionContextMenuModel.settle",
+                    defaultMessage: "Settle",
+                  }),
+            enabled: true,
+            iconKey: "markRead" as const,
+            accelerator: "Alt+CommandOrControl+E",
+          },
+        ]),
+    buildSessionSnoozeSubmenu(session.snoozedUntil, input.now ?? new Date()),
     ...(!hosted && !session.archived
       ? [
           {

@@ -15,25 +15,25 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxIconAction, InboxIconActions } from "./inbox-icon-action";
-import { formatLaterClock, formatLaterTime, laterSections } from "./inbox-later";
-import { InboxLaterMenu } from "./inbox-later-menu";
+import { formatSnoozeClock, formatInboxSnoozeTime, snoozedSections } from "./inbox-snooze";
+import { SnoozeMenu } from "@/components/shared/snooze-menu";
 import { InboxMessageDocument } from "./inbox-message-document";
 import { INBOX_HOLD_LABELS, type InboxHold } from "./inbox-presentation";
 import { useInboxClock } from "./use-inbox-clock";
 
-export interface InboxLaterHandlers {
+export interface InboxSnoozeHandlers {
   readonly onOpenPage: (pageId: string) => void;
   /** Brings the message back to the Inbox now. */
   readonly onReturn: (pageId: string) => void;
   /** Changes when the message comes back. */
-  readonly onReschedule: (pageId: string, remindAt: string) => void;
+  readonly onReschedule: (pageId: string, snoozedUntil: string) => void;
   /** Decides a message without bringing it back first: held as work or as a note, or done. */
   readonly onHold: (item: InboxItem, hold: InboxHold) => void;
   readonly onSetDone: (pageId: string) => void;
   readonly onDelete: (item: InboxItem) => void;
 }
 
-function LaterLine({
+function SnoozedRow({
   item,
   project,
   now,
@@ -42,27 +42,27 @@ function LaterLine({
   readonly item: InboxItem;
   readonly project: ReactNode;
   readonly now: Date;
-  readonly handlers: InboxLaterHandlers;
+  readonly handlers: InboxSnoozeHandlers;
 }) {
   const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
-  if (!item.later) return null;
-  const remindAt = item.later.until;
-  const clock = formatLaterClock(remindAt, intl.locale);
+  if (!item.snooze) return null;
+  const snoozedUntil = item.snooze.until;
+  const clock = formatSnoozeClock(snoozedUntil, intl.locale);
   const reschedule = (
-    <InboxLaterMenu
+    <SnoozeMenu
       label={intl.formatMessage({
-        id: "inbox.inboxLaterView.changeTime",
+        id: "inbox.inboxSnoozeView.changeTime",
         defaultMessage: "Change time",
       })}
-      current={remindAt}
+      current={snoozedUntil}
       onChoose={(next) => handlers.onReschedule(item.pageId, next)}
     />
   );
   const returnNow = (
     <InboxIconAction
       label={intl.formatMessage({
-        id: "inbox.inboxLaterView.returnToInbox",
+        id: "inbox.inboxSnoozeView.returnToInbox",
         defaultMessage: "Return to Inbox",
       })}
       icon={InboxIcon}
@@ -71,9 +71,9 @@ function LaterLine({
   );
   return (
     <li
-      data-testid="inbox-later-row"
+      data-testid="inbox-snooze-row"
       data-inbox-page-id={item.pageId}
-      className="group/later border-b border-token-border/40 text-sm last:border-b-0"
+      className="group/snoozed border-b border-token-border/40 text-sm last:border-b-0"
     >
       <div className="flex min-h-8 items-center gap-1">
         <button
@@ -87,7 +87,7 @@ function LaterLine({
         >
           {/* A day's section names the date, so its rows only add the time of day. */}
           <time
-            dateTime={remindAt}
+            dateTime={snoozedUntil}
             className="w-16 shrink-0 text-xs whitespace-nowrap text-token-description-foreground tabular-nums"
           >
             {clock}
@@ -99,7 +99,7 @@ function LaterLine({
           <span
             role="img"
             aria-label={intl.formatMessage({
-              id: "inbox.inboxLaterView.important",
+              id: "inbox.inboxSnoozeView.important",
               defaultMessage: "Important",
             })}
             className="flex shrink-0 px-1"
@@ -107,13 +107,13 @@ function LaterLine({
             <ImportantFilledIcon className="icon-xs text-(--yellow-text)" />
           </span>
         ) : null}
-        {/* The two ways out of Later stay within reach of the pointer, without opening the row. */}
+        {/* The two ways out of Snoozed stay within reach of the pointer, without opening the row. */}
         <div
           className={cn(
             "flex shrink-0 items-center gap-0.5 transition-opacity",
             expanded
               ? "hidden"
-              : "opacity-0 group-hover/later:opacity-100 focus-within:opacity-100",
+              : "opacity-0 group-hover/snoozed:opacity-100 focus-within:opacity-100",
           )}
         >
           {reschedule}
@@ -123,7 +123,7 @@ function LaterLine({
         {item.pageKey ? (
           <NodexTooltip
             tooltipContent={intl.formatMessage({
-              id: "inbox.inboxLaterView.openPage",
+              id: "inbox.inboxSnoozeView.openPage",
               defaultMessage: "Open page",
             })}
           >
@@ -147,15 +147,15 @@ function LaterLine({
           <div className="flex min-h-6 items-center gap-2">
             <span className="truncate">
               {intl.formatMessage({
-                id: "inbox.inboxLaterView.returns",
+                id: "inbox.inboxSnoozeView.returns",
                 defaultMessage: "Returns",
               })}{" "}
-              {formatLaterTime(remindAt, now, intl.locale)}
+              {formatInboxSnoozeTime(snoozedUntil, now, intl.locale)}
             </span>
             <InboxIconActions>
               <InboxIconAction
                 label={intl.formatMessage({
-                  id: "inbox.inboxLaterView.openPage",
+                  id: "inbox.inboxSnoozeView.openPage",
                   defaultMessage: "Open page",
                 })}
                 icon={PageIcon}
@@ -176,7 +176,7 @@ function LaterLine({
                   ))}
                   <InboxIconAction
                     label={intl.formatMessage({
-                      id: "inbox.inboxLaterView.markDone",
+                      id: "inbox.inboxSnoozeView.markDone",
                       defaultMessage: "Mark done",
                     })}
                     icon={CheckmarkIcon}
@@ -189,7 +189,7 @@ function LaterLine({
               {item.rowKind === "intake" && item.location.kind === "inbox" ? (
                 <InboxIconAction
                   label={intl.formatMessage({
-                    id: "inbox.inboxLaterView.delete",
+                    id: "inbox.inboxSnoozeView.delete",
                     defaultMessage: "Delete",
                   })}
                   icon={DeleteIcon}
@@ -210,7 +210,7 @@ function LaterLine({
  * message is still waiting for its decision, so a line expands to the message and the ways to
  * decide it without bringing it back first.
  */
-export function InboxLaterView({
+export function InboxSnoozeView({
   items,
   projectLabel,
   ...handlers
@@ -218,7 +218,7 @@ export function InboxLaterView({
   readonly items: readonly InboxItem[];
   /** Names a row's Project, where rows from every Project share the list. */
   readonly projectLabel?: (item: InboxItem) => ReactNode;
-} & InboxLaterHandlers) {
+} & InboxSnoozeHandlers) {
   const intl = useIntl();
   const now = new Date(useInboxClock());
   if (items.length === 0) {
@@ -226,14 +226,14 @@ export function InboxLaterView({
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
         <p className="text-base font-medium text-token-foreground">
           <FormattedMessage
-            id="inbox.inboxLaterView.nothingSetAside"
+            id="inbox.inboxSnoozeView.nothingSetAside"
             defaultMessage="Nothing set aside"
           />
         </p>
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
           <FormattedMessage
-            id="inbox.inboxLaterView.aMessageThatCanWait"
-            defaultMessage="A message that can wait leaves the Inbox with Later, and comes back when its time comes."
+            id="inbox.inboxSnoozeView.aMessageThatCanWait"
+            defaultMessage="A message that can wait leaves the Inbox when you snooze it, and comes back when its time comes."
           />
         </p>
       </div>
@@ -241,14 +241,14 @@ export function InboxLaterView({
   }
   return (
     <div className="flex flex-col gap-3">
-      {laterSections(items, now, intl.locale).map((section) => (
+      {snoozedSections(items, now, intl.locale).map((section) => (
         <section key={section.key} aria-label={section.label} className="flex flex-col">
           <h3 className="px-1 pb-1 text-xs font-medium text-token-description-foreground">
             {section.label}
           </h3>
           <ul className="flex flex-col">
             {section.items.map((item) => (
-              <LaterLine
+              <SnoozedRow
                 key={item.pageId}
                 item={item}
                 project={projectLabel?.(item) ?? null}

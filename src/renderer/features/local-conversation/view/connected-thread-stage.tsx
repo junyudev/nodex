@@ -344,7 +344,7 @@ function ConnectedThreadStageHeader({
       title,
       cwd,
       pinned: input.threadPinned,
-      remindAt: input.threadRemindAt ?? null,
+      snoozedUntil: input.threadSnoozedUntil ?? null,
       subagentName,
       shortcuts: input.threadActionShortcuts,
       showSideChatAction: Boolean(

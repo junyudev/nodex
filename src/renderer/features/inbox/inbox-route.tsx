@@ -92,14 +92,14 @@ import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
 import { useAutomationsQuery } from "@/lib/use-automations-query";
 import { useInboxDepartures } from "./use-inbox-departures";
-import { useInboxActivity, useInboxLater, useInboxStream, useInboxSummary } from "./use-inbox";
-import { InboxLaterMenu } from "./inbox-later-menu";
-import { InboxLaterView } from "./inbox-later-view";
+import { useInboxActivity, useInboxSnooze, useInboxStream, useInboxSummary } from "./use-inbox";
+import { SnoozeMenu } from "@/components/shared/snooze-menu";
+import { InboxSnoozeView } from "./inbox-snooze-view";
 import { INBOX_STICK_TO_BOTTOM_PX, type InboxView } from "./inbox-viewport";
 import { initialInboxPlace, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
 /**
- * The Inbox holds what needs the reader now, Later what they set aside to need them again, and
+ * The Inbox holds what needs the reader now, Snoozed what they set aside to need them again, and
  * Activity what was handled or done.
  */
 const INBOX_VIEWS = {
@@ -107,8 +107,8 @@ const INBOX_VIEWS = {
     label: defineMessage({ id: "inbox.inboxRoute.inbox", defaultMessage: "Inbox" }),
     icon: InboxIcon,
   },
-  later: {
-    label: defineMessage({ id: "inbox.inboxRoute.later", defaultMessage: "Later" }),
+  snoozed: {
+    label: defineMessage({ id: "inbox.inboxRoute.snoozed", defaultMessage: "Snoozed" }),
     icon: ClockIcon,
   },
   activity: {
@@ -144,7 +144,7 @@ export interface InboxRouteProps {
 function InboxHeader({
   view,
   inboxCount,
-  laterCount,
+  snoozedCount,
   databaseId,
   databaseLabel,
   notesPageId,
@@ -158,7 +158,7 @@ function InboxHeader({
   readonly view: InboxView;
   readonly inboxCount: number;
   /** Messages set aside; they wait outside the Inbox's own count. */
-  readonly laterCount: number;
+  readonly snoozedCount: number;
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
@@ -185,9 +185,9 @@ function InboxHeader({
         })}
         className="-ml-1 flex min-w-0 items-center"
       >
-        {(["inbox", "later", "activity"] as const).map((option) => {
+        {(["inbox", "snoozed", "activity"] as const).map((option) => {
           const ViewIcon = INBOX_VIEWS[option].icon;
-          const count = option === "inbox" ? inboxCount : option === "later" ? laterCount : 0;
+          const count = option === "inbox" ? inboxCount : option === "snoozed" ? snoozedCount : 0;
           return (
             <button
               key={option}
@@ -413,10 +413,10 @@ export function InboxRoute({
   }
   const stream = useInboxStream(scope);
   const activity = useInboxActivity(scope, activityFilter, view === "activity");
-  const later = useInboxLater(scope, view === "later");
+  const snoozed = useInboxSnooze(scope, view === "snoozed");
   const summary = useInboxSummary(scope);
   // The view shown pages through its own window.
-  const shown = view === "inbox" ? stream : view === "later" ? later : activity;
+  const shown = view === "inbox" ? stream : view === "snoozed" ? snoozed : activity;
   useApplicationPending(visible && (shown.isPending || summary.isPending));
   // The Inbox's preferences arrive with the Agents they name.
   const agents = useInboxAgents();
@@ -489,7 +489,7 @@ export function InboxRoute({
     anchorIds:
       view === "activity"
         ? activity.rows.map((row) => row.id)
-        : (view === "inbox" ? stream : later).items.map((item) => item.pageId),
+        : (view === "inbox" ? stream : snoozed).items.map((item) => item.pageId),
     ready: !shown.isPending,
     hasNextPage: shown.hasNextPage,
     isFetchingNextPage: shown.isFetchingNextPage,
@@ -653,7 +653,7 @@ export function InboxRoute({
           onOpenPR={() => {
             if (data.pull_request_url) void openExternalUrl(data.pull_request_url);
           }}
-          onLater={(until) => void actions.later([item.pageId], until)}
+          onSnooze={(until) => void actions.snooze([item.pageId], until)}
         />
       );
     }
@@ -766,13 +766,13 @@ export function InboxRoute({
   const loaded =
     view === "activity"
       ? activity.rows.length > 0
-      : (view === "inbox" ? stream : later).items.length > 0;
+      : (view === "inbox" ? stream : snoozed).items.length > 0;
 
   const header = (
     <InboxHeader
       view={view}
       inboxCount={summary.data?.inboxCount ?? 0}
-      laterCount={summary.data?.laterCount ?? 0}
+      snoozedCount={summary.data?.snoozedCount ?? 0}
       databaseId={summary.data?.databaseId ?? null}
       databaseLabel={
         inboxProjectId
@@ -873,17 +873,19 @@ export function InboxRoute({
               />
               {loadEarlier}
             </div>
-          ) : view === "later" ? (
+          ) : view === "snoozed" ? (
             <div
-              data-testid="inbox-later"
+              data-testid="inbox-snooze"
               className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-1 flex-col gap-3 px-toolbar pt-3 pb-6"
             >
-              <InboxLaterView
-                items={later.items}
+              <InboxSnoozeView
+                items={snoozed.items}
                 projectLabel={projectLabel}
                 onOpenPage={onOpenPage}
-                onReturn={(pageId) => void actions.clearLater([pageId])}
-                onReschedule={(pageId, remindAt) => void actions.later([pageId], remindAt, true)}
+                onReturn={(pageId) => void actions.wake([pageId])}
+                onReschedule={(pageId, snoozedUntil) =>
+                  void actions.snooze([pageId], snoozedUntil, true)
+                }
                 onHold={(item, hold) =>
                   void (hold === "notes"
                     ? actions.saveToNotes([item.pageId], [item.basis])
@@ -1024,10 +1026,10 @@ export function InboxRoute({
                       })
                     }
                   />
-                  <InboxLaterMenu
+                  <SnoozeMenu
                     align="start"
-                    onChoose={(remindAt) =>
-                      void actions.later(selectedPageIds, remindAt).then((done) => {
+                    onChoose={(snoozedUntil) =>
+                      void actions.snooze(selectedPageIds, snoozedUntil).then((done) => {
                         if (done) clearSelection();
                       })
                     }

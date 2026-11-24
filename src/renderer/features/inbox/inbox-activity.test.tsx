@@ -45,7 +45,7 @@ const chat = (overrides: Partial<InboxChat> = {}): InboxChat => ({
 const message = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   rowKind: "intake",
-  later: null,
+  snooze: null,
   turn: null,
   basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",

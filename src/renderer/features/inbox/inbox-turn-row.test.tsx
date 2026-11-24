@@ -106,19 +106,47 @@ test("a note from Nodex leads with its mark, not a label", () => {
 test("a move that can wait is set aside until a chosen time", async () => {
   const handlers = props();
   render(<InboxTurnRow item={row("review")} {...handlers} />);
-  await openNodexMenu(screen.getByRole("button", { name: "Later" }));
-  const option = await screen.findByRole("menuitem", { name: "In 1 hour" });
+  await openNodexMenu(screen.getByRole("button", { name: "Snooze" }));
+  const option = await screen.findByRole("menuitem", { name: /^In 1 hour/ });
   await act(async () => {
     fireEvent.click(option);
     await Promise.resolve();
   });
-  const [until] = handlers.onLater.mock.calls[0]!;
+  const [until] = handlers.onSnooze.mock.calls[0]!;
   expect(Date.parse(until)).toBeGreaterThan(Date.now());
 });
-test("a move that came back from Later says when it was set aside", () => {
+test("a move can be set aside until a time the person picks", async () => {
+  const handlers = props();
+  render(<InboxTurnRow item={row("review")} {...handlers} />);
+  await openNodexMenu(screen.getByRole("button", { name: "Snooze" }));
+  const custom = await screen.findByRole("menuitem", { name: "Custom…" });
+  await act(async () => {
+    fireEvent.click(custom);
+    await Promise.resolve();
+  });
+  const field = await screen.findByLabelText("Date and time");
+  const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  later.setHours(18, 30, 0, 0);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  await act(async () => {
+    fireEvent.change(field, {
+      target: {
+        value: `${later.getFullYear()}-${pad(later.getMonth() + 1)}-${pad(later.getDate())}T18:30`,
+      },
+    });
+    await Promise.resolve();
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Snooze" }));
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(handlers.onSnooze).toHaveBeenCalledWith(later.toISOString()));
+  await waitFor(() => expect(screen.queryByLabelText("Date and time")).toBeNull());
+});
+test("a move that came back from Snooze says when it was set aside", () => {
   const past = new Date(Date.now() - 60_000).toISOString();
   render(
-    <InboxTurnRow item={{ ...row("review"), later: { setAt: past, until: past } }} {...props()} />,
+    <InboxTurnRow item={{ ...row("review"), snooze: { setAt: past, until: past } }} {...props()} />,
   );
-  expect(screen.getByTestId("inbox-back-from-later").textContent).toMatch(/^Back from Later/u);
+  expect(screen.getByTestId("inbox-back-from-snooze").textContent).toMatch(/^Back from snooze/u);
 });

@@ -170,6 +170,31 @@
   scrollbar-width: none;
 }
 
+/* ===== Text Utilities ===== */
+
+/*
+ * One line of text that fades out at its end instead of ending in an ellipsis. The fade applies
+ * only while the text overflows: the element's own inline scroll timeline is inactive when there
+ * is nothing to scroll, so text that fits keeps its last letters.
+ */
+@utility truncate-fade {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: truncate-fade-mask linear both;
+  animation-timeline: scroll(self inline);
+}
+
+@keyframes truncate-fade-mask {
+  from,
+  to {
+    mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - var(--truncate-fade-distance, 1rem)),
+      transparent
+    );
+  }
+}
+
 /* ===== NFM Editor Overrides ===== */
 /* These target BlockNote's internal DOM which we don't control. */
 

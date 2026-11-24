@@ -20,7 +20,10 @@ const hosted: ProjectSession = {
   pinnedOrder: null,
   archived: false,
   archivedAt: null,
-  remindAt: null,
+  snoozedUntil: null,
+  snoozedAt: null,
+  wokeAt: null,
+  pageTurn: null,
   canManage: true,
   canStop: true,
   unread: false,
@@ -53,8 +56,9 @@ const palette = (activeSessionCanManage: boolean) =>
     hasActiveSession: true,
     activeSessionPinned: false,
     activeSessionUnread: false,
+    activeSessionSettled: false,
     activeSessionCanManage,
-    activeSessionReminded: true,
+    activeSessionSnoozed: true,
     hasAttachedThread: true,
     canExportConversationMarkdown: true,
     panelActionAvailability: {} as never,
@@ -90,7 +94,7 @@ describe("a hosted chat's lifecycle", () => {
     expect(offered).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.fork);
   });
 
-  test("leaves another Member's chat as it is, while its pin and reminder stay this reader's", () => {
+  test("leaves another Member's chat as it is, while its pin and snooze stay this reader's", () => {
     const offered = ids(
       buildSessionContextMenuItems({ session: { ...hosted, canManage: false }, projects }),
     );
@@ -105,10 +109,10 @@ describe("a hosted chat's lifecycle", () => {
       SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
       SESSION_CONTEXT_MENU_ACTION_IDS.fork,
       SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink,
-      "session.remind",
+      "session.snooze",
     ])
       expect(offered).toContain(id);
-    expect(offered.some((id) => id.startsWith("session.remindAt:"))).toBe(true);
+    expect(offered.some((id) => id.startsWith("session.snoozedUntil:"))).toBe(true);
   });
 
   test("follows the same rule in the command palette", () => {
@@ -120,8 +124,8 @@ describe("a hosted chat's lifecycle", () => {
       expect.arrayContaining([
         "toggleThreadPin",
         "toggleThreadUnread",
-        "remindThreadInOneHour",
-        "clearThreadReminder",
+        "snoozeThreadInOneHour",
+        "wakeThread",
         "copyConversationMarkdown",
       ]),
     );

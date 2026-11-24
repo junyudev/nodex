@@ -129,8 +129,9 @@ export function projectSessionSummariesQueryOptions(
   projectId: string | null,
   placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
   order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
+  lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]> = "all",
 ) {
-  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order);
+  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle);
   return queryOptions({
     queryKey,
     queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
@@ -138,6 +139,33 @@ export function projectSessionSummariesQueryOptions(
         first: 50,
         placementScope,
         order,
+        lifecycle,
+      });
+      return preferNewestProjectSessionSummaryWindow(
+        client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),
+        incoming,
+      );
+    },
+    staleTime: 30_000,
+  });
+}
+
+/** One list of every Project's chats and the projectless ones, for the reader's lifecycle. */
+export function librarySessionSummariesQueryOptions(
+  projectId: string | null,
+  order: NonNullable<ProjectSessionSummaryWindowInput["order"]>,
+  lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>,
+) {
+  const queryKey = queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle);
+  return queryOptions({
+    queryKey,
+    queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
+      const incoming = await readSessionSummaryLane(projectId, {
+        first: 50,
+        wholeLibrary: projectId === null,
+        placementScope: "all",
+        order,
+        lifecycle,
       });
       return preferNewestProjectSessionSummaryWindow(
         client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),

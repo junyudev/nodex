@@ -42,7 +42,8 @@ import type {
 } from "../thread-stage-types";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import { sessionForkDestinations } from "@/lib/session-fork";
-import { chatReminderPresets, describeChatReminder } from "@/lib/chat-reminder";
+import { describeChatSnooze } from "@/lib/chat-snooze";
+import { CustomSnoozeDialog, SnoozeMenuItems } from "@/components/shared/snooze-menu";
 import { SubagentAvatar } from "./shared/subagent-avatar";
 import { useThreadStageHeaderSlot } from "./thread-stage-header-slot";
 
@@ -67,13 +68,14 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     if (open) setMenuOpenedAt(new Date());
     setMenuOpen(open);
   }, []);
+  const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
   const [forking, setForking] = useState(false);
   const forkInFlight = useRef(false);
   const pendingModal = useRef<(() => void) | null>(null);
   const canRenameThread = Boolean(model.threadId && actions.onRequestRenameThread);
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
-  const canSetReminder = Boolean(model.threadId && actions.onSetThreadReminder);
+  const canSetSnooze = Boolean(model.threadId && actions.onSetThreadSnooze);
   const canForkThread = Boolean(model.threadId && actions.onForkThread);
   const canClearContext = Boolean(model.threadId && actions.onClearContext);
   const hasNewWorkActions = canForkThread || canClearContext || model.showSideChatAction;
@@ -84,7 +86,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     actions.onOpenSubagentsPanel,
   );
   // Groups follow the shared chat-actions order: identity, new work, copy, window, runtime, Archive.
-  const hasIdentityActions = canRenameThread || canTogglePin || canSetReminder;
+  const hasIdentityActions = canRenameThread || canTogglePin || canSetSnooze;
   const hasRuntimeActions = canOpenNativeTasks || Boolean(provider?.diagnostics);
   const showThreadActions = Boolean(
     model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
@@ -101,6 +103,21 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     },
     [],
   );
+  const snoozeChat = (snoozedUntil: string) =>
+    void handleAction(
+      () => actions.onSetThreadSnooze?.(snoozedUntil),
+      getIntl().formatMessage({
+        id: "conversation.stageHeader.snoozeFailed",
+        defaultMessage: "Couldn’t snooze the chat",
+      }),
+    );
+  const customSnoozeDialog = canSetSnooze ? (
+    <CustomSnoozeDialog
+      open={customSnoozeOpen}
+      onOpenChange={setCustomSnoozeOpen}
+      onChoose={snoozeChat}
+    />
+  ) : null;
 
   const handleCopyText = useCallback(async (value: string | null, successMessage: string) => {
     if (!value) return;
@@ -193,60 +210,42 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
             : intl.formatMessage({ id: "conversation.stageHeader.pin", defaultMessage: "Pin" })}
         </NodexDropdownItem>
       ) : null}
-      {canSetReminder ? (
+      {canSetSnooze ? (
         <NodexDropdownFlyoutSubmenuItem
           label={intl.formatMessage({
-            id: "conversation.stageHeader.remindMe",
-            defaultMessage: "Remind me",
+            id: "conversation.stageHeader.snooze",
+            defaultMessage: "Snooze",
           })}
           leftSlot={<ClockIcon className={menuIconClassName} />}
           contentMotion="none"
         >
-          {model.remindAt ? (
+          {/* Like every Snooze menu: when it returns and Wake first, then the choices. */}
+          {model.snoozedUntil ? (
             <>
               <NodexDropdownItem disabled>
-                {describeChatReminder(model.remindAt, menuOpenedAt, intl.locale)}
+                {describeChatSnooze(model.snoozedUntil, menuOpenedAt, intl.locale)}
               </NodexDropdownItem>
-              <NodexDropdownSeparator />
-            </>
-          ) : null}
-          {chatReminderPresets(menuOpenedAt, intl.locale).map((preset) => (
-            <NodexDropdownItem
-              key={preset.id}
-              onSelect={() =>
-                void handleAction(
-                  () => actions.onSetThreadReminder?.(preset.remindAt),
-                  getIntl().formatMessage({
-                    id: "conversation.stageHeader.setReminderFailed",
-                    defaultMessage: "Couldn’t set the reminder",
-                  }),
-                )
-              }
-            >
-              {preset.label}
-            </NodexDropdownItem>
-          ))}
-          {model.remindAt ? (
-            <>
-              <NodexDropdownSeparator />
               <NodexDropdownItem
                 onSelect={() =>
                   void handleAction(
-                    () => actions.onSetThreadReminder?.(null),
+                    () => actions.onSetThreadSnooze?.(null),
                     getIntl().formatMessage({
-                      id: "conversation.stageHeader.cancelReminderFailed",
-                      defaultMessage: "Couldn’t cancel the reminder",
+                      id: "conversation.stageHeader.wakeFailed",
+                      defaultMessage: "Couldn’t wake the chat",
                     }),
                   )
                 }
               >
-                <FormattedMessage
-                  id="conversation.stageHeader.cancelReminder"
-                  defaultMessage="Cancel reminder"
-                />
+                <FormattedMessage id="conversation.stageHeader.wake" defaultMessage="Wake" />
               </NodexDropdownItem>
+              <NodexDropdownSeparator />
             </>
           ) : null}
+          <SnoozeMenuItems
+            now={menuOpenedAt}
+            onChoose={snoozeChat}
+            onCustom={() => setCustomSnoozeOpen(true)}
+          />
         </NodexDropdownFlyoutSubmenuItem>
       ) : null}
       {hasIdentityActions && hasNewWorkActions ? <NodexDropdownSeparator /> : null}
@@ -506,6 +505,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       <>
         {queueLabel}
         {actionsMenu}
+        {customSnoozeDialog}
       </>
     );
 
@@ -525,6 +525,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       </span>
       {queueLabel}
       {actionsMenu}
+      {customSnoozeDialog}
     </div>
   );
 }

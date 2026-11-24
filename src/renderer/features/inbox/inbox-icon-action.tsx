@@ -21,7 +21,7 @@ export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], In
   plan: TodoIcon,
   keep: TodoIcon,
   save_to_notes: NoteIcon,
-  later: ClockIcon,
+  snooze: ClockIcon,
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,
   move_to_project: MoveToIcon,

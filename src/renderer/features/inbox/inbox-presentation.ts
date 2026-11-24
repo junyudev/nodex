@@ -24,7 +24,7 @@ import type { ContentRoutingContext } from "../../../shared/content-routing-cont
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 import type { SessionLiveIndicator } from "@/lib/session-execution";
 import { formatUsageCountdown } from "@/lib/usage-meter";
-import { describeLaterOutcome } from "./inbox-later";
+import { describeInboxSnoozedOutcome, formatInboxSnoozeTime } from "./inbox-snooze";
 
 /** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
 export type InboxTriageModel =
@@ -340,7 +340,7 @@ export type InboxOutcomeIcon =
   | "move"
   | "todo"
   | "notes"
-  | "later"
+  | "snooze"
   | "done"
   | "inbox";
 
@@ -691,7 +691,7 @@ export type InboxDecision =
   | { readonly kind: "keep" }
   | { readonly kind: "save_to_notes" }
   /** Set aside until a time; the message stays undecided and comes back then. */
-  | { readonly kind: "later"; readonly remindAt: string }
+  | { readonly kind: "snooze"; readonly snoozedUntil: string }
   | { readonly kind: "done" }
   /** An automation's waiting run, confirmed to run now. */
   | { readonly kind: "run"; readonly taskName: string }
@@ -727,11 +727,11 @@ export function describeInboxDecision(
         done: null,
         inProgress: false,
       };
-    case "later":
+    case "snooze":
       return {
         ...HELD,
-        icon: "later",
-        label: describeLaterOutcome(decision.remindAt, now),
+        icon: "snooze",
+        label: describeInboxSnoozedOutcome(decision.snoozedUntil, now),
         inProgress: false,
       };
     case "save_to_notes":
@@ -815,7 +815,7 @@ export function describeInboxAction(
   context: {
     readonly targetProjectName: string | null;
     readonly chat: InboxChat | null;
-    /** When a Later suggestion's time is read against; the present unless given. */
+    /** When a Snooze suggestion's time is read against; the present unless given. */
     readonly now?: Date;
   },
   intl: IntlShape = getIntl(),
@@ -833,13 +833,16 @@ export function describeInboxAction(
           { value1: action.steps.length },
         ),
       };
-    case "later":
+    case "snooze":
       return {
         verb: intl.formatMessage({
-          id: "inbox.inboxPresentation.later",
-          defaultMessage: "Later",
+          id: "inbox.inboxPresentation.snooze",
+          defaultMessage: "Snooze",
         }),
-        target: describeLaterOutcome(action.remindAt, context.now ?? new Date()),
+        target: getIntl().formatMessage(
+          { id: "inbox.inboxPresentation.snoozeAt", defaultMessage: "Snooze · {time}" },
+          { time: formatInboxSnoozeTime(action.snoozedUntil, context.now ?? new Date()) },
+        ),
       };
     case "keep":
       return {
@@ -1235,10 +1238,10 @@ export const inboxReceiptNeedsReview = (error: unknown): boolean =>
 
 /**
  * When a message entered the stream where it now sits: when it was sent, or when it last came
- * back, from Later or from a chat that returned it.
+ * back, from Snooze or from a chat that returned it.
  */
 export const inboxStreamTime = (item: InboxItem): string => {
-  const until = item.later?.until;
+  const until = item.snooze?.until;
   const returned = [
     until && Date.parse(until) <= Date.now() ? until : null,
     item.handback?.returned_at,

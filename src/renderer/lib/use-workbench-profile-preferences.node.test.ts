@@ -57,6 +57,7 @@ describe("Workbench profile preferences", () => {
           unknown: 4,
         },
         chatOrder: "manual",
+        hiddenShelves: ["settled", "active", "working"],
       },
       recentPageSessions: [
         {
@@ -90,9 +91,21 @@ describe("Workbench profile preferences", () => {
         pages: false,
         projects: false,
         chats: true,
+        // Lanes a stored Profile never chose start as a new one does: set aside and finished
+        // chats stay folded.
+        active: false,
+        working: false,
+        snoozed: true,
+        settled: true,
       },
       listExtraPages: { pages: 2, "project:alpha": 1 },
       chatOrder: "manual",
+      organize: "attention",
+      // A scope that is not a Project id shows every Project.
+      scopeProjectId: null,
+      // Active always shows, so only the lists that can hide stay hidden.
+      hiddenShelves: ["working", "settled"],
+      autoSettleDays: 7,
     });
     expect(preferences.recentPageSessions).toHaveLength(1);
     expect(preferences.databaseViewTabs.displayModeByDatabaseId).toEqual({

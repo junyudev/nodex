@@ -2,7 +2,7 @@ import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, defineMessage } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ensureFreshDatabaseViewBoard } from "@/lib/board-store";
 import { listAvailableFileLinkOpeners, openFileLink } from "@/lib/file-system-operations";
@@ -28,6 +28,12 @@ import {
   readLocalEnvironmentSelections,
 } from "./local-environment-selection";
 import { archiveChatWithFeedback } from "./archive-chat-feedback";
+import {
+  resolveChatAfterLeaving,
+  resolveNextChatNeedingReader,
+  stepSidebarChat,
+} from "@/lib/sidebar-chat-lifecycle";
+import type { SidebarVisibleChat } from "./workbench-session-sidebar";
 import type { ScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import {
@@ -35,13 +41,14 @@ import {
   readSessionMoveToProjectActionId,
   readSessionMoveToSectionActionId,
   readSessionOpenInActionId,
-  readSessionRemindAtActionId,
+  readSessionSnoozedUntilActionId,
   resolveSessionProjectMoveContainers,
   SESSION_CONTEXT_MENU_ACTION_IDS,
 } from "./session-context-menu-model";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
+import { acceptPageWork } from "@/lib/page-turn-runtime";
 import { toast } from "@/components/ui/toast";
-import { formatChatReminderConfirmation } from "@/lib/chat-reminder";
+import { formatChatSnoozeConfirmation } from "@/lib/chat-snooze";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { presentWorkbenchSessionDomainWithScene } from "@/lib/workbench-scene-presentation";
 import {
@@ -881,27 +888,254 @@ export function useWorkbenchSidebarController({
     [catalog, codexControl, mergeSessionInState],
   );
 
-  const setSessionReminder = useCallback(
-    async (session: ProjectSessionDomain, remindAt: string | null) => {
+  /** The chats the sidebar lists, top to bottom; keyboard travel reads them where it runs. */
+  const visibleChatsRef = useRef<readonly SidebarVisibleChat[]>([]);
+  const reportVisibleChats = useCallback((chats: readonly SidebarVisibleChat[]) => {
+    visibleChatsRef.current = chats;
+  }, []);
+
+  const openChatById = useCallback(
+    async (sessionId: string | null) => {
+      if (!sessionId) return;
+      const session =
+        catalog.findById(sessionId)?.domain ??
+        (await catalog.prefetch(sessionId).catch(() => null));
+      if (session && !session.archived) selectSession(session);
+    },
+    [catalog, selectSession],
+  );
+
+  /** Moves to the neighbouring chat in the sidebar's order. */
+  const stepChat = useCallback(
+    (direction: "next" | "previous") =>
+      openChatById(
+        stepSidebarChat(
+          visibleChatsRef.current.map((chat) => chat.sessionId),
+          activeSessionId,
+          direction,
+        ),
+      ),
+    [activeSessionId, openChatById],
+  );
+
+  /** Moves to the next chat that asks something of its reader, wrapping past the end. */
+  const openNextChatNeedingReader = useCallback(
+    () =>
+      openChatById(
+        resolveNextChatNeedingReader(
+          visibleChatsRef.current.map((chat) => ({
+            id: chat.sessionId,
+            needsReader: chat.needsReader,
+          })),
+          activeSessionId,
+        ),
+      ),
+    [activeSessionId, openChatById],
+  );
+
+  /**
+   * Settles a chat for its reader, or reopens it. Settling the chat on screen moves on to the
+   * one that takes its place, so a person works down their open chats without reaching for the
+   * sidebar. Undo puts the chat back exactly where it was.
+   */
+  // One Settle for one chat or many: the chat on screen hands over to the first one below it
+  // that stays, and one Undo reopens exactly the chats that settled.
+  const settleSessions = useCallback(
+    async (sessions: readonly ProjectSessionDomain[]) => {
+      const targets = sessions.filter((session) => !session.archived && session.settledAt == null);
+      if (targets.length === 0) return;
+      const ids = new Set(targets.map((session) => session.id));
+      const listed = visibleChatsRef.current.map((chat) => chat.sessionId);
+      const successor =
+        activeSessionId && ids.has(activeSessionId)
+          ? resolveChatAfterLeaving(
+              listed.filter((id) => id === activeSessionId || !ids.has(id)),
+              activeSessionId,
+            )
+          : null;
+      const setSettled = async (sessionIds: readonly string[], settled: boolean) => {
+        const changed = await catalog.setSettled(sessionIds, settled);
+        await refreshSidebarThreadSnapshot();
+        return changed;
+      };
+      let changed: readonly string[];
       try {
-        const updated = await catalog.setReminder(session, remindAt);
-        if (updated) mergeSessionInState(updated);
-        if (remindAt) toast.success(formatChatReminderConfirmation(remindAt, new Date()));
+        changed = await setSettled([...ids], true);
       } catch {
         toast.danger(
-          remindAt
+          getIntl().formatMessage(
+            {
+              id: "workbench.useWorkbenchSidebarController.settleFailed",
+              defaultMessage:
+                "{count, plural, one {Failed to settle chat} other {Failed to settle chats}}",
+            },
+            { count: ids.size },
+          ),
+        );
+        return;
+      }
+      if (changed.length === 0) return;
+      void openChatById(successor);
+      toast.info(
+        getIntl().formatMessage(
+          {
+            id: "workbench.useWorkbenchSidebarController.settled",
+            defaultMessage: "{count, plural, one {Settled} other {Settled # chats}}",
+          },
+          { count: changed.length },
+        ),
+        {
+          id: `settled-chats-${changed.join(",")}`,
+          action: {
+            label: getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.undo",
+              defaultMessage: "Undo",
+            }),
+            onClick: () => {
+              void setSettled(changed, false)
+                .then(() => {
+                  const active = targets.find((session) => session.id === activeSessionId);
+                  if (active && successor) selectSession(active);
+                })
+                .catch(() =>
+                  toast.danger(
+                    getIntl().formatMessage({
+                      id: "workbench.useWorkbenchSidebarController.reopenFailed",
+                      defaultMessage: "Failed to reopen chat",
+                    }),
+                  ),
+                );
+            },
+          },
+        },
+      );
+    },
+    [activeSessionId, catalog, openChatById, refreshSidebarThreadSnapshot, selectSession],
+  );
+
+  const toggleSessionSettled = useCallback(
+    async (session: ProjectSessionDomain) => {
+      if (session.archived) return;
+      if (session.settledAt == null) {
+        const listed = visibleChatsRef.current.find((chat) => chat.sessionId === session.id);
+        if (listed?.waitsOnReader) {
+          toast.info(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.settleWaitsOnReader",
+              defaultMessage: "Answer this chat before settling it",
+            }),
+          );
+          return;
+        }
+        await settleSessions([session]);
+        return;
+      }
+      try {
+        await catalog.setSettled([session.id], false);
+        await refreshSidebarThreadSnapshot();
+      } catch {
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.reopenFailed",
+            defaultMessage: "Failed to reopen chat",
+          }),
+        );
+      }
+    },
+    [catalog, refreshSidebarThreadSnapshot, settleSessions],
+  );
+
+  // Accepting the work a chat's Page waits on settles that chat, so the reader moves on.
+  const acceptSessionWork = useCallback(
+    async (session: ProjectSessionDomain) => {
+      const turn = session.pageTurn;
+      if (turn?.reason !== "review") return;
+      const successor =
+        activeSessionId === session.id
+          ? resolveChatAfterLeaving(
+              visibleChatsRef.current.map((chat) => chat.sessionId),
+              session.id,
+            )
+          : null;
+      try {
+        await acceptPageWork(turn.page_id, turn.episode);
+      } catch {
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.acceptFailed",
+            defaultMessage: "Couldn’t accept the work",
+          }),
+        );
+        return;
+      }
+      void openChatById(successor);
+      toast.success(
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchSidebarController.accepted",
+          defaultMessage: "Accepted",
+        }),
+      );
+    },
+    [activeSessionId, openChatById],
+  );
+
+  const setSessionSnooze = useCallback(
+    async (session: ProjectSessionDomain, snoozedUntil: string | null) => {
+      const previous = session.snoozedUntil;
+      // Snoozing the chat on screen sets it aside, so the reader moves on as Settle does.
+      const successor =
+        snoozedUntil && activeSessionId === session.id
+          ? resolveChatAfterLeaving(
+              visibleChatsRef.current.map((chat) => chat.sessionId),
+              session.id,
+            )
+          : null;
+      const apply = async (next: string | null) => {
+        const updated = await catalog.setSnooze(session, next);
+        if (updated) mergeSessionInState(updated);
+      };
+      try {
+        await apply(snoozedUntil);
+        if (!snoozedUntil) return;
+        void openChatById(successor);
+        toast.success(formatChatSnoozeConfirmation(snoozedUntil, new Date()), {
+          id: `snoozed-chat-${session.id}`,
+          action: {
+            label: getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.undo",
+              defaultMessage: "Undo",
+            }),
+            onClick: () => {
+              void apply(previous)
+                .then(() => {
+                  if (successor) selectSession(session);
+                })
+                .catch(() =>
+                  toast.danger(
+                    getIntl().formatMessage({
+                      id: "workbench.useWorkbenchSidebarController.wakeFailed",
+                      defaultMessage: "Failed to wake chat",
+                    }),
+                  ),
+                );
+            },
+          },
+        });
+      } catch {
+        toast.danger(
+          snoozedUntil
             ? getIntl().formatMessage({
-                id: "workbench.useWorkbenchSidebarController.setReminderFailed",
-                defaultMessage: "Failed to set reminder",
+                id: "workbench.useWorkbenchSidebarController.snoozeFailed",
+                defaultMessage: "Failed to snooze chat",
               })
             : getIntl().formatMessage({
-                id: "workbench.useWorkbenchSidebarController.cancelReminderFailed",
-                defaultMessage: "Failed to cancel reminder",
+                id: "workbench.useWorkbenchSidebarController.wakeFailed",
+                defaultMessage: "Failed to wake chat",
               }),
         );
       }
     },
-    [catalog, mergeSessionInState],
+    [activeSessionId, catalog, mergeSessionInState, openChatById, selectSession],
   );
 
   const copySessionText = useCallback(
@@ -1115,13 +1349,17 @@ export function useWorkbenchSidebarController({
       await toggleSessionUnread(session);
       return;
     }
-    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder) {
-      await setSessionReminder(session, null);
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.toggleSettled) {
+      await toggleSessionSettled(session);
       return;
     }
-    const remindAt = readSessionRemindAtActionId(actionId);
-    if (remindAt) {
-      await setSessionReminder(session, remindAt);
+    if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.wake) {
+      await setSessionSnooze(session, null);
+      return;
+    }
+    const snoozedUntil = readSessionSnoozedUntilActionId(actionId);
+    if (snoozedUntil) {
+      await setSessionSnooze(session, snoozedUntil);
       return;
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
@@ -1279,7 +1517,13 @@ export function useWorkbenchSidebarController({
     selectProject,
     selectSession,
     selectSidebarThread,
-    setSessionReminder,
+    setSessionSnooze,
+    openNextChatNeedingReader,
+    reportVisibleChats,
+    stepChat,
+    settleSessions,
+    acceptSessionWork,
+    toggleSessionSettled,
     toggleSessionPin,
     toggleSessionUnread,
     toggleSidebarThreadPinned,

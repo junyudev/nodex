@@ -37,7 +37,7 @@ function InboxOutcomeGlyph({
       return <TodoIcon className={shared} />;
     case "notes":
       return <NoteIcon className={shared} />;
-    case "later":
+    case "snooze":
       return <ClockIcon className={shared} />;
     case "done":
       return <CheckmarkIcon className={shared} />;

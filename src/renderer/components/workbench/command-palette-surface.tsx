@@ -97,7 +97,7 @@ import {
   TOGGLE_SIDEBAR_COMMAND_ID,
 } from "../../../shared/window-navigation";
 import {
-  isRemindThreadCommandId,
+  isSnoozeThreadCommandId,
   OPEN_DB_VIEW_TAB_COMMAND_ID,
 } from "@/lib/command-palette-commands";
 import type { Project } from "@/lib/types";
@@ -271,11 +271,12 @@ function CommandGlyph({ id, className }: { id: string; className: string }) {
   if (isSpaceSwitchCommandId(id)) return <WorkbenchSpaceIcon className={className} />;
   if (id === "newPage") return <NewPageIcon className={className} />;
   if (id === TOGGLE_SIDEBAR_COMMAND_ID) return <SidebarVisibleIcon className={className} />;
-  if (id === "clearThreadReminder" || isRemindThreadCommandId(id))
+  if (id === "wakeThread" || isSnoozeThreadCommandId(id))
     return <ClockIcon className={className} />;
   if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return <BoardIcon className={className} />;
   if (id === "openSideChat") return <SidePanelSideChatIcon className={className} />;
   if (id === "toggleThreadUnread") return <NativeMenuIcon iconKey="unread" className={className} />;
+  if (id === "settleThread") return <NativeMenuIcon iconKey="markRead" className={className} />;
   const name =
     id === "newThread" || id === "newThreadInProject" || id === RENAME_THREAD_COMMAND_ID
       ? "compose"

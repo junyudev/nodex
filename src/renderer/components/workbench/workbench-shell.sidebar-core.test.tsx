@@ -28,7 +28,6 @@ import {
   getSidebarProjectGroup,
   getSidebarSection,
   getThreadRow,
-  getThreadRowTitles,
   waitForThreadRow,
   installMotionEnabledMatchMediaForTest,
   installReducedMotionMatchMediaForTest,
@@ -681,26 +680,43 @@ describe("workbench session shell / sidebar-core", () => {
     expect(defaultSearchInput.value).toBe("pages");
   });
 
-  test("sidebar pin button toggles a session without selecting it", async () => {
+  test("an open chat offers Snooze where Pin was, and a pinned one unpins without opening", async () => {
     const target = makeAttachedSession({
       id: "session:alpha:pin-target",
       threadId: "thread-pin-target",
       title: "Pin target",
       activityAt: fixtureSessionActivityAt(1),
+      pinned: true,
+      pinnedOrder: 1,
+      rightCollapsed: true,
+      tabs: [],
+    });
+    const open = makeAttachedSession({
+      id: "session:alpha:open",
+      title: "Open chat",
+      activityAt: fixtureSessionActivityAt(2),
       rightCollapsed: true,
       tabs: [],
     });
     const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeSession(), target] },
+      sessionsByProject: { alpha: [makeSession(), target, open] },
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
+    // Pinning lives in the chat's menu; its row offers Snooze beside Settle.
+    const openRow = getThreadRow(screen.container, "Open chat");
+    expect(openRow.querySelector("[data-app-action-sidebar-thread-pin-session]")).toBe(null);
+    expect(
+      openRow.querySelector("[data-app-action-sidebar-thread-snooze]")?.getAttribute("aria-label"),
+    ).toBe("Snooze");
+
     const row = getThreadRow(screen.container, "Pin target");
     const pinButton = row.querySelector("[data-app-action-sidebar-thread-pin-session]");
     if (!(pinButton instanceof HTMLButtonElement)) {
-      throw new Error("Expected Pin target pin button");
+      throw new Error("Expected Pin target resting pin");
     }
+    expect(pinButton.getAttribute("aria-label")).toBe("Unpin chat");
     expect(pinButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
     await act(async () => {
       fireEvent.click(pinButton);
@@ -714,14 +730,13 @@ describe("workbench session shell / sidebar-core", () => {
         (call) =>
           call[0] === "codex:threads:pinned:set" &&
           call[1] === "thread-pin-target" &&
-          (call[2] as { pinned?: boolean } | undefined)?.pinned === true,
+          (call[2] as { pinned?: boolean } | undefined)?.pinned === false,
       ),
     ).toBe(true);
     const updatedRow = getThreadRow(screen.container, "Pin target");
-    expect(updatedRow.getAttribute("data-app-action-sidebar-thread-pinned")).toBe("true");
-    const updatedButton = updatedRow.querySelector("[data-app-action-sidebar-thread-pin-session]");
-    expect(updatedButton?.getAttribute("aria-label")).toBe("Unpin chat");
-    expect(updatedButton?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(updatedRow.getAttribute("data-app-action-sidebar-thread-pinned")).toBe("false");
+    // Unpinning changes the chat, not what is on screen.
+    expect(getMountedSessionIds(screen.container)).not.toContain(target.id);
   });
 
   test("settles a Session fork before destination control hydration completes", async () => {
@@ -786,7 +801,23 @@ describe("workbench session shell / sidebar-core", () => {
     }
   });
 
-  test("sidebar archive hover action archives a session-backed chat optimistically", async () => {
+  // Archive lives in a chat's menu; its row's hover action settles the chat.
+  const archiveFromRowMenu = async (container: HTMLElement, title: string) => {
+    const menu = vi
+      .spyOn(nativeContextMenu, "showNativeContextMenu")
+      .mockResolvedValue(SESSION_CONTEXT_MENU_ACTION_IDS.archive);
+    try {
+      await act(async () => {
+        fireEvent.contextMenu(getThreadRow(container, title));
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+    } finally {
+      menu.mockRestore();
+    }
+  };
+
+  test("archiving from a chat's menu archives a session-backed chat optimistically", async () => {
     const target = makeAttachedSession({
       id: "session:alpha:archive-target",
       threadId: "thread-archive-target",
@@ -805,15 +836,7 @@ describe("workbench session shell / sidebar-core", () => {
     await selectSidebarSession(screen.container, "Database View");
     expect(getMountedSessionIds(screen.container)).toEqual(["session:alpha:database-view"]);
 
-    const row = getThreadRow(screen.container, "Archive target");
-    const archiveButton = within(row).getByRole("button", { name: "Archive chat" });
-    expect(archiveButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-
-    await act(async () => {
-      fireEvent.click(archiveButton);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
+    await archiveFromRowMenu(screen.container, "Archive target");
 
     expect(
       screen.container.querySelector('[data-app-action-sidebar-thread-title="Archive target"]'),
@@ -839,15 +862,7 @@ describe("workbench session shell / sidebar-core", () => {
       return record;
     };
 
-    const archiveRow = async (container: HTMLElement, title: string) => {
-      await act(async () => {
-        fireEvent.click(
-          within(getThreadRow(container, title)).getByRole("button", { name: "Archive chat" }),
-        );
-        await Promise.resolve();
-      });
-      await settleAsyncRender();
-    };
+    const archiveRow = archiveFromRowMenu;
 
     const renderWithTarget = async () => {
       const target = makeAttachedSession({
@@ -944,7 +959,9 @@ describe("workbench session shell / sidebar-core", () => {
       pinned: false,
       pinnedOrder: null,
       unread: false,
-      remindAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+      wokeAt: null,
       archived: false,
       statusType: "idle",
       statusActiveFlags: [],
@@ -995,7 +1012,9 @@ describe("workbench session shell / sidebar-core", () => {
       pinned: false,
       pinnedOrder: null,
       unread: false,
-      remindAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+      wokeAt: null,
       archived: false,
       statusType: "idle",
       statusActiveFlags: [],
@@ -1043,48 +1062,6 @@ describe("workbench session shell / sidebar-core", () => {
     ).toBe(true);
   });
 
-  test("sidebar pin button promotes pinned sessions above unpinned siblings", async () => {
-    const first = makeAttachedSession({
-      id: "session:alpha:first",
-      threadId: "thread-first-unpinned",
-      title: "First unpinned",
-      activityAt: fixtureSessionActivityAt(1),
-      rightCollapsed: true,
-      tabs: [],
-    });
-    const second = makeAttachedSession({
-      id: "session:alpha:second",
-      threadId: "thread-second-target",
-      title: "Second target",
-      activityAt: fixtureSessionActivityAt(2),
-      rightCollapsed: true,
-      tabs: [],
-    });
-    const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeSession(), first, second] },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const pinButton = getThreadRow(screen.container, "Second target").querySelector(
-      "[data-app-action-sidebar-thread-pin-session]",
-    );
-    if (!(pinButton instanceof HTMLButtonElement)) {
-      throw new Error("Expected Second target pin button");
-    }
-
-    await act(async () => {
-      fireEvent.click(pinButton);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(JSON.stringify(getThreadRowTitles(screen.container).slice(0, 3))).toBe(
-      JSON.stringify(["Database View", "Second target", "First unpinned"]),
-    );
-  });
-
   test("sidebar unpin button clears pinned state after refresh", async () => {
     const pinned = makeAttachedSession({
       id: "session:alpha:pinned",
@@ -1128,12 +1105,12 @@ describe("workbench session shell / sidebar-core", () => {
     ).toBe(true);
     const row = getThreadRow(screen.container, "Pinned target");
     expect(row.getAttribute("data-app-action-sidebar-thread-pinned")).toBe("false");
-    const pinButton = row.querySelector("[data-app-action-sidebar-thread-pin-session]");
-    expect(pinButton?.getAttribute("aria-label")).toBe("Pin chat");
-    expect(pinButton?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    // Once unpinned, the row offers Snooze where its pin rested.
+    expect(row.querySelector("[data-app-action-sidebar-thread-pin-session]")).toBe(null);
+    expect(row.querySelector("[data-app-action-sidebar-thread-snooze]")).not.toBe(null);
   });
 
-  test("sidebar pin slot treats Database View as ordinary, keeps pinning for unread rows, and protects long titles", async () => {
+  test("sidebar row actions treat Database View as ordinary, keep Snooze for unread rows, and protect long titles", async () => {
     const unread = makeAttachedSession({
       id: "session:alpha:unread",
       title: "Unread target",
@@ -1169,22 +1146,21 @@ describe("workbench session shell / sidebar-core", () => {
     ).toBe("Unpin chat");
 
     const unreadRow = getThreadRow(screen.container, "Unread target");
-    expect(unreadRow.querySelector("[data-app-action-sidebar-thread-pin-slot]") !== null).toBe(
-      true,
-    );
-    expect(unreadRow.querySelector("[data-app-action-sidebar-thread-pin-session]") !== null).toBe(
-      true,
-    );
+    expect(unreadRow.querySelector("[data-app-action-sidebar-thread-snooze]") !== null).toBe(true);
 
     const longRow = getThreadRow(
       screen.container,
       "Very long session title that should truncate before colliding with row actions",
     );
-    expect(longRow.querySelector("[data-app-action-sidebar-thread-pin-slot]") !== null).toBe(true);
+    expect(longRow.querySelector("[data-app-action-sidebar-thread-snooze]") !== null).toBe(true);
     expect(longRow.querySelector("[data-app-action-sidebar-thread-actions-menu]") === null).toBe(
       true,
     );
-    expect(longRow.querySelector("[data-app-action-sidebar-thread-archive]") !== null).toBe(true);
+    // A chat's row offers Settle where Archive used to sit; Archive stays in its menu.
+    expect(longRow.querySelector("button[data-app-action-sidebar-thread-settled]") !== null).toBe(
+      true,
+    );
+    expect(longRow.querySelector("[data-app-action-sidebar-thread-archive]")).toBe(null);
     expect(longRow.querySelector("[data-thread-title]")?.textContent).toBe(
       "Very long session title that should truncate before colliding with row actions",
     );

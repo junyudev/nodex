@@ -83,7 +83,23 @@ import {
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { projectActivitySummariesQueryOptions } from "@/lib/query-options";
 import { useSidebarRuntimeGroupActivity } from "@/lib/use-sidebar-runtime-group-activity";
-import { runtimeSessionTarget, sessionExecutionThreadId } from "@/lib/session-execution";
+import {
+  hasSessionConversation,
+  runtimeSessionLiveIndicator,
+  runtimeSessionTarget,
+  sessionExecutionThreadId,
+} from "@/lib/session-execution";
+import { useAgentRuntimeActivities } from "@/lib/agent-runtime-session-activity";
+import {
+  resolveSettleableReadChats,
+  sidebarChatNeedsReader,
+  type SidebarAutoSettleDays,
+  type SidebarLifecycleChat,
+  type SidebarOptionalShelf,
+  type SidebarOrganize,
+} from "@/lib/sidebar-chat-lifecycle";
+import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
+import { projectSidebarThreadRowLiveView } from "@/lib/sidebar-thread-row-live-view";
 import {
   listExpandedVisibleProjectGroupIds,
   listReopenableVisibleProjectGroupIds,
@@ -108,6 +124,7 @@ import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {
   projectSessionProjectionsByProject,
+  type WorkbenchLibrarySessionLane,
   type WorkbenchSessionCollection,
   type WorkbenchSessionCollectionState,
 } from "@/lib/use-workbench-session-catalog";
@@ -115,11 +132,17 @@ import { projectSessionSummaryToDomain } from "@/lib/workbench-session-presentat
 import type {
   SidebarChatOrder,
   SidebarCollapsibleSectionsState,
+  SidebarDisclosureSectionId,
   SidebarListExtraPagesState,
   SidebarListId,
 } from "@/lib/sidebar-section-prefs";
 import { resolveSidebarSessionPlacement } from "@/lib/sidebar-session-placement";
 import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated-items";
+import { SidebarChatLaneSection, SidebarSettleReadChatsButton } from "./sidebar-chat-lanes";
+import { useSidebarChatLanes, useSidebarLaneHold } from "./use-sidebar-chat-lanes";
+import { pageTurnPhrase, type PageTurnHolder } from "@/lib/page-turn-phrase";
+import { sidebarSectionChatIds } from "@/lib/sidebar-section-navigation";
+import { SidebarArrangeToggle, SidebarLaneViewMenu, SidebarScopeChip } from "./sidebar-view-menu";
 import {
   SidebarCustomSections,
   SidebarProjectSectionMenu,
@@ -199,11 +222,56 @@ function SidebarSessionCollectionFallback({
 
 export type { SidebarResizePhase, SidebarResizeSurface } from "./workbench-sidebar-frame";
 
+/** A chat the sidebar lists, in the order a person travels them with the keyboard. */
+export interface SidebarVisibleChat {
+  readonly sessionId: string;
+  /** It asks something of its reader: an answer, an approval, or a look at its news. */
+  readonly needsReader: boolean;
+  /** It waits on its reader now, so it cannot be settled until they answer. */
+  readonly waitsOnReader: boolean;
+  /** It is still open for its reader, in a list that settling it would take it out of. */
+  readonly open: boolean;
+}
+
+/** The reader's own chat lifecycle, as the sidebar shows and changes it. */
+export interface SidebarChatLifecycle {
+  readonly organize: SidebarOrganize;
+  readonly onOrganizeChange: (organize: SidebarOrganize) => void;
+  readonly autoSettleDays: SidebarAutoSettleDays;
+  readonly onAutoSettleDaysChange: (days: SidebarAutoSettleDays) => void;
+  /** Every Project's open chats by attention; read only while the sidebar arranges by it. */
+  readonly openLane: WorkbenchLibrarySessionLane;
+  /** Every Project's settled chats, read only while their shelf is open. */
+  readonly settledLane: WorkbenchLibrarySessionLane;
+  readonly onToggleSessionSettled: (session: ProjectSessionDomain) => void | Promise<void>;
+  /** Snoozes a chat until a time, or wakes it with null. */
+  readonly onSnoozeSession: (
+    session: ProjectSessionDomain,
+    snoozedUntil: string | null,
+  ) => void | Promise<void>;
+  /** Accepts the work a chat's Page waits for the reader to review; that settles the chat. */
+  readonly onAcceptSessionWork: (session: ProjectSessionDomain) => void | Promise<void>;
+  /** Settles every chat named at once, with one Undo for all of them. */
+  readonly onSettleSessions: (sessions: readonly ProjectSessionDomain[]) => void | Promise<void>;
+  readonly snoozeShortcutLabel?: string;
+  readonly onVisibleChatsChange: (chats: readonly SidebarVisibleChat[]) => void;
+  readonly organizeShortcutLabel?: string;
+  /** The one Project the lanes and the Inbox entry show, or null for every Project. */
+  readonly scopeProjectId: string | null;
+  readonly onScopeChange: (projectId: string | null) => void;
+  /** The lists the attention arrangement leaves out. */
+  readonly hiddenShelves: readonly SidebarOptionalShelf[];
+  readonly onHiddenShelvesChange: (shelves: readonly SidebarOptionalShelf[]) => void;
+}
+
 /** A team Space names itself, so the person always knows whose work they are looking at. */
 function useHomeTitle(): string {
   const space = useCurrentSpace();
   return space.kind === "team" ? space.name : "Nodex";
 }
+
+/** A chat row shows only the reader's own Turns, so it words them for the reader. */
+const READER: PageTurnHolder = { you: true, name: "" };
 
 function reportSidebarThreadReorderError(): void {
   toast.danger(
@@ -787,6 +855,8 @@ function SidebarProjectThreadRowsContent({
 }
 
 function SidebarThreadOrganizerSections({
+  laneHolding,
+  laneViewMenu,
   projectInboxCounts,
   activeProjectId,
   activeSessionId,
@@ -837,6 +907,7 @@ function SidebarThreadOrganizerSections({
   onSetPinnedProjectOrder,
   chatOrder,
   onChatOrderChange,
+  lifecycle,
   onPlaceSession,
   onReorderPinnedThreads,
   sidebarArchivePendingKeys,
@@ -845,6 +916,10 @@ function SidebarThreadOrganizerSections({
   loadMoreProjectsFailed,
   onLoadMoreProjects,
 }: {
+  /** The reader points at or works in the sidebar, so its lanes hold still. */
+  laneHolding: boolean;
+  /** Adjusts what the attention arrangement shows; it sits beside its first heading. */
+  laneViewMenu: ReactNode;
   /** Messages waiting in each Project's own Inbox. */
   projectInboxCounts: Readonly<Record<string, number>>;
   activeProjectId: string | null;
@@ -868,7 +943,7 @@ function SidebarThreadOrganizerSections({
   onTogglePinnedThreadsSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
-  onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
+  onSetSidebarSectionCollapsed: (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
   onSelectSession: (session: ProjectSessionDomain) => void;
@@ -907,6 +982,7 @@ function SidebarThreadOrganizerSections({
   onSetPinnedProjectOrder: (input: ProjectPinnedOrderInput) => Promise<void>;
   chatOrder: SidebarChatOrder;
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  lifecycle: SidebarChatLifecycle;
   onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
@@ -918,6 +994,28 @@ function SidebarThreadOrganizerSections({
   const intl = useIntl();
   const sectionCatalog = useSidebarSectionsCatalog();
   const runtimeGroupActivity = useSidebarRuntimeGroupActivity();
+  const runtimeActivities = useAgentRuntimeActivities();
+  const arrangedByAttention = lifecycle.organize === "attention";
+  const hiddenShelves = lifecycle.hiddenShelves;
+  const onToggleSessionSettled = lifecycle.onToggleSessionSettled;
+  const onSnoozeSession = lifecycle.onSnoozeSession;
+  const onAcceptSessionWork = lifecycle.onAcceptSessionWork;
+  const snoozeShortcutLabel = lifecycle.snoozeShortcutLabel;
+  const onVisibleChatsChange = lifecycle.onVisibleChatsChange;
+  const openLaneSessions = useMemo(
+    () =>
+      lifecycle.openLane.collection.projections.filter((session) =>
+        isCodexSidebarRootThread(session.thread),
+      ),
+    [lifecycle.openLane.collection.projections],
+  );
+  const settledLaneSessions = useMemo(
+    () =>
+      lifecycle.settledLane.collection.projections.filter((session) =>
+        isCodexSidebarRootThread(session.thread),
+      ),
+    [lifecycle.settledLane.collection.projections],
+  );
   const sectionSessionsByProject = useMemo<Record<string, ProjectSession[]>>(
     () =>
       Object.fromEntries(
@@ -981,13 +1079,21 @@ function SidebarThreadOrganizerSections({
   const knownSessions = useMemo(() => {
     const sessions = new Map(directSectionSessions.map((session) => [session.id, session]));
     for (const session of [
+      ...settledLaneSessions,
+      ...openLaneSessions,
       ...Object.values(sectionSessionsByProject).flat(),
       ...rootProjectlessSessions,
     ]) {
       sessions.set(session.id, session);
     }
     return [...sessions.values()];
-  }, [directSectionSessions, rootProjectlessSessions, sectionSessionsByProject]);
+  }, [
+    directSectionSessions,
+    settledLaneSessions,
+    openLaneSessions,
+    rootProjectlessSessions,
+    sectionSessionsByProject,
+  ]);
   const sessionsById = useMemo(
     () => new Map(knownSessions.map((session) => [session.id, session])),
     [knownSessions],
@@ -1042,7 +1148,11 @@ function SidebarThreadOrganizerSections({
           pinned: session.pinned,
           pinnedOrder: session.pinnedOrder,
           unread: session.unread,
-          remindAt: session.remindAt,
+          snoozedUntil: session.snoozedUntil,
+          snoozedAt: session.snoozedAt,
+          wokeAt: session.wokeAt,
+          settledAt: session.settledAt ?? null,
+          ...(session.attentionAt === undefined ? {} : { attentionAt: session.attentionAt }),
           archived: session.archived || session.thread?.archived === true,
           statusType: (session.thread?.statusType ??
             "notLoaded") as CodexSidebarThreadItem["statusType"],
@@ -1280,6 +1390,14 @@ function SidebarThreadOrganizerSections({
     () => defaultProjectGroups.filter((group) => !group.project.pinned),
     [defaultProjectGroups],
   );
+  /** Every Project as a place to open, the person's pinned ones first. */
+  const placeProjectGroups = useMemo(() => {
+    const pinnedIds = new Set(pinnedProjectGroups.map((group) => group.project.id));
+    return [
+      ...pinnedProjectGroups,
+      ...allProjectGroups.filter((group) => !pinnedIds.has(group.project.id)),
+    ];
+  }, [allProjectGroups, pinnedProjectGroups]);
   const visibleProjectGroupIds = useMemo(
     () => unpinnedProjectGroups.map((group) => group.project.id),
     [unpinnedProjectGroups],
@@ -1444,6 +1562,10 @@ function SidebarThreadOrganizerSections({
       options: {
         hoverCardProjectLabel?: string | null;
         grouped?: boolean;
+        /** A list spanning Projects names each chat's own on its row. */
+        showProject?: boolean;
+        /** Rows arranged by attention say what each chat is about under their title. */
+        preview?: boolean;
       } = {},
     ) => {
       const item = sidebarThreadItemsByKey.get(threadKey);
@@ -1468,6 +1590,26 @@ function SidebarThreadOrganizerSections({
           }
           contextMenuOpen={Boolean(sessionId && contextMenuSessionId === sessionId)}
           hoverCardProjectLabel={hoverCardProjectLabel}
+          trailingLabel={options.showProject ? hoverCardProjectLabel : null}
+          preview={options.preview === true}
+          // A draft has no conversation to finish; it waits as the next New chat.
+          onToggleSettled={
+            session && !session.archived && hasSessionConversation(session)
+              ? () => onToggleSessionSettled(session)
+              : undefined
+          }
+          onSnooze={
+            session && !session.archived && hasSessionConversation(session)
+              ? (_item, snoozedUntil) => onSnoozeSession(session, snoozedUntil)
+              : undefined
+          }
+          onWake={session ? () => onSnoozeSession(session, null) : undefined}
+          snoozeShortcutLabel={snoozeShortcutLabel}
+          // The Page this chat works on speaks first when it waits on the reader.
+          turnLead={session?.pageTurn ? pageTurnPhrase(session.pageTurn, READER) : null}
+          onAccept={
+            session?.pageTurn?.reason === "review" ? () => onAcceptSessionWork(session) : undefined
+          }
           onHoverCardOpenChange={(open) => {
             setSidebarHoverSurfaceOpen(`thread:${item.key}`, open);
           }}
@@ -1516,6 +1658,10 @@ function SidebarThreadOrganizerSections({
       activeSessionId,
       activePendingClientThreadId,
       contextMenuSessionId,
+      onToggleSessionSettled,
+      onSnoozeSession,
+      onAcceptSessionWork,
+      snoozeShortcutLabel,
       onOpenSessionContextMenu,
       onOpenSessionLinkedPage,
       onArchiveSidebarThread,
@@ -1534,12 +1680,164 @@ function SidebarThreadOrganizerSections({
     ],
   );
 
+  // A row's lane follows the same live status its glyph shows, so the two never disagree.
+  const describeLifecycleChat = useCallback(
+    (session: ProjectSession): (SidebarLifecycleChat & { readonly threadKey: string }) | null => {
+      const threadKey = sidebarThreadKeyBySessionId.get(session.id);
+      const item = threadKey ? sidebarThreadItemsByKey.get(threadKey) : undefined;
+      if (!threadKey || !item || sidebarArchivePendingKeys.has(threadKey)) return null;
+      const live = projectSidebarThreadRowLiveView(
+        item,
+        runtimeSessionTarget(session)
+          ? {
+              indicator: runtimeSessionLiveIndicator(runtimeActivities.get(session.id)),
+              location: null,
+            }
+          : null,
+      );
+      return {
+        id: session.id,
+        threadKey,
+        pinned: session.pinned,
+        snoozedUntil: session.snoozedUntil,
+        snoozedAt: session.snoozedAt,
+        attentionAt: session.attentionAt ?? session.activityAt,
+        status: live.status,
+      };
+    },
+    [
+      runtimeActivities,
+      sidebarArchivePendingKeys,
+      sidebarThreadItemsByKey,
+      sidebarThreadKeyBySessionId,
+    ],
+  );
+  const lifecycleChats = useMemo(
+    () =>
+      arrangedByAttention
+        ? openLaneSessions.flatMap((session) => {
+            const chat = describeLifecycleChat(session);
+            return chat ? [chat] : [];
+          })
+        : [],
+    [arrangedByAttention, describeLifecycleChat, openLaneSessions],
+  );
+  const chatLanes = useSidebarChatLanes({
+    chats: lifecycleChats,
+    activeSessionId,
+    holding: laneHolding,
+  });
+  const settledThreadKeys = useMemo(
+    () =>
+      settledLaneSessions.flatMap((session) => {
+        const threadKey = sidebarThreadKeyBySessionId.get(session.id);
+        return threadKey && !sidebarArchivePendingKeys.has(threadKey) ? [threadKey] : [];
+      }),
+    [settledLaneSessions, sidebarArchivePendingKeys, sidebarThreadKeyBySessionId],
+  );
+  const visibleChats = useMemo<readonly SidebarVisibleChat[]>(() => {
+    const visible = (chat: SidebarLifecycleChat): SidebarVisibleChat => ({
+      sessionId: chat.id,
+      needsReader: sidebarChatNeedsReader(chat.status),
+      waitsOnReader: chat.status === "attention",
+      open: true,
+    });
+    const chatForThreadKey = (threadKey: string) => {
+      const item = sidebarThreadItemsByKey.get(threadKey);
+      const session = item ? resolveSessionForItem(item) : null;
+      return session ? describeLifecycleChat(session) : null;
+    };
+    const expandedProjectThreadKeys = (projectId: string) => {
+      const group = projectGroupById.get(projectId);
+      return group && expandedProjectIds.has(projectId)
+        ? [...group.pinnedThreadKeys, ...group.threadKeys]
+        : [];
+    };
+    if (arrangedByAttention)
+      return [
+        ...(pinnedThreadsSectionCollapsed || hiddenShelves.includes("pinned")
+          ? []
+          : chatLanes.pinned),
+        ...(sidebarCollapsibleSections.active ? [] : chatLanes.active),
+        ...(sidebarCollapsibleSections.working || hiddenShelves.includes("working")
+          ? []
+          : chatLanes.working),
+        ...(sidebarCollapsibleSections.snoozed || hiddenShelves.includes("snoozed")
+          ? []
+          : chatLanes.snoozed),
+      ].map(visible);
+    // The tree's Sections sit between Pinned and the Projects; moving from chat to chat reaches
+    // their chats where they sit.
+    const sectionChats = sidebarSectionChatIds({
+      sectionIds: sectionCatalog.sections.map((section) => section.sectionId),
+      itemsBySectionId: sectionCatalog.itemsBySectionId,
+      collapsed: (sectionId) => sidebarCollapsibleSections[`custom:${sectionId}`] ?? false,
+      projectChatIds: (projectId) =>
+        expandedProjectThreadKeys(projectId).flatMap((threadKey) => {
+          const chat = chatForThreadKey(threadKey);
+          return chat ? [chat.id] : [];
+        }),
+    }).flatMap((sessionId) => {
+      const threadKey = sidebarThreadKeyBySessionId.get(sessionId);
+      const chat = threadKey ? chatForThreadKey(threadKey) : null;
+      return chat ? [chat] : [];
+    });
+    // The tree lists Pinned, then the reader's Sections, then the Projects and their chats.
+    const chatsFor = (threadKeys: readonly string[]) =>
+      threadKeys.flatMap((threadKey) => {
+        const chat = chatForThreadKey(threadKey);
+        return chat ? [chat] : [];
+      });
+    const ordered = [
+      ...chatsFor(pinnedThreadsSectionCollapsed ? [] : visiblePinnedStandaloneThreadKeys),
+      ...sectionChats,
+      ...chatsFor(
+        projectsSectionCollapsed
+          ? []
+          : [...pinnedProjectGroups, ...unpinnedProjectGroups].flatMap((group) =>
+              expandedProjectThreadKeys(group.project.id),
+            ),
+      ),
+      ...chatsFor(chatsSectionCollapsed ? [] : projectlessThreadKeys),
+    ];
+    const seen = new Set<string>();
+    return ordered.flatMap((chat) => {
+      if (seen.has(chat.id)) return [];
+      seen.add(chat.id);
+      return [visible(chat)];
+    });
+  }, [
+    arrangedByAttention,
+    chatLanes,
+    chatsSectionCollapsed,
+    hiddenShelves,
+    describeLifecycleChat,
+    expandedProjectIds,
+    projectGroupById,
+    sectionCatalog.itemsBySectionId,
+    sectionCatalog.sections,
+    sidebarCollapsibleSections,
+    sidebarThreadKeyBySessionId,
+    pinnedProjectGroups,
+    pinnedThreadsSectionCollapsed,
+    projectlessThreadKeys,
+    projectsSectionCollapsed,
+    resolveSessionForItem,
+    sidebarThreadItemsByKey,
+    unpinnedProjectGroups,
+    visiblePinnedStandaloneThreadKeys,
+  ]);
+  useEffect(() => {
+    onVisibleChatsChange(visibleChats);
+  }, [onVisibleChatsChange, visibleChats]);
+
   const renderProjectGroup = (
     { project, pinnedThreadKeys, threadKeys }: CodexSidebarProjectGroup,
-    dnd: CodexProjectRowDndCapability,
+    dnd?: CodexProjectRowDndCapability,
     currentSectionId: string | null = null,
   ) => {
-    const expanded = expandedProjectIds.has(project.id);
+    // Arranged by attention, a Project is a place to open; its chats already sit in their lanes.
+    const expanded = !arrangedByAttention && expandedProjectIds.has(project.id);
     const threadListId = `project:${project.id}` as const;
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
@@ -1559,10 +1857,13 @@ function SidebarThreadOrganizerSections({
         }
         active={activeSessionId === null && activeProjectId === project.id}
         expanded={expanded}
+        disclosure={!arrangedByAttention}
         dnd={dnd}
         inboxCount={projectInboxCounts[project.id] ?? 0}
         threadItems={projectThreadItems}
-        onActivate={() => onToggleProjectExpanded(project.id)}
+        onActivate={() =>
+          arrangedByAttention ? onSelectProject(project.id) : onToggleProjectExpanded(project.id)
+        }
         onSelectProject={() => onSelectProject(project.id)}
         onStartNewChat={() => void onStartNewChatInProject(project.id)}
         onUpdateProject={onUpdateProject}
@@ -1588,39 +1889,41 @@ function SidebarThreadOrganizerSections({
           setSidebarHoverSurfaceOpen(`project:${project.id}`, open);
         }}
       >
-        <SidebarProjectThreadRowsContent
-          project={project}
-          pinnedThreadKeys={pinnedThreadKeys}
-          sortablePinnedThreadKeys={pinnedThreadKeys.filter(
-            (threadKey) =>
-              model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
-          )}
-          threadKeys={threadKeys}
-          extraPages={sidebarListExtraPages[threadListId] ?? 0}
-          onExtraPagesChange={(extraPages) => {
-            onSidebarListExtraPagesChange(threadListId, extraPages);
-          }}
-          forcedVisibleKey={activeThreadKey}
-          suppressedKeys={sidebarArchivePendingKeys}
-          collectionState={
-            sessionCollectionsByProject[project.id]?.state ?? IDLE_SESSION_COLLECTION_STATE
-          }
-          hasMoreAtSource={sessionCollectionsByProject[project.id]?.hasMore === true}
-          onLoadMore={() => onLoadMoreTaskWindow(project.id)}
-          onRetry={() => onRetryTaskWindow(project.id)}
-          onPinnedThreadOrderChange={reorderVisiblePinnedThreads}
-          regularReorderable={chatOrder === "manual"}
-          onPlaceSession={onPlaceSession}
-          getSessionId={getSidebarSessionId}
-          getThreadId={getSidebarRealThreadId}
-          itemsByKey={sidebarThreadItemsByKey}
-          renderThread={(threadKey) =>
-            renderThreadRow(threadKey, {
-              hoverCardProjectLabel: project.name,
-              grouped: true,
-            })
-          }
-        />
+        {arrangedByAttention ? null : (
+          <SidebarProjectThreadRowsContent
+            project={project}
+            pinnedThreadKeys={pinnedThreadKeys}
+            sortablePinnedThreadKeys={pinnedThreadKeys.filter(
+              (threadKey) =>
+                model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
+            )}
+            threadKeys={threadKeys}
+            extraPages={sidebarListExtraPages[threadListId] ?? 0}
+            onExtraPagesChange={(extraPages) => {
+              onSidebarListExtraPagesChange(threadListId, extraPages);
+            }}
+            forcedVisibleKey={activeThreadKey}
+            suppressedKeys={sidebarArchivePendingKeys}
+            collectionState={
+              sessionCollectionsByProject[project.id]?.state ?? IDLE_SESSION_COLLECTION_STATE
+            }
+            hasMoreAtSource={sessionCollectionsByProject[project.id]?.hasMore === true}
+            onLoadMore={() => onLoadMoreTaskWindow(project.id)}
+            onRetry={() => onRetryTaskWindow(project.id)}
+            onPinnedThreadOrderChange={reorderVisiblePinnedThreads}
+            regularReorderable={chatOrder === "manual"}
+            onPlaceSession={onPlaceSession}
+            getSessionId={getSidebarSessionId}
+            getThreadId={getSidebarRealThreadId}
+            itemsByKey={sidebarThreadItemsByKey}
+            renderThread={(threadKey) =>
+              renderThreadRow(threadKey, {
+                hoverCardProjectLabel: project.name,
+                grouped: true,
+              })
+            }
+          />
+        )}
       </CodexProjectRow>
     );
   };
@@ -1674,7 +1977,10 @@ function SidebarThreadOrganizerSections({
               return reorderVisibleProjectGroups(visibleGroupIds, nextVisibleGroupIds);
             }}
             renderProjectGroup={(group, groupDndController) =>
-              renderProjectGroup(group, { controller: groupDndController })
+              renderProjectGroup(
+                group,
+                arrangedByAttention ? undefined : { controller: groupDndController },
+              )
             }
           />
         );
@@ -1762,6 +2068,169 @@ function SidebarThreadOrganizerSections({
     );
   };
 
+  // Arranged by attention, every row says what its chat is about under its title.
+  const renderLaneThread = (threadKey: string) =>
+    renderThreadRow(threadKey, {
+      // Showing one Project, every row is that Project's; the name would only repeat.
+      showProject: !(arrangedByAttention && lifecycle.scopeProjectId),
+      preview: arrangedByAttention,
+    });
+  const toggleShelf = (shelf: "active" | "working" | "snoozed" | "settled") => () =>
+    onSetSidebarSectionCollapsed(shelf, !sidebarCollapsibleSections[shelf]);
+  const laneAttention = (chats: readonly SidebarLifecycleChat[]) =>
+    resolveSidebarGroupStatus({
+      needsAttention: chats.some((chat) => chat.status === "attention"),
+      unread: chats.some((chat) => chat.status === "unread"),
+      running: false,
+    });
+
+  // Settled chats share one shelf however the open ones are arranged.
+  const renderSettledShelf = () => (
+    <SidebarChatLaneSection
+      shelf="settled"
+      threadKeys={settledThreadKeys}
+      collapsed={sidebarCollapsibleSections.settled}
+      onToggle={toggleShelf("settled")}
+      state={lifecycle.settledLane.collection.state}
+      onRetry={lifecycle.settledLane.retry}
+      source={{
+        hasMore: lifecycle.settledLane.collection.hasMore,
+        loadMore: lifecycle.settledLane.loadMore,
+      }}
+      extraPages={sidebarListExtraPages.settled ?? 0}
+      onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("settled", extraPages)}
+      forcedVisibleKey={activeThreadKey}
+      renderThread={renderLaneThread}
+    />
+  );
+
+  const openLaneSessionById = new Map(openLaneSessions.map((session) => [session.id, session]));
+  const settleableReadSessions = resolveSettleableReadChats(chatLanes.active, (chatId) => {
+    const session = openLaneSessionById.get(chatId);
+    return session ? hasSessionConversation(session) && session.pageTurn === null : false;
+  }).flatMap((chatId) => {
+    const session = openLaneSessionById.get(chatId);
+    return session ? [session] : [];
+  });
+
+  const renderChatLanes = () => {
+    const openLane = lifecycle.openLane;
+    const laneProps = {
+      state: openLane.collection.state,
+      onRetry: openLane.retry,
+      forcedVisibleKey: activeThreadKey,
+    };
+    const shows = (shelf: SidebarOptionalShelf) => !hiddenShelves.includes(shelf);
+    // The view options sit beside the first heading: Pinned when it shows, otherwise Active,
+    // which always does.
+    const pinnedLeads = shows("pinned") && chatLanes.pinned.length > 0;
+    return (
+      <>
+        {pinnedLeads ? (
+          <SidebarChatLaneSection
+            {...laneProps}
+            shelf="pinned"
+            actions={laneViewMenu}
+            renderThread={renderLaneThread}
+            threadKeys={chatLanes.pinned.map((chat) => chat.threadKey)}
+            collapsed={pinnedThreadsSectionCollapsed}
+            onToggle={onTogglePinnedThreadsSectionCollapsed}
+            attention={laneAttention(chatLanes.pinned)}
+            extraPages={sidebarListExtraPages.pinned ?? 0}
+            onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("pinned", extraPages)}
+          />
+        ) : null}
+        <SidebarChatLaneSection
+          {...laneProps}
+          shelf="active"
+          renderThread={renderLaneThread}
+          actions={
+            settleableReadSessions.length > 0 || !pinnedLeads ? (
+              <>
+                {settleableReadSessions.length > 0 ? (
+                  <SidebarSettleReadChatsButton
+                    count={settleableReadSessions.length}
+                    onSettle={() => lifecycle.onSettleSessions(settleableReadSessions)}
+                  />
+                ) : null}
+                {pinnedLeads ? null : laneViewMenu}
+              </>
+            ) : undefined
+          }
+          threadKeys={chatLanes.active.map((chat) => chat.threadKey)}
+          collapsed={sidebarCollapsibleSections.active}
+          onToggle={toggleShelf("active")}
+          attention={laneAttention(chatLanes.active)}
+          source={{ hasMore: openLane.collection.hasMore, loadMore: openLane.loadMore }}
+          extraPages={sidebarListExtraPages.active ?? 0}
+          onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("active", extraPages)}
+        />
+        {shows("working") ? (
+          <SidebarChatLaneSection
+            {...laneProps}
+            shelf="working"
+            renderThread={renderLaneThread}
+            threadKeys={chatLanes.working.map((chat) => chat.threadKey)}
+            collapsed={sidebarCollapsibleSections.working}
+            onToggle={toggleShelf("working")}
+            extraPages={sidebarListExtraPages.working ?? 0}
+            onExtraPagesChange={(extraPages) =>
+              onSidebarListExtraPagesChange("working", extraPages)
+            }
+          />
+        ) : null}
+        {shows("snoozed") ? (
+          <SidebarChatLaneSection
+            {...laneProps}
+            shelf="snoozed"
+            renderThread={renderLaneThread}
+            threadKeys={chatLanes.snoozed.map((chat) => chat.threadKey)}
+            collapsed={sidebarCollapsibleSections.snoozed}
+            onToggle={toggleShelf("snoozed")}
+            extraPages={sidebarListExtraPages.snoozed ?? 0}
+            onExtraPagesChange={(extraPages) =>
+              onSidebarListExtraPagesChange("snoozed", extraPages)
+            }
+          />
+        ) : null}
+        {shows("projects") ? (
+          <CodexSidebarSection
+            heading={intl.formatMessage({
+              id: "workbench.workbenchSessionSidebar.projects",
+              defaultMessage: "Projects",
+            })}
+            collapsed={projectsSectionCollapsed}
+            onToggle={onToggleProjectsSectionCollapsed}
+            actions={
+              <SidebarProjectsSectionActions
+                chatOrder={chatOrder}
+                onChatOrderChange={onChatOrderChange}
+                organize={lifecycle.organize}
+                autoSettleDays={lifecycle.autoSettleDays}
+                onAutoSettleDaysChange={lifecycle.onAutoSettleDaysChange}
+                onCreateProject={onCreateProject}
+                openCreateDialogTick={projectPickerOpenTick}
+              />
+            }
+          >
+            <StableWorktreeSidebarRows
+              entries={pendingStableWorktrees}
+              onOpen={onOpenStableWorktree}
+            />
+            {renderProjectGroupRows(placeProjectGroups, {
+              reorderScope: "projects",
+              extraPages: sidebarListExtraPages.projects ?? 0,
+              onExtraPagesChange: (extraPages) =>
+                onSidebarListExtraPagesChange("projects", extraPages),
+              readsProjectWindow: true,
+            })}
+          </CodexSidebarSection>
+        ) : null}
+        {shows("settled") ? renderSettledShelf() : null}
+      </>
+    );
+  };
+
   const renderProjectGroups = () => (
     <>
       {renderPinnedSection()}
@@ -1788,6 +2257,8 @@ function SidebarThreadOrganizerSections({
         renderSession={(session) => {
           // A Section owns placement only. Chat presentation and behavior must stay on the
           // same shared row used by Projects, Pinned, and Chats.
+          // A chat its reader settled leaves the Section's list for the Settled shelf.
+          if (session.settledAt != null) return null;
           const threadKey = sidebarThreadKeyBySessionId.get(session.id);
           return threadKey ? renderThreadRow(threadKey) : null;
         }}
@@ -1813,6 +2284,9 @@ function SidebarThreadOrganizerSections({
           <SidebarProjectsSectionActions
             chatOrder={chatOrder}
             onChatOrderChange={onChatOrderChange}
+            organize={lifecycle.organize}
+            autoSettleDays={lifecycle.autoSettleDays}
+            onAutoSettleDaysChange={lifecycle.onAutoSettleDaysChange}
             projectGroupCollapseAction={projectGroupCollapseAction}
             onProjectGroupCollapseAction={runProjectGroupCollapseAction}
             onCreateProject={onCreateProject}
@@ -1873,10 +2347,11 @@ function SidebarThreadOrganizerSections({
           />
         </CodexSidebarSection>
       </SidebarThreadDropContainer>
+      {renderSettledShelf()}
     </>
   );
 
-  return renderProjectGroups();
+  return arrangedByAttention ? renderChatLanes() : renderProjectGroups();
 }
 
 export interface ProjectSessionSidebarProps extends Omit<
@@ -1905,7 +2380,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   onTogglePinnedProjectsSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
-  onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
+  onSetSidebarSectionCollapsed: (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
   onSelectSession: (session: ProjectSessionDomain) => void;
@@ -1948,6 +2423,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   onSetPinnedProjectOrder: (input: ProjectPinnedOrderInput) => Promise<void>;
   chatOrder: SidebarChatOrder;
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
+  lifecycle: SidebarChatLifecycle;
   onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   onMoveSidebarThread: (drop: SidebarThreadDropRequest) => Promise<SidebarThreadDropCommit | null>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
@@ -2021,6 +2497,7 @@ export function ProjectSessionSidebar({
   onSetPinnedProjectOrder,
   chatOrder,
   onChatOrderChange,
+  lifecycle,
   onPlaceSession,
   onMoveSidebarThread,
   onReorderPinnedThreads,
@@ -2203,6 +2680,18 @@ export function ProjectSessionSidebar({
     (threadKey: string) => sidebarThreadIdByKey.get(threadKey) ?? null,
     [sidebarThreadIdByKey],
   );
+  const laneHold = useSidebarLaneHold();
+  const scopeProjects = sidebarThreadModel.projectGroups.map(({ project }) => ({
+    id: project.id,
+    name: project.name,
+    inboxCount: inboxCounts.projects[project.id] ?? 0,
+  }));
+  // The scope belongs to the attention lanes; a Project that left the list shows every Project.
+  const scopeProject =
+    lifecycle.organize === "attention"
+      ? (scopeProjects.find((project) => project.id === lifecycle.scopeProjectId) ?? null)
+      : null;
+  const scopeProjectId = scopeProject?.id ?? null;
 
   return (
     <WorkbenchSidebarFrame
@@ -2223,6 +2712,7 @@ export function ProjectSessionSidebar({
       >
         <nav
           className="sidebar-foreground-muted flex min-h-0 flex-1 flex-col"
+          {...laneHold.holdHandlers}
           role="navigation"
           aria-label={intl.formatMessage({
             id: "workbench.workbenchSessionSidebar.home",
@@ -2234,18 +2724,45 @@ export function ProjectSessionSidebar({
             searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
             scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
             onSearch={onOpenCommandPalette}
+            tools={
+              <>
+                {scopeProject ? (
+                  <SidebarScopeChip
+                    projectName={scopeProject.name}
+                    onClear={() => lifecycle.onScopeChange(null)}
+                  />
+                ) : null}
+                <SidebarArrangeToggle
+                  organize={lifecycle.organize}
+                  shortcutLabel={lifecycle.organizeShortcutLabel}
+                  onOrganizeChange={lifecycle.onOrganizeChange}
+                />
+              </>
+            }
           >
             <SidebarInboxButton
-              entry={{
-                active: inboxActive,
-                count: inboxCounts.library,
-                shortcutLabel: resolveCodexInboxShortcutLabel(),
-                onOpen: onOpenInbox,
-              }}
+              entry={
+                // Showing one Project, the entry is that Project's Inbox.
+                scopeProject
+                  ? {
+                      active: activeSessionId === null && activeProjectId === scopeProject.id,
+                      count: scopeProject.inboxCount,
+                      waiting: inboxCounts.waiting.projects[scopeProject.id] === true,
+                      shortcutLabel: resolveCodexInboxShortcutLabel(),
+                      onOpen: () => onSelectProject(scopeProject.id),
+                    }
+                  : {
+                      active: inboxActive,
+                      count: inboxCounts.library,
+                      waiting: inboxCounts.waiting.library,
+                      shortcutLabel: resolveCodexInboxShortcutLabel(),
+                      onOpen: onOpenInbox,
+                    }
+              }
             />
             <SidebarNewChatButton
               shortcutLabel={resolveCodexNewChatShortcutLabel()}
-              onClick={() => void onStartNewChatInProject(activeProjectId)}
+              onClick={() => void onStartNewChatInProject(scopeProject?.id ?? activeProjectId)}
             />
           </WorkbenchSidebarHeader>
 
@@ -2266,6 +2783,17 @@ export function ProjectSessionSidebar({
               onLibraryMove={handleLibraryMove}
             >
               <SidebarThreadOrganizerSections
+                laneHolding={laneHold.holding}
+                laneViewMenu={
+                  <SidebarLaneViewMenu
+                    hiddenShelves={lifecycle.hiddenShelves}
+                    onHiddenShelvesChange={lifecycle.onHiddenShelvesChange}
+                    scopeProjectId={scopeProjectId}
+                    projects={scopeProjects}
+                    libraryInboxCount={inboxCounts.library}
+                    onScopeChange={lifecycle.onScopeChange}
+                  />
+                }
                 projectInboxCounts={inboxCounts.projects}
                 activeProjectId={activeProjectId}
                 activeSessionId={activeSessionId}
@@ -2316,6 +2844,7 @@ export function ProjectSessionSidebar({
                 onSetPinnedProjectOrder={onSetPinnedProjectOrder}
                 chatOrder={chatOrder}
                 onChatOrderChange={onChatOrderChange}
+                lifecycle={lifecycle}
                 onPlaceSession={onPlaceSession}
                 onReorderPinnedThreads={onReorderPinnedThreads}
                 sidebarArchivePendingKeys={sidebarArchivePendingKeys}

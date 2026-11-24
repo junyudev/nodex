@@ -28,7 +28,7 @@ import {
   type ReactNode,
 } from "react";
 import * as Y from "yjs";
-import { DEFAULT_INBOX_SETTINGS } from "../../../../shared/inbox";
+import { DEFAULT_INBOX_SETTINGS, type InboxCounts } from "../../../../shared/inbox";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../../shared/block-documents/page-document";
 import type { DatabaseViewConfigV6, DatabaseViewSort } from "../../../../shared/database-kernel";
@@ -295,6 +295,8 @@ export function emitCodexEvent(event: CodexEvent): void {
   for (const listener of codexEventListeners) listener(event);
 }
 
+/** Native conversations the shell marked read, in order. */
+export const markConversationAsReadCalls: string[] = [];
 export const mockCodexControl = {
   captureSubmissionPresentation: () => ({
     rendererGeneration: "test-generation",
@@ -309,6 +311,10 @@ export const mockCodexControl = {
 
   loadModels: async () => undefined,
   loadThreads: async () => undefined,
+  // Opening an unread native chat reads it through its app-server conversation.
+  markConversationAsRead: async (threadId: string) => {
+    markConversationAsReadCalls.push(threadId);
+  },
   listCollaborationModes: async () => [{ name: "Plan", mode: "plan", model: null }],
 
   startSideChat: async (input: unknown) => {
@@ -3389,14 +3395,41 @@ export function renderWorkbench({
     }
     if (channel === "workspace:tasks:list") {
       const projectId = args[0] === null ? projectlessSessionStateKey : String(args[0]);
-      const input = (args[1] ?? {}) as { after?: string | null; first?: number };
+      const input = (args[1] ?? {}) as {
+        after?: string | null;
+        first?: number;
+        lifecycle?: "all" | "open" | "settled";
+        order?: string;
+        wholeLibrary?: boolean;
+      };
       const first = input.first ?? 50;
       const offset = input.after?.startsWith("test-window:")
         ? Number(input.after.slice("test-window:".length))
         : 0;
-      const summaries = (sessionState[projectId] ?? [])
+      const attentionAt = (session: ProjectSession) => session.attentionAt ?? session.activityAt;
+      const listed = (
+        input.wholeLibrary ? Object.values(sessionState).flat() : (sessionState[projectId] ?? [])
+      )
         .filter((session) => !session.archived)
-        .map(projectSessionToSummary);
+        .filter((session) =>
+          input.lifecycle === "open"
+            ? session.settledAt == null
+            : input.lifecycle === "settled"
+              ? session.settledAt != null
+              : true,
+        );
+      // Core orders these lanes itself; the Project lanes keep the order their fixture gives.
+      if (input.order === "settlement")
+        listed.sort((left, right) => (right.settledAt ?? 0) - (left.settledAt ?? 0));
+      if (input.order === "attention")
+        listed.sort(
+          (left, right) =>
+            Number(right.pinned) - Number(left.pinned) ||
+            (left.pinned && right.pinned
+              ? (left.pinnedOrder ?? 0) - (right.pinnedOrder ?? 0)
+              : attentionAt(right) - attentionAt(left)),
+        );
+      const summaries = listed.map(projectSessionToSummary);
       const items = summaries.slice(offset, offset + first);
       const nextOffset = offset + items.length;
       const hasMore = nextOffset < summaries.length;
@@ -3480,7 +3513,7 @@ export function renderWorkbench({
       });
     }
     // Every Project's Home is its Inbox; the shell renders it empty unless a test seeds it.
-    if (channel === "inbox:counts") return { library: 0, projects: {} };
+    if (channel === "inbox:counts") return inboxCountsForTest;
     if (channel === "inbox:summary") {
       // Each Inbox files into its own Database: a Project's Board, or the Library Inbox Database.
       const scope = (args[0] as { scope?: { kind?: string } } | undefined)?.scope;
@@ -4143,6 +4176,67 @@ export function renderWorkbench({
         return { changed, value: updated };
       });
     }
+    if (channel === "agent-runtime:session:reply-previews") {
+      const { sessionIds } = args[0] as { sessionIds: string[] };
+      replyPreviewReads.push([...sessionIds]);
+      return sessionIds.flatMap((sessionId) => {
+        const text = replyPreviewsForTest.get(sessionId);
+        return text ? [{ sessionId, text }] : [];
+      });
+    }
+    if (channel === "project-sessions:set-settled") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionIds = command.payload.sessionIds as string[];
+      const settled = command.payload.settled === true;
+      return completeWorkspaceCommand(command, command, () => {
+        const sessions = Object.values(sessionState).flat();
+        const changedSessionIds = [];
+        for (const sessionId of sessionIds) {
+          const session = sessions.find((item) => item.id === sessionId);
+          if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+          if (session.archived || (session.settledAt != null) === settled) continue;
+          const updated = settled
+            ? {
+                ...session,
+                settledAt: Date.now(),
+                pinned: false,
+                pinnedOrder: null,
+                snoozedUntil: null,
+                snoozedAt: null,
+                wokeAt: null,
+                unread: false,
+              }
+            : { ...session, settledAt: null };
+          sessionState = replaceSession(sessionState, updated);
+          changedSessionIds.push(sessionId);
+        }
+        return { changed: changedSessionIds.length > 0, value: { changedSessionIds } };
+      });
+    }
+    if (channel === "project-sessions:set-snooze") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const snoozedUntil =
+        typeof command.payload.snoozedUntil === "string" ? command.payload.snoozedUntil : null;
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const updated = {
+          ...session,
+          snoozedUntil,
+          snoozedAt: snoozedUntil ? Date.now() : null,
+          pinned: snoozedUntil ? false : session.pinned,
+        };
+        sessionState = replaceSession(sessionState, updated);
+        return { changed: true, value: updated };
+      });
+    }
+    if (channel === "project-sessions:settle-idle") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      return completeWorkspaceCommand(command, command, () => ({ changed: false, value: null }));
+    }
     if (channel === "project-sessions:set-pinned-order") {
       const command = readWorkspaceCommandEnvelope(channel, args);
       const projectId = String(command.payload.projectId);
@@ -4630,6 +4724,7 @@ export function renderWorkbench({
     const [sidebarState, setSidebarState] = useState<TestSidebarState>(() => ({
       collapsed: false,
       width: 300,
+      organize: sidebarOrganizeForTest,
       ...sidebar,
       collapsibleSections: {
         ...DEFAULT_SIDEBAR_COLLAPSIBLE_SECTIONS,
@@ -4757,6 +4852,18 @@ export function renderWorkbench({
         }}
         setSidebarWidth={(width) => {
           setSidebarState((current) => ({ ...current, width }));
+        }}
+        setSidebarOrganize={(organize) => {
+          setSidebarState((current) => ({ ...current, organize }));
+        }}
+        setSidebarScopeProjectId={(scopeProjectId) => {
+          setSidebarState((current) => ({ ...current, scopeProjectId }));
+        }}
+        setSidebarHiddenShelves={(hiddenShelves) => {
+          setSidebarState((current) => ({ ...current, hiddenShelves }));
+        }}
+        setSidebarAutoSettleDays={(autoSettleDays) => {
+          setSidebarState((current) => ({ ...current, autoSettleDays }));
         }}
         setSidebarCollapsibleSectionCollapsed={(
           sectionId: SidebarDisclosureSectionId,
@@ -4909,6 +5016,11 @@ beforeEach(() => {
   mockLibraryStatus = "ready";
   setWindowInnerWidthForTest(1024);
   localStorage.clear();
+  sidebarOrganizeForTest = "project";
+  inboxCountsForTest = NO_INBOX_COUNTS;
+  markConversationAsReadCalls.length = 0;
+  replyPreviewsForTest = new Map();
+  replyPreviewReads.length = 0;
   sessionStorage.clear();
   delete (
     globalThis as {
@@ -5112,6 +5224,32 @@ export function getHeaderShellSlot(
     throw new Error(`Expected ${side} header shell slot`);
   }
   return slot;
+}
+
+/**
+ * How the next workbench arranges open chats. These suites cover the Project tree, so it is the
+ * default; a test of the lanes that arrange chats by attention opts in before it renders.
+ */
+let sidebarOrganizeForTest: "attention" | "project" = "project";
+const NO_INBOX_COUNTS: InboxCounts = {
+  library: 0,
+  projects: {},
+  waiting: { library: false, projects: {} },
+};
+let inboxCountsForTest: InboxCounts = NO_INBOX_COUNTS;
+/** What waits in the Library and each Project's Inbox, as the sidebar's counts read it. */
+export function setInboxCountsForTest(counts: InboxCounts): void {
+  inboxCountsForTest = counts;
+}
+let replyPreviewsForTest = new Map<string, string>();
+/** Each reply-preview read the sidebar made, by the chats it named. */
+export const replyPreviewReads: string[][] = [];
+/** The latest reply each chat's Agent finished with, as the execution owner reports it. */
+export function setReplyPreviewsForTest(previews: Readonly<Record<string, string>>): void {
+  replyPreviewsForTest = new Map(Object.entries(previews));
+}
+export function setSidebarOrganizeForTest(organize: "attention" | "project"): void {
+  sidebarOrganizeForTest = organize;
 }
 
 export function setWindowInnerWidthForTest(width: number): void {

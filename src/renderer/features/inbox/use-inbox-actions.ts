@@ -32,8 +32,8 @@ import {
   setInboxEntryKind,
   markInboxMessagesDone,
   returnInboxMessages,
-  setInboxLater,
-  clearInboxLater,
+  setInboxSnooze,
+  wakeInboxEntries,
   stopInboxSuggestion,
   undoInboxDecision,
 } from "@/lib/inbox-runtime";
@@ -41,7 +41,7 @@ import { CoreApiError } from "@/lib/core-api-error";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { RendererCommandRejectedError } from "@/lib/renderer-command";
 import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentation";
-import { describeLaterConfirmation } from "./inbox-later";
+import { describeInboxSnoozeConfirmation } from "./inbox-snooze";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
 import { useSendInboxMessage } from "./use-send-inbox-message";
@@ -83,15 +83,15 @@ export interface InboxActions {
     basis: readonly InboxPageBasis[],
   ) => Promise<boolean>;
   /**
-   * Sets messages aside until `remindAt`. `reschedule` changes
+   * Sets messages aside until `snoozedUntil`. `reschedule` changes
    * when messages already set aside come back, which is not a new decision to undo.
    */
-  readonly later: (
+  readonly snooze: (
     pageIds: readonly string[],
-    remindAt: string,
+    snoozedUntil: string,
     reschedule?: boolean,
   ) => Promise<boolean>;
-  readonly clearLater: (pageIds: readonly string[]) => Promise<boolean>;
+  readonly wake: (pageIds: readonly string[]) => Promise<boolean>;
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
   readonly setState: (pageIds: readonly string[], action: "done" | "open") => Promise<boolean>;
   readonly setKind: (pageId: string, kind: InboxEntryKind | null) => Promise<boolean>;
@@ -223,18 +223,18 @@ export function useInboxActions(
         : undefined,
     );
 
-  const clearLater = (pageIds: readonly string[]) =>
+  const wake = (pageIds: readonly string[]) =>
     run(
       intl.formatMessage({
         id: "inbox.useInboxActions.theMessageCouldNotBe2",
         defaultMessage: "The message could not be returned",
       }),
-      () => clearInboxLater({ pageIds }),
+      () => wakeInboxEntries({ pageIds }),
     );
 
-  const announceLater = (pageIds: readonly string[], remindAt: string, undo: boolean) =>
+  const announceSnooze = (pageIds: readonly string[], snoozedUntil: string, undo: boolean) =>
     toast.success(
-      describeLaterConfirmation(remindAt, pageIds.length, new Date()),
+      describeInboxSnoozeConfirmation(snoozedUntil, pageIds.length, new Date()),
       undo
         ? {
             action: {
@@ -242,7 +242,7 @@ export function useInboxActions(
                 id: "inbox.useInboxActions.undo",
                 defaultMessage: "Undo",
               }),
-              onClick: () => void clearLater(pageIds),
+              onClick: () => void wake(pageIds),
             },
           }
         : undefined,
@@ -267,8 +267,8 @@ export function useInboxActions(
     switch (action.type) {
       case "plan":
         return { kind: "plan", count: action.steps.length };
-      case "later":
-        return { kind: "later", remindAt: action.remindAt };
+      case "snooze":
+        return { kind: "snooze", snoozedUntil: action.snoozedUntil };
       case "keep":
         return { kind: "keep" };
       case "save_to_notes":
@@ -376,10 +376,10 @@ export function useInboxActions(
             draft.basis.map((basis) => basis.pageId),
             result.value.undoToken,
           );
-        else if (action?.type === "later")
-          announceLater(
+        else if (action?.type === "snooze")
+          announceSnooze(
             draft.basis.map((basis) => basis.pageId),
-            action.remindAt,
+            action.snoozedUntil,
             true,
           );
       },
@@ -563,19 +563,19 @@ export function useInboxActions(
           announceCleared("kept", pageIds, undoToken);
         },
       ),
-    later: (pageIds, remindAt, reschedule = false) =>
+    snooze: (pageIds, snoozedUntil, reschedule = false) =>
       run(
         intl.formatMessage({
           id: "inbox.useInboxActions.theMessageCouldNotBe7",
-          defaultMessage: "The message could not be set aside",
+          defaultMessage: "Couldn’t snooze the message",
         }),
         async () => {
-          await setInboxLater({ pageIds, until: remindAt });
-          if (!reschedule) onDecided(pageIds, { kind: "later", remindAt });
-          announceLater(pageIds, remindAt, !reschedule);
+          await setInboxSnooze({ pageIds, until: snoozedUntil });
+          if (!reschedule) onDecided(pageIds, { kind: "snooze", snoozedUntil });
+          announceSnooze(pageIds, snoozedUntil, !reschedule);
         },
       ),
-    clearLater,
+    wake,
     delete: (pageIds) =>
       run(
         intl.formatMessage({

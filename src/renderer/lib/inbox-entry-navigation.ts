@@ -5,7 +5,7 @@ import { inboxScopeKey, type InboxScope } from "../../shared/inbox";
  * An Inbox's views: what needs the reader now, what was set aside to need them later, and what
  * was handled or done.
  */
-export type InboxView = "inbox" | "later" | "activity";
+export type InboxView = "inbox" | "snoozed" | "activity";
 
 /** Opens a message where it is: waiting in the Inbox, or handled in Activity. */
 interface InboxEntryOpen {

@@ -16,6 +16,15 @@ import {
   type SidebarListExtraPagesState,
   type SidebarListId,
 } from "./sidebar-section-prefs";
+import {
+  DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
+  normalizeSidebarAutoSettleDays,
+  normalizeSidebarHiddenShelves,
+  normalizeSidebarOrganize,
+  type SidebarAutoSettleDays,
+  type SidebarOptionalShelf,
+  type SidebarOrganize,
+} from "./sidebar-chat-lifecycle";
 import { appScope, scopedAtom, useScopedAtom } from "./maitai";
 import { WORKBENCH_PERSIST_DEBOUNCE_MS } from "./timing";
 
@@ -35,6 +44,12 @@ export interface WorkbenchSidebarPreferences {
   readonly collapsibleSections: SidebarCollapsibleSectionsState;
   readonly listExtraPages: SidebarListExtraPagesState;
   readonly chatOrder: SidebarChatOrder;
+  readonly organize: SidebarOrganize;
+  /** The one Project the attention lanes and the Inbox entry show, or null for all of them. */
+  readonly scopeProjectId: string | null;
+  /** The lists the attention arrangement leaves out. */
+  readonly hiddenShelves: readonly SidebarOptionalShelf[];
+  readonly autoSettleDays: SidebarAutoSettleDays;
 }
 
 export type DatabaseViewTabDisplayMode = "icon_and_text" | "text_only" | "icon_only";
@@ -67,6 +82,10 @@ function makeDefaultWorkbenchProfilePreferences(): WorkbenchProfilePreferences {
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(undefined),
       listExtraPages: {},
       chatOrder: "activity",
+      organize: normalizeSidebarOrganize(undefined),
+      scopeProjectId: null,
+      hiddenShelves: [],
+      autoSettleDays: DEFAULT_SIDEBAR_AUTO_SETTLE_DAYS,
     },
     databaseViewTabs: { displayModeByDatabaseId: {}, ruleBarOpenByViewId: {} },
     recentPageSessions: [],
@@ -151,6 +170,13 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(sidebar?.collapsibleSections),
       listExtraPages: normalizeSidebarListExtraPages(sidebar?.listExtraPages),
       chatOrder: normalizeSidebarChatOrder(sidebar?.chatOrder),
+      organize: normalizeSidebarOrganize(sidebar?.organize),
+      scopeProjectId:
+        typeof sidebar?.scopeProjectId === "string" && sidebar.scopeProjectId.length > 0
+          ? sidebar.scopeProjectId
+          : null,
+      hiddenShelves: normalizeSidebarHiddenShelves(sidebar?.hiddenShelves),
+      autoSettleDays: normalizeSidebarAutoSettleDays(sidebar?.autoSettleDays),
     },
     databaseViewTabs: {
       displayModeByDatabaseId: normalizeDatabaseViewTabDisplayModes(
@@ -358,6 +384,50 @@ export function useWorkbenchProfilePreferences() {
     [update],
   );
 
+  const setSidebarOrganize = useCallback(
+    (organize: SidebarOrganize) => {
+      update((current) => {
+        if (current.sidebar.organize === organize) return current;
+        return { ...current, sidebar: { ...current.sidebar, organize } };
+      });
+    },
+    [update],
+  );
+
+  const setSidebarScopeProjectId = useCallback(
+    (scopeProjectId: string | null) => {
+      update((current) => {
+        if (current.sidebar.scopeProjectId === scopeProjectId) return current;
+        return { ...current, sidebar: { ...current.sidebar, scopeProjectId } };
+      });
+    },
+    [update],
+  );
+
+  const setSidebarHiddenShelves = useCallback(
+    (hiddenShelves: readonly SidebarOptionalShelf[]) => {
+      update((current) => {
+        const next = normalizeSidebarHiddenShelves(hiddenShelves);
+        const previous = current.sidebar.hiddenShelves;
+        if (next.length === previous.length && next.every((shelf, i) => shelf === previous[i])) {
+          return current;
+        }
+        return { ...current, sidebar: { ...current.sidebar, hiddenShelves: next } };
+      });
+    },
+    [update],
+  );
+
+  const setSidebarAutoSettleDays = useCallback(
+    (autoSettleDays: SidebarAutoSettleDays) => {
+      update((current) => {
+        if (current.sidebar.autoSettleDays === autoSettleDays) return current;
+        return { ...current, sidebar: { ...current.sidebar, autoSettleDays } };
+      });
+    },
+    [update],
+  );
+
   const setDatabaseViewTabDisplayMode = useCallback(
     (databaseId: string, mode: DatabaseViewTabDisplayMode) => {
       update((current) => {
@@ -428,6 +498,10 @@ export function useWorkbenchProfilePreferences() {
       setSidebarCollapsibleSectionCollapsed,
       setSidebarListExtraPages,
       setSidebarChatOrder,
+      setSidebarOrganize,
+      setSidebarScopeProjectId,
+      setSidebarHiddenShelves,
+      setSidebarAutoSettleDays,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       recordRecentPageLeave,
@@ -441,6 +515,10 @@ export function useWorkbenchProfilePreferences() {
       setSidebarCollapsibleSectionCollapsed,
       setSidebarListExtraPages,
       setSidebarChatOrder,
+      setSidebarOrganize,
+      setSidebarScopeProjectId,
+      setSidebarHiddenShelves,
+      setSidebarAutoSettleDays,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       setSidebarWidth,

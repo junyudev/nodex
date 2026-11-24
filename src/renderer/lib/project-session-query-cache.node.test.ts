@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { ProjectSession, ProjectSessionSummaryWindow } from "./types";
 import { queryKeys } from "./query-keys";
 import {
+  applyProjectSessionSettled,
   getCachedProjectSessionDetail,
   listSessionSideChats,
   invalidateProjectSessionScope,
@@ -36,7 +37,10 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
     pinnedOrder: overrides.pinnedOrder ?? null,
     archived: overrides.archived ?? false,
     archivedAt: overrides.archivedAt ?? null,
-    remindAt: overrides.remindAt ?? null,
+    snoozedUntil: overrides.snoozedUntil ?? null,
+    snoozedAt: overrides.snoozedAt ?? null,
+    wokeAt: overrides.wokeAt ?? null,
+    pageTurn: overrides.pageTurn ?? null,
     canManage: true,
     canStop: true,
     unread: overrides.unread ?? false,
@@ -74,6 +78,120 @@ describe("project session query cache", () => {
     client.clear();
   });
 
+  test("a settled chat leaves the open lists and heads the settled ones until Undo", () => {
+    const client = createQueryClient();
+    const window = (items: ProjectSession[]): ProjectSessionSummaryWindow => ({
+      items: items.map(projectSessionToSummary),
+      nextCursor: null,
+      hasMore: false,
+      projectionRevision: 4,
+    });
+    const chat = createSession({ id: "chat", pinned: true, pinnedOrder: 2, unread: true });
+    const other = createSession({ id: "other" });
+    const earlier = { ...createSession({ id: "earlier" }), settledAt: 10 };
+    const openProject = queryKeys.projectSessions.summaries(
+      "project-1",
+      "builtin",
+      "activity",
+      "open",
+    );
+    const openLibrary = queryKeys.projectSessions.librarySummaries(null, "attention", "open");
+    const settledLibrary = queryKeys.projectSessions.librarySummaries(
+      null,
+      "settlement",
+      "settled",
+    );
+    const everyChat = queryKeys.projectSessions.summaries("project-1");
+    client.setQueryData(openProject, window([chat, other]));
+    client.setQueryData(openLibrary, window([other, chat]));
+    client.setQueryData(settledLibrary, window([earlier]));
+    client.setQueryData(everyChat, window([chat, other]));
+    const ids = (key: readonly unknown[]) =>
+      client.getQueryData<ProjectSessionSummaryWindow>(key)?.items.map((item) => item.id);
+
+    const projectShelf = queryKeys.projectSessions.librarySummaries(
+      "project-1",
+      "settlement",
+      "settled",
+    );
+    const otherShelf = queryKeys.projectSessions.librarySummaries(
+      "project-2",
+      "settlement",
+      "settled",
+    );
+    client.setQueryData(projectShelf, window([]));
+    client.setQueryData(otherShelf, window([]));
+
+    const undo = applyProjectSessionSettled(client, [chat.id, other.id], 50);
+
+    expect(ids(openProject)).toEqual([]);
+    expect(ids(openLibrary)).toEqual([]);
+    expect(ids(settledLibrary)).toEqual(["chat", "other", "earlier"]);
+    expect(ids(projectShelf)).toEqual(["chat", "other"]);
+    expect(ids(otherShelf)).toEqual([]);
+    expect(ids(everyChat)).toEqual(["chat", "other"]);
+    // Finishing a chat also clears what kept it in front of its reader.
+    expect(
+      client
+        .getQueryData<ProjectSessionSummaryWindow>(settledLibrary)
+        ?.items.find((item) => item.id === chat.id),
+    ).toMatchObject({
+      settledAt: 50,
+      pinned: false,
+      unread: false,
+    });
+    expect(
+      client.getQueryData<ProjectSessionSummaryWindow>(settledLibrary)?.projectionRevision,
+    ).toBe(4);
+
+    undo();
+
+    expect(ids(openProject)).toEqual(["chat", "other"]);
+    expect(ids(openLibrary)).toEqual(["other", "chat"]);
+    expect(ids(settledLibrary)).toEqual(["earlier"]);
+    expect(ids(projectShelf)).toEqual([]);
+    client.clear();
+  });
+
+  test("a reopened chat leaves the settled lists at once", () => {
+    const client = createQueryClient();
+    const chat = { ...createSession({ id: "chat" }), settledAt: 20 };
+    const settledLibrary = queryKeys.projectSessions.librarySummaries(
+      null,
+      "settlement",
+      "settled",
+    );
+    client.setQueryData<ProjectSessionSummaryWindow>(settledLibrary, {
+      items: [projectSessionToSummary(chat)],
+      nextCursor: null,
+      hasMore: false,
+      projectionRevision: 1,
+    });
+
+    applyProjectSessionSettled(client, [chat.id], null);
+
+    expect(client.getQueryData<ProjectSessionSummaryWindow>(settledLibrary)?.items).toEqual([]);
+    client.clear();
+  });
+
+  test("any chat's change refreshes the lists that span the whole Library", async () => {
+    const client = createQueryClient();
+    const key = queryKeys.projectSessions.librarySummaries(null, "attention", "open");
+    client.setQueryData(key, {
+      items: [],
+      nextCursor: null,
+      hasMore: false,
+      projectionRevision: 1,
+    });
+    await invalidateProjectSessionScope(client, {
+      summaryScopes: [{ kind: "project", projectId: "project-1" }],
+      detailInvalidation: { kind: "sessions", sessionIds: [] },
+      changeType: "update",
+    });
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    client.clear();
+  });
+
   test("uses stable summary and detail keys", () => {
     expect(JSON.stringify(queryKeys.projectSessions.summaries("project-1"))).toBe(
       JSON.stringify([
@@ -84,6 +202,7 @@ describe("project session query cache", () => {
         "project-1",
         "all",
         "activity",
+        "all",
       ]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.summaries(null))).toBe(
@@ -95,6 +214,7 @@ describe("project session query cache", () => {
         "",
         "all",
         "activity",
+        "all",
       ]),
     );
     expect(JSON.stringify(queryKeys.projectSessions.detail("session-1"))).toBe(
@@ -303,10 +423,19 @@ describe("project session query cache", () => {
     const queryClient = createQueryClient();
     const detail = createSession({ displayTitle: "Stale title", activityAt: 7 });
     seedProjectSessionDetail(queryClient, detail);
+    const pageTurn = {
+      page_id: "page:review",
+      actor: { kind: "member", member_id: "person" },
+      reason: "review",
+      episode: "episode:review",
+      since: "2026-01-02T00:00:00.000Z",
+      hold: null,
+    } as const;
     const summary = projectSessionToSummary(
       createSession({
         displayTitle: "Current title",
         activityAt: 2,
+        pageTurn,
         updatedAt: "2026-01-02T00:00:00.000Z",
       }),
     );
@@ -316,6 +445,7 @@ describe("project session query cache", () => {
     const cached = getCachedProjectSessionDetail(queryClient, detail.id);
     expect(cached?.displayTitle).toBe("Current title");
     expect(cached?.activityAt).toBe(2);
+    expect(cached?.pageTurn).toEqual(pageTurn);
     expect(cached).toEqual(summary);
     queryClient.clear();
   });

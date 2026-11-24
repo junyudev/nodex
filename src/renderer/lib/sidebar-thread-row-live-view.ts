@@ -12,6 +12,8 @@ export interface SidebarThreadRowRuntimeFacts {
   readonly location: ThreadExecutionLocationView | null;
   /** The active Run's opening statement, once the agent has made one. */
   readonly readback?: string | null;
+  /** What the active Run asks the person to approve. */
+  readonly approvalPrompt?: string | null;
 }
 
 export interface SidebarThreadRowLiveView {
@@ -26,16 +28,20 @@ export interface SidebarThreadRowLiveView {
   readonly status: SidebarRowLiveStatus | null;
   /** What the agent said it would do in the Run it is working on. */
   readonly readback: string | null;
+  /** What the Run it is working on asks the person to approve. */
+  readonly approvalPrompt: string | null;
 }
 
 function withStatus(
-  view: Omit<SidebarThreadRowLiveView, "status" | "readback"> & {
+  view: Omit<SidebarThreadRowLiveView, "status" | "readback" | "approvalPrompt"> & {
     readonly readback?: string | null;
+    readonly approvalPrompt?: string | null;
   },
 ): SidebarThreadRowLiveView {
   return {
     ...view,
     readback: view.readback ?? null,
+    approvalPrompt: view.approvalPrompt ?? null,
     status: resolveSidebarRowStatus({ ...view, unread: view.item.unread }),
   };
 }
@@ -74,6 +80,7 @@ export function projectSidebarThreadRowLiveView(
   return withStatus({
     item: located,
     readback: runtime.readback,
+    approvalPrompt: runtime.approvalPrompt,
     running: runtime.indicator === "running",
     background: runtime.indicator === "background",
     ...(runtime.indicator === "approval" ? { needsApproval: true } : {}),

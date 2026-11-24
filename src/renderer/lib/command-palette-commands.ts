@@ -20,42 +20,49 @@ import {
   TOGGLE_FULL_VIEW_COMMAND_ID,
 } from "../../shared/workbench-commands";
 import type { CommandPaletteCommand, CommandPaletteCommandGroup } from "./command-palette";
-import type { ChatReminderPresetId } from "./chat-reminder";
+import type { ChatSnoozePresetId } from "./chat-snooze";
 import type { WorkbenchPanelActionKind } from "./workbench-panel-capabilities";
 import { formatToggleFullViewShortcutLabel } from "./workbench-command-shortcuts";
 
 export const OPEN_DB_VIEW_TAB_COMMAND_ID = "openDbViewTab";
 
-/** A reminder preset is resolved to its instant when the command runs, never when it is listed. */
-export const REMIND_THREAD_COMMAND_IDS = {
-  "in-1-hour": "remindThreadInOneHour",
-  "in-3-hours": "remindThreadInThreeHours",
-  "next-morning": "remindThreadInTheMorning",
-  "next-week": "remindThreadNextWeek",
-} as const satisfies Record<ChatReminderPresetId, string>;
+/** A snooze preset is resolved to its instant when the command runs, never when it is listed. */
+export const SNOOZE_THREAD_COMMAND_IDS = {
+  "in-1-hour": "snoozeThreadInOneHour",
+  "in-3-hours": "snoozeThreadInThreeHours",
+  "next-morning": "snoozeThreadInTheMorning",
+  "next-week": "snoozeThreadNextWeek",
+} as const satisfies Record<ChatSnoozePresetId, string>;
 
-type RemindThreadCommandId = (typeof REMIND_THREAD_COMMAND_IDS)[ChatReminderPresetId];
+type SnoozeThreadCommandId = (typeof SNOOZE_THREAD_COMMAND_IDS)[ChatSnoozePresetId];
 
-export function isRemindThreadCommandId(id: string): id is RemindThreadCommandId {
-  return Object.values(REMIND_THREAD_COMMAND_IDS).some((commandId) => commandId === id);
+export function isSnoozeThreadCommandId(id: string): id is SnoozeThreadCommandId {
+  return Object.values(SNOOZE_THREAD_COMMAND_IDS).some((commandId) => commandId === id);
 }
 
-const REMIND_THREAD_COMMAND_TITLES: Readonly<Record<ChatReminderPresetId, MessageDescriptor>> = {
+/** The word every snooze command starts with, so a palette opened on it lists only those. */
+export const snoozeCommandQuery = () =>
+  getIntl().formatMessage({
+    id: "lib.commandPaletteCommands.snoozeQuery",
+    defaultMessage: "Snooze",
+  });
+
+const SNOOZE_THREAD_COMMAND_TITLES: Readonly<Record<ChatSnoozePresetId, MessageDescriptor>> = {
   "in-1-hour": {
-    id: "lib.commandPaletteCommands.remindOneHour",
-    defaultMessage: "Remind me in 1 hour",
+    id: "lib.commandPaletteCommands.snoozeOneHour",
+    defaultMessage: "Snooze for 1 hour",
   },
   "in-3-hours": {
-    id: "lib.commandPaletteCommands.remindThreeHours",
-    defaultMessage: "Remind me in 3 hours",
+    id: "lib.commandPaletteCommands.snoozeThreeHours",
+    defaultMessage: "Snooze for 3 hours",
   },
   "next-morning": {
-    id: "lib.commandPaletteCommands.remindMorning",
-    defaultMessage: "Remind me in the morning",
+    id: "lib.commandPaletteCommands.snoozeMorning",
+    defaultMessage: "Snooze until the morning",
   },
   "next-week": {
-    id: "lib.commandPaletteCommands.remindNextWeek",
-    defaultMessage: "Remind me next week",
+    id: "lib.commandPaletteCommands.snoozeNextWeek",
+    defaultMessage: "Snooze until next week",
   },
 };
 
@@ -72,8 +79,9 @@ export type CommandPaletteShellCommandId =
   | "copyConversationMarkdown"
   | "toggleThreadPin"
   | "toggleThreadUnread"
-  | RemindThreadCommandId
-  | "clearThreadReminder"
+  | "settleThread"
+  | SnoozeThreadCommandId
+  | "wakeThread"
   | "openThreadInNewWindow"
   | typeof TOGGLE_SIDEBAR_COMMAND_ID
   | "toggleSidePanel"
@@ -111,10 +119,11 @@ export interface CommandPaletteShellCommandContext {
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
   activeSessionUnread: boolean;
+  activeSessionSettled: boolean;
   /** False when Core leaves renaming and archiving the active chat to its owner or a Space Owner. */
   activeSessionCanManage: boolean;
-  /** Whether the active chat has a pending reminder. */
-  activeSessionReminded: boolean;
+  /** Whether the active chat has a pending snooze. */
+  activeSessionSnoozed: boolean;
   hasAttachedThread: boolean;
   canExportConversationMarkdown: boolean;
   panelActionAvailability: Record<WorkbenchPanelActionKind, boolean>;
@@ -143,8 +152,9 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "copyConversationMarkdown" ||
     id === "toggleThreadPin" ||
     id === "toggleThreadUnread" ||
-    isRemindThreadCommandId(id) ||
-    id === "clearThreadReminder" ||
+    id === "settleThread" ||
+    isSnoozeThreadCommandId(id) ||
+    id === "wakeThread" ||
     id === "openThreadInNewWindow" ||
     id === TOGGLE_SIDEBAR_COMMAND_ID ||
     id === "toggleSidePanel" ||
@@ -507,36 +517,64 @@ export function buildCommandPaletteCommands(
         disabled: sessionCommandDisabled,
       },
     ),
+    command(
+      "settleThread",
+      "Chat",
+      context.activeSessionSettled
+        ? {
+            id: "lib.commandPaletteCommands.reopen.title",
+            defaultMessage: "Reopen chat",
+          }
+        : {
+            id: "lib.commandPaletteCommands.settle.title",
+            defaultMessage: "Settle chat",
+          },
+      context.activeSessionSettled
+        ? {
+            id: "lib.commandPaletteCommands.reopen.description",
+            defaultMessage: "Return the active chat to your open chats",
+          }
+        : {
+            id: "lib.commandPaletteCommands.settle.description",
+            defaultMessage: "Move the active chat to Settled. It returns when it needs you",
+          },
+      ["settle", "reopen", "chat", "thread", "session"],
+      1067,
+      {
+        shortcut: shortcutLabel("settleThread", "CmdOrCtrl+Alt+E"),
+        disabled: sessionCommandDisabled,
+      },
+    ),
     ...(
-      Object.entries(REMIND_THREAD_COMMAND_IDS) as [ChatReminderPresetId, RemindThreadCommandId][]
+      Object.entries(SNOOZE_THREAD_COMMAND_IDS) as [ChatSnoozePresetId, SnoozeThreadCommandId][]
     ).map(([presetId, commandId], index) =>
       command(
         commandId,
         "Chat",
-        REMIND_THREAD_COMMAND_TITLES[presetId],
+        SNOOZE_THREAD_COMMAND_TITLES[presetId],
         {
-          id: "lib.commandPaletteCommands.reminderDescription",
+          id: "lib.commandPaletteCommands.snoozeDescription",
           defaultMessage: "Make the active chat unread again then",
         },
-        ["remind", "reminder", "later", "snooze", "unread", "chat"],
+        ["snooze", "unread", "chat"],
         1066 - index,
         { disabled: sessionCommandDisabled },
       ),
     ),
-    ...(context.activeSessionReminded
+    ...(context.activeSessionSnoozed
       ? [
           command(
-            "clearThreadReminder",
+            "wakeThread",
             "Chat",
             {
-              id: "lib.commandPaletteCommands.cancelReminder.title",
-              defaultMessage: "Cancel reminder",
+              id: "lib.commandPaletteCommands.wake.title",
+              defaultMessage: "Wake",
             },
             {
-              id: "lib.commandPaletteCommands.cancelReminder.description",
-              defaultMessage: "Stop the active chat's reminder",
+              id: "lib.commandPaletteCommands.wake.description",
+              defaultMessage: "Wake the active chat",
             },
-            ["remind", "reminder", "cancel", "chat"],
+            ["wake", "snooze", "chat"],
             1061,
           ),
         ]

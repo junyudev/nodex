@@ -63,6 +63,23 @@ export function SidebarStatusIndicator({
           </span>
         </span>
       );
+    case "woke":
+      return (
+        <span
+          role="img"
+          aria-label={
+            label ??
+            intl.formatMessage({
+              id: "workbench.sidebarStatusIndicator.woke",
+              defaultMessage: "Back from snooze",
+            })
+          }
+          className={`${SLOT_CLASS} text-token-charts-blue`}
+          data-sidebar-status="woke"
+        >
+          <ClockIcon className="icon-2xs" />
+        </span>
+      );
     case "draft":
       return (
         <span aria-hidden="true" className={RESTING_SLOT_CLASS} data-sidebar-status="draft">
@@ -70,9 +87,9 @@ export function SidebarStatusIndicator({
           <EditIcon className="icon-xs" />
         </span>
       );
-    case "reminder":
+    case "snoozed":
       return (
-        <span aria-hidden="true" className={RESTING_SLOT_CLASS} data-sidebar-status="reminder">
+        <span aria-hidden="true" className={RESTING_SLOT_CLASS} data-sidebar-status="snoozed">
           <ClockIcon className="icon-2xs" />
         </span>
       );

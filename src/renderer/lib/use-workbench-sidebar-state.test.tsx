@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { Project } from "./types";
+import { makeDefaultSidebarCollapsibleSectionsState } from "./sidebar-section-prefs";
 import { useWorkbenchSidebarState } from "./use-workbench-sidebar-state";
 
 function makeProject(id: string): Project {
@@ -47,12 +48,7 @@ describe("useWorkbenchSidebarState", () => {
       useWorkbenchSidebarState({
         projects: [],
         activeProjectId: null,
-        collapsibleSections: {
-          pinned: false,
-          pages: false,
-          projects: true,
-          chats: false,
-        },
+        collapsibleSections: { ...makeDefaultSidebarCollapsibleSectionsState(), projects: true },
         setCollapsibleSectionCollapsed: setCollapsed,
       }),
     );

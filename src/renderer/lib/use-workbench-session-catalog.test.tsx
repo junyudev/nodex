@@ -73,7 +73,10 @@ function makeSummary(
     pinnedOrder: null,
     archived: false,
     archivedAt: null,
-    remindAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    wokeAt: null,
+    pageTurn: null,
     canManage: true,
     canStop: true,
     unread: false,
@@ -178,7 +181,7 @@ const WORKSPACE_SESSION_COMMANDS = new Set([
   "project-sessions:create",
   "project-sessions:ensure-default-draft",
   "project-sessions:mark-unread",
-  "project-sessions:set-reminder",
+  "project-sessions:set-snooze",
   "project-sessions:place",
   "project-sessions:set-pinned",
 ]);
@@ -193,8 +196,8 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
   if (channel === "project-sessions:place") {
     return [payload.sessionId, payload.placement];
   }
-  if (channel === "project-sessions:set-reminder")
-    return [payload.sessionId, { remindAt: payload.remindAt }];
+  if (channel === "project-sessions:set-snooze")
+    return [payload.sessionId, { snoozedUntil: payload.snoozedUntil }];
   if (channel === "project-sessions:mark-unread") {
     return [payload.sessionId, { unread: payload.unread }];
   }
@@ -993,34 +996,36 @@ describe("useWorkbenchSessionCatalog", () => {
 
   test("commits accepted reminder times and clearing to detail and summary", async () => {
     const current = makeSummary("session:alpha", "alpha") as ProjectSession;
-    const remindAt = "2026-11-02T09:00:00.000Z";
+    const snoozedUntil = "2026-11-02T09:00:00.000Z";
     invokeMock.mockImplementation(
-      (channel: string, value: string | null, input?: { remindAt: string | null }) => {
+      (channel: string, value: string | null, input?: { snoozedUntil: string | null }) => {
         if (channel === "workspace:tasks:list")
           return Promise.resolve(makeWindow(value === "alpha" ? [current] : []));
         if (channel === "project-sessions:get") return Promise.resolve(current);
-        if (channel === "project-sessions:set-reminder")
-          return Promise.resolve({ ...current, remindAt: input!.remindAt });
+        if (channel === "project-sessions:set-snooze")
+          return Promise.resolve({ ...current, snoozedUntil: input!.snoozedUntil });
         throw new Error(`Unexpected channel: ${channel}`);
       },
     );
     const { client, hook } = createHarness(makeWindowPort());
     await waitFor(() => expect(hook.result.current.selectedDetailReady).toBe(true));
     await act(async () => {
-      await hook.result.current.setReminder(current, remindAt);
+      await hook.result.current.setSnooze(current, snoozedUntil);
     });
     expect(
-      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))?.remindAt,
-    ).toBe(remindAt);
+      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))
+        ?.snoozedUntil,
+    ).toBe(snoozedUntil);
     expect(
       client.getQueryData<ProjectSessionSummaryWindow>(queryKeys.projectSessions.summaries("alpha"))
-        ?.items[0]?.remindAt,
-    ).toBe(remindAt);
+        ?.items[0]?.snoozedUntil,
+    ).toBe(snoozedUntil);
     await act(async () => {
-      await hook.result.current.setReminder(current, null);
+      await hook.result.current.setSnooze(current, null);
     });
     expect(
-      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))?.remindAt,
+      client.getQueryData<ProjectSession>(queryKeys.projectSessions.detail(current.id))
+        ?.snoozedUntil,
     ).toBeNull();
   });
 

@@ -20,7 +20,9 @@ const item: CodexSidebarThreadItem = {
   pinned: false,
   pinnedOrder: null,
   unread: false,
-  remindAt: null,
+  snoozedUntil: null,
+  snoozedAt: null,
+  wokeAt: null,
   archived: false,
   statusType: "notLoaded",
   statusActiveFlags: [],
@@ -36,8 +38,18 @@ describe("projectSidebarThreadRowLiveView", () => {
       background: false,
       needsAttention: false,
       readback: null,
+      approvalPrompt: null,
       status: "running",
     });
+  });
+
+  test("carries a Runtime Run's approval prompt for the row to show", () => {
+    const view = projectSidebarThreadRowLiveView(item, {
+      indicator: "approval",
+      location: null,
+      approvalPrompt: "Run pnpm install?",
+    });
+    expect([view.needsApproval, view.approvalPrompt]).toEqual([true, "Run pnpm install?"]);
   });
 
   test("shows a native thread asking for approval or input as waiting, not working", () => {

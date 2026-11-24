@@ -24,10 +24,10 @@ describe("resolveSidebarRowStatus", () => {
 
 describe("resolveSidebarRowRestingStatus", () => {
   test.each([
-    [{ hasDraft: false, remindAt: null }, null],
-    [{ hasDraft: false, remindAt: "2026-11-05T09:00:00.000Z" }, "reminder"],
-    [{ hasDraft: true, remindAt: null }, "draft"],
-    [{ hasDraft: true, remindAt: "2026-11-05T09:00:00.000Z" }, "draft"],
+    [{ hasDraft: false, snoozedUntil: null }, null],
+    [{ hasDraft: false, snoozedUntil: "2026-11-05T09:00:00.000Z" }, "snoozed"],
+    [{ hasDraft: true, snoozedUntil: null }, "draft"],
+    [{ hasDraft: true, snoozedUntil: "2026-11-05T09:00:00.000Z" }, "draft"],
   ] as const)("%j rests on %s", (input, expected) => {
     expect(resolveSidebarRowRestingStatus(input)).toBe(expected);
   });

@@ -18,15 +18,22 @@ import {
   waitForFinalMarker,
   waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
+import { selectNativeContextMenuItem } from "./support/native-context-menu";
 
 const CHAT_TITLE = "Archive toast";
 
 const toastWith = (page: Page, title: string): Locator =>
   page.locator('[data-slot="toast-item"]').filter({ hasText: title });
 
-async function archive(page: Page, row: Locator): Promise<Locator> {
-  await row.hover();
-  await row.getByRole("button", { name: "Archive chat" }).click();
+// Archive lives in a chat's menu; its row's hover action settles the chat.
+async function archive(
+  harness: ElectronScenarioHarness,
+  page: Page,
+  row: Locator,
+): Promise<Locator> {
+  await selectNativeContextMenuItem(harness.application, "archive-thread", () =>
+    row.click({ button: "right" }),
+  );
   await expect(row).toHaveCount(0);
   const toast = toastWith(page, "Archived chat");
   await expect(toast).toBeVisible();
@@ -87,7 +94,7 @@ test("a chat archived from the sidebar comes back through Undo and Data controls
         await expect(row).toBeVisible();
 
         // Undo restores the open chat and it keeps answering.
-        const undoToast = await archive(page, row);
+        const undoToast = await archive(harness, page, row);
         await expect
           .poll(async () => {
             const box = await undoToast.getByRole("alert").boundingBox();
@@ -103,7 +110,7 @@ test("a chat archived from the sidebar comes back through Undo and Data controls
         await waitForRuntimeCompletedAgentTurn(page, target);
 
         // View opens the list holding the chat, and restoring from there keeps it working too.
-        const viewToast = await archive(page, row);
+        const viewToast = await archive(harness, page, row);
         await viewToast.getByRole("button", { name: "View" }).click();
         await expect(viewToast).toHaveCount(0);
         await expect(page.getByRole("heading", { name: "Archived chats", level: 1 })).toBeVisible();
@@ -121,7 +128,7 @@ test("a chat archived from the sidebar comes back through Undo and Data controls
         await waitForRuntimeCompletedAgentTurn(page, target);
 
         // Dismissing the toast leaves the chat archived.
-        const dismissToast = await archive(page, row);
+        const dismissToast = await archive(harness, page, row);
         await dismissToast.getByRole("button", { name: "Dismiss notification" }).click();
         await expect(dismissToast).toHaveCount(0);
         await expect(row).toHaveCount(0);

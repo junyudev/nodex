@@ -37,7 +37,7 @@ import type {
   CommandPaletteShellCommandContext,
   CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
-import { chatReminderPresetTime } from "@/lib/chat-reminder";
+import { chatSnoozePresetTime } from "@/lib/chat-snooze";
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
 import {
@@ -67,7 +67,8 @@ type SidebarCommands = Pick<
   ReturnType<typeof useWorkbenchSidebarController>,
   | "archiveSession"
   | "openRenameSessionDialog"
-  | "setSessionReminder"
+  | "setSessionSnooze"
+  | "toggleSessionSettled"
   | "toggleSessionPin"
   | "toggleSessionUnread"
 >;
@@ -227,7 +228,8 @@ export function WorkbenchCommandPaletteHost({
     activeSessionPinned: activeSession?.pinned ?? false,
     activeSessionCanManage: activeSession?.canManage ?? true,
     activeSessionUnread: activeSession?.unread ?? false,
-    activeSessionReminded: Boolean(activeSession?.remindAt),
+    activeSessionSettled: activeSession?.settledAt != null,
+    activeSessionSnoozed: Boolean(activeSession?.snoozedUntil),
     hasAttachedThread: hasSessionConversation(activeSession),
     canExportConversationMarkdown: activeSession
       ? resolveSessionMarkdownExport(resolveSessionExecution(activeSession)) !== null
@@ -242,11 +244,11 @@ export function WorkbenchCommandPaletteHost({
     commandKeymapState,
     gitBlameEnabled: activeLineBlame.enabled,
   };
-  const remindThread = (presetId: Parameters<typeof chatReminderPresetTime>[0]) => {
+  const snoozeThread = (presetId: Parameters<typeof chatSnoozePresetTime>[0]) => {
     if (!activeSession) return;
-    void sidebarCommands.setSessionReminder(
+    void sidebarCommands.setSessionSnooze(
       activeSession,
-      chatReminderPresetTime(presetId, new Date()),
+      chatSnoozePresetTime(presetId, new Date()),
     );
   };
 
@@ -293,13 +295,17 @@ export function WorkbenchCommandPaletteHost({
       if (!activeSession) return;
       void sidebarCommands.toggleSessionUnread(activeSession);
     },
-    remindThreadInOneHour: () => remindThread("in-1-hour"),
-    remindThreadInThreeHours: () => remindThread("in-3-hours"),
-    remindThreadInTheMorning: () => remindThread("next-morning"),
-    remindThreadNextWeek: () => remindThread("next-week"),
-    clearThreadReminder: () => {
+    settleThread: () => {
       if (!activeSession) return;
-      void sidebarCommands.setSessionReminder(activeSession, null);
+      void sidebarCommands.toggleSessionSettled(activeSession);
+    },
+    snoozeThreadInOneHour: () => snoozeThread("in-1-hour"),
+    snoozeThreadInThreeHours: () => snoozeThread("in-3-hours"),
+    snoozeThreadInTheMorning: () => snoozeThread("next-morning"),
+    snoozeThreadNextWeek: () => snoozeThread("next-week"),
+    wakeThread: () => {
+      if (!activeSession) return;
+      void sidebarCommands.setSessionSnooze(activeSession, null);
     },
     openThreadInNewWindow: () => {
       if (!activeSession) return;

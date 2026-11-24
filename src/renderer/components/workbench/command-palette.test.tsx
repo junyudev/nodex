@@ -160,7 +160,8 @@ function makeCommandContext(
     activeSessionPinned: false,
     activeSessionCanManage: true,
     activeSessionUnread: false,
-    activeSessionReminded: false,
+    activeSessionSettled: false,
+    activeSessionSnoozed: false,
     hasAttachedThread: true,
     canExportConversationMarkdown: true,
     panelActionAvailability: {

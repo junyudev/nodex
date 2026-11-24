@@ -1,6 +1,16 @@
-import type { ProjectSessionSummaryWindowInput } from "./types";
+export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = [
+  "pinned",
+  "pages",
+  "projects",
+  "chats",
+  "active",
+  "working",
+  "snoozed",
+  "settled",
+] as const;
 
-export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = ["pinned", "pages", "projects", "chats"] as const;
+/** Chats set aside or finished stay out of the way until the person opens their shelf. */
+const SIDEBAR_SECTIONS_COLLAPSED_BY_DEFAULT: ReadonlySet<string> = new Set(["snoozed", "settled"]);
 
 export type SidebarCollapsibleSectionId = (typeof SIDEBAR_COLLAPSIBLE_SECTION_IDS)[number];
 
@@ -19,7 +29,7 @@ export type SidebarListId = SidebarCollapsibleSectionId | `project:${string}` | 
  * How Chats and every Project's chats are ordered: by when each chat was created or last sent a
  * message, or with the person's arrangement kept below chats they never arranged.
  */
-export type SidebarChatOrder = NonNullable<ProjectSessionSummaryWindowInput["order"]>;
+export type SidebarChatOrder = "activity" | "manual";
 
 export function normalizeSidebarChatOrder(value: unknown): SidebarChatOrder {
   return value === "manual" ? "manual" : "activity";
@@ -36,7 +46,7 @@ const SIDEBAR_LIST_MAX_REMEMBERED = 200;
 export function makeDefaultSidebarCollapsibleSectionsState(): SidebarCollapsibleSectionsState {
   return SIDEBAR_COLLAPSIBLE_SECTION_IDS.reduce<SidebarCollapsibleSectionsState>(
     (acc, sectionId) => {
-      acc[sectionId] = false;
+      acc[sectionId] = SIDEBAR_SECTIONS_COLLAPSED_BY_DEFAULT.has(sectionId);
       return acc;
     },
     {} as SidebarCollapsibleSectionsState,

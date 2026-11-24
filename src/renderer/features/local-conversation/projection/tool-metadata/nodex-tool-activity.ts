@@ -1443,17 +1443,29 @@ const NODEX_TOOL_ACTIVITY = {
           },
           chatPart(call, "argument"),
         ),
-  set_session_reminder: (call) =>
-    asRecord(call.arguments)?.remindAt === null
+  set_session_snooze: (call) =>
+    asRecord(call.arguments)?.until === null
       ? activity(call, "chat", {
-          id: "conversation.nodexToolActivity.clearChatReminder",
+          id: "conversation.nodexToolActivity.wakeChat",
           defaultMessage:
-            "{phase, select, active {Clearing chat reminder} failed {Couldn't clear chat reminder} other {Cleared chat reminder}}",
+            "{phase, select, active {Waking chat} failed {Couldn't wake chat} other {Woke chat}}",
         })
       : activity(call, "chat", {
-          id: "conversation.nodexToolActivity.setChatReminder",
+          id: "conversation.nodexToolActivity.snoozeChat",
           defaultMessage:
-            "{phase, select, active {Setting chat reminder} failed {Couldn't set chat reminder} other {Set chat reminder}}",
+            "{phase, select, active {Snoozing chat} failed {Couldn't snooze chat} other {Snoozed chat}}",
+        }),
+  set_session_settled: (call) =>
+    asRecord(call.arguments)?.settled === false
+      ? activity(call, "chat", {
+          id: "conversation.nodexToolActivity.reopenChat",
+          defaultMessage:
+            "{phase, select, active {Reopening chat} failed {Couldn't reopen chat} other {Reopened chat}}",
+        })
+      : activity(call, "chat", {
+          id: "conversation.nodexToolActivity.settleChat",
+          defaultMessage:
+            "{phase, select, active {Settling chat} failed {Couldn't settle chat} other {Settled chat}}",
         }),
   set_session_unread: (call) =>
     asRecord(call.arguments)?.unread === false

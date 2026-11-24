@@ -45,6 +45,7 @@ import {
   SessionPinIcon,
   SettingsGeneralIcon,
   ChevronDownIcon,
+  UndoIcon,
   WorktreeStatusIcon,
 } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
@@ -81,6 +82,8 @@ import type {
 import { useProjectAppearanceMutation } from "@/lib/use-project-appearance-mutation";
 import { useRuntimeSessionLiveState } from "@/lib/use-session-execution";
 import { ReadbackText } from "@/features/readback/readback-text";
+import { useChatReplyPreview } from "@/lib/chat-reply-previews";
+import { resolveSidebarChatPreview } from "@/lib/sidebar-chat-lifecycle";
 import {
   projectSidebarThreadRowLiveView,
   type SidebarThreadRowLiveView,
@@ -96,14 +99,17 @@ import {
   type SessionLinkedPageStore,
 } from "@/lib/session-linked-page";
 import { StatusIcon } from "@/lib/status-presentation";
+import { SnoozeMenu } from "@/components/shared/snooze-menu";
+import type { PageTurnPhrase } from "@/lib/page-turn-phrase";
+import { PAGE_TURN_TONE_CLASS_NAME } from "./page-turn-chip";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import {
   resolveSidebarGroupStatus,
-  resolveSidebarRowRestingStatus,
+  resolveSidebarRowGlyph,
   SIDEBAR_GROUP_STATUS_LABELS,
 } from "@/lib/sidebar-status";
-import { describeChatReminder, describeChatReminderAbsolute } from "@/lib/chat-reminder";
+import { describeChatSnooze, describeChatSnoozeAbsolute } from "@/lib/chat-snooze";
 import { useSessionComposerDraftExcerpt } from "@/features/local-conversation/view/composer/composer-draft-state";
 import { cn } from "@/lib/utils";
 import {
@@ -349,7 +355,7 @@ export function CodexSidebarSection({
                     onMove(event.key === "ArrowUp" ? -1 : 1);
                   }}
                 >
-                  <span className="min-w-0 truncate">{heading}</span>
+                  <span className="min-w-0 truncate-fade">{heading}</span>
                   <ChevronDownIcon
                     className={cn(
                       CODEX_SIDEBAR_DISCLOSURE_CHEVRON_CLASS,
@@ -1088,6 +1094,7 @@ export function CodexProjectRow({
   runtimeActivity,
   active,
   expanded,
+  disclosure = true,
   animateChildren = true,
   dnd,
   threadItems,
@@ -1116,6 +1123,11 @@ export function CodexProjectRow({
   runtimeActivity?: SidebarRuntimeGroupActivity;
   active: boolean;
   expanded: boolean;
+  /**
+   * Whether the Project folds its chats open beneath it. A list that already arranges every
+   * Project's chats shows each Project as a place to open, with nothing to unfold.
+   */
+  disclosure?: boolean;
   animateChildren?: boolean;
   dnd?: CodexProjectRowDndCapability;
   threadItems?: readonly CodexSidebarThreadItem[];
@@ -1360,11 +1372,16 @@ export function CodexProjectRow({
               <>
                 <ProjectMarker
                   appearance={project.appearance}
-                  className="group-hover/folder-row:invisible group-has-[:focus-visible]/project-leading-slot:invisible"
+                  className={
+                    disclosure
+                      ? "group-hover/folder-row:invisible group-has-[:focus-visible]/project-leading-slot:invisible"
+                      : undefined
+                  }
                   data-app-action-sidebar-project-marker=""
                   fallbackIcon={expanded ? <ProjectFolderOpenIcon /> : <ProjectFolderIcon />}
                 />
                 <button
+                  hidden={!disclosure}
                   type="button"
                   aria-expanded={expanded}
                   aria-label={
@@ -1482,7 +1499,7 @@ export function CodexProjectRow({
               }}
             >
               <span
-                className="min-w-0 flex-1 truncate pr-1"
+                className="min-w-0 flex-1 truncate-fade pr-1"
                 data-app-action-sidebar-project-label-text=""
               >
                 {project.name}
@@ -1655,14 +1672,14 @@ function CodexSidebarThreadHoverCardMetadataRow({
 }
 
 /** Reads the clock when the card opens, so "today" and "tomorrow" are relative to that moment. */
-function CodexSidebarThreadHoverCardReminder({ remindAt }: { remindAt: string }) {
+function CodexSidebarThreadHoverCardSnooze({ snoozedUntil }: { snoozedUntil: string }) {
   const intl = useIntl();
   const [openedAt] = useState(Date.now);
   return (
-    <div data-app-action-sidebar-thread-hover-card-reminder="">
+    <div data-app-action-sidebar-thread-hover-card-snooze="">
       <CodexSidebarThreadHoverCardMetadataRow
         icon={<ClockIcon className="icon-2xs" />}
-        label={describeChatReminder(remindAt, new Date(openedAt), intl.locale)}
+        label={describeChatSnooze(snoozedUntil, new Date(openedAt), intl.locale)}
       />
     </div>
   );
@@ -1688,7 +1705,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
       {page.pageKey ? (
         <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
       ) : null}
-      <span className="min-w-0 flex-1 truncate text-token-foreground">
+      <span className="min-w-0 flex-1 truncate-fade text-token-foreground">
         {page.title ||
           intl.formatMessage({ id: "workbench.codexSidebar.untitled", defaultMessage: "Untitled" })}
       </span>
@@ -1832,7 +1849,9 @@ function CodexSidebarThreadHoverCard({
           />
         </div>
       ) : null}
-      {item.remindAt ? <CodexSidebarThreadHoverCardReminder remindAt={item.remindAt} /> : null}
+      {item.snoozedUntil ? (
+        <CodexSidebarThreadHoverCardSnooze snoozedUntil={item.snoozedUntil} />
+      ) : null}
       <CodexSidebarThreadHoverCardMetadataRow
         icon={<ProjectFolderIcon className="icon-xs" />}
         label={resolvedProjectLabel}
@@ -1942,6 +1961,12 @@ function CodexSidebarThreadRunLocationGlyph({
   );
 }
 
+/** The elements that describe a row, or none. */
+function describedBy(...ids: ReadonlyArray<string | null>): string | undefined {
+  const present = ids.filter((id): id is string => id !== null);
+  return present.length > 0 ? present.join(" ") : undefined;
+}
+
 type CodexSidebarThreadRowProps = {
   item: CodexSidebarThreadItem;
   /** Runtime-bound rows read live status and location from their execution owner. */
@@ -1962,14 +1987,53 @@ type CodexSidebarThreadRowProps = {
   onSelect: () => void;
   onPreview?: () => void;
   onArchive?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  /**
+   * Settles the chat, or reopens one that is. A row that offers it shows it where Archive
+   * would sit: settling a chat is the everyday gesture, and Archive stays in the chat's menu.
+   */
+  onToggleSettled?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  /** Names where the chat belongs when its list spans Projects; it yields to the row's actions. */
+  trailingLabel?: string | null;
+  /**
+   * Shows what the chat is about under its title, in up to two lines: the Page's words when it
+   * waits on the reader, then the approval it waits on, what its Agent said it would do, or its
+   * latest reply.
+   */
+  preview?: boolean;
   onOpenContextMenu?: (item: CodexSidebarThreadItem, event: MouseEvent<HTMLElement>) => void;
   onRenameFromTitleDoubleClick?: (
     item: CodexSidebarThreadItem,
     event: MouseEvent<HTMLElement>,
   ) => void;
   onTogglePinned?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  /** The Page's words for what waits on the reader, leading the preview: "Ready for your review". */
+  turnLead?: PageTurnPhrase | null;
+  /**
+   * Accepts the work the chat's Page waits for the reader to review. It takes the place of
+   * Settle: accepting the work settles its chat.
+   */
+  onAccept?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  /** Sets the chat aside until a time; offered on the reader's open chats that are not pinned. */
+  onSnooze?: (item: CodexSidebarThreadItem, snoozedUntil: string) => void | Promise<void>;
+  /** Ends the chat's snooze early. */
+  onWake?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  snoozeShortcutLabel?: string;
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
 };
+
+function settleActionLabel(intl: IntlShape, settled: boolean, accepts: boolean): string {
+  if (settled)
+    return intl.formatMessage({
+      id: "workbench.codexSidebar.reopenChat",
+      defaultMessage: "Reopen chat",
+    });
+  return accepts
+    ? intl.formatMessage({
+        id: "workbench.codexSidebar.acceptAndSettle",
+        defaultMessage: "Accept and settle",
+      })
+    : intl.formatMessage({ id: "workbench.codexSidebar.settleChat", defaultMessage: "Settle" });
+}
 
 export function CodexSidebarThreadRow(props: CodexSidebarThreadRowProps) {
   return props.runtime ? (
@@ -1989,16 +2053,31 @@ function RuntimeCodexSidebarThreadRow(
   },
 ) {
   const state = useRuntimeSessionLiveState(props.runtime, props.activityStore);
-  return (
-    <CodexSidebarThreadRowView
-      {...props}
-      live={projectSidebarThreadRowLiveView(props.item, {
-        indicator: runtimeSessionLiveIndicator(state.activity),
-        location: state.location,
-        readback: activeRunReadback(state.activity),
-      })}
-    />
+  const live = projectSidebarThreadRowLiveView(props.item, {
+    indicator: runtimeSessionLiveIndicator(state.activity),
+    location: state.location,
+    readback: activeRunReadback(state.activity),
+    approvalPrompt: state.activity?.approvalPrompt ?? null,
+  });
+  return props.preview ? (
+    <ReplyPreviewCodexSidebarThreadRow {...props} live={live} />
+  ) : (
+    <CodexSidebarThreadRowView {...props} live={live} />
   );
+}
+
+/** Only a row that previews reads its chat's reply; the Agent Runtime holds it. */
+function ReplyPreviewCodexSidebarThreadRow(
+  props: CodexSidebarThreadRowProps & {
+    runtime: NonNullable<CodexSidebarThreadRowProps["runtime"]>;
+    live: SidebarThreadRowLiveView;
+  },
+) {
+  const reply = useChatReplyPreview(
+    props.item.sessionId ?? props.runtime.sessionId,
+    props.item.attentionAt ?? props.item.recencyAt ?? 0,
+  );
+  return <CodexSidebarThreadRowView {...props} reply={reply} />;
 }
 
 function CodexSidebarThreadRowView({
@@ -2014,17 +2093,43 @@ function CodexSidebarThreadRowView({
   onSelect,
   onPreview,
   onArchive,
+  onToggleSettled,
+  trailingLabel,
+  preview = false,
+  reply = null,
   onOpenContextMenu,
   onRenameFromTitleDoubleClick,
   onTogglePinned,
+  onSnooze,
+  onWake,
+  snoozeShortcutLabel,
+  turnLead,
+  onAccept,
   linkedPageStore,
   onOpenLinkedPage,
-}: CodexSidebarThreadRowProps & { live: SidebarThreadRowLiveView }) {
+}: CodexSidebarThreadRowProps & {
+  live: SidebarThreadRowLiveView;
+  /** The chat's latest reply, read by rows that preview; native Threads keep their own. */
+  reply?: string | null;
+}) {
   const intl = useIntl();
   const item = live.item;
   const linkedPage = useSessionLinkedPage(item.sessionId, linkedPageStore);
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
-  const showArchiveAction = !item.disabled && Boolean(onArchive);
+  const previewText = preview
+    ? resolveSidebarChatPreview({
+        turn: turnLead?.text ?? null,
+        needsApproval: live.needsApproval === true,
+        approvalPrompt: live.approvalPrompt,
+        readback: live.readback,
+        reply,
+      })
+    : null;
+  const previewId = useId();
+  const showSettleAction = !item.disabled && Boolean(onToggleSettled);
+  const showArchiveAction = !item.disabled && Boolean(onArchive) && !showSettleAction;
+  const showEndAction = showSettleAction || showArchiveAction;
+  const settled = item.settledAt != null;
   const showPinSlot = !item.disabled && Boolean(onTogglePinned);
   const pinButtonLabel = item.pinned
     ? intl.formatMessage({ id: "workbench.codexSidebar.unpinChat", defaultMessage: "Unpin chat" })
@@ -2033,10 +2138,14 @@ function CodexSidebarThreadRowView({
   const archiveDisabled = item.disabled || archivePending;
   const { running, needsAttention } = live;
   const draftExcerpt = useSessionComposerDraftExcerpt(item.sessionId);
-  // With nothing live, a chat rests on what its person left behind: a draft, then a reminder.
-  const status =
-    live.status ??
-    resolveSidebarRowRestingStatus({ hasDraft: draftExcerpt !== null, remindAt: item.remindAt });
+  // An unread chat back from its snooze says so; with nothing live, a chat rests on what its
+  // person left behind: a draft, then a snooze.
+  const status = resolveSidebarRowGlyph({
+    live: live.status,
+    wokeAt: item.wokeAt,
+    hasDraft: draftExcerpt !== null,
+    snoozedUntil: item.snoozedUntil,
+  });
   // Otherwise a settled chat rests on its linked Page's status.
   const pageStatus = status ? null : (linkedPage?.status ?? null);
   // The trailing slot shows one status; the description keeps every fact it can hide.
@@ -2055,7 +2164,7 @@ function CodexSidebarThreadRowView({
           defaultMessage: "Unsent draft",
         })
       : null,
-    item.remindAt ? describeChatReminderAbsolute(item.remindAt, intl.locale) : null,
+    item.snoozedUntil ? describeChatSnoozeAbsolute(item.snoozedUntil, intl.locale) : null,
     pageStatus
       ? intl.formatMessage(
           { id: "workbench.codexSidebar.pageStatus", defaultMessage: "Page status: {status}" },
@@ -2069,13 +2178,17 @@ function CodexSidebarThreadRowView({
   const statusDescriptionId = useId();
   const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;
-  const showRailPinSlot = showPinSlot && !showRestingPinnedButton;
-  const showActionRail = showRailPinSlot || showArchiveAction;
+  // An open chat offers Snooze where an unpinned row used to offer Pin; pinning lives in its menu.
+  const showSnoozeSlot = !item.disabled && Boolean(onSnooze) && !item.pinned && !settled;
+  const showRailPinSlot = showPinSlot && !showRestingPinnedButton && !showSnoozeSlot;
+  const showActionRail = showRailPinSlot || showSnoozeSlot || showEndAction;
+  const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
+  const actionsOpen = contextMenuOpen || snoozeMenuOpen;
   const trailingStatusClassName = cn(
     "-me-1 flex shrink-0",
     showActionRail &&
       "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
-    contextMenuOpen && "hidden",
+    actionsOpen && "hidden",
   );
   const [internalHoverCardOpen, setInternalHoverCardOpen] = useState(false);
   const [lazyBranchName, setLazyBranchName] = useState<string | null>(null);
@@ -2143,19 +2256,24 @@ function CodexSidebarThreadRowView({
       data-app-action-sidebar-thread-pinned={String(item.pinned)}
       data-app-action-sidebar-thread-running={String(running)}
       data-app-action-sidebar-thread-unread={String(item.unread)}
+      data-app-action-sidebar-thread-settled={String(settled)}
       data-app-action-sidebar-thread-row=""
       data-app-action-sidebar-thread-title={title}
       className={cn(
         CODEX_SIDEBAR_THREAD_ROW_CLASS,
+        previewText && "h-auto",
         active && "bg-token-list-hover-background",
-        contextMenuOpen && "bg-token-list-hover-background",
+        actionsOpen && "bg-token-list-hover-background",
       )}
       role="button"
       tabIndex={0}
       aria-current={active ? "page" : undefined}
       aria-disabled={item.disabled || undefined}
       aria-labelledby={titleId}
-      aria-describedby={statusDescription ? statusDescriptionId : undefined}
+      aria-describedby={describedBy(
+        statusDescription ? statusDescriptionId : null,
+        previewText ? previewId : null,
+      )}
       onPointerEnter={() => {
         if (!item.disabled) onPreview?.();
       }}
@@ -2183,7 +2301,13 @@ function CodexSidebarThreadRowView({
         </span>
       ) : null}
       <div className="contents">
-        <div className="flex h-full w-full items-center px-row-x text-sm leading-4">
+        <div
+          className={cn(
+            "flex w-full items-center px-row-x text-sm leading-4",
+            // Under a preview the title keeps the height of a one-line row.
+            previewText ? "h-[calc(var(--height-token-nav-row)-2*var(--padding-row-y))]" : "h-full",
+          )}
+        >
           {/* Nested rows keep the Project's leading column so titles align under its name. */}
           {grouped ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
           <div
@@ -2191,33 +2315,48 @@ function CodexSidebarThreadRowView({
             data-app-action-sidebar-thread-main=""
           >
             <div
-              className="flex min-w-0 flex-1 self-stretch items-center gap-2 text-base leading-5 text-token-foreground"
+              className="flex min-w-0 flex-1 self-stretch items-center gap-1 text-base leading-5 text-token-foreground"
               data-thread-title-trigger="true"
             >
               <span
                 id={titleId}
-                className="min-w-0 flex-1 truncate select-none"
+                className="min-w-0 flex-1 truncate-fade select-none"
                 data-thread-title="true"
                 draggable={false}
               >
                 {title}
               </span>
+              {trailingLabel ? (
+                // The Project keeps its whole name up to two fifths of the row; the title takes the rest.
+                <span
+                  className={cn(
+                    "max-w-[40%] shrink-0 truncate-fade text-sm text-token-description-foreground select-none",
+                    showActionRail &&
+                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
+                    actionsOpen && "hidden",
+                  )}
+                  data-app-action-sidebar-thread-trailing-label=""
+                >
+                  {trailingLabel}
+                </span>
+              ) : null}
             </div>
             <CodexSidebarThreadRunLocationGlyph
               item={item}
               hideForActions={showActionRail}
-              forceHidden={contextMenuOpen}
+              forceHidden={actionsOpen}
             />
             <div
               className={cn(
                 "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-12 group-hover:min-w-12 group-has-[:focus-visible]:min-w-12",
-                (status || pageStatus) && "min-w-[26px]",
-                contextMenuOpen && "min-w-12",
+                // Rows that name their Project keep the slot, so the names share one edge.
+                (status || pageStatus || trailingLabel) && "min-w-[26px]",
+                actionsOpen && "min-w-12",
                 // The resting pin stays interactive beside the overlaid archive action.
                 showRestingPinnedButton &&
-                  showArchiveAction &&
+                  showEndAction &&
                   "group-hover:pr-7 group-focus-visible:pr-7 group-has-[:focus-visible]:pr-7",
-                showRestingPinnedButton && showArchiveAction && contextMenuOpen && "pr-7",
+                showRestingPinnedButton && showEndAction && actionsOpen && "pr-7",
               )}
             >
               {showRestingPinnedButton ? (
@@ -2268,10 +2407,41 @@ function CodexSidebarThreadRowView({
             </div>
           </div>
         </div>
+        {previewText ? (
+          // Both lines are reserved whenever the chat says something, so rows line up.
+          <span
+            id={previewId}
+            className={cn(
+              "px-row-x text-xs leading-4 break-words text-token-description-foreground select-none",
+              // A Page's words alone need one line; what the chat said may take two.
+              previewText.text ? "line-clamp-2 min-h-8" : "line-clamp-1 min-h-4",
+              grouped && "ps-[calc(var(--padding-row-x)+1.5rem)]",
+            )}
+            data-app-action-sidebar-thread-preview=""
+          >
+            {previewText.lead ? (
+              <span
+                className={cn(
+                  "font-medium",
+                  PAGE_TURN_TONE_CLASS_NAME[turnLead?.tone ?? "attention"],
+                )}
+              >
+                {previewText.lead}
+              </span>
+            ) : null}
+            {previewText.lead && previewText.text ? " · " : null}
+            {previewText.text}
+          </span>
+        ) : null}
         {showActionRail ? (
           <div
-            className={cn(CODEX_SIDEBAR_THREAD_ACTION_RAIL_CLASS, contextMenuOpen && "opacity-100")}
-            data-state={contextMenuOpen ? "open" : "closed"}
+            className={cn(
+              CODEX_SIDEBAR_THREAD_ACTION_RAIL_CLASS,
+              // The actions stay on the title line when a preview sits under it.
+              previewText && "h-[var(--height-token-nav-row)]",
+              actionsOpen && "opacity-100",
+            )}
+            data-state={actionsOpen ? "open" : "closed"}
             data-app-action-sidebar-thread-action-rail=""
           >
             {showRailPinSlot ? (
@@ -2297,6 +2467,63 @@ function CodexSidebarThreadRowView({
                   {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
                 </button>
               </div>
+            ) : null}
+            {showSnoozeSlot ? (
+              <SnoozeMenu
+                label={intl.formatMessage({
+                  id: "workbench.codexSidebar.snoozeChat",
+                  defaultMessage: "Snooze",
+                })}
+                shortcutLabel={snoozeShortcutLabel}
+                current={item.snoozedUntil ?? undefined}
+                onChoose={(snoozedUntil) => void onSnooze?.(item, snoozedUntil)}
+                onWake={item.snoozedUntil && onWake ? () => void onWake(item) : undefined}
+                onOpenChange={setSnoozeMenuOpen}
+                trigger={
+                  <button
+                    type="button"
+                    aria-label={intl.formatMessage({
+                      id: "workbench.codexSidebar.snoozeChat",
+                      defaultMessage: "Snooze",
+                    })}
+                    className={cn(
+                      CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
+                      CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS,
+                    )}
+                    data-app-action-sidebar-thread-snooze=""
+                    onPointerDown={stopCodexSidebarRowActionPropagation}
+                    onMouseDown={stopCodexSidebarRowActionPropagation}
+                    onKeyDown={stopCodexSidebarRowActionPropagation}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <ClockIcon />
+                  </button>
+                }
+              />
+            ) : null}
+            {showSettleAction ? (
+              <button
+                type="button"
+                aria-label={settleActionLabel(intl, settled, Boolean(onAccept))}
+                // A chat stopped on its person cannot be settled until they answer it.
+                disabled={!settled && needsAttention}
+                className={cn(
+                  CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
+                  CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS,
+                )}
+                data-app-action-sidebar-thread-settled={String(settled)}
+                onPointerDown={stopCodexSidebarRowActionPropagation}
+                onMouseDown={stopCodexSidebarRowActionPropagation}
+                onKeyDown={stopCodexSidebarRowActionPropagation}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  // Settling a chat whose work waits for the reader's review accepts that work.
+                  void (!settled && onAccept ? onAccept(item) : onToggleSettled?.(item));
+                }}
+              >
+                {settled ? <UndoIcon /> : <CheckmarkIcon />}
+              </button>
             ) : null}
             {showArchiveAction ? (
               <button

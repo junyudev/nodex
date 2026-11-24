@@ -356,7 +356,7 @@ test("moves draft and attached Chats through Section boundaries and built-in des
     ).toHaveCount(0);
     await movedChat.hover();
     await expect(movedChat.getByRole("button", { name: "Pin chat" })).toBeVisible();
-    await expect(movedChat.getByRole("button", { name: "Archive chat" })).toBeVisible();
+    await expect(movedChat.getByRole("button", { name: "Settle" })).toBeVisible();
 
     const later = sidebarSection(page, "Later");
     const laterToggle = sectionToggle(later);

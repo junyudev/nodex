@@ -13,7 +13,7 @@ afterEach(() => {
 const row = (fix: "reconnect" | "retry" | "open_card"): InboxItem => ({
   pageId: "problem",
   rowKind: "problem",
-  later: null,
+  snooze: null,
   problem: {
     id: "problem",
     library_id: "library",

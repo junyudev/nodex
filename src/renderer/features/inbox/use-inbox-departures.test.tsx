@@ -11,7 +11,7 @@ import {
 const message = (pageId: string, submittedAt: string): InboxItem => ({
   pageId,
   rowKind: "intake",
-  later: null,
+  snooze: null,
   turn: null,
   basis: { pageId, contentHash: "content:1" },
   pageKey: null,

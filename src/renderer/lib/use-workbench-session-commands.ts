@@ -73,6 +73,7 @@ import type {
 } from "./use-workbench-session-catalog";
 import type { createThreadScopeIdentityRegistry } from "./workbench-ui-scopes";
 import type { CommandMenuMode, CommandMenuOpenRequest } from "./command-palette";
+import { snoozeCommandQuery } from "./command-palette-commands";
 import type {
   ContentSearchDomain,
   ContentSearchOpenRequest,
@@ -207,6 +208,13 @@ interface WorkbenchSessionCommandsInput {
   readonly archiveSession: (session: ProjectSession) => Promise<boolean>;
   readonly toggleSessionPin: (session: ProjectSession) => Promise<void>;
   readonly toggleSessionUnread: (session: ProjectSession) => Promise<void>;
+  /** Finishing chats and travelling between them, as the sidebar lists them. */
+  readonly chatLifecycle: {
+    readonly toggleSessionSettled: (session: ProjectSession) => Promise<void>;
+    readonly stepChat: (direction: "next" | "previous") => Promise<void>;
+    readonly openNextChatNeedingReader: () => Promise<void>;
+    readonly toggleOrganize: () => void;
+  };
   readonly refreshProjectSessions: (projectId: string | null) => Promise<unknown>;
   readonly resolveForkLocalEnvironmentConfigPath: (
     workspaceRoot: string | null | undefined,
@@ -386,6 +394,7 @@ export function useWorkbenchSessionCommands({
   archiveSession,
   toggleSessionPin,
   toggleSessionUnread,
+  chatLifecycle,
   refreshProjectSessions,
   resolveForkLocalEnvironmentConfigPath,
   closePendingWorktreeRoute,
@@ -928,6 +937,45 @@ export function useWorkbenchSessionCommands({
         return;
       }
 
+      if (matchesKeyboardEventToCommand(event, shortcutState, "settleThread")) {
+        if (!activeSession) return;
+        event.preventDefault();
+        void chatLifecycle.toggleSessionSettled(activeSession);
+        return;
+      }
+
+      if (matchesKeyboardEventToCommand(event, shortcutState, "snoozeThread")) {
+        if (!activeSession) return;
+        event.preventDefault();
+        // The palette lists the snooze times for the chat on screen.
+        openCommandPalette({ mode: "root", query: snoozeCommandQuery() });
+        return;
+      }
+
+      if (matchesKeyboardEventToCommand(event, shortcutState, "nextThread")) {
+        event.preventDefault();
+        void chatLifecycle.stepChat("next");
+        return;
+      }
+
+      if (matchesKeyboardEventToCommand(event, shortcutState, "previousThread")) {
+        event.preventDefault();
+        void chatLifecycle.stepChat("previous");
+        return;
+      }
+
+      if (matchesKeyboardEventToCommand(event, shortcutState, "nextThreadNeedingAttention")) {
+        event.preventDefault();
+        void chatLifecycle.openNextChatNeedingReader();
+        return;
+      }
+
+      if (matchesKeyboardEventToCommand(event, shortcutState, "toggleSidebarOrganize")) {
+        event.preventDefault();
+        chatLifecycle.toggleOrganize();
+        return;
+      }
+
       if (matchesKeyboardEventToCommand(event, shortcutState, "focusBrowserAddressBar")) {
         const input = document.querySelector<HTMLInputElement>(
           "[data-browser-sidebar-address-input='true']",
@@ -951,6 +999,8 @@ export function useWorkbenchSessionCommands({
     setProcessManagerOpen,
     toggleSessionPin,
     toggleSessionUnread,
+    chatLifecycle,
+    openCommandPalette,
   ]);
 
   const createManualTab = useCallback(

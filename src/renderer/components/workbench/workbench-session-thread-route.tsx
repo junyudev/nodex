@@ -128,7 +128,7 @@ function SharedConnectedSessionThread({
   onRequestRenameThread,
   onArchiveThread,
   onToggleThreadPin,
-  onSetThreadReminder,
+  onSetThreadSnooze,
   commandKeymapState,
   isMac,
   presentation = "primary",
@@ -222,7 +222,7 @@ function SharedConnectedSessionThread({
   onRequestRenameThread: ThreadStageActions["onRequestRenameThread"];
   onArchiveThread: NonNullable<ThreadStageActions["onArchiveThread"]>;
   onToggleThreadPin: NonNullable<ThreadStageActions["onToggleThreadPin"]>;
-  onSetThreadReminder?: ThreadStageActions["onSetThreadReminder"];
+  onSetThreadSnooze?: ThreadStageActions["onSetThreadSnooze"];
   commandKeymapState?: CommandKeymapState | null;
   isMac: boolean;
   presentation?: "primary" | "panel";
@@ -478,10 +478,10 @@ function SharedConnectedSessionThread({
         : {}),
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
-      // Pins and reminders are each Member's own; only the chat's owner or a Space Owner
+      // Pins and snoozes are each Member's own; only the chat's owner or a Space Owner
       // renames or archives a chat every Member shares.
       onToggleThreadPin,
-      onSetThreadReminder,
+      onSetThreadSnooze,
       ...(session.canManage ? { onRequestRenameThread, onArchiveThread } : {}),
       onOpenThread,
       onOpenTurnDiffReview,
@@ -523,7 +523,7 @@ function SharedConnectedSessionThread({
         ? { kind: "project-draft" as const, projectId: session.projectId, draftId: projectDraftId }
         : undefined,
     threadPinned: session.pinned ?? false,
-    threadRemindAt: session.remindAt ?? null,
+    threadSnoozedUntil: session.snoozedUntil ?? null,
     threadActionShortcuts,
     modelPickerShortcut,
     projectWorkspacePath: summary

@@ -86,7 +86,12 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     archived: session.archived,
     archivedAt: session.archivedAt,
     unread: session.unread,
-    remindAt: session.remindAt,
+    snoozedUntil: session.snoozedUntil,
+    snoozedAt: session.snoozedAt ?? null,
+    wokeAt: session.wokeAt ?? null,
+    pageTurn: session.pageTurn,
+    settledAt: session.settledAt ?? null,
+    ...(session.attentionAt === undefined ? {} : { attentionAt: session.attentionAt }),
     canManage: session.canManage,
     canStop: session.canStop,
     thread: session.thread,
@@ -173,6 +178,99 @@ export function seedProjectSessionDetail(
   return installed;
 }
 
+/**
+ * Shows a chat's settlement, or its removal, in every chat list at once, before Core confirms it.
+ * A settled chat leaves the lists of open chats and heads the settled ones; a reopened chat leaves
+ * the settled ones, and the lists of open chats read its place back from Core. Returns the undo.
+ */
+export function applyProjectSessionSettled(
+  queryClient: QueryClient,
+  sessionIds: readonly string[],
+  settledAt: number | null,
+): () => void {
+  const ids = new Set(sessionIds);
+  const settled = settledAt !== null;
+  const patch = {
+    settledAt,
+    ...(settled
+      ? {
+          pinned: false,
+          pinnedOrder: null,
+          snoozedUntil: null,
+          snoozedAt: null,
+          wokeAt: null,
+          unread: false,
+        }
+      : {}),
+  };
+  const shouldChange = (session: ProjectSessionSummary) =>
+    ids.has(session.id) && !session.archived && (session.settledAt != null) !== settled;
+  const projectRoot = [...queryKeys.projectSessions.all(), "summaries"];
+  const groups = [
+    { prefix: projectRoot, wholeLibraryKey: false },
+    { prefix: queryKeys.projectSessions.librarySummariesAll(), wholeLibraryKey: true },
+  ];
+  const lists = groups.flatMap(({ prefix, wholeLibraryKey }) =>
+    queryClient
+      .getQueriesData<ProjectSessionSummaryWindow>({ queryKey: prefix })
+      .map(([key, window]) => ({ key, window, scope: key[prefix.length], wholeLibraryKey })),
+  );
+  const changes = new Map<string, ProjectSessionSummary>();
+  for (const { window } of lists) {
+    for (const summary of window?.items ?? []) {
+      if (shouldChange(summary)) changes.set(summary.id, { ...summary, ...patch });
+    }
+  }
+  const rollback: Array<() => void> = [];
+  for (const id of ids) {
+    const key = queryKeys.projectSessions.detail(id);
+    const detail = queryClient.getQueryData<ProjectSession>(key);
+    if (!detail || !shouldChange(detail)) continue;
+    changes.set(id, { ...projectSessionToSummary(detail), ...patch });
+    const installed = queryClient.setQueryData(key, { ...detail, ...patch });
+    rollback.push(() => {
+      queryClient.setQueryData<ProjectSession>(key, (current) =>
+        current === installed ? detail : current,
+      );
+    });
+  }
+  const changedSummaries = sessionIds.flatMap((id) => {
+    const summary = changes.get(id);
+    return summary ? [summary] : [];
+  });
+  for (const { key, window, scope, wholeLibraryKey } of lists) {
+    if (!window) continue;
+    const lifecycle = key.at(-1);
+    const inScope = (item: ProjectSessionSummary) =>
+      wholeLibraryKey
+        ? scope === null || scope === item.projectId
+        : scope === (item.projectId ?? "");
+    const items = window.items.flatMap((item) => {
+      if (!changes.has(item.id)) return [item];
+      if ((lifecycle === "open" && settled) || (lifecycle === "settled" && !settled)) return [];
+      return [{ ...item, ...patch }];
+    });
+    if (lifecycle === "settled" && settled) {
+      const known = new Set(items.map((item) => item.id));
+      items.unshift(...changedSummaries.filter((item) => inScope(item) && !known.has(item.id)));
+    }
+    if (
+      items.length === window.items.length &&
+      items.every((item, index) => item === window.items[index])
+    )
+      continue;
+    const installed = queryClient.setQueryData(key, { ...window, items });
+    rollback.push(() => {
+      queryClient.setQueryData<ProjectSessionSummaryWindow>(key, (current) =>
+        current === installed ? window : current,
+      );
+    });
+  }
+  return () => {
+    for (const undo of rollback) undo();
+  };
+}
+
 export async function prefetchProjectSessionDetail(
   queryClient: QueryClient,
   sessionId: string,
@@ -218,10 +316,14 @@ export async function invalidateProjectSessionScope(
   );
 
   // A side chat's creation, rename, or deletion lists under its source, which no scope names.
+  // The whole Library's lists hold every scope's chats.
   if (event.summaryScopes.length > 0)
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: [...queryKeys.projectSessions.all(), "sideChats"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.projectSessions.librarySummariesAll(),
       }),
     );
   for (const scope of event.summaryScopes) {

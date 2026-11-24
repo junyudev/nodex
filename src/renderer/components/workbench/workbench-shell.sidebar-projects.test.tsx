@@ -1147,7 +1147,9 @@ describe("workbench session shell / sidebar-projects", () => {
       pinned: true,
       pinnedOrder: 0,
       unread: false,
-      remindAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+      wokeAt: null,
       archived: false,
       statusType: "idle",
       statusActiveFlags: [],
@@ -1343,7 +1345,9 @@ describe("workbench session shell / sidebar-projects", () => {
       pinned: false,
       pinnedOrder: null,
       unread: false,
-      remindAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+      wokeAt: null,
       archived: false,
       statusType: "active",
       statusActiveFlags: [],
@@ -1405,7 +1409,7 @@ describe("workbench session shell / sidebar-projects", () => {
     });
 
     await waitFor(() => {
-      expect(textContent(document.body).includes("Organize sidebar")).toBe(true);
+      expect(textContent(document.body).includes("Settle idle chats")).toBe(true);
     });
 
     expect(textContent(document.body).includes("Organize pins")).toBe(false);

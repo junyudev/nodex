@@ -28,9 +28,7 @@ export function StableWorktreeSidebarRows({
               <WorktreeStatusIcon className="icon-xs shrink-0" />
             </span>
             <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-              <span className="block w-full min-w-0 overflow-hidden pr-1 whitespace-nowrap text-clip [-webkit-mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--text-fade-truncate-distance,1rem)),transparent)] [mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--text-fade-truncate-distance,1rem)),transparent)]">
-                {entry.label}
-              </span>
+              <span className="block w-full min-w-0 truncate-fade pr-1">{entry.label}</span>
             </span>
           </button>
         </div>
