@@ -1,5 +1,6 @@
 import { appendFileSync } from "node:fs";
 import path from "node:path";
+import { cachedAppLanes, parseCiGatePlan } from "./ci-gate-plan.ts";
 
 import {
   nativeRequirements,
@@ -39,16 +40,25 @@ const readOption = (args: readonly string[], name: string): string | undefined =
 };
 
 const main = (): void => {
-  const suite = parseAppTestSuite(readOption(process.argv.slice(2), "--suite") ?? "");
+  const args = process.argv.slice(2);
+  const lane = readOption(args, "--lane");
+  const segments = lane
+    ? cachedAppLanes(parseCiGatePlan(JSON.parse(process.env.CI_GATE_PLAN_JSON ?? "null"))).get(lane)
+    : [{ suite: parseAppTestSuite(readOption(args, "--suite") ?? ""), shard: 0 }];
+  if (!segments?.length) throw new Error("Application CI lane is not selected: " + lane);
   const output = process.env.GITHUB_OUTPUT;
   if (!output) throw new Error("GITHUB_OUTPUT is required.");
-  const suitePlan = planAppTestSuite(suite);
+  const suitePlans = segments.map(({ suite }) => planAppTestSuite(suite));
   appendFileSync(
     output,
     [
-      `needs_playwright=${suitePlan.needsPlaywright}`,
-      `needs_rust=${suitePlan.needsRust}`,
-      `needs_xvfb=${suitePlan.needsXvfb}`,
+      `needs_playwright=${suitePlans.some((plan) => plan.needsPlaywright)}`,
+      `needs_rust=${suitePlans.some((plan) => plan.needsRust)}`,
+      `needs_xvfb=${suitePlans.some((plan) => plan.needsXvfb)}`,
+      ...segments.flatMap(({ suite, shard }, index) => [
+        `segment_${index + 1}=${suite}:${shard}`,
+        `segment_${index + 1}_xvfb=${suitePlans[index].needsXvfb}`,
+      ]),
       "",
     ].join("\n"),
     "utf8",

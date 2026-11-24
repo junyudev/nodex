@@ -133,13 +133,23 @@ or test. Application installs use the shared Vite+ dependency cache.
 `CiGatePlan` owns both suite selection and one of three test modes:
 
 - `none`: no application test suite is selected.
-- `related`: Vitest's static import graph selects tests related to safe,
-  repository-relative changed paths. Renderer work normally selects only
-  `unit`, `renderer`, and `browser`; Main/Core/Shared paths select their actual
-  runtime consumers.
+- `related`: source ownership selects suites related to safe, repository-relative
+  changed paths. Renderer work normally selects `unit`, `renderer`, and `browser`;
+  Main/Core/Shared paths select their runtime consumers.
 - `full`: dependency, configuration, deleted-path, unknown, and explicit-full
   changes run every selected suite. Deleted paths fail closed because they
   cannot participate in Vitest's import graph.
+
+Pre-merge and Main CI use the classifier to choose suites, then validate every
+file in each selected suite through the test result cache. A file with missing,
+changed, or unobservable inputs executes. Browser remains one Chromium unit.
+Nightly and release certification execute their complete suites independently.
+
+Linux CI splits unit, renderer, Core-client, and Agent Runtime into two shards
+each by repository-relative file path. Adding a test does not move existing
+files. The application matrix uses one job per selected suite on average.
+Shards and shorter suites share jobs to stay within that budget on every
+plan. Each selected shard must succeed independently of cache reuse.
 
 The reusable application matrix owns `unit`, `effect-codex`, `agent-runtime`,
 `core-client`, `main`, `renderer`, `integration`, and `browser`. Browser is a
@@ -203,7 +213,7 @@ the same plan as the executable edit alone; docs-only and landing-plus-docs
 remain explicit narrow plans.
 
 Changed test files use the repository filename convention to select exactly one
-owning suite, and Vitest `related` runs the test path directly. Explicit stress
+owning suite. Explicit stress
 files remain Nightly-owned. Vitest configuration, TypeScript project
 configuration, lockfiles, CI orchestration, and deleted files promote selection
 to `full`.
@@ -287,6 +297,15 @@ downloaded after a retry, the job builds uncached with a warning. Browser
 Vitest jobs use `.github/actions/setup-playwright`, keyed from the lockfile and
 package manifest. Mutable Stores and Cargo target directories are not treated
 as correctness caches.
+
+Application CI archives only passing-input records and audit history.
+The cache key includes suite, shard, runner image, and runtime versions. GitHub
+looks on the current ref before falling back to the base or default branch.
+PR runs publish to their merge ref, and Main pushes publish to `main`.
+Archives are capped at 8 MiB compressed per shard and refreshed when there
+is new passing evidence or an audit invalidates the prior archive. Set the
+`NODEX_TEST_CACHE` Actions variable to `off` to execute every file in the same
+matrix. Each shard logs its hit and execution counts and raw and compressed sizes.
 
 Wrap meaningful commands with `scripts/ci/run-timed.ts`. Historical workflow
 evidence is available through:

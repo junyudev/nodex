@@ -1,4 +1,9 @@
-import { APP_TEST_SUITES, type SuiteId as AppTestSuite } from "../../config/test-suites.ts";
+import {
+  APP_TEST_SUITES,
+  isNativeExecutable,
+  nativeRequirements,
+  type SuiteId as AppTestSuite,
+} from "../../config/test-suites.ts";
 
 export const STATIC_GROUPS = [
   "types",
@@ -240,3 +245,76 @@ export const requiredJobIdsForGatePlan = (plan: CiGatePlan): readonly string[] =
   if (plan.windowsChecks) jobs.push("windows-checks");
   return jobs;
 };
+
+const APP_SHARD_COUNTS = {
+  unit: 2,
+  "effect-codex": 1,
+  "agent-runtime": 2,
+  "core-client": 2,
+  main: 1,
+  renderer: 2,
+  integration: 1,
+  browser: 1,
+} as const satisfies Record<AppTestSuite, number>;
+
+export function appShardCount(suite: AppTestSuite): number {
+  return APP_SHARD_COUNTS[suite];
+}
+
+export interface AppTestSegment {
+  readonly suite: AppTestSuite;
+  readonly shard: number;
+}
+
+const segmentId = ({ suite, shard }: AppTestSegment) =>
+  appShardCount(suite) === 1 ? suite : `${suite}-${shard + 1}`;
+
+// Start longer segments in separate jobs first. Prefer sharing native build
+// setup when packing the remaining segments into the existing suite-job budget.
+const APP_LANE_ORDER = [
+  "renderer",
+  "browser",
+  "core-client",
+  "agent-runtime",
+  "unit",
+  "main",
+  "integration",
+  "effect-codex",
+] as const satisfies readonly AppTestSuite[];
+
+export function cachedAppLanes(plan: CiGatePlan): ReadonlyMap<string, readonly AppTestSegment[]> {
+  const segments = APP_LANE_ORDER.filter((suite) => plan.appTestSuites.includes(suite)).flatMap(
+    (suite) => Array.from({ length: appShardCount(suite) }, (_, shard) => ({ suite, shard })),
+  );
+  const slots = plan.appTestSuites.length;
+  const lanes = segments.slice(0, slots).map((segment) => [segment]);
+  const native = (suite: AppTestSuite) =>
+    nativeRequirements(suite, undefined, "linux").some(isNativeExecutable);
+  for (const companion of segments.slice(slots)) {
+    const available = lanes.filter((lane) => lane.length === 1);
+    const paired =
+      available.findLast(
+        ([primary]) =>
+          primary.suite !== "browser" &&
+          primary.suite !== companion.suite &&
+          native(primary.suite) === native(companion.suite),
+      ) ??
+      available.findLast(([primary]) => primary.suite !== "browser") ??
+      available.at(-1);
+    if (!paired) throw new Error("Application CI exceeds its suite-job budget.");
+    paired.push(companion);
+  }
+  return new Map(lanes.map((lane) => [lane.map(segmentId).join("+"), lane]));
+}
+
+export function parseCachedAppLaneIds(value: unknown, plan: CiGatePlan): readonly string[] {
+  const expected = [...cachedAppLanes(plan).keys()];
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    !value.every((lane, index) => lane === expected[index])
+  ) {
+    throw new Error("Application CI matrix must cover every selected suite and shard.");
+  }
+  return expected;
+}

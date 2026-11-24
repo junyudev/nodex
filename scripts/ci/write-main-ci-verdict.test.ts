@@ -7,8 +7,15 @@ import { promisify } from "node:util";
 
 import { expect, test } from "vite-plus/test";
 
+import { cachedAppLanes, type CiGatePlan } from "./ci-gate-plan";
 import { classifyChangedPaths } from "./classify-change";
 import { failedTestNames, failingMainCiGates, resolveVerdictRange } from "./write-main-ci-verdict";
+
+const classified = (plan: CiGatePlan) =>
+  ({
+    result: "success",
+    outputs: { app_lanes: JSON.stringify([...cachedAppLanes(plan).keys()]) },
+  }) as const;
 
 test("uses the last green range even when a newer push replaced a pending run", () => {
   const head = "a".repeat(40);
@@ -31,20 +38,23 @@ test("uses the last green range even when a newer push replaced a pending run", 
 });
 
 test("records every unsuccessful selected gate, including missing and skipped results", () => {
-  const plan = JSON.stringify(classifyChangedPaths(["crates/nodex-core/src/lib.rs"]));
+  const plan = classifyChangedPaths(["crates/nodex-core/src/lib.rs"]);
   const needs = {
-    classify: { result: "success" },
+    classify: classified(plan),
     "static-contracts": { result: "success" },
     "app-tests": { result: "failure" },
     "windows-checks": { result: "skipped" },
   } as const;
-  expect(failingMainCiGates(needs, plan)).toEqual([
+  expect(failingMainCiGates(needs, JSON.stringify(plan))).toEqual([
     { id: "app-tests", result: "failure" },
     { id: "rust-checks", result: "missing" },
     { id: "windows-checks", result: "skipped" },
   ]);
   expect(failingMainCiGates(needs, "")).toEqual([{ id: "classify", result: "invalid-plan" }]);
-  expect(failingMainCiGates({ classify: { result: "cancelled" } }, plan)).toEqual([
+  expect(
+    failingMainCiGates({ ...needs, classify: { result: "success" } }, JSON.stringify(plan)),
+  ).toEqual([{ id: "classify", result: "invalid-plan" }]);
+  expect(failingMainCiGates({ classify: { result: "cancelled" } }, JSON.stringify(plan))).toEqual([
     { id: "classify", result: "cancelled" },
   ]);
 });
@@ -128,6 +138,7 @@ test("writes the landed range and failure evidence to the artifact and step summ
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Expected the server port.");
     const summary = path.join(dir, "summary.md");
+    const plan = classifyChangedPaths(["src/main/platform/host-capabilities.ts"]);
     await promisify(execFile)(
       process.execPath,
       ["--no-warnings", path.join(import.meta.dirname, "write-main-ci-verdict.ts")],
@@ -137,11 +148,9 @@ test("writes the landed range and failure evidence to the artifact and step summ
           ...process.env,
           CI_BASE_SHA: base,
           CI_GATE_OUTCOME: "failure",
-          CI_GATE_PLAN_JSON: JSON.stringify(
-            classifyChangedPaths(["src/main/platform/host-capabilities.ts"]),
-          ),
+          CI_GATE_PLAN_JSON: JSON.stringify(plan),
           CI_NEEDS_JSON: JSON.stringify({
-            classify: { result: "success" },
+            classify: classified(plan),
             "static-contracts": { result: "success" },
             "app-tests": { result: "failure" },
             "windows-checks": { result: "failure" },

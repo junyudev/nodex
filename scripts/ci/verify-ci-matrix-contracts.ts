@@ -104,6 +104,7 @@ export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
     );
   }
   const strategy = requireRecord(testJob.strategy, "Application test matrix strategy");
+  const matrix = requireRecord(strategy.matrix, "Application test matrix axes");
   if (
     testJob["runs-on"] !== "${{ inputs.runner }}" ||
     strategy["max-parallel"] !== "${{ inputs.max_parallel }}"
@@ -111,6 +112,57 @@ export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
     throw new Error(
       "Application test jobs must respect the caller's runner and parallel job limit.",
     );
+  }
+  if (
+    testJob.if !== undefined ||
+    testJob["continue-on-error"] !== undefined ||
+    strategy["fail-fast"] !== false ||
+    Object.keys(matrix).length !== 1 ||
+    matrix.lane !== "${{ fromJSON(inputs.lanes_json || inputs.suites_json) }}"
+  ) {
+    throw new Error("Application CI must run every matrix lane and propagate any lane failure.");
+  }
+  const primary = steps.find(({ id }) => id === "primary");
+  const companion = steps.find(({ id }) => id === "companion");
+  const verify = steps.find(({ id }) => id === "verify-shards");
+  for (const [index, step] of [primary, companion].entries()) {
+    const segment = `steps.suite.outputs.segment_${index + 1}`;
+    const condition = index
+      ? `!cancelled() && inputs.lanes_json != '' && ${segment} != '' && (steps.primary.outcome == 'success' || steps.primary.outcome == 'failure')`
+      : "inputs.lanes_json != ''";
+    if (
+      step?.uses !== "./.github/actions/run-cached-app-test" ||
+      step.if !== condition ||
+      step["continue-on-error"] !== undefined ||
+      !isRecord(step.with) ||
+      step.with.segment !== `\${{ ${segment} }}`
+    )
+      throw new Error("Application CI must run every selected shard in its lane.");
+  }
+  if (
+    verify?.if !== "always() && inputs.lanes_json != ''" ||
+    verify["continue-on-error"] !== undefined
+  ) {
+    throw new Error("Application CI must require every selected shard outcome.");
+  }
+};
+
+export const verifyCachedAppCaller = (workflow: UnknownRecord, workflowName: string): void => {
+  const jobs = requireRecord(workflow.jobs, `${workflowName} jobs`);
+  const classify = requireRecord(jobs.classify, `${workflowName} classify job`);
+  const outputs = requireRecord(classify.outputs, `${workflowName} classify outputs`);
+  const app = requireRecord(jobs["app-tests"], `${workflowName} app-tests job`);
+  const inputs = reusableInputs(workflow, "app-tests", workflowName);
+  if (
+    outputs.app_lanes !== "${{ steps.outputs.outputs.app_lanes }}" ||
+    inputs.lanes_json !== "${{ needs.classify.outputs.app_lanes }}" ||
+    inputs.gate_plan_json !== "${{ needs.classify.outputs.plan }}" ||
+    inputs.suites_json !== undefined ||
+    app.needs !== "classify" ||
+    app.if !== "${{ toJSON(fromJSON(needs.classify.outputs.plan).appTestSuites) != '[]' }}" ||
+    app.uses !== "./.github/workflows/_app-tests.yml"
+  ) {
+    throw new Error(`${workflowName} must run the entire classified application matrix.`);
   }
 };
 
@@ -522,8 +574,12 @@ const main = (): void => {
   verifyAppTestMatrixContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml")),
   );
-  verifyPreMergeCiContract(readWorkflow(path.join(repositoryRoot, ".github/workflows/ci.yml")));
-  verifyMainCiBaseContract(readWorkflow(path.join(repositoryRoot, MAIN_CI_WORKFLOW_PATH)));
+  const pr = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci.yml"));
+  const main = readWorkflow(path.join(repositoryRoot, MAIN_CI_WORKFLOW_PATH));
+  verifyPreMergeCiContract(pr);
+  verifyMainCiBaseContract(main);
+  verifyCachedAppCaller(pr, "Pre-merge CI");
+  verifyCachedAppCaller(main, "Main CI");
   verifyWindowsCiContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/windows.yml")),
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_windows-checks.yml")),

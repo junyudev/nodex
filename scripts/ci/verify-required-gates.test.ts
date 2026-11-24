@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
 
 import { classifyChangedPaths } from "./classify-change";
-import { requiredGateNames, verifyRequiredGates } from "./verify-required-gates";
+import { cachedAppLanes } from "./ci-gate-plan";
+import {
+  requiredClassifiedGates,
+  requiredGateNames,
+  verifyRequiredGates,
+} from "./verify-required-gates";
 
 describe("required CI gate verification", () => {
   test("accepts successful selected gates and ignores unselected skipped jobs", () => {
@@ -68,6 +73,19 @@ describe("required CI gate verification", () => {
         selectedGates: [" "],
       }),
     ).toThrow("must not be empty");
+  });
+
+  test("requires the classified lane list even when the aggregate reports success", () => {
+    const plan = classifyChangedPaths(["src/renderer/app.tsx"]);
+    expect(
+      requiredClassifiedGates(plan, {
+        app_lanes: JSON.stringify([...cachedAppLanes(plan).keys()]),
+      }),
+    ).toEqual(["static-contracts", "app-tests"]);
+    expect(() => requiredClassifiedGates(plan, {})).toThrow("did not publish");
+    expect(() => requiredClassifiedGates(plan, { app_lanes: "[]" })).toThrow(
+      "every selected suite and shard",
+    );
   });
 
   test("derives pre-merge gates from the validated plan and unconditional gates from needs", () => {

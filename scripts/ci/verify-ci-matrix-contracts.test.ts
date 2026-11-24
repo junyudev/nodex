@@ -195,6 +195,22 @@ describe("CI matrix contracts", () => {
     ).toThrow("generated static contract");
   });
 
+  test("rejects a bypassed lane or companion shard", () => {
+    const workflow = readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml"));
+    expect(() => verifyAppTestMatrixContracts(workflow)).not.toThrow();
+    const jobs = requireRecord(workflow.jobs, "jobs");
+    const job = requireRecord(jobs.test, "test");
+    expect(() => verifyAppTestMatrixContracts({ jobs: { test: { ...job, if: "false" } } })).toThrow(
+      "propagate any lane failure",
+    );
+    const steps = (job.steps as readonly Record<string, unknown>[]).filter(
+      ({ id }) => id !== "companion",
+    );
+    expect(() => verifyAppTestMatrixContracts({ jobs: { test: { ...job, steps } } })).toThrow(
+      "must run every selected shard",
+    );
+  });
+
   test("requires every needs context reference to name a direct dependency", () => {
     expect(() =>
       verifyDirectNeedsContracts(
