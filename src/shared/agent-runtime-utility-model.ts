@@ -23,13 +23,21 @@ export const isWritingProviderUsable = (provider: Providers[number]): boolean =>
   provider.auth.status !== "unauthenticated" &&
   provider.supportsTextGeneration !== false;
 
-/** The exact preference wins, then the originating chat's Agent, then the default usable Agent. */
-export function selectWritingModel(
+/** A failed writer hands over once, so a background title waits on at most two Agents. */
+const MAXIMUM_WRITERS = 2;
+
+/**
+ * Who writes, in order. The person's exact choice writes alone. Otherwise the originating chat's
+ * Agent writes first, then Codex, then the other usable Agents, and a writer after the first
+ * tries only when the one before it fails, so a title does not depend on one Agent's utility
+ * path. Credit is spent only on a model the person selected.
+ */
+export function writingModelCandidates(
   providers: Providers,
   policy: ModelPolicy,
   writingModel: AgentRuntimeWritingModel | null,
   chatModel?: AgentRuntimeWritingModel | null,
-): ModelSelection | null {
+): readonly ModelSelection[] {
   const usable = providers
     .filter(isWritingProviderUsable)
     .map((provider) => ({
@@ -42,32 +50,39 @@ export function selectWritingModel(
 
   const explicit = usable.find((provider) => provider.instanceId === writingModel?.instanceId);
   if (writingModel && explicit?.models.some((model) => model.slug === writingModel.model))
-    return lightUtilityModelSelection(writingModel, providers);
+    return [lightUtilityModelSelection(writingModel, providers)];
 
   const chat = usable.find((provider) => provider.instanceId === chatModel?.instanceId);
   const original = chat?.models.find((model) => model.slug === chatModel?.model);
   // A credit-backed chat can use the model the person selected for it.
-  if (chat && original && spendsNodexCredit(chat))
-    return lightUtilityModelSelection(
-      { instanceId: chat.instanceId, model: original.slug },
-      providers,
-    );
-
+  const credit =
+    chat && original && spendsNodexCredit(chat)
+      ? [{ instanceId: chat.instanceId, model: original.slug }]
+      : [];
   const defaults = usable.filter((provider) => !spendsNodexCredit(provider));
-  const provider =
-    defaults.find((candidate) => candidate.instanceId === chat?.instanceId) ??
-    defaults.find((candidate) => candidate.instanceId === "codex") ??
-    defaults[0];
-  if (!provider) return null;
-  const model =
-    economicalUtilityModel(provider) ??
-    original ??
-    provider.models.find((candidate) => candidate.isDefault) ??
-    provider.models[0];
-  return model
-    ? lightUtilityModelSelection({ instanceId: provider.instanceId, model: model.slug }, providers)
-    : null;
+  const free = [
+    ...new Set([
+      ...defaults.filter((candidate) => candidate.instanceId === chat?.instanceId),
+      ...defaults.filter((candidate) => candidate.instanceId === "codex"),
+      ...defaults,
+    ]),
+  ].flatMap((provider) => {
+    const model =
+      economicalUtilityModel(provider) ??
+      (provider.instanceId === chat?.instanceId ? original : undefined) ??
+      provider.models.find((candidate) => candidate.isDefault) ??
+      provider.models[0];
+    return model ? [{ instanceId: provider.instanceId, model: model.slug }] : [];
+  });
+  return [...credit, ...free]
+    .slice(0, MAXIMUM_WRITERS)
+    .map((selection) => lightUtilityModelSelection(selection, providers));
 }
+
+/** The first writer: the exact preference, then the originating chat's Agent, then the default. */
+export const selectWritingModel = (
+  ...input: Parameters<typeof writingModelCandidates>
+): ModelSelection | null => writingModelCandidates(...input)[0] ?? null;
 
 /**
  * The economical model of a first-party Agent, for short utility work. Other Agents reach many

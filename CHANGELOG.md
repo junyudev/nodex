@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 ### Fixed
-- Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt.
+- Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt. If the chat's Agent still cannot write a title, another available Agent writes it.
 
 - A subagent that received a follow-up now appears once in the Subagents tab. Before, each follow-up added another row, the map kept showing the finished first turn while the follow-up was still running, and counts such as "4/5 back" counted turns instead of subagents. The subagent's row and card now show the turn it is working on and keep their place, and Stop stops that turn. The chat's Subagents summary and the Composer's agent mentions list it once too.
 - Stopping a subagent now stops all of it. Its running turn ends, follow-ups waiting behind it never run, and none of them reports back to the Agent that delegated it, while turns that already finished keep their results. A follow-up held after you stop a subagent's own chat no longer keeps the parent chat looking busy, and a message steered into a turn that was just starting no longer reports a separate, cancelled task.

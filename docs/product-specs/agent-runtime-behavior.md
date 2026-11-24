@@ -50,14 +50,17 @@ generation. Nodex uses the lightest offered effort. It favors an economical mode
 chat's Agent when available, otherwise the chat's model if available. An automatic fallback
 does not spend Nodex credit unless the person selected that model in Settings or for the chat.
 
-A chat a person starts is titled once from its opening prompt. When no eligible writing model
-is available, Nodex can use the first nonempty native title reported for the opening reply's
-root session. If none arrives in time, the chat keeps its provisional title. Explicit remote
-native Codex chats keep the title of their opening prompt. Automatic titling replaces only
-the original provisional title, so a rename that lands first wins. Chats an Agent starts keep
-the title it chose. Forks follow the same order and retain their source Session's title as
-"Fork of …". A worktree fork that stopped before recording its new location completes
-that move when retried; a same-directory fork never claims its source's managed worktree.
+A chat a person starts is titled once from its opening prompt. Without an exact writing-model
+choice, the originating chat's Agent writes the title first and, if it fails, the next
+available Agent in that order tries once; an exact choice writes alone. When no writer
+succeeds or none is eligible, Nodex can use the first nonempty native title reported for the
+opening reply's root session. If none arrives in time, the chat keeps its provisional title.
+Explicit remote native Codex chats keep the title of their opening prompt. Automatic titling
+replaces only the original provisional title, so a rename that lands first wins. Chats an
+Agent starts keep the title it chose. Forks follow the same order and retain their source
+Session's title as "Fork of …". A worktree fork that stopped before recording its new location
+completes that move when retried; a same-directory fork never claims its source's managed
+worktree.
 
 Page links and sidebar placement refer to Session identity. They do not own its Thread
 history, title, model selection, queue, Run status or delegated tasks. Delegated Threads

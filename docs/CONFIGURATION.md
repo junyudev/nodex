@@ -560,7 +560,8 @@ model = "gpt-6-luna"
 
 When the table is absent or its model is unavailable, Nodex uses the originating chat's
 Agent when possible, then the default available Agent that supports structured text
-generation. The same preference applies to chat titles and Git drafts.
+generation. The same preference applies to chat titles and Git drafts. Without a saved
+choice, a chat title that Agent fails to write goes once to the next Agent in that order.
 
 ## Usage meters
 

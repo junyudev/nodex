@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { selectWritingModel } from "../../shared/agent-runtime-utility-model";
+import { writingModelCandidates } from "../../shared/agent-runtime-utility-model";
 import type { ModelPolicy } from "../../shared/model-policy";
 import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
@@ -15,6 +15,10 @@ import {
 import type { AgentRuntimeApplicationConnection } from "./AgentRuntimeApplication";
 
 type ModelSelection = AgentRuntimeLaunch["modelSelection"];
+/**
+ * Writers try in order until one titles the chat; a failed one is logged and the next tries. The
+ * opening reply's native title, when the Agent reports one, is the last resort.
+ */
 export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate")(function* (
   connection: Pick<AgentRuntimeApplicationConnection, "request">,
   input: {
@@ -29,21 +33,37 @@ export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate
   const prompt = buildSessionTitlePrompt(input.prompt);
   if (!prompt) return null;
   const providers = yield* connection.request("providers.read", {});
-  const selection = selectWritingModel(
+  const writers = writingModelCandidates(
     providers,
     input.modelPolicy,
     input.writingModel,
     input.modelSelection,
   );
-  if (!selection) return input.nativeTitle ? yield* input.nativeTitle : null;
-  const output = yield* connection.request("text.generate-structured", {
-    cwd: input.cwd,
-    prompt,
-    modelSelection: selection,
-    outputSchema: SESSION_TITLE_OUTPUT_SCHEMA,
-    timeoutMs: SESSION_TITLE_TIMEOUT_MS,
-  });
-  return parseGeneratedSessionTitle(output);
+  for (const modelSelection of writers) {
+    const title = yield* connection
+      .request("text.generate-structured", {
+        cwd: input.cwd,
+        prompt,
+        modelSelection,
+        outputSchema: SESSION_TITLE_OUTPUT_SCHEMA,
+        timeoutMs: SESSION_TITLE_TIMEOUT_MS,
+      })
+      .pipe(
+        Effect.map(parseGeneratedSessionTitle),
+        Effect.catch((error) =>
+          Effect.logWarning("A writing model could not title the chat").pipe(
+            Effect.annotateLogs({
+              instanceId: modelSelection.instanceId,
+              model: modelSelection.model,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+            Effect.as(null),
+          ),
+        ),
+      );
+    if (title) return title;
+  }
+  return input.nativeTitle ? yield* input.nativeTitle : null;
 });
 
 /** Observe the opening Run on the same Runtime connection that admitted it. */

@@ -2,7 +2,10 @@ import { assert, it } from "@effect/vitest";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../shared/model-policy";
-import { selectWritingModel } from "../../shared/agent-runtime-utility-model";
+import {
+  selectWritingModel,
+  writingModelCandidates,
+} from "../../shared/agent-runtime-utility-model";
 import { agentRuntimeProviderFixture } from "../../shared/testing/agent-runtime-snapshot";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import type { AgentRuntimeApplicationConnection } from "./AgentRuntimeApplication";
@@ -40,6 +43,12 @@ it("uses the exact writing choice, then the chat Agent, then the default availab
     { instanceId: codex.instanceId, model: "gpt-6-luna" },
   );
   assert.isNull(selectWritingModel([{ ...codex, installed: false }], policy, sol, sol));
+  // The chat's Agent writes first and the default Agent once if it fails; an exact choice alone.
+  assert.deepEqual(writingModelCandidates([claude, codex], policy, null, opus), [
+    { instanceId: claude.instanceId, model: "claude-haiku" },
+    { instanceId: codex.instanceId, model: "gpt-6-luna" },
+  ]);
+  assert.deepEqual(writingModelCandidates([claude, codex], policy, sol, opus), [sol]);
 });
 
 it("keeps the model policy authoritative and only spends credit on a model the person chose", () => {
@@ -90,5 +99,47 @@ it.effect("a chosen writing model titles a chat on a different Agent at its ligh
     );
     assert.equal(title, "Repair expired login");
     assert.deepEqual(selections, [{ ...sol, options: [{ id: "reasoningEffort", value: "low" }] }]);
+  }),
+);
+
+it.effect("a failed writer hands the title to the next one, and an exact choice writes alone", () =>
+  Effect.gen(function* () {
+    const attempts: unknown[] = [];
+    const request: AgentRuntimeApplicationConnection["request"] = (method, payload) => {
+      const selection =
+        method === "text.generate-structured" && "modelSelection" in payload
+          ? payload.modelSelection
+          : undefined;
+      if (!selection)
+        return Effect.succeed([claude, codex] as AgentRuntimeOperations[typeof method]["output"]);
+      attempts.push(selection);
+      return selection.instanceId === claude.instanceId
+        ? Effect.fail(new Error("Claude CLI request timed out."))
+        : Effect.succeed({ title: "Repair expired login" } as never);
+    };
+    const input = {
+      prompt: "Repair the login failure when the saved token expires",
+      cwd: "/workspace",
+      modelSelection: opus,
+      modelPolicy: DEFAULT_MODEL_POLICY,
+    };
+    assert.equal(
+      yield* generateSessionTitle({ request }, { ...input, writingModel: null }),
+      "Repair expired login",
+    );
+    assert.deepEqual(attempts, [
+      { instanceId: claude.instanceId, model: "claude-haiku" },
+      { instanceId: codex.instanceId, model: "gpt-6-luna" },
+    ]);
+    attempts.length = 0;
+    const chosen = { instanceId: claude.instanceId, model: "claude-haiku" };
+    assert.equal(
+      yield* generateSessionTitle(
+        { request },
+        { ...input, writingModel: chosen, nativeTitle: Effect.succeed("Native title") },
+      ),
+      "Native title",
+    );
+    assert.deepEqual(attempts, [chosen]);
   }),
 );
