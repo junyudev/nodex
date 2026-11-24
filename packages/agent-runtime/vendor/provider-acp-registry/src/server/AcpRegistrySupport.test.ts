@@ -237,7 +237,11 @@ describe("AcpRegistrySupport", () => {
       const commandPath = `${cacheDir}/dsh`;
       yield* fileSystem.writeFileString(commandPath, "#!/bin/sh\n");
       yield* fileSystem.chmod(commandPath, 0o755);
-      const hostEnvironment = { PATH: "/missing-host-bin", INHERITED: "host", OVERRIDE: "host" };
+      const hostEnvironment = {
+        PATH: `${cacheDir}/missing-host-bin`,
+        INHERITED: "host",
+        OVERRIDE: "host",
+      };
       const environment = { ...hostEnvironment, PATH: cacheDir, OVERRIDE: "provider" };
       const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
         cacheDir,

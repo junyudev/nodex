@@ -97,6 +97,7 @@ for (const driver of ["codex", "claude", "claude-sdk"] as const) {
                     enabled: true,
                     setupMode: "existing",
                     binaryPath,
+                    homePath: home,
                   }),
                   { PATH: process.env.PATH },
                   prepare.pipe(Effect.as([])),
@@ -185,7 +186,12 @@ it.live("switching off a running credit utility waits for its native process cle
     const owner = yield* makePolicy(DEFAULT_MODEL_POLICY, {});
     return yield* Effect.gen(function* () {
       const raw = yield* makeCodexTextGeneration(
-        Schema.decodeSync(CodexSettings)({ enabled: true, setupMode: "existing", binaryPath }),
+        Schema.decodeSync(CodexSettings)({
+          enabled: true,
+          setupMode: "existing",
+          binaryPath,
+          homePath: home,
+        }),
         { PATH: process.env.PATH },
         Effect.succeed([]),
       );
