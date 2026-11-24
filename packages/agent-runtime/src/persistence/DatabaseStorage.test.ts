@@ -20,7 +20,8 @@ it.effect("returns free pages and starts pruning once the store has been running
       yield* sql`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 200)
         INSERT INTO filler SELECT printf('%.4096c', 'x') FROM n`;
       yield* sql`DROP TABLE filler`;
-      const freeBefore = yield* sql<{ readonly freelist_count: number }>`PRAGMA freelist_count`;
+      const freePages = sql<{ readonly freelist_count: number }>`PRAGMA freelist_count`;
+      const freeBefore = yield* freePages;
       assert.isAbove(freeBefore[0]?.freelist_count ?? 0, 100);
 
       yield* Layer.build(
@@ -34,10 +35,13 @@ it.effect("returns free pages and starts pruning once the store has been running
       assert.lengthOf(yield* mark, 0);
 
       yield* TestClock.adjust("1 minute");
-      yield* Effect.yieldNow;
-      const freeAfter = yield* sql<{ readonly freelist_count: number }>`PRAGMA freelist_count`;
-      assert.equal(freeAfter[0]?.freelist_count, 0);
-      assert.lengthOf(yield* mark, 1);
+      // Both maintenance fibers continue after the clock releases their timers.
+      yield* Effect.yieldNow.pipe(
+        Effect.andThen(Effect.all({ free: freePages, marks: mark })),
+        Effect.repeat({
+          until: ({ free, marks }) => free[0]?.freelist_count === 0 && marks.length === 1,
+        }),
+      );
     }),
   ).pipe(Effect.provide(database)),
 );
