@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
 import { APP_TEST_SUITES, STATIC_GROUPS, type CiGatePlan } from "./ci-gate-plan.ts";
-import { commandForAppTestSuite } from "./run-app-test-suite.ts";
+import { commandForAppTestSuite, fileShard, linuxTestEnvironment } from "./run-app-test-suite.ts";
 
 const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
   allGates: false,
@@ -46,6 +46,36 @@ describe("application CI suite execution", () => {
       "./src/renderer/lib/example.ts",
       "./src/shared/types.ts",
     ]);
+  });
+
+  test("shard assignment is path-based and covers both shards", () => {
+    const files = [
+      "src/renderer/alpha.test.tsx",
+      "src/renderer/beta.test.tsx",
+      "src/renderer/gamma.test.tsx",
+    ];
+    const shards = files.map((file) => fileShard(file, 2));
+    expect(new Set(shards)).toEqual(new Set([0, 1]));
+    expect(
+      [...files, "src/renderer/new.test.tsx"]
+        .map((file) => fileShard(file, 2))
+        .slice(0, files.length),
+    ).toEqual(shards);
+  });
+
+  test("Vitest receives runtime configuration without ephemeral CI metadata", () => {
+    expect(
+      linuxTestEnvironment({
+        CI: "true",
+        PATH: "/bin",
+        DISPLAY: ":99",
+        VP_CLI_BIN: "/bin/vp",
+        NODEX_BUILD_CACHE_DIR: "/infrastructure-cache",
+        GITHUB_SHA: "source",
+        GITHUB_RUN_ID: "run",
+        ACTIONS_RUNTIME_TOKEN: "credential",
+      }),
+    ).toEqual({ CI: "true", PATH: "/bin", DISPLAY: ":99", VP_CLI_BIN: "/bin/vp" });
   });
 
   test("rejects suites outside the classified plan", () => {

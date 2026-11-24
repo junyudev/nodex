@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { parseCiGatePlan, type CiGatePlan } from "./ci-gate-plan.ts";
+import { cachedAppLanes, parseCiGatePlan, type CiGatePlan } from "./ci-gate-plan.ts";
 
 interface ClassificationDocument {
   readonly changedPaths: readonly string[];
@@ -37,7 +37,8 @@ export const githubOutputForClassification = (document: ClassificationDocument):
   if (serialized.includes("\n") || serialized.includes("\r")) {
     throw new Error("Serialized CI gate plan must fit on one GitHub output line.");
   }
-  return `changed_paths=${changedPaths}\nplan=${serialized}\n`;
+  const appLanes = JSON.stringify([...cachedAppLanes(document.plan).keys()]);
+  return `changed_paths=${changedPaths}\nplan=${serialized}\napp_lanes=${appLanes}\n`;
 };
 
 const readOption = (args: readonly string[], name: string): string | undefined => {

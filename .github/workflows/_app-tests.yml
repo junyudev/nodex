@@ -4,8 +4,12 @@ on:
   workflow_call:
     inputs:
       suites_json:
-        description: JSON array of canonical application test suites.
-        required: true
+        description: JSON array of uncached application test suites for Nightly and certification.
+        required: false
+        type: string
+      lanes_json:
+        description: Classified Linux application matrix with cache-aware shards.
+        required: false
         type: string
       gate_plan_json:
         description: Validated CI gate plan containing full or related test selection.
@@ -33,16 +37,17 @@ permissions:
 
 jobs:
   test:
-    name: app ${{ matrix.suite }}
+    name: app ${{ matrix.lane }}
     strategy:
       fail-fast: false
       max-parallel: ${{ inputs.max_parallel }}
       matrix:
-        suite: ${{ fromJSON(inputs.suites_json) }}
+        lane: ${{ fromJSON(inputs.lanes_json || inputs.suites_json) }}
     runs-on: ${{ inputs.runner }}
     env:
       CI_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
-      CI_TIMING_JOB: ${{ inputs.timing_prefix }}-${{ matrix.suite }}
+      CI_TIMING_JOB: ${{ inputs.timing_prefix }}-${{ matrix.lane }}
+      NODEX_TEST_CACHE: ${{ vars.NODEX_TEST_CACHE }}
       NODEX_TEST_TIMINGS: .generated/ci-timings
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,17 +59,50 @@ jobs:
       - name: Resolve suite prerequisites
         id: suite
         env:
-          APP_TEST_SUITE: ${{ matrix.suite }}
-        run: vp exec tsx scripts/ci/app-test-suite.ts --suite "${APP_TEST_SUITE}"
+          CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
+          APP_TEST_LANE: ${{ matrix.lane }}
+          MODE: ${{ inputs.lanes_json != '' && 'lane' || 'suite' }}
+        run: vp exec tsx scripts/ci/app-test-suite.ts "--${MODE}" "${APP_TEST_LANE}"
       - uses: ./.github/actions/setup-rust-ci
         if: steps.suite.outputs.needs_rust == 'true'
       - uses: ./.github/actions/setup-playwright
         if: steps.suite.outputs.needs_playwright == 'true'
+      - name: Run primary suite shard
+        id: primary
+        if: inputs.lanes_json != ''
+        uses: ./.github/actions/run-cached-app-test
+        with:
+          segment: ${{ steps.suite.outputs.segment_1 }}
+          gate_plan_json: ${{ inputs.gate_plan_json }}
+          needs_xvfb: ${{ steps.suite.outputs.segment_1_xvfb }}
+      - name: Run companion suite shard
+        id: companion
+        if: >-
+          !cancelled() && inputs.lanes_json != '' && steps.suite.outputs.segment_2 != '' &&
+          (steps.primary.outcome == 'success' || steps.primary.outcome == 'failure')
+        uses: ./.github/actions/run-cached-app-test
+        with:
+          segment: ${{ steps.suite.outputs.segment_2 }}
+          gate_plan_json: ${{ inputs.gate_plan_json }}
+          needs_xvfb: ${{ steps.suite.outputs.segment_2_xvfb }}
+      - name: Require every selected shard
+        id: verify-shards
+        if: always() && inputs.lanes_json != ''
+        env:
+          PRIMARY_RESULT: ${{ steps.primary.outcome }}
+          COMPANION: ${{ steps.suite.outputs.segment_2 }}
+          COMPANION_RESULT: ${{ steps.companion.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${PRIMARY_RESULT}" == "success" ]]
+          [[ -z "${COMPANION}" || "${COMPANION_RESULT}" == "success" ]]
       - name: Run application suite
+        if: inputs.lanes_json == ''
         env:
           CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
-          APP_TEST_SUITE: ${{ matrix.suite }}
-          DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser,vitest:browser*,vite:deps,vite:hmr' || '' }}
+          APP_TEST_SUITE: ${{ matrix.lane }}
+          DEBUG: ${{ matrix.lane == 'browser' && 'pw:browser,vitest:browser*,vite:deps,vite:hmr' || '' }}
           NEEDS_XVFB: ${{ steps.suite.outputs.needs_xvfb }}
         shell: bash
         run: |
@@ -83,10 +121,10 @@ jobs:
             --name "app-${APP_TEST_SUITE}" \
             -- vp exec tsx scripts/ci/run-app-test-suite.ts --suite "${APP_TEST_SUITE}"
       - name: Show renderer memory state
-        if: always() && runner.os == 'Linux' && matrix.suite == 'renderer'
+        if: always() && runner.os == 'Linux' && contains(matrix.lane, 'renderer')
         run: free -h
       - name: Show failed browser runner resources
-        if: failure() && runner.os == 'Linux' && matrix.suite == 'browser'
+        if: failure() && runner.os == 'Linux' && contains(matrix.lane, 'browser')
         run: |
           free -h
           df -h "${GITHUB_WORKSPACE}" /tmp /dev/shm
@@ -102,7 +140,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.timing_prefix }}-${{ matrix.suite }}-failure-${{ github.run_attempt }}
+          name: ${{ inputs.timing_prefix }}-${{ matrix.lane }}-failure-${{ github.run_attempt }}
           path: |
             .vitest-attachments/
             test-results/
@@ -116,7 +154,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: timings-${{ inputs.timing_prefix }}-${{ matrix.suite }}-${{ github.run_attempt }}
+          name: timings-${{ inputs.timing_prefix }}-${{ matrix.lane }}-${{ github.run_attempt }}
           path: .generated/ci-timings/
           if-no-files-found: ignore
           retention-days: 14

@@ -1260,14 +1260,14 @@ Seeded fixtures have four distinct evidence classes:
 Never share a writable seeded Store between tests.
 Add a snapshot cache only after measurement shows live authoritative materialization is a meaningful bottleneck; `board/dense` remains live-seeded in the initial implementation.
 
-### Local test result cache
+### Test result cache
 
 `vp run check:changed --full` checks every file in the default Vitest suites against
 its last passing inputs. Node, jsdom, and Electron-as-Node reuse passes per
 isolated file. Chromium observes inputs and reuses passes at suite scope.
-Run one suite with `vp run test:cached <suite>`. On CI,
-other host platforms, and with `NODEX_TEST_CACHE=off`, the ordinary runner
-executes the tests directly. Discovery and execution use invocation-local Vite
+Run one suite with `vp run test:cached <suite>` on macOS. Pre-merge and Main CI
+use the same engine on hosted Linux. Other hosts and `NODEX_TEST_CACHE=off`
+execute the tests directly. Discovery and execution use invocation-local Vite
 and Vitest caches, including when a suite falls back to the ordinary runner.
 
 A pass is reusable if all its tests passed without skips or retries and all
@@ -1292,9 +1292,10 @@ Each eligible pass retains checkout-relative evidence under
 `cache.local/test-results/` in the primary checkout. `NODEX_BUILD_CACHE_DIR`
 overrides the root. Worktrees and branch switches reuse recent passes with
 matching inputs. Lookups reuse digests for stable file stamps and identify
-Chromium by Playwright's installed revision and its executable. The runner audits
-one file hit per file-based suite and samples Chromium at one in 64 hits. An audit
-failure or corrupted record invalidates the suite's saved passes and fails the check.
+Chromium by Playwright's installed revision and its executable. Linux also
+binds the hosted image and the Electron or Chromium distribution contents.
+The runner audits one file hit per file-based suite or CI shard and samples
+Chromium at one in 64 hits. An audit failure or corrupted record invalidates the suite's saved passes and fails the check.
 
 ### Runtime conversation work
 

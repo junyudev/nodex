@@ -1,0 +1,77 @@
+name: Run cached application tests
+description: Restore and validate passing test evidence for one Linux suite shard.
+inputs:
+  segment:
+    description: Suite and zero-based shard from the classified application lane.
+    required: true
+  gate_plan_json:
+    description: Validated gate plan that selected the suite.
+    required: true
+  needs_xvfb:
+    description: Whether the lane needs an X display for Electron.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Resolve test cache key
+      id: key
+      shell: bash
+      env:
+        APP_TEST_SEGMENT: ${{ inputs.segment }}
+        CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
+      run: vp exec tsx scripts/ci/run-app-test-suite.ts --segment "${APP_TEST_SEGMENT}" --cache-key
+    - name: Restore test passes
+      if: steps.key.outputs.prefix != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.path }}
+        key: ${{ steps.key.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+    - name: Run test shard
+      id: tests
+      shell: bash
+      env:
+        APP_TEST_SEGMENT: ${{ inputs.segment }}
+        CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
+        NEEDS_XVFB: ${{ inputs.needs_xvfb }}
+        DEBUG: ${{ startsWith(inputs.segment, 'browser:') && 'pw:browser,vitest:browser*,vite:deps,vite:hmr' || '' }}
+      run: |
+        set -euo pipefail
+        suite="${APP_TEST_SEGMENT%:*}"
+        command=(vp exec tsx scripts/ci/run-app-test-suite.ts --segment "${APP_TEST_SEGMENT}")
+        if [[ "${NEEDS_XVFB}" == "true" ]]; then
+          mkdir -p .cache
+          command=(xvfb-run --auto-servernum --auth-file=.cache/ci-app-xauth --error-file=/dev/stderr
+            --server-args="-screen 0 1280x1024x24 -noreset" "${command[@]}")
+        fi
+        vp exec tsx scripts/ci/run-timed.ts --name "app-${suite}" -- "${command[@]}"
+    - name: Measure cache size
+      id: size
+      if: ${{ !cancelled() && steps.key.outputs.prefix != '' }}
+      shell: bash
+      env:
+        RESULT_CACHE_PATH: ${{ steps.key.outputs.path }}
+        APP_TEST_SEGMENT: ${{ inputs.segment }}
+      run: |
+        set -euo pipefail
+        bytes=0
+        compressed=0
+        if [[ -d "${RESULT_CACHE_PATH}" ]]; then
+          bytes="$(du -sb -- "${RESULT_CACHE_PATH}" | cut -f1)"
+          # Measure the same tar+zstd representation used by the Linux cache action.
+          compressed="$(tar -C "${RESULT_CACHE_PATH}" -cf - . | zstd -q -3 -T1 -c | wc -c)"
+        fi
+        printf '%s has %s bytes of test pass data (%s compressed)\n' "${APP_TEST_SEGMENT}" "${bytes}" "${compressed}"
+        if (( compressed > 0 && compressed <= 8 * 1024 * 1024 )); then
+          echo "within_budget=true" >> "${GITHUB_OUTPUT}"
+        elif (( compressed > 8 * 1024 * 1024 )); then
+          echo "::warning::Test pass data exceeds the 8 MiB per-shard archive budget."
+        fi
+    - name: Save test passes
+      if: >-
+        !cancelled() && steps.tests.outputs.publish == 'true' && steps.size.outputs.within_budget == 'true' &&
+        (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.path }}
+        key: ${{ steps.key.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}

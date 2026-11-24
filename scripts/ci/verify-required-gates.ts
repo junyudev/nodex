@@ -1,6 +1,10 @@
 import path from "node:path";
 
-import { parseCiGatePlan, requiredJobIdsForGatePlan } from "./ci-gate-plan.ts";
+import {
+  parseCachedAppLaneIds,
+  parseCiGatePlan,
+  requiredJobIdsForGatePlan,
+} from "./ci-gate-plan.ts";
 
 export type GitHubJobResult = "cancelled" | "failure" | "skipped" | "success";
 
@@ -43,6 +47,7 @@ export const verifyRequiredGates = ({
 
 interface GitHubNeedsJob {
   readonly result: GitHubJobResult;
+  readonly outputs?: unknown;
 }
 
 export const requiredGateNames = (
@@ -50,6 +55,16 @@ export const requiredGateNames = (
   rawPlan: unknown | undefined,
 ): readonly string[] =>
   rawPlan === undefined ? availableGateNames : requiredJobIdsForGatePlan(parseCiGatePlan(rawPlan));
+
+export function requiredClassifiedGates(rawPlan: unknown, rawOutputs: unknown): readonly string[] {
+  const plan = parseCiGatePlan(rawPlan);
+  const outputs = rawOutputs as { app_lanes?: unknown } | undefined;
+  const appLanes = outputs?.app_lanes;
+  if (typeof appLanes !== "string")
+    throw new Error("The classifier did not publish an application matrix.");
+  parseCachedAppLaneIds(JSON.parse(appLanes), plan);
+  return requiredJobIdsForGatePlan(plan);
+}
 
 export const parseNeeds = (value: string): Readonly<Record<string, GitHubNeedsJob>> => {
   const parsed: unknown = JSON.parse(value);
@@ -65,7 +80,8 @@ export const parseNeeds = (value: string): Readonly<Record<string, GitHubNeedsJo
         (candidate as Readonly<Record<string, unknown>>).result,
         `CI_NEEDS_JSON.${name}`,
       );
-      return [name, { result }];
+      const outputs = (candidate as Readonly<Record<string, unknown>>).outputs;
+      return [name, { result, outputs }];
     }),
   );
 };
@@ -83,10 +99,12 @@ const main = (): void => {
     verifyRequiredGates({ classifierResult, results: {}, selectedGates: [] });
     return;
   }
-  const selectedGates = requiredGateNames(
-    Object.keys(needs),
-    planJson === undefined ? undefined : JSON.parse(planJson),
-  );
+  const selectedGates = needs.classify
+    ? requiredClassifiedGates(JSON.parse(planJson ?? "null"), needs.classify.outputs)
+    : requiredGateNames(
+        Object.keys(needs),
+        planJson === undefined ? undefined : JSON.parse(planJson),
+      );
   verifyRequiredGates({
     classifierResult,
     results: Object.fromEntries(Object.entries(needs).map(([name, job]) => [name, job.result])),

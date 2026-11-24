@@ -10,13 +10,24 @@ describe("GitHub classification outputs", () => {
       plan: classifyChangedPaths(["src/renderer/app.tsx"]),
     });
     const output = githubOutputForClassification(document);
-    expect(output.split("\n")).toHaveLength(3);
+    expect(output.split("\n")).toHaveLength(4);
     const lines = output.trim().split("\n");
     expect(JSON.parse(lines[0]!.slice("changed_paths=".length))).toEqual(["src/renderer/app.tsx"]);
     expect(JSON.parse(lines[1]!.slice("plan=".length))).toMatchObject({
       rustFast: false,
       testMode: "related",
     });
+    expect(JSON.parse(lines[2]!.slice("app_lanes=".length))).toEqual([
+      "renderer-1+unit-2",
+      "renderer-2+unit-1",
+      "browser",
+    ]);
+  });
+
+  test("publishes an empty application matrix for an unlabelled draft", () => {
+    const changedPaths = ["src/main/platform/host-capabilities.ts"];
+    const plan = classifyChangedPaths(changedPaths, { draft: true });
+    expect(githubOutputForClassification({ changedPaths, plan })).toContain("\napp_lanes=[]\n");
   });
 
   test("rejects unknown document and plan fields", () => {

@@ -3,7 +3,11 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { parseNeeds, requiredGateNames, type GitHubJobResult } from "./verify-required-gates.ts";
+import {
+  parseNeeds,
+  requiredClassifiedGates,
+  type GitHubJobResult,
+} from "./verify-required-gates.ts";
 
 interface VerdictRange {
   readonly basis: "last-green" | "push-before" | "head-only";
@@ -92,7 +96,7 @@ export function failingMainCiGates(
   const classify = needs.classify?.result ?? "missing";
   if (classify !== "success") return [{ id: "classify", result: classify }];
   try {
-    const selected = requiredGateNames([], JSON.parse(planJson ?? ""));
+    const selected = requiredClassifiedGates(JSON.parse(planJson ?? ""), needs.classify?.outputs);
     return selected.flatMap((id) => {
       const result = needs[id]?.result ?? "missing";
       return result === "success" ? [] : [{ id, result }];
