@@ -1,832 +1,165 @@
-import path from "node:path";
-import { isCodexWorktreeEnvironmentConfigPath } from "../../shared/codex-worktree-environment-path";
-import type {
-  CodexWorktreeWorkerAvailability,
-  CodexWorktreeWorkerCleanupHandoffInput,
-  CodexWorktreeWorkerCreateInput,
-  CodexWorktreeWorkerCreateResult,
-  CodexWorktreeWorkerEvent,
-  CodexWorktreeWorkerGitRootInput,
-  CodexWorktreeWorkerInspectInput,
-  CodexWorktreeWorkerListInput,
-  CodexWorktreeWorkerOperation,
-  CodexWorktreeWorkerPathInput,
-  CodexWorktreeWorkerRemoveInput,
-  CodexWorktreeWorkerRequest,
-  CodexWorktreeWorkerRestoreInput,
-  CodexWorktreeWorkerSetOwnerInput,
-  CodexWorktreeWorkerSnapshotInput,
-  CodexWorktreeWorkerSnapshotResult,
-  CodexWorktreeWorkerSuccess,
-  CodexWorktreeWorkerPrepareHandoffInput,
-  CodexWorktreeWorkerPreparedHandoff,
-  CodexWorktreeWorkerRollbackHandoffInput,
-  CodexWorktreeWorkerExportHandoffInput,
-  CodexWorktreeWorkerImportHandoffInput,
-  CodexWorktreeWorkerCleanupTransferHandoffInput,
-} from "../codex/codex-worktree-worker-protocol";
+import { z } from "zod";
 import {
-  CODEX_WORKTREE_HANDOFF_STEPS,
-  CODEX_WORKTREE_WORKER_OPERATIONS,
+  WorktreeWorkerEventSchema,
+  WorktreeWorkerHostIdSchema,
+  WorktreeWorkerIdSchema,
+  WorktreeWorkerOperationSchema,
+  WorktreeWorkerRequestSchema,
+  WorktreeWorkerSuccessSchema,
+  type CodexWorktreeWorkerRequest,
 } from "../codex/codex-worktree-worker-protocol";
 
-export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 9 as const;
+export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 10 as const;
 
-export type CodexWorktreeWorkerHostMessage =
-  | {
-      readonly type: "request";
-      readonly protocolVersion: typeof CODEX_WORKTREE_WORKER_PROTOCOL_VERSION;
-      readonly id: string;
-      readonly request: CodexWorktreeWorkerRequest;
-    }
-  | {
-      readonly type: "cancel";
-      readonly protocolVersion: typeof CODEX_WORKTREE_WORKER_PROTOCOL_VERSION;
-      readonly id: string;
-      readonly operation: CodexWorktreeWorkerOperation;
-    }
-  | {
-      readonly type: "shutdown";
-      readonly protocolVersion: typeof CODEX_WORKTREE_WORKER_PROTOCOL_VERSION;
-    };
+const ProtocolVersionSchema = z.literal(CODEX_WORKTREE_WORKER_PROTOCOL_VERSION, {
+  error: ({ input }) => {
+    const received =
+      typeof input === "number" || typeof input === "string" ? String(input) : typeof input;
+    return `Worktree worker protocol version mismatch (expected ${CODEX_WORKTREE_WORKER_PROTOCOL_VERSION}, received ${received})`;
+  },
+});
 
-export type CodexWorktreeWorkerThreadMessage =
-  | {
-      readonly type: "ready";
-      readonly epoch: number;
-      readonly hostId: string;
-      readonly protocolVersion: typeof CODEX_WORKTREE_WORKER_PROTOCOL_VERSION;
-    }
-  | {
-      readonly type: "event";
-      readonly id: string;
-      readonly operation: CodexWorktreeWorkerOperation;
-      readonly event: CodexWorktreeWorkerEvent;
-    }
-  | {
-      readonly type: "result";
-      readonly id: string;
-      readonly operation: CodexWorktreeWorkerOperation;
-      readonly result:
-        | { readonly type: "ok"; readonly success: CodexWorktreeWorkerSuccess }
-        | {
-            readonly type: "error";
-            readonly code:
-              | "canceled"
-              | "invalid-request"
-              | "operation-failed"
-              | "release-unconfirmed";
-            readonly message: string;
-            readonly retryable: boolean;
-            readonly preparationRestored?: boolean;
-          };
-    };
+const RequestMessageSchema = z.strictObject({
+  type: z.literal("request"),
+  protocolVersion: ProtocolVersionSchema,
+  id: WorktreeWorkerIdSchema,
+  request: WorktreeWorkerRequestSchema.readonly(),
+});
+// A bad body can be rejected independently if the worker can still route its reply.
+const RequestEnvelopeSchema = RequestMessageSchema.extend({
+  request: z.object({ operation: WorktreeWorkerOperationSchema }).readonly(),
+});
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const HostMessageSchema = z.discriminatedUnion("type", [
+  RequestMessageSchema,
+  z.strictObject({
+    type: z.literal("cancel"),
+    protocolVersion: ProtocolVersionSchema,
+    id: WorktreeWorkerIdSchema,
+    operation: WorktreeWorkerOperationSchema,
+  }),
+  z.strictObject({
+    type: z.literal("shutdown"),
+    protocolVersion: ProtocolVersionSchema,
+  }),
+]);
 
-function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
-}
+const replyIdentity = { id: WorktreeWorkerIdSchema, operation: WorktreeWorkerOperationSchema };
+const EventMessageSchema = z
+  .object({
+    type: z.literal("event"),
+    ...replyIdentity,
+    event: WorktreeWorkerEventSchema.readonly(),
+  })
+  .refine((message) => message.event.operation === message.operation, {
+    path: ["event", "operation"],
+    message: "Must match the message operation",
+  });
 
-function isNonEmptyString(value: unknown, maxLength = 8_192): value is string {
-  return (
-    typeof value === "string" &&
-    value === value.trim() &&
-    value.length > 0 &&
-    value.length <= maxLength
+const ResultSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ok"), success: WorktreeWorkerSuccessSchema.readonly() }),
+  z.object({
+    type: z.literal("error"),
+    code: z.enum(["canceled", "invalid-request", "operation-failed", "release-unconfirmed"]),
+    message: z.string(),
+    retryable: z.boolean(),
+    preparationRestored: z.boolean().optional(),
+  }),
+]);
+
+const ResultMessageSchema = z
+  .object({
+    type: z.literal("result"),
+    ...replyIdentity,
+    result: ResultSchema.readonly(),
+  })
+  .refine(
+    ({ result, operation }) => result.type !== "ok" || result.success.operation === operation,
+    { path: ["result", "success", "operation"], message: "Must match the message operation" },
+  )
+  .refine(
+    ({ result, operation }) =>
+      result.type !== "error" ||
+      result.preparationRestored === undefined ||
+      operation === "prepare-handoff",
+    {
+      path: ["result", "preparationRestored"],
+      message: "Only allowed for prepare-handoff errors",
+    },
   );
+
+const ThreadMessageSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("ready"),
+    epoch: z.int(),
+    hostId: WorktreeWorkerHostIdSchema,
+    protocolVersion: ProtocolVersionSchema,
+  }),
+  EventMessageSchema,
+  ResultMessageSchema,
+]);
+
+export type CodexWorktreeWorkerHostMessage = Readonly<z.output<typeof HostMessageSchema>>;
+export type CodexWorktreeWorkerThreadMessage = Readonly<z.output<typeof ThreadMessageSchema>>;
+
+type DecodeFailure = { readonly ok: false; readonly error: string };
+type DecodeResult<Value, Failure = DecodeFailure> =
+  | { readonly ok: true; readonly value: Value }
+  | Failure;
+type HostDecodeResult = DecodeResult<
+  CodexWorktreeWorkerHostMessage,
+  DecodeFailure & { readonly envelope?: Readonly<z.output<typeof RequestEnvelopeSchema>> }
+>;
+
+function formatIssue(issue: z.ZodIssue | undefined): string {
+  if (!issue) return "message: Invalid input";
+  const unrecognizedKey = issue.code === "unrecognized_keys" ? issue.keys[0] : undefined;
+  const path = unrecognizedKey === undefined ? issue.path : [...issue.path, unrecognizedKey];
+  const location = path.map((key) => String(key).slice(0, 80)).join(".") || "message";
+  const problem = unrecognizedKey === undefined ? issue.message : "Unrecognized key";
+  return `${location}: ${problem}`.replace(/\s+/gu, " ").slice(0, 512);
 }
 
-function isNullableString(value: unknown, maxLength = 8_192): value is string | null {
-  return value === null || (typeof value === "string" && value.length <= maxLength);
+export function decodeCodexWorktreeWorkerHostMessage(value: unknown): HostDecodeResult {
+  const parsed = HostMessageSchema.safeParse(value);
+  if (parsed.success) return { ok: true, value: parsed.data };
+  const error = formatIssue(parsed.error.issues[0]);
+  const envelope = RequestEnvelopeSchema.safeParse(value);
+  return envelope.success ? { ok: false, error, envelope: envelope.data } : { ok: false, error };
 }
 
-function isOperation(value: unknown): value is CodexWorktreeWorkerOperation {
-  return (
-    typeof value === "string" &&
-    (CODEX_WORKTREE_WORKER_OPERATIONS as readonly string[]).includes(value)
-  );
-}
-
-function isAbsolutePath(value: unknown): value is string {
-  return isNonEmptyString(value) && path.isAbsolute(value);
-}
-
-/** Git roots belong to the execution host, whose path syntax can differ from Main. */
-function isExecutionHostAbsolutePath(value: unknown): value is string {
-  return isNonEmptyString(value) && (path.posix.isAbsolute(value) || path.win32.isAbsolute(value));
-}
-
-function isPathWithin(parentPath: string, candidatePath: string): boolean {
-  const relative = path.relative(path.resolve(parentPath), path.resolve(candidatePath));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function isIdentity(value: Record<string, unknown>): boolean {
-  return isNonEmptyString(value.requestId, 1_024) && isNonEmptyString(value.hostId, 512);
-}
-
-function isStartingState(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.type === "working-tree") return hasOnlyKeys(value, ["type"]);
-  return (
-    value.type === "branch" &&
-    hasOnlyKeys(value, ["type", "branchName", "remoteRef"]) &&
-    isNonEmptyString(value.branchName, 1_024) &&
-    (value.remoteRef === undefined || isNonEmptyString(value.remoteRef, 2_048))
-  );
-}
-
-function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "repositoryPath",
-      "nodexHome",
-      "managedRoot",
-      "projectId",
-      "targetId",
-      "threadTitle",
-      "branchPrefix",
-      "pageWorkspace",
-      "mode",
-      "startingState",
-      "localEnvironmentConfigPath",
-      "setUpSyncedBranch",
-      "propagateLocalWorkspaceFiles",
-    ]) &&
-    isIdentity(value) &&
-    isAbsolutePath(value.repositoryPath) &&
-    isAbsolutePath(value.nodexHome) &&
-    isAbsolutePath(value.managedRoot) &&
-    isNonEmptyString(value.projectId, 1_024) &&
-    isNonEmptyString(value.targetId, 1_024) &&
-    isNonEmptyString(value.threadTitle, 4_096) &&
-    (value.branchPrefix === undefined ||
-      value.branchPrefix === null ||
-      typeof value.branchPrefix === "string") &&
-    (value.pageWorkspace === undefined ||
-      (isRecord(value.pageWorkspace) &&
-        hasOnlyKeys(value.pageWorkspace, [
-          "workspaceId",
-          "operationId",
-          "branchName",
-          "baseCommitOid",
-          "worktreePath",
-        ]) &&
-        isNonEmptyString(value.pageWorkspace.workspaceId, 512) &&
-        isNonEmptyString(value.pageWorkspace.operationId, 512) &&
-        isNonEmptyString(value.pageWorkspace.branchName, 256) &&
-        isAbsolutePath(value.pageWorkspace.worktreePath) &&
-        typeof value.pageWorkspace.baseCommitOid === "string" &&
-        /^[a-f0-9]{40,64}$/.test(value.pageWorkspace.baseCommitOid))) &&
-    (value.mode === undefined || value.mode === "autoBranch" || value.mode === "detachedHead") &&
-    (value.startingState === null || isStartingState(value.startingState)) &&
-    (value.localEnvironmentConfigPath === null ||
-      isCodexWorktreeEnvironmentConfigPath(value.localEnvironmentConfigPath)) &&
-    typeof value.setUpSyncedBranch === "boolean" &&
-    typeof value.propagateLocalWorkspaceFiles === "boolean"
-  );
-}
-
-function isGitRootInput(value: unknown): value is CodexWorktreeWorkerGitRootInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "cwd"]) &&
-    isIdentity(value) &&
-    isExecutionHostAbsolutePath(value.cwd)
-  );
-}
-
-function isPathInput(
+export function decodeCodexWorktreeWorkerThreadMessage(
   value: unknown,
-): value is Record<string, unknown> & CodexWorktreeWorkerPathInput {
-  return isRecord(value) && isIdentity(value) && isAbsolutePath(value.worktreeGitRoot);
+): DecodeResult<CodexWorktreeWorkerThreadMessage> {
+  const parsed = ThreadMessageSchema.safeParse(value);
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : { ok: false, error: formatIssue(parsed.error.issues[0]) };
 }
 
-function isListInput(value: unknown): value is CodexWorktreeWorkerListInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "managedRoot"]) &&
-    isIdentity(value) &&
-    isAbsolutePath(value.managedRoot)
-  );
-}
-
-function isCandidateRepositoryPaths(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.length <= 128 && value.every(isAbsolutePath);
-}
-
-function isInspectInput(value: unknown): value is CodexWorktreeWorkerInspectInput {
-  return (
-    isPathInput(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "worktreeGitRoot",
-      "cwd",
-      "candidateRepositoryPaths",
-    ]) &&
-    isAbsolutePath(value.cwd) &&
-    isPathWithin(value.worktreeGitRoot, value.cwd) &&
-    isCandidateRepositoryPaths(value.candidateRepositoryPaths)
-  );
-}
-
-function isRemovalReason(value: unknown): boolean {
-  return (
-    value === "page-completed" ||
-    value === "archive" ||
-    value === "automatic-retention" ||
-    value === "automation-archive" ||
-    value === "handoff" ||
-    value === "settings-delete" ||
-    value === "failed-create" ||
-    value === "retry" ||
-    value === "cancel"
-  );
-}
-
-function isSnapshotInput(value: unknown): value is CodexWorktreeWorkerSnapshotInput {
-  return (
-    isPathInput(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "reason"]) &&
-    isRemovalReason(value.reason)
-  );
-}
-
-function isRemoveInput(value: unknown): value is CodexWorktreeWorkerRemoveInput {
-  return (
-    isPathInput(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "reason", "snapshotPolicy"]) &&
-    isRemovalReason(value.reason) &&
-    (value.snapshotPolicy === "required" ||
-      value.snapshotPolicy === "best-effort" ||
-      value.snapshotPolicy === "ephemeral")
-  );
-}
-
-function isRestoreInput(value: unknown): value is CodexWorktreeWorkerRestoreInput {
-  if (!isRecord(value)) return false;
-  const inspectShape = { ...value };
-  delete inspectShape.ownerThreadId;
-  return (
-    isInspectInput(inspectShape) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "worktreeGitRoot",
-      "cwd",
-      "candidateRepositoryPaths",
-      "ownerThreadId",
-    ]) &&
-    (value.ownerThreadId === null || isNonEmptyString(value.ownerThreadId, 1_024))
-  );
-}
-
-function isSetOwnerInput(value: unknown): value is CodexWorktreeWorkerSetOwnerInput {
-  return (
-    isPathInput(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "ownerThreadId"]) &&
-    isNonEmptyString(value.ownerThreadId, 1_024)
-  );
-}
-
-function isWarnings(value: unknown): value is readonly string[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= 128 &&
-    value.every((warning) => typeof warning === "string" && warning.length <= 64_000)
-  );
-}
-
-function isPreparedHandoff(value: unknown): value is CodexWorktreeWorkerPreparedHandoff {
-  if (!isRecord(value)) return false;
-  const common =
-    isNonEmptyString(value.sourceBranch, 1_024) &&
-    isAbsolutePath(value.sourceWorkspaceRoot) &&
-    isAbsolutePath(value.destinationWorkspaceRoot) &&
-    isAbsolutePath(value.destinationGitRoot) &&
-    isAbsolutePath(value.managedWorktreePath) &&
-    typeof value.createdWorktree === "boolean" &&
-    isWarnings(value.warnings);
-  if (!common) return false;
-  if (value.direction === "to-worktree") {
-    return (
-      value.createdWorktree === true &&
-      isNonEmptyString(value.localCheckoutBranch, 1_024) &&
-      isNonEmptyString(value.destinationBranch, 1_024)
+export function validateOutgoingCodexWorktreeWorkerHostMessage(
+  message: CodexWorktreeWorkerHostMessage,
+): CodexWorktreeWorkerHostMessage {
+  const decoded = decodeCodexWorktreeWorkerHostMessage(message);
+  if (decoded.ok) return decoded.value;
+  if (message.type === "request") {
+    const operation = WorktreeWorkerOperationSchema.safeParse(message.request?.operation);
+    const name = operation.success ? ` "${operation.data}"` : "";
+    throw new Error(
+      `Nodex built an invalid worktree${name} request: ${decoded.error.replace(/^request\./u, "")}`,
     );
   }
-  return (
-    value.direction === "to-checkout" &&
-    value.createdWorktree === false &&
-    (value.localCheckoutPreviousBranch === null ||
-      isNonEmptyString(value.localCheckoutPreviousBranch, 1_024))
-  );
-}
-
-function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrepareHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "managedRoot",
-      "allocatedWorktreePath",
-      "nodexHome",
-      "projectId",
-      "threadId",
-      "threadTitle",
-      "sourceCwd",
-      "sourceWorkspaceRoot",
-      "sourceManagedWorktreePath",
-      "destinationCheckoutRoot",
-    ]) &&
-    isIdentity(value) &&
-    isAbsolutePath(value.managedRoot) &&
-    (value.allocatedWorktreePath === null ||
-      (isAbsolutePath(value.allocatedWorktreePath) &&
-        value.allocatedWorktreePath !== value.managedRoot &&
-        isPathWithin(value.managedRoot, value.allocatedWorktreePath))) &&
-    isAbsolutePath(value.nodexHome) &&
-    isNonEmptyString(value.projectId, 1_024) &&
-    isNonEmptyString(value.threadId, 1_024) &&
-    isNonEmptyString(value.threadTitle, 4_096) &&
-    isAbsolutePath(value.sourceCwd) &&
-    isAbsolutePath(value.sourceWorkspaceRoot) &&
-    isPathWithin(value.sourceWorkspaceRoot, value.sourceCwd) &&
-    (value.sourceManagedWorktreePath === null
-      ? value.allocatedWorktreePath !== null
-      : value.allocatedWorktreePath === null) &&
-    (value.sourceManagedWorktreePath === null || isAbsolutePath(value.sourceManagedWorktreePath)) &&
-    (value.destinationCheckoutRoot === null || isAbsolutePath(value.destinationCheckoutRoot))
-  );
-}
-
-function isRollbackHandoffInput(value: unknown): value is CodexWorktreeWorkerRollbackHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "prepared"]) &&
-    isIdentity(value) &&
-    isPreparedHandoff(value.prepared)
-  );
-}
-
-function isCleanupHandoffInput(value: unknown): value is CodexWorktreeWorkerCleanupHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "prepared", "outcome"]) &&
-    isIdentity(value) &&
-    isPreparedHandoff(value.prepared) &&
-    (value.outcome === "committed" || value.outcome === "rolled-back")
-  );
-}
-
-function isTransferId(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[A-Za-z0-9._-]{1,200}$/u.test(value) &&
-    value !== "." &&
-    value !== ".."
-  );
-}
-
-function isRepositoryIdentity(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, ["displayName", "keys"]) &&
-    isNonEmptyString(value.displayName, 512) &&
-    Array.isArray(value.keys) &&
-    value.keys.length > 0 &&
-    value.keys.length <= 128 &&
-    value.keys.every((key) => typeof key === "string" && /^[a-f0-9]{64}$/u.test(key))
-  );
-}
-
-function isExportHandoffInput(value: unknown): value is CodexWorktreeWorkerExportHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "transferId",
-      "sourceCwd",
-      "sourceWorkspaceRoot",
-      "stagingRoot",
-    ]) &&
-    isIdentity(value) &&
-    isTransferId(value.transferId) &&
-    isAbsolutePath(value.sourceCwd) &&
-    isAbsolutePath(value.sourceWorkspaceRoot) &&
-    isPathWithin(value.sourceWorkspaceRoot, value.sourceCwd) &&
-    isAbsolutePath(value.stagingRoot)
-  );
-}
-
-function isImportHandoffInput(value: unknown): value is CodexWorktreeWorkerImportHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "transferId",
-      "bundlePath",
-      "rolloutPath",
-      "rolloutRelativePath",
-      "destinationCodexHome",
-      "sourceCommit",
-      "repositoryIdentity",
-      "candidateRepositoryPaths",
-      "managedRoot",
-      "allocatedWorktreePath",
-      "nodexHome",
-      "projectId",
-      "threadId",
-      "threadTitle",
-    ]) &&
-    isIdentity(value) &&
-    isTransferId(value.transferId) &&
-    isAbsolutePath(value.bundlePath) &&
-    isAbsolutePath(value.rolloutPath) &&
-    isNonEmptyString(value.rolloutRelativePath, 8_192) &&
-    !path.isAbsolute(value.rolloutRelativePath) &&
-    !value.rolloutRelativePath.split(/[\\/]/u).includes("..") &&
-    isAbsolutePath(value.destinationCodexHome) &&
-    isNonEmptyString(value.sourceCommit, 256) &&
-    isRepositoryIdentity(value.repositoryIdentity) &&
-    isCandidateRepositoryPaths(value.candidateRepositoryPaths) &&
-    value.candidateRepositoryPaths.length > 0 &&
-    isAbsolutePath(value.managedRoot) &&
-    isAbsolutePath(value.allocatedWorktreePath) &&
-    value.allocatedWorktreePath !== value.managedRoot &&
-    isPathWithin(value.managedRoot, value.allocatedWorktreePath) &&
-    isAbsolutePath(value.nodexHome) &&
-    isNonEmptyString(value.projectId, 1_024) &&
-    isNonEmptyString(value.threadId, 1_024) &&
-    isNonEmptyString(value.threadTitle, 4_096)
-  );
-}
-
-function isCleanupTransferHandoffInput(
-  value: unknown,
-): value is CodexWorktreeWorkerCleanupTransferHandoffInput {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "transferId",
-      "stagingRoot",
-      "repositoryPath",
-      "temporaryRef",
-      "managedRoot",
-      "createdWorktreePath",
-      "createdRolloutPath",
-      "destinationCodexHome",
-      "outcome",
-    ]) &&
-    isIdentity(value) &&
-    isTransferId(value.transferId) &&
-    isAbsolutePath(value.stagingRoot) &&
-    isAbsolutePath(value.repositoryPath) &&
-    isNonEmptyString(value.temporaryRef, 1_024) &&
-    (value.managedRoot === null || isAbsolutePath(value.managedRoot)) &&
-    (value.createdWorktreePath === null || isAbsolutePath(value.createdWorktreePath)) &&
-    (value.createdRolloutPath === null || isAbsolutePath(value.createdRolloutPath)) &&
-    (value.destinationCodexHome === null || isAbsolutePath(value.destinationCodexHome)) &&
-    (value.createdWorktreePath === null ||
-      (typeof value.managedRoot === "string" &&
-        isPathWithin(value.managedRoot, value.createdWorktreePath))) &&
-    (value.createdRolloutPath === null ||
-      (typeof value.destinationCodexHome === "string" &&
-        isPathWithin(value.destinationCodexHome, value.createdRolloutPath))) &&
-    (value.outcome === "committed" || value.outcome === "rolled-back")
-  );
-}
-
-function isRequest(value: unknown): value is CodexWorktreeWorkerRequest {
-  if (!isRecord(value) || !isOperation(value.operation)) return false;
-  if (!hasOnlyKeys(value, ["operation", "input"])) return false;
-  switch (value.operation) {
-    case "git-root":
-      return isGitRootInput(value.input);
-    case "create":
-      return isCreateInput(value.input);
-    case "list":
-      return isListInput(value.input);
-    case "inspect":
-      return isInspectInput(value.input);
-    case "snapshot":
-      return isSnapshotInput(value.input);
-    case "remove":
-      return isRemoveInput(value.input);
-    case "restore":
-      return isRestoreInput(value.input);
-    case "set-owner":
-      return isSetOwnerInput(value.input);
-    case "prepare-handoff":
-      return isPrepareHandoffInput(value.input);
-    case "rollback-handoff":
-      return isRollbackHandoffInput(value.input);
-    case "cleanup-handoff":
-      return isCleanupHandoffInput(value.input);
-    case "export-handoff":
-      return isExportHandoffInput(value.input);
-    case "resolve-handoff-repository": {
-      const input = value.input;
-      return (
-        isRecord(input) &&
-        hasOnlyKeys(input, [
-          "requestId",
-          "hostId",
-          "repositoryIdentity",
-          "candidateRepositoryPaths",
-        ]) &&
-        isIdentity(input) &&
-        isRepositoryIdentity(input.repositoryIdentity) &&
-        isCandidateRepositoryPaths(input.candidateRepositoryPaths) &&
-        input.candidateRepositoryPaths.length > 0
-      );
-    }
-    case "import-handoff":
-      return isImportHandoffInput(value.input);
-    case "cleanup-transfer-handoff":
-      return isCleanupTransferHandoffInput(value.input);
-  }
-}
-
-export function isCodexWorktreeWorkerHostMessage(
-  value: unknown,
-): value is CodexWorktreeWorkerHostMessage {
-  if (!isRecord(value)) return false;
-  if (value.protocolVersion !== CODEX_WORKTREE_WORKER_PROTOCOL_VERSION) return false;
-  if (value.type === "shutdown") {
-    return hasOnlyKeys(value, ["type", "protocolVersion"]);
-  }
-  if (value.type === "cancel") {
-    return (
-      hasOnlyKeys(value, ["type", "protocolVersion", "id", "operation"]) &&
-      isNonEmptyString(value.id, 1_024) &&
-      isOperation(value.operation)
-    );
-  }
-  return (
-    value.type === "request" &&
-    hasOnlyKeys(value, ["type", "protocolVersion", "id", "request"]) &&
-    isNonEmptyString(value.id, 1_024) &&
-    isRequest(value.request)
-  );
-}
-
-export function assertCodexWorktreeWorkerHostMessage(
-  value: unknown,
-): asserts value is CodexWorktreeWorkerHostMessage {
-  if (isCodexWorktreeWorkerHostMessage(value)) return;
-  throw new Error(
-    `Worktree worker host message violates protocol version ${String(CODEX_WORKTREE_WORKER_PROTOCOL_VERSION)}`,
-  );
+  throw new Error(`Nodex built an invalid worktree "${message.type}" message: ${decoded.error}`);
 }
 
 export function createCodexWorktreeWorkerRequestMessage(input: {
   readonly id: string;
   readonly request: CodexWorktreeWorkerRequest;
 }): CodexWorktreeWorkerHostMessage {
-  const message = {
+  return validateOutgoingCodexWorktreeWorkerHostMessage({
     type: "request",
     protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
     id: input.id,
     request: input.request,
-  } satisfies CodexWorktreeWorkerHostMessage;
-  assertCodexWorktreeWorkerHostMessage(message);
-  return message;
-}
-
-function isHandoffBranchContext(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  return (
-    hasOnlyKeys(value, ["sourceBranch", "localBranch", "worktreeBranch"]) &&
-    ["sourceBranch", "localBranch", "worktreeBranch"].every((key) =>
-      isNullableString(value[key], 1_024),
-    )
-  );
-}
-
-function isWorkerEvent(value: unknown): value is CodexWorktreeWorkerEvent {
-  if (!isRecord(value) || !isOperation(value.operation)) return false;
-  if (value.type === "setup-started") return value.operation === "create";
-  if (value.type === "snapshot-started") {
-    return value.operation === "snapshot" || value.operation === "remove";
-  }
-  if (value.type === "cleanup-started") return value.operation === "remove";
-  if (value.type === "restore-started") return value.operation === "restore";
-  if (value.type === "handoff-progress") {
-    return (
-      (value.operation === "prepare-handoff" ||
-        value.operation === "rollback-handoff" ||
-        value.operation === "export-handoff" ||
-        value.operation === "import-handoff") &&
-      (value.branchContext === undefined || isHandoffBranchContext(value.branchContext)) &&
-      typeof value.step === "string" &&
-      (CODEX_WORKTREE_HANDOFF_STEPS as readonly string[]).includes(value.step) &&
-      (value.status === "started" ||
-        value.status === "completed" ||
-        value.status === "skipped" ||
-        value.status === "failed")
-    );
-  }
-  if (value.type === "path-allocated") {
-    return (
-      (value.operation === "create" ||
-        value.operation === "prepare-handoff" ||
-        value.operation === "import-handoff") &&
-      isAbsolutePath(value.worktreeGitRoot) &&
-      isAbsolutePath(value.worktreeWorkspaceRoot)
-    );
-  }
-  return (
-    value.type === "output" &&
-    (value.phase === "worktree" ||
-      value.phase === "setup" ||
-      value.phase === "snapshot" ||
-      value.phase === "cleanup" ||
-      value.phase === "restore") &&
-    (value.stream === "stdout" || value.stream === "stderr" || value.stream === "info") &&
-    typeof value.data === "string"
-  );
-}
-
-function isCreateResult(value: unknown): value is CodexWorktreeWorkerCreateResult {
-  return (
-    isRecord(value) &&
-    hasOnlyKeys(value, [
-      "worktreeGitRoot",
-      "worktreeWorkspaceRoot",
-      "setupError",
-      "branchName",
-      "shellEnvironment",
-    ]) &&
-    isAbsolutePath(value.worktreeGitRoot) &&
-    isAbsolutePath(value.worktreeWorkspaceRoot) &&
-    (value.branchName === undefined || isNullableString(value.branchName, 256)) &&
-    isNullableString(value.setupError, 64_000) &&
-    (value.shellEnvironment === null || isRecord(value.shellEnvironment))
-  );
-}
-
-function isSnapshotResult(value: unknown): value is CodexWorktreeWorkerSnapshotResult {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.worktreeId, 128) &&
-    isAbsolutePath(value.repositoryPath) &&
-    isNonEmptyString(value.snapshotRef, 1_024) &&
-    isNonEmptyString(value.commitId, 256) &&
-    typeof value.changed === "boolean"
-  );
-}
-
-function isAvailability(value: unknown): value is CodexWorktreeWorkerAvailability {
-  if (!isRecord(value)) return false;
-  if (value.state === "available" || value.state === "gone") return true;
-  if (value.state === "restorable") {
-    return isAbsolutePath(value.repositoryPath) && isNonEmptyString(value.snapshotRef, 1_024);
-  }
-  return (
-    value.state === "unavailable" &&
-    (value.reason === "inspection-failed" || value.reason === "no-candidate-roots") &&
-    isNonEmptyString(value.message, 64_000)
-  );
-}
-
-function isSuccess(
-  value: unknown,
-  operation: CodexWorktreeWorkerOperation,
-): value is CodexWorktreeWorkerSuccess {
-  if (!isRecord(value) || value.operation !== operation || !("value" in value)) return false;
-  const result = value.value;
-  switch (operation) {
-    case "git-root":
-      return isRecord(result) && (result.root === null || isExecutionHostAbsolutePath(result.root));
-    case "create":
-      return isCreateResult(result);
-    case "list":
-      return (
-        isRecord(result) &&
-        Array.isArray(result.entries) &&
-        result.entries.length <= 100_000 &&
-        result.entries.every(
-          (entry) =>
-            isRecord(entry) &&
-            isAbsolutePath(entry.worktreeGitRoot) &&
-            (entry.repositoryPath === null || isAbsolutePath(entry.repositoryPath)) &&
-            (entry.createdAtMs === null ||
-              (typeof entry.createdAtMs === "number" &&
-                Number.isFinite(entry.createdAtMs) &&
-                entry.createdAtMs >= 0 &&
-                entry.createdAtMs <= Number.MAX_SAFE_INTEGER)) &&
-            (entry.ownerThreadId === null || isNonEmptyString(entry.ownerThreadId, 1_024)) &&
-            typeof entry.ownerReadFailed === "boolean",
-        )
-      );
-    case "inspect":
-      return isRecord(result) && isAvailability(result.availability);
-    case "snapshot":
-      return isSnapshotResult(result);
-    case "remove":
-      return (
-        isRecord(result) &&
-        typeof result.removed === "boolean" &&
-        typeof result.alreadyMissing === "boolean" &&
-        (result.snapshot === null || isSnapshotResult(result.snapshot)) &&
-        Array.isArray(result.warnings) &&
-        result.warnings.length <= 128 &&
-        result.warnings.every((warning) => typeof warning === "string")
-      );
-    case "restore":
-      return (
-        isRecord(result) &&
-        isAbsolutePath(result.worktreeGitRoot) &&
-        isAbsolutePath(result.cwd) &&
-        isAbsolutePath(result.repositoryPath) &&
-        isNonEmptyString(result.snapshotRef, 1_024) &&
-        isNullableString(result.ownerWarning, 64_000)
-      );
-    case "set-owner":
-      return isRecord(result) && isNonEmptyString(result.ownerThreadId, 1_024);
-    case "prepare-handoff":
-      return isPreparedHandoff(result);
-    case "rollback-handoff":
-      return (
-        isRecord(result) && typeof result.rolledBack === "boolean" && isWarnings(result.warnings)
-      );
-    case "cleanup-handoff":
-      return isRecord(result) && typeof result.cleaned === "boolean" && isWarnings(result.warnings);
-    case "export-handoff":
-      return (
-        isRecord(result) &&
-        isAbsolutePath(result.sourceRepositoryPath) &&
-        isNonEmptyString(result.sourceBranch, 1_024) &&
-        isNonEmptyString(result.sourceCommit, 256) &&
-        isNonEmptyString(result.temporaryRef, 1_024) &&
-        isRepositoryIdentity(result.repositoryIdentity) &&
-        isRecord(result.bundle) &&
-        isAbsolutePath(result.bundle.path) &&
-        typeof result.bundle.sha256 === "string" &&
-        /^[a-f0-9]{64}$/u.test(result.bundle.sha256) &&
-        Number.isSafeInteger(result.bundle.size) &&
-        Number(result.bundle.size) >= 0
-      );
-    case "resolve-handoff-repository":
-      return isRecord(result) && isExecutionHostAbsolutePath(result.repositoryPath);
-    case "import-handoff":
-      return (
-        isRecord(result) &&
-        isAbsolutePath(result.destinationRepositoryPath) &&
-        isAbsolutePath(result.destinationWorkspaceRoot) &&
-        isAbsolutePath(result.destinationGitRoot) &&
-        isAbsolutePath(result.managedWorktreePath) &&
-        isNonEmptyString(result.temporaryRef, 1_024) &&
-        isAbsolutePath(result.destinationRolloutPath) &&
-        typeof result.destinationRolloutCreated === "boolean"
-      );
-    case "cleanup-transfer-handoff":
-      return isRecord(result) && typeof result.cleaned === "boolean" && isWarnings(result.warnings);
-  }
-}
-
-export function isCodexWorktreeWorkerThreadMessage(
-  value: unknown,
-): value is CodexWorktreeWorkerThreadMessage {
-  if (!isRecord(value)) return false;
-  if (value.type === "ready") {
-    return (
-      hasOnlyKeys(value, ["type", "epoch", "hostId", "protocolVersion"]) &&
-      Number.isSafeInteger(value.epoch) &&
-      isNonEmptyString(value.hostId, 512) &&
-      value.protocolVersion === CODEX_WORKTREE_WORKER_PROTOCOL_VERSION
-    );
-  }
-  if (!isNonEmptyString(value.id, 1_024) || !isOperation(value.operation)) return false;
-  if (value.type === "event") {
-    return isWorkerEvent(value.event) && value.event.operation === value.operation;
-  }
-  if (value.type !== "result" || !isRecord(value.result)) return false;
-  if (value.result.type === "error") {
-    return (
-      (value.result.code === "canceled" ||
-        value.result.code === "invalid-request" ||
-        value.result.code === "operation-failed" ||
-        value.result.code === "release-unconfirmed") &&
-      typeof value.result.message === "string" &&
-      typeof value.result.retryable === "boolean" &&
-      (value.result.preparationRestored === undefined ||
-        (value.operation === "prepare-handoff" &&
-          typeof value.result.preparationRestored === "boolean"))
-    );
-  }
-  return value.result.type === "ok" && isSuccess(value.result.success, value.operation);
+  });
 }

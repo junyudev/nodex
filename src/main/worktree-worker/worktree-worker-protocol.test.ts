@@ -1,9 +1,15 @@
 import { describe, expect, test } from "vite-plus/test";
+import { createSessionSchema } from "../../shared/nodex-app-tools/session-launch-schema";
+import { AgentRuntimeLaunchSchema } from "../../shared/schemas/agent-runtime-api";
 import {
   CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
-  isCodexWorktreeWorkerHostMessage,
-  isCodexWorktreeWorkerThreadMessage,
+  decodeCodexWorktreeWorkerHostMessage,
+  decodeCodexWorktreeWorkerThreadMessage,
 } from "./worktree-worker-protocol";
+
+const acceptsHostMessage = (message: unknown) => decodeCodexWorktreeWorkerHostMessage(message).ok;
+const acceptsThreadMessage = (message: unknown) =>
+  decodeCodexWorktreeWorkerThreadMessage(message).ok;
 
 function createRequest() {
   return {
@@ -49,9 +55,9 @@ describe("worktree worker protocol", () => {
         },
       },
     } as const;
-    expect(isCodexWorktreeWorkerHostMessage(request)).toBe(true);
+    expect(acceptsHostMessage(request)).toBe(true);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...request,
         request: {
           ...request.request,
@@ -60,7 +66,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...request,
         request: { ...request.request, input: { ...request.request.input, cwd: "relative/path" } },
       }),
@@ -73,7 +79,7 @@ describe("worktree worker protocol", () => {
       null,
     ] as const) {
       expect(
-        isCodexWorktreeWorkerThreadMessage({
+        acceptsThreadMessage({
           type: "result",
           id: "git-root:1",
           operation: "git-root",
@@ -85,7 +91,7 @@ describe("worktree worker protocol", () => {
       ).toBe(true);
     }
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "result",
         id: "git-root:1",
         operation: "git-root",
@@ -98,7 +104,114 @@ describe("worktree worker protocol", () => {
   });
 
   test("accepts a versioned create request with an exact operation discriminator", () => {
-    expect(isCodexWorktreeWorkerHostMessage(createRequest())).toBe(true);
+    expect(acceptsHostMessage(createRequest())).toBe(true);
+  });
+
+  test("decodes create_session and launch API starting states without rewriting them", () => {
+    const agentStates = [
+      { type: "working-tree" },
+      { type: "branch", branchName: "feature" },
+      { type: "branch", branchName: "feature", onMissing: "error" },
+      { type: "branch", branchName: "feature", onMissing: "create-branch" },
+    ];
+    const remoteState = {
+      type: "branch",
+      branchName: "feature",
+      remoteRef: "refs/remotes/origin/feature",
+    };
+    const spacedBranch = { type: "branch", branchName: " feature " };
+    const parseAgent = (startingState: unknown) =>
+      createSessionSchema.safeParse({
+        prompt: "Start a worktree",
+        target: {
+          type: "project",
+          projectId: "project-1",
+          environment: { type: "worktree", startingState },
+        },
+      });
+    const parseLaunch = (worktreeStartingState: unknown) =>
+      AgentRuntimeLaunchSchema.safeParse({
+        launchId: "launch-1",
+        acceptedAt: 0,
+        sessionId: "session-1",
+        projectId: "project-1",
+        title: "Start a worktree",
+        modelSelection: { instanceId: "instance-1", model: "model-1" },
+        interactionMode: "default",
+        runInTarget: "newWorktree",
+        message: { messageId: "message-1", text: "Start a worktree" },
+        worktreeStartingState,
+      });
+    const expectCreateRoundTrip = (startingState: unknown) => {
+      const message = createRequest();
+      const withState = {
+        ...message,
+        request: {
+          ...message.request,
+          input: { ...message.request.input, startingState },
+        },
+      };
+      expect(decodeCodexWorktreeWorkerHostMessage(withState)).toEqual({
+        ok: true,
+        value: withState,
+      });
+    };
+
+    for (const startingState of agentStates) {
+      const session = parseAgent(startingState);
+      if (!session.success) throw session.error;
+      const { target } = session.data;
+      if (target.type !== "project" || target.environment.type !== "worktree") {
+        throw new Error("Expected a Project worktree target");
+      }
+      expect(target.environment.startingState).toEqual(startingState);
+      expectCreateRoundTrip(target.environment.startingState);
+    }
+    for (const startingState of [...agentStates, remoteState]) {
+      const launch = parseLaunch(startingState);
+      if (!launch.success) throw launch.error;
+      expect(launch.data.worktreeStartingState).toEqual(startingState);
+      expectCreateRoundTrip(launch.data.worktreeStartingState);
+    }
+    expect(parseAgent(remoteState).success).toBe(false);
+    expect(parseAgent(spacedBranch).success).toBe(false);
+    expect(parseLaunch(spacedBranch).success).toBe(false);
+  });
+
+  test("preserves empty and untrimmed title hints up to 4096 characters", () => {
+    const message = createRequest();
+    const withTitle = (threadTitle: string) => ({
+      ...message,
+      request: { ...message.request, input: { ...message.request.input, threadTitle } },
+    });
+    for (const threadTitle of ["", "  Implement feature  ", "x".repeat(4_096)]) {
+      expect(decodeCodexWorktreeWorkerHostMessage(withTitle(threadTitle))).toEqual({
+        ok: true,
+        value: withTitle(threadTitle),
+      });
+    }
+    expect(decodeCodexWorktreeWorkerHostMessage(withTitle("x".repeat(4_097)))).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/^request\.input\.threadTitle:/u),
+    });
+  });
+
+  test("reports the path of an unknown key in a strict request body", () => {
+    const message = createRequest();
+    const decoded = decodeCodexWorktreeWorkerHostMessage({
+      ...message,
+      request: {
+        ...message.request,
+        input: {
+          ...message.request.input,
+          startingState: { ...message.request.input.startingState, missingBranch: "error" },
+        },
+      },
+    });
+    expect(decoded).toMatchObject({
+      ok: false,
+      error: "request.input.startingState.missingBranch: Unrecognized key",
+    });
   });
 
   test("requires an absolute claimed checkout path in a Page Workspace create request", () => {
@@ -115,7 +228,7 @@ describe("worktree worker protocol", () => {
       [undefined, false],
     ] as const) {
       expect(
-        isCodexWorktreeWorkerHostMessage({
+        acceptsHostMessage({
           ...message,
           request: {
             ...message.request,
@@ -132,7 +245,7 @@ describe("worktree worker protocol", () => {
       ".codex/environments/../outside.toml",
     ]) {
       expect(
-        isCodexWorktreeWorkerHostMessage({
+        acceptsHostMessage({
           ...createRequest(),
           request: {
             ...createRequest().request,
@@ -147,14 +260,24 @@ describe("worktree worker protocol", () => {
   });
 
   test("rejects version drift and unknown operations", () => {
+    const protocolVersion = CODEX_WORKTREE_WORKER_PROTOCOL_VERSION - 1;
+    const mismatch = {
+      ok: false,
+      error: `protocolVersion: Worktree worker protocol version mismatch (expected ${CODEX_WORKTREE_WORKER_PROTOCOL_VERSION}, received ${protocolVersion})`,
+    };
+    expect(decodeCodexWorktreeWorkerHostMessage({ ...createRequest(), protocolVersion })).toEqual(
+      mismatch,
+    );
     expect(
-      isCodexWorktreeWorkerHostMessage({
-        ...createRequest(),
-        protocolVersion: 1,
+      decodeCodexWorktreeWorkerThreadMessage({
+        type: "ready",
+        epoch: 1,
+        hostId: "local",
+        protocolVersion,
       }),
-    ).toBe(false);
+    ).toEqual(mismatch);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...createRequest(),
         request: { operation: "guess-from-shape", input: createRequest().request.input },
       }),
@@ -177,9 +300,9 @@ describe("worktree worker protocol", () => {
         },
       },
     } as const;
-    expect(isCodexWorktreeWorkerHostMessage(removeRequest)).toBe(true);
+    expect(acceptsHostMessage(removeRequest)).toBe(true);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...removeRequest,
         request: {
           ...removeRequest.request,
@@ -195,7 +318,7 @@ describe("worktree worker protocol", () => {
 
   test("allows handoff from an old root into the current destination root", () => {
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         type: "request",
         protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
         id: "prepare-handoff:1",
@@ -209,7 +332,7 @@ describe("worktree worker protocol", () => {
             nodexHome: "/nodex-home",
             projectId: "project-1",
             threadId: "thread-1",
-            threadTitle: "Move task",
+            threadTitle: "",
             sourceCwd: "/old-managed-root/abcd/repo/packages/app",
             sourceWorkspaceRoot: "/old-managed-root/abcd/repo",
             sourceManagedWorktreePath: "/old-managed-root/abcd/repo",
@@ -222,7 +345,7 @@ describe("worktree worker protocol", () => {
 
   test("requires event and result operations to agree with their payload", () => {
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "ready",
         epoch: 2,
         hostId: "local",
@@ -230,7 +353,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "event",
         id: "create:1",
         operation: "create",
@@ -243,7 +366,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "event",
         id: "prepare-handoff:1",
         operation: "prepare-handoff",
@@ -256,7 +379,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "event",
         id: "create:1",
         operation: "remove",
@@ -269,7 +392,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(false);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "event",
         id: "remove:1",
         operation: "remove",
@@ -280,7 +403,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "result",
         id: "create:1",
         operation: "create",
@@ -299,7 +422,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "result",
         id: "create:1",
         operation: "remove",
@@ -319,9 +442,31 @@ describe("worktree worker protocol", () => {
     ).toBe(false);
   });
 
+  test("retains every create result field consumed by Main", () => {
+    const message = {
+      type: "result",
+      id: "create:1",
+      operation: "create",
+      result: {
+        type: "ok",
+        success: {
+          operation: "create",
+          value: {
+            worktreeGitRoot: "/managed/abcd/repo",
+            worktreeWorkspaceRoot: "/managed/abcd/repo/packages/app",
+            branchName: "feature",
+            setupError: null,
+            shellEnvironment: { version: 1, set: { PATH: "/bin" }, exclude: ["TMPDIR"] },
+          },
+        },
+      },
+    };
+    expect(decodeCodexWorktreeWorkerThreadMessage(message)).toEqual({ ok: true, value: message });
+  });
+
   test("accepts filesystem birth timestamps with sub-millisecond precision", () => {
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "result",
         id: "list:1",
         operation: "list",
@@ -345,7 +490,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(true);
     expect(
-      isCodexWorktreeWorkerThreadMessage({
+      acceptsThreadMessage({
         type: "result",
         id: "list:2",
         operation: "list",
@@ -396,7 +541,7 @@ describe("worktree worker protocol", () => {
           nodexHome: "/remote/.nodex",
           projectId: "project",
           threadId: "thread",
-          threadTitle: "Task",
+          threadTitle: "  Task  ",
         },
       },
     } as const;
@@ -408,9 +553,9 @@ describe("worktree worker protocol", () => {
         input: { requestId: "resolve:1", hostId, repositoryIdentity, candidateRepositoryPaths },
       },
     };
-    expect(isCodexWorktreeWorkerHostMessage(resolutionRequest)).toBe(true);
+    expect(acceptsHostMessage(resolutionRequest)).toBe(true);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...resolutionRequest,
         request: {
           ...resolutionRequest.request,
@@ -418,9 +563,9 @@ describe("worktree worker protocol", () => {
         },
       }),
     ).toBe(false);
-    expect(isCodexWorktreeWorkerHostMessage(importRequest)).toBe(true);
+    expect(acceptsHostMessage(importRequest)).toBe(true);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...importRequest,
         request: {
           ...importRequest.request,
@@ -429,7 +574,7 @@ describe("worktree worker protocol", () => {
       }),
     ).toBe(false);
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         ...importRequest,
         request: {
           ...importRequest.request,
@@ -442,7 +587,7 @@ describe("worktree worker protocol", () => {
     ).toBe(false);
 
     expect(
-      isCodexWorktreeWorkerHostMessage({
+      acceptsHostMessage({
         type: "request",
         protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
         id: "cleanup:1",
@@ -484,9 +629,9 @@ test("validates handoff branch context before forwarding worker progress", () =>
       },
     },
   };
-  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
+  expect(acceptsThreadMessage(message)).toBe(true);
   expect(
-    isCodexWorktreeWorkerThreadMessage({
+    acceptsThreadMessage({
       ...message,
       event: {
         ...message.event,
@@ -495,7 +640,7 @@ test("validates handoff branch context before forwarding worker progress", () =>
     }),
   ).toBe(false);
   expect(
-    isCodexWorktreeWorkerThreadMessage({
+    acceptsThreadMessage({
       ...message,
       event: { ...message.event, branchContext: { sourceBranch: "main" } },
     }),
@@ -515,10 +660,10 @@ test("accepts restoration proof only for a typed handoff preparation failure", (
       preparationRestored: true,
     },
   };
-  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
-  expect(isCodexWorktreeWorkerThreadMessage({ ...message, operation: "create" })).toBe(false);
+  expect(acceptsThreadMessage(message)).toBe(true);
+  expect(acceptsThreadMessage({ ...message, operation: "create" })).toBe(false);
   expect(
-    isCodexWorktreeWorkerThreadMessage({
+    acceptsThreadMessage({
       ...message,
       result: { ...message.result, preparationRestored: "yes" },
     }),
@@ -537,9 +682,9 @@ test("accepts a native release outcome independently of cancellation", () => {
       retryable: true,
     },
   };
-  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
+  expect(acceptsThreadMessage(message)).toBe(true);
   expect(
-    isCodexWorktreeWorkerThreadMessage({
+    acceptsThreadMessage({
       ...message,
       result: { ...message.result, code: "unknown-release-state" },
     }),

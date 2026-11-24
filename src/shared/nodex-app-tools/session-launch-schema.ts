@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AgentRuntimeModeSchema } from "../schemas/agent-runtime-api";
+import { AgentWorktreeStartingStateSchema } from "../schemas/worktree-starting-state";
 import { idempotencyKeySchema } from "./idempotency-key";
 import { toolInputSchema } from "./tool-input-schema";
 
@@ -20,20 +21,7 @@ export const createSessionSchema = z.strictObject({
         z.strictObject({ type: z.literal("local") }),
         z.strictObject({
           type: z.literal("worktree"),
-          startingState: z
-            .discriminatedUnion("type", [
-              z.strictObject({ type: z.literal("working-tree") }),
-              z.strictObject({
-                type: z.literal("branch"),
-                branchName: z
-                  .string()
-                  .regex(/\S/, "Must contain a non-whitespace character")
-                  .min(1)
-                  .max(512),
-                onMissing: z.enum(["error", "create-branch"]).optional(),
-              }),
-            ])
-            .optional(),
+          startingState: AgentWorktreeStartingStateSchema.optional(),
         }),
       ]),
     }),

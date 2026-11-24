@@ -301,6 +301,9 @@ An explicit branch target can set `onMissing: "create-branch"` to create that ex
 from the repository's default branch when absent. Omitting this option rejects a missing
 branch. Existing branches retain their history; failed worktree creation removes a newly
 created branch only while it still points at the original commit.
+Arguments `create_session` accepts are complete: workspace preparation never rejects them
+again. A preparation failure after admission comes from the repository or host, such as a
+missing branch or a failing setup script, and fails that Session's first Run.
 Unspecified execution settings resolve through the destination's normal launch defaults.
 The response identifies the Session, operation and accepted execution binding. Attachment
 alone does not prove that the first Run completed. Use `wait_sessions` to observe completion. Failed launches retain their

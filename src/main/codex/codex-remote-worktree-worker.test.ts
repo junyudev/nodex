@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import type { CodexWorktreeWorkerCreateInput } from "./codex-worktree-worker-protocol";
@@ -28,7 +29,7 @@ const createInput = (): CodexWorktreeWorkerCreateInput => ({
   propagateLocalWorkspaceFiles: false,
 });
 
-const makeSshChild = () => {
+const makeSshChild = (protocolVersion: number = CODEX_WORKTREE_WORKER_PROTOCOL_VERSION) => {
   const child = new EventEmitter() as EventEmitter & {
     exitCode: number | null;
     signalCode: NodeJS.Signals | null;
@@ -77,9 +78,10 @@ const makeSshChild = () => {
           type: "ready",
           epoch: 1,
           hostId: "ssh:devbox",
-          protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+          protocolVersion,
         })}\n`,
       );
+      if (protocolVersion !== CODEX_WORKTREE_WORKER_PROTOCOL_VERSION) continue;
       child.stdout.write(
         `${JSON.stringify({
           type: "event",
@@ -136,17 +138,56 @@ it.effect("rejects protocol drift before opening an SSH worker", () =>
       );
       assert.isTrue(Exit.isFailure(result));
       if (Exit.isFailure(result)) {
-        assert.match(String(Cause.squash(result.cause)), /violates protocol version/u);
+        assert.include(
+          String(Cause.squash(result.cause)),
+          'Nodex built an invalid worktree "create" request: input.localEnvironmentConfigPath:',
+        );
       }
       assert.strictEqual(openWorker.mock.calls.length, 0);
     }),
   ),
 );
 
+it.effect("reports both versions when the SSH worker uses a different protocol", () =>
+  Effect.gen(function* () {
+    const oldVersion = CODEX_WORKTREE_WORKER_PROTOCOL_VERSION - 1;
+    const fixture = makeSshChild(oldVersion);
+    const scope = yield* Scope.make();
+    try {
+      const worker = yield* makeCodexRemoteWorktreeWorker({
+        hostId: "ssh:devbox",
+        openWorker: () => Promise.resolve(fixture.child),
+      }).pipe(Scope.provide(scope));
+      const result = yield* Effect.exit(
+        worker.request({
+          operation: "create",
+          input: { ...createInput(), localEnvironmentConfigPath: null },
+        }),
+      );
+      assert.isTrue(Exit.isFailure(result));
+      if (Exit.isFailure(result)) {
+        assert.include(
+          String(Cause.squash(result.cause)),
+          `protocol version mismatch (expected ${CODEX_WORKTREE_WORKER_PROTOCOL_VERSION}, received ${oldVersion})`,
+        );
+      }
+    } finally {
+      // Retirement cannot confirm a request that never received a terminal result.
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(Scope.close(scope, Exit.void))));
+    }
+  }),
+);
+
 it.effect("frames remote requests and releases the SSH child through its Scope", () =>
   Effect.gen(function* () {
     const fixture = makeSshChild();
     const events: string[] = [];
+    const input = {
+      ...createInput(),
+      threadTitle: "  Implement feature  ",
+      startingState: { type: "branch", branchName: "main", onMissing: "create-branch" },
+      localEnvironmentConfigPath: null,
+    } satisfies CodexWorktreeWorkerCreateInput;
     const result = yield* Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* makeCodexRemoteWorktreeWorker({
@@ -156,7 +197,7 @@ it.effect("frames remote requests and releases the SSH child through its Scope",
         return yield* worker.request(
           {
             operation: "create",
-            input: { ...createInput(), localEnvironmentConfigPath: null },
+            input,
           },
           {
             onEvent: (event) => Effect.sync(() => events.push(event.type)),
@@ -171,6 +212,9 @@ it.effect("frames remote requests and releases the SSH child through its Scope",
       fixture.messages.map((message) => message.type),
       ["request", "shutdown"],
     );
+    const sent = fixture.messages[0];
+    assert.strictEqual(sent?.type, "request");
+    if (sent?.type === "request") assert.deepEqual(sent.request, { operation: "create", input });
     assert.deepEqual(fixture.forcedSignals, []);
   }),
 );

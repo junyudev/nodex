@@ -16,7 +16,7 @@ describe("Codex dynamic create-thread contract", () => {
             projectId: " project-id ",
             environment: {
               type: "worktree",
-              startingState: { type: "branch", branchName: " feature/exact " },
+              startingState: { type: "branch", branchName: "feature/exact" },
             },
           },
           model: " gpt-exact ",
@@ -31,7 +31,7 @@ describe("Codex dynamic create-thread contract", () => {
           projectId: " project-id ",
           environment: {
             type: "worktree",
-            startingState: { type: "branch", branchName: " feature/exact " },
+            startingState: { type: "branch", branchName: "feature/exact" },
           },
         },
         model: " gpt-exact ",
@@ -73,6 +73,20 @@ describe("Codex dynamic create-thread contract", () => {
           type: "project",
           projectId: "p",
           environment: { type: "worktree", startingState: { type: "branch", branchName: "" } },
+        },
+      }),
+    ).toBe(null);
+    expect(
+      parseCodexDynamicCreateThreadInput({
+        prompt: "x",
+        target: {
+          type: "project",
+          projectId: "p",
+          // The worker never accepts a branch name with surrounding whitespace.
+          environment: {
+            type: "worktree",
+            startingState: { type: "branch", branchName: " feature/exact " },
+          },
         },
       }),
     ).toBe(null);

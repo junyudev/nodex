@@ -12,6 +12,7 @@ import type {
 } from "../agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../agent-runtime-api";
 import { CodexTurnPresentationTicketSchema } from "../nodex-app-tools/turn-presentation";
+import { WorktreeStartingStateSchema } from "./worktree-starting-state";
 
 const id = z
   .string()
@@ -130,19 +131,7 @@ export const AgentRuntimeLaunchSchema = z
     runInTarget: z.enum(["localProject", "newWorktree"]).optional(),
     sourceRoot: z.string().trim().min(1).max(32768).optional(),
     runInEnvironmentPath: id.nullable().optional(),
-    worktreeStartingState: z
-      .discriminatedUnion("type", [
-        z.object({ type: z.literal("working-tree") }).strict(),
-        z
-          .object({
-            type: z.literal("branch"),
-            branchName: id,
-            remoteRef: id.optional(),
-            onMissing: z.enum(["error", "create-branch"]).optional(),
-          })
-          .strict(),
-      ])
-      .optional(),
+    worktreeStartingState: WorktreeStartingStateSchema.optional(),
     branch: id.nullable().optional(),
     worktreePath: id.nullable().optional(),
     message: AgentRuntimeMessageSchema,
