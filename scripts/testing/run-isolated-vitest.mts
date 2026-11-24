@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createVitest, parseCLI, startVitest } from "vite-plus/test/node";
-import { prioritizeTests } from "./cache-test-order.ts";
+import { prioritizeTests, testFileSelection } from "./cache-test-order.ts";
 
 const [directory, ...args] = process.argv.slice(2);
 if (!directory) throw new Error("Expected an isolated Vitest directory.");
@@ -25,13 +25,11 @@ const files = await readFile(path.join(directory, "files.json"), "utf8").catch((
 if (files === undefined) {
   await startVitest(filter, settings, vite);
 } else {
-  const selected = new Set((JSON.parse(files) as string[]).map((file) => path.resolve(file)));
+  const selected = testFileSelection(process.cwd(), JSON.parse(files) as string[]);
   const runner = await createVitest(settings, vite);
   try {
     await runner.standalone();
-    const specifications = (await runner.globTestSpecifications()).filter(({ moduleId }) =>
-      selected.has(moduleId),
-    );
+    const specifications = (await runner.globTestSpecifications()).filter(selected.matches);
     if (specifications.length !== selected.size)
       throw new Error("Test selection changed during discovery.");
     await runner.runTestSpecifications(specifications);

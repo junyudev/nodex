@@ -10,7 +10,7 @@ import { identifyVitestTransformCaches } from "./test-observation-transform-cach
 import type { TestObservation } from "./test-observation.mts";
 import { relativeInput } from "./test-cache-policy.ts";
 import { portablePath } from "./test-cache-inputs.ts";
-import { prioritizeTests } from "./cache-test-order.ts";
+import { prioritizeTests, testFileSelection } from "./cache-test-order.ts";
 
 async function readObservations(directory: string | undefined) {
   const observations = new Map<string, TestObservation | undefined>();
@@ -164,11 +164,9 @@ export async function runCacheBatch(
     { cacheDir },
   );
   try {
-    const selected = new Set(files.map((file) => path.resolve(root, file)));
+    const selected = testFileSelection(root, files);
     await runner.standalone();
-    const specifications = (await runner.globTestSpecifications()).filter((spec) =>
-      selected.has(spec.moduleId),
-    );
+    const specifications = (await runner.globTestSpecifications()).filter(selected.matches);
     if (specifications.length !== selected.size)
       throw new Error("Test selection changed during cache lookup.");
     await runner.runTestSpecifications(specifications);
