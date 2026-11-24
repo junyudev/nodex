@@ -82,19 +82,11 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
     `;
   });
 
-/**
- * A file watch attaches shortly after `start` returns, and the OS drops a change made before it is
- * ready, so these specs repeat the change until a reload arrives instead of racing the watch.
- */
-const repeatUntilReload = <A, E, R, E2, R2>(
-  changes: Stream.Stream<A, E, R>,
-  change: Effect.Effect<void, E2, R2>,
-) =>
-  changes.pipe(
-    Stream.runHead,
-    Effect.raceFirst(change.pipe(Effect.andThen(Effect.sleep("200 millis")), Effect.forever)),
-    Effect.timeout("15 seconds"),
-  );
+// Native watch hints can produce multiple snapshots while a link is being replaced.
+const waitForSettingsChange = (
+  changes: Stream.Stream<ServerSettings>,
+  matches: (settings: ServerSettings) => boolean,
+) => changes.pipe(Stream.filter(matches), Stream.runHead, Effect.map(Option.getOrThrow));
 
 it.layer(NodeServices.layer)("server settings", (it) => {
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
@@ -227,14 +219,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* service.start;
         const changes = yield* service.subscribeChanges;
 
-        const change = yield* repeatUntilReload(
+        yield* writeFileStringAtomically({
+          filePath: linkedSettingsPath,
+          contents: `{ "responseStreamingMode": "paragraph" }`,
+        });
+        yield* waitForSettingsChange(
           changes,
-          writeFileStringAtomically({
-            filePath: linkedSettingsPath,
-            contents: `{ "responseStreamingMode": "paragraph" }`,
-          }),
+          (settings) => settings.responseStreamingMode === "paragraph",
         );
-        assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
       }),
     ).pipe(TestClock.withLive, Effect.provide(layerServerSettings())),
   );
@@ -252,29 +244,32 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* fs.makeDirectory(path.dirname(firstSettingsPath), { recursive: true });
         yield* fs.makeDirectory(path.dirname(secondSettingsPath), { recursive: true });
         yield* fs.writeFileString(firstSettingsPath, `{ "responseStreamingMode": "turn" }`);
-        yield* fs.writeFileString(secondSettingsPath, `{ "responseStreamingMode": "paragraph" }`);
+        yield* fs.writeFileString(
+          secondSettingsPath,
+          `{ "responseStreamingMode": "paragraph", "projectSettingsFolded": true }`,
+        );
         yield* fs.remove(config.settingsPath, { force: true });
         yield* fs.symlink(firstSettingsPath, config.settingsPath);
         yield* service.start;
 
         const repointChanges = yield* service.subscribeChanges;
-        const repointed = yield* repeatUntilReload(
+        yield* fs.remove(config.settingsPath, { force: true });
+        yield* fs.symlink(secondSettingsPath, config.settingsPath);
+        yield* waitForSettingsChange(
           repointChanges,
-          fs
-            .remove(config.settingsPath, { force: true })
-            .pipe(Effect.andThen(fs.symlink(secondSettingsPath, config.settingsPath))),
+          (settings) =>
+            settings.projectSettingsFolded && settings.responseStreamingMode === "paragraph",
         );
-        assert.equal(Option.getOrUndefined(repointed)?.responseStreamingMode, "paragraph");
 
         const editChanges = yield* service.subscribeChanges;
-        const edited = yield* repeatUntilReload(
+        yield* writeFileStringAtomically({
+          filePath: secondSettingsPath,
+          contents: `{ "responseStreamingMode": "turn", "projectSettingsFolded": true }`,
+        });
+        yield* waitForSettingsChange(
           editChanges,
-          writeFileStringAtomically({
-            filePath: secondSettingsPath,
-            contents: `{ "responseStreamingMode": "turn" }`,
-          }),
+          (settings) => settings.projectSettingsFolded && settings.responseStreamingMode === "turn",
         );
-        assert.equal(Option.getOrUndefined(edited)?.responseStreamingMode, "turn");
       }),
     ).pipe(TestClock.withLive, Effect.provide(layerServerSettings())),
   );
@@ -293,14 +288,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         yield* service.start;
         const changes = yield* service.subscribeChanges;
 
-        const change = yield* repeatUntilReload(
+        yield* writeFileStringAtomically({
+          filePath: linkedSettingsPath,
+          contents: `{ "responseStreamingMode": "paragraph" }`,
+        });
+        yield* waitForSettingsChange(
           changes,
-          writeFileStringAtomically({
-            filePath: linkedSettingsPath,
-            contents: `{ "responseStreamingMode": "paragraph" }`,
-          }),
+          (settings) => settings.responseStreamingMode === "paragraph",
         );
-        assert.equal(Option.getOrUndefined(change)?.responseStreamingMode, "paragraph");
       }),
     ).pipe(TestClock.withLive, Effect.provide(layerServerSettings())),
   );
