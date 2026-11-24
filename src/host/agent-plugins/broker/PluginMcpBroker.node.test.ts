@@ -16,6 +16,7 @@ import { dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
@@ -487,7 +488,11 @@ it.live("revokes delivery while the last call drains before stopping the child",
 );
 
 it.effect("stops a hung upstream after the shutdown grace period", () => {
-  const messages: unknown[] = [];
+  const shutdownLogged = Deferred.makeUnsafe<PluginMcpFailure>();
+  const logger = Logger.make(({ message }) => {
+    const failure = [message].flat().find((item) => item instanceof PluginMcpFailure);
+    if (failure) Deferred.doneUnsafe(shutdownLogged, Effect.succeed(failure));
+  });
   return Effect.gen(function* () {
     const { broker, paused, pid, lease } = yield* startPausedStdioCall({
       requestTimeoutMs: 20_000,
@@ -498,19 +503,10 @@ it.effect("stops a hung upstream after the shutdown grace period", () => {
     yield* TestClock.adjust(249);
     expect(() => process.kill(pid, 0)).not.toThrow();
     yield* TestClock.adjust(1);
-    yield* Effect.promise(() =>
-      vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(/ESRCH/)),
-    );
-    expect(
-      messages
-        .flat()
-        .filter((item) => item instanceof PluginMcpFailure)
-        .map(({ code }) => code),
-    ).toEqual(["shutdown_timeout"]);
-  }).pipe(
-    Effect.scoped,
-    Effect.provide(Logger.layer([Logger.make(({ message }) => messages.push(message))])),
-  );
+    // The broker logs the timeout after it finishes closing the child transport.
+    expect(yield* Deferred.await(shutdownLogged)).toMatchObject({ code: "shutdown_timeout" });
+    expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
+  }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger])));
 });
 
 it.live("requires approval before calling and returns typed deny and unanswered decisions", () =>
