@@ -25,8 +25,8 @@ import {
 } from "./AgentRuntimeConversationWork.test-support";
 import { windowRuntimeWorkId } from "./AgentRuntimeWork";
 
-/** Today's snapshot of runtime-short, and the patches of one dual-window reply to one window. */
-const SHORT_SNAPSHOT_BYTES = 43_538;
+/** Today's runtime-short snapshot excluding the platform-dependent fixture metadata. */
+const SHORT_SNAPSHOT_BYTES = 43_385;
 const DUAL_WINDOW_STREAM_BYTES = 2_006;
 
 it.live(
@@ -49,6 +49,7 @@ it.live(
               renderer: counts(coldRenderer),
               snapshotBytes: coldMain["runtime.reply:thread.snapshot"]?.bytes,
               snapshotRows: coldMain["runtime.reply:thread.snapshot"]?.rows,
+              snapshotFixtureMetadataBytes: harness.snapshotFixtureMetadataBytes,
             },
           }),
         );
@@ -99,7 +100,7 @@ it.live(
         // Each settled Turn installs its prompt, its reply and its checkpoint.
         expect(coldMain["runtime.reply:thread.snapshot"]?.rows).toBe(corpus.turns.length * 3);
         expect(coldMain["runtime.reply:thread.snapshot"]?.bytes).toBeLessThanOrEqual(
-          SHORT_SNAPSHOT_BYTES,
+          SHORT_SNAPSHOT_BYTES + harness.snapshotFixtureMetadataBytes,
         );
         for (const [main, renderer] of [
           [coldMain, coldRenderer],

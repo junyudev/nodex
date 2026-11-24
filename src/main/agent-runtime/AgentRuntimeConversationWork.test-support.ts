@@ -56,6 +56,7 @@ import { AgentRuntimeWorkLedger, windowRuntimeWorkId } from "./AgentRuntimeWork"
 export interface ConversationWorkHarness {
   readonly target: { readonly sessionId: string; readonly threadId: string };
   readonly mainWork: RuntimeWorkLedger;
+  readonly snapshotFixtureMetadataBytes: number;
   readonly rendererWork: RuntimeWorkLedger;
   /** The renderer transport of one window, bound to that window's IPC sender. */
   readonly transport: (window: 1 | 2) => AgentRuntimeReadTransport;
@@ -339,6 +340,10 @@ export const conversationWorkHarness = Effect.fn("test.conversationWorkHarness")
   return {
     target: { sessionId, threadId },
     mainWork,
+    // The Thread, provider session and checkpoint scope each carry this absolute fixture path.
+    // Codex advertises supportsRuntimeModeSwitchInSession as false on Windows (one extra byte).
+    snapshotFixtureMetadataBytes:
+      3 * Buffer.byteLength(JSON.stringify(cwd)) + Number(process.platform === "win32"),
     rendererWork,
     transport,
     invoke,

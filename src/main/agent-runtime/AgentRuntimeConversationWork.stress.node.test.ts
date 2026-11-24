@@ -17,8 +17,8 @@ const SNAPSHOT_TURNS = 5;
 /** Each settled Turn installs its prompt, its reply and its checkpoint. */
 const SNAPSHOT_ROWS = SNAPSHOT_TURNS * 3;
 
-/** Today's bytes: the snapshot stays bounded, while the prompt index lists all 500 Runs. */
-const LONG_SNAPSHOT_BYTES = 67_163;
+/** Today's snapshot excluding fixture metadata. The prompt index lists all 500 Runs. */
+const LONG_SNAPSHOT_BYTES = 67_010;
 const LONG_PROMPT_INDEX_BYTES = 269_454;
 
 // oxlint-disable-next-line nodex/no-explicit-test-timeout -- Five hundred real Turns cross the Agent Runtime and its Codex fixture before anything is measured.
@@ -52,7 +52,7 @@ it.live(
         expect(recorded(main, OPEN_MAIN_WORK)).toEqual(OPEN_MAIN_WORK);
         expect(main["runtime.reply:thread.snapshot"]?.rows).toBe(SNAPSHOT_ROWS);
         expect(main["runtime.reply:thread.snapshot"]?.bytes).toBeLessThanOrEqual(
-          LONG_SNAPSHOT_BYTES,
+          LONG_SNAPSHOT_BYTES + harness.snapshotFixtureMetadataBytes,
         );
         expect(renderer["renderer.install"]?.rows).toBe(SNAPSHOT_ROWS);
         expect(index).toHaveLength(corpus.turns.length);
