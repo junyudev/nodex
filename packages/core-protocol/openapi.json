@@ -21359,6 +21359,7 @@
           "inbox_skill_availability",
           "inbox_confirm",
           "inbox_dispatch",
+          "inbox_ensure_notes",
           "inbox_chat_targets",
           "inbox_request_suggestion",
           "inbox_stop_suggestion",
@@ -21451,6 +21452,17 @@
             "type": "string"
           },
           "title": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxNotesResult": {
+        "type": "object",
+        "required": [
+          "notes_page_id"
+        ],
+        "properties": {
+          "notes_page_id": {
             "type": "string"
           }
         }
@@ -37753,6 +37765,25 @@
               },
               {
                 "type": "object",
+                "description": "Open the Inbox's Notes Page, creating it when the Inbox has no binding.",
+                "required": [
+                  "scope",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "ensure_inbox_notes"
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Keeps entries open without acting on their current suggestions.",
                 "required": [
                   "page_ids",
@@ -52253,6 +52284,25 @@
           },
           {
             "type": "object",
+            "description": "Open the Inbox's Notes Page, creating it when the Inbox has no binding.",
+            "required": [
+              "scope",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ensure_inbox_notes"
+                ]
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Keeps entries open without acting on their current suggestions.",
             "required": [
               "page_ids",
@@ -59526,6 +59576,16 @@
                               "type": "string"
                             }
                           },
+                          "inbox_notes": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/InboxNotesResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "inbox_undo_token": {
                             "type": [
                               "string",
@@ -59659,6 +59719,16 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "inbox_notes": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/InboxNotesResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "inbox_undo_token": {
                             "type": [

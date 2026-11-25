@@ -420,6 +420,12 @@ export interface InboxSummaryInput {
   readonly scope: InboxScope;
 }
 
+export type InboxEnsureNotesInput = InboxSummaryInput;
+
+export interface InboxEnsureNotesResult {
+  readonly notesPageId: string;
+}
+
 export interface InboxWindowInput {
   readonly scope: InboxScope;
   readonly filter: InboxWindowFilter;
@@ -510,6 +516,7 @@ export type InboxPreparedConfirmation =
 
 export interface InboxDecisionResult {
   readonly createdPageIds?: readonly string[];
+  readonly notesPageId: string | null;
   readonly undoToken: string | null;
 }
 

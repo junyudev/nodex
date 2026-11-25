@@ -5288,7 +5288,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "agents_map" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "agents_map" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_ensure_notes" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -5317,6 +5317,9 @@ export interface components {
             readonly depth: number;
             readonly page_id: string;
             readonly title: string;
+        };
+        readonly InboxNotesResult: {
+            readonly notes_page_id: string;
         };
         readonly InboxOfferedSkill: {
             readonly description: string;
@@ -9117,6 +9120,10 @@ export interface components {
                 readonly session_id?: string | null;
             } | {
                 /** @enum {string} */
+                readonly kind: "ensure_inbox_notes";
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "keep_inbox_entries";
                 readonly page_ids: readonly string[];
             } | {
@@ -12527,6 +12534,10 @@ export interface components {
             readonly session_id?: string | null;
         } | {
             /** @enum {string} */
+            readonly kind: "ensure_inbox_notes";
+            readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+        } | {
+            /** @enum {string} */
             readonly kind: "keep_inbox_entries";
             readonly page_ids: readonly string[];
         } | {
@@ -14112,6 +14123,7 @@ export interface components {
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly deleted_chat_folders?: readonly components["schemas"]["ChatFolder"][];
                     readonly inbox_created_page_ids?: readonly string[];
+                    readonly inbox_notes?: components["schemas"]["InboxNotesResult"] | null;
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
                     readonly replaced_chat_folder?: components["schemas"]["ChatFolder"] | null;
@@ -14132,6 +14144,7 @@ export interface components {
                     readonly created_page?: components["schemas"]["ProjectWorkspaceCreatedPage"] | null;
                     readonly deleted_chat_folders?: readonly components["schemas"]["ChatFolder"][];
                     readonly inbox_created_page_ids?: readonly string[];
+                    readonly inbox_notes?: components["schemas"]["InboxNotesResult"] | null;
                     readonly inbox_undo_token?: string | null;
                     readonly inbox_write?: components["schemas"]["InboxWriteResult"] | null;
                     readonly replaced_chat_folder?: components["schemas"]["ChatFolder"] | null;

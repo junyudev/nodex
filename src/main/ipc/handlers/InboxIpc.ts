@@ -96,6 +96,7 @@ export const live: Layer.Layer<
     yield* command("inbox:edit", (_, input) => committed(inbox.edit(input)));
     yield* command("inbox:confirm", (_, input) => committed(inbox.confirm(input)));
     yield* command("inbox:dispatch", (_, input) => committed(inbox.dispatch(input)));
+    yield* command("inbox:ensure-notes", (_, input) => committed(inbox.ensureNotes(input)));
     yield* command("inbox:snooze", (_, input) => committed(inbox.setSnooze(input)));
     yield* command("inbox:wake", (_, input) => committed(inbox.wake(input)));
     yield* command("inbox:keep", (_, input) => committed(inbox.keep(input)));

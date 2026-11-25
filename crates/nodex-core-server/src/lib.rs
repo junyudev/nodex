@@ -1856,6 +1856,16 @@ async fn workspace_apply(
             unauthorized("Inbox decisions are confirmed through the Space host"),
         )))));
     }
+    if bound.principal.is_some()
+        && matches!(
+            request.intent,
+            nodex_core_contracts::workspace::ProjectWorkspaceIntent::EnsureInboxNotes { .. }
+        )
+    {
+        return Ok(Json(ProjectWorkspaceApplyResponse(response_envelope(Err(
+            unauthorized("Inbox Notes are opened through the Space host"),
+        )))));
+    }
     if context.principal.is_some()
         && let nodex_core_contracts::workspace::ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             session_id,

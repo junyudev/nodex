@@ -87,6 +87,7 @@ import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
+import { useOpenInboxNotes } from "./use-open-inbox-notes";
 import { useAutomationsQuery } from "@/lib/use-automations-query";
 import { useInboxDepartures } from "./use-inbox-departures";
 import { useInboxActivity, useInboxSnooze, useInboxStream, useInboxSummary } from "./use-inbox";
@@ -145,12 +146,11 @@ function InboxHeader({
   snoozedCount,
   databaseId,
   databaseLabel,
-  notesPageId,
   agents,
   onViewChange,
   onOpenAgents,
   onOpenDatabase,
-  onOpenPage,
+  onOpenNotes,
   onOpenSettings,
 }: {
   readonly view: InboxView;
@@ -160,13 +160,12 @@ function InboxHeader({
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
-  /** Where this Inbox's saved notes live, once the first has been saved. */
-  readonly notesPageId: string | null;
   readonly agents: InboxAgents;
   readonly onViewChange: (view: InboxView) => void;
   readonly onOpenAgents: () => void;
   readonly onOpenDatabase: (databaseId: string) => void;
-  readonly onOpenPage: (pageId: string) => void;
+  /** Opens where this Inbox's saved notes live, beside the Board its todos go to. */
+  readonly onOpenNotes: () => void;
   readonly onOpenSettings: () => void;
 }) {
   const intl = useIntl();
@@ -206,25 +205,24 @@ function InboxHeader({
       </div>
       <div className="ml-auto flex items-center gap-0.5">
         <SpaceExecutionHoldControl />
-        {notesPageId ? (
-          <ToolbarIconButton
-            label={intl.formatMessage({
-              id: "inbox.inboxRoute.openNotes",
-              defaultMessage: "Open Notes",
-            })}
-            onClick={() => onOpenPage(notesPageId)}
-          >
-            <NoteIcon className="icon-sm" />
-          </ToolbarIconButton>
-        ) : null}
         <ToolbarIconButton label={intl.formatMessage(AERIAL_VIEW_TITLE)} onClick={onOpenAgents}>
           <AerialViewIcon className="icon-sm" />
         </ToolbarIconButton>
+        {/* Where decided messages go: todos to the Board, notes to Notes. */}
         {databaseId ? (
           <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
             <BoardIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
+        <ToolbarIconButton
+          label={intl.formatMessage({
+            id: "inbox.inboxRoute.openNotes",
+            defaultMessage: "Open Notes",
+          })}
+          onClick={onOpenNotes}
+        >
+          <NoteIcon className="icon-sm" />
+        </ToolbarIconButton>
         {!isRemoteSpace() ? (
           <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />
         ) : null}
@@ -419,35 +417,41 @@ export function InboxRoute({
   );
   // A message decided here shows where it went in its place before it leaves the Inbox.
   const departures = useInboxDepartures(view === "inbox" ? streamItems : []);
+  const notesPageId = summary.data?.notesPageId ?? null;
+  const openNotes = useOpenInboxNotes(scope, notesPageId, onOpenPage);
   const actions = useInboxActions(
     projects,
     scope,
     windowSessionId,
     summary.data?.storeEpoch ?? null,
     stream.items,
-    (pageIds, decision) => {
-      if (
-        decision.kind === "chat" &&
-        decision.type === "new_chat" &&
-        settings.showPageBesideNewChats
-      )
-        void onShowPagesInChat({
-          sessionId: decision.sessionId,
-          // The Pages open as this Inbox opens them beside itself.
-          routingContext: inboxProjectId
-            ? { kind: "project", projectId: inboxProjectId }
-            : { kind: "library" },
-          pages: pageIds.map((pageId) => ({
-            pageId,
-            titleSnapshot: stream.items.find((item) => item.pageId === pageId)?.title,
-          })),
-        });
-      if (view !== "inbox") return;
-      departures.depart(
-        // A message says where it went in its place; a Turn set aside simply leaves.
-        stream.items.filter((item) => item.rowKind === "intake" && pageIds.includes(item.pageId)),
-        decision,
-      );
+    {
+      // A saved note opens where Core put it, beside this Inbox like any message's Page.
+      onOpenNotes: onOpenPage,
+      onDecided: (pageIds, decision) => {
+        if (
+          decision.kind === "chat" &&
+          decision.type === "new_chat" &&
+          settings.showPageBesideNewChats
+        )
+          void onShowPagesInChat({
+            sessionId: decision.sessionId,
+            // The Pages open as this Inbox opens them beside itself.
+            routingContext: inboxProjectId
+              ? { kind: "project", projectId: inboxProjectId }
+              : { kind: "library" },
+            pages: pageIds.map((pageId) => ({
+              pageId,
+              titleSnapshot: stream.items.find((item) => item.pageId === pageId)?.title,
+            })),
+          });
+        if (view !== "inbox") return;
+        departures.depart(
+          // A message says where it went in its place; a Turn set aside simply leaves.
+          stream.items.filter((item) => item.rowKind === "intake" && pageIds.includes(item.pageId)),
+          decision,
+        );
+      },
     },
   );
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -778,8 +782,7 @@ export function InboxRoute({
               defaultMessage: "Open Inbox as a Database",
             })
       }
-      notesPageId={summary.data?.notesPageId ?? null}
-      onOpenPage={onOpenPage}
+      onOpenNotes={() => void openNotes()}
       onViewChange={changeView}
       agents={agents}
       onOpenDatabase={onOpenDatabase}

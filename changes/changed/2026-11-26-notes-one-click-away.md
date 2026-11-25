@@ -1,0 +1,1 @@
+Your Notes are one click away from every Inbox. **Open Notes** now sits beside **Open Board** from the start, not only after your first save, and **Saved to Notes** offers **Open** to see where the note landed. A Project's Notes page is named after its Project, such as `nodex Notes`, so Notes from different Projects no longer look alike.

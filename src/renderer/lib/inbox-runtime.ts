@@ -9,6 +9,8 @@ import type {
   InboxChatTargetsInput,
   InboxDispatchInput,
   InboxEditInput,
+  InboxEnsureNotesInput,
+  InboxEnsureNotesResult,
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
@@ -46,6 +48,7 @@ type InboxCommandChannel =
   | "inbox:edit"
   | "inbox:confirm"
   | "inbox:dispatch"
+  | "inbox:ensure-notes"
   | "inbox:keep"
   | "inbox:snooze"
   | "inbox:wake"
@@ -64,6 +67,7 @@ const sendCommand = inboxCommand("inbox.send", "inbox:send");
 const editCommand = inboxCommand("inbox.edit", "inbox:edit");
 const confirmCommand = inboxCommand("inbox.confirm", "inbox:confirm");
 const dispatchCommand = inboxCommand("inbox.dispatch", "inbox:dispatch");
+const ensureNotesCommand = inboxCommand("inbox.ensure-notes", "inbox:ensure-notes");
 const snoozeCommand = inboxCommand("inbox.snooze", "inbox:snooze");
 const wakeCommand = inboxCommand("inbox.wake", "inbox:wake");
 const keepCommand = inboxCommand("inbox.keep", "inbox:keep");
@@ -91,6 +95,12 @@ const settingsCommand = defineRendererCommand({
 
 export const readInboxSummary = (input: InboxSummaryInput) =>
   invokeRendererQuery("inbox:summary", input);
+export async function ensureInboxNotes(
+  input: InboxEnsureNotesInput,
+): Promise<InboxEnsureNotesResult> {
+  const { value } = await invokeLocalCommitCommand(ensureNotesCommand, input);
+  return value;
+}
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxStreamInput) =>
   invokeRendererQuery("inbox:window", input);

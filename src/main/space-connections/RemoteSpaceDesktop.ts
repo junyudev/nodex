@@ -54,6 +54,7 @@ import * as RemotePresenceReporter from "./RemotePresenceReporter";
 import * as ChatMemberActionsIpc from "../ipc/handlers/ChatMemberActionsIpc";
 import {
   inboxCountsFromCore,
+  inboxDecisionFromCore,
   activityWindowFromCore,
   inboxItemFromCore,
   inboxScopeToCore,
@@ -152,7 +153,7 @@ const readModels = Layer.effectDiscard(
           .apply({ operationId: createOperationId("inbox.person"), intent }, undefined, null)
           .pipe(
             Effect.map((apply) => ({
-              value: { undoToken: apply.outcome.inbox_undo_token ?? null, createdPageIds: [] },
+              value: inboxDecisionFromCore(apply.outcome),
               apply,
             })),
           ),

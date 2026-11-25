@@ -2,11 +2,16 @@
 //! provide routing and return coordinates.
 use super::*;
 use nodex_core_contracts::{
-    inbox::InboxNotesOutlineItem,
+    ModuleName,
+    inbox::{InboxNotesOutlineItem, InboxNotesResult, ProjectWorkspaceInboxScope},
     library::{
         LibraryAgentSiblingAnchor, LibraryBlockTransferUndoToken, LibraryPageWriteDestination,
     },
+    workspace::ProjectWorkspaceCommitValue,
 };
+
+use crate::infrastructure::durable_mutation::{self, DurableMutationScope, OperationIdentity};
+use crate::workspace::mutation::{seal_mutation_with_result, seal_no_op, workspace_commit_result};
 
 pub(in crate::workspace) fn notes_page(
     connection: &Connection,
@@ -85,12 +90,116 @@ pub(super) fn validate_destination(
     Ok(())
 }
 
+pub(in crate::workspace) fn ensure(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation: &str,
+    request_hash: &str,
+    inbox_scope: &ProjectWorkspaceInboxScope,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    const OPERATION_KIND: &str = "inbox_ensure_notes";
+
+    require_decision_authority(context)?;
+    crate::infrastructure::actors::requesting_member(connection, context)?;
+    let project = inbox_scope.project_id();
+    if let Some(project) = project {
+        validate_id("project_id", project)?;
+    }
+    let now = sqlite_now(connection)?;
+    let result = durable_mutation::run(
+        connection,
+        OperationIdentity {
+            module: ModuleName::ProjectWorkspace,
+            module_name: "project_workspace",
+            operation_id: operation,
+            intent_hash: request_hash,
+            store_epoch,
+            committed_at: &now,
+            context,
+        },
+        |scope| {
+            let value = |notes_page_id| ProjectWorkspaceCommitValue {
+                inbox_notes: Some(InboxNotesResult { notes_page_id }),
+                ..Default::default()
+            };
+            if let Some(root) = notes_page(scope.connection(), library, project)? {
+                return seal_no_op(scope, operation, OPERATION_KIND, &now, value(root));
+            }
+            let mut effects = simple_effects(OPERATION_KIND, &now);
+            let root =
+                create_notes_page(scope, library, context, operation, project, &mut effects)?;
+            seal_mutation_with_result(scope, context, operation, effects, value(root))
+        },
+    )?;
+    workspace_commit_result(connection, result)
+}
+
+fn create_notes_page(
+    scope: &DurableMutationScope<'_>,
+    library: &str,
+    context: &BoundModuleContext,
+    operation: &str,
+    project: Option<&str>,
+    effects: &mut WorkspaceMutationEffects,
+) -> Result<String, StoreError> {
+    let connection = scope.connection();
+    let title = match project {
+        Some(project) => {
+            let name: String = connection
+                .query_row(
+                    "SELECT name FROM projects WHERE id=?1 AND library_id=?2",
+                    params![project, library],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .ok_or_else(|| not_found("Project not found"))?;
+            format!("{name} Notes")
+        }
+        None => "Notes".to_owned(),
+    };
+    let root = stable_uuid_v7(operation, "inbox-notes", library);
+    let document = stable_uuid_v7(operation, "inbox-notes-document", library);
+    let created = crate::library::page_genesis::create_page_at_library_start(
+        connection,
+        crate::library::page_genesis::PageGenesisInput {
+            context,
+            commit_context: scope.evidence(),
+            library_id: library,
+            actor_project_id: project,
+            operation_id: operation,
+            store_epoch: scope.store_epoch(),
+            page_id: &root,
+            document_id: &document,
+            title_markdown: &title_markdown(&title),
+            markdown: "",
+            now: scope.committed_at(),
+        },
+    )?;
+    connection.execute(
+        "INSERT INTO inbox_notes(library_id,project_id,page_id) VALUES(?1,?2,?3)",
+        params![library, project, root],
+    )?;
+    effects.page_ids.push(root.clone());
+    effects.block_ids.push(root.clone());
+    effects.document_ids.push(document);
+    effects.document_heads.push(created.document_head);
+    Ok(root)
+}
+
+pub(super) struct SavedNotes {
+    pub(super) effects: WorkspaceMutationEffects,
+    pub(super) undo_tokens: Vec<LibraryBlockTransferUndoToken>,
+    pub(super) notes: InboxNotesResult,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn save(
     connection: &Connection,
     library: &str,
     context: &BoundModuleContext,
-    scope: &crate::infrastructure::durable_mutation::DurableMutationScope<'_>,
+    scope: &DurableMutationScope<'_>,
     operation: &str,
     request_hash: &str,
     project: Option<&str>,
@@ -98,40 +207,12 @@ pub(super) fn save(
     destination: Option<&str>,
     assets_root: &std::path::Path,
     now: &str,
-) -> Result<(WorkspaceMutationEffects, Vec<LibraryBlockTransferUndoToken>), StoreError> {
+) -> Result<SavedNotes, StoreError> {
     validate_destination(connection, library, project, destination)?;
     let mut effects = simple_effects("inbox_save_to_notes", now);
     let root = match notes_page(connection, library, project)? {
         Some(root) => root,
-        None => {
-            let root = stable_uuid_v7(operation, "inbox-notes", library);
-            let document = stable_uuid_v7(operation, "inbox-notes-document", library);
-            let created = crate::library::page_genesis::create_page_at_library_start(
-                connection,
-                crate::library::page_genesis::PageGenesisInput {
-                    context,
-                    commit_context: scope.evidence(),
-                    library_id: library,
-                    actor_project_id: project,
-                    operation_id: operation,
-                    store_epoch: scope.store_epoch(),
-                    page_id: &root,
-                    document_id: &document,
-                    title_markdown: "Notes",
-                    markdown: "",
-                    now,
-                },
-            )?;
-            connection.execute(
-                "INSERT INTO inbox_notes(library_id,project_id,page_id) VALUES(?1,?2,?3)",
-                params![library, project, root],
-            )?;
-            effects.page_ids.push(root.clone());
-            effects.block_ids.push(root.clone());
-            effects.document_ids.push(document);
-            effects.document_heads.push(created.document_head);
-            root
-        }
+        None => create_notes_page(scope, library, context, operation, project, &mut effects)?,
     };
     let parent = destination.unwrap_or(&root);
     let mut tokens = Vec::with_capacity(pages.len());
@@ -177,7 +258,13 @@ pub(super) fn save(
         );
         effects.page_ids.push(page.clone());
     }
-    Ok((effects, tokens))
+    Ok(SavedNotes {
+        effects,
+        undo_tokens: tokens,
+        notes: InboxNotesResult {
+            notes_page_id: root,
+        },
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -185,7 +272,7 @@ pub(super) fn return_note(
     connection: &Connection,
     library: &str,
     context: &BoundModuleContext,
-    scope: &crate::infrastructure::durable_mutation::DurableMutationScope<'_>,
+    scope: &DurableMutationScope<'_>,
     operation: &str,
     page: &str,
     assets_root: &std::path::Path,

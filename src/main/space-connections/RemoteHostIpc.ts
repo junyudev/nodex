@@ -305,6 +305,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleLocalCommitCommand("inbox:dispatch", (_, input) =>
       call<"inbox:dispatch">("inbox_dispatch", input),
     );
+    yield* ipc.handleLocalCommitCommand("inbox:ensure-notes", (_, input) =>
+      call<"inbox:ensure-notes">("inbox_ensure_notes", input),
+    );
     yield* ipc.handleLocalCommitCommand("inbox:request-suggestion", (_, input) =>
       call<"inbox:request-suggestion">("inbox_request_suggestion", input),
     );

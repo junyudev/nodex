@@ -332,6 +332,10 @@ pub(super) fn apply(
                 _ => None,
             };
             match admitted_intent {
+                ProjectWorkspaceIntent::EnsureInboxNotes { scope } => super::inbox::notes::ensure(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                    &request_hash, scope,
+                ),
                 ProjectWorkspaceIntent::SetInboxRoutingConsent {start_my_requests,initialize_only}=>{
                     if !matches!(context.actor,nodex_core_contracts::Actor::Member {..}) {return Err(StoreError::new(StoreErrorCode::Unauthorized,"Only a Member may grant routing consent",false));}
                     let member=crate::infrastructure::actors::requesting_member(transaction,&context)?;
@@ -1459,6 +1463,34 @@ pub(super) fn run_mutation_with_folder_result(
     folders: FolderMutationResult,
     apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<WorkspaceMutationEffects, StoreError>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    run_mutation_with_result(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        committed_at,
+        |scope, value| {
+            value.chat_folder = folders.bound;
+            value.replaced_chat_folder = folders.replaced;
+            value.deleted_chat_folders = folders.deleted;
+            apply(scope)
+        },
+    )
+}
+
+pub(super) fn run_mutation_with_result(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    committed_at: &str,
+    apply: impl FnOnce(
+        &DurableMutationScope<'_>,
+        &mut ProjectWorkspaceCommitValue,
+    ) -> Result<WorkspaceMutationEffects, StoreError>,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let result = durable_mutation::run(
         connection,
         OperationIdentity {
@@ -1471,8 +1503,9 @@ pub(super) fn run_mutation_with_folder_result(
             context,
         },
         |scope| {
-            let effects = apply(scope)?;
-            seal_mutation_with_result(scope, context, operation_id, effects, None, folders)
+            let mut value = ProjectWorkspaceCommitValue::default();
+            let effects = apply(scope, &mut value)?;
+            seal_mutation_with_result(scope, context, operation_id, effects, value)
         },
     )?;
     workspace_commit_result(connection, result)
@@ -1549,48 +1582,61 @@ pub(super) fn finish_no_op_with_folder(
             context,
         },
         |scope| {
-            let commit_seq = local_commit::head(scope.connection())?;
-            let event_sequence = scope.connection().query_row(
-                "SELECT COALESCE(MAX(seq), 0) FROM change_log",
-                [],
-                |row| row.get::<_, i64>(0),
-            )?;
-            let committed = crate::ModuleWriterResult {
-                value: ProjectWorkspaceCommitValue {
+            seal_no_op(
+                scope,
+                operation_id,
+                operation_kind,
+                committed_at,
+                ProjectWorkspaceCommitValue {
                     chat_folder: folder,
-                    replaced_chat_folder: None,
-                    deleted_chat_folders: Vec::new(),
-                    inbox_write: None,
-                    inbox_created_page_ids: Vec::new(),
-                    created_page: None,
-                    inbox_undo_token: None,
-                    affected_project_ids: project_ids.clone(),
-                    affected_session_ids: session_ids.clone(),
-                    affected_thread_ids: Vec::new(),
+                    affected_project_ids: project_ids,
+                    affected_session_ids: session_ids,
+                    ..Default::default()
                 },
-                receipt: ProjectWorkspaceReceipt {
-                    mutation: ModuleMutationReceipt {
-                        operation_id: operation_id.to_owned(),
-                        duplicate: false,
-                    },
-                    affected_project_ids: project_ids.clone(),
-                    affected_session_ids: session_ids.clone(),
-                },
-                commit_seq,
-                event_sequence,
-                store_epoch: StoreEpoch(store_epoch.to_owned()),
-            };
-            Ok(scope.no_op(
-                committed,
-                ReceiptMetadata {
-                    operation_kind,
-                    event_sequence: None,
-                    committed_at,
-                },
-            ))
+            )
         },
     )?;
     workspace_commit_result(connection, result)
+}
+
+pub(super) fn seal_no_op(
+    scope: &DurableMutationScope<'_>,
+    operation_id: &str,
+    operation_kind: &'static str,
+    committed_at: &str,
+    value: ProjectWorkspaceCommitValue,
+) -> Result<
+    SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
+    StoreError,
+> {
+    let commit_seq = local_commit::head(scope.connection())?;
+    let event_sequence = scope.connection().query_row(
+        "SELECT COALESCE(MAX(seq), 0) FROM change_log",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let committed = crate::ModuleWriterResult {
+        receipt: ProjectWorkspaceReceipt {
+            mutation: ModuleMutationReceipt {
+                operation_id: operation_id.to_owned(),
+                duplicate: false,
+            },
+            affected_project_ids: value.affected_project_ids.clone(),
+            affected_session_ids: value.affected_session_ids.clone(),
+        },
+        value,
+        commit_seq,
+        event_sequence,
+        store_epoch: StoreEpoch(scope.store_epoch().to_owned()),
+    };
+    Ok(scope.no_op(
+        committed,
+        ReceiptMetadata {
+            operation_kind,
+            event_sequence: None,
+            committed_at,
+        },
+    ))
 }
 
 pub(super) fn workspace_commit_result(
@@ -1656,18 +1702,19 @@ pub(super) fn seal_mutation_with_created_page(
         context,
         operation_id,
         effects,
-        created_page,
-        Default::default(),
+        ProjectWorkspaceCommitValue {
+            created_page,
+            ..Default::default()
+        },
     )
 }
 
-fn seal_mutation_with_result(
+pub(super) fn seal_mutation_with_result(
     scope: &DurableMutationScope<'_>,
     context: &BoundModuleContext,
     operation_id: &str,
     effects: WorkspaceMutationEffects,
-    created_page: Option<nodex_core_contracts::workspace::ProjectWorkspaceCreatedPage>,
-    folders: FolderMutationResult,
+    value: ProjectWorkspaceCommitValue,
 ) -> Result<
     SealedOutcome<crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>>,
     StoreError,
@@ -1766,9 +1813,6 @@ fn seal_mutation_with_result(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
-            chat_folder: folders.bound,
-            replaced_chat_folder: folders.replaced,
-            deleted_chat_folders: folders.deleted,
             inbox_write: if matches!(effects.operation_kind, "inbox_write" | "inbox_write_replay") {
                 effects.page_ids.first().map(|id| {
                     nodex_core_contracts::workspace::InboxWriteResult {
@@ -1789,7 +1833,6 @@ fn seal_mutation_with_result(
             } else {
                 Vec::new()
             },
-            created_page,
             inbox_undo_token: connection
                 .query_row(
                     "SELECT token FROM inbox_decision_undo WHERE operation_id=?1",
@@ -1800,6 +1843,7 @@ fn seal_mutation_with_result(
             affected_project_ids: effects.project_ids.clone(),
             affected_session_ids: effects.session_ids.clone(),
             affected_thread_ids: effects.thread_ids.clone(),
+            ..value
         },
         receipt: ProjectWorkspaceReceipt {
             mutation: ModuleMutationReceipt {

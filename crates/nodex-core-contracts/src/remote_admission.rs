@@ -294,6 +294,7 @@ pub fn authorize(
                 | "send_inbox_message"
                 | "delete_inbox_messages"
                 | "dispatch_inbox_entries"
+                | "ensure_inbox_notes"
                 | "request_inbox_suggestion"
                 | "retry_inbox_dispatch"
                 | "keep_inbox_entries"

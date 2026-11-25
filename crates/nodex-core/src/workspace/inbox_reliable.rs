@@ -4,6 +4,7 @@ use crate::infrastructure::durable_mutation::DurableMutationScope;
 use crate::workspace::inbox_content::{
     MAX_SUGGESTION_IMAGES, MessageContentLimit, agent_markdown, read_message_content,
 };
+use crate::workspace::mutation::run_mutation_with_result;
 use nodex_core_contracts::inbox::*;
 use nodex_core_contracts::library::{LibraryBlockTransferUndoToken, LibraryPageWriteDestination};
 use nodex_core_contracts::workspace::{
@@ -157,14 +158,14 @@ pub(in crate::workspace) fn apply_reliable(
             );
         }
     }
-    run_mutation(
+    run_mutation_with_result(
         connection,
         context,
         store_epoch,
         operation_id,
         request_hash,
         &now,
-        |scope| {
+        |scope, value| {
             match intent {
                 ProjectWorkspaceIntent::BeginInboxRouting {
                     request_id,
@@ -341,7 +342,7 @@ pub(in crate::workspace) fn apply_reliable(
                             "Dispatch skills must match the reviewed suggestion",
                         ));
                     }
-                    let effects = decide(
+                    let (effects, notes) = decide(
                         connection,
                         library_id,
                         context,
@@ -358,6 +359,7 @@ pub(in crate::workspace) fn apply_reliable(
                         &now,
                         None,
                     )?;
+                    value.inbox_notes = notes;
                     connection.execute("UPDATE inbox_proposals SET confirmed_by=?2,auto_confirm_pending=0 WHERE proposal_id=?1", params![proposal_id, if confirmed_by==InboxConfirmedBy::Nodex { "nodex" } else { "user" }])?;
                     Ok(effects)
                 }
@@ -421,7 +423,7 @@ pub(in crate::workspace) fn apply_reliable(
                         },
                         &now,
                     )?;
-                    let mut decision = decide(
+                    let (mut decision, notes) = decide(
                         connection,
                         library_id,
                         context,
@@ -438,6 +440,7 @@ pub(in crate::workspace) fn apply_reliable(
                         &now,
                         Some(previous),
                     )?;
+                    value.inbox_notes = notes;
                     if let Some(receipt) = recovery {
                         decision.absorb_database(receipt);
                     }
@@ -756,7 +759,7 @@ fn decide(
     assets_root: &Path,
     now: &str,
     previous: Option<Vec<DecisionPage>>,
-) -> Result<WorkspaceMutationEffects, StoreError> {
+) -> Result<(WorkspaceMutationEffects, Option<InboxNotesResult>), StoreError> {
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
@@ -765,7 +768,7 @@ fn decide(
         finish_proposal(connection, proposal_id, &action_json(&action)?, now)?;
         let mut effects = simple_effects("inbox_confirm_snooze", now);
         effects.page_ids = pages.to_vec();
-        return Ok(effects);
+        return Ok((effects, None));
     }
     if let ProjectWorkspaceInboxDispatchAction::Plan { summary, steps } = &action {
         require_decision_authority(context)?;
@@ -781,7 +784,8 @@ fn decide(
             steps,
             selection,
             now,
-        );
+        )
+        .map(|effects| (effects, None));
     }
 
     if let Some(selection) = selection
@@ -832,7 +836,7 @@ fn decide(
     let mut tokens = Vec::new();
     let saved = if let ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id } = &action
     {
-        let (effects, undo) = notes::save(
+        let saved = notes::save(
             connection,
             library_id,
             context,
@@ -845,8 +849,8 @@ fn decide(
             assets_root,
             now,
         )?;
-        tokens = undo;
-        Some(effects)
+        tokens = saved.undo_tokens;
+        Some((saved.effects, saved.notes))
     } else {
         None
     };
@@ -912,10 +916,13 @@ fn decide(
         },
         now,
     )?;
-    if let Some(saved) = saved {
+    let notes = if let Some((saved, notes)) = saved {
         effects = saved;
         supersede_open_proposals(connection, pages, "superseded", now)?;
-    }
+        Some(notes)
+    } else {
+        None
+    };
     let receiving_agent = match &action {
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => Some(
             selection
@@ -1084,7 +1091,7 @@ fn decide(
             tokens,
         )?;
     }
-    Ok(effects)
+    Ok((effects, notes))
 }
 fn dispatch_fence(
     connection: &Connection,

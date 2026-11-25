@@ -14,6 +14,7 @@ import {
   InboxSendInputSchema,
   InboxSuggestionRequestInputSchema,
   InboxSuggestionStopInputSchema,
+  InboxSummaryInputSchema,
 } from "../shared/schemas/inbox";
 import {
   ProjectSessionArchiveCommandSchema,
@@ -186,6 +187,8 @@ export const executeHostCommand = (
         return yield* hostLocalCommit(inbox.confirm(InboxConfirmInputSchema.parse(input)));
       case "inbox_dispatch":
         return yield* hostLocalCommit(inbox.dispatch(InboxDispatchInputSchema.parse(input)));
+      case "inbox_ensure_notes":
+        return yield* hostLocalCommit(inbox.ensureNotes(InboxSummaryInputSchema.parse(input)));
       case "inbox_chat_targets":
         return yield* inbox.chatTargets(InboxChatTargetsInputSchema.parse(input));
       case "inbox_request_suggestion":
