@@ -14,7 +14,7 @@ import { camelToDataKebab } from "../../util/string.js";
 import { suggestionMarks } from "../../pm-nodes/suggestionMarks.js";
 import { createDefaultBlockDOMOutputSpec } from "../defaultBlockHelpers.js";
 import { defaultProps } from "../defaultProps.js";
-import { EMPTY_CELL_WIDTH, TableExtension } from "./TableExtension.js";
+import { AUTO_CELL_MIN_WIDTH, TableExtension } from "./TableExtension.js";
 
 export const tablePropSchema = {
   textColor: defaultProps.textColor,
@@ -291,7 +291,7 @@ const TiptapTableNode = Node.create({
         }
       }
 
-      return new BlockNoteTableView(node, EMPTY_CELL_WIDTH, {
+      return new BlockNoteTableView(node, AUTO_CELL_MIN_WIDTH, {
         ...(this.options.domAttributes?.blockContent || {}),
         ...HTMLAttributes,
       }) as NodeView; // needs cast, tiptap types (wrongly) doesn't support return tableview here

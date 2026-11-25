@@ -1,0 +1,422 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..7f041ee08768d57df2081896e85542ba6649c06c 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2304,7 +2304,7 @@ var TableView = class {
+ /**
+ * @public
+ */
+-function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue) {
++function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue, previewWidths) {
+ 	let totalWidth = 0;
+ 	let fixedWidth = true;
+ 	let nextDOM = colgroup.firstChild;
+@@ -2313,7 +2313,7 @@ function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overr
+ 	for (let i = 0, col = 0; i < row.childCount; i++) {
+ 		const { colspan, colwidth } = row.child(i).attrs;
+ 		for (let j = 0; j < colspan; j++, col++) {
+-			const hasWidth = overrideCol == col ? overrideValue : colwidth && colwidth[j];
++			const hasWidth = overrideCol == col ? overrideValue : previewWidths ? previewWidths[col] : colwidth && colwidth[j];
+ 			const cssWidth = hasWidth ? hasWidth + "px" : "";
+ 			totalWidth += hasWidth || defaultCellMinWidth;
+ 			if (!hasWidth) fixedWidth = false;
+@@ -2334,8 +2334,9 @@ function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overr
+ 		nextDOM = after;
+ 	}
+ 	if (fixedWidth) {
+-		table.style.width = totalWidth + "px";
+-		table.style.minWidth = "";
++		// BlockNote's content-sized table rule yields only while the preview is active.
++		table.style.setProperty("width", totalWidth + "px", previewWidths ? "important" : "");
++		table.style.minWidth = previewWidths ? "0px" : "";
+ 	} else {
+ 		table.style.width = "";
+ 		table.style.minWidth = totalWidth + "px";
+@@ -2351,7 +2352,7 @@ const columnResizingPluginKey = new prosemirror_state.PluginKey("tableColumnResi
+ /**
+ * @public
+ */
+-function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true } = {}) {
++function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true, pinColumns = false } = {}) {
+ 	const plugin = new prosemirror_state.Plugin({
+ 		key: columnResizingPluginKey,
+ 		state: {
+@@ -2381,7 +2382,7 @@ function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidt
+ 					handleMouseLeave(view);
+ 				},
+ 				mousedown: (view, event) => {
+-					handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth);
++					handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth, pinColumns);
+ 				}
+ 			},
+ 			decorations: (state) => {
+@@ -2443,37 +2444,56 @@ function handleMouseLeave(view) {
+ 	const pluginState = columnResizingPluginKey.getState(view.state);
+ 	if (pluginState && pluginState.activeHandle > -1 && !pluginState.dragging) updateHandle(view, -1);
+ }
+-function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth) {
++function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth, pinColumns) {
+ 	var _view$dom$ownerDocume;
+-	if (!view.editable) return false;
++	if (!view.editable || pinColumns && event.button !== 0) return false;
+ 	const win = (_view$dom$ownerDocume = view.dom.ownerDocument.defaultView) !== null && _view$dom$ownerDocume !== void 0 ? _view$dom$ownerDocume : window;
+ 	const pluginState = columnResizingPluginKey.getState(view.state);
+ 	if (!pluginState || pluginState.activeHandle == -1 || pluginState.dragging) return false;
+-	const cell = view.state.doc.nodeAt(pluginState.activeHandle);
+-	const width = currentColWidth(view, pluginState.activeHandle, cell.attrs);
++	const snapshot = pinColumns ? measureColumnWidths(view, pluginState.activeHandle) : null;
++	if (pinColumns && !snapshot) return false;
++	const width = snapshot ? snapshot.widths[snapshot.column] : currentColWidth(view, pluginState.activeHandle, view.state.doc.nodeAt(pluginState.activeHandle).attrs);
+ 	view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: {
+ 		startX: event.clientX,
+ 		startWidth: width
+ 	} }));
++	let movedHorizontally = false;
+ 	function finish(event$1) {
+ 		win.removeEventListener("mouseup", finish);
+ 		win.removeEventListener("mousemove", move);
++		if (snapshot && view.isDestroyed) return;
+ 		const pluginState$1 = columnResizingPluginKey.getState(view.state);
+-		if (pluginState$1 === null || pluginState$1 === void 0 ? void 0 : pluginState$1.dragging) {
+-			updateColumnWidth(view, pluginState$1.activeHandle, draggedWidth(pluginState$1.dragging, event$1, cellMinWidth));
++		if (!pluginState$1 || !pluginState$1.dragging) return;
++		const { activeHandle, dragging } = pluginState$1;
++		const width = draggedWidth(dragging, event$1, cellMinWidth);
++		if (!snapshot) {
++			updateColumnWidth(view, activeHandle, width);
+ 			view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null }));
++			return;
+ 		}
++		const tr = view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null });
++		if (matchesResizeSnapshot(view, activeHandle, snapshot)) {
++			if (movedHorizontally || event$1.clientX !== dragging.startX) {
++				setPinnedColumnWidths(tr, view.state.doc.resolve(activeHandle), snapshot, Math.round(width));
++			}
++			if (!tr.docChanged) displayColumnWidth(view, activeHandle, undefined, defaultCellMinWidth);
++		}
++		view.dispatch(tr);
+ 	}
+ 	function move(event$1) {
+-		if (!event$1.which) return finish(event$1);
++		if (!event$1.which || snapshot && view.isDestroyed) return finish(event$1);
+ 		const pluginState$1 = columnResizingPluginKey.getState(view.state);
+-		if (!pluginState$1) return;
+-		if (pluginState$1.dragging) {
+-			const dragged = draggedWidth(pluginState$1.dragging, event$1, cellMinWidth);
+-			displayColumnWidth(view, pluginState$1.activeHandle, dragged, defaultCellMinWidth);
++		if (!pluginState$1 || !pluginState$1.dragging) return;
++		const { activeHandle, dragging } = pluginState$1;
++		if (snapshot) {
++			if (!matchesResizeSnapshot(view, activeHandle, snapshot)) return finish(event$1);
++			movedHorizontally ||= event$1.clientX !== dragging.startX;
++			if (!movedHorizontally) return;
+ 		}
++		const dragged = draggedWidth(dragging, event$1, cellMinWidth);
++		displayColumnWidth(view, activeHandle, dragged, defaultCellMinWidth, snapshot?.widths);
+ 	}
+-	displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
++	if (!snapshot) displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
+ 	win.addEventListener("mouseup", finish);
+ 	win.addEventListener("mousemove", move);
+ 	event.preventDefault();
+@@ -2539,14 +2559,59 @@ function updateColumnWidth(view, cell, width) {
+ 	}
+ 	if (tr.docChanged) view.dispatch(tr);
+ }
+-function displayColumnWidth(view, cell, width, defaultCellMinWidth) {
++function tableDOMAt(view, $cell) {
++	let dom = view.domAtPos($cell.start(-1)).node;
++	while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
++	return dom;
++}
++function measureColumnWidths(view, cell) {
++	const $cell = view.state.doc.resolve(cell);
++	const table = $cell.node(-1), map = TableMap.get(table);
++	const colgroup = tableDOMAt(view, $cell)?.firstElementChild;
++	if (colgroup?.nodeName !== "COLGROUP" || colgroup.children.length !== map.width) return null;
++	// The colgroup exposes every rendered track, including those covered by a colspan.
++	// Round the accumulated widths to keep rounding error from building up along the table.
++	let total = 0;
++	const widths = Array.from(colgroup.children, (col) => {
++		const start = Math.round(total);
++		total += col.getBoundingClientRect().width;
++		return Math.max(1, Math.round(total) - start);
++	});
++	if (!total) return null;
++	const cellOffset = cell - $cell.start(-1);
++	return { table, cellOffset, widths, column: map.findCell(cellOffset).right - 1 };
++}
++function matchesResizeSnapshot(view, cell, snapshot) {
++	if (cell < 0) return false;
++	const $cell = view.state.doc.resolve(cell);
++	return $cell.node(-1) === snapshot.table && cell - $cell.start(-1) === snapshot.cellOffset;
++}
++function setPinnedColumnWidths(tr, $cell, { table, widths, column }, width) {
++	const map = TableMap.get(table), start = $cell.start(-1);
++	const seen = new Set();
++	for (let slot = 0; slot < map.map.length; slot++) {
++		const pos = map.map[slot];
++		if (seen.has(pos)) continue;
++		seen.add(pos);
++		const node = table.nodeAt(pos);
++		if (!node) continue;
++		const attrs = node.attrs;
++		const firstColumn = slot % map.width;
++		const colwidth = Array.from({ length: attrs.colspan }, (_, index) => {
++			const col = firstColumn + index;
++			return col === column ? width : attrs.colwidth?.[index] || widths[col];
++		});
++		if (colwidth.every((value, index) => value === attrs.colwidth?.[index])) continue;
++		tr.setNodeMarkup(start + pos, null, { ...attrs, colwidth });
++	}
++}
++function displayColumnWidth(view, cell, width, defaultCellMinWidth, previewWidths) {
+ 	const $cell = view.state.doc.resolve(cell);
+ 	const table = $cell.node(-1), start = $cell.start(-1);
+ 	const col = TableMap.get(table).colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+-	let dom = view.domAtPos($cell.start(-1)).node;
+-	while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
++	const dom = tableDOMAt(view, $cell);
+ 	if (!dom) return;
+-	updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, col, width);
++	updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, width === undefined ? undefined : col, width, previewWidths);
+ }
+ function zeroes(n) {
+ 	return Array(n).fill(0);
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 7ab704a78a47482ef59f06bb8965b0a8443160b9..f498b000f718f8411074879a5891c4ae8780987a 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -260,6 +260,11 @@ type ColumnResizingOptions = {
+    */
+   defaultCellMinWidth?: number;
+   lastColumnResizable?: boolean;
++  /**
++   * Freeze rendered column widths while dragging and pin auto columns on release.
++   * Defaults to false.
++   */
++  pinColumns?: boolean;
+   /**
+    * A custom node view for the rendering table nodes. By default, the plugin
+    * uses the {@link TableView} class. You can explicitly set this to `null` to
+@@ -282,7 +287,8 @@ declare function columnResizing({
+   cellMinWidth,
+   defaultCellMinWidth,
+   View,
+-  lastColumnResizable
++  lastColumnResizable,
++  pinColumns
+ }?: ColumnResizingOptions): Plugin;
+ /**
+  * @public
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index fa98976a623595a61f07a0e7a2a0c40a5883b521..5ed018ec9013c76dc53e72f58308557ad189871d 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -260,6 +260,11 @@ type ColumnResizingOptions = {
+    */
+   defaultCellMinWidth?: number;
+   lastColumnResizable?: boolean;
++  /**
++   * Freeze rendered column widths while dragging and pin auto columns on release.
++   * Defaults to false.
++   */
++  pinColumns?: boolean;
+   /**
+    * A custom node view for the rendering table nodes. By default, the plugin
+    * uses the {@link TableView} class. You can explicitly set this to `null` to
+@@ -282,7 +287,8 @@ declare function columnResizing({
+   cellMinWidth,
+   defaultCellMinWidth,
+   View,
+-  lastColumnResizable
++  lastColumnResizable,
++  pinColumns
+ }?: ColumnResizingOptions): Plugin;
+ /**
+  * @public
+diff --git a/dist/index.js b/dist/index.js
+index 5b4ac25594ba5722409332b1e5c812f108c9bf11..43b62df5a9bd434a44195faf832743d3992ca5b2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2304,7 +2304,7 @@ var TableView = class {
+ /**
+ * @public
+ */
+-function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue) {
++function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue, previewWidths) {
+ 	let totalWidth = 0;
+ 	let fixedWidth = true;
+ 	let nextDOM = colgroup.firstChild;
+@@ -2313,7 +2313,7 @@ function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overr
+ 	for (let i = 0, col = 0; i < row.childCount; i++) {
+ 		const { colspan, colwidth } = row.child(i).attrs;
+ 		for (let j = 0; j < colspan; j++, col++) {
+-			const hasWidth = overrideCol == col ? overrideValue : colwidth && colwidth[j];
++			const hasWidth = overrideCol == col ? overrideValue : previewWidths ? previewWidths[col] : colwidth && colwidth[j];
+ 			const cssWidth = hasWidth ? hasWidth + "px" : "";
+ 			totalWidth += hasWidth || defaultCellMinWidth;
+ 			if (!hasWidth) fixedWidth = false;
+@@ -2334,8 +2334,9 @@ function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overr
+ 		nextDOM = after;
+ 	}
+ 	if (fixedWidth) {
+-		table.style.width = totalWidth + "px";
+-		table.style.minWidth = "";
++		// BlockNote's content-sized table rule yields only while the preview is active.
++		table.style.setProperty("width", totalWidth + "px", previewWidths ? "important" : "");
++		table.style.minWidth = previewWidths ? "0px" : "";
+ 	} else {
+ 		table.style.width = "";
+ 		table.style.minWidth = totalWidth + "px";
+@@ -2351,7 +2352,7 @@ const columnResizingPluginKey = new PluginKey("tableColumnResizing");
+ /**
+ * @public
+ */
+-function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true } = {}) {
++function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true, pinColumns = false } = {}) {
+ 	const plugin = new Plugin({
+ 		key: columnResizingPluginKey,
+ 		state: {
+@@ -2381,7 +2382,7 @@ function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidt
+ 					handleMouseLeave(view);
+ 				},
+ 				mousedown: (view, event) => {
+-					handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth);
++					handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth, pinColumns);
+ 				}
+ 			},
+ 			decorations: (state) => {
+@@ -2443,37 +2444,56 @@ function handleMouseLeave(view) {
+ 	const pluginState = columnResizingPluginKey.getState(view.state);
+ 	if (pluginState && pluginState.activeHandle > -1 && !pluginState.dragging) updateHandle(view, -1);
+ }
+-function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth) {
++function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth, pinColumns) {
+ 	var _view$dom$ownerDocume;
+-	if (!view.editable) return false;
++	if (!view.editable || pinColumns && event.button !== 0) return false;
+ 	const win = (_view$dom$ownerDocume = view.dom.ownerDocument.defaultView) !== null && _view$dom$ownerDocume !== void 0 ? _view$dom$ownerDocume : window;
+ 	const pluginState = columnResizingPluginKey.getState(view.state);
+ 	if (!pluginState || pluginState.activeHandle == -1 || pluginState.dragging) return false;
+-	const cell = view.state.doc.nodeAt(pluginState.activeHandle);
+-	const width = currentColWidth(view, pluginState.activeHandle, cell.attrs);
++	const snapshot = pinColumns ? measureColumnWidths(view, pluginState.activeHandle) : null;
++	if (pinColumns && !snapshot) return false;
++	const width = snapshot ? snapshot.widths[snapshot.column] : currentColWidth(view, pluginState.activeHandle, view.state.doc.nodeAt(pluginState.activeHandle).attrs);
+ 	view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: {
+ 		startX: event.clientX,
+ 		startWidth: width
+ 	} }));
++	let movedHorizontally = false;
+ 	function finish(event$1) {
+ 		win.removeEventListener("mouseup", finish);
+ 		win.removeEventListener("mousemove", move);
++		if (snapshot && view.isDestroyed) return;
+ 		const pluginState$1 = columnResizingPluginKey.getState(view.state);
+-		if (pluginState$1 === null || pluginState$1 === void 0 ? void 0 : pluginState$1.dragging) {
+-			updateColumnWidth(view, pluginState$1.activeHandle, draggedWidth(pluginState$1.dragging, event$1, cellMinWidth));
++		if (!pluginState$1 || !pluginState$1.dragging) return;
++		const { activeHandle, dragging } = pluginState$1;
++		const width = draggedWidth(dragging, event$1, cellMinWidth);
++		if (!snapshot) {
++			updateColumnWidth(view, activeHandle, width);
+ 			view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null }));
++			return;
+ 		}
++		const tr = view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null });
++		if (matchesResizeSnapshot(view, activeHandle, snapshot)) {
++			if (movedHorizontally || event$1.clientX !== dragging.startX) {
++				setPinnedColumnWidths(tr, view.state.doc.resolve(activeHandle), snapshot, Math.round(width));
++			}
++			if (!tr.docChanged) displayColumnWidth(view, activeHandle, undefined, defaultCellMinWidth);
++		}
++		view.dispatch(tr);
+ 	}
+ 	function move(event$1) {
+-		if (!event$1.which) return finish(event$1);
++		if (!event$1.which || snapshot && view.isDestroyed) return finish(event$1);
+ 		const pluginState$1 = columnResizingPluginKey.getState(view.state);
+-		if (!pluginState$1) return;
+-		if (pluginState$1.dragging) {
+-			const dragged = draggedWidth(pluginState$1.dragging, event$1, cellMinWidth);
+-			displayColumnWidth(view, pluginState$1.activeHandle, dragged, defaultCellMinWidth);
++		if (!pluginState$1 || !pluginState$1.dragging) return;
++		const { activeHandle, dragging } = pluginState$1;
++		if (snapshot) {
++			if (!matchesResizeSnapshot(view, activeHandle, snapshot)) return finish(event$1);
++			movedHorizontally ||= event$1.clientX !== dragging.startX;
++			if (!movedHorizontally) return;
+ 		}
++		const dragged = draggedWidth(dragging, event$1, cellMinWidth);
++		displayColumnWidth(view, activeHandle, dragged, defaultCellMinWidth, snapshot?.widths);
+ 	}
+-	displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
++	if (!snapshot) displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
+ 	win.addEventListener("mouseup", finish);
+ 	win.addEventListener("mousemove", move);
+ 	event.preventDefault();
+@@ -2539,14 +2559,59 @@ function updateColumnWidth(view, cell, width) {
+ 	}
+ 	if (tr.docChanged) view.dispatch(tr);
+ }
+-function displayColumnWidth(view, cell, width, defaultCellMinWidth) {
++function tableDOMAt(view, $cell) {
++	let dom = view.domAtPos($cell.start(-1)).node;
++	while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
++	return dom;
++}
++function measureColumnWidths(view, cell) {
++	const $cell = view.state.doc.resolve(cell);
++	const table = $cell.node(-1), map = TableMap.get(table);
++	const colgroup = tableDOMAt(view, $cell)?.firstElementChild;
++	if (colgroup?.nodeName !== "COLGROUP" || colgroup.children.length !== map.width) return null;
++	// The colgroup exposes every rendered track, including those covered by a colspan.
++	// Round the accumulated widths to keep rounding error from building up along the table.
++	let total = 0;
++	const widths = Array.from(colgroup.children, (col) => {
++		const start = Math.round(total);
++		total += col.getBoundingClientRect().width;
++		return Math.max(1, Math.round(total) - start);
++	});
++	if (!total) return null;
++	const cellOffset = cell - $cell.start(-1);
++	return { table, cellOffset, widths, column: map.findCell(cellOffset).right - 1 };
++}
++function matchesResizeSnapshot(view, cell, snapshot) {
++	if (cell < 0) return false;
++	const $cell = view.state.doc.resolve(cell);
++	return $cell.node(-1) === snapshot.table && cell - $cell.start(-1) === snapshot.cellOffset;
++}
++function setPinnedColumnWidths(tr, $cell, { table, widths, column }, width) {
++	const map = TableMap.get(table), start = $cell.start(-1);
++	const seen = new Set();
++	for (let slot = 0; slot < map.map.length; slot++) {
++		const pos = map.map[slot];
++		if (seen.has(pos)) continue;
++		seen.add(pos);
++		const node = table.nodeAt(pos);
++		if (!node) continue;
++		const attrs = node.attrs;
++		const firstColumn = slot % map.width;
++		const colwidth = Array.from({ length: attrs.colspan }, (_, index) => {
++			const col = firstColumn + index;
++			return col === column ? width : attrs.colwidth?.[index] || widths[col];
++		});
++		if (colwidth.every((value, index) => value === attrs.colwidth?.[index])) continue;
++		tr.setNodeMarkup(start + pos, null, { ...attrs, colwidth });
++	}
++}
++function displayColumnWidth(view, cell, width, defaultCellMinWidth, previewWidths) {
+ 	const $cell = view.state.doc.resolve(cell);
+ 	const table = $cell.node(-1), start = $cell.start(-1);
+ 	const col = TableMap.get(table).colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+-	let dom = view.domAtPos($cell.start(-1)).node;
+-	while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
++	const dom = tableDOMAt(view, $cell);
+ 	if (!dom) return;
+-	updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, col, width);
++	updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, width === undefined ? undefined : col, width, previewWidths);
+ }
+ function zeroes(n) {
+ 	return Array(n).fill(0);

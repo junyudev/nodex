@@ -1,7 +1,7 @@
 import { DOMSerializer, Schema } from "prosemirror-model";
 
 import { PartialBlock } from "../../../blocks/defaultBlocks.js";
-import { EMPTY_CELL_WIDTH } from "../../../blocks/index.js";
+import { AUTO_CELL_MIN_WIDTH } from "../../../blocks/Table/TableExtension.js";
 import type { BlockNoteEditor } from "../../../editor/BlockNoteEditor.js";
 import {
   BlockSchema,
@@ -78,7 +78,7 @@ const addTableMinCellWidths = (element: HTMLElement) => {
   tables.forEach((table) => {
     table.setAttribute(
       "style",
-      `--default-cell-min-width: ${EMPTY_CELL_WIDTH}px;`,
+      `--default-cell-min-width: ${AUTO_CELL_MIN_WIDTH}px;`,
     );
     table.setAttribute("data-show-children", "true");
   });

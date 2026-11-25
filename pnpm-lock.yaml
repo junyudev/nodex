@@ -242,6 +242,7 @@ patchedDependencies:
   app-builder-lib@26.18.0: 0fc916f41b3c369194b90ed82bda9be34d2e86872c2628b813b1d686c3f54f76
   dir-compare@4.2.0: 05212fc3bdbbe99ae7894b4da9ef8d917ce6e75999449766af26212c9323fdd2
   glob@7.2.3: dc9d0060a3c6a105658695875f885c6c85af2b98d0383704b05c426971bab12e
+  prosemirror-tables@1.8.5: b196573b1184d8b7885c7331cd28cb1b690d50da0ef3f565186577e996790618
   prosemirror-view@1.42.8: 76f963e8b097c73ce4c166572f1bbaab9d5aca1e321f5974069edd9bd78fecef
   vitest@5.0.5: 2761dfd1dacbb4b39a2461e0fe5e60697e76dc0358cbc4d1c9e77a2368ed328f
   y-prosemirror@1.3.7: 1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375
@@ -1524,7 +1525,7 @@ importers:
         version: 1.4.4
       prosemirror-tables:
         specifier: ^1.8.5
-        version: 1.8.5
+        version: 1.8.5(patch_hash=b196573b1184d8b7885c7331cd28cb1b690d50da0ef3f565186577e996790618)
       prosemirror-transform:
         specifier: 1.12.5
         version: 1.12.5
@@ -16206,7 +16207,7 @@ snapshots:
       prosemirror-model: 1.25.13
       prosemirror-schema-list: 1.5.1
       prosemirror-state: 1.4.4
-      prosemirror-tables: 1.8.5
+      prosemirror-tables: 1.8.5(patch_hash=b196573b1184d8b7885c7331cd28cb1b690d50da0ef3f565186577e996790618)
       prosemirror-transform: 1.12.5
       prosemirror-view: 1.42.8(patch_hash=76f963e8b097c73ce4c166572f1bbaab9d5aca1e321f5974069edd9bd78fecef)
 
@@ -21404,7 +21405,7 @@ snapshots:
       prosemirror-transform: 1.12.5
       prosemirror-view: 1.42.8(patch_hash=76f963e8b097c73ce4c166572f1bbaab9d5aca1e321f5974069edd9bd78fecef)
 
-  prosemirror-tables@1.8.5:
+  prosemirror-tables@1.8.5(patch_hash=b196573b1184d8b7885c7331cd28cb1b690d50da0ef3f565186577e996790618):
     dependencies:
       prosemirror-keymap: 1.2.3
       prosemirror-model: 1.25.13
