@@ -407,11 +407,18 @@ Electron application before launching without HMR. The launcher uses those
 release artifacts throughout the application runtime and uses the release Core
 during seed initialization. Without it, the launcher prepares
 development-profile native binaries and generated resources, then starts
-electron-vite with HMR. Both modes default to an operating-system assigned
-DevTools port so different homes can run concurrently. Pass
-`--remote-debugging-port <port>` or its `--cdp <port>` alias with an integer from
-`0` through `65535` when a stable endpoint is needed. The command-line option
-overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
+electron-vite with HMR.
+
+Both modes default to port `0`, which lets the operating system assign a
+loopback DevTools port to each instance. After Electron prints
+`DevTools listening on ws://127.0.0.1:…`, read the port from the first line of
+`$task_home/.nodex/electron-session-data/DevToolsActivePort` and verify the endpoint
+at `http://127.0.0.1:<port>/json/version`.
+
+Use `--remote-debugging-port <port>` or its `--cdp <port>` alias with a port
+from `1` through `65535` for a fixed endpoint. An explicit `0` also requests
+an assigned port. The command-line option takes precedence over
+`NODEX_REMOTE_DEBUGGING_PORT`, which accepts the same values.
 
 `vp run dev` and `vp run test:e2e` can launch the desktop app directly from an Agent
 terminal. Both launchers remove the inherited `ELECTRON_RUN_AS_NODE` setting from

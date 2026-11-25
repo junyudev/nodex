@@ -180,9 +180,8 @@ describe("dev launcher", () => {
         "config/electron.vite.config.ts",
         "--logLevel",
         "warn",
-        "--remoteDebuggingPort",
-        "0",
         "--",
+        "--remote-debugging-port=0",
         "-ApplePersistenceIgnoreState",
         "YES",
       ]),
@@ -351,7 +350,7 @@ describe("dev launcher", () => {
   test("accepts the CDP alias and lets the command line override the environment", () => {
     const plan = createDevLaunchPlan({
       arguments: parseDevLauncherArguments(["--cdp", "9333"]),
-      environment: { NODEX_REMOTE_DEBUGGING_PORT: "9444" },
+      environment: { NODEX_REMOTE_DEBUGGING_PORT: "9444", REMOTE_DEBUGGING_PORT: "9555" },
       home: HOME,
       platform: "linux",
     });
@@ -363,10 +362,11 @@ describe("dev launcher", () => {
       "config/electron.vite.config.ts",
       "--logLevel",
       "warn",
-      "--remoteDebuggingPort",
-      "9333",
+      "--",
+      "--remote-debugging-port=9333",
     ]);
     expect(plan.environment.NODEX_REMOTE_DEBUGGING_PORT).toBe("9333");
+    expect(plan.environment.REMOTE_DEBUGGING_PORT).toBeUndefined();
   });
 
   test("selects a build-first built application plan", () => {
@@ -402,7 +402,7 @@ describe("dev launcher", () => {
   });
 
   test.each(["linux", "win32"] as const)(
-    "keeps native launch arguments unchanged on %s",
+    "forwards the default DevTools port in both launch modes on %s",
     (platform) => {
       const plan = (build: boolean) =>
         createDevLaunchPlan({
@@ -419,8 +419,8 @@ describe("dev launcher", () => {
         "config/electron.vite.config.ts",
         "--logLevel",
         "warn",
-        "--remoteDebuggingPort",
-        "0",
+        "--",
+        "--remote-debugging-port=0",
       ]);
       expect(plan(true).application.args).toEqual([
         "exec",

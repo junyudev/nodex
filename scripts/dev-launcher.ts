@@ -277,7 +277,6 @@ export const createDevLaunchPlan = (input: {
   readonly platform: NodeJS.Platform;
   readonly architecture?: string;
 }): DevLaunchPlan => {
-  const electronArguments = isolatedElectronArguments(input.platform);
   const enabledFeatures = resolveDevelopmentFeatureOverrides(input.arguments.enabledFeatures);
   const remoteDebuggingPort =
     input.arguments.remoteDebuggingPort ??
@@ -285,6 +284,10 @@ export const createDevLaunchPlan = (input: {
       input.environment.NODEX_REMOTE_DEBUGGING_PORT?.trim() || "0",
       "NODEX_REMOTE_DEBUGGING_PORT",
     );
+  const electronArguments = [
+    `--remote-debugging-port=${remoteDebuggingPort}`,
+    ...isolatedElectronArguments(input.platform),
+  ];
   const usesProfileSnapshot =
     input.arguments.fromProfile !== undefined || input.home.manifest.profileSnapshot !== undefined;
   const usesSharedNativeRuntime =
@@ -393,6 +396,8 @@ export const createDevLaunchPlan = (input: {
         }),
     NODEX_PROJECTS_DIR: input.home.workspace,
     NODEX_REMOTE_DEBUGGING_PORT: remoteDebuggingPort,
+    // electron-vite would append this inherited override after the forwarded Electron arguments.
+    REMOTE_DEBUGGING_PORT: undefined,
     NODEX_SENTRY_ENABLED: usesProfileSnapshot ? "false" : "true",
     ...(usesProfileSnapshot
       ? {
@@ -418,14 +423,7 @@ export const createDevLaunchPlan = (input: {
       ],
       application: {
         command: vitePlusCommand([]).command,
-        args: [
-          ...vitePlusCommand([]).args,
-          "exec",
-          "electron",
-          ".",
-          `--remote-debugging-port=${remoteDebuggingPort}`,
-          ...electronArguments,
-        ],
+        args: [...vitePlusCommand([]).args, "exec", "electron", ".", ...electronArguments],
       },
       environment,
       enabledFeatures,
@@ -452,9 +450,9 @@ export const createDevLaunchPlan = (input: {
         "config/electron.vite.config.ts",
         "--logLevel",
         "warn",
-        "--remoteDebuggingPort",
-        remoteDebuggingPort,
-        ...(electronArguments.length > 0 ? ["--", ...electronArguments] : []),
+        // Forward the native switch because electron-vite's port option drops numeric 0.
+        "--",
+        ...electronArguments,
       ],
     },
     environment,
