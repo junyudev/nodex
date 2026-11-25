@@ -30,6 +30,10 @@ export interface SidebarSectionSummary {
 }
 
 export interface SessionSidebarPlacement {
+  /** Side chats and the Coordinator's own chat are hidden from chat lists. */
+  readonly hidden?: boolean;
+  readonly managed?: boolean;
+  readonly activePage?: { readonly id: string; readonly key: string | null } | null;
   readonly sessionId: string;
   readonly projectId: string | null;
   readonly sectionId: string | null;

@@ -1,5 +1,8 @@
 import * as Clock from "effect/Clock";
-import type { AgentRootActivity } from "@nodex/agent-runtime/contracts";
+import {
+  EXECUTION_ACTIVITY_MAX_POINT_READS,
+  type AgentRootActivity,
+} from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -83,7 +86,7 @@ export interface AgentRuntimeSessionActivityOptions {
   readonly changeCapacity?: number;
 }
 
-const POINT_READ_LIMIT = 100;
+const POINT_READ_LIMIT = EXECUTION_ACTIVITY_MAX_POINT_READS;
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "interrupted", "cancelled"]);
 
 interface State {
@@ -109,6 +112,10 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.latestRequestAt === right.latestRequestAt &&
     JSON.stringify(left.activeFlags ?? []) === JSON.stringify(right.activeFlags ?? []) &&
     left.approvalPrompt === right.approvalPrompt &&
+    left.questionPrompt === right.questionPrompt &&
+    left.startedAt === right.startedAt &&
+    left.queuePosition === right.queuePosition &&
+    JSON.stringify(left.agentSelection) === JSON.stringify(right.agentSelection) &&
     left.backgroundTasks.length === right.backgroundTasks.length &&
     left.backgroundTasks.every((task, index) => {
       const other = right.backgroundTasks[index]!;
@@ -128,7 +135,11 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.model === right.model &&
     left.updatedAt === right.updatedAt);
 
-const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionActivity => ({
+const toSessionActivity = (
+  sessionId: string,
+  root: AgentRootActivity,
+  previous: SessionActivity | undefined,
+): SessionActivity => ({
   sessionId,
   ...(root.sideChatSourceThreadId === undefined
     ? {}
@@ -141,6 +152,10 @@ const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionA
   ...(root.latestRequestAt === undefined ? {} : { latestRequestAt: root.latestRequestAt }),
   ...(root.activeFlags === undefined ? {} : { activeFlags: root.activeFlags }),
   ...(root.approvalPrompt === undefined ? {} : { approvalPrompt: root.approvalPrompt }),
+  ...(root.questionPrompt === undefined ? {} : { questionPrompt: root.questionPrompt }),
+  startedAt: previous?.startedAt ?? root.startedAt ?? root.updatedAt,
+  ...(root.queuePosition === undefined ? {} : { queuePosition: root.queuePosition }),
+  ...(root.agentSelection === undefined ? {} : { agentSelection: root.agentSelection }),
   backgroundTasks: root.backgroundTasks,
   providerInstanceId: root.providerInstanceId,
   model: root.model,
@@ -157,28 +172,25 @@ export const coreSessionResolver = Effect.gen(function* () {
   const core = yield* CoreModules;
   const resolve: AgentRuntimeSessionResolver = (runtimeId, rootThreadIds) =>
     Effect.forEach(
-      rootThreadIds,
-      (rootThreadId) =>
+      chunks(rootThreadIds, 100),
+      (ids) =>
         core.workspace
           .read({
-            kind: "agent_runtime_session_binding_by_execution",
+            kind: "agent_runtime_session_ids_by_execution",
             runtime_id: runtimeId,
-            runtime_thread_id: rootThreadId,
+            runtime_thread_ids: ids,
           })
           .pipe(
-            Effect.provideService(CoreApplicationAgent, null),
-            Effect.map((snapshot) =>
-              snapshot.value.kind === "agent_runtime_session_binding" && snapshot.value.binding
-                ? ([rootThreadId, snapshot.value.binding.session_id] as const)
-                : null,
+            Effect.flatMap((snapshot) =>
+              snapshot.value.kind === "agent_runtime_session_ids_by_execution"
+                ? Effect.succeed(Object.entries(snapshot.value.session_ids))
+                : Effect.fail(new Error("Core did not return Session bindings.")),
             ),
           ),
-      { concurrency: 8 },
+      { concurrency: 2 },
     ).pipe(
-      Effect.map(
-        (entries) =>
-          new Map(entries.filter((entry): entry is readonly [string, string] => entry !== null)),
-      ),
+      Effect.provideService(CoreApplicationAgent, null),
+      Effect.map((entries) => new Map(entries.flat())),
     );
   return resolve;
 });
@@ -206,8 +218,12 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
     options.changeCapacity ?? MAIN_OBSERVATION_EVENT_CAPACITY,
   );
   const transitions = yield* PubSub.sliding<AgentRuntimeActivityTransition>(1_024);
+  const executionChanges = yield* PubSub.sliding<void>(1);
   yield* Effect.addFinalizer(() =>
-    PubSub.shutdown(changes).pipe(Effect.andThen(PubSub.shutdown(transitions))),
+    PubSub.shutdown(changes).pipe(
+      Effect.andThen(PubSub.shutdown(transitions)),
+      Effect.andThen(PubSub.shutdown(executionChanges)),
+    ),
   );
 
   const read = Ref.get(state).pipe(
@@ -235,6 +251,9 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
         const sequence = before.sequence + 1;
         yield* Ref.set(state, { sequence, generation, ...next });
         yield* PubSub.publish(changes, { type: "reset", sequence });
+        // Leaving a quiet generation cannot change the Agents map's durable recent results.
+        if (generation !== null || before.sessions.size > 0)
+          yield* PubSub.publish(executionChanges, undefined);
         if (announce) yield* announce(before);
       }),
     );
@@ -318,7 +337,8 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
           snapshotSequence = Math.max(snapshotSequence, page.snapshotSequence);
           cursor = page.nextCursor ?? undefined;
         } while (cursor !== undefined);
-        const known = (yield* Ref.get(state)).roots;
+        const previous = yield* Ref.get(state);
+        const known = previous.roots;
         const unknown = items
           .map((item) => item.rootThreadId)
           .filter((rootThreadId) => !known.get(rootThreadId));
@@ -334,10 +354,17 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
         const sessions = new Map<string, SessionActivity>();
         for (const item of items) {
           const sessionId = roots.get(item.rootThreadId);
-          if (sessionId) sessions.set(sessionId, toSessionActivity(sessionId, item));
+          if (sessionId)
+            sessions.set(
+              sessionId,
+              toSessionActivity(
+                sessionId,
+                item,
+                previous.generation === generation ? previous.sessions.get(sessionId) : undefined,
+              ),
+            );
         }
         floor = snapshotSequence;
-        const previous = yield* Ref.get(state);
         const touched = new Set([...previous.roots.keys(), ...roots.keys()]);
         yield* replace(
           generation,
@@ -388,7 +415,9 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
                   else roots.delete(rootThreadId);
                   if (!sessionId) continue;
                   const previous = sessions.get(sessionId) ?? null;
-                  const next = item ? toSessionActivity(sessionId, item) : null;
+                  const next = item
+                    ? toSessionActivity(sessionId, item, previous ?? undefined)
+                    : null;
                   if (sameActivity(previous, next)) continue;
                   sequence += 1;
                   if (next) {
@@ -421,10 +450,10 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
         let stale = false;
         let resubscribe = false;
         const changed = new Set<string>();
+        let admissionMayHaveChanged = false;
+        const sessions = [...(yield* Ref.get(state)).sessions.values()];
         const active = new Set(
-          [...(yield* Ref.get(state)).sessions.values()].flatMap((activity) =>
-            activity.activeRunId ? [activity.activeRunId] : [],
-          ),
+          sessions.flatMap((activity) => (activity.activeRunId ? [activity.activeRunId] : [])),
         );
         for (const { delivery, notification } of batch) {
           if (lastDelivery !== null && delivery !== lastDelivery + 1) stale = true;
@@ -433,13 +462,16 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
             if (notification.sequence > floor) changed.add(notification.rootThreadId);
           } else if (
             notification.type === "execution.lifecycle" &&
-            notification.subscriptionId === subscriptionId &&
-            notification.runId &&
-            notification.runStatus &&
-            TERMINAL_RUN_STATUSES.has(notification.runStatus) &&
-            active.has(notification.runId)
+            notification.subscriptionId === subscriptionId
           ) {
-            terminalRuns.set(notification.runId, notification.runStatus);
+            admissionMayHaveChanged = true;
+            if (
+              notification.runId &&
+              notification.runStatus &&
+              TERMINAL_RUN_STATUSES.has(notification.runStatus) &&
+              active.has(notification.runId)
+            )
+              terminalRuns.set(notification.runId, notification.runStatus);
           } else if (
             notification.type === "event.error" &&
             notification.subscriptionId === subscriptionId
@@ -452,7 +484,14 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
           stale = true;
         }
         if (stale) return yield* reload(true);
-        if (changed.size > 0) yield* refresh([...changed]);
+        if (changed.size === 0) return;
+        // A change in admission shifts the positions of other waiting roots.
+        if (admissionMayHaveChanged)
+          for (const session of sessions)
+            if (session.queuePosition != null) changed.add(session.threadId);
+        yield* refresh([...changed]);
+        // Task reports and terminal Runs can change the map while activity is unchanged.
+        yield* PubSub.publish(executionChanges, undefined);
       });
 
     yield* reload(false).pipe(
@@ -495,6 +534,8 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
   return {
     /** Bounded snapshot of non-idle Sessions; reading never starts a process. */
     read,
+    readAll: Ref.get(state).pipe(Effect.map((state) => state.sessions)),
+    executionChanges: Stream.fromPubSub(executionChanges),
     activityChanges,
     /** Observes one process generation for the lifetime of the caller's Scope; never starts one. */
     attach,

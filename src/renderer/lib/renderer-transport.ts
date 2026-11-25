@@ -36,6 +36,7 @@ export interface RendererTransport {
   subscribeAgentRuntimeSessionEvents?: (
     callback: (event: import("../../shared/agent-runtime-api").AgentRuntimeSessionEvent) => void,
   ) => () => void;
+  subscribeAgentsMapChanges?: (callback: (revision: number) => void) => () => void;
   subscribeAgentRuntimeActivityChanges?: (
     callback: (
       change: import("../../shared/agent-runtime-api").AgentRuntimeSessionActivityChange,

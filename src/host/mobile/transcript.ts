@@ -50,6 +50,7 @@ import {
   parseChatItemId,
   projectNativeItem,
   projectRequests,
+  runtimeActivity,
   runtimeItemProjector,
   transcriptWindow,
   withLiveOutput,
@@ -249,7 +250,11 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
             (current?.pendingRequestCount ?? 0) > 0 ||
             projection.runs.some((run) => run.status === "waiting")
               ? "waiting"
-              : (current?.status ?? (activeRunId ? "running" : "idle")),
+              : current
+                ? runtimeActivity(current).status
+                : activeRunId
+                  ? "running"
+                  : "idle",
           activeRunId,
           queuedCount: queued.size,
           requests,

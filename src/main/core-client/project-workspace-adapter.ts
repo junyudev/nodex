@@ -74,6 +74,11 @@ export const projectWorkspaceSessionSidebarPlacementFromCore = (
     { kind: "session_sidebar_placements" }
   >["placements"][number],
 ): SessionSidebarPlacement => ({
+  hidden: placement.hidden,
+  managed: placement.managed,
+  activePage: placement.active_page_id
+    ? { id: placement.active_page_id, key: placement.active_page_key ?? null }
+    : null,
   sessionId: placement.session_id,
   projectId: placement.project_id ?? null,
   sectionId: placement.section_id ?? null,

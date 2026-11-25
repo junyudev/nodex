@@ -6,11 +6,13 @@ import type {
   AgentRuntimeSessionActivitySnapshot,
 } from "../../shared/agent-runtime-api";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { isRemoteSpace } from "./renderer-space";
 import { resolveRendererTransport } from "./renderer-transport";
 
 export interface AgentRuntimeActivitySource {
   readonly read: () => Promise<AgentRuntimeSessionActivitySnapshot>;
   readonly subscribe: (listener: (change: AgentRuntimeSessionActivityChange) => void) => () => void;
+  readonly subscribeRefresh?: (listener: () => void) => () => void;
   readonly readConnection: () => Promise<AgentRuntimeConnectionState>;
   readonly subscribeConnection: (
     listener: (state: AgentRuntimeConnectionState) => void,
@@ -118,7 +120,11 @@ export function createAgentRuntimeActivityStore(
       // A replacement process has no memory of earlier pushes.
       if (recovered) void refresh();
     });
+    const stopRefresh = source.subscribeRefresh?.(() => {
+      if (!pending) void refresh();
+    });
     releaseSource = () => {
+      stopRefresh?.();
       stopActivity();
       stopConnection();
     };
@@ -178,6 +184,18 @@ export const agentRuntimeActivityStore = createAgentRuntimeActivityStore({
   read: () => agentRuntimeRuntime.activity(),
   subscribe: (listener) =>
     (resolveRendererTransport().subscribeAgentRuntimeActivityChanges ?? noSubscription)(listener),
+  // Hosted Session reads follow Core invalidations, with a sparse repair for Runtime-only work.
+  subscribeRefresh: (refresh) => {
+    if (!isRemoteSpace()) return () => {};
+    const unsubscribe = resolveRendererTransport().subscribeProjectSessionChanges(refresh);
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "hidden") refresh();
+    }, 15_000);
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
+  },
   readConnection: () => agentRuntimeRuntime.connection(),
   subscribeConnection: (listener) =>
     (resolveRendererTransport().subscribeAgentRuntimeConnectionChanges ?? noSubscription)(listener),

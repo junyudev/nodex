@@ -260,6 +260,7 @@ export function runtimeSessionLiveIndicator(
     | null
     | undefined,
 ): SessionLiveIndicator | null {
+  if (activity?.status === "queued") return null;
   return activity?.activeFlags?.includes("waitingOnApproval")
     ? "approval"
     : (activity?.status ?? null);

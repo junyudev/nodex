@@ -186,7 +186,12 @@ export const parseChatItemId = (id: string): [string, string, string | null] | n
 
 export const runtimeActivity = (activity: AgentRuntimeSessionActivity): ChatActivity => ({
   sessionId: activity.sessionId,
-  status: activity.pendingRequestCount > 0 ? "waiting" : activity.status,
+  status:
+    activity.pendingRequestCount > 0
+      ? "waiting"
+      : activity.status === "queued"
+        ? "idle"
+        : activity.status,
   pendingRequestCount: activity.pendingRequestCount,
   attention: activity.approvalPrompt ?? null,
 });

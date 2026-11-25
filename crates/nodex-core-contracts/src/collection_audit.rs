@@ -100,6 +100,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ProjectActivitySummaries { .. }
         | ProjectWorkspaceRead::SessionLinkedPageSummaries { .. }
         | ProjectWorkspaceRead::SessionSidebarPlacements { .. }
+        | ProjectWorkspaceRead::AgentRuntimeSessionIdsByExecution { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
         ProjectWorkspaceRead::NextInboxSnooze

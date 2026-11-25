@@ -196,6 +196,7 @@ pub fn authorize(
                 | "session_window"
                 | "agent_runtime_session_binding"
                 | "agent_runtime_session_binding_by_execution"
+                | "agent_runtime_session_ids_by_execution"
                 | "agent_runtime_session_binding_window"
                 | "session_work_page"
                 | "task_window"

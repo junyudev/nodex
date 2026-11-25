@@ -10,6 +10,7 @@ import { MobileRpc } from "../../host/mobile/rpc";
 import { startHostRelay } from "../../host/HostRelay";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
+import { AgentsMap } from "../agent-runtime/AgentsMap";
 import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
 import { WorkApplication } from "../../host/work-application/WorkApplication";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
@@ -256,6 +257,7 @@ export const live: Layer.Layer<
           attachments: yield* ChatAttachments,
           inbox: yield* InboxApplication,
           activity: yield* AgentRuntimeSessionActivity,
+          agentsMap: yield* AgentsMap,
           phone: yield* MobileRpc,
           settings: yield* ApplicationSettings,
           chats: yield* ChatSearch,

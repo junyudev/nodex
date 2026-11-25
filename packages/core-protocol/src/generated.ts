@@ -5335,7 +5335,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "agents_map" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -10515,6 +10515,11 @@ export interface components {
                 readonly runtime_thread_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "agent_runtime_session_ids_by_execution";
+                readonly runtime_id: string;
+                readonly runtime_thread_ids: readonly string[];
+            } | {
+                /** @enum {string} */
                 readonly kind: "agent_runtime_session_binding_by_thread";
                 readonly runtime_thread_id: string;
             } | {
@@ -13018,6 +13023,10 @@ export interface components {
         };
         /** @description Durable placement for joining bounded live activity without loading Session rows. */
         readonly ProjectWorkspaceSessionSidebarPlacement: {
+            readonly active_page_id?: string | null;
+            readonly active_page_key?: string | null;
+            readonly hidden: boolean;
+            readonly managed: boolean;
             readonly project_id?: string | null;
             readonly section_id?: string | null;
             readonly session_id: string;
@@ -15073,6 +15082,12 @@ export interface components {
                     readonly binding?: components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"] | null;
                     /** @enum {string} */
                     readonly kind: "agent_runtime_session_binding";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_session_ids_by_execution";
+                    readonly session_ids: {
+                        readonly [key: string]: string;
+                    };
                 } | {
                     readonly bindings: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding"];
                     /** @enum {string} */

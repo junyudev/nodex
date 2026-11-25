@@ -21509,6 +21509,7 @@
         "description": "Only these semantic operations may cross from a Member to the execution owner.",
         "enum": [
           "activity",
+          "agents_map",
           "connection",
           "providers",
           "session_read",
@@ -43974,6 +43975,32 @@
               },
               {
                 "type": "object",
+                "description": "Resolves at most 100 root execution identities in the current Library.",
+                "required": [
+                  "runtime_id",
+                  "runtime_thread_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_session_ids_by_execution"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "runtime_thread_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Resolves a chat reference, which names only the execution root Thread, to its Session.\nAbsent unless exactly one Session is bound to that Thread.",
                 "required": [
                   "runtime_thread_id",
@@ -54373,10 +54400,30 @@
         "type": "object",
         "description": "Durable placement for joining bounded live activity without loading Session rows.",
         "required": [
+          "hidden",
+          "managed",
           "session_id",
           "unread"
         ],
         "properties": {
+          "active_page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active_page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "managed": {
+            "type": "boolean"
+          },
           "project_id": {
             "type": [
               "string",
@@ -64089,6 +64136,30 @@
                             "enum": [
                               "agent_runtime_session_binding"
                             ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "session_ids",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_session_ids_by_execution"
+                            ]
+                          },
+                          "session_ids": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "propertyNames": {
+                              "type": "string"
+                            }
                           }
                         }
                       },

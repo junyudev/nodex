@@ -11,6 +11,7 @@ import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
 import { rendererLocalCommitApply } from "../core-client/types";
+import { AgentsMapReadInputSchema } from "../../shared/schemas/agents-map";
 import { setExecutionHoldInputSchema } from "../../shared/work-application";
 import { effectiveHolds } from "../../host/work-application/execution-holds";
 import {
@@ -93,6 +94,20 @@ export const live = Layer.effectDiscard(
     );
     yield* ipc.handleQuery("agent-runtime:providers:read", (_, input) =>
       call<"agent-runtime:providers:read">("providers", input ?? {}),
+    );
+    yield* ipc.handleQuery("agent-runtime:agents-map:read", (_, input) =>
+      Effect.try(() => AgentsMapReadInputSchema.parse(input)).pipe(
+        Effect.flatMap((parsed) =>
+          call<"agent-runtime:agents-map:read">("agents_map", parsed).pipe(
+            Effect.mapError(
+              () =>
+                new RemoteHostError({
+                  message: "Agents is unavailable from this team Space’s Host.",
+                }),
+            ),
+          ),
+        ),
+      ),
     );
     yield* ipc.handleQuery("agent-runtime:activity:read", () =>
       call<"agent-runtime:activity:read">("activity", {}),

@@ -47,15 +47,19 @@ const fixture = (options: { failRelay?: boolean } = {}) => {
         read: (input: ProjectWorkspaceRead) =>
           Effect.sync(() => {
             calls.push("resolve");
-            const session =
-              input.kind === "agent_runtime_session_binding_by_execution" &&
-              input.runtime_id === "runtime"
-                ? bindings.get(input.runtime_thread_id)
-                : undefined;
+            if (
+              input.kind !== "agent_runtime_session_ids_by_execution" ||
+              input.runtime_id !== "runtime"
+            )
+              throw new Error("Expected a batched read of Runtime Session bindings");
+            const sessionIds = input.runtime_thread_ids.flatMap((root) => {
+              const session = bindings.get(root);
+              return session ? [[root, session] as const] : [];
+            });
             return {
               value: {
-                kind: "agent_runtime_session_binding",
-                binding: session ? { session_id: session } : null,
+                kind: "agent_runtime_session_ids_by_execution",
+                session_ids: Object.fromEntries(sessionIds),
               },
             };
           }),
@@ -116,6 +120,7 @@ it.effect("a Core failure leaves reconciliation for the next Runtime connection"
       { threadId: "root:one", latestUserAuthoredMessageAt: "2026-01-01T00:00:00.000Z" },
     ]);
     yield* owner.reconcile(test.connection);
+    assert.include(test.calls, "relay");
     assert.deepEqual(test.applied, []);
   }),
 );

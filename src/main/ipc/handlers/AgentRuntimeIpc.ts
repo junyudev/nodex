@@ -21,7 +21,11 @@ import { AgentRuntimeSessionActivity } from "../../agent-runtime/AgentRuntimeSes
 import { AgentRuntimeSupervisor } from "../../agent-runtime/AgentRuntimeSupervisor";
 import { MainConfig } from "../../app/MainConfig";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
-import { safeBroadcastToWindows, safeSendToWebContents } from "../../ipc-safe-send";
+import {
+  safeBroadcastToPersonalWindows,
+  safeBroadcastToWindows,
+  safeSendToWebContents,
+} from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -136,7 +140,7 @@ export const live = Layer.effectDiscard(
     yield* activity.activityChanges.pipe(
       Stream.runForEach((change) =>
         Effect.sync(() =>
-          safeBroadcastToWindows(windows.all(), "agent-runtime:activity-changed", [change]),
+          safeBroadcastToPersonalWindows(windows.all(), "agent-runtime:activity-changed", [change]),
         ),
       ),
       Effect.forkScoped,
@@ -144,7 +148,9 @@ export const live = Layer.effectDiscard(
     yield* activity.connectionChanges.pipe(
       Stream.runForEach((state) =>
         Effect.sync(() =>
-          safeBroadcastToWindows(windows.all(), "agent-runtime:connection-changed", [state]),
+          safeBroadcastToPersonalWindows(windows.all(), "agent-runtime:connection-changed", [
+            state,
+          ]),
         ),
       ),
       Effect.forkScoped,

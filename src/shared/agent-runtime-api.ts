@@ -379,18 +379,23 @@ export type AgentRuntimeSessionEvent =
  * Live execution facts for one Runtime-bound Session. Idle Sessions are absent.
  * `waiting` means an information question awaits the user; `background` means no
  * foreground Run is active but delegated or native background work is live, or a
- * delegated result will wake the Session automatically.
+ * delegated result will wake the Session automatically. `queued` awaits Runtime admission.
  */
 export interface AgentRuntimeSessionActivity {
   readonly sessionId: string;
   readonly sideChatSourceThreadId?: AgentRootActivity["sideChatSourceThreadId"];
   readonly threadId: string;
-  readonly status: "running" | "waiting" | "background";
+  readonly status: AgentRootActivity["status"];
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
   readonly latestRequestAt?: AgentRootActivity["latestRequestAt"];
   readonly activeFlags?: AgentRootActivity["activeFlags"];
   readonly approvalPrompt?: string | null;
+  readonly questionPrompt?: AgentRootActivity["questionPrompt"];
+  /** Start of the uninterrupted stretch of live work; stable across activity states. */
+  readonly startedAt?: AgentRootActivity["startedAt"];
+  readonly queuePosition?: AgentRootActivity["queuePosition"];
+  readonly agentSelection?: AgentRootActivity["agentSelection"];
   readonly backgroundTasks: AgentRootActivity["backgroundTasks"];
   /** The active Run's opening statement once the agent has made one; see `AgentRunReadback`. */
   readonly readback?: AgentRootActivity["readback"];
