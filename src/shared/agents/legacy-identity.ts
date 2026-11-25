@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
+import { z } from "zod";
 import type { AgentBackendBinding } from "../agent-backend.ts";
 import { acpRegistryAgent } from "./acp-registry.ts";
 import { antigravityAgent } from "./antigravity.ts";
@@ -28,6 +29,19 @@ export function legacyAgentInstanceId(
     .replaceAll("/", "_")
     .replace(/=+$/u, "");
   return `${kind}_${encoded}`;
+}
+
+/** ACP's former settings accepted IDs that the Runtime could not route. */
+export const LegacyAcpInstanceIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .refine((id) => !id.includes("\0"));
+
+export function repairLegacyAcpInstanceId(value: string): string {
+  const { data: id } = LegacyAcpInstanceIdSchema.safeParse(value);
+  return id && !isProviderInstanceId(id) ? legacyAgentInstanceId("acp", id) : value;
 }
 
 export function decodeLegacyAgentBinding(value: unknown): AgentBackendBinding | null {

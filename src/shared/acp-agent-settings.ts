@@ -1,5 +1,8 @@
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
 import { z } from "zod";
 import { builtInAgentForRegistryId } from "./agents/registry";
+import { acpRegistryAgent } from "./agents/acp-registry";
+import { newAgentInstanceId } from "./agents/instance-id";
 import {
   AGENT_ENVIRONMENT_LIMIT,
   ENVIRONMENT_NAME_PATTERN,
@@ -10,6 +13,9 @@ import {
 } from "./agent-environment";
 
 export const ACP_AGENT_INSTANCE_LIMIT = 32;
+export const newAcpAgentInstanceId = (): string =>
+  newAgentInstanceId(acpRegistryAgent.settingsAnchor);
+
 const text = (maximum: number) =>
   z
     .string()
@@ -101,7 +107,10 @@ export const AcpAgentSourceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export const AcpAgentInstanceFields = {
-  id: text(128),
+  id: z
+    .string()
+    .trim()
+    .refine((id): boolean => isProviderInstanceId(id), "Invalid ACP Agent instance ID."),
   agentDefinitionId: text(256),
   displayName: text(128),
   enabled: z.boolean(),

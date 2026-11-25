@@ -28,6 +28,7 @@ import type { AcpFailure } from "../../../shared/acp-api";
 import {
   AcpAgentInstanceFields,
   AcpAgentSourceSchema,
+  newAcpAgentInstanceId,
   type AcpAgentInstanceInput,
 } from "../../../shared/acp-agent-settings";
 import {
@@ -962,7 +963,7 @@ export function AcpAgentAddDialog({
             pending={pending}
             onBack={() => setChosen(null)}
             onSubmit={({ name, distribution, storage, preview }) => {
-              const id = crypto.randomUUID();
+              const id = newAcpAgentInstanceId();
               void create(
                 {
                   id,
@@ -1053,7 +1054,7 @@ export function AcpAgentAddDialog({
                   takenNames={takenNames}
                   pending={pending}
                   onSubmit={({ name, executable, args, storage, identity }) => {
-                    const id = crypto.randomUUID();
+                    const id = newAcpAgentInstanceId();
                     void create(
                       {
                         id,

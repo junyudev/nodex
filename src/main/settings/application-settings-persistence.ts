@@ -1,6 +1,7 @@
 import { withAgentSecretChanges } from "./agent-environment-storage";
 import {
   hasLegacyAgentProfiles,
+  migrateAcpInstanceIds,
   migrateBuiltInAcpInstances,
   migrateLegacyAgentProfiles,
 } from "./agent-profile-migration";
@@ -398,8 +399,15 @@ export function migrateProfileAgentProfiles(source: ApplicationSettingsDocumentS
   migrateLegacyProfileTables(source);
   const current = loadProfileServerTomlConfig(source);
   withAgentSecretChanges((changes) => {
-    const migrated = migrateBuiltInAcpInstances(source, current, changes);
-    if (migrated) writeProfileServerTomlConfig(source, { ...current, ...migrated });
+    const instances = readStoredAcpInstances(current.acp_agent_instances, { forMigration: true });
+    const builtIns = migrateBuiltInAcpInstances(source, current, instances, changes);
+    const next = { ...current, ...builtIns };
+    const acp = migrateAcpInstanceIds(source, builtIns?.acp_agent_instances ?? instances, changes);
+    if (acp) {
+      next.acp_agent_instances = acp.instances;
+      rewriteAcpSettingsReferences(next, acp.rewritten);
+    }
+    if (builtIns || acp) writeProfileServerTomlConfig(source, next);
   });
 }
 
@@ -412,8 +420,18 @@ function migrateLegacyProfileTables(source: ApplicationSettingsDocumentSource): 
   if (!hasLegacyAgentProfiles(source, previous) && !hasLegacyInbox) return;
 
   withAgentSecretChanges((changes) => {
-    const migrated = migrateLegacyAgentProfiles(source, previous, changes);
-    const next = { ...previous, ...migrated };
+    const agent_instances = migrateLegacyAgentProfiles(source, previous, changes);
+    const next = { ...previous, agent_instances };
+    if (previous.acp_agent_instances && previous.agent_instance_identity_version !== 1) {
+      const instances = readStoredAcpInstances(previous.acp_agent_instances, {
+        forMigration: true,
+      });
+      const acp = migrateAcpInstanceIds(source, instances, changes, true);
+      if (acp) {
+        next.acp_agent_instances = acp.instances;
+        rewriteAcpSettingsReferences(next, acp.rewritten);
+      }
+    }
     delete next.claude_agent_instances;
     delete next.opencode_agent_instances;
     delete next.antigravity_agent_instances;
@@ -424,6 +442,43 @@ function migrateLegacyProfileTables(source: ApplicationSettingsDocumentSource): 
     }
     writeProfileServerTomlConfig(source, next);
   });
+}
+
+function rewriteAcpSettingsReferences(
+  settings: ServerTomlConfig,
+  rewritten: ReadonlyMap<string, string>,
+): void {
+  if (!rewritten.size) return;
+  for (const key of ["inbox_chat_agent", "inbox_suggestion_agent"] as const) {
+    const previous = settings[key];
+    const id = previous === undefined ? undefined : rewritten.get(previous);
+    if (id) settings[key] = id;
+  }
+  for (const key of ["writing_model", "title_model"] as const) {
+    const model = settings[key];
+    if (!model) continue;
+    const id = rewritten.get(model.instanceId);
+    if (id) settings[key] = { ...model, instanceId: id };
+  }
+  const storedPolicy = settings.model_policy;
+  const policy = StoredModelPolicySchema.safeParse(storedPolicy);
+  if (!policy.success) return;
+  const exceptions = policy.data.exceptions.map((exception) => {
+    try {
+      const entry: unknown = JSON.parse(exception);
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string")
+        return exception;
+      const id = rewritten.get(entry[0]);
+      return id ? JSON.stringify([id, entry[1]]) : exception;
+    } catch {
+      return exception;
+    }
+  });
+  if (
+    (storedPolicy && "providersOff" in storedPolicy) ||
+    exceptions.some((exception, index) => exception !== policy.data.exceptions[index])
+  )
+    settings.model_policy = { ...policy.data, exceptions };
 }
 
 function resolveConfiguredCodexHome(
@@ -1783,11 +1838,13 @@ const ProviderSwitchesModelPolicySchema = z
     nodexOff: providersOff.includes("nodex"),
   }));
 
+const StoredModelPolicySchema = z.union([ModelPolicySchema, ProviderSwitchesModelPolicySchema]);
+
 export function getModelPolicy(source: ApplicationSettingsDocumentSource): ModelPolicy {
   const stored = loadProfileServerTomlConfig(source).model_policy;
   if (stored === undefined) return DEFAULT_MODEL_POLICY;
   // Invalid spending policy fails closed instead of silently enabling credit.
-  return z.union([ModelPolicySchema, ProviderSwitchesModelPolicySchema]).parse(stored);
+  return StoredModelPolicySchema.parse(stored);
 }
 export function updateModelPolicy(
   input: ModelPolicy,

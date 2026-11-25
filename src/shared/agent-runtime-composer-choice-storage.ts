@@ -7,6 +7,8 @@ import {
 } from "./schemas/agent-runtime-api";
 
 export const AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY = "agent-runtime-composer-choices-v1";
+export const AGENT_RUNTIME_MODEL_OPTIONS_STORAGE_KEY = "agent-runtime-model-options-v1";
+export const AGENT_RUNTIME_NEW_CHAT_CHOICE_STORAGE_KEY = "agent-runtime-new-chat-choice-v1";
 
 /** Keys for the choices a Composer can hold before execution applies them. */
 export const agentRuntimeChoiceKey = {

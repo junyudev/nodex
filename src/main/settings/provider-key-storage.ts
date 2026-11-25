@@ -1,3 +1,4 @@
+import { isProviderInstanceId } from "@nodex/agent-runtime/contracts";
 import { z } from "zod";
 import { claudeAgent } from "../../shared/agents/claude";
 import {
@@ -5,6 +6,7 @@ import {
   PROVIDER_KEY_MODEL_LIMIT,
   ProviderKeyModelSchema,
   ProviderKeyTargetSchema,
+  providerKeyRuntimeInstanceId,
   providerKeyTarget,
   type ProviderKeyConnection,
 } from "../../shared/provider-keys";
@@ -27,13 +29,16 @@ const StoredConnectionSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]{1,64}$/u),
     target: StoredTargetSchema,
-    displayName: z.string().min(1).max(128),
+    displayName: z.string().trim().min(1).max(128),
     enabled: z.boolean(),
     models: z.array(ProviderKeyModelSchema).min(1).max(PROVIDER_KEY_MODEL_LIMIT),
     keyHint: z.string().max(4),
     secretRef: z.uuid(),
   })
-  .strict();
+  .strict()
+  .refine(({ id, target }) =>
+    isProviderInstanceId(providerKeyRuntimeInstanceId({ id, preset: target.preset })),
+  );
 
 type StoredConnection = z.infer<typeof StoredConnectionSchema>;
 type Source = Omit<AgentEnvironmentStorage, "backend">;

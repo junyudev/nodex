@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { legacyAgentInstanceId } from "../agents/legacy-identity";
 import { parseDatabaseId } from "../database-identities";
 
 import {
@@ -29,6 +30,23 @@ import {
 } from "./workbench-layout";
 
 describe("WorkbenchLayoutSnapshotSchema", () => {
+  test("restores Agent settings through a repaired ACP instance ID", () => {
+    const oldId = "old instance/identity";
+    const location = {
+      kind: "settings",
+      path: `/settings/agent#${encodeURIComponent(`acp-agent-${oldId}`)}`,
+      returnTo: { kind: "library" },
+    };
+    const layout = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location,
+    });
+    expect(layout.location).toEqual({
+      ...location,
+      path: `/settings/agent#acp-agent-${legacyAgentInstanceId("acp", oldId)}`,
+    });
+  });
+
   test("restores Scheduled destinations and their deep links as Automations", () => {
     const restored = WorkbenchLayoutSnapshotSchema.parse({
       ...createDefaultWorkbenchLayoutSnapshot(),

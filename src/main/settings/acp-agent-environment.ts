@@ -13,6 +13,7 @@ import {
   type AcpAgentSettings,
   type UpdateAcpAgentSettingsInput,
 } from "../../shared/acp-agent-settings";
+import { LegacyAcpInstanceIdSchema } from "../../shared/agents/legacy-identity";
 import { CLAUDE_ACP_AGENT_DEFINITION } from "../../shared/acp-agent-definitions";
 import {
   presentAgentEnvironment,
@@ -35,6 +36,7 @@ const storedEnvironment = storedAgentEnvironmentSchema(
 const storedInstance = z
   .object({
     ...AcpAgentInstanceFields,
+    id: LegacyAcpInstanceIdSchema,
     environment: z
       .array(storedEnvironment)
       .max(AGENT_ENVIRONMENT_LIMIT)
@@ -45,7 +47,7 @@ const storedInstance = z
   .strict();
 const legacyInstance = z
   .object({
-    id: AcpAgentInstanceFields.id,
+    id: LegacyAcpInstanceIdSchema,
     agentDefinitionId: AcpAgentInstanceFields.agentDefinitionId,
     packageRoot: z.string().refine(path.isAbsolute),
     nodeExecutable: z.string().refine(path.isAbsolute),
@@ -68,14 +70,22 @@ const legacyInstance = z
     environment: [],
     customModels: [],
   }));
-const storedInstances = z
+const legacyStoredInstances = z
   .array(z.union([storedInstance, legacyInstance]))
   .max(ACP_AGENT_INSTANCE_LIMIT)
   .refine((instances) => new Set(instances.map(({ id }) => id)).size === instances.length);
+const storedInstances = legacyStoredInstances.refine((instances) =>
+  instances.every(({ id }) => AcpAgentInstanceFields.id.safeParse(id).success),
+);
 export type StoredAcpInstances = z.infer<typeof storedInstances>;
 type Storage = Omit<AgentEnvironmentStorage, "backend">;
-export function readStoredAcpInstances(value: unknown): StoredAcpInstances {
-  const result = storedInstances.safeParse(value ?? []);
+export function readStoredAcpInstances(
+  value: unknown,
+  options?: { readonly forMigration: true },
+): StoredAcpInstances {
+  const result = (options?.forMigration ? legacyStoredInstances : storedInstances).safeParse(
+    value ?? [],
+  );
   if (!result.success) throw new Error("Invalid saved ACP Agent settings.");
   return result.data;
 }
