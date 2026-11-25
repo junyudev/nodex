@@ -29,10 +29,10 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   three macOS slots for stress, runtime contracts, and curated Electron E2E.
   The `nightly complete` aggregate requires all of these jobs. Paid-agent and
   UI performance tests remain excluded.
-- `.github/workflows/codeql.yml` scans GitHub Actions and JavaScript/TypeScript
-  for ready or opted-in PRs, merge groups, and pushes to `main`. The weekly and
-  manual runs also scan Rust. Switch off CodeQL default setup when adopting this
-  workflow so GitHub accepts its uploads.
+- `.github/workflows/codeql.yml` scans GitHub Actions, JavaScript/TypeScript and
+  Rust weekly and on manual dispatch, so security scanning never competes with
+  verification for runner slots. CodeQL default setup stays off; GitHub rejects
+  this workflow's uploads while it is on.
 - `.github/workflows/performance.yml` is the weekly owner for Core runtime
   benchmarks and explicitly ignored scale contracts. Performance regressions
   are diagnosed below Electron rather than through UI timings.
