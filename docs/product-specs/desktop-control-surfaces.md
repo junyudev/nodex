@@ -50,6 +50,10 @@ Outside Codex, each chat has its own JavaScript session. Its bindings survive ac
 
 Two separate decisions guard desktop control. Running code in the session follows the chat's permission mode. Its approval card shows the code itself and can allow JavaScript for the chat. The allowance survives Stop and app restarts and ends when the chat’s permission mode changes. Access to a site or an app then asks through its own approval card, which can offer approval once or for the chat. Full access accepts these consent requests without asking and declines a request that needs a typed answer. A request that requires automatic review is declined in every mode.
 
+## Built-in Browser screenshots
+
+Agents can capture a tab while the built-in Browser is opening, hidden, or in the background. Nodex makes a temporary paint surface available when the tab needs one. If the tab still cannot produce a frame, the screenshot error describes what failed and tells the Agent it can retry.
+
 ## Website tools
 
 The built-in Browser advertises website tool discovery and invocation through its WebMCP capability. The registry is installed on `document.modelContext` before page scripts run. Registration requires a secure context and origin-keyed agent clustering for network documents; local file documents use their secure-file boundary. Tool definitions and results must be JSON-serializable; registrations belong to the current document, support abort-based removal, and carry identities that reject stale discovery results after replacement or removal. Unsupported user-interaction requests fail explicitly.

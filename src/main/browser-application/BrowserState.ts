@@ -922,12 +922,14 @@ export class BrowserState {
       | (BrowserWebContentsLike & { setBackgroundThrottling?: (enabled: boolean) => void })
       | null;
     if (!contents || contents.isDestroyed()) return;
-    const agent = this.browserUseTabs.get(browserTabKey(tab));
-    const active =
-      tab.visible ||
-      this.browserUseNavigationRestrictions.has(browserTabKey(tab)) ||
-      agent?.captureActive === true;
-    contents.setBackgroundThrottling?.(!(isLocalUrl(tab.pendingUrl ?? tab.url) && active));
+    const key = browserTabKey(tab);
+    const capturing = Boolean(this.browserUseCaptureSurfaces.get(key)?.surfaceSize);
+    const localActive =
+      isLocalUrl(tab.pendingUrl ?? tab.url) &&
+      (tab.visible ||
+        this.browserUseNavigationRestrictions.has(key) ||
+        this.browserUseTabs.get(key)?.captureActive === true);
+    contents.setBackgroundThrottling?.(!(capturing || localActive));
   }
 
   /** Only admitted downloads can finish a guest's initial load. */
@@ -3527,13 +3529,11 @@ export class BrowserState {
         });
       }
       this.browserUseTabs.delete(key);
-      if (this.tabs.has(key)) this.updateTab(key, { annotationAgentControlled: false });
       this.browserUseNavigationRestrictions.delete(key);
-      const snapshot = this.tabs.get(key);
-      if (snapshot) this.syncBackgroundThrottling(snapshot);
+      this.browserUseCaptureSurfaces.delete(key);
+      if (this.tabs.has(key)) this.updateTab(key, { annotationAgentControlled: false });
       this.browserUseCursors.delete(key);
       this.browserUseViewportSizes.delete(key);
-      this.browserUseCaptureSurfaces.delete(key);
       this.deviceToolbarStates.delete(key);
       this.pendingBrowserUsePresentations.delete(key);
       const conversationScopeKey = browserConversationScopeKey(command);
@@ -3590,7 +3590,10 @@ export class BrowserState {
 
     if (command.type === "browser-use-set-capture-surface") {
       const key = browserTabKey(command.event);
-      this.browserUseCaptureSurfaces.set(key, command.event);
+      if (command.event.surfaceSize) this.browserUseCaptureSurfaces.set(key, command.event);
+      else this.browserUseCaptureSurfaces.delete(key);
+      const snapshot = this.tabs.get(key);
+      if (snapshot) this.syncBackgroundThrottling(snapshot);
       this.events.publish({ kind: "browserUseCaptureSurface", value: command.event });
     }
   }

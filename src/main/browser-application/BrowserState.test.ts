@@ -1320,6 +1320,26 @@ describe("Browser entry-point navigation policies", () => {
     }),
   );
 
+  it.effect("keeps a remote guest awake only while Browser Use needs its capture surface", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* makeFixture();
+      yield* registerTab(state);
+      yield* hostCreated(state);
+      yield* state.handleCommand({ type: "navigate", ...identity, url: "https://example.com/" });
+      state.upsertBrowserUseTab({
+        ...readTab(state),
+        codexSessionId: "session-1",
+        captureActive: false,
+        released: false,
+      });
+      assert.isTrue(contents.backgroundThrottling);
+      state.setBrowserUseCaptureSurface({ ...identity, surfaceSize: { width: 1280, height: 720 } });
+      assert.isFalse(contents.backgroundThrottling);
+      state.setBrowserUseCaptureSurface({ ...identity, surfaceSize: null });
+      assert.isTrue(contents.backgroundThrottling);
+    }),
+  );
+
   it.effect(
     "scopes error-page external opening to the current failure and narrower URL policy",
     () =>

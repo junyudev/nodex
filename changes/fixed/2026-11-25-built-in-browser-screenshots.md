@@ -1,0 +1,1 @@
+Agents can reliably capture built-in Browser screenshots as the panel opens or while the tab is in the background. When a tab cannot produce a frame, the screenshot includes a reason and can be retried.

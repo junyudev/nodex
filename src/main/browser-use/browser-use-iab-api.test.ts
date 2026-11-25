@@ -97,11 +97,13 @@ class FakeDebugger extends EventEmitter {
         ],
       };
     }
+    if (method === "Page.captureScreenshot") return { data: "frame" };
     if (method === "Page.getLayoutMetrics") {
       return {
         cssVisualViewport: {
           clientHeight: 1_200,
           clientWidth: 900,
+          pageY: 200,
         },
       };
     }
@@ -531,6 +533,91 @@ describe("BrowserUseIabApi", () => {
       await api.dispatch("createTab", { session_id: "thread-1", turn_id: "turn-1" });
       await expect(call("browser-use-iab-tab:2")).rejects.toThrow("not part of the current");
       await expect(call("foreign-target")).rejects.toThrow("not part of the current");
+    }),
+  );
+
+  it.effect("restores a shelved viewport before using Browser Use's viewport screenshot clip", () =>
+    withApi(async ({ api, service }) => {
+      const { id } = (await api.dispatch("createTab", {
+        session_id: "thread-1",
+      })) as { id: number };
+      await api.dispatch("executeUnhandledCommand", {
+        session_id: "thread-1",
+        type: "browser_visibility_set",
+        visible: true,
+      });
+
+      const debuggerPort = service.contents.debugger;
+      const sendCommand = debuggerPort.sendCommand.bind(debuggerPort);
+      const clip = { x: 0, y: 200, width: 900, height: 1200, scale: 0.5 };
+      let viewportRead = 0;
+      vi.spyOn(debuggerPort, "sendCommand").mockImplementation((method, params, sessionId) => {
+        if (method === "Page.getLayoutMetrics" && viewportRead++ === 0) {
+          return Promise.resolve({ cssVisualViewport: { clientWidth: 1, clientHeight: 1 } });
+        }
+        if (method !== "Page.captureScreenshot") return sendCommand(method, params, sessionId);
+        expect(service.captures.at(-1)?.surfaceSize).toEqual({ width: 1280, height: 720 });
+        expect(params?.clip).toEqual(clip);
+        return Promise.resolve({ data: "painted-frame" });
+      });
+
+      await expect(
+        api.dispatch("executeCdp", {
+          session_id: "thread-1",
+          target: { tabId: id },
+          method: "Page.captureScreenshot",
+          commandParams: { format: "jpeg", clip: { ...clip, width: 1, height: 1 } },
+        }),
+      ).resolves.toEqual({ data: "painted-frame" });
+      expect(service.captures.at(-1)?.surfaceSize).toBeNull();
+    }),
+  );
+
+  it.effect("releases the viewport with a retryable screenshot error when Chromium stalls", () =>
+    withApi(async ({ api, service }) => {
+      const { id } = (await api.dispatch("createTab", {
+        session_id: "thread-1",
+      })) as { id: number };
+      const debuggerPort = service.contents.debugger;
+      const sendCommand = debuggerPort.sendCommand.bind(debuggerPort);
+      let markDispatched!: () => void;
+      const dispatched = new Promise<void>((resolve) => {
+        markDispatched = resolve;
+      });
+      let deliverLateFrame!: () => void;
+      const frame = new Promise<{ data: string }>((resolve) => {
+        deliverLateFrame = () => resolve({ data: "late-frame" });
+      });
+      let requestedFrame = false;
+      vi.spyOn(debuggerPort, "sendCommand").mockImplementation((method, params, sessionId) => {
+        if (method !== "Page.captureScreenshot") return sendCommand(method, params, sessionId);
+        if (requestedFrame) return Promise.resolve({ data: "next-frame" });
+        requestedFrame = true;
+        markDispatched();
+        return frame;
+      });
+      const capture = () =>
+        api.dispatch("executeCdp", {
+          session_id: "thread-1",
+          target: { tabId: id },
+          method: "Page.captureScreenshot",
+          timeoutMs: 500,
+        });
+      vi.useFakeTimers();
+      try {
+        const error = expect(capture()).rejects.toThrow(
+          /did not produce a screenshot frame.*Retry/u,
+        );
+        await dispatched;
+        await expect(capture()).rejects.toThrow("already in progress");
+        await vi.advanceTimersByTimeAsync(500);
+        await error;
+        expect(service.captures.at(-1)?.surfaceSize).toBeNull();
+        await expect(capture()).resolves.toEqual({ data: "next-frame" });
+      } finally {
+        deliverLateFrame();
+        vi.useRealTimers();
+      }
     }),
   );
 
