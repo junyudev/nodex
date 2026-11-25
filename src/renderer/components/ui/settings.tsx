@@ -466,7 +466,12 @@ export function NodexSettingsExpandableRow({
       </div>
       {notice}
       {expanded ? (
-        <div id={detailId} className="flex flex-col bg-token-foreground/[0.015]">
+        // A detail opened inside another detail shares its surface: stacked tints read as grey.
+        <div
+          id={detailId}
+          data-settings-detail=""
+          className="flex flex-col bg-token-foreground/[0.015] in-data-settings-detail:bg-transparent"
+        >
           {children}
         </div>
       ) : null}

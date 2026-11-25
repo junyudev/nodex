@@ -61,19 +61,36 @@ function ListAction({
     <button
       type="button"
       onClick={onClick}
-      className="h-6 cursor-interaction rounded-md px-1.5 text-xs text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-text-primary"
+      className="h-6 cursor-interaction px-2 text-xs text-token-text-secondary outline-hidden first:rounded-s-md last:rounded-e-md hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
     >
       {children}
     </button>
   );
 }
 
-/** A long list stays one calm column: its count on the left, whole-list moves on the right. */
+/**
+ * A long list stays one calm column of facts: its count on the left, and its whole-list moves
+ * gathered into one hairline group on the right, so they read as one control and not as links.
+ */
 function ListHeader({ count, children }: { readonly count: string; readonly children: ReactNode }) {
   return (
-    <div className="flex min-h-9 items-center justify-between gap-3 px-4">
-      <span className="text-xs text-token-description-foreground tabular-nums">{count}</span>
-      <span className="-me-1.5 flex items-center">{children}</span>
+    <div className="flex min-h-10 items-center justify-between gap-3 px-4">
+      <span className="text-xs text-token-text-secondary tabular-nums">{count}</span>
+      <span className="flex items-center divide-x divide-token-border rounded-md ring-[0.5px] ring-token-border ring-inset">
+        {children}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Rows flow down into two columns once the card is wide enough, so a long catalog stays one
+ * screen tall and still reads in its own order, top to bottom.
+ */
+function ModelGrid({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="@container">
+      <div className="gap-x-2 px-2 @xl:columns-2">{children}</div>
     </div>
   );
 }
@@ -92,18 +109,18 @@ function ModelRow({
   readonly onChange: (on: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-8 cursor-interaction items-center gap-2 px-4 hover:bg-token-list-hover-background">
+    <label className="flex min-h-8 min-w-0 cursor-interaction break-inside-avoid items-center gap-2 rounded-md px-2 hover:bg-token-list-hover-background">
       {leading}
       <span
         className={cn(
-          "min-w-0 truncate text-sm",
-          on ? "text-token-text-primary" : "text-token-description-foreground",
+          "min-w-0 truncate text-sm transition-colors duration-150",
+          on ? "text-token-text-primary" : "text-token-text-secondary",
         )}
       >
         {label}
       </span>
       {multiplier != null && multiplier !== 1 ? <NodexRateMark multiplier={multiplier} /> : null}
-      <span className="ms-auto flex shrink-0">
+      <span className="ms-auto flex shrink-0 ps-2">
         <NodexSwitch size="compact" ariaLabel={label} checked={on} onCheckedChange={onChange} />
       </span>
     </label>
@@ -278,7 +295,7 @@ function NodexCard({
           }
         />
       </NodexSettingsRow>
-      <div className="flex flex-col pb-1.5">
+      <div className="flex flex-col pb-2">
         <ListHeader
           count={
             loading
@@ -302,18 +319,20 @@ function NodexCard({
             />
           </ListAction>
         </ListHeader>
-        {models
-          .filter(({ model }) => matches(model.name, model.slug, query))
-          .map(({ provider, model }) => (
-            <ModelRow
-              key={`${provider.instanceId}:${model.slug}`}
-              label={model.name}
-              leading={<AgentProviderIcon kind={provider.driver} className="size-3.5" />}
-              multiplier={rateOf(model.slug)}
-              on={isModelSwitchOn(policy, provider, model.slug)}
-              onChange={(next) => onPolicyChange(setModelOn(policy, provider, model.slug, next))}
-            />
-          ))}
+        <ModelGrid>
+          {models
+            .filter(({ model }) => matches(model.name, model.slug, query))
+            .map(({ provider, model }) => (
+              <ModelRow
+                key={`${provider.instanceId}:${model.slug}`}
+                label={model.name}
+                leading={<AgentProviderIcon kind={provider.driver} className="size-3.5" />}
+                multiplier={rateOf(model.slug)}
+                on={isModelSwitchOn(policy, provider, model.slug)}
+                onChange={(next) => onPolicyChange(setModelOn(policy, provider, model.slug, next))}
+              />
+            ))}
+        </ModelGrid>
       </div>
     </NodexSettingsSection>
   );
@@ -576,7 +595,7 @@ function ModelList({
       ),
     );
   return (
-    <div className="flex flex-col pb-1.5">
+    <div className="flex flex-col pb-2">
       <ListHeader count={counted ? modelsOnSummary(policy, provider, intl) : ""}>
         {offersFreeOnly(provider.driver) ? (
           <ListAction onClick={() => setAll(isFreeModel)}>
@@ -593,16 +612,18 @@ function ModelList({
           <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
         </ListAction>
       </ListHeader>
-      {provider.models
-        .filter((model) => matches(model.name, model.slug, query))
-        .map((model) => (
-          <ModelRow
-            key={model.slug}
-            label={model.name}
-            on={isModelSwitchOn(policy, provider, model.slug)}
-            onChange={(next) => apply(setModelOn(policy, provider, model.slug, next))}
-          />
-        ))}
+      <ModelGrid>
+        {provider.models
+          .filter((model) => matches(model.name, model.slug, query))
+          .map((model) => (
+            <ModelRow
+              key={model.slug}
+              label={model.name}
+              on={isModelSwitchOn(policy, provider, model.slug)}
+              onChange={(next) => apply(setModelOn(policy, provider, model.slug, next))}
+            />
+          ))}
+      </ModelGrid>
     </div>
   );
 }
@@ -626,6 +647,24 @@ function modelsOnSummary(
 }
 
 /**
+ * A closed list says which models are on, not just how many, while some are on and some off:
+ * the count alone makes a person open the list to find out what an Agent can run.
+ */
+function modelsOnPreview(
+  policy: ModelPolicy,
+  provider: CatalogProvider,
+  intl: ReturnType<typeof useIntl>,
+): string {
+  const on = provider.models.filter((model) => isModelSwitchOn(policy, provider, model.slug));
+  const count = modelsOnSummary(policy, provider, intl);
+  if (on.length === 0 || on.length === provider.models.length) return count;
+  return `${count} · ${intl.formatList(
+    on.map((model) => model.name),
+    { type: "unit" },
+  )}`;
+}
+
+/**
  * An Agent instance's models inside its card: one row saying how many are on, opening to the
  * list. Absent until the Agent advertises models, such as before it signs in.
  */
@@ -643,7 +682,7 @@ export function InstanceModels({ instanceId }: { readonly instanceId: string }) 
         id: "modelPolicy.agentModels.models",
         defaultMessage: "Models",
       })}
-      detail={modelsOnSummary(policy, provider, intl)}
+      detail={expanded ? modelsOnSummary(policy, provider, intl) : modelsOnPreview(policy, provider, intl)}
       expanded={expanded}
       onExpandedChange={setExpanded}
     >

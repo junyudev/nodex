@@ -237,6 +237,8 @@ test("Free only returns OpenCode to its free models", async () => {
     exceptions: ['"unused"', JSON.stringify(["opencode_a", "google/gemini-3.5-flash"])],
   };
   renderModels(<InstanceModels instanceId="opencode_a" />);
+  // Closed, the row names what is on rather than only counting it.
+  expect(screen.getByText("1 of 2 on · Gemini 3.5 Flash")).toBeDefined();
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /Models/u }));
     await Promise.resolve();
