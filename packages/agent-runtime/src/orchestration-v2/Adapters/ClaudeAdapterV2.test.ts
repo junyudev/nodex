@@ -2660,7 +2660,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly settings?: ClaudeSettings;
     // A CLI process opened after the first streams from its own queue, so the
     // first one can exit (Queue.shutdown) and a later turn can start another.
-    readonly onOffer?: () => void;
     readonly freshQueueOnReopen?: boolean;
     // What Claude Code reports it runs with after a change.
     readonly appliedSettings?: ClaudeAppliedSettings;
@@ -2692,6 +2691,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Deferred.await(processed);
       });
       const offeredMessages: Array<SDKUserMessage> = [];
+      const promptOffers = yield* Queue.unbounded<SDKUserMessage>();
       const liveChanges: Array<ClaudeAdapterV2.ClaudeLiveSelection> = [];
       let actualNativeModel = "";
       let refuseLiveSelection = options?.refuseLiveSelectionOnce === true;
@@ -2772,6 +2772,18 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Queue.unbounded<
           Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn_item.updated" }>
         >();
+      const messageDeliveryReceipts =
+        yield* Queue.unbounded<
+          Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "message.delivery.updated" }>
+        >();
+      const offer = Effect.fnUntraced(function* (message: SDKUserMessage) {
+        offeredMessages.push(message);
+        nativeModesAtOffer.push(nativeMode);
+        sourceRootsAtOffer.push([...nativeSourceRoots]);
+        hostPermissionsAtOffer.push(nativeHostPermissions);
+        nativeModelsAtOffer.push(actualNativeModel);
+        yield* Queue.offer(promptOffers, message);
+      });
       let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
@@ -2806,15 +2818,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 processQueues.push(processMessages);
                 return {
                   messages: Stream.fromQueue(processMessages),
-                  offer: (message: SDKUserMessage) =>
-                    Effect.sync(() => {
-                      options?.onOffer?.();
-                      offeredMessages.push(message);
-                      nativeModesAtOffer.push(nativeMode);
-                      sourceRootsAtOffer.push([...nativeSourceRoots]);
-                      hostPermissionsAtOffer.push(nativeHostPermissions);
-                      nativeModelsAtOffer.push(actualNativeModel);
-                    }),
+                  offer,
                   ...liveQuery,
                   setPermissionMode: () => Effect.void,
                   stopTask: options?.stopTask ?? (() => Effect.void),
@@ -2844,15 +2848,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     ),
                   ),
                 ),
-                offer: (message) =>
-                  Effect.sync(() => {
-                    options?.onOffer?.();
-                    offeredMessages.push(message);
-                    nativeModesAtOffer.push(nativeMode);
-                    sourceRootsAtOffer.push([...nativeSourceRoots]);
-                    hostPermissionsAtOffer.push(nativeHostPermissions);
-                    nativeModelsAtOffer.push(actualNativeModel);
-                  }),
+                offer,
                 ...liveQuery,
                 setPermissionMode: (mode) =>
                   Effect.sync(() => {
@@ -2903,6 +2899,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             if (event.type === "turn_item.updated" && event.turnItem.type === "system_notice") {
               yield* Queue.offer(systemNoticeReceipts, event);
             }
+            if (event.type === "message.delivery.updated") {
+              yield* Queue.offer(messageDeliveryReceipts, event);
+            }
           }),
         ),
         Effect.forkScoped,
@@ -2926,6 +2925,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         processQueues,
         offerAndWait,
         offeredMessages,
+        promptOffers,
         // The uuid Claude echoes on the turn answering the nth offered prompt.
         promptUuid: (index: number) => {
           const uuid = offeredMessages[index]?.uuid;
@@ -2942,6 +2942,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         subagentReceipts,
         providerThreadReceipts,
         systemNoticeReceipts,
+        messageDeliveryReceipts,
         getOpenedOptions: () => openedOptions,
         liveChanges,
         nativeModelsAtOffer,
@@ -5538,7 +5539,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           const steer = yield* harness.runtime
             .steerTurn(steerInput)
             .pipe(Effect.flip, Effect.forkScoped);
-          yield* awaitUntil(() => harness.offeredMessages.length === 2, "boundary offer");
+          // Skill discovery can still be reading from disk before the SDK sees the steer.
+          yield* Queue.takeN(harness.promptOffers, 2);
           if (failure === "query exit") yield* Queue.shutdown(harness.sdkMessages);
           else yield* TestClock.adjust("10 seconds");
           const error = yield* Fiber.join(steer);
@@ -5561,14 +5563,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               state: "queued",
             }),
           );
-          yield* awaitUntil(
-            () =>
-              harness.events.some(
-                (event) =>
-                  event.type === "message.delivery.updated" && event.delivery === "accepted",
-              ),
-            "late acceptance receipt",
-          );
+          const receipt = yield* Queue.take(harness.messageDeliveryReceipts);
+          assert.equal(receipt.messageId, steerInput.message.messageId);
+          assert.equal(receipt.delivery, "accepted");
         }).pipe(
           Effect.provide(
             Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -5633,10 +5630,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               },
             })
             .pipe(Effect.forkScoped);
-          yield* awaitUntil(() => harness.offeredMessages.length === 2, "boundary offer");
+          const [, notice] = yield* Queue.takeN(harness.promptOffers, 2);
           const noticeUuid = harness.promptUuid(1);
-          assert.equal(harness.offeredMessages[1]?.priority, "next");
-          assert.isUndefined(harness.offeredMessages[1]?.origin);
+          assert.equal(notice?.priority, "next");
+          assert.isUndefined(notice?.origin);
           assert.isUndefined(steer.pollUnsafe());
           const receipts = () =>
             harness.events.filter(
@@ -5647,12 +5644,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             claudeSdkFrame({ type: "command_lifecycle", command_uuid: noticeUuid, state });
           yield* harness.offerAndWait(lifecycle("queued"));
           yield* Fiber.join(steer);
-          yield* awaitUntil(() => receipts().length === 1, "native acceptance receipt");
-          const receipt = receipts()[0];
-          assert.equal(
-            receipt?.type === "message.delivery.updated" ? receipt.delivery : null,
-            "accepted",
-          );
+          const receipt = yield* Queue.take(harness.messageDeliveryReceipts);
+          assert.equal(receipt.messageId, messageId);
+          assert.equal(receipt.delivery, "accepted");
+          assert.lengthOf(receipts(), 1);
           assert.lengthOf(harness.terminalEvents(), 0);
           if (timing === "aborted_tools") {
             yield* harness.offerAndWait(
