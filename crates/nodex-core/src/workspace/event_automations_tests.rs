@@ -240,7 +240,7 @@ fn event_trigger_survives_status_changes_and_replacement_in_either_direction() {
         panic!("clock replacement");
     };
     assert_eq!(rrule, "FREQ=DAILY");
-    assert_eq!(scheduled.condition_text, rrule);
+    assert_eq!(scheduled.condition_text, item.condition_text);
     assert_eq!(timezone, iana_time_zone::get_timezone().unwrap());
     assert!(next_run_at_ms.is_some());
     let clock_parts: (i64, String) = w

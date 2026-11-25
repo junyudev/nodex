@@ -493,6 +493,31 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         intent: { kind: "set_snooze", snoozed_until: new Date(Date.now() + 60_000).toISOString() },
       });
 
+      const listAutomations = async (core: typeof client) => {
+        const definitions = (
+          await core.automationRead({
+            kind: "automations",
+            include_deleted: false,
+            window: { first: 20 },
+          })
+        ).value;
+        if (definitions.kind !== "automations") throw new Error("Missing Automation inventory");
+        return definitions.window.items;
+      };
+      const sourceDefinitions = await listAutomations(client);
+      expect(sourceDefinitions.map(({ automation_id }) => automation_id)).toEqual(
+        expect.arrayContaining([heartbeatId, clockId, eventId]),
+      );
+      const expectedDefinitions = new Map(
+        sourceDefinitions.map(({ automation_id, trigger }) => [
+          automation_id,
+          {
+            status: "PAUSED",
+            trigger: trigger.kind === "clock" ? { ...trigger, next_run_at_ms: null } : trigger,
+          },
+        ]),
+      );
+
       await client.administrationApply({
         operationId: randomUUID(),
         intent: { kind: "create_backup", label: null, include_assets: true, trigger: "manual" },
@@ -513,34 +538,15 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
       const cloned = await startClone();
       try {
         const core = cloned.rootClient;
-        const definitions = (
-          await core.automationRead({
-            kind: "automations",
-            include_deleted: false,
-            window: { first: 20 },
-          })
-        ).value;
-        if (definitions.kind !== "automations") throw new Error("Missing Automation inventory");
-        expect(definitions.window.items.map((definition) => definition.automation_id)).toEqual(
-          expect.arrayContaining([heartbeatId, clockId, eventId]),
-        );
-        for (const definition of definitions.window.items) {
-          expect(definition.status).toBe("PAUSED");
-          if (definition.automation_id === eventId) {
-            expect(definition.trigger).toEqual({
-              kind: "event",
-              filter: {
-                source_id: null,
-                repositories: ["nodex/scenario"],
-                events: ["check_failed"],
-                labels: [],
-                actor_class: "any",
-              },
-            });
-          } else {
-            expect(definition.trigger).toMatchObject({ kind: "clock", next_run_at_ms: null });
-          }
-        }
+        const definitions = await listAutomations(core);
+        expect(
+          new Map(
+            definitions.map(({ automation_id, status, trigger }) => [
+              automation_id,
+              { status, trigger },
+            ]),
+          ),
+        ).toEqual(expectedDefinitions);
         expect((await core.automationRead(dueRead)).value).toMatchObject({
           plan: { due_now: false, work_token: null, next_wake_at_ms: null },
         });
@@ -638,9 +644,7 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         });
 
         // Resuming starts a new cadence. Reopening the Profile must retain that choice.
-        const definition = definitions.window.items.find(
-          (item) => item.automation_id === heartbeatId,
-        )!;
+        const definition = definitions.find((item) => item.automation_id === heartbeatId)!;
         await core.automationApply({
           operationId: createUuidV7(),
           intent: {
