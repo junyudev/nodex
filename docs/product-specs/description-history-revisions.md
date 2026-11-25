@@ -1,7 +1,7 @@
 # Page History Revisions
 
 Status: Active
-Last Updated: 2026-10-28
+Last Updated: 2026-11-26
 
 This document defines Page revision previews, restoration, and retention. The
 owned Document is the authority for the Page's rich title and body. History
@@ -22,12 +22,15 @@ revision does not load or replace the live collaborative Document.
 
 Page History combines content revisions with property, Database, lifecycle, and
 relocation activity. The default view shows revisions grouped by date and a
-non-restorable `Current` item. Activity is available separately.
+non-restorable `Current` item. Current content remains readable while the
+timeline loads or reports a load failure. The timeline offers a retry when it
+cannot load its first page. Activity is available separately.
 
 Activity verifies the committed mutation against its ledger using canonical sets
 of affected identities. Overlapping Block and Page effects name each identity
-once. The authenticated Actor is resolved for the viewing Member in personal and
-team Spaces, including History read through a remote connection.
+once. History includes Library activity without a Project context and retains
+its Actor attribution. The authenticated Actor is resolved for the viewing Member
+in personal and team Spaces, including History read through a remote connection.
 
 The panel loads the selected revision's detail on demand and renders its body
 through the read-only Page preview. Revision previews and exact Nodex Markdown

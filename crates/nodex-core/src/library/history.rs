@@ -52,7 +52,7 @@ struct VersionRow {
 
 struct ChangeRow {
     seq: i64,
-    project_id: String,
+    actor_project_id: Option<String>,
     store_epoch: String,
     kind: String,
     operation_id: Option<String>,
@@ -62,7 +62,6 @@ struct ChangeRow {
     payload_json: Option<String>,
     committed_at: String,
     mutation_id: Option<String>,
-    mutation_project_id: Option<String>,
     mutation_store_epoch: Option<String>,
     mutation_kind: Option<String>,
     mutation_actor_json: Option<String>,
@@ -74,7 +73,6 @@ struct ChangeRow {
     mutation_outcome: Option<String>,
     mutation_change_seq: Option<i64>,
     relocation_id: Option<String>,
-    relocation_project_id: Option<String>,
     relocation_store_epoch: Option<String>,
     relocation_status: Option<String>,
     relocation_source_document_id: Option<String>,
@@ -409,19 +407,21 @@ fn read_changes(
     };
     let block_ids = bounded_json_column("change.block_ids_json", MAX_JSON_BYTES);
     let document_ids = bounded_json_column("change.document_ids_json", MAX_JSON_BYTES);
+    // Match ledger evidence to the same execution context, including Library operations
+    // whose change and ledger both have no Project.
     let sql = format!(
         "SELECT change.seq, change.project_id, change.store_epoch, change.kind, change.operation_id, \
            {block_ids}, {document_ids}, {database_ids}, {payload}, change.committed_at, \
-           mutation.mutation_id, mutation.project_id, mutation.store_epoch, mutation.mutation_kind, \
+           mutation.mutation_id, mutation.store_epoch, mutation.mutation_kind, \
            {actor}, mutation.request_hash, {mutation_blocks}, {mutation_documents}, \
            {mutation_databases}, {field_intents}, mutation.outcome, mutation.change_log_seq, \
-           relocation.id, relocation.project_id, relocation.store_epoch, relocation.status, \
+           relocation.id, relocation.store_epoch, relocation.status, \
            relocation.source_document_id, relocation.target_document_id, {relocation_roots}, \
            {relocation_result}, relocation.change_log_seq, relocation.committed_at \
          FROM change_log change LEFT JOIN block_mutations mutation \
-           ON mutation.change_log_seq = change.seq AND mutation.project_id = change.project_id \
+           ON mutation.change_log_seq = change.seq AND mutation.project_id IS change.project_id \
          LEFT JOIN block_relocations relocation \
-           ON relocation.change_log_seq = change.seq AND relocation.project_id = change.project_id \
+           ON relocation.change_log_seq = change.seq AND relocation.project_id IS change.project_id \
          WHERE change.kind IN ('block_mutation', 'block_relocation') \
            AND NOT EXISTS (SELECT 1 FROM document_versions version \
              WHERE version.document_id = ? \
@@ -462,7 +462,7 @@ fn read_changes(
         .query_map(params_from_iter(parameters), |row| {
             Ok(ChangeRow {
                 seq: row.get(0)?,
-                project_id: row.get(1)?,
+                actor_project_id: row.get(1)?,
                 store_epoch: row.get(2)?,
                 kind: row.get(3)?,
                 operation_id: row.get(4)?,
@@ -472,27 +472,25 @@ fn read_changes(
                 payload_json: row.get(8)?,
                 committed_at: row.get(9)?,
                 mutation_id: row.get(10)?,
-                mutation_project_id: row.get(11)?,
-                mutation_store_epoch: row.get(12)?,
-                mutation_kind: row.get(13)?,
-                mutation_actor_json: row.get(14)?,
-                mutation_request_hash: row.get(15)?,
-                mutation_block_ids_json: row.get(16)?,
-                mutation_document_ids_json: row.get(17)?,
-                mutation_database_ids_json: row.get(18)?,
-                mutation_field_intents_json: row.get(19)?,
-                mutation_outcome: row.get(20)?,
-                mutation_change_seq: row.get(21)?,
-                relocation_id: row.get(22)?,
-                relocation_project_id: row.get(23)?,
-                relocation_store_epoch: row.get(24)?,
-                relocation_status: row.get(25)?,
-                relocation_source_document_id: row.get(26)?,
-                relocation_target_document_id: row.get(27)?,
-                relocation_root_ids_json: row.get(28)?,
-                relocation_result_json: row.get(29)?,
-                relocation_change_seq: row.get(30)?,
-                relocation_committed_at: row.get(31)?,
+                mutation_store_epoch: row.get(11)?,
+                mutation_kind: row.get(12)?,
+                mutation_actor_json: row.get(13)?,
+                mutation_request_hash: row.get(14)?,
+                mutation_block_ids_json: row.get(15)?,
+                mutation_document_ids_json: row.get(16)?,
+                mutation_database_ids_json: row.get(17)?,
+                mutation_field_intents_json: row.get(18)?,
+                mutation_outcome: row.get(19)?,
+                mutation_change_seq: row.get(20)?,
+                relocation_id: row.get(21)?,
+                relocation_store_epoch: row.get(22)?,
+                relocation_status: row.get(23)?,
+                relocation_source_document_id: row.get(24)?,
+                relocation_target_document_id: row.get(25)?,
+                relocation_root_ids_json: row.get(26)?,
+                relocation_result_json: row.get(27)?,
+                relocation_change_seq: row.get(28)?,
+                relocation_committed_at: row.get(29)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()
@@ -647,7 +645,12 @@ fn decode_change(
     connection: &Connection,
     viewer: &str,
 ) -> Result<LibraryPageHistoryEntry, StoreError> {
-    if !bounded(&row.project_id) || !safe_integer(row.seq, 1) {
+    if row
+        .actor_project_id
+        .as_deref()
+        .is_some_and(|project_id| !bounded(project_id))
+        || !safe_integer(row.seq, 1)
+    {
         return Err(corrupt("Page history change has an invalid actor scope"));
     }
     if !canonical_timestamp(&row.committed_at) {
@@ -745,7 +748,6 @@ fn mutation_evidence(
     let mutation_databases = string_array(row.mutation_database_ids_json.as_deref());
     let request_hash = row.mutation_request_hash.as_deref();
     if row.operation_id.as_deref() != Some(mutation_id)
-        || row.mutation_project_id.as_deref() != Some(row.project_id.as_str())
         || row.mutation_store_epoch.as_deref() != Some(row.store_epoch.as_str())
         || row.mutation_outcome.as_deref() != Some("committed")
         || row.mutation_change_seq != Some(row.seq)
@@ -936,7 +938,6 @@ fn relocation_evidence(
     let change_documents = string_array(row.document_ids_json.as_deref());
     let roots = string_array(row.relocation_root_ids_json.as_deref());
     if row.operation_id.as_deref() != Some(relocation_id)
-        || row.relocation_project_id.as_deref() != Some(row.project_id.as_str())
         || row.relocation_store_epoch.as_deref() != Some(row.store_epoch.as_str())
         || row.relocation_status.as_deref() != Some("committed")
         || row.relocation_change_seq != Some(row.seq)
@@ -1304,6 +1305,7 @@ mod tests {
 
     fn insert_mutation(
         connection: &Connection,
+        project_id: Option<&str>,
         mutation_id: &str,
         committed_at: &str,
         payload_request_hash: &str,
@@ -1317,7 +1319,7 @@ mod tests {
              ) VALUES (?1, ?2, 'block_mutation', ?3, ?4, ?5, '[]', ?6, \
                '{\"kind\":\"none\"}', ?7)",
             params![
-                PROJECT,
+                project_id,
                 STORE_EPOCH,
                 mutation_id,
                 format!("[\"{PAGE}\"]"),
@@ -1340,7 +1342,7 @@ mod tests {
                ?10, '{}', '{}', ?7, ?8)",
             params![
                 mutation_id,
-                PROJECT,
+                project_id,
                 STORE_EPOCH,
                 HASH,
                 format!("[\"{PAGE}\"]"),
@@ -1452,9 +1454,10 @@ mod tests {
                            'block_tree_snapshot_v2', X'7B7D', X'', ?3, 2, ?4)",
                         params![DOCUMENT, PROJECT, HASH, LATEST],
                     )?;
-                    insert_mutation(transaction, "mutation:valid", LATEST, HASH, "property_batch", "{}")?;
+                    insert_mutation(transaction, None, "mutation:library", LATEST, HASH, "property_batch", "{}")?;
                     let bad_change_seq = insert_mutation(
                         transaction,
+                        Some(PROJECT),
                         "mutation:bad-evidence",
                         EARLIER,
                         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -1495,7 +1498,7 @@ mod tests {
         else {
             panic!("same-time mutation follows the Document revision");
         };
-        assert_eq!(mutation_id.as_deref(), Some("mutation:valid"));
+        assert_eq!(mutation_id.as_deref(), Some("mutation:library"));
         assert!(matches!(
             entry.evidence,
             LibraryPageHistoryEvidence::Verified
@@ -1537,7 +1540,7 @@ mod tests {
         kernel.writer().call(|connection| {
             with_immediate_transaction(connection, |transaction| {
                 let body = serde_json::json!({ "content": "正文".repeat(100_000) }).to_string();
-                insert_mutation(transaction, "mutation:structural", LATEST, HASH, "structural_edit", &body)?;
+                insert_mutation(transaction, Some(PROJECT), "mutation:structural", LATEST, HASH, "structural_edit", &body)?;
                 transaction.execute("INSERT INTO block_mutation_body_gc(mutation_id) VALUES ('mutation:structural')", [])?;
                 Ok(())
             })

@@ -775,6 +775,7 @@
   "board.historyPanel.restoreRevision": "恢复版本",
   "board.historyPanel.restoring": "正在恢复…",
   "board.historyPanel.retention": "保留方式",
+  "board.historyPanel.retry": "重试",
   "board.historyPanel.revision": "版本",
   "board.historyPanel.revisionNotInDocument": "此版本已不属于该页面文档。",
   "board.historyPanel.revisions": "版本",

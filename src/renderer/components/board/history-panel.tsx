@@ -115,7 +115,7 @@ function OpenHistoryPanel({
   const [filter, setFilter] = useState<HistoryFilter>("revisions");
   const [loading, setLoading] = useState(pageId !== null);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineError, setTimelineError] = useState<"initial" | "earlier" | null>(null);
   const [previewCache, setPreviewCache] = useState<ReadonlyMap<string, DocumentVersionDetail>>(
     () => new Map(),
   );
@@ -131,6 +131,12 @@ function OpenHistoryPanel({
     (targetPageId: string) => {
       const requestSerial = requestSerialRef.current + 1;
       requestSerialRef.current = requestSerial;
+      const onFailure = () => {
+        if (requestSerial !== requestSerialRef.current) return;
+        setEntries([]);
+        setNextCursor(null);
+        setTimelineError("initial");
+      };
       return listPageHistory({
         requestingProjectId: projectId,
         pageId: targetPageId,
@@ -138,12 +144,7 @@ function OpenHistoryPanel({
       })
         .then((result) => {
           if (requestSerial !== requestSerialRef.current) return;
-          if (!result.ok) {
-            setEntries([]);
-            setNextCursor(null);
-            setTimelineError(result.error.message);
-            return;
-          }
+          if (!result.ok) return onFailure();
           setEntries(result.value.entries);
           setNextCursor(result.value.nextCursor);
           setSelectedEntryId((current) =>
@@ -152,20 +153,7 @@ function OpenHistoryPanel({
               : "current",
           );
         })
-        .catch((error: unknown) => {
-          if (requestSerial !== requestSerialRef.current) return;
-          setEntries([]);
-          setNextCursor(null);
-          setTimelineError(
-            toErrorMessage(
-              error,
-              getIntl().formatMessage({
-                id: "board.historyPanel.loadFailed",
-                defaultMessage: "Couldn’t load Page history.",
-              }),
-            ),
-          );
-        })
+        .catch(onFailure)
         .finally(() => {
           if (requestSerial === requestSerialRef.current) setLoading(false);
         });
@@ -299,24 +287,16 @@ function OpenHistoryPanel({
         });
         if (requestSerial !== requestSerialRef.current) return;
         if (!result.ok) {
-          setTimelineError(result.error.message);
+          setTimelineError("earlier");
           return;
         }
         setEntries((current) => mergePageHistoryEntries(current, result.value.entries));
         setNextCursor(result.value.nextCursor);
       },
       {
-        onError: async (error: unknown) => {
+        onError: async () => {
           if (requestSerial !== requestSerialRef.current) return;
-          setTimelineError(
-            toErrorMessage(
-              error,
-              getIntl().formatMessage({
-                id: "board.historyPanel.loadEarlierFailed",
-                defaultMessage: "Couldn’t load earlier history.",
-              }),
-            ),
-          );
+          setTimelineError("earlier");
         },
         cleanup: () => {
           if (requestSerial === requestSerialRef.current) setLoadingOlder(false);
@@ -490,16 +470,7 @@ function OpenHistoryPanel({
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-            {loading ? (
-              <HistoryEmptyState>
-                {intl.formatMessage({
-                  id: "board.historyPanel.loadingHistory",
-                  defaultMessage: "Loading Page history…",
-                })}
-              </HistoryEmptyState>
-            ) : timelineError && entries.length === 0 ? (
-              <HistoryEmptyState>{timelineError}</HistoryEmptyState>
-            ) : selectedIsCurrent ? (
+            {selectedIsCurrent ? (
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
                 <HistoryCurrentRevisionPreview
                   fileAuthority={fileAuthority}
@@ -510,7 +481,7 @@ function OpenHistoryPanel({
                   projectWorkspacePath={projectWorkspacePath}
                 />
               </div>
-            ) : entries.length === 0 ? (
+            ) : loading || timelineError === "initial" ? null : entries.length === 0 ? (
               <HistoryEmptyState>
                 {intl.formatMessage({
                   id: "board.historyPanel.noRevisions",
@@ -627,11 +598,19 @@ function OpenHistoryPanel({
                 </div>
               );
             })}
-            {filteredEntries.length === 0 && filter === "activity" ? (
+            {filteredEntries.length === 0 && filter === "activity" && !loading && !timelineError ? (
               <p className="px-2 py-3 text-xs text-token-description-foreground">
                 {intl.formatMessage({
                   id: "board.historyPanel.noActivity",
                   defaultMessage: "No non-content activity yet.",
+                })}
+              </p>
+            ) : null}
+            {loading ? (
+              <p role="status" className="px-2 py-3 text-xs text-token-description-foreground">
+                {intl.formatMessage({
+                  id: "board.historyPanel.loadingHistory",
+                  defaultMessage: "Loading Page history…",
                 })}
               </p>
             ) : null}
@@ -654,10 +633,31 @@ function OpenHistoryPanel({
                     })}
               </button>
             ) : null}
-            {timelineError && entries.length > 0 ? (
+            {timelineError ? (
               <p role="alert" className="px-2 py-2 text-xs text-(--priority-critical-text)">
-                {timelineError}
+                {timelineError === "initial"
+                  ? intl.formatMessage({
+                      id: "board.historyPanel.loadFailed",
+                      defaultMessage: "Couldn’t load Page history.",
+                    })
+                  : intl.formatMessage({
+                      id: "board.historyPanel.loadEarlierFailed",
+                      defaultMessage: "Couldn’t load earlier history.",
+                    })}
               </p>
+            ) : null}
+            {timelineError === "initial" && pageId ? (
+              <NodexButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setLoading(true);
+                  setTimelineError(null);
+                  void loadFirstPage(pageId);
+                }}
+              >
+                {intl.formatMessage({ id: "board.historyPanel.retry", defaultMessage: "Retry" })}
+              </NodexButton>
             ) : null}
           </div>
 

@@ -4034,6 +4034,37 @@ mod tests {
                     .map_err(Into::into)
             })
             .expect("copied root projection"));
+
+        // Once retention removes the content checkpoint, History shows the
+        // durable relocation evidence for both Project and Library operations.
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.execute(
+                        "DELETE FROM document_versions WHERE document_id = ?1 \
+                         AND source_mutation_id = ?2 AND pinned = 0",
+                        params![SOURCE_DOCUMENT, "move-transfer-root"],
+                    )?,
+                    1
+                );
+                Ok(())
+            })
+            .expect("expire the source checkpoint");
+        let history = kernel
+            .readers()
+            .read_default(|connection| {
+                history::page_history(connection, "library-1", None, SOURCE_PAGE, None, None)
+            })
+            .expect("history after checkpoint retention");
+        assert!(history.entries.iter().any(|entry| matches!(
+            entry,
+            nodex_core_contracts::library::LibraryPageHistoryEntry::BlockRelocation {
+                entry, relocation_id: Some(id), direction, ..
+            } if id == "move-transfer-root"
+                && *direction == nodex_core_contracts::library::LibraryBlockRelocationDirection::OutOfPage
+                && entry.evidence == nodex_core_contracts::library::LibraryPageHistoryEvidence::Verified
+        )), "the move remains visible as verified activity: {history:?}");
     }
 
     #[test]
