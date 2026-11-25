@@ -119,7 +119,9 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
         task.kind === other.kind &&
         task.description === other.description &&
         task.command === other.command &&
-        task.startedAt === other.startedAt
+        task.startedAt === other.startedAt &&
+        task.runId === other.runId &&
+        task.stoppable === other.stoppable
       );
     }) &&
     left.providerInstanceId === right.providerInstanceId &&

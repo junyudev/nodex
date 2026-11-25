@@ -1440,9 +1440,10 @@ reports background shells, Monitors and workflows. Codex reports background term
 their exact command text, up to 2,000 characters. Nodex checks the native terminal list
 when it resumes a Codex conversation and reconciles any reported background work when
 Stop finishes. Safety refreshes run only while terminals are live, backing off from 2 to
-30 seconds while the list stays unchanged.
+30 seconds while the list stays unchanged. Antigravity reports shell commands once it has
+handed them off and supplies their live output from its task log.
 
-Stopping an individual background task ends that task. If it already ended, Stop removes
+When supported by the Agent, stopping an individual background task ends that task. If it already ended, Stop removes
 the stale entry. A conversation's Stop ends its background work, including work in
 delegated tasks stopped with it. Output reads
 return at most the last 8 KiB of a task's output: Claude Code supplies it, and Codex keeps a

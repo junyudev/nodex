@@ -125,3 +125,8 @@ A native Antigravity subagent call appears in the transcript and the Subagents t
 read-only detail opens beside the chat and shows the children Antigravity can identify,
 with their roles, prompts and recent steps. Individual children have no composer or Stop
 action. A batch going idle leaves each child's outcome to its own transcript.
+
+Shell commands Antigravity leaves running appear in the Chat Summary's Background
+section once Antigravity hands them off. Select a command to follow its output.
+Use the Chat's Stop action to stop the whole execution, including its background
+commands. A command leaves Background when it exits or its Agent stops.

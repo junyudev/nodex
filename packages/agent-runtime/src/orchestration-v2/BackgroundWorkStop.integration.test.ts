@@ -238,9 +238,14 @@ const stopEarlierBackgroundWork = ({
           const roster = [
             { taskId: "finished-command", kind: "command", turnItemId: itemId },
           ] as const;
+          const observedOnly = {
+            taskId: "observed-only",
+            kind: "command",
+            stoppable: false,
+          } as const;
           const seededRoster =
             rosterRegression === "individual"
-              ? [...roster, { taskId: "ownerless-task", kind: "command" as const }]
+              ? [...roster, { taskId: "ownerless-task", kind: "command" as const }, observedOnly]
               : roster;
           yield* sink.write({
             events: [
@@ -322,10 +327,14 @@ const stopEarlierBackgroundWork = ({
             });
             yield* Fiber.join(pumped);
           }
+          const remaining = rosterRegression === "individual" ? [observedOnly] : [];
           const after = yield* orchestrator.getThreadProjection(work.threadId);
-          assert.deepEqual(after.providerThreads[0]?.pendingBackgroundTasks, []);
+          assert.deepEqual(after.providerThreads[0]?.pendingBackgroundTasks, remaining);
           const activity = yield* readRootActivity({ rootThreadIds: [threadId] });
-          assert.isEmpty(activity.items.flatMap((row) => row.backgroundTasks));
+          assert.deepEqual(
+            activity.items.flatMap((row) => row.backgroundTasks.map((task) => task.taskId)),
+            remaining.map((task) => task.taskId),
+          );
           return;
         }
         const first = started[0]!;

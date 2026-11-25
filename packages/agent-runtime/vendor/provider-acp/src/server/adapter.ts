@@ -6,6 +6,7 @@ import {
 } from "@nodex/runtime-shared/fileChanges";
 import { ExecutionHost } from "@nodex/provider-core/server/ExecutionHost";
 import { acpPluginSkillInstructions } from "./pluginDelivery.ts";
+import { makeAcpBackgroundCommands, type AcpBackgroundCommandSource } from "./backgroundCommands.ts";
 import * as BoundedQueue from "@nodex/runtime-shared/BoundedQueue";
 import { NODEX_APP_MCP_SERVER, resolveNodexAppTool } from "@nodex/runtime-shared/nodexAppMcp";
 import {
@@ -630,6 +631,8 @@ export interface AcpAdapterV2Flavor {
   ) => AcpAdapterV2SubagentUpdate | undefined;
   readonly isProvisionalSubagentTool?: (toolCall: AcpToolCallState) => boolean;
   readonly normalizeToolCall?: (toolCall: AcpToolCallState) => AcpToolCallState;
+  /** Native command handoff evidence when ACP itself omits it. */
+  readonly backgroundCommands?: AcpBackgroundCommandSource;
   readonly isCancelledToolCall?: (payload: unknown) => boolean;
   readonly extractProposedPlanMarkdown?: (toolCall: AcpToolCallState) => string | undefined;
   readonly extractBackgroundTaskId?: (toolCall: AcpToolCallState) => string | undefined;
@@ -2498,6 +2501,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           flavor.compactViaAdvertisedCommand === true;
         const runtimeRestartRequired = yield* Ref.make(false);
         const runtimeTeardownState = yield* Ref.make<AcpRuntimeTeardownState>({ _tag: "Idle" });
+        const observedCommands =
+          flavor.backgroundCommands === undefined || input.reportBackgroundTasks === undefined
+            ? undefined
+            : yield* makeAcpBackgroundCommands(
+                flavor.backgroundCommands,
+                input.reportBackgroundTasks,
+                sessionScope,
+              );
         const runtimeCallbackGeneration = yield* Ref.make(0);
         const runtimeCallbackGenerationCounter = yield* Ref.make(0);
         const allocateRuntimeCallbackGeneration = Ref.updateAndGet(
@@ -2506,6 +2517,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         );
         const advanceRuntimeCallbackGeneration = allocateRuntimeCallbackGeneration.pipe(
           Effect.tap((generation) => Ref.set(runtimeCallbackGeneration, generation)),
+          Effect.tap(() => observedCommands?.clear ?? Effect.void),
         );
         const runtimeCallbackPermit = yield* Semaphore.make(1);
         const runtimeTransitionPermit = yield* Semaphore.make(1);
@@ -2916,6 +2928,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             Effect.gen(function* () {
               yield* Ref.set(runtimeRestartRequired, true);
               yield* Ref.set(nativeSessionRetired, true);
+              yield* observedCommands?.clear ?? Effect.void;
               if (!followsAgentWorkState) {
                 // An open prompt fails with its transport. A turn held open for a running tool
                 // has no prompt, so nothing else ends it.
@@ -5201,6 +5214,43 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             }
           }
           yield* emitProviderEvent({ type: "turn_item.updated", driver, turnItem });
+          if (
+            observedCommands !== undefined &&
+            projectedStatus === undefined &&
+            turnItem.type === "command_execution" &&
+            status === "running" &&
+            !(yield* Ref.get(stoppedRunQuarantine))
+          ) {
+            const description = flavor.backgroundCommands?.describe(toolCall);
+            const nativeThreadId = context.nativeThreadId;
+            const owner = (yield* Ref.get(providerThreadByNativeSessionId)).get(nativeThreadId);
+            if (description !== undefined && owner !== undefined) {
+              const providerTurnId = context.providerTurnId;
+              const toolCallId = toolCall.toolCallId;
+              const generation = yield* Ref.get(runtimeCallbackGeneration);
+              yield* observedCommands.track(nativeThreadId, owner, toolCallId, {
+                ...description,
+                turnItemId,
+                command: turnItem.input.trim().slice(0, 2_000).trimEnd(),
+                startedAt,
+                onTerminal: (terminal) =>
+                  runRuntimeCallbackAtGeneration(
+                    generation,
+                    Effect.gen(function* () {
+                      const current = yield* Ref.get(activeTurn);
+                      if (current?.providerTurnId !== providerTurnId || current.interrupted) return;
+                      const activeTool = current.tools.get(toolCallId);
+                      if (activeTool === undefined || toolStatus(activeTool.status) !== "running") {
+                        return;
+                      }
+                      yield* notePromptProgress();
+                      if (flavor.replyEndsWithUsageUpdate === true) current.replyOpen = true;
+                      yield* emitTool(current, { ...activeTool, status: terminal });
+                    }),
+                  ).pipe(Effect.asVoid),
+              });
+            }
+          }
           yield* rearmDeferredFinalize(context);
         });
 
@@ -5932,6 +5982,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ) {
           const context = yield* Ref.get(activeTurn);
           const update = notification.update;
+          if (
+            observedCommands !== undefined &&
+            (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") &&
+            (update.status === "pending" || update.status === "completed" || update.status === "failed")
+          ) {
+            yield* observedCommands.update(notification.sessionId, update.toolCallId, update.status);
+          }
           if (
             followsAgentWorkState &&
             flavor.extractSubagentSessionEvent !== undefined &&
@@ -8229,6 +8286,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   runtimeScope = replacementScope;
                   openAgentRequests = replacementAgentRequests;
                   yield* Ref.set(runtimeCallbackGeneration, replacementGeneration);
+                  yield* observedCommands?.clear ?? Effect.void;
                   prepareTerminalEnvironment(
                     yield* readMcpContext(threadId),
                     replacementExit.value.started.sessionId,
@@ -8836,6 +8894,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         });
         const quarantineStoppedRun = Effect.fnUntraced(function* () {
           clientPolicyGrants = makeAcpClientPolicyGrants();
+          yield* observedCommands?.clear ?? Effect.void;
           yield* continuationPermit.withPermit(
             Effect.gen(function* () {
               yield* Ref.update(continuationGeneration, (value) => value + 1);
@@ -10256,10 +10315,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                     : flavor.getModelContextWindow?.(selection, session);
                 },
               }),
-          ...(canReportBackgroundWork
+          ...(canReportBackgroundWork || observedCommands !== undefined
             ? {
                 hasPendingBackgroundWork: Effect.gen(function* () {
                   if (yield* Ref.get(stoppedRunQuarantine)) return false;
+                  if (observedCommands !== undefined && (yield* observedCommands.hasWork)) return true;
                   if (!postSettleContinuationEnabled && !followsAgentWorkState) return false;
                   const rootSessionId = yield* Ref.get(activeSessionId);
                   if (
@@ -10529,6 +10589,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 ),
               ),
           ),
+          ...(observedCommands === undefined
+            ? {}
+            : {
+                readTaskOutput: ({ providerThread, taskId }) => {
+                  const nativeSessionId = providerThread.nativeThreadRef?.nativeId;
+                  return nativeSessionId == null
+                    ? Effect.succeed(null)
+                    : observedCommands.readOutput(nativeSessionId, taskId);
+                },
+              }),
           // The held turn already waits on these commands; their tool calls carry no task id,
           // so any id matches while one runs on this thread.
           ...(flavor.toolOutlivesPrompt === undefined

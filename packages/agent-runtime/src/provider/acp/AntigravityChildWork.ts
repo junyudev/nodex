@@ -83,8 +83,11 @@ export function describeAntigravitySubagentLaunches(
       };
 }
 
-/** Length-delimited fields only; varints and fixed values are skipped. */
-export function protoFields(bytes: Uint8Array): ReadonlyArray<readonly [number, Uint8Array]> {
+/** Collects length-delimited fields and optionally visits varints. */
+export function protoFields(
+  bytes: Uint8Array,
+  onVarint?: (field: number, value: number) => void,
+): ReadonlyArray<readonly [number, Uint8Array]> {
   const fields: Array<readonly [number, Uint8Array]> = [];
   let offset = 0;
   const varint = () => {
@@ -101,8 +104,10 @@ export function protoFields(bytes: Uint8Array): ReadonlyArray<readonly [number, 
     const key = varint();
     const wire = key % 8;
     const field = Math.floor(key / 8);
-    if (wire === 0) varint();
-    else if (wire === 1) offset += 8;
+    if (wire === 0) {
+      const value = varint();
+      onVarint?.(field, value);
+    } else if (wire === 1) offset += 8;
     else if (wire === 5) offset += 4;
     else if (wire === 2) {
       const length = varint();

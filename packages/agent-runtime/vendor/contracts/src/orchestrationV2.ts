@@ -1078,6 +1078,8 @@ const PendingBackgroundTaskFields = {
   command: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2000))),
   startedAt: Schema.optional(Schema.DateTimeUtc),
   turnItemId: Schema.optional(TurnItemId),
+  /** False when the Agent can report the task but cannot stop it independently. */
+  stoppable: Schema.optional(Schema.Boolean),
 };
 
 /**
@@ -1100,12 +1102,13 @@ export const OrchestrationV2PendingBackgroundTask = kindUnionWithFallback(
     Schema.Struct({ ...PendingBackgroundTaskFields, kind: Schema.Literal("background_task") }),
   ],
   (kind) => Schema.Struct({ ...PendingBackgroundTaskFields, kind }),
-  ({ taskId, description, command, startedAt, turnItemId }) => ({
+  ({ taskId, description, command, startedAt, turnItemId, stoppable }) => ({
     taskId,
     ...(description === undefined ? {} : { description }),
     ...(command === undefined ? {} : { command }),
     ...(startedAt === undefined ? {} : { startedAt }),
     ...(turnItemId === undefined ? {} : { turnItemId }),
+    ...(stoppable === undefined ? {} : { stoppable }),
     kind: "background_task",
   }),
 );

@@ -49,6 +49,7 @@ export function projectAgentRuntimeBackgroundTasks(
 ): readonly ConversationBackgroundTask[] {
   return tasks.map((task) => {
     const kind = task.kind === "background_task" ? "task" : task.kind;
+    const stoppable = task.stoppable !== false;
     const startedAtMs = task.startedAt === null ? NaN : Date.parse(task.startedAt);
     return {
       id: task.taskId,
@@ -57,8 +58,8 @@ export function projectAgentRuntimeBackgroundTasks(
       command: task.command,
       owner: task.threadTitle,
       startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
-      stoppable: true,
-      canStop: canStopRun(task.runId),
+      stoppable,
+      canStop: stoppable && canStopRun(task.runId),
       stopping: isStopping(task.taskId),
     };
   });
