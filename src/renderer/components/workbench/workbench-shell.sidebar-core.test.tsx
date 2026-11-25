@@ -79,8 +79,7 @@ describe("workbench session shell / sidebar-core", () => {
       expect(menu.mock.calls[0]![0]).toContainEqual(
         expect.objectContaining({
           id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-          type: "checkbox",
-          checked: managed,
+          label: managed ? "Take back from Nodex" : "Hand to Nodex",
         }),
       );
       expect(invokeCalls.some(([channel]) => channel === "project-sessions:managed")).toBe(false);

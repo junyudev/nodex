@@ -82,9 +82,9 @@ deferred waits for review even after the message returns.
 ## Managed chats
 
 A chat Nodex watches is managed. Every chat an Inbox dispatch starts or continues, and every chat
-a Page start opens, is managed from that moment. `Managed by Nodex` in a chat's menu hands any
-other active chat to Nodex or takes one back. The checkbox shows whether the chat is managed;
-archived chats do not offer it.
+a Page start opens, is managed from that moment. `Hand to Nodex` in a chat's menu hands any
+other active chat to Nodex, and `Take back from Nodex` returns a managed one; archived chats offer
+neither.
 
 The root Agent of a managed chat receives work instructions on each turn. It reports
 when the Page's work is ready for review, blocked, failed or unnecessary. Delegated

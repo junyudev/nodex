@@ -380,8 +380,8 @@ attention: other Members' sidebars and snoozes stay as they are. A Member drags 
 into any order; the `Manual order` of unpinned chats is the host's, which a Member's sidebar
 shows but does not rearrange. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,
-reminders and unread state go, and restoring it brings none of them back. Managed by Nodex
-and Section placement are not available for hosted chats on a team desktop. Mark as
+reminders and unread state go, and restoring it brings none of them back. Handing a chat to
+Nodex and Section placement are not available for hosted chats on a team desktop. Mark as
 read or unread remains.
 
 Canceled requests retain their remote session. Concurrent losses of the same

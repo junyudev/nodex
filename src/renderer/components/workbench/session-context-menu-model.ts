@@ -436,13 +436,17 @@ export function buildSessionContextMenuItems(
       ? [
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-            type: "checkbox" as const,
-            label: intl.formatMessage({
-              id: "workbench.sessionContextMenuModel.managed",
-              defaultMessage: "Managed by Nodex",
-            }),
-            checked: session.managed,
+            label: session.managed
+              ? intl.formatMessage({
+                  id: "workbench.sessionContextMenuModel.takeBackFromNodex",
+                  defaultMessage: "Take back from Nodex",
+                })
+              : intl.formatMessage({
+                  id: "workbench.sessionContextMenuModel.handToNodex",
+                  defaultMessage: "Hand to Nodex",
+                }),
             enabled: true,
+            iconKey: "nodex" as const,
           },
         ]
       : []),

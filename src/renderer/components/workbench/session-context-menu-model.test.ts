@@ -93,14 +93,16 @@ function flattenActionIds(items: ReturnType<typeof buildSessionContextMenuItems>
 }
 
 describe("session context menu model", () => {
-  test.each([false, true])("shows managed=%s as a checkbox action", (managed) => {
+  test.each([
+    [false, "Hand to Nodex"],
+    [true, "Take back from Nodex"],
+  ])("names the management toggle for a chat with managed=%s", (managed, label) => {
     const items = buildSessionContextMenuItems({ session: makeSession({ managed }) });
     expect(items).toContainEqual({
       id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-      type: "checkbox",
-      label: "Managed by Nodex",
-      checked: managed,
+      label,
       enabled: true,
+      iconKey: "nodex",
     });
   });
 

@@ -30,7 +30,8 @@ export type NativeContextMenuIconKey =
   | "splitLeft"
   | "splitRight"
   | "splitUp"
-  | "splitDown";
+  | "splitDown"
+  | "nodex";
 
 export interface NativeContextMenuBaseItem {
   id: string;
@@ -43,13 +44,12 @@ export interface NativeContextMenuBaseItem {
   nativeRole?: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll";
 }
 
+/**
+ * Menus carry no checkbox items: a toggle is an action named for what it does next (Pin / Unpin,
+ * Settle / Reopen) with its own icon, so it reads and lines up like its neighbors.
+ */
 export interface NativeContextMenuActionItem extends NativeContextMenuBaseItem {
   type?: "item";
-}
-
-export interface NativeContextMenuCheckboxItem extends NativeContextMenuBaseItem {
-  type: "checkbox";
-  checked?: boolean;
 }
 
 export interface NativeContextMenuSubmenuItem extends NativeContextMenuBaseItem {
@@ -64,7 +64,6 @@ export interface NativeContextMenuSeparatorItem {
 
 export type NativeContextMenuItem =
   | NativeContextMenuActionItem
-  | NativeContextMenuCheckboxItem
   | NativeContextMenuSubmenuItem
   | NativeContextMenuSeparatorItem;
 
