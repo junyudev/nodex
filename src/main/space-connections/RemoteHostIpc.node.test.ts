@@ -1,18 +1,21 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { describe, expect } from "vite-plus/test";
+import { mkdir, mkdtemp, rm, writeFile, readFile, readdir, stat } from "node:fs/promises";
+import { createHash, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
 import { PROVIDER_SEND_TURN_MAX_IMAGE_BYTES } from "@nodex/agent-runtime/contracts";
-import { expect } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { IpcMainInvokeEvent } from "electron";
-import { inboxNewChatAction } from "../../shared/inbox";
+import { inboxNewChatAction, DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../shared/inbox";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { CoreModuleResponseError } from "../core-client/core-client";
-import { CoreSessionAccess, type CoreSessionOperation } from "../core-runtime/CoreAuthority";
-import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import {
+  CoreSessionAccess,
+  type CoreSessionOperation,
+  CoreAuthority,
+} from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { NativePromptImages } from "../agent-backend/NativePromptImages";
 import { LibraryModule } from "../library-application/LibraryModule";
@@ -34,676 +37,508 @@ import { live } from "./RemoteHostIpc";
 import { makeSpaceIpcCollector } from "./SpaceIpcCollector";
 import type { components } from "@nodex/core-protocol";
 import { HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES } from "../../shared/schemas/agent-runtime-api";
+import * as Context from "effect/Context";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import { createCoreLocalCommitFixture } from "../core-client/testing/local-commit-fixture";
+import { CoreApplicationProjectionRuntime } from "../core-runtime/CoreApplicationProjectionRuntime";
+import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+import { live as liveRemoteSpaceProjection } from "./RemoteSpaceProjection";
+import { live as liveRemoteMemberAttentionIpc } from "./RemoteMemberAttentionIpc";
+import { spacePathKey } from "./space-path-key";
+import { SecretEncryption } from "../platform/SecretEncryption";
+import {
+  live as liveSpaceConnectionStorage,
+  SpaceConnectionStorage,
+  type SpaceCredential,
+} from "./SpaceConnectionStorage";
 
-const basis = [{ pageId: "page:idea", contentHash: "a".repeat(64) }];
-const changed = new CoreModuleResponseError({
-  code: "conflict",
-  message: "The Inbox decision changed; review it again",
-  retryable: true,
-  recovery: { kind: "none" },
-});
+describe("RemoteHostIpc", () => {
+  const basis = [{ pageId: "page:idea", contentHash: "a".repeat(64) }];
+  const changed = new CoreModuleResponseError({
+    code: "conflict",
+    message: "The Inbox decision changed; review it again",
+    retryable: true,
+    recovery: { kind: "none" },
+  });
 
-interface Uploaded {
-  readonly fileId: string;
-  readonly name: string;
-  readonly mimeType: string;
-  readonly bytes: string;
-}
-/** This desktop's image fitting and its Member's own Library, which hosted messages upload to. */
-const memberLibrary = (uploaded: Uploaded[] = []) => {
-  const prepared = new Map<string, Uint8Array>();
-  const files = new Map<string, Uploaded>();
-  return Layer.mergeAll(
-    Layer.succeed(NativePromptImages, {
-      prepare: (images: readonly { source: string }[]) =>
-        Effect.succeed(
-          images.map(({ source }) => ({
-            mediaType: "image/png" as const,
-            data: Buffer.from(`fitted:${source}`).toString("base64"),
-          })),
-        ),
-    } as unknown as NativePromptImages["Service"]),
-    Layer.succeed(CoreAuthority, {
-      identity: { storeEpoch: "epoch" },
-    } as unknown as CoreAuthority["Service"]),
-    Layer.succeed(LibraryModule, {
-      read: (_route: unknown, request: { read: { file_id: string } }) => {
-        const file = files.get(request.read.file_id);
-        return Effect.succeed(
-          file
-            ? {
-                ok: true,
-                value: {
+  interface Uploaded {
+    readonly fileId: string;
+    readonly name: string;
+    readonly mimeType: string;
+    readonly bytes: string;
+  }
+  /** This desktop's image fitting and its Member's own Library, which hosted messages upload to. */
+  const memberLibrary = (uploaded: Uploaded[] = []) => {
+    const prepared = new Map<string, Uint8Array>();
+    const files = new Map<string, Uploaded>();
+    return Layer.mergeAll(
+      Layer.succeed(NativePromptImages, {
+        prepare: (images: readonly { source: string }[]) =>
+          Effect.succeed(
+            images.map(({ source }) => ({
+              mediaType: "image/png" as const,
+              data: Buffer.from(`fitted:${source}`).toString("base64"),
+            })),
+          ),
+      } as unknown as NativePromptImages["Service"]),
+      Layer.succeed(CoreAuthority, {
+        identity: { storeEpoch: "epoch" },
+      } as unknown as CoreAuthority["Service"]),
+      Layer.succeed(LibraryModule, {
+        read: (_route: unknown, request: { read: { file_id: string } }) => {
+          const file = files.get(request.read.file_id);
+          return Effect.succeed(
+            file
+              ? {
+                  ok: true,
                   value: {
-                    kind: "file",
                     value: {
-                      lifecycle: "live",
-                      blob_etag: createHash("sha256").update(file.bytes).digest("hex"),
-                      mime_type: file.mimeType,
-                      byte_length: Buffer.byteLength(file.bytes),
+                      kind: "file",
+                      value: {
+                        lifecycle: "live",
+                        blob_etag: createHash("sha256").update(file.bytes).digest("hex"),
+                        mime_type: file.mimeType,
+                        byte_length: Buffer.byteLength(file.bytes),
+                      },
                     },
                   },
-                },
-              }
-            : { ok: false, error: { code: "resource_not_found", message: "Missing" } },
-        );
-      },
-      prepareFileBlob: (_route: unknown, operationId: string, _slot: string, bytes: Uint8Array) =>
-        Effect.sync(() => {
-          prepared.set(operationId, bytes);
-          return { receipt_id: operationId };
-        }),
-      apply: (
-        _route: unknown,
-        request: {
-          operation: {
-            change: {
-              file_id: string;
-              default_name: string;
-              mime_type: string;
-              prepared_blob_receipt_id: string;
-            };
-          };
+                }
+              : { ok: false, error: { code: "resource_not_found", message: "Missing" } },
+          );
         },
-      ) =>
-        Effect.sync(() => {
-          const change = request.operation.change;
-          const file = {
-            fileId: change.file_id,
-            name: change.default_name,
-            mimeType: change.mime_type,
-            bytes: Buffer.from(prepared.get(change.prepared_blob_receipt_id)!).toString(),
-          };
-          files.set(change.file_id, file);
-          uploaded.push(file);
-          return { ok: true };
-        }),
-    } as unknown as LibraryModule["Service"]),
-  );
-};
-
-it.effect(
-  "a team desktop's Inbox decisions reach the Space host's Inbox with the Member's invocation",
-  () =>
-    Effect.gen(function* () {
-      const received: { method: string; invocation: string | null; input: unknown }[] = [];
-      const record = (method: string, input: unknown) =>
-        Effect.flatMap(HostInvocation, (invocation) =>
+        prepareFileBlob: (_route: unknown, operationId: string, _slot: string, bytes: Uint8Array) =>
           Effect.sync(() => {
-            received.push({ method, invocation, input });
+            prepared.set(operationId, bytes);
+            return { receipt_id: operationId };
           }),
-        );
-      // Mutations come back as Core's typed refusal, so the desktop keeps the host's reason.
-      const refuse = (method: string) => (input: unknown) =>
-        record(method, input).pipe(
-          Effect.andThen(
-            Effect.fail(
-              new InboxApplicationError({
-                operation: method,
-                message: changed.message,
-                cause: changed,
-              }),
-            ),
-          ),
-        );
-      const host = {
-        inbox: {
-          prepareConfirmation: (input: unknown) =>
-            record("prepareConfirmation", input).pipe(Effect.as({ prepared: true })),
-          confirm: refuse("confirm"),
-          dispatch: refuse("dispatch"),
-          requestSuggestion: refuse("requestSuggestion"),
-          stopSuggestion: refuse("stopSuggestion"),
-          retryDispatch: refuse("retryDispatch"),
-        },
-      } as unknown as HeadlessHost["Service"];
-      const client = {
-        // The relayed call crosses Core's Promise-facing transport into the host's own owners.
-        hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
-          // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
-          Effect.runPromise(
-            executeHostCommand(host, { id: "call", credential: "proof:bob", call }).pipe(
-              Effect.map((value) => ({ status: "ok" as const, value: value ?? null })),
-            ),
-          ),
-      };
-      const collector = makeSpaceIpcCollector({ routes: () => true });
-      yield* Layer.build(
-        live.pipe(
-          Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-          Layer.provide(
-            Layer.succeed(
-              CoreSessionAccess,
-              CoreSessionAccess.of({
-                handshake: Effect.die("No handshake is needed"),
-                use: (_operation, run) => Effect.promise((signal) => run(client as never, signal)),
-              }),
-            ),
-          ),
-          Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
-          Layer.provide(memberLibrary()),
-        ),
-      );
-      const invoke = <Channel extends keyof IpcApi>(channel: Channel, input: unknown) =>
-        collector.invoke(channel, {} as IpcMainInvokeEvent, [input]);
-      const operationId = createBoundedOperationId("test.inbox");
-      const decisions = [
-        [
-          "inbox:prepare-confirmation",
-          "prepareConfirmation",
-          {
-            kind: "proposal",
-            storeEpoch: "epoch",
-            proposalId: "proposal",
-            expectedRevision: 1,
-            basis,
+        apply: (
+          _route: unknown,
+          request: {
+            operation: {
+              change: {
+                file_id: string;
+                default_name: string;
+                mime_type: string;
+                prepared_blob_receipt_id: string;
+              };
+            };
           },
-        ],
-        [
-          "inbox:confirm",
-          "confirm",
-          {
-            storeEpoch: "epoch",
-            operationId,
-            sessionId: "session",
-            basis,
-            proposalId: "proposal",
-            expectedRevision: 1,
-          },
-        ],
-        [
-          "inbox:dispatch",
-          "dispatch",
-          {
-            storeEpoch: "epoch",
-            operationId,
-            proposalId: "proposal",
-            sessionId: "session",
-            basis,
-            pageIds: ["page:idea"],
-            action: inboxNewChatAction(null, "Draft the release notes"),
-          },
-        ],
-        [
-          "inbox:request-suggestion",
-          "requestSuggestion",
-          { requestId: "request", mode: "auto", pageIds: ["page:idea"], basis },
-        ],
-        ["inbox:stop-suggestion", "stopSuggestion", { pageId: "page:idea" }],
-        ["inbox:retry-dispatch", "retryDispatch", { proposalId: "proposal" }],
-      ] as const;
-      for (const [channel, method, input] of decisions) {
-        const result = yield* invoke(channel, input);
-        assert.deepStrictEqual(
-          received.at(-1),
-          { method, invocation: "proof:bob", input },
-          channel,
-        );
-        if (method === "prepareConfirmation") assert.deepStrictEqual(result, { prepared: true });
-        else assert.deepStrictEqual(result, { ok: false, error: changed.coreError }, channel);
-      }
-    }).pipe(Effect.scoped),
-);
+        ) =>
+          Effect.sync(() => {
+            const change = request.operation.change;
+            const file = {
+              fileId: change.file_id,
+              name: change.default_name,
+              mimeType: change.mime_type,
+              bytes: Buffer.from(prepared.get(change.prepared_blob_receipt_id)!).toString(),
+            };
+            files.set(change.file_id, file);
+            uploaded.push(file);
+            return { ok: true };
+          }),
+      } as unknown as LibraryModule["Service"]),
+    );
+  };
 
-const target = { sessionId: "session", threadId: "thread" };
-const message = { messageId: "message", text: "Run it again" };
+  it.effect(
+    "a team desktop's Inbox decisions reach the Space host's Inbox with the Member's invocation",
+    () =>
+      Effect.gen(function* () {
+        const received: { method: string; invocation: string | null; input: unknown }[] = [];
+        const record = (method: string, input: unknown) =>
+          Effect.flatMap(HostInvocation, (invocation) =>
+            Effect.sync(() => {
+              received.push({ method, invocation, input });
+            }),
+          );
+        // Mutations come back as Core's typed refusal, so the desktop keeps the host's reason.
+        const refuse = (method: string) => (input: unknown) =>
+          record(method, input).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new InboxApplicationError({
+                  operation: method,
+                  message: changed.message,
+                  cause: changed,
+                }),
+              ),
+            ),
+          );
+        const host = {
+          inbox: {
+            prepareConfirmation: (input: unknown) =>
+              record("prepareConfirmation", input).pipe(Effect.as({ prepared: true })),
+            confirm: refuse("confirm"),
+            dispatch: refuse("dispatch"),
+            requestSuggestion: refuse("requestSuggestion"),
+            stopSuggestion: refuse("stopSuggestion"),
+            retryDispatch: refuse("retryDispatch"),
+          },
+        } as unknown as HeadlessHost["Service"];
+        const client = {
+          // The relayed call crosses Core's Promise-facing transport into the host's own owners.
+          hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
+            // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
+            Effect.runPromise(
+              executeHostCommand(host, { id: "call", credential: "proof:bob", call }).pipe(
+                Effect.map((value) => ({ status: "ok" as const, value: value ?? null })),
+              ),
+            ),
+        };
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(
+              Layer.succeed(
+                CoreSessionAccess,
+                CoreSessionAccess.of({
+                  handshake: Effect.die("No handshake is needed"),
+                  use: (_operation, run) =>
+                    Effect.promise((signal) => run(client as never, signal)),
+                }),
+              ),
+            ),
+            Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
+            Layer.provide(memberLibrary()),
+          ),
+        );
+        const invoke = <Channel extends keyof IpcApi>(channel: Channel, input: unknown) =>
+          collector.invoke(channel, {} as IpcMainInvokeEvent, [input]);
+        const operationId = createBoundedOperationId("test.inbox");
+        const decisions = [
+          [
+            "inbox:prepare-confirmation",
+            "prepareConfirmation",
+            {
+              kind: "proposal",
+              storeEpoch: "epoch",
+              proposalId: "proposal",
+              expectedRevision: 1,
+              basis,
+            },
+          ],
+          [
+            "inbox:confirm",
+            "confirm",
+            {
+              storeEpoch: "epoch",
+              operationId,
+              sessionId: "session",
+              basis,
+              proposalId: "proposal",
+              expectedRevision: 1,
+            },
+          ],
+          [
+            "inbox:dispatch",
+            "dispatch",
+            {
+              storeEpoch: "epoch",
+              operationId,
+              proposalId: "proposal",
+              sessionId: "session",
+              basis,
+              pageIds: ["page:idea"],
+              action: inboxNewChatAction(null, "Draft the release notes"),
+            },
+          ],
+          [
+            "inbox:request-suggestion",
+            "requestSuggestion",
+            { requestId: "request", mode: "auto", pageIds: ["page:idea"], basis },
+          ],
+          ["inbox:stop-suggestion", "stopSuggestion", { pageId: "page:idea" }],
+          ["inbox:retry-dispatch", "retryDispatch", { proposalId: "proposal" }],
+        ] as const;
+        for (const [channel, method, input] of decisions) {
+          const result = yield* invoke(channel, input);
+          assert.deepStrictEqual(
+            received.at(-1),
+            { method, invocation: "proof:bob", input },
+            channel,
+          );
+          if (method === "prepareConfirmation") assert.deepStrictEqual(result, { prepared: true });
+          else assert.deepStrictEqual(result, { ok: false, error: changed.coreError }, channel);
+        }
+      }).pipe(Effect.scoped),
+  );
 
-it.effect("sends a team desktop's chat messages and queue controls to the Space host", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const collector = makeSpaceIpcCollector({ routes: () => true });
-      const calls: components["schemas"]["HostCall"][] = [];
-      const uploaded: Uploaded[] = [];
-      yield* Layer.build(
-        live.pipe(
-          Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-          Layer.provide(
-            Layer.succeed(CoreSessionAccess, {
-              use: (_operation: string, run: CoreSessionOperation<unknown>) =>
-                Effect.promise(async () =>
-                  run(
-                    {
-                      hostCall: (call: components["schemas"]["HostCall"]) => {
-                        calls.push(call);
-                        return Promise.resolve({ status: "ok", value: { sequence: 7 } });
-                      },
-                    } as never,
-                    new AbortController().signal,
+  const target = { sessionId: "session", threadId: "thread" };
+  const message = { messageId: "message", text: "Run it again" };
+
+  it.effect("sends a team desktop's chat messages and queue controls to the Space host", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        const calls: components["schemas"]["HostCall"][] = [];
+        const uploaded: Uploaded[] = [];
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(
+              Layer.succeed(CoreSessionAccess, {
+                use: (_operation: string, run: CoreSessionOperation<unknown>) =>
+                  Effect.promise(async () =>
+                    run(
+                      {
+                        hostCall: (call: components["schemas"]["HostCall"]) => {
+                          calls.push(call);
+                          return Promise.resolve({ status: "ok", value: { sequence: 7 } });
+                        },
+                      } as never,
+                      new AbortController().signal,
+                    ),
                   ),
-                ),
-            } as unknown as CoreSessionAccess["Service"]),
+              } as unknown as CoreSessionAccess["Service"]),
+            ),
+            Layer.provide(Layer.succeed(CoreModules, {} as never)),
+            Layer.provide(memberLibrary(uploaded)),
           ),
-          Layer.provide(Layer.succeed(CoreModules, {} as never)),
-          Layer.provide(memberLibrary(uploaded)),
-        ),
-      );
-      const event = {} as IpcMainInvokeEvent;
-      const invoke = (channel: Parameters<typeof collector.invoke>[0], input: unknown) =>
-        collector.invoke(channel, event, [input]);
+        );
+        const event = {} as IpcMainInvokeEvent;
+        const invoke = (channel: Parameters<typeof collector.invoke>[0], input: unknown) =>
+          collector.invoke(channel, event, [input]);
 
-      // The window here presents nothing for a hosted Run, so the send proceeds without a ticket.
-      expect(
-        yield* invoke("codex:turn-presentation:capture", {
-          target: { kind: "thread", threadId: "thread" },
-          presentation: { kind: "unavailable" },
-        }),
-      ).toBeUndefined();
-      expect(yield* invoke("agent-runtime:session:message", { ...target, message })).toEqual({
-        sequence: 7,
-      });
-      yield* invoke("agent-runtime:session:message", { ...target, message, intent: "steer" });
-      yield* invoke("agent-runtime:session:queue-message", {
-        ...target,
-        message: { ...message, images: [], modelSelection: { instanceId: "codex", model: "m" } },
-      });
-      yield* invoke("agent-runtime:session:queue", {
-        ...target,
-        requestId: "edit",
-        action: "edit",
-        runId: "queued",
-        presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
-        message: { messageId: "queued-message", text: "Wait for the loop" },
-      });
-      yield* invoke("agent-runtime:session:queue", {
-        ...target,
-        requestId: "cancel",
-        action: "cancel",
-        runId: "queued",
-      });
-      expect(calls).toEqual([
-        { operation: "session_message", input: { ...target, message, delivery: "send" } },
-        { operation: "session_message", input: { ...target, message, delivery: "steer" } },
-        {
-          operation: "session_message",
-          input: {
-            ...target,
-            message: { ...message, modelSelection: { instanceId: "codex", model: "m" } },
-            delivery: "queue",
+        // The window here presents nothing for a hosted Run, so the send proceeds without a ticket.
+        expect(
+          yield* invoke("codex:turn-presentation:capture", {
+            target: { kind: "thread", threadId: "thread" },
+            presentation: { kind: "unavailable" },
+          }),
+        ).toBeUndefined();
+        expect(yield* invoke("agent-runtime:session:message", { ...target, message })).toEqual({
+          sequence: 7,
+        });
+        yield* invoke("agent-runtime:session:message", { ...target, message, intent: "steer" });
+        yield* invoke("agent-runtime:session:queue-message", {
+          ...target,
+          message: { ...message, images: [], modelSelection: { instanceId: "codex", model: "m" } },
+        });
+        yield* invoke("agent-runtime:session:queue", {
+          ...target,
+          requestId: "edit",
+          action: "edit",
+          runId: "queued",
+          presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
+          message: { messageId: "queued-message", text: "Wait for the loop" },
+        });
+        yield* invoke("agent-runtime:session:queue", {
+          ...target,
+          requestId: "cancel",
+          action: "cancel",
+          runId: "queued",
+        });
+        expect(calls).toEqual([
+          { operation: "session_message", input: { ...target, message, delivery: "send" } },
+          { operation: "session_message", input: { ...target, message, delivery: "steer" } },
+          {
+            operation: "session_message",
+            input: {
+              ...target,
+              message: { ...message, modelSelection: { instanceId: "codex", model: "m" } },
+              delivery: "queue",
+            },
           },
-        },
-        {
-          operation: "session_queue",
-          input: {
-            ...target,
-            requestId: "edit",
-            action: "edit",
-            runId: "queued",
-            message: { messageId: "queued-message", text: "Wait for the loop" },
+          {
+            operation: "session_queue",
+            input: {
+              ...target,
+              requestId: "edit",
+              action: "edit",
+              runId: "queued",
+              message: { messageId: "queued-message", text: "Wait for the loop" },
+            },
           },
-        },
-        {
-          operation: "session_queue",
-          input: { ...target, requestId: "cancel", action: "cancel", runId: "queued" },
-        },
-      ]);
+          {
+            operation: "session_queue",
+            input: { ...target, requestId: "cancel", action: "cancel", runId: "queued" },
+          },
+        ]);
 
-      // This computer's images and files reach the host as the Member's own Library Files.
-      const folder = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-hosted-upload-"))),
-        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
-      );
-      const notes = join(folder, "notes.md");
-      yield* Effect.promise(() => writeFile(notes, "# Plan\n"));
-      const context = { version: 1, records: [{ kind: "page", label: "Plan", payload: {} }] };
-      yield* invoke("agent-runtime:session:message", {
-        ...target,
-        message: {
-          ...message,
-          context,
-          images: [{ source: "/Users/bob/Desktop/shot.png", caption: "shot.png" }],
-          uploads: [{ name: "notes.md", path: notes }],
-        },
-      });
-      expect(uploaded.map(({ name, mimeType, bytes }) => ({ name, mimeType, bytes }))).toEqual([
-        { name: "shot.png", mimeType: "image/png", bytes: "fitted:/Users/bob/Desktop/shot.png" },
-        { name: "notes.md", mimeType: "text/markdown", bytes: "# Plan\n" },
-      ]);
-      expect(calls.at(-1)).toEqual({
-        operation: "session_message",
-        input: {
+        // This computer's images and files reach the host as the Member's own Library Files.
+        const folder = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-hosted-upload-"))),
+          (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+        );
+        const notes = join(folder, "notes.md");
+        yield* Effect.promise(() => writeFile(notes, "# Plan\n"));
+        const context = { version: 1, records: [{ kind: "page", label: "Plan", payload: {} }] };
+        yield* invoke("agent-runtime:session:message", {
           ...target,
           message: {
             ...message,
-            fileRefs: uploaded.map(({ fileId }) => fileSource(fileId)),
             context,
+            images: [{ source: "/Users/bob/Desktop/shot.png", caption: "shot.png" }],
+            uploads: [{ name: "notes.md", path: notes }],
           },
-          delivery: "send",
-        },
-      });
-      // The same bytes keep their File when a send is retried.
-      yield* invoke("agent-runtime:session:message", {
-        ...target,
-        message: { ...message, uploads: [{ name: "notes.md", path: notes }] },
-      });
-      expect(uploaded).toHaveLength(2);
-      expect((calls.at(-1)?.input as { message: { fileRefs: string[] } }).message.fileRefs).toEqual(
-        [fileSource(uploaded[1]!.fileId)],
-      );
-      // A folder, or an attachment this computer's own Runtime recorded, never leaves it.
-      const inside = join(folder, "inside");
-      yield* Effect.promise(() => mkdir(inside));
-      expect(
+        });
+        expect(uploaded.map(({ name, mimeType, bytes }) => ({ name, mimeType, bytes }))).toEqual([
+          { name: "shot.png", mimeType: "image/png", bytes: "fitted:/Users/bob/Desktop/shot.png" },
+          { name: "notes.md", mimeType: "text/markdown", bytes: "# Plan\n" },
+        ]);
+        expect(calls.at(-1)).toEqual({
+          operation: "session_message",
+          input: {
+            ...target,
+            message: {
+              ...message,
+              fileRefs: uploaded.map(({ fileId }) => fileSource(fileId)),
+              context,
+            },
+            delivery: "send",
+          },
+        });
+        // The same bytes keep their File when a send is retried.
         yield* invoke("agent-runtime:session:message", {
           ...target,
-          message: { ...message, uploads: [{ name: "inside", path: inside }] },
-        }).pipe(Effect.flip),
-      ).toMatchObject({
-        message: "Attach files rather than folders to a chat on this Space's host.",
-      });
-      expect(
-        yield* invoke("agent-runtime:session:message", {
-          ...target,
-          message: { ...message, attachments: [{ type: "image", id: "local" }] },
-        }).pipe(Effect.flip),
-      ).toMatchObject({ message: "Attach these files again to send them to this Space's host." });
-      expect(calls).toHaveLength(7);
-      // A fork's worktree environment is the host's; this computer's choice stays here.
-      yield* invoke("agent-runtime:session:fork", {
-        source: target,
-        sessionId: "fork",
-        requestId: "fork-request",
-        acceptedAt: 1,
-        environment: "worktree",
-        runInEnvironmentPath: "/Users/bob/.codex/environment.toml",
-      });
-      expect(calls.at(-1)).toEqual({
-        operation: "session_fork",
-        input: {
+          message: { ...message, uploads: [{ name: "notes.md", path: notes }] },
+        });
+        expect(uploaded).toHaveLength(2);
+        expect(
+          (calls.at(-1)?.input as { message: { fileRefs: string[] } }).message.fileRefs,
+        ).toEqual([fileSource(uploaded[1]!.fileId)]);
+        // A folder, or an attachment this computer's own Runtime recorded, never leaves it.
+        const inside = join(folder, "inside");
+        yield* Effect.promise(() => mkdir(inside));
+        expect(
+          yield* invoke("agent-runtime:session:message", {
+            ...target,
+            message: { ...message, uploads: [{ name: "inside", path: inside }] },
+          }).pipe(Effect.flip),
+        ).toMatchObject({
+          message: "Attach files rather than folders to a chat on this Space's host.",
+        });
+        expect(
+          yield* invoke("agent-runtime:session:message", {
+            ...target,
+            message: { ...message, attachments: [{ type: "image", id: "local" }] },
+          }).pipe(Effect.flip),
+        ).toMatchObject({ message: "Attach these files again to send them to this Space's host." });
+        expect(calls).toHaveLength(7);
+        // A fork's worktree environment is the host's; this computer's choice stays here.
+        yield* invoke("agent-runtime:session:fork", {
           source: target,
           sessionId: "fork",
           requestId: "fork-request",
           acceptedAt: 1,
           environment: "worktree",
-        },
-      });
-      // A side chat, and bringing a fork back, travel to the host as the Member's own calls.
-      const side = { source: target, sessionId: "side", requestId: "side", acceptedAt: 2 };
-      yield* invoke("agent-runtime:session:create-side-chat", side);
-      yield* invoke("agent-runtime:session:merge-back", { sessionId: "side", requestId: "merge" });
-      yield* invoke("agent-runtime:session:delete-side-chat", {
-        sessionId: "side",
-        requestId: "delete",
-      });
-      expect(calls.slice(-3)).toEqual([
-        { operation: "session_side_chat_create", input: side },
-        { operation: "session_merge_back", input: { sessionId: "side", requestId: "merge" } },
-        {
-          operation: "session_side_chat_delete",
-          input: { sessionId: "side", requestId: "delete" },
-        },
-      ]);
-      // Compacting, continuing a failed reply and clearing travel as the Member's calls.
-      yield* invoke("agent-runtime:session:compact", {
-        ...target,
-        requestId: "retry",
-        failedRunId: "failed",
-      });
-      yield* invoke("agent-runtime:session:clear-context", { ...target, requestId: "clear" });
-      expect(calls.slice(-2)).toEqual([
-        {
-          operation: "session_compact",
-          input: { ...target, requestId: "retry", failedRunId: "failed" },
-        },
-        { operation: "session_clear_context", input: { ...target, requestId: "clear" } },
-      ]);
-      // An edit reaches the host without this window's presentation.
-      yield* invoke("agent-runtime:session:rewrite-message", {
-        ...target,
-        requestId: "edit",
-        runId: "run",
-        presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
-        message: { ...message, messageId: "edited" },
-      });
-      expect(calls.at(-1)).toEqual({
-        operation: "session_rewrite_message",
-        input: {
+          runInEnvironmentPath: "/Users/bob/.codex/environment.toml",
+        });
+        expect(calls.at(-1)).toEqual({
+          operation: "session_fork",
+          input: {
+            source: target,
+            sessionId: "fork",
+            requestId: "fork-request",
+            acceptedAt: 1,
+            environment: "worktree",
+          },
+        });
+        // A side chat, and bringing a fork back, travel to the host as the Member's own calls.
+        const side = { source: target, sessionId: "side", requestId: "side", acceptedAt: 2 };
+        yield* invoke("agent-runtime:session:create-side-chat", side);
+        yield* invoke("agent-runtime:session:merge-back", {
+          sessionId: "side",
+          requestId: "merge",
+        });
+        yield* invoke("agent-runtime:session:delete-side-chat", {
+          sessionId: "side",
+          requestId: "delete",
+        });
+        expect(calls.slice(-3)).toEqual([
+          { operation: "session_side_chat_create", input: side },
+          { operation: "session_merge_back", input: { sessionId: "side", requestId: "merge" } },
+          {
+            operation: "session_side_chat_delete",
+            input: { sessionId: "side", requestId: "delete" },
+          },
+        ]);
+        // Compacting, continuing a failed reply and clearing travel as the Member's calls.
+        yield* invoke("agent-runtime:session:compact", {
+          ...target,
+          requestId: "retry",
+          failedRunId: "failed",
+        });
+        yield* invoke("agent-runtime:session:clear-context", { ...target, requestId: "clear" });
+        expect(calls.slice(-2)).toEqual([
+          {
+            operation: "session_compact",
+            input: { ...target, requestId: "retry", failedRunId: "failed" },
+          },
+          { operation: "session_clear_context", input: { ...target, requestId: "clear" } },
+        ]);
+        // An edit reaches the host without this window's presentation.
+        yield* invoke("agent-runtime:session:rewrite-message", {
           ...target,
           requestId: "edit",
           runId: "run",
+          presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
           message: { ...message, messageId: "edited" },
-        },
-      });
-    }),
-  ),
-);
-
-it.effect("shows a hosted chat's picture on a team desktop, read whole from its Space host", () =>
-  Effect.gen(function* () {
-    const home = yield* Effect.acquireRelease(
-      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-hosted-picture-"))),
-      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
-    );
-    // Larger than one range, so the desktop reads it in several pinned to one version.
-    const photo = Buffer.concat([
-      Buffer.from("89504e470d0a1a0a", "hex"),
-      Buffer.alloc(HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES + 4096, 7),
-    ]);
-    const recorded = {
-      photo: { bytes: photo, mimeType: "image/png" },
-      page: { bytes: Buffer.from("<html><script>alert(1)</script>"), mimeType: "image/png" },
-      poster: {
-        bytes: Buffer.concat([
-          photo.subarray(0, 8),
-          Buffer.alloc(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES),
-        ]),
-        mimeType: "image/png",
-      },
-    };
-    for (const [name, { bytes }] of Object.entries(recorded))
-      yield* Effect.promise(() => writeFile(join(home, name), bytes));
-    const attachments = yield* makeChatAttachments.pipe(
-      Effect.provide(testLayer()),
-      Effect.provideService(ProjectWorkspace, {
-        getProjectSession: (sessionId: string) =>
-          Effect.flatMap(HostInvocation, (proof) =>
-            Effect.succeed(
-              proof === "proof:bob" && sessionId === "session"
-                ? ({ id: sessionId } as never)
-                : null,
-            ),
-          ),
-      } as unknown as ProjectWorkspace["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        attachment: ({ attachmentId }: { attachmentId: keyof typeof recorded }) =>
-          Effect.succeed({
-            path: join(home, attachmentId),
-            attachment: { name: `${attachmentId}.png`, mimeType: recorded[attachmentId].mimeType },
-          }),
-      } as unknown as AgentRuntimeApplication["Service"]),
-    );
-    const host = { attachments } as unknown as HeadlessHost["Service"];
-    const calls: components["schemas"]["HostCall"][] = [];
-    const collector = makeSpaceIpcCollector({ routes: () => true });
-    yield* Layer.build(
-      live.pipe(
-        Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-        Layer.provide(
-          Layer.succeed(
-            CoreSessionAccess,
-            CoreSessionAccess.of({
-              handshake: Effect.die("No handshake is needed"),
-              use: (_operation, run) =>
-                Effect.promise((signal) =>
-                  run(
-                    {
-                      hostCall: (call: components["schemas"]["HostCall"]) => {
-                        calls.push(call);
-                        // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
-                        return Effect.runPromise(
-                          executeHostCommand(host, {
-                            id: "call",
-                            credential: "proof:bob",
-                            call,
-                          }).pipe(
-                            Effect.map((value) => ({
-                              status: "ok" as const,
-                              value: value ?? null,
-                            })),
-                          ),
-                        );
-                      },
-                    } as never,
-                    signal,
-                  ),
-                ),
-            }),
-          ),
-        ),
-        Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
-        Layer.provide(memberLibrary()),
-      ),
-    );
-    const read = (attachmentId: string) =>
-      collector.invoke("agent-runtime:session:attachment", {} as IpcMainInvokeEvent, [
-        { sessionId: "session", threadId: "thread", itemId: "message", attachmentId },
-      ]);
-
-    expect(yield* read("photo")).toEqual({
-      dataUrl: `data:image/png;base64,${photo.toString("base64")}`,
-    });
-    expect(
-      calls.map(({ operation, input }) => [operation, (input as { offset: number }).offset]),
-    ).toEqual([
-      ["session_attachment", 0],
-      ["session_attachment", HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES],
-    ]);
-    const [first, second] = calls.map(({ input }) => input as { version?: string });
-    expect(first?.version).toBeUndefined();
-    expect(second?.version).toEqual(expect.any(String));
-
-    // Bytes that are not a picture never become one, whatever the transcript recorded.
-    calls.length = 0;
-    expect(yield* read("page")).toBeNull();
-    // A picture larger than a chat can hold is not read past its first range.
-    expect(yield* read("poster")).toBeNull();
-    expect(calls).toHaveLength(2);
-  }).pipe(Effect.scoped),
-);
-
-it.effect("starts a team desktop's new chat on the Space host with only what the host reads", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const collector = makeSpaceIpcCollector({ routes: () => true });
-      const calls: components["schemas"]["HostCall"][] = [];
-      const uploaded: Uploaded[] = [];
-      yield* Layer.build(
-        live.pipe(
-          Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-          Layer.provide(
-            Layer.succeed(CoreSessionAccess, {
-              use: (_operation: string, run: CoreSessionOperation<unknown>) =>
-                Effect.promise(async () =>
-                  run(
-                    {
-                      hostCall: (call: components["schemas"]["HostCall"]) => {
-                        calls.push(call);
-                        return Promise.resolve({
-                          status: "ok",
-                          value: { sessionId: "draft", threadId: "thread", projectId: null },
-                        });
-                      },
-                    } as never,
-                    new AbortController().signal,
-                  ),
-                ),
-            } as unknown as CoreSessionAccess["Service"]),
-          ),
-          Layer.provide(Layer.succeed(CoreModules, {} as never)),
-          Layer.provide(memberLibrary(uploaded)),
-        ),
-      );
-      const launched = yield* collector.invoke(
-        "agent-runtime:session:launch",
-        {} as IpcMainInvokeEvent,
-        [
-          {
-            sessionId: "draft",
-            projectId: null,
-            launchId: "launch",
-            acceptedAt: 1,
-            presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
-            title: "Summarize the plan",
-            modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
-            interactionMode: "default",
-            runtimeMode: "full-access",
-            runInTarget: "localProject",
-            runInEnvironmentPath: "/Users/bob/.codex/environment.toml",
-            message: {
-              messageId: "message",
-              text: "Summarize the plan",
-              images: [{ source: "/Users/bob/Desktop/shot.png", caption: "shot.png" }],
-            },
-          },
-        ],
-      );
-      expect(launched).toEqual({ sessionId: "draft", threadId: "thread", projectId: null });
-      // The host chooses where it runs and with what permissions; this computer's picture is the
-      // Member's own Library File and nothing that presents the turn here crosses to it.
-      expect(calls).toEqual([
-        {
-          operation: "session_start",
+        });
+        expect(calls.at(-1)).toEqual({
+          operation: "session_rewrite_message",
           input: {
-            sessionId: "draft",
-            launchId: "launch",
-            acceptedAt: 1,
-            projectId: null,
-            title: "Summarize the plan",
-            modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
-            interactionMode: "default",
-            runInTarget: "localProject",
-            message: {
-              messageId: "message",
-              text: "Summarize the plan",
-              fileRefs: [fileSource(uploaded[0]!.fileId)],
-            },
+            ...target,
+            requestId: "edit",
+            runId: "run",
+            message: { ...message, messageId: "edited" },
           },
-        },
-      ]);
-    }),
-  ),
-);
+        });
+      }),
+    ),
+  );
 
-it.effect(
-  "renames, archives and moves a hosted chat on its Space host as the Member, keeping Core's refusal",
-  () =>
+  it.effect("shows a hosted chat's picture on a team desktop, read whole from its Space host", () =>
     Effect.gen(function* () {
-      const notYours = new CoreModuleResponseError({
-        code: "unauthorized",
-        message: "Only the person who started this chat or a Space Owner can do this",
-        retryable: false,
-        recovery: { kind: "none" },
-      });
-      const received: { method: string; invocation: string | null; input: unknown }[] = [];
-      const apply = { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 9 } } as never;
-      const record = <A>(method: string, input: unknown, value: A) =>
-        Effect.flatMap(HostInvocation, (invocation) =>
-          Effect.sync(() => {
-            received.push({ method, invocation, input });
-            return value;
-          }),
-        );
-      const host = {
-        sessions: {
-          renameSession: (input: unknown) =>
-            record("renameSession", input, { value: { id: "session" }, apply }),
-          archiveSession: (input: unknown) =>
-            record("archiveSession", input, null).pipe(
-              Effect.andThen(
-                Effect.fail(
-                  new AgentRuntimeApplicationError({
-                    operation: "archive-session",
-                    message: "Agent operation failed",
-                    cause: notYours,
-                  }),
-                ),
+      const home = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-hosted-picture-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      // Larger than one range, so the desktop reads it in several pinned to one version.
+      const photo = Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        Buffer.alloc(HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES + 4096, 7),
+      ]);
+      const recorded = {
+        photo: { bytes: photo, mimeType: "image/png" },
+        page: { bytes: Buffer.from("<html><script>alert(1)</script>"), mimeType: "image/png" },
+        poster: {
+          bytes: Buffer.concat([
+            photo.subarray(0, 8),
+            Buffer.alloc(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES),
+          ]),
+          mimeType: "image/png",
+        },
+      };
+      for (const [name, { bytes }] of Object.entries(recorded))
+        yield* Effect.promise(() => writeFile(join(home, name), bytes));
+      const attachments = yield* makeChatAttachments.pipe(
+        Effect.provide(testLayer()),
+        Effect.provideService(ProjectWorkspace, {
+          getProjectSession: (sessionId: string) =>
+            Effect.flatMap(HostInvocation, (proof) =>
+              Effect.succeed(
+                proof === "proof:bob" && sessionId === "session"
+                  ? ({ id: sessionId } as never)
+                  : null,
               ),
             ),
-          unarchiveSession: (input: unknown) =>
-            record("unarchiveSession", input, { value: { id: "session" }, apply }),
-          moveSession: (input: unknown) =>
-            record("moveSession", input, { sessionId: "session", projectId: "other" }),
-        },
-      } as unknown as HeadlessHost["Service"];
+        } as unknown as ProjectWorkspace["Service"]),
+        Effect.provideService(AgentRuntimeApplication, {
+          attachment: ({ attachmentId }: { attachmentId: keyof typeof recorded }) =>
+            Effect.succeed({
+              path: join(home, attachmentId),
+              attachment: {
+                name: `${attachmentId}.png`,
+                mimeType: recorded[attachmentId].mimeType,
+              },
+            }),
+        } as unknown as AgentRuntimeApplication["Service"]),
+      );
+      const host = { attachments } as unknown as HeadlessHost["Service"];
+      const calls: components["schemas"]["HostCall"][] = [];
       const collector = makeSpaceIpcCollector({ routes: () => true });
       yield* Layer.build(
         live.pipe(
@@ -717,9 +552,10 @@ it.effect(
                   Effect.promise((signal) =>
                     run(
                       {
-                        hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
+                        hostCall: (call: components["schemas"]["HostCall"]) => {
+                          calls.push(call);
                           // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
-                          Effect.runPromise(
+                          return Effect.runPromise(
                             executeHostCommand(host, {
                               id: "call",
                               credential: "proof:bob",
@@ -730,7 +566,8 @@ it.effect(
                                 value: value ?? null,
                               })),
                             ),
-                          ),
+                          );
+                        },
                       } as never,
                       signal,
                     ),
@@ -742,187 +579,858 @@ it.effect(
           Layer.provide(memberLibrary()),
         ),
       );
-      const invoke = <Channel extends keyof IpcApi>(channel: Channel, input: unknown) =>
-        collector.invoke(channel, {} as IpcMainInvokeEvent, [input]);
-      const operationId = createBoundedOperationId("test.chat");
-      const rename = { operationId, payload: { sessionId: "session", input: { title: "Notes" } } };
-      const archive = { operationId, payload: { sessionId: "session" } };
-      const move = { operationId, sessionId: "session", projectId: "other" };
+      const read = (attachmentId: string) =>
+        collector.invoke("agent-runtime:session:attachment", {} as IpcMainInvokeEvent, [
+          { sessionId: "session", threadId: "thread", itemId: "message", attachmentId },
+        ]);
 
-      const renamed = yield* invoke("project-sessions:rename", rename);
-      assert.strictEqual((renamed as { ok: boolean }).ok, true);
-      // Another Member's chat comes back as Core's typed refusal, which the window shows as is.
-      assert.deepStrictEqual(yield* invoke("project-sessions:archive", archive), {
-        ok: false,
-        error: notYours.coreError,
+      expect(yield* read("photo")).toEqual({
+        dataUrl: `data:image/png;base64,${photo.toString("base64")}`,
       });
-      assert.strictEqual(
-        ((yield* invoke("project-sessions:unarchive", archive)) as { ok: boolean }).ok,
-        true,
-      );
-      assert.deepStrictEqual(yield* invoke("agent-runtime:session:move", move), {
-        sessionId: "session",
-        projectId: "other",
-      });
-      assert.deepStrictEqual(received, [
-        { method: "renameSession", invocation: "proof:bob", input: rename },
-        { method: "archiveSession", invocation: "proof:bob", input: archive },
-        { method: "unarchiveSession", invocation: "proof:bob", input: archive },
-        { method: "moveSession", invocation: "proof:bob", input: move },
+      expect(
+        calls.map(({ operation, input }) => [operation, (input as { offset: number }).offset]),
+      ).toEqual([
+        ["session_attachment", 0],
+        ["session_attachment", HOSTED_CHAT_ATTACHMENT_CHUNK_BYTES],
       ]);
-      // The host validates what a Device sends before any owner sees it.
-      const malformed = yield* Effect.exit(
-        invoke("project-sessions:rename", { ...rename, payload: { sessionId: "session" } }),
-      );
-      assert.strictEqual(malformed._tag, "Failure");
-      assert.strictEqual(received.length, 4);
-    }).pipe(Effect.scoped),
-);
+      const [first, second] = calls.map(({ input }) => input as { version?: string });
+      expect(first?.version).toBeUndefined();
+      expect(second?.version).toEqual(expect.any(String));
 
-/** A team window whose Space host answers every relayed call, recording what it was asked. */
-const recordingHost = Effect.gen(function* () {
-  const collector = makeSpaceIpcCollector({ routes: () => true });
-  const calls: components["schemas"]["HostCall"][] = [];
-  yield* Layer.build(
-    live.pipe(
-      Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
-      Layer.provide(
-        Layer.succeed(CoreSessionAccess, {
-          use: (_operation: string, run: CoreSessionOperation<unknown>) =>
-            Effect.promise(async () =>
-              run(
-                {
-                  hostCall: (call: components["schemas"]["HostCall"]) => {
-                    calls.push(call);
-                    return Promise.resolve({ status: "ok", value: null });
-                  },
-                } as never,
-                new AbortController().signal,
+      // Bytes that are not a picture never become one, whatever the transcript recorded.
+      calls.length = 0;
+      expect(yield* read("page")).toBeNull();
+      // A picture larger than a chat can hold is not read past its first range.
+      expect(yield* read("poster")).toBeNull();
+      expect(calls).toHaveLength(2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "starts a team desktop's new chat on the Space host with only what the host reads",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const collector = makeSpaceIpcCollector({ routes: () => true });
+          const calls: components["schemas"]["HostCall"][] = [];
+          const uploaded: Uploaded[] = [];
+          yield* Layer.build(
+            live.pipe(
+              Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+              Layer.provide(
+                Layer.succeed(CoreSessionAccess, {
+                  use: (_operation: string, run: CoreSessionOperation<unknown>) =>
+                    Effect.promise(async () =>
+                      run(
+                        {
+                          hostCall: (call: components["schemas"]["HostCall"]) => {
+                            calls.push(call);
+                            return Promise.resolve({
+                              status: "ok",
+                              value: { sessionId: "draft", threadId: "thread", projectId: null },
+                            });
+                          },
+                        } as never,
+                        new AbortController().signal,
+                      ),
+                    ),
+                } as unknown as CoreSessionAccess["Service"]),
+              ),
+              Layer.provide(Layer.succeed(CoreModules, {} as never)),
+              Layer.provide(memberLibrary(uploaded)),
+            ),
+          );
+          const launched = yield* collector.invoke(
+            "agent-runtime:session:launch",
+            {} as IpcMainInvokeEvent,
+            [
+              {
+                sessionId: "draft",
+                projectId: null,
+                launchId: "launch",
+                acceptedAt: 1,
+                presentationTicket: { ticketId: "00000000-0000-4000-8000-000000000000" },
+                title: "Summarize the plan",
+                modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
+                interactionMode: "default",
+                runtimeMode: "full-access",
+                runInTarget: "localProject",
+                runInEnvironmentPath: "/Users/bob/.codex/environment.toml",
+                message: {
+                  messageId: "message",
+                  text: "Summarize the plan",
+                  images: [{ source: "/Users/bob/Desktop/shot.png", caption: "shot.png" }],
+                },
+              },
+            ],
+          );
+          expect(launched).toEqual({ sessionId: "draft", threadId: "thread", projectId: null });
+          // The host chooses where it runs and with what permissions; this computer's picture is the
+          // Member's own Library File and nothing that presents the turn here crosses to it.
+          expect(calls).toEqual([
+            {
+              operation: "session_start",
+              input: {
+                sessionId: "draft",
+                launchId: "launch",
+                acceptedAt: 1,
+                projectId: null,
+                title: "Summarize the plan",
+                modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
+                interactionMode: "default",
+                runInTarget: "localProject",
+                message: {
+                  messageId: "message",
+                  text: "Summarize the plan",
+                  fileRefs: [fileSource(uploaded[0]!.fileId)],
+                },
+              },
+            },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "renames, archives and moves a hosted chat on its Space host as the Member, keeping Core's refusal",
+    () =>
+      Effect.gen(function* () {
+        const notYours = new CoreModuleResponseError({
+          code: "unauthorized",
+          message: "Only the person who started this chat or a Space Owner can do this",
+          retryable: false,
+          recovery: { kind: "none" },
+        });
+        const received: { method: string; invocation: string | null; input: unknown }[] = [];
+        const apply = {
+          status: "no_op",
+          observed: { store_epoch: "epoch", commit_seq: 9 },
+        } as never;
+        const record = <A>(method: string, input: unknown, value: A) =>
+          Effect.flatMap(HostInvocation, (invocation) =>
+            Effect.sync(() => {
+              received.push({ method, invocation, input });
+              return value;
+            }),
+          );
+        const host = {
+          sessions: {
+            renameSession: (input: unknown) =>
+              record("renameSession", input, { value: { id: "session" }, apply }),
+            archiveSession: (input: unknown) =>
+              record("archiveSession", input, null).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new AgentRuntimeApplicationError({
+                      operation: "archive-session",
+                      message: "Agent operation failed",
+                      cause: notYours,
+                    }),
+                  ),
+                ),
+              ),
+            unarchiveSession: (input: unknown) =>
+              record("unarchiveSession", input, { value: { id: "session" }, apply }),
+            moveSession: (input: unknown) =>
+              record("moveSession", input, { sessionId: "session", projectId: "other" }),
+          },
+        } as unknown as HeadlessHost["Service"];
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(
+              Layer.succeed(
+                CoreSessionAccess,
+                CoreSessionAccess.of({
+                  handshake: Effect.die("No handshake is needed"),
+                  use: (_operation, run) =>
+                    Effect.promise((signal) =>
+                      run(
+                        {
+                          hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
+                            // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
+                            Effect.runPromise(
+                              executeHostCommand(host, {
+                                id: "call",
+                                credential: "proof:bob",
+                                call,
+                              }).pipe(
+                                Effect.map((value) => ({
+                                  status: "ok" as const,
+                                  value: value ?? null,
+                                })),
+                              ),
+                            ),
+                        } as never,
+                        signal,
+                      ),
+                    ),
+                }),
               ),
             ),
-        } as unknown as CoreSessionAccess["Service"]),
-      ),
-      Layer.provide(Layer.succeed(CoreModules, {} as never)),
-      Layer.provide(memberLibrary()),
-    ),
-  );
-  return {
-    calls,
-    invoke: (channel: Parameters<typeof collector.invoke>[0], input: unknown) =>
-      collector.invoke(channel, {} as IpcMainInvokeEvent, [input]),
-  };
-});
-
-it.effect(
-  "sends stopping a hosted chat's work, and reading its tasks' output, to the Space host",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { calls, invoke } = yield* recordingHost;
-        const work = [
-          ["agent-runtime:session:stop", "session_stop", { ...target, runId: "run" }],
-          [
-            "agent-runtime:session:stop-task",
-            "session_stop_task",
-            { ...target, requestId: "r", runId: "run", taskId: "subagent" },
-          ],
-          [
-            "agent-runtime:session:cancel-task",
-            "session_cancel_task",
-            { ...target, requestId: "r", taskId: "delegated" },
-          ],
-          [
-            "agent-runtime:session:stop-background",
-            "session_stop_background",
-            { ...target, requestId: "r", taskIds: ["build"] },
-          ],
-          [
-            "agent-runtime:session:background-output",
-            "session_background_output",
-            { ...target, taskId: "build" },
-          ],
-        ] as const;
-        for (const [channel, , input] of work) yield* invoke(channel, input);
-        // Core admits each stop only from the Run's requester, the chat's owner or a Space Owner.
-        expect(calls).toEqual(work.map(([, operation, input]) => ({ operation, input })));
-      }),
-    ),
-);
-
-it.effect("names a hosted transcript's sender by its host, as the Member reads it", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { calls, invoke } = yield* recordingHost;
-      yield* invoke("agent-runtime:thread:identity", { threadId: "sender" });
-      expect(calls).toEqual([{ operation: "thread_identity", input: { threadId: "sender" } }]);
-    }),
-  ),
-);
-
-it.effect("a team window's chat pickers search the host's chats with the Member's invocation", () =>
-  Effect.gen(function* () {
-    const asked: { method: string; invocation: string | null; input: unknown }[] = [];
-    const record = (method: string, result: unknown) => (input: unknown) =>
-      Effect.flatMap(HostInvocation, (invocation) =>
-        Effect.sync(() => {
-          asked.push({ method, invocation, input });
-          return result;
-        }),
-      );
-    const host = {
-      chats: {
-        search: record("search", { matches: [], complete: true }),
-        searchMessages: record("searchMessages", { matches: [], truncated: false, sources: [] }),
-      },
-    } as unknown as HeadlessHost["Service"];
-    const client = {
-      hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
-        // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
-        Effect.runPromise(
-          executeHostCommand(host, { id: "call", credential: "proof:bob", call }).pipe(
-            Effect.map((value) => ({ status: "ok" as const, value: value ?? null })),
+            Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
+            Layer.provide(memberLibrary()),
           ),
-        ),
-    };
+        );
+        const invoke = <Channel extends keyof IpcApi>(channel: Channel, input: unknown) =>
+          collector.invoke(channel, {} as IpcMainInvokeEvent, [input]);
+        const operationId = createBoundedOperationId("test.chat");
+        const rename = {
+          operationId,
+          payload: { sessionId: "session", input: { title: "Notes" } },
+        };
+        const archive = { operationId, payload: { sessionId: "session" } };
+        const move = { operationId, sessionId: "session", projectId: "other" };
+
+        const renamed = yield* invoke("project-sessions:rename", rename);
+        assert.strictEqual((renamed as { ok: boolean }).ok, true);
+        // Another Member's chat comes back as Core's typed refusal, which the window shows as is.
+        assert.deepStrictEqual(yield* invoke("project-sessions:archive", archive), {
+          ok: false,
+          error: notYours.coreError,
+        });
+        assert.strictEqual(
+          ((yield* invoke("project-sessions:unarchive", archive)) as { ok: boolean }).ok,
+          true,
+        );
+        assert.deepStrictEqual(yield* invoke("agent-runtime:session:move", move), {
+          sessionId: "session",
+          projectId: "other",
+        });
+        assert.deepStrictEqual(received, [
+          { method: "renameSession", invocation: "proof:bob", input: rename },
+          { method: "archiveSession", invocation: "proof:bob", input: archive },
+          { method: "unarchiveSession", invocation: "proof:bob", input: archive },
+          { method: "moveSession", invocation: "proof:bob", input: move },
+        ]);
+        // The host validates what a Device sends before any owner sees it.
+        const malformed = yield* Effect.exit(
+          invoke("project-sessions:rename", { ...rename, payload: { sessionId: "session" } }),
+        );
+        assert.strictEqual(malformed._tag, "Failure");
+        assert.strictEqual(received.length, 4);
+      }).pipe(Effect.scoped),
+  );
+
+  /** A team window whose Space host answers every relayed call, recording what it was asked. */
+  const recordingHost = Effect.gen(function* () {
     const collector = makeSpaceIpcCollector({ routes: () => true });
+    const calls: components["schemas"]["HostCall"][] = [];
     yield* Layer.build(
       live.pipe(
         Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
         Layer.provide(
-          Layer.succeed(
-            CoreSessionAccess,
-            CoreSessionAccess.of({
-              handshake: Effect.die("No handshake is needed"),
-              use: (_operation, run) => Effect.promise((signal) => run(client as never, signal)),
-            }),
-          ),
+          Layer.succeed(CoreSessionAccess, {
+            use: (_operation: string, run: CoreSessionOperation<unknown>) =>
+              Effect.promise(async () =>
+                run(
+                  {
+                    hostCall: (call: components["schemas"]["HostCall"]) => {
+                      calls.push(call);
+                      return Promise.resolve({ status: "ok", value: null });
+                    },
+                  } as never,
+                  new AbortController().signal,
+                ),
+              ),
+          } as unknown as CoreSessionAccess["Service"]),
         ),
-        Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
+        Layer.provide(Layer.succeed(CoreModules, {} as never)),
         Layer.provide(memberLibrary()),
       ),
     );
-    const event = {} as IpcMainInvokeEvent;
-    const input = {
-      query: "deploy",
-      limit: 20,
-      kinds: ["chat"] as const,
-      place: { kind: "everywhere" as const },
+    return {
+      calls,
+      invoke: (channel: Parameters<typeof collector.invoke>[0], input: unknown) =>
+        collector.invoke(channel, {} as IpcMainInvokeEvent, [input]),
     };
-    yield* collector.invoke("find:search", event, [input, "instant"]);
-    yield* collector.invoke("find:search", event, [input, "complete"]);
-    assert.isTrue(
-      asked.some(({ method, invocation }) => method === "search" && invocation === "proof:bob"),
-    );
-    assert.isTrue(
-      asked.some(
-        ({ method, invocation }) => method === "searchMessages" && invocation === "proof:bob",
+  });
+
+  it.effect(
+    "sends stopping a hosted chat's work, and reading its tasks' output, to the Space host",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { calls, invoke } = yield* recordingHost;
+          const work = [
+            ["agent-runtime:session:stop", "session_stop", { ...target, runId: "run" }],
+            [
+              "agent-runtime:session:stop-task",
+              "session_stop_task",
+              { ...target, requestId: "r", runId: "run", taskId: "subagent" },
+            ],
+            [
+              "agent-runtime:session:cancel-task",
+              "session_cancel_task",
+              { ...target, requestId: "r", taskId: "delegated" },
+            ],
+            [
+              "agent-runtime:session:stop-background",
+              "session_stop_background",
+              { ...target, requestId: "r", taskIds: ["build"] },
+            ],
+            [
+              "agent-runtime:session:background-output",
+              "session_background_output",
+              { ...target, taskId: "build" },
+            ],
+          ] as const;
+          for (const [channel, , input] of work) yield* invoke(channel, input);
+          // Core admits each stop only from the Run's requester, the chat's owner or a Space Owner.
+          expect(calls).toEqual(work.map(([, operation, input]) => ({ operation, input })));
+        }),
       ),
+  );
+
+  it.effect("names a hosted transcript's sender by its host, as the Member reads it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { calls, invoke } = yield* recordingHost;
+        yield* invoke("agent-runtime:thread:identity", { threadId: "sender" });
+        expect(calls).toEqual([{ operation: "thread_identity", input: { threadId: "sender" } }]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "a team window's chat pickers search the host's chats with the Member's invocation",
+    () =>
+      Effect.gen(function* () {
+        const asked: { method: string; invocation: string | null; input: unknown }[] = [];
+        const record = (method: string, result: unknown) => (input: unknown) =>
+          Effect.flatMap(HostInvocation, (invocation) =>
+            Effect.sync(() => {
+              asked.push({ method, invocation, input });
+              return result;
+            }),
+          );
+        const host = {
+          chats: {
+            search: record("search", { matches: [], complete: true }),
+            searchMessages: record("searchMessages", {
+              matches: [],
+              truncated: false,
+              sources: [],
+            }),
+          },
+        } as unknown as HeadlessHost["Service"];
+        const client = {
+          hostCall: (call: Parameters<typeof executeHostCommand>[1]["call"]) =>
+            // oxlint-disable-next-line nodex/no-manual-effect-runtime-in-tests -- Stands in for Core's Promise-facing host relay.
+            Effect.runPromise(
+              executeHostCommand(host, { id: "call", credential: "proof:bob", call }).pipe(
+                Effect.map((value) => ({ status: "ok" as const, value: value ?? null })),
+              ),
+            ),
+        };
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(
+              Layer.succeed(
+                CoreSessionAccess,
+                CoreSessionAccess.of({
+                  handshake: Effect.die("No handshake is needed"),
+                  use: (_operation, run) =>
+                    Effect.promise((signal) => run(client as never, signal)),
+                }),
+              ),
+            ),
+            Layer.provide(Layer.succeed(CoreModules, {} as CoreModules["Service"])),
+            Layer.provide(memberLibrary()),
+          ),
+        );
+        const event = {} as IpcMainInvokeEvent;
+        const input = {
+          query: "deploy",
+          limit: 20,
+          kinds: ["chat"] as const,
+          place: { kind: "everywhere" as const },
+        };
+        yield* collector.invoke("find:search", event, [input, "instant"]);
+        yield* collector.invoke("find:search", event, [input, "complete"]);
+        assert.isTrue(
+          asked.some(({ method, invocation }) => method === "search" && invocation === "proof:bob"),
+        );
+        assert.isTrue(
+          asked.some(
+            ({ method, invocation }) => method === "searchMessages" && invocation === "proof:bob",
+          ),
+        );
+        const before = asked.length;
+        const oversized = yield* collector
+          .invoke("find:search", event, [{ ...input, limit: 1_000 }, "instant"])
+          .pipe(Effect.exit);
+        assert.isTrue(oversized._tag === "Failure");
+        assert.lengthOf(asked, before);
+      }).pipe(Effect.scoped),
+  );
+});
+
+describe("RemoteSpaceProjection", () => {
+  const live = liveRemoteSpaceProjection;
+  it.effect(
+    "refreshes remote Inbox and Activity for Automation-only and Run-only commits without a producer",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inboxChanges: unknown[] = [];
+          const notifier = DatabaseNotifierRuntime.of({
+            notifyDatabaseChanged: () => Effect.void,
+            notifyLibraryNavigationChanged: () => Effect.void,
+            notifyProjectsChanged: () =>
+              Effect.die("Automation changes must not refresh Project metadata"),
+            notifyProjectSessionInvalidation: () => Effect.void,
+            notifyInboxChanged: (event) =>
+              Effect.sync(() => {
+                inboxChanges.push(event);
+              }),
+            projectSessionInvalidations: Stream.empty,
+            inboxInvalidations: Stream.empty,
+            workInvalidations: Stream.empty,
+            projectInvalidations: Stream.empty,
+          });
+          const context = yield* Layer.build(
+            live(Effect.void).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, notifier))),
+          );
+          const projection = Context.get(context, CoreApplicationProjectionRuntime);
+          for (const [automationIds, runIds] of [
+            [["automation-a"], []],
+            [[], ["run-a"]],
+            [[], []],
+          ]) {
+            const packet = createCoreLocalCommitFixture({
+              commitSeq: 8,
+              storeEpoch: "epoch:test",
+              payload: {
+                module: "automation",
+                library_id: "team",
+                project_id: null,
+                event: {
+                  kind: "automation_changed",
+                  automation_ids: automationIds!,
+                  run_ids: runIds!,
+                  lease_ids: [],
+                  reminder_lease_ids: [],
+                  snooze_ids: [],
+                  page_ids: [],
+                  document_ids: [],
+                  database_ids: [],
+                },
+              },
+            });
+            yield* projection.publish({ transport_version: 4, packet }, packet.atoms[0]!, "team");
+          }
+          assert.deepEqual(inboxChanges, []);
+          yield* TestClock.adjust("1 second");
+          assert.deepEqual(inboxChanges, [{ reason: "content" }]);
+        }),
+      ),
+  );
+
+  it.effect("publishes hosted chat changes and resync to the team's Session catalog", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const changes: unknown[] = [];
+        let projectRefreshes = 0;
+        const inboxChanges: unknown[] = [];
+        const notifier = DatabaseNotifierRuntime.of({
+          notifyDatabaseChanged: () => Effect.void,
+          notifyLibraryNavigationChanged: () => Effect.void,
+          notifyProjectsChanged: () =>
+            Effect.sync(() => {
+              projectRefreshes++;
+            }),
+          notifyProjectSessionInvalidation: (event) =>
+            Effect.sync(() => {
+              changes.push(event);
+            }),
+          notifyInboxChanged: (event) =>
+            Effect.sync(() => {
+              inboxChanges.push(event);
+            }),
+          projectSessionInvalidations: Stream.empty,
+          inboxInvalidations: Stream.empty,
+          workInvalidations: Stream.empty,
+          projectInvalidations: Stream.empty,
+        });
+        const context = yield* Layer.build(
+          live(Effect.void).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, notifier))),
+        );
+        const projection = Context.get(context, CoreApplicationProjectionRuntime);
+        const packet = createCoreLocalCommitFixture({
+          commitSeq: 9,
+          storeEpoch: "epoch:test",
+          payload: {
+            module: "project_workspace",
+            library_id: "team",
+            event: {
+              kind: "workspace_changed",
+              project_ids: ["project:host"],
+              session_ids: ["session:host"],
+              thread_ids: [],
+              session_summary_scopes: [{ kind: "project", project_id: "project:host" }],
+              session_detail_ids: ["session:host"],
+              inbox_changed: false,
+            },
+          },
+        });
+        for (let index = 0; index < 100; index++)
+          yield* projection.publish({ transport_version: 4, packet }, packet.atoms[0]!, "team");
+        assert.deepEqual(changes, []);
+        yield* TestClock.adjust("1 second");
+        assert.deepEqual(changes, [
+          {
+            summaryScopes: [{ kind: "project", projectId: "project:host" }],
+            detailInvalidation: { kind: "sessions", sessionIds: ["session:host"] },
+            changeType: "update",
+          },
+        ]);
+        assert.equal(projectRefreshes, 0);
+        assert.deepEqual(inboxChanges, [{ reason: "content" }]);
+        yield* projection.publishResync({
+          commitSeq: 9,
+          libraryId: "team",
+          storeEpoch: "epoch:test",
+        });
+        assert.equal(projectRefreshes, 1);
+        yield* TestClock.adjust("1 second");
+        assert.deepEqual(changes[1], {
+          summaryScopes: [{ kind: "all" }],
+          detailInvalidation: { kind: "all" },
+          changeType: "update",
+        });
+      }),
+    ),
+  );
+
+  it.effect("a Space rename on the host rereads the name a connected desktop shows", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let rereads = 0;
+        const quiet = DatabaseNotifierRuntime.of({
+          notifyDatabaseChanged: () => Effect.void,
+          notifyLibraryNavigationChanged: () => Effect.void,
+          notifyProjectsChanged: () => Effect.void,
+          notifyProjectSessionInvalidation: () => Effect.void,
+          notifyInboxChanged: () => Effect.void,
+          projectSessionInvalidations: Stream.empty,
+          inboxInvalidations: Stream.empty,
+          workInvalidations: Stream.empty,
+          projectInvalidations: Stream.empty,
+        });
+        const context = yield* Layer.build(
+          live(
+            Effect.sync(() => {
+              rereads++;
+            }),
+          ).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, quiet))),
+        );
+        const projection = Context.get(context, CoreApplicationProjectionRuntime);
+        for (const operation of ["create_backup", "rename_space"]) {
+          const packet = createCoreLocalCommitFixture({
+            commitSeq: 10,
+            storeEpoch: "epoch:test",
+            payload: {
+              module: "store_administration",
+              library_id: "team",
+              event: {
+                kind: "store_administration_changed",
+                operation,
+                backup_ids: [],
+                readiness_changed: false,
+              },
+            },
+          });
+          yield* projection.publish({ transport_version: 4, packet }, packet.atoms[0]!, "team");
+        }
+        yield* Effect.yieldNow;
+        assert.strictEqual(rereads, 1);
+      }),
+    ),
+  );
+});
+
+describe("RemoteMemberAttentionIpc", () => {
+  const live = liveRemoteMemberAttentionIpc;
+  /** The host's own Inbox settings, which differ from every default a desktop might show. */
+  const luna = {
+    instanceId: "codex",
+    model: "gpt-6-luna",
+    reasoningEffort: "low",
+    serviceTier: null,
+  } as const;
+  const hostInbox: InboxSettings = {
+    ...DEFAULT_INBOX_SETTINGS,
+    dispatchMode: "act_on_requests",
+    suggestions: "on_request",
+    suggestionAgent: luna,
+    chatAgent: luna,
+    suggestionsChooseModels: false,
+    useModelGuide: false,
+  };
+  /** The Space's execution owner, reached through Core's relay with the Member's authority. */
+  const host = (calls: string[] = []) =>
+    Layer.succeed(
+      CoreSessionAccess,
+      CoreSessionAccess.of({
+        handshake: Effect.die("No handshake is needed"),
+        use: (_operation, run) =>
+          Effect.promise((signal) =>
+            run(
+              {
+                hostCall: async ({ operation }: { operation: string }) => {
+                  calls.push(operation);
+                  return { status: "ok", value: hostInbox };
+                },
+              } as never,
+              signal,
+            ),
+          ),
+      }),
     );
-    const before = asked.length;
-    const oversized = yield* collector
-      .invoke("find:search", event, [{ ...input, limit: 1_000 }, "instant"])
-      .pipe(Effect.exit);
-    assert.isTrue(oversized._tag === "Failure");
-    assert.lengthOf(asked, before);
-  }).pipe(Effect.scoped),
-);
+
+  it.effect("reads the host's Inbox settings and keeps only the Member's consent in Core", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const collector = makeSpaceIpcCollector({ routes: () => true });
+        let consent: boolean | null = null;
+        const writes: unknown[] = [];
+        const hostCalls: string[] = [];
+        yield* Layer.build(
+          live.pipe(
+            Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+            Layer.provide(host(hostCalls)),
+            Layer.provide(
+              Layer.succeed(CoreModules, {
+                workspace: {
+                  read: () =>
+                    Effect.succeed({
+                      value: { kind: "inbox_routing_consent", start_my_requests: consent },
+                    }),
+                  apply: (input: { intent: { start_my_requests: boolean } }) =>
+                    Effect.sync(() => {
+                      writes.push(input.intent);
+                      consent = input.intent.start_my_requests;
+                    }),
+                },
+              } as never),
+            ),
+            Layer.provide(Layer.succeed(ProjectWorkspace, {} as never)),
+          ),
+        );
+        const event = {} as IpcMainInvokeEvent;
+        // Everything the Inbox runs on is the host's; the Member has not consented yet.
+        expect(yield* collector.invoke("settings:inbox:get", event, [])).toEqual({
+          ...hostInbox,
+          dispatchMode: "suggest",
+        });
+        expect(hostCalls).toEqual(["inbox_settings"]);
+        expect(writes).toEqual([
+          { kind: "set_inbox_routing_consent", start_my_requests: false, initialize_only: true },
+        ]);
+        expect(
+          yield* collector.invoke("settings:inbox:update", event, [
+            { dispatchMode: "act_on_requests" },
+          ]),
+        ).toMatchObject({ dispatchMode: "act_on_requests" });
+        expect(consent).toBe(true);
+        expect(yield* collector.invoke("settings:inbox:get", event, [])).toMatchObject({
+          dispatchMode: "act_on_requests",
+        });
+        const denied = yield* collector
+          .invoke("settings:inbox:update", event, [{ suggestions: "off" }])
+          .pipe(Effect.result);
+        expect(denied._tag).toBe("Failure");
+        expect(consent).toBe(true);
+        expect(writes).toHaveLength(2);
+      }),
+    ),
+  );
+
+  it.effect(
+    "keeps a Member's pins, pin order, snoozes and settlement in the Space's Core, as their own",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const collector = makeSpaceIpcCollector({ routes: () => true });
+          const calls: [string, unknown][] = [];
+          const apply = { status: "no_op", observed: { store_epoch: "epoch", commit_seq: 4 } };
+          const chat = { id: "chat" };
+          const record = (method: string, value: unknown) => (command: unknown) =>
+            Effect.sync(() => {
+              calls.push([method, command]);
+              return { value, apply };
+            });
+          yield* Layer.build(
+            live.pipe(
+              Layer.provide(Layer.succeed(ElectronIpc, collector.ipc)),
+              Layer.provide(host()),
+              Layer.provide(Layer.succeed(CoreModules, {} as never)),
+              Layer.provide(
+                Layer.succeed(ProjectWorkspace, {
+                  markProjectSessionUnread: record("unread", chat),
+                  setProjectSessionPinned: record("pin", chat),
+                  placeProjectSession: record("place", undefined),
+                  setProjectSessionSnooze: record("snooze", chat),
+                  setProjectSessionSettled: record("settled", { changedSessionIds: ["chat"] }),
+                  ensureDefaultDraftProjectSession: record("draft", chat),
+                } as never),
+              ),
+            ),
+          );
+          const event = {} as IpcMainInvokeEvent;
+          const operationId = createBoundedOperationId("test.attention");
+          const pin = { operationId, payload: { sessionId: "chat", pinned: true } };
+          const place = {
+            operationId,
+            payload: { sessionId: "chat", placement: { kind: "before", sessionId: "other-pin" } },
+          };
+          const snooze = {
+            operationId,
+            payload: { sessionId: "chat", snoozedUntil: "2026-11-09T09:00:00.000Z" },
+          };
+          // A New chat opens the Member's own default draft in the Space's Core.
+          const draft = { operationId, payload: { projectId: null, candidateSessionId: "draft" } };
+          const batch = {
+            operationId,
+            payload: { sessionIds: ["chat", "already-settled"], settled: true },
+          };
+          for (const [channel, command, value] of [
+            ["project-sessions:set-pinned", pin, chat],
+            ["project-sessions:place", place, undefined],
+            ["project-sessions:set-snooze", snooze, chat],
+            ["project-sessions:ensure-default-draft", draft, chat],
+            ["project-sessions:set-settled", batch, { changedSessionIds: ["chat"] }],
+          ] as const)
+            expect(yield* collector.invoke(channel, event, [command])).toMatchObject({
+              ok: true,
+              value,
+              localCommit: apply,
+            });
+          expect(calls).toEqual([
+            ["pin", pin],
+            ["place", place],
+            ["snooze", snooze],
+            ["draft", draft],
+            ["settled", batch],
+          ]);
+          const malformed = yield* collector
+            .invoke("project-sessions:set-pinned", event, [{ ...pin, operationId: "" }])
+            .pipe(Effect.result);
+          expect(malformed._tag).toBe("Failure");
+          const missingAnchor = yield* collector
+            .invoke("project-sessions:place", event, [
+              { ...place, payload: { sessionId: "chat", placement: { kind: "before" } } },
+            ])
+            .pipe(Effect.result);
+          expect(missingAnchor._tag).toBe("Failure");
+          expect(calls).toHaveLength(5);
+        }),
+      ),
+  );
+});
+
+describe("SpaceConnectionStorage", () => {
+  const live = liveSpaceConnectionStorage;
+  const credential: SpaceCredential = {
+    spaceId: "library-team/opaque:identity",
+    memberId: "alice",
+    deviceId: "desktop",
+    name: "Team",
+    url: "https://team.example",
+    fingerprint: "a".repeat(64),
+    deviceCredential: "this-credential-must-never-be-plaintext",
+  };
+  const key = randomBytes(32);
+  const encryption = SecretEncryption.of({
+    isAvailable: () => true,
+    encryptString: (text) => {
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv("aes-256-gcm", key, nonce);
+      const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+      return Buffer.concat([nonce, cipher.getAuthTag(), encrypted]);
+    },
+    decryptString: (bytes) => {
+      const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
+      decipher.setAuthTag(bytes.subarray(12, 28));
+      return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString(
+        "utf8",
+      );
+    },
+  });
+  const home = Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-spaces-"))),
+    (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+  );
+
+  it.effect("persists encrypted credentials privately per Space and removes them on Leave", () =>
+    Effect.gen(function* () {
+      const directory = yield* home;
+      yield* Effect.gen(function* () {
+        const storage = yield* SpaceConnectionStorage;
+        yield* storage.save(credential);
+        assert.deepEqual(yield* storage.load, {
+          credentials: [credential],
+          unavailableSpaceIds: [],
+        });
+        const path = join(
+          directory,
+          "space-connections",
+          `${spacePathKey(credential.spaceId)}.enc`,
+        );
+        const bytes = yield* Effect.promise(() => readFile(path));
+        assert.isFalse(bytes.includes(Buffer.from(credential.deviceCredential)));
+        if (process.platform !== "win32")
+          assert.strictEqual((yield* Effect.promise(() => stat(path))).mode & 0o077, 0);
+        yield* storage.remove(credential.spaceId);
+        assert.deepEqual(yield* storage.load, { credentials: [], unavailableSpaceIds: [] });
+      }).pipe(Effect.provide(live(directory)), Effect.provideService(SecretEncryption, encryption));
+    }),
+  );
+
+  it.effect("refuses to persist a device credential when secure storage is unavailable", () =>
+    Effect.gen(function* () {
+      const directory = yield* home;
+      yield* Effect.gen(function* () {
+        const storage = yield* SpaceConnectionStorage;
+        assert.strictEqual((yield* Effect.result(storage.save(credential)))._tag, "Failure");
+        assert.deepEqual(yield* Effect.promise(() => readdir(directory)), []);
+      }).pipe(
+        Effect.provide(live(directory)),
+        Effect.provideService(SecretEncryption, { ...encryption, isAvailable: () => false }),
+      );
+    }),
+  );
+
+  it.effect(
+    "keeps an unreadable team credential visible without unlocking or blocking personal startup",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* home;
+        yield* Effect.gen(function* () {
+          yield* (yield* SpaceConnectionStorage).save(credential);
+        }).pipe(
+          Effect.provide(live(directory)),
+          Effect.provideService(SecretEncryption, encryption),
+        );
+        yield* Effect.gen(function* () {
+          const storage = yield* SpaceConnectionStorage;
+          assert.deepEqual(yield* storage.load, {
+            credentials: [],
+            unavailableSpaceIds: [credential.spaceId],
+          });
+          yield* storage.remove(credential.spaceId);
+          assert.deepEqual(yield* storage.load, { credentials: [], unavailableSpaceIds: [] });
+        }).pipe(
+          Effect.provide(live(directory)),
+          Effect.provideService(SecretEncryption, {
+            ...encryption,
+            isAvailable: () => false,
+          }),
+        );
+      }),
+  );
+});

@@ -1,3 +1,4 @@
+import { describe } from "vite-plus/test";
 import { codexLinkedRootSessionFixture } from "../core-client/testing/codex-linked-root-session.test-support";
 import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
@@ -25,273 +26,256 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createHostedAppToolCaller } from "./AppToolCaller";
-import { makeCommands as make } from "./NativeSessionTools";
+import {
+  makeCommands as make,
+  makeMessageIntake as makeSessionMessageIntake,
+} from "./NativeSessionTools";
 import { nativeQuestionTestLayers } from "./native-question-test-layers";
 import { nativeQuestionFixture } from "./native-question-test-fixture";
-const intakeServices = Layer.mergeAll(
-  Layer.succeed(ProjectWorkspace, {
-    getProjectSession: () =>
-      Effect.succeed({
-        id: "native-product",
-        archived: false,
-        thread: {
-          threadId: "native-root",
-          backendBinding: { driver: "codex", instanceId: "codex" },
-          executionHostId: "local",
-        },
-      }),
-  } as never),
-  Layer.succeed(CodexThreadDirectory, {
-    resolve: () =>
-      Effect.succeed({
-        canonical: {
-          hostId: "local",
-          currentPermissions: {
-            sandboxPolicy: { type: "dangerFullAccess" },
-            approvalPolicy: "never",
-            approvalsReviewer: "user",
-          },
-          latestModel: "codex-default",
-          latestCollaborationMode: { mode: "plan" },
-          latestThreadSettings: {
-            model: "codex-default",
-            collaborationMode: { mode: "plan" },
-            approvalPolicy: "never",
-            sandboxPolicy: { type: "dangerFullAccess" },
-          },
-        },
-      }),
-  } as never),
-  Layer.succeed(CodexMainConversationResume, {
-    resume: () => Effect.succeed({ status: "ready" }),
-  } as never),
-  Layer.succeed(CodexDelegatedMessages, {} as never),
-  Layer.succeed(CodexAttachments, {} as never),
-  Layer.succeed(ExecutionHostRuntime, {} as never),
-  Layer.succeed(CodexGateway, { localHostId: "local" } as never),
-  Layer.succeed(FileExportRuntime, {} as never),
-  Layer.succeed(CodexNativeThreadLookup, {} as never),
-  Layer.succeed(TemporaryAssets, {} as never),
-);
-const authority: NodexAgentTurnContext = {
-  threadId: "child",
-  turnId: "run",
-  rootThreadId: "root",
-  actorProjectId: "project",
-  libraryId: "library",
-  storeEpoch: "epoch",
-  admittedAtMs: 1791993600000,
-  runtime: { sessionId: "session:root", runtimeId: "runtime", turnKind: "run" },
-};
-const fixture = (
-  options: {
-    archived?: boolean;
-    native?: boolean;
-    restricted?: boolean;
-    targetDefault?: boolean;
-    nativeQuestions?: typeof nativeQuestionTestLayers;
-    policyFailure?: "model_off" | "credit_requires_person";
-    delegationRefusal?: string;
-  } = {},
-) => {
-  const frozen = authority;
-  const deliveries = new Map<string, Record<string, unknown>>();
-  const createdSessions = new Set<string>();
-  let active = true;
-  const calls: Array<{ name: string; input: unknown; agent: unknown }> = [];
-  const method =
-    <T>(name: string, result: T) =>
-    (input: unknown) =>
-      Effect.gen(function* () {
-        calls.push({ name, input, agent: yield* CoreApplicationAgent });
-        if (options.policyFailure && (name === "launch" || name === "sendMessage"))
-          return yield* Effect.fail(
-            new AgentRuntimeApplicationError({
-              operation: name,
-              code: options.policyFailure,
-              message: "Choose another model in Settings → Agents.",
-              retryable: false,
-            }),
-          );
-        return result;
-      });
-  const makeCaller = (turnId = frozen.turnId, callId = "call") =>
-    createHostedAppToolCaller({
-      backend: "claude",
-      authority: { ...frozen, turnId },
-      callId,
-      generation: 1,
-      isActive: () => active,
-      capture: Effect.succeed({ ...frozen, turnId }),
-      sessionContext: {
-        sessionId: "session:root",
-        projectId: "project",
-        runtimeId: "engine",
-        rootThreadId: "root",
-        threadId: "child",
-        runId: turnId,
-        cwd: "/worktree",
-      },
-    });
-  const caller = makeCaller();
-  const execute = make.pipe(
-    Effect.provide(options.nativeQuestions ?? nativeQuestionTestLayers),
-    Effect.provide(intakeServices),
-    Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-    Effect.provideService(CoreModules, {
-      workspace: {
-        admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
-        read: (request: { session_id: string }) =>
-          Effect.succeed({
-            value: {
-              kind: "agent_session",
-              session: {
-                id: request.session_id,
-                archived: request.session_id === "other" && options.archived === true,
-                execution_ref:
-                  options.native && request.session_id === "other"
-                    ? null
-                    : {
-                        runtime_id: "runtime",
-                        thread_id: request.session_id === "session:root" ? "root" : "target",
-                      },
-              },
-            },
-          }),
-      },
-    } as never),
-    Effect.provideService(CodexTurnAuthority, {} as never),
-    Effect.provideService(AgentRuntimeApplication, {
-      assertModelPolicy: () => Effect.void,
-      delegationRefusal: (threadId: string) =>
-        method("delegationRefusal", options.delegationRefusal ?? null)(threadId),
-      nativeMessageReceipt: () => Effect.succeed(null),
-      replayMessage: (input: { messageId: string }) =>
-        Effect.succeed(deliveries.get(input.messageId) ?? null),
-      resumeMessageLaunch: () => Effect.succeed(null),
-      inspect: (input: { sessionId: string }) =>
-        method("inspect", {
-          sessionId: input.sessionId,
-          projectId: "project",
-          threadId: input.sessionId === "session:root" ? "child" : "target",
-          thread: {
-            modelSelection: { instanceId: "claude_instance", model: "sonnet" },
-            interactionMode:
-              input.sessionId === "other" && options.targetDefault ? "default" : "plan",
-            runtimeMode:
-              input.sessionId === "session:root" && options.restricted
-                ? "approval-required"
-                : "full-access",
-          },
-        })(input),
-      listQuestionIds: method("listQuestions", { requestIds: ["question"] }),
-      control: method("control", {
-        snapshot: {
-          projection: {
-            runtimeRequests: [
-              {
-                id: "question",
-                kind: "user_input",
-                status: "pending",
-                nodeId: "node",
-                responseCapability: { type: "message" },
-              },
-            ],
-            turnItems: [
-              {
-                type: "user_input_request",
-                requestId: "question",
-                questions: [
-                  { id: "format", header: "Format", question: "Which format?", options: [] },
-                ],
-              },
-            ],
-            nodes: [{ id: "node", runId: "source-run" }],
-          },
-        },
-      }),
-      respond: method("respond", { sequence: 1 }),
-      launch: (input: { sessionId: string }) =>
-        Effect.gen(function* () {
-          createdSessions.add(input.sessionId);
-          return yield* method("launch", {
-            sessionId: "new",
-            projectId: "project",
-            threadId: "new-root",
-          })(input);
-        }),
-      sendMessage: (input: { message: { messageId: string } }) =>
-        Effect.gen(function* () {
-          const outcome = yield* method("sendMessage", {
-            sessionId: "other",
-            threadId: "target",
-            messageId: "message:delivered",
-            runId: "run:accepted",
-            status: "queued",
-            delivery: "queued",
-          })(input);
-          deliveries.set(input.message.messageId, outcome);
-          return outcome;
-        }),
-      execution: method("execution", {
-        selectedRunId: "run:accepted",
-        runId: "run:accepted",
-        status: "queued",
-      }),
-      mergeBack: method("merge", { sessionId: "source", projectId: "project", threadId: "root" }),
-      fork: method("fork", {
-        sourceSessionId: "session:root",
-        sessionId: "fork",
-        projectId: "project",
-        threadId: "fork-root",
-      }),
-    } as never),
-  );
-  return {
-    caller,
-    makeCaller,
-    calls,
-    createdSessions,
-    execute,
-    withdraw: () => {
-      active = false;
-    },
-  };
-};
+import { sessionMessageSchema } from "../../shared/nodex-app-tools/session-message-schema";
+import { createStableOperationId } from "../core-runtime/operation-identity";
+import type { SessionMessageIntakeInput } from "./SessionMessageIntake";
 
-it.effect.each([
-  { name: "create_session", code: "model_off" },
-  { name: "create_session", code: "credit_requires_person" },
-  { name: "send_message_to_session", code: "model_off" },
-  { name: "send_message_to_session", code: "credit_requires_person" },
-] as const)("preserves Runtime $code refusal from $name", ({ name, code }) =>
-  Effect.gen(function* () {
-    const f = fixture({ policyFailure: code });
-    const execute = yield* f.execute;
-    const result = yield* execute({
-      caller: f.caller,
-      name,
-      arguments:
-        name === "create_session"
-          ? {
-              prompt: "Must not start",
-              target: { type: "project", projectId: "project", environment: { type: "local" } },
-            }
-          : { sessionId: "other", prompt: "Must not continue" },
-    });
-    assert.isTrue(result.isError);
-    assert.deepEqual(result.structuredContent, { error: { code } });
-    assert.deepEqual(result.content, [
-      { type: "text", text: "Choose another model in Settings → Agents." },
-    ]);
-  }),
-);
-it.effect.each(["create_session", "fork_session"] as const)(
-  "refuses $name for a subagent that may not delegate, before starting anything",
-  (name) =>
+describe("RuntimeSessionCommands", () => {
+  const intakeServices = Layer.mergeAll(
+    Layer.succeed(ProjectWorkspace, {
+      getProjectSession: () =>
+        Effect.succeed({
+          id: "native-product",
+          archived: false,
+          thread: {
+            threadId: "native-root",
+            backendBinding: { driver: "codex", instanceId: "codex" },
+            executionHostId: "local",
+          },
+        }),
+    } as never),
+    Layer.succeed(CodexThreadDirectory, {
+      resolve: () =>
+        Effect.succeed({
+          canonical: {
+            hostId: "local",
+            currentPermissions: {
+              sandboxPolicy: { type: "dangerFullAccess" },
+              approvalPolicy: "never",
+              approvalsReviewer: "user",
+            },
+            latestModel: "codex-default",
+            latestCollaborationMode: { mode: "plan" },
+            latestThreadSettings: {
+              model: "codex-default",
+              collaborationMode: { mode: "plan" },
+              approvalPolicy: "never",
+              sandboxPolicy: { type: "dangerFullAccess" },
+            },
+          },
+        }),
+    } as never),
+    Layer.succeed(CodexMainConversationResume, {
+      resume: () => Effect.succeed({ status: "ready" }),
+    } as never),
+    Layer.succeed(CodexDelegatedMessages, {} as never),
+    Layer.succeed(CodexAttachments, {} as never),
+    Layer.succeed(ExecutionHostRuntime, {} as never),
+    Layer.succeed(CodexGateway, { localHostId: "local" } as never),
+    Layer.succeed(FileExportRuntime, {} as never),
+    Layer.succeed(CodexNativeThreadLookup, {} as never),
+    Layer.succeed(TemporaryAssets, {} as never),
+  );
+  const authority: NodexAgentTurnContext = {
+    threadId: "child",
+    turnId: "run",
+    rootThreadId: "root",
+    actorProjectId: "project",
+    libraryId: "library",
+    storeEpoch: "epoch",
+    admittedAtMs: 1791993600000,
+    runtime: { sessionId: "session:root", runtimeId: "runtime", turnKind: "run" },
+  };
+  const fixture = (
+    options: {
+      archived?: boolean;
+      native?: boolean;
+      restricted?: boolean;
+      targetDefault?: boolean;
+      nativeQuestions?: typeof nativeQuestionTestLayers;
+      policyFailure?: "model_off" | "credit_requires_person";
+      delegationRefusal?: string;
+    } = {},
+  ) => {
+    const frozen = authority;
+    const deliveries = new Map<string, Record<string, unknown>>();
+    const createdSessions = new Set<string>();
+    let active = true;
+    const calls: Array<{ name: string; input: unknown; agent: unknown }> = [];
+    const method =
+      <T>(name: string, result: T) =>
+      (input: unknown) =>
+        Effect.gen(function* () {
+          calls.push({ name, input, agent: yield* CoreApplicationAgent });
+          if (options.policyFailure && (name === "launch" || name === "sendMessage"))
+            return yield* Effect.fail(
+              new AgentRuntimeApplicationError({
+                operation: name,
+                code: options.policyFailure,
+                message: "Choose another model in Settings → Agents.",
+                retryable: false,
+              }),
+            );
+          return result;
+        });
+    const makeCaller = (turnId = frozen.turnId, callId = "call") =>
+      createHostedAppToolCaller({
+        backend: "claude",
+        authority: { ...frozen, turnId },
+        callId,
+        generation: 1,
+        isActive: () => active,
+        capture: Effect.succeed({ ...frozen, turnId }),
+        sessionContext: {
+          sessionId: "session:root",
+          projectId: "project",
+          runtimeId: "engine",
+          rootThreadId: "root",
+          threadId: "child",
+          runId: turnId,
+          cwd: "/worktree",
+        },
+      });
+    const caller = makeCaller();
+    const execute = make.pipe(
+      Effect.provide(options.nativeQuestions ?? nativeQuestionTestLayers),
+      Effect.provide(intakeServices),
+      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+      Effect.provideService(CoreModules, {
+        workspace: {
+          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
+          read: (request: { session_id: string }) =>
+            Effect.succeed({
+              value: {
+                kind: "agent_session",
+                session: {
+                  id: request.session_id,
+                  archived: request.session_id === "other" && options.archived === true,
+                  execution_ref:
+                    options.native && request.session_id === "other"
+                      ? null
+                      : {
+                          runtime_id: "runtime",
+                          thread_id: request.session_id === "session:root" ? "root" : "target",
+                        },
+                },
+              },
+            }),
+        },
+      } as never),
+      Effect.provideService(CodexTurnAuthority, {} as never),
+      Effect.provideService(AgentRuntimeApplication, {
+        assertModelPolicy: () => Effect.void,
+        delegationRefusal: (threadId: string) =>
+          method("delegationRefusal", options.delegationRefusal ?? null)(threadId),
+        nativeMessageReceipt: () => Effect.succeed(null),
+        replayMessage: (input: { messageId: string }) =>
+          Effect.succeed(deliveries.get(input.messageId) ?? null),
+        resumeMessageLaunch: () => Effect.succeed(null),
+        inspect: (input: { sessionId: string }) =>
+          method("inspect", {
+            sessionId: input.sessionId,
+            projectId: "project",
+            threadId: input.sessionId === "session:root" ? "child" : "target",
+            thread: {
+              modelSelection: { instanceId: "claude_instance", model: "sonnet" },
+              interactionMode:
+                input.sessionId === "other" && options.targetDefault ? "default" : "plan",
+              runtimeMode:
+                input.sessionId === "session:root" && options.restricted
+                  ? "approval-required"
+                  : "full-access",
+            },
+          })(input),
+        listQuestionIds: method("listQuestions", { requestIds: ["question"] }),
+        control: method("control", {
+          snapshot: {
+            projection: {
+              runtimeRequests: [
+                {
+                  id: "question",
+                  kind: "user_input",
+                  status: "pending",
+                  nodeId: "node",
+                  responseCapability: { type: "message" },
+                },
+              ],
+              turnItems: [
+                {
+                  type: "user_input_request",
+                  requestId: "question",
+                  questions: [
+                    { id: "format", header: "Format", question: "Which format?", options: [] },
+                  ],
+                },
+              ],
+              nodes: [{ id: "node", runId: "source-run" }],
+            },
+          },
+        }),
+        respond: method("respond", { sequence: 1 }),
+        launch: (input: { sessionId: string }) =>
+          Effect.gen(function* () {
+            createdSessions.add(input.sessionId);
+            return yield* method("launch", {
+              sessionId: "new",
+              projectId: "project",
+              threadId: "new-root",
+            })(input);
+          }),
+        sendMessage: (input: { message: { messageId: string } }) =>
+          Effect.gen(function* () {
+            const outcome = yield* method("sendMessage", {
+              sessionId: "other",
+              threadId: "target",
+              messageId: "message:delivered",
+              runId: "run:accepted",
+              status: "queued",
+              delivery: "queued",
+            })(input);
+            deliveries.set(input.message.messageId, outcome);
+            return outcome;
+          }),
+        execution: method("execution", {
+          selectedRunId: "run:accepted",
+          runId: "run:accepted",
+          status: "queued",
+        }),
+        mergeBack: method("merge", { sessionId: "source", projectId: "project", threadId: "root" }),
+        fork: method("fork", {
+          sourceSessionId: "session:root",
+          sessionId: "fork",
+          projectId: "project",
+          threadId: "fork-root",
+        }),
+      } as never),
+    );
+    return {
+      caller,
+      makeCaller,
+      calls,
+      createdSessions,
+      execute,
+      withdraw: () => {
+        active = false;
+      },
+    };
+  };
+
+  it.effect.each([
+    { name: "create_session", code: "model_off" },
+    { name: "create_session", code: "credit_requires_person" },
+    { name: "send_message_to_session", code: "model_off" },
+    { name: "send_message_to_session", code: "credit_requires_person" },
+  ] as const)("preserves Runtime $code refusal from $name", ({ name, code }) =>
     Effect.gen(function* () {
-      const refusal = "The person turned off delegation by subagents in Settings.";
-      const f = fixture({ delegationRefusal: refusal });
+      const f = fixture({ policyFailure: code });
       const execute = yield* f.execute;
       const result = yield* execute({
         caller: f.caller,
@@ -302,640 +286,1073 @@ it.effect.each(["create_session", "fork_session"] as const)(
                 prompt: "Must not start",
                 target: { type: "project", projectId: "project", environment: { type: "local" } },
               }
-            : {},
+            : { sessionId: "other", prompt: "Must not continue" },
       });
       assert.isTrue(result.isError);
-      assert.deepEqual(result.structuredContent, { error: { code: "delegation_denied" } });
-      assert.deepEqual(result.content, [{ type: "text", text: refusal }]);
-      assert.deepEqual(
-        f.calls.map((call) => call.name),
-        ["delegationRefusal"],
-      );
-      assert.deepEqual(f.calls[0]?.input, "child");
+      assert.deepEqual(result.structuredContent, { error: { code } });
+      assert.deepEqual(result.content, [
+        { type: "text", text: "Choose another model in Settings → Agents." },
+      ]);
     }),
-);
-it.effect(
-  "forks the current child within its bound product Session using exact engine identity",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      const result = yield* execute({ caller: f.caller, name: "fork_session", arguments: {} });
-      assert.isFalse(result.isError ?? false);
-      assert.equal(result.structuredContent?.url, "nodex://sessions/fork");
-      const call = f.calls.find((call) => call.name === "fork")!;
-      assert.deepEqual((call.input as { source: unknown }).source, {
-        sessionId: "session:root",
-        threadId: "child",
-      });
-      assert.deepEqual((call.agent as { authority: unknown }).authority, {
-        thread_id: "child",
-        turn_id: "run",
-        root_thread_id: "root",
-        actor_project_id: "project",
-        library_id: "library",
-        store_epoch: "epoch",
-        runtime: { session_id: "session:root", runtime_id: "runtime", turn_kind: "run" },
-      });
-      assert.notEqual((call.input as { sessionId: string }).sessionId, "session:root");
-    }),
-);
-it.effect(
-  "launches and messages through canonical product owners with stable retry identities",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      const invocation = {
-        caller: f.caller,
-        name: "create_session",
-        arguments: {
-          prompt: "Build",
-          target: { type: "project", projectId: "project", environment: { type: "local" } },
-        },
-      };
-      const created = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
-      const replayed = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
-      assert.equal(created.structuredContent?.url, "nodex://sessions/new");
-      assert.equal(replayed.structuredContent?.url, created.structuredContent?.url);
-      const launches = f.calls.filter((call) => call.name === "launch");
-      assert.deepEqual(launches[0]!.input, launches[1]!.input);
-      assert.equal(
-        (launches[0]!.input as { modelSelection: { instanceId: string } }).modelSelection
-          .instanceId,
-        "claude_instance",
-      );
-      yield* execute({
-        caller: f.caller,
-        name: "send_message_to_session",
-        arguments: { sessionId: "other", prompt: "Continue" },
-      });
-      assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
-      assert.isNotNull(f.calls.find((call) => call.name === "sendMessage")!.agent);
-      // A model override travels with its message and keeps the Session's own Agent.
-      yield* execute({
-        caller: f.makeCaller(undefined, "review"),
-        name: "send_message_to_session",
-        arguments: { sessionId: "other", prompt: "Review", model: "opus" },
-      });
-      const messages = f.calls.filter((call) => call.name === "sendMessage");
-      assert.deepEqual(
-        (messages[0]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
-        undefined,
-      );
-      assert.deepEqual(
-        (messages[1]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
-        { instanceId: "claude_instance", model: "opus" },
-      );
-      // Another Agent continues the Session from its model's own defaults.
-      yield* execute({
-        caller: f.makeCaller(undefined, "switch-agent"),
-        name: "send_message_to_session",
-        arguments: {
-          sessionId: "other",
-          prompt: "Take over",
-          providerInstanceId: "codex",
-          model: "gpt",
-        },
-      });
-      assert.deepEqual(
-        (
-          f.calls.filter((call) => call.name === "sendMessage")[2]!.input as {
-            message: { modelSelection?: unknown };
-          }
-        ).message.modelSelection,
-        { instanceId: "codex", model: "gpt" },
-      );
-      // Choosing another Agent names the model it runs.
-      const unnamed = yield* execute({
-        caller: f.caller,
-        name: "send_message_to_session",
-        arguments: { sessionId: "other", prompt: "Take over", providerInstanceId: "codex" },
-      });
-      assert.isTrue(unnamed.isError);
-    }),
-);
-it.effect("merges another fork Session back into its source, never the calling Session", () =>
-  Effect.gen(function* () {
-    const f = fixture();
-    const execute = yield* f.execute;
-    const own = yield* execute({
-      caller: f.caller,
-      name: "merge_session_back",
-      arguments: { sessionId: "session:root" },
-    });
-    assert.isTrue(own.isError);
-    const merged = yield* execute({
-      caller: f.caller,
-      name: "merge_session_back",
-      arguments: { sessionId: "fork" },
-    });
-    assert.isFalse(merged.isError ?? false);
-    const call = f.calls.find((entry) => entry.name === "merge")!;
-    assert.equal((call.input as { sessionId: string }).sessionId, "fork");
-    assert.isNotNull(call.agent);
-  }),
-);
-
-it.effect(
-  "cross-Project Session commands retain Profile identity; forged and withdrawn callers fail",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      const input = { caller: f.caller, name: "fork_session", arguments: {} };
-      assert.isTrue((yield* execute({ ...input, caller: { ...f.caller } })).isError);
-      const created = yield* execute({
-        caller: f.caller,
-        name: "create_session",
-        arguments: {
-          prompt: "Other",
-          target: { type: "project", projectId: "foreign", environment: { type: "local" } },
-        },
-      });
-      assert.isFalse(created.isError ?? false);
-      const launch = f.calls.find((call) => call.name === "launch")!;
-      assert.equal((launch.input as { projectId: string }).projectId, "foreign");
-      assert.equal((launch.agent as { profile_id: string }).profile_id, "profile");
-      const before = f.calls.length;
-      f.withdraw();
-      assert.isTrue((yield* execute(input)).isError);
-      assert.equal(f.calls.length, before);
-    }),
-);
-
-it.effect(
-  "native calls create Runtime Sessions with exact source identity and stable retries",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      let active = true;
-      let attached = true;
-      let restricted = false;
-      const original = {
-        ...authority,
-        threadId: "native-root",
-        turnId: "native-turn-a",
-        rootThreadId: "native-root",
-      };
-      const caller = {
-        backend: "codex" as const,
-        threadId: original.threadId,
-        turnId: original.turnId,
-        callId: "native-call-a",
-        hostId: "local",
-        generation: 7,
-        isActive: () => active,
-      };
-      const execute = yield* make.pipe(
-        Effect.provide(nativeQuestionTestLayers),
-        Effect.provideService(CodexThreadDirectory, {
-          resolve: () =>
-            Effect.succeed({
-              canonical: {
-                hostId: "local",
-                currentPermissions: {
-                  sandboxPolicy: restricted
-                    ? { type: "readOnly", networkAccess: false }
-                    : { type: "dangerFullAccess" },
-                  approvalPolicy: "on-request",
-                  approvalsReviewer: "user",
-                },
-                latestModel: "codex-default",
-                latestCollaborationMode: { mode: "plan" },
-                latestThreadSettings: {
-                  model: "codex-default",
-                  collaborationMode: { mode: "plan" },
-                  approvalPolicy: "on-request",
-                  sandboxPolicy: restricted
-                    ? { type: "readOnly", networkAccess: false }
-                    : { type: "dangerFullAccess" },
-                },
-              },
-            }),
-        } as never),
-        Effect.provide(intakeServices),
-        Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-        Effect.provideService(CodexTurnAuthority, {
-          capture: (threadId: string, turnId: string) =>
-            Effect.sync(() => {
-              assert.equal(threadId, "native-root");
-              assert.equal(turnId, "native-turn-a");
-              return original;
-            }),
-        } as unknown as CodexTurnAuthority["Service"]),
-        Effect.provideService(CoreModules, {
-          workspace: {
-            admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
-            read: (input: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
-              attached
-                ? Effect.sync(() => {
-                    if (input.kind === "agent_session")
-                      return {
-                        value: {
-                          kind: "agent_session",
-                          session: { id: "native-product", archived: false },
-                          thread: { thread_id: "native-root" },
-                        },
-                      } as never;
-                    assert.deepEqual(input, {
-                      kind: "codex_thread_session",
-                      thread_id: "native-root",
-                      expected_execution_host_id: "local",
-                    });
-                    return codexLinkedRootSessionFixture({
-                      threadId: "native-root",
-                      sessionId: "native-product",
-                      projectId: "project",
-                      threadSource: "user",
-                      title: "Historical source",
-                    });
-                  })
-                : Effect.fail(
-                    coreRuntimeError({
-                      operation: "workspace.read",
-                      reason: "operation",
-                      retryable: false,
-                      cause: new CoreModuleResponseError({
-                        code: "not_found",
-                        message: "Native product binding retired",
-                        retryable: false,
-                        recovery: { kind: "none" },
-                      }),
-                    }),
-                  ),
-          },
-        } as unknown as CoreModules["Service"]),
-        Effect.provideService(AgentRuntimeApplication, {
-          execution: () => Effect.succeed({ selectedRunId: "run:launched" }),
-          catalog: () =>
-            Effect.succeed([
-              {
-                instanceId: "codex",
-                enabled: true,
-                installed: true,
-                status: "ready",
-                models: [{ slug: "codex-default", isDefault: true }],
-              },
-            ]),
-          launch: (input: Parameters<AgentRuntimeApplication["Service"]["launch"]>[0]) =>
-            Effect.gen(function* () {
-              f.calls.push({ name: "launch", input, agent: yield* CoreApplicationAgent });
-              return {
-                sessionId: input.sessionId,
-                projectId: input.projectId,
-                threadId: "runtime-root",
-              };
-            }),
-        } as unknown as AgentRuntimeApplication["Service"]),
-      );
-      const invocation = {
-        caller,
-        name: "create_session",
-        arguments: {
-          prompt: "Build across Projects",
-          target: { type: "project", projectId: "other-project", environment: { type: "local" } },
-          reasoningEffort: "high",
-        },
-      };
-      assert.isFalse((yield* execute(invocation)).isError ?? false);
-      assert.isFalse((yield* execute(invocation)).isError ?? false);
-      assert.deepEqual(f.calls[0]?.input, f.calls[1]?.input);
-      assert.deepEqual((f.calls[0]?.input as { modelSelection: unknown }).modelSelection, {
-        instanceId: "codex",
-        model: "codex-default",
-        options: [{ id: "reasoningEffort", value: "high" }],
-      });
-      assert.equal(
-        (f.calls[0]?.agent as { authority: { turn_id: string } }).authority.turn_id,
-        "native-turn-a",
-      );
-      assert.equal((f.calls[0]?.input as { projectId: string }).projectId, "other-project");
-      assert.equal((f.calls[0]?.input as { interactionMode: string }).interactionMode, "plan");
-      assert.deepEqual((f.calls[0]?.input as { modeLimit: unknown }).modeLimit, {
-        runtimeMode: "full-access",
-        interactionMode: "plan",
-      });
-      restricted = true;
-      const denied = yield* execute({
-        ...invocation,
-        arguments: { ...invocation.arguments, runtimeMode: "full-access" },
-      });
-      assert.equal(
-        denied.structuredContent?.error &&
-          (denied.structuredContent.error as { code: string }).code,
-        "runtime_mode_escalation_denied",
-      );
-      assert.equal(
-        f.calls.length,
-        2,
-        "A newly restricted Native caller cannot launch full-access work",
-      );
-      attached = false;
-      assert.isTrue((yield* execute(invocation)).isError);
-      active = false;
-      assert.isTrue((yield* execute(invocation)).isError);
-      assert.equal(f.calls.length, 2);
-    }),
-);
-
-it.effect(
-  "routes explicit delivery modes and returns the owning Run identity for exact waits",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      for (const mode of ["auto", "queue", "steer", "restart"] as const) {
-        const invocation = {
-          caller: f.makeCaller(undefined, `mode:${mode}`),
-          name: "send_message_to_session",
-          arguments: { sessionId: "other", prompt: "Continue", mode },
-        };
-        const result = yield* execute(invocation);
-        assert.equal(result.structuredContent?.runId, "run:accepted");
-        assert.equal(result.structuredContent?.resolvedRunId, "run:accepted");
-        assert.equal(result.structuredContent?.status, "queued");
-        assert.equal(typeof result.structuredContent?.messageId, "string");
-        const sent = f.calls.filter((call) => call.name === "sendMessage").at(-1)!;
-        assert.equal((sent.input as { mode: string }).mode, mode);
-        assert.equal(result.structuredContent?.deliveryState, "queued");
-        assert.equal((sent.input as { senderThreadId: string }).senderThreadId, "child");
-        assert.equal((sent.input as { senderRunId: string }).senderRunId, "run");
-        const replay = yield* execute(invocation);
-        assert.deepEqual(replay.structuredContent, result.structuredContent);
-      }
-    }),
-);
-
-it.effect(
-  "self-send can select the caller's child execution without creating a product Session",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      const result = yield* execute({
-        caller: f.caller,
-        name: "send_message_to_session",
-        arguments: {
-          sessionId: "session:root",
-          execution: { threadId: "child" },
-          prompt: "Continue here",
-          mode: "queue",
-        },
-      });
-      assert.isFalse(result.isError ?? false);
-      const sent = f.calls.find((call) => call.name === "sendMessage")!;
-      assert.equal((sent.input as { sessionId: string }).sessionId, "session:root");
-      assert.equal((sent.input as { threadId: string }).threadId, "child");
-      assert.isFalse(f.calls.some((call) => call.name === "launch"));
-    }),
-);
-
-it.effect("UUID retries in a later Turn reuse one message and reject changed arguments", () =>
-  Effect.gen(function* () {
-    const f = fixture();
-    const execute = yield* f.execute;
-    const args = {
-      sessionId: "other",
-      prompt: "Continue",
-      idempotencyKey: "06d6709c-45e7-4b37-8c26-74e9d64c5aa1",
-    };
-    const first = yield* execute({
-      caller: f.caller,
-      name: "send_message_to_session",
-      arguments: args,
-    });
-    assert.isFalse(first.isError ?? false);
-    const second = yield* execute({
-      caller: f.makeCaller("later", "retry"),
-      name: "send_message_to_session",
-      arguments: args,
-    });
-    assert.deepStrictEqual(second, first);
-    assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
-    const collision = yield* execute({
-      caller: f.makeCaller("later", "changed"),
-      name: "send_message_to_session",
-      arguments: { ...args, prompt: "Different" },
-    });
-    assert.deepStrictEqual(collision.structuredContent, {
-      error: {
-        code: "idempotency_key_reused",
-        details: { retryable: false, recovery: { kind: "use_new_idempotency_key" } },
-      },
-    });
-    assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
-  }),
-);
-
-it.effect("Session retries preserve the first host admission time and Session identity", () =>
-  Effect.gen(function* () {
-    const f = fixture();
-    const execute = yield* f.execute;
-    const args = {
-      prompt: "Inspect the task",
-      target: { type: "projectless", directoryName: "retry" },
-      idempotencyKey: "create-session",
-    };
-    const first = yield* execute({ caller: f.caller, name: "create_session", arguments: args });
-    const second = yield* execute({
-      caller: f.makeCaller("later", "retry"),
-      name: "create_session",
-      arguments: args,
-    });
-    assert.isFalse(first.isError ?? false);
-    assert.deepStrictEqual(second, first);
-    assert.equal(f.createdSessions.size, 1);
-    const launches = f.calls.filter((call) => call.name === "launch");
-    assert.deepStrictEqual(launches[0]?.input, launches[1]?.input);
-    assert.equal((launches[0]?.input as { acceptedAt: number }).acceptedAt, 1_000);
-  }),
-);
-
-it.effect(
-  "answers Session questions with captured caller identity and stable operation arguments",
-  () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const execute = yield* f.execute;
-      const invocation = {
-        caller: f.caller,
-        name: "session_question",
-        arguments: {
-          action: "respond",
-          sessionId: "other",
-          execution: { threadId: "target-child" },
-          requestId: "question",
-          answers: { format: "Markdown" },
-          idempotencyKey: "answer-format",
-        },
-      };
-      const first = yield* execute(invocation);
-      assert.isFalse(first.isError ?? false);
-      assert.deepInclude(first.structuredContent, { requestId: "question", status: "answered" });
-      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
-      const responses = f.calls.filter((call) => call.name === "respond");
-      const stableResponse = (value: unknown) => {
-        const { respondedBy, ...request } = value as { respondedBy: { senderRunId?: string } };
-        const { senderRunId: _run, ...source } = respondedBy;
-        return { ...request, respondedBy: source };
-      };
-      assert.deepEqual(stableResponse(responses[0]?.input), stableResponse(responses[1]?.input));
-      assert.deepInclude(responses[0]?.input, {
-        threadId: "target-child",
-        runId: "source-run",
-        respondedBy: {
-          kind: "agent",
-          senderThreadId: "child",
-          senderRunId: "run",
-          senderSessionId: "session:root",
-        },
-        requirePending: true,
-        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
-      });
-      assert.isNotNull(responses[0]?.agent);
-    }),
-);
-
-for (const action of ["list", "read", "respond"] as const) {
-  for (const [options, code] of [
-    [{ archived: true }, "not_found"],
-    [{ restricted: true }, "forbidden"],
-    [{ targetDefault: true }, "forbidden"],
-    [{ native: true }, "unavailable"],
-  ] as const) {
-    it.effect(`checks ${JSON.stringify(options)} admission for session_question ${action}`, () =>
+  );
+  it.effect.each(["create_session", "fork_session"] as const)(
+    "refuses $name for a subagent that may not delegate, before starting anything",
+    (name) =>
       Effect.gen(function* () {
-        const f = fixture(options);
+        const refusal = "The person turned off delegation by subagents in Settings.";
+        const f = fixture({ delegationRefusal: refusal });
         const execute = yield* f.execute;
         const result = yield* execute({
           caller: f.caller,
-          name: "session_question",
-          arguments: {
-            action,
-            sessionId: "other",
-            requestId: "question",
-            answers: { format: "Markdown" },
-          },
+          name,
+          arguments:
+            name === "create_session"
+              ? {
+                  prompt: "Must not start",
+                  target: { type: "project", projectId: "project", environment: { type: "local" } },
+                }
+              : {},
         });
         assert.isTrue(result.isError);
-        assert.deepInclude(result.structuredContent, { error: { code } });
-        assert.isFalse(
-          f.calls.some(
-            (call) =>
-              call.name === "listQuestions" || call.name === "control" || call.name === "respond",
-          ),
+        assert.deepEqual(result.structuredContent, { error: { code: "delegation_denied" } });
+        assert.deepEqual(result.content, [{ type: "text", text: refusal }]);
+        assert.deepEqual(
+          f.calls.map((call) => call.name),
+          ["delegationRefusal"],
         );
+        assert.deepEqual(f.calls[0]?.input, "child");
       }),
-    );
-  }
-}
-
-it.effect.each(["live", "async"] as const)(
-  "lists, reads and answers a native %s question through session_question",
-  (kind) =>
-    Effect.gen(function* () {
-      const native = nativeQuestionFixture();
-      const f = fixture({ native: true, nativeQuestions: native.services });
-      const execute = yield* f.execute;
-      const requestId = kind === "live" ? native.syncId : `native:async:${native.asyncQuestionId}`;
-      const questionId = kind === "live" ? "scope" : native.asyncQuestionId;
-      const idempotencyKey = `native-question-${kind}`;
-      const invoke = (action: "list" | "read" | "respond") =>
-        execute({
-          caller: f.caller,
-          name: "session_question",
-          arguments: {
-            action,
-            sessionId: "other",
-            ...(action === "list" ? {} : { requestId }),
-            ...(action === "respond"
-              ? { answers: { [questionId]: "Project" }, idempotencyKey }
-              : {}),
-          },
-        });
-      assert.deepEqual((yield* invoke("list")).structuredContent, {
-        requestIds: [native.syncId, `native:async:${native.asyncQuestionId}`],
-      });
-      const read = yield* invoke("read");
-      assert.isFalse(read.isError ?? false);
-      assert.deepInclude(read.structuredContent, { requestId });
-      const answered = yield* invoke("respond");
-      const operationId = answered.structuredContent?.operationId;
-      if (typeof operationId !== "string") throw new Error("Missing admitted operation identity");
-      assert.deepEqual(answered.structuredContent, {
-        requestId,
-        status: "answered",
-        operationId,
-      });
-      assert.deepEqual((yield* invoke("respond")).structuredContent, answered.structuredContent);
-      assert.deepEqual((yield* invoke("list")).structuredContent, {
-        requestIds: [kind === "live" ? `native:async:${native.asyncQuestionId}` : native.syncId],
-      });
-      assert.deepEqual((yield* invoke("read")).structuredContent, {
-        error: { code: "not_pending" },
-      });
-      const respondedBy = {
-        kind: "agent" as const,
-        senderThreadId: "child",
-        senderSessionId: "session:root",
-      };
-      assert.equal(native.syncCalls.length, kind === "live" ? 1 : 0);
-      assert.equal(native.asyncCalls.length, kind === "async" ? 1 : 0);
-      if (kind === "live") {
-        assert.deepEqual(native.syncCalls[0], {
-          threadId: "native-root",
-          requestId: "live",
-          answers: { scope: ["Project"] },
-          questionResponse: { respondedBy, operationId },
-        });
-      } else {
-        assert.deepEqual(native.asyncCalls[0]?.sourceTurnIds, ["source"]);
-        assert.deepEqual(native.answerRecords().get(questionId)?.respondedBy, respondedBy);
-      }
-      assert.isFalse(
-        f.calls.some(({ name }) => ["respond", "launch", "sendMessage"].includes(name)),
-      );
-    }),
-);
-
-it.effect("withdrawn Session question calls cannot inspect or answer their target", () =>
-  Effect.gen(function* () {
-    const f = fixture();
-    const execute = yield* f.execute;
-    f.withdraw();
-    const result = yield* execute({
-      caller: f.caller,
-      name: "session_question",
-      arguments: { action: "list", sessionId: "other" },
-    });
-    assert.deepInclude(result.structuredContent, { error: { code: "call_withdrawn" } });
-    assert.equal(f.calls.length, 0);
-  }),
-);
-
-for (const runtimeMode of [undefined, "approval-required"] as const) {
+  );
   it.effect(
-    `Agent-created Sessions ${runtimeMode ? "accept narrower modes" : "inherit the caller mode"}`,
+    "forks the current child within its bound product Session using exact engine identity",
     () =>
       Effect.gen(function* () {
-        const f = fixture({ restricted: true });
+        const f = fixture();
         const execute = yield* f.execute;
-        const result = yield* execute({
+        const result = yield* execute({ caller: f.caller, name: "fork_session", arguments: {} });
+        assert.isFalse(result.isError ?? false);
+        assert.equal(result.structuredContent?.url, "nodex://sessions/fork");
+        const call = f.calls.find((call) => call.name === "fork")!;
+        assert.deepEqual((call.input as { source: unknown }).source, {
+          sessionId: "session:root",
+          threadId: "child",
+        });
+        assert.deepEqual((call.agent as { authority: unknown }).authority, {
+          thread_id: "child",
+          turn_id: "run",
+          root_thread_id: "root",
+          actor_project_id: "project",
+          library_id: "library",
+          store_epoch: "epoch",
+          runtime: { session_id: "session:root", runtime_id: "runtime", turn_kind: "run" },
+        });
+        assert.notEqual((call.input as { sessionId: string }).sessionId, "session:root");
+      }),
+  );
+  it.effect(
+    "launches and messages through canonical product owners with stable retry identities",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const execute = yield* f.execute;
+        const invocation = {
           caller: f.caller,
           name: "create_session",
           arguments: {
-            prompt: "Build it",
-            target: { type: "projectless" },
-            ...(runtimeMode ? { runtimeMode } : {}),
+            prompt: "Build",
+            target: { type: "project", projectId: "project", environment: { type: "local" } },
+          },
+        };
+        const created = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+        const replayed = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+        assert.equal(created.structuredContent?.url, "nodex://sessions/new");
+        assert.equal(replayed.structuredContent?.url, created.structuredContent?.url);
+        const launches = f.calls.filter((call) => call.name === "launch");
+        assert.deepEqual(launches[0]!.input, launches[1]!.input);
+        assert.equal(
+          (launches[0]!.input as { modelSelection: { instanceId: string } }).modelSelection
+            .instanceId,
+          "claude_instance",
+        );
+        yield* execute({
+          caller: f.caller,
+          name: "send_message_to_session",
+          arguments: { sessionId: "other", prompt: "Continue" },
+        });
+        assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+        assert.isNotNull(f.calls.find((call) => call.name === "sendMessage")!.agent);
+        // A model override travels with its message and keeps the Session's own Agent.
+        yield* execute({
+          caller: f.makeCaller(undefined, "review"),
+          name: "send_message_to_session",
+          arguments: { sessionId: "other", prompt: "Review", model: "opus" },
+        });
+        const messages = f.calls.filter((call) => call.name === "sendMessage");
+        assert.deepEqual(
+          (messages[0]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
+          undefined,
+        );
+        assert.deepEqual(
+          (messages[1]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
+          { instanceId: "claude_instance", model: "opus" },
+        );
+        // Another Agent continues the Session from its model's own defaults.
+        yield* execute({
+          caller: f.makeCaller(undefined, "switch-agent"),
+          name: "send_message_to_session",
+          arguments: {
+            sessionId: "other",
+            prompt: "Take over",
+            providerInstanceId: "codex",
+            model: "gpt",
+          },
+        });
+        assert.deepEqual(
+          (
+            f.calls.filter((call) => call.name === "sendMessage")[2]!.input as {
+              message: { modelSelection?: unknown };
+            }
+          ).message.modelSelection,
+          { instanceId: "codex", model: "gpt" },
+        );
+        // Choosing another Agent names the model it runs.
+        const unnamed = yield* execute({
+          caller: f.caller,
+          name: "send_message_to_session",
+          arguments: { sessionId: "other", prompt: "Take over", providerInstanceId: "codex" },
+        });
+        assert.isTrue(unnamed.isError);
+      }),
+  );
+  it.effect("merges another fork Session back into its source, never the calling Session", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      const own = yield* execute({
+        caller: f.caller,
+        name: "merge_session_back",
+        arguments: { sessionId: "session:root" },
+      });
+      assert.isTrue(own.isError);
+      const merged = yield* execute({
+        caller: f.caller,
+        name: "merge_session_back",
+        arguments: { sessionId: "fork" },
+      });
+      assert.isFalse(merged.isError ?? false);
+      const call = f.calls.find((entry) => entry.name === "merge")!;
+      assert.equal((call.input as { sessionId: string }).sessionId, "fork");
+      assert.isNotNull(call.agent);
+    }),
+  );
+
+  it.effect(
+    "cross-Project Session commands retain Profile identity; forged and withdrawn callers fail",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const execute = yield* f.execute;
+        const input = { caller: f.caller, name: "fork_session", arguments: {} };
+        assert.isTrue((yield* execute({ ...input, caller: { ...f.caller } })).isError);
+        const created = yield* execute({
+          caller: f.caller,
+          name: "create_session",
+          arguments: {
+            prompt: "Other",
+            target: { type: "project", projectId: "foreign", environment: { type: "local" } },
+          },
+        });
+        assert.isFalse(created.isError ?? false);
+        const launch = f.calls.find((call) => call.name === "launch")!;
+        assert.equal((launch.input as { projectId: string }).projectId, "foreign");
+        assert.equal((launch.agent as { profile_id: string }).profile_id, "profile");
+        const before = f.calls.length;
+        f.withdraw();
+        assert.isTrue((yield* execute(input)).isError);
+        assert.equal(f.calls.length, before);
+      }),
+  );
+
+  it.effect(
+    "native calls create Runtime Sessions with exact source identity and stable retries",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        let active = true;
+        let attached = true;
+        let restricted = false;
+        const original = {
+          ...authority,
+          threadId: "native-root",
+          turnId: "native-turn-a",
+          rootThreadId: "native-root",
+        };
+        const caller = {
+          backend: "codex" as const,
+          threadId: original.threadId,
+          turnId: original.turnId,
+          callId: "native-call-a",
+          hostId: "local",
+          generation: 7,
+          isActive: () => active,
+        };
+        const execute = yield* make.pipe(
+          Effect.provide(nativeQuestionTestLayers),
+          Effect.provideService(CodexThreadDirectory, {
+            resolve: () =>
+              Effect.succeed({
+                canonical: {
+                  hostId: "local",
+                  currentPermissions: {
+                    sandboxPolicy: restricted
+                      ? { type: "readOnly", networkAccess: false }
+                      : { type: "dangerFullAccess" },
+                    approvalPolicy: "on-request",
+                    approvalsReviewer: "user",
+                  },
+                  latestModel: "codex-default",
+                  latestCollaborationMode: { mode: "plan" },
+                  latestThreadSettings: {
+                    model: "codex-default",
+                    collaborationMode: { mode: "plan" },
+                    approvalPolicy: "on-request",
+                    sandboxPolicy: restricted
+                      ? { type: "readOnly", networkAccess: false }
+                      : { type: "dangerFullAccess" },
+                  },
+                },
+              }),
+          } as never),
+          Effect.provide(intakeServices),
+          Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+          Effect.provideService(CodexTurnAuthority, {
+            capture: (threadId: string, turnId: string) =>
+              Effect.sync(() => {
+                assert.equal(threadId, "native-root");
+                assert.equal(turnId, "native-turn-a");
+                return original;
+              }),
+          } as unknown as CodexTurnAuthority["Service"]),
+          Effect.provideService(CoreModules, {
+            workspace: {
+              admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
+              read: (input: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
+                attached
+                  ? Effect.sync(() => {
+                      if (input.kind === "agent_session")
+                        return {
+                          value: {
+                            kind: "agent_session",
+                            session: { id: "native-product", archived: false },
+                            thread: { thread_id: "native-root" },
+                          },
+                        } as never;
+                      assert.deepEqual(input, {
+                        kind: "codex_thread_session",
+                        thread_id: "native-root",
+                        expected_execution_host_id: "local",
+                      });
+                      return codexLinkedRootSessionFixture({
+                        threadId: "native-root",
+                        sessionId: "native-product",
+                        projectId: "project",
+                        threadSource: "user",
+                        title: "Historical source",
+                      });
+                    })
+                  : Effect.fail(
+                      coreRuntimeError({
+                        operation: "workspace.read",
+                        reason: "operation",
+                        retryable: false,
+                        cause: new CoreModuleResponseError({
+                          code: "not_found",
+                          message: "Native product binding retired",
+                          retryable: false,
+                          recovery: { kind: "none" },
+                        }),
+                      }),
+                    ),
+            },
+          } as unknown as CoreModules["Service"]),
+          Effect.provideService(AgentRuntimeApplication, {
+            execution: () => Effect.succeed({ selectedRunId: "run:launched" }),
+            catalog: () =>
+              Effect.succeed([
+                {
+                  instanceId: "codex",
+                  enabled: true,
+                  installed: true,
+                  status: "ready",
+                  models: [{ slug: "codex-default", isDefault: true }],
+                },
+              ]),
+            launch: (input: Parameters<AgentRuntimeApplication["Service"]["launch"]>[0]) =>
+              Effect.gen(function* () {
+                f.calls.push({ name: "launch", input, agent: yield* CoreApplicationAgent });
+                return {
+                  sessionId: input.sessionId,
+                  projectId: input.projectId,
+                  threadId: "runtime-root",
+                };
+              }),
+          } as unknown as AgentRuntimeApplication["Service"]),
+        );
+        const invocation = {
+          caller,
+          name: "create_session",
+          arguments: {
+            prompt: "Build across Projects",
+            target: { type: "project", projectId: "other-project", environment: { type: "local" } },
+            reasoningEffort: "high",
+          },
+        };
+        assert.isFalse((yield* execute(invocation)).isError ?? false);
+        assert.isFalse((yield* execute(invocation)).isError ?? false);
+        assert.deepEqual(f.calls[0]?.input, f.calls[1]?.input);
+        assert.deepEqual((f.calls[0]?.input as { modelSelection: unknown }).modelSelection, {
+          instanceId: "codex",
+          model: "codex-default",
+          options: [{ id: "reasoningEffort", value: "high" }],
+        });
+        assert.equal(
+          (f.calls[0]?.agent as { authority: { turn_id: string } }).authority.turn_id,
+          "native-turn-a",
+        );
+        assert.equal((f.calls[0]?.input as { projectId: string }).projectId, "other-project");
+        assert.equal((f.calls[0]?.input as { interactionMode: string }).interactionMode, "plan");
+        assert.deepEqual((f.calls[0]?.input as { modeLimit: unknown }).modeLimit, {
+          runtimeMode: "full-access",
+          interactionMode: "plan",
+        });
+        restricted = true;
+        const denied = yield* execute({
+          ...invocation,
+          arguments: { ...invocation.arguments, runtimeMode: "full-access" },
+        });
+        assert.equal(
+          denied.structuredContent?.error &&
+            (denied.structuredContent.error as { code: string }).code,
+          "runtime_mode_escalation_denied",
+        );
+        assert.equal(
+          f.calls.length,
+          2,
+          "A newly restricted Native caller cannot launch full-access work",
+        );
+        attached = false;
+        assert.isTrue((yield* execute(invocation)).isError);
+        active = false;
+        assert.isTrue((yield* execute(invocation)).isError);
+        assert.equal(f.calls.length, 2);
+      }),
+  );
+
+  it.effect(
+    "routes explicit delivery modes and returns the owning Run identity for exact waits",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const execute = yield* f.execute;
+        for (const mode of ["auto", "queue", "steer", "restart"] as const) {
+          const invocation = {
+            caller: f.makeCaller(undefined, `mode:${mode}`),
+            name: "send_message_to_session",
+            arguments: { sessionId: "other", prompt: "Continue", mode },
+          };
+          const result = yield* execute(invocation);
+          assert.equal(result.structuredContent?.runId, "run:accepted");
+          assert.equal(result.structuredContent?.resolvedRunId, "run:accepted");
+          assert.equal(result.structuredContent?.status, "queued");
+          assert.equal(typeof result.structuredContent?.messageId, "string");
+          const sent = f.calls.filter((call) => call.name === "sendMessage").at(-1)!;
+          assert.equal((sent.input as { mode: string }).mode, mode);
+          assert.equal(result.structuredContent?.deliveryState, "queued");
+          assert.equal((sent.input as { senderThreadId: string }).senderThreadId, "child");
+          assert.equal((sent.input as { senderRunId: string }).senderRunId, "run");
+          const replay = yield* execute(invocation);
+          assert.deepEqual(replay.structuredContent, result.structuredContent);
+        }
+      }),
+  );
+
+  it.effect(
+    "self-send can select the caller's child execution without creating a product Session",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const execute = yield* f.execute;
+        const result = yield* execute({
+          caller: f.caller,
+          name: "send_message_to_session",
+          arguments: {
+            sessionId: "session:root",
+            execution: { threadId: "child" },
+            prompt: "Continue here",
+            mode: "queue",
           },
         });
         assert.isFalse(result.isError ?? false);
-        const launched = f.calls.find((call) => call.name === "launch")!;
-        assert.deepInclude(launched.input, {
-          runtimeMode: "approval-required",
-          modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+        const sent = f.calls.find((call) => call.name === "sendMessage")!;
+        assert.equal((sent.input as { sessionId: string }).sessionId, "session:root");
+        assert.equal((sent.input as { threadId: string }).threadId, "child");
+        assert.isFalse(f.calls.some((call) => call.name === "launch"));
+      }),
+  );
+
+  it.effect("UUID retries in a later Turn reuse one message and reject changed arguments", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      const args = {
+        sessionId: "other",
+        prompt: "Continue",
+        idempotencyKey: "06d6709c-45e7-4b37-8c26-74e9d64c5aa1",
+      };
+      const first = yield* execute({
+        caller: f.caller,
+        name: "send_message_to_session",
+        arguments: args,
+      });
+      assert.isFalse(first.isError ?? false);
+      const second = yield* execute({
+        caller: f.makeCaller("later", "retry"),
+        name: "send_message_to_session",
+        arguments: args,
+      });
+      assert.deepStrictEqual(second, first);
+      assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+      const collision = yield* execute({
+        caller: f.makeCaller("later", "changed"),
+        name: "send_message_to_session",
+        arguments: { ...args, prompt: "Different" },
+      });
+      assert.deepStrictEqual(collision.structuredContent, {
+        error: {
+          code: "idempotency_key_reused",
+          details: { retryable: false, recovery: { kind: "use_new_idempotency_key" } },
+        },
+      });
+      assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+    }),
+  );
+
+  it.effect("Session retries preserve the first host admission time and Session identity", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      const args = {
+        prompt: "Inspect the task",
+        target: { type: "projectless", directoryName: "retry" },
+        idempotencyKey: "create-session",
+      };
+      const first = yield* execute({ caller: f.caller, name: "create_session", arguments: args });
+      const second = yield* execute({
+        caller: f.makeCaller("later", "retry"),
+        name: "create_session",
+        arguments: args,
+      });
+      assert.isFalse(first.isError ?? false);
+      assert.deepStrictEqual(second, first);
+      assert.equal(f.createdSessions.size, 1);
+      const launches = f.calls.filter((call) => call.name === "launch");
+      assert.deepStrictEqual(launches[0]?.input, launches[1]?.input);
+      assert.equal((launches[0]?.input as { acceptedAt: number }).acceptedAt, 1_000);
+    }),
+  );
+
+  it.effect(
+    "answers Session questions with captured caller identity and stable operation arguments",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const execute = yield* f.execute;
+        const invocation = {
+          caller: f.caller,
+          name: "session_question",
+          arguments: {
+            action: "respond",
+            sessionId: "other",
+            execution: { threadId: "target-child" },
+            requestId: "question",
+            answers: { format: "Markdown" },
+            idempotencyKey: "answer-format",
+          },
+        };
+        const first = yield* execute(invocation);
+        assert.isFalse(first.isError ?? false);
+        assert.deepInclude(first.structuredContent, { requestId: "question", status: "answered" });
+        yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+        const responses = f.calls.filter((call) => call.name === "respond");
+        const stableResponse = (value: unknown) => {
+          const { respondedBy, ...request } = value as { respondedBy: { senderRunId?: string } };
+          const { senderRunId: _run, ...source } = respondedBy;
+          return { ...request, respondedBy: source };
+        };
+        assert.deepEqual(stableResponse(responses[0]?.input), stableResponse(responses[1]?.input));
+        assert.deepInclude(responses[0]?.input, {
+          threadId: "target-child",
+          runId: "source-run",
+          respondedBy: {
+            kind: "agent",
+            senderThreadId: "child",
+            senderRunId: "run",
+            senderSessionId: "session:root",
+          },
+          requirePending: true,
+          modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
+        });
+        assert.isNotNull(responses[0]?.agent);
+      }),
+  );
+
+  for (const action of ["list", "read", "respond"] as const) {
+    for (const [options, code] of [
+      [{ archived: true }, "not_found"],
+      [{ restricted: true }, "forbidden"],
+      [{ targetDefault: true }, "forbidden"],
+      [{ native: true }, "unavailable"],
+    ] as const) {
+      it.effect(`checks ${JSON.stringify(options)} admission for session_question ${action}`, () =>
+        Effect.gen(function* () {
+          const f = fixture(options);
+          const execute = yield* f.execute;
+          const result = yield* execute({
+            caller: f.caller,
+            name: "session_question",
+            arguments: {
+              action,
+              sessionId: "other",
+              requestId: "question",
+              answers: { format: "Markdown" },
+            },
+          });
+          assert.isTrue(result.isError);
+          assert.deepInclude(result.structuredContent, { error: { code } });
+          assert.isFalse(
+            f.calls.some(
+              (call) =>
+                call.name === "listQuestions" || call.name === "control" || call.name === "respond",
+            ),
+          );
+        }),
+      );
+    }
+  }
+
+  it.effect.each(["live", "async"] as const)(
+    "lists, reads and answers a native %s question through session_question",
+    (kind) =>
+      Effect.gen(function* () {
+        const native = nativeQuestionFixture();
+        const f = fixture({ native: true, nativeQuestions: native.services });
+        const execute = yield* f.execute;
+        const requestId =
+          kind === "live" ? native.syncId : `native:async:${native.asyncQuestionId}`;
+        const questionId = kind === "live" ? "scope" : native.asyncQuestionId;
+        const idempotencyKey = `native-question-${kind}`;
+        const invoke = (action: "list" | "read" | "respond") =>
+          execute({
+            caller: f.caller,
+            name: "session_question",
+            arguments: {
+              action,
+              sessionId: "other",
+              ...(action === "list" ? {} : { requestId }),
+              ...(action === "respond"
+                ? { answers: { [questionId]: "Project" }, idempotencyKey }
+                : {}),
+            },
+          });
+        assert.deepEqual((yield* invoke("list")).structuredContent, {
+          requestIds: [native.syncId, `native:async:${native.asyncQuestionId}`],
+        });
+        const read = yield* invoke("read");
+        assert.isFalse(read.isError ?? false);
+        assert.deepInclude(read.structuredContent, { requestId });
+        const answered = yield* invoke("respond");
+        const operationId = answered.structuredContent?.operationId;
+        if (typeof operationId !== "string") throw new Error("Missing admitted operation identity");
+        assert.deepEqual(answered.structuredContent, {
+          requestId,
+          status: "answered",
+          operationId,
+        });
+        assert.deepEqual((yield* invoke("respond")).structuredContent, answered.structuredContent);
+        assert.deepEqual((yield* invoke("list")).structuredContent, {
+          requestIds: [kind === "live" ? `native:async:${native.asyncQuestionId}` : native.syncId],
+        });
+        assert.deepEqual((yield* invoke("read")).structuredContent, {
+          error: { code: "not_pending" },
+        });
+        const respondedBy = {
+          kind: "agent" as const,
+          senderThreadId: "child",
+          senderSessionId: "session:root",
+        };
+        assert.equal(native.syncCalls.length, kind === "live" ? 1 : 0);
+        assert.equal(native.asyncCalls.length, kind === "async" ? 1 : 0);
+        if (kind === "live") {
+          assert.deepEqual(native.syncCalls[0], {
+            threadId: "native-root",
+            requestId: "live",
+            answers: { scope: ["Project"] },
+            questionResponse: { respondedBy, operationId },
+          });
+        } else {
+          assert.deepEqual(native.asyncCalls[0]?.sourceTurnIds, ["source"]);
+          assert.deepEqual(native.answerRecords().get(questionId)?.respondedBy, respondedBy);
+        }
+        assert.isFalse(
+          f.calls.some(({ name }) => ["respond", "launch", "sendMessage"].includes(name)),
+        );
+      }),
+  );
+
+  it.effect("withdrawn Session question calls cannot inspect or answer their target", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      f.withdraw();
+      const result = yield* execute({
+        caller: f.caller,
+        name: "session_question",
+        arguments: { action: "list", sessionId: "other" },
+      });
+      assert.deepInclude(result.structuredContent, { error: { code: "call_withdrawn" } });
+      assert.equal(f.calls.length, 0);
+    }),
+  );
+
+  for (const runtimeMode of [undefined, "approval-required"] as const) {
+    it.effect(
+      `Agent-created Sessions ${runtimeMode ? "accept narrower modes" : "inherit the caller mode"}`,
+      () =>
+        Effect.gen(function* () {
+          const f = fixture({ restricted: true });
+          const execute = yield* f.execute;
+          const result = yield* execute({
+            caller: f.caller,
+            name: "create_session",
+            arguments: {
+              prompt: "Build it",
+              target: { type: "projectless" },
+              ...(runtimeMode ? { runtimeMode } : {}),
+            },
+          });
+          assert.isFalse(result.isError ?? false);
+          const launched = f.calls.find((call) => call.name === "launch")!;
+          assert.deepInclude(launched.input, {
+            runtimeMode: "approval-required",
+            modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+          });
+        }),
+    );
+  }
+});
+
+describe("SessionMessageIntake", () => {
+  const make = makeSessionMessageIntake;
+  const fixture = (
+    options: {
+      readonly draft?: boolean;
+      readonly runtime?: boolean;
+      readonly replay?: boolean;
+      readonly nativeReplay?: boolean;
+      readonly resume?: boolean;
+      readonly restricted?: boolean;
+      readonly targetRestricted?: boolean;
+      readonly restrictedNative?: boolean;
+      readonly importedPlan?: boolean;
+    } = {},
+  ) => {
+    let adopted = options.runtime ?? false;
+    const calls: Array<{ name: string; input: unknown }> = [];
+    const capture = (name: string, result: unknown) => (input: unknown) =>
+      Effect.sync(() => {
+        calls.push({ name, input });
+        return result;
+      });
+    const makeIntake = make.pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(CodexAttachments, {} as never),
+          Layer.succeed(ExecutionHostRuntime, {} as never),
+          Layer.succeed(CoreModules, {
+            workspace: {
+              read: ({ session_id }: { session_id: string }) =>
+                Effect.succeed({
+                  value: {
+                    kind: "agent_session",
+                    session: {
+                      id: session_id,
+                      project_id: "project",
+                      display_title: "Preserved title",
+                      archived: false,
+                      execution_ref:
+                        session_id === "caller" || adopted
+                          ? {
+                              runtime_id: "runtime",
+                              thread_id:
+                                session_id === "caller" ? "caller-thread" : "adopted-thread",
+                            }
+                          : null,
+                    },
+                    ...(!options.draft && session_id === "target" && !adopted
+                      ? {
+                          thread: {
+                            thread_id: "native-thread",
+                            execution_host_id: "local",
+                            status: { status_type: "idle" },
+                          },
+                        }
+                      : {}),
+                  },
+                }),
+            },
+            library: {
+              read: capture("file-read", {
+                value: {
+                  kind: "file_presentation",
+                  value: {
+                    version: 3,
+                    default_name: "evidence.txt",
+                    mime_type: "text/plain",
+                    byte_length: 7,
+                  },
+                },
+              }),
+            },
+          } as never),
+          Layer.succeed(ProjectWorkspace, {
+            getProjectSession: () =>
+              Effect.succeed({
+                id: "target",
+                archived: false,
+                executionRef: null,
+                thread: {
+                  threadId: "native-thread",
+                  executionHostId: "local",
+                  backendBinding: { driver: "codex", instanceId: "codex" },
+                },
+              }),
+          } as never),
+          Layer.succeed(CodexThreadDirectory, {
+            resolve: () =>
+              Effect.succeed({
+                canonical: {
+                  hostId: "local",
+                  currentPermissions: {
+                    sandboxPolicy: options.restrictedNative
+                      ? { type: "readOnly", networkAccess: false }
+                      : { type: "dangerFullAccess" },
+                    approvalPolicy: options.restrictedNative ? "on-request" : "never",
+                    approvalsReviewer: "user",
+                  },
+                  latestModel: "gpt-test",
+                  latestCollaborationMode: { mode: "plan" },
+                  latestThreadSettings: {
+                    model: "gpt-test",
+                    collaborationMode: { mode: "plan" },
+                    approvalPolicy: "never",
+                    sandboxPolicy: { type: "dangerFullAccess" },
+                  },
+                },
+              }),
+          } as never),
+          Layer.succeed(CodexMainConversationResume, {
+            resume: () => Effect.succeed({ status: "ready" }),
+          } as never),
+          Layer.succeed(CodexDelegatedMessages, { send: capture("native-send", {}) } as never),
+          Layer.succeed(CodexGateway, { localHostId: "local" } as never),
+          Layer.succeed(CodexNativeThreadLookup, {} as never),
+          Layer.succeed(TemporaryAssets, {} as never),
+          Layer.succeed(FileExportRuntime, {
+            materialize: capture("materialize", "/authorized/evidence.txt"),
+          } as never),
+          Layer.succeed(AgentRuntimeApplication, {
+            nativeMessageReceipt: ({ messageId }: { messageId: string }) =>
+              options.nativeReplay
+                ? Effect.sync(() => {
+                    calls.push({ name: "native-replay", input: messageId });
+                    return {
+                      admitted: false,
+                      phase: "confirmed",
+                      attemptId: "original-attempt",
+                      sessionId: "target",
+                      hostId: "original-remote",
+                      threadId: "original-native",
+                      result: {
+                        messageId,
+                        runId: "original-run",
+                        status: "completed",
+                        delivery: "queued",
+                      },
+                    };
+                  })
+                : Effect.succeed(null),
+            inspect: ({ sessionId }: { sessionId: string }) =>
+              options.replay || (options.resume && sessionId === "target")
+                ? Effect.die("Replay must not inspect current execution settings")
+                : Effect.succeed({
+                    sessionId,
+                    threadId: sessionId === "caller" ? "caller-thread" : "adopted-thread",
+                    thread: {
+                      runtimeMode:
+                        (sessionId === "caller" && options.restricted) ||
+                        (sessionId === "target" && options.targetRestricted)
+                          ? "approval-required"
+                          : "full-access",
+                      interactionMode:
+                        sessionId === "target" && options.importedPlan === false
+                          ? "default"
+                          : "plan",
+                      modelSelection: { instanceId: "codex", model: "gpt-test" },
+                    },
+                  }),
+            resumeMessageLaunch: options.resume
+              ? capture("resume", {
+                  sessionId: "target",
+                  threadId: "adopted-thread",
+                  messageId: "staged-message",
+                  runId: "first-run",
+                  status: "queued",
+                  delivery: "started",
+                })
+              : () => Effect.succeed(null),
+            replayMessage: capture(
+              "replay",
+              options.replay
+                ? {
+                    sessionId: "target",
+                    threadId: "adopted-thread",
+                    messageId: "accepted-message",
+                    runId: "accepted-run",
+                    status: "completed",
+                    delivery: "queued",
+                  }
+                : null,
+            ),
+            adoptNativeSession: (input: unknown) =>
+              Effect.sync(() => {
+                calls.push({ name: "adopt", input });
+                adopted = true;
+                return { sessionId: "target", threadId: "adopted-thread", projectId: "project" };
+              }),
+            sendMessage: capture("runtime-send", {
+              sessionId: "target",
+              threadId: "adopted-thread",
+              messageId: "message",
+              runId: "run",
+              status: "queued",
+              delivery: "queued",
+            }),
+            launch: capture("launch", {
+              sessionId: "target",
+              threadId: "draft-thread",
+              projectId: "project",
+            }),
+            execution: () => Effect.succeed({ runId: "draft-run", status: "queued" }),
+          } as never),
+        ),
+      ),
+      Effect.map((intake) => ({
+        send: (request: SessionMessageIntakeInput) =>
+          intake.send(request).pipe(
+            Effect.provideService(CoreApplicationAgent, {
+              authority: { actor_project_id: "project" },
+            } as never),
+          ),
+      })),
+    );
+    return { makeIntake, calls };
+  };
+  const input = (attachments = false) => ({
+    request: sessionMessageSchema.parse({
+      sessionId: "target",
+      ...(attachments
+        ? { attachments: [{ type: "library_file", fileId: "file" }] }
+        : { prompt: "Continue" }),
+      mode: "queue",
+    }),
+    caller: { sessionId: "caller" },
+    operationId: createStableOperationId("app.send_message_to_session", 123, ["fixture"]),
+    acceptedAtMs: 123,
+    expiresAtMs: 123 + 7 * 24 * 60 * 60 * 1_000,
+    sourceThreadId: "caller-thread",
+    sourceRunId: "caller-run",
+  });
+
+  it.effect(
+    "adopts a local Native Session once before sending through its canonical Runtime binding",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const intake = yield* f.makeIntake;
+        const result = yield* intake.send(input());
+        assert.equal(result.delivery, "queued");
+        assert.deepEqual(
+          f.calls
+            .filter((call) => ["adopt", "runtime-send", "native-send"].includes(call.name))
+            .map((call) => call.name),
+          ["adopt", "runtime-send"],
+        );
+        const sent = f.calls.find((call) => call.name === "runtime-send")!.input as {
+          sessionId: string;
+          threadId: string;
+          mode: string;
+          senderRunId: string;
+        };
+        assert.deepEqual(
+          { sessionId: sent.sessionId, threadId: sent.threadId },
+          { sessionId: "target", threadId: "adopted-thread" },
+        );
+        assert.equal(sent.mode, "queue");
+        assert.equal(sent.senderRunId, "caller-run");
+      }),
+  );
+
+  it.effect("rejects the Runtime permission ceiling before a Native binding can migrate", () =>
+    Effect.gen(function* () {
+      const f = fixture({ restricted: true, restrictedNative: true });
+      const intake = yield* f.makeIntake;
+      const result = yield* intake.send(input()).pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(f.calls.length, 0);
+    }),
+  );
+
+  it.effect("rejects a strict steer before importing a local Native Session", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const intake = yield* f.makeIntake;
+      const request = input();
+      const result = yield* intake
+        .send({ ...request, request: { ...request.request, mode: "steer" } })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(f.calls.length, 0);
+    }),
+  );
+
+  it.effect("rechecks the imported Plan settings before sending", () =>
+    Effect.gen(function* () {
+      const f = fixture({ importedPlan: false });
+      const intake = yield* f.makeIntake;
+      const result = yield* intake.send(input()).pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(f.calls.filter((call) => call.name === "adopt").length, 1);
+      assert.equal(f.calls.filter((call) => call.name === "runtime-send").length, 0);
+    }),
+  );
+
+  it.effect("starts an attachment-only draft in place with the authorized immutable resource", () =>
+    Effect.gen(function* () {
+      const f = fixture({ draft: true });
+      const intake = yield* f.makeIntake;
+      yield* intake.send(input(true));
+      const launched = f.calls.find((call) => call.name === "launch")!.input as {
+        sessionId: string;
+        message: { text: string };
+        resources: unknown;
+        sender: unknown;
+      };
+      assert.equal(launched.sessionId, "target");
+      assert.equal(launched.message.text, "");
+      // The chat it starts names the conversation that sent its first message.
+      assert.deepEqual(launched.sender, { threadId: "caller-thread", runId: "caller-run" });
+      assert.deepEqual(launched.resources, [
+        {
+          name: "evidence.txt",
+          mimeType: "text/plain",
+          sizeBytes: 7,
+          source: "/authorized/evidence.txt",
+        },
+      ]);
+      assert.equal(f.calls.filter((call) => call.name === "materialize").length, 1);
+      assert.equal(f.calls.filter((call) => call.name === "file-read").length, 2);
+    }),
+  );
+
+  it.effect(
+    "replays an accepted message before current mode checks or unavailable attachment resolution",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ runtime: true, replay: true, importedPlan: false });
+        const intake = yield* f.makeIntake;
+        const result = yield* intake.send(input(true));
+        assert.deepEqual(result, {
+          sessionId: "target",
+          threadId: "adopted-thread",
+          messageId: "accepted-message",
+          runId: "accepted-run",
+          status: "completed",
+          delivery: "queued",
+        });
+        assert.deepEqual(
+          f.calls.map(({ name }) => name),
+          ["replay"],
+        );
+      }),
+  );
+
+  it.effect(
+    "replays a Native receipt after adoption before routing to the new Runtime writer",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ runtime: true, replay: true, nativeReplay: true });
+        const intake = yield* f.makeIntake;
+        const result = yield* intake.send(input(true));
+        assert.equal(result.threadId, "original-native");
+        assert.equal(result.runId, "original-run");
+        assert.equal(result.delivery, "queued");
+        assert.deepEqual(
+          f.calls.map(({ name }) => name),
+          ["native-replay"],
+        );
+      }),
+  );
+
+  it.effect(
+    "resumes the original draft launch before inspecting or reimporting its first message",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ runtime: true, resume: true });
+        const intake = yield* f.makeIntake;
+        const result = yield* intake.send(input(true));
+        assert.equal(result.runId, "first-run");
+        assert.deepEqual(
+          f.calls.map(({ name }) => name),
+          ["replay", "resume"],
+        );
+        assert.deepEqual((f.calls[1]!.input as { modeLimit: unknown }).modeLimit, {
+          runtimeMode: "full-access",
+          interactionMode: "plan",
         });
       }),
   );
-}
+
+  it.effect("preserves a restricted caller's full ceiling on fresh Runtime sends", () =>
+    Effect.gen(function* () {
+      const f = fixture({ runtime: true, restricted: true, targetRestricted: true });
+      const intake = yield* f.makeIntake;
+      yield* intake.send(input(true));
+      const sent = f.calls.find((call) => call.name === "runtime-send")!;
+      assert.deepInclude(sent.input, {
+        modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+      });
+    }),
+  );
+  it.effect("a cold draft inherits a restricted caller's mode", () =>
+    Effect.gen(function* () {
+      const f = fixture({ draft: true, restricted: true });
+      const intake = yield* f.makeIntake;
+      yield* intake.send(input());
+      const sent = f.calls.find((call) => call.name === "launch")!;
+      assert.deepInclude(sent.input, {
+        runtimeMode: "approval-required",
+        modeLimit: { runtimeMode: "approval-required", interactionMode: "plan" },
+      });
+    }),
+  );
+});

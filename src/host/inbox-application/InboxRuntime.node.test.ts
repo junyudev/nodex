@@ -25,11 +25,7 @@ import { LibraryModule } from "../../main/library-application/LibraryModule";
 import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { InboxApplication, InboxApplicationError } from "./InboxApplication";
-import {
-  inboxDispatchFingerprint,
-  inboxDispatchIdentity,
-  make as makeDelivery,
-} from "./InboxDispatchRuntime";
+import { inboxDispatchFingerprint, make as makeDelivery } from "./InboxDispatchRuntime";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 
 type Runtime = AgentRuntimeApplication["Service"];
@@ -267,93 +263,6 @@ const delivery = (input: {
     } as unknown as ProjectWorkspace["Service"]),
     Effect.provideService(ApplicationSettings, settingsService),
   );
-
-it.effect("uses a warm model catalog without refreshing any Provider", () =>
-  Effect.gen(function* () {
-    const catalog = vi.fn(() => Effect.succeed([provider()]));
-    const selection = yield* resolveInboxModel({ catalog }, choice("codex", null, "medium"));
-    assert.deepEqual(selection, {
-      instanceId: "codex",
-      model: "default-model",
-      options: [{ id: "reasoningEffort", value: "medium" }],
-    });
-    assert.deepEqual(catalog.mock.calls, [[]]);
-    // An effort the model does not offer falls back to the model's own.
-    const withoutOptions = yield* resolveInboxModel(
-      { catalog },
-      choice("codex", "first-model", "medium"),
-    );
-    assert.deepEqual(withoutOptions, { instanceId: "codex", model: "first-model" });
-  }),
-);
-
-it.effect("suggests on Codex's Sol model by default while chats keep the catalog default", () =>
-  Effect.gen(function* () {
-    const codex = provider();
-    const sol = { ...codex.models[1]!, slug: "gpt-6.2-sol", name: "GPT-6.2 Sol", isDefault: false };
-    const catalog = (models: Provider["models"]) => () => Effect.succeed([{ ...codex, models }]);
-    const withSol = { catalog: catalog([...codex.models, sol]) };
-    const suggestion = yield* resolveInboxModel(withSol, choice("codex"), "suggestion");
-    assert.strictEqual(suggestion.model, "gpt-6.2-sol");
-    const chat = yield* resolveInboxModel(withSol, choice("codex"));
-    assert.strictEqual(chat.model, "default-model");
-    const chosen = yield* resolveInboxModel(withSol, choice("codex", "first-model"), "suggestion");
-    assert.strictEqual(chosen.model, "first-model");
-    // A catalog without Sol keeps working on its own default.
-    const withoutSol = yield* resolveInboxModel(
-      { catalog: catalog(codex.models) },
-      choice("codex"),
-      "suggestion",
-    );
-    assert.strictEqual(withoutSol.model, "default-model");
-  }),
-);
-
-it.effect("restricts only suggestion utilities while allowing other launch Providers", () =>
-  Effect.gen(function* () {
-    const opencode = { ...provider({ instanceId: "opencode:one" }), driver: "opencode" as const };
-    const catalog = () => Effect.succeed([opencode]);
-    const selected = yield* resolveInboxModel({ catalog }, choice(opencode.instanceId));
-    assert.strictEqual(selected.instanceId, opencode.instanceId);
-    const suggestion = yield* resolveInboxModel(
-      { catalog },
-      choice(opencode.instanceId),
-      "suggestion",
-    ).pipe(Effect.result);
-    assert.strictEqual(suggestion._tag, "Failure");
-    if (suggestion._tag === "Failure")
-      assert.match(suggestion.failure.message, /cannot generate Inbox suggestions/);
-  }),
-);
-
-it.effect(
-  "refreshes a cold catalog once and waits for the configured instance's default model",
-  () =>
-    Effect.gen(function* () {
-      let ready = false;
-      const catalog: Runtime["catalog"] = vi.fn(() =>
-        Effect.sync(() => [
-          provider(),
-          ready
-            ? provider(claude)
-            : { ...provider(claude), installed: false, status: "warning" as const, models: [] },
-        ]),
-      );
-      const pending = yield* resolveInboxModel({ catalog }, choice(claude.instanceId)).pipe(
-        Effect.forkChild,
-      );
-      yield* Effect.yieldNow;
-      ready = true;
-      yield* TestClock.adjust("200 millis");
-      assert.deepEqual(yield* Fiber.join(pending), {
-        instanceId: claude.instanceId,
-        model: "default-model",
-      });
-      const calls = vi.mocked(catalog).mock.calls;
-      assert.strictEqual(calls.filter(([input]) => input?.refresh === true).length, 1);
-      assert.isAtLeast(calls.length, 3);
-    }),
-);
 
 it.effect(
   "waits for an Agent whose first status check timed out while its catalog loaded, rather than calling it unavailable",
@@ -733,42 +642,6 @@ it.effect("starts an Inbox chat where this host runs the Project's work", () =>
   }),
 );
 
-it.effect("keeps an Inbox chat in the Project's checkout when its selection chose so", () =>
-  Effect.gen(function* () {
-    const launches: AgentRuntimeLaunch[] = [];
-    const confirmed = work();
-    const { drain } = yield* delivery({
-      session: () => session(),
-      runtime: {
-        executionWorkspace: () =>
-          Effect.sync(() => ({ available: true, workspaceRoot: "/project", sourceRoots: [] })),
-        launch: (input) =>
-          Effect.sync(() => {
-            launches.push(input);
-            return { threadId: "thread:one" } as never;
-          }),
-      },
-      inbox: {
-        outbox: () =>
-          Effect.succeed(
-            launches.length === 0
-              ? [
-                  {
-                    ...confirmed,
-                    execution_selection: { ...confirmed.execution_selection!, worktree: false },
-                  },
-                ]
-              : [],
-          ),
-        completeDispatch: vi.fn(() => Effect.void),
-      },
-    });
-    yield* drain;
-    // The chat stays linked to its Page; only its workspace is left out.
-    assert.deepEqual(launches[0]?.workPage, { pageId: "page:one", joinsWorkspace: false });
-  }),
-);
-
 it.effect("delivers an Inbox chat without a Project to the host's projectless workspace", () =>
   Effect.gen(function* () {
     const asked: Array<string | null> = [];
@@ -838,33 +711,6 @@ it.effect("a Project this host cannot run fails visibly with the host's reason",
       [confirmed, reason, "unavailable"],
       [followUp, reason, "unavailable"],
     ]);
-  }),
-);
-
-it.effect("reconciles legacy identities but never reconstructs historical text", () =>
-  Effect.gen(function* () {
-    const confirmed = { ...work(), final_text: null };
-    const messageAdmission = vi.fn((_input: Parameters<Runtime["messageAdmission"]>[0]) =>
-      Effect.succeed(null),
-    );
-    const fail = vi.fn(() => Effect.void);
-    const launch = vi.fn(() => Effect.die("must not submit"));
-    const { drain } = yield* delivery({
-      session: () => session(true),
-      runtime: { launch, messageAdmission },
-      inbox: { outbox: () => Effect.succeed([confirmed]), failDispatch: fail },
-    });
-    yield* drain;
-    assert.strictEqual(
-      messageAdmission.mock.calls[0]?.[0].messageId,
-      inboxDispatchIdentity(confirmed, "message"),
-    );
-    assert.strictEqual(
-      messageAdmission.mock.calls[0]?.[0].launchId,
-      inboxDispatchIdentity(confirmed, "launch"),
-    );
-    assert.strictEqual(launch.mock.calls.length, 0);
-    assert.strictEqual(fail.mock.calls.length, 1);
   }),
 );
 

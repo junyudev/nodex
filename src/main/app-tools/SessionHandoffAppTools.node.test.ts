@@ -1,3 +1,4 @@
+import { describe } from "vite-plus/test";
 import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -18,97 +19,294 @@ import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppT
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { make, makeWithCapture } from "./SessionHandoffAppTools";
+import { createStableOperationId } from "../core-runtime/operation-identity";
+import {
+  make as makeHandoffStatusAppTools,
+  makeWithCapture as makeWithCaptureHandoffStatusAppTools,
+} from "./HandoffStatusAppTools";
 
-const authority: NodexAgentTurnContext = {
-  threadId: "caller",
-  turnId: "turn",
-  rootThreadId: "caller",
-  actorProjectId: "project",
-  libraryId: "library",
-  storeEpoch: "epoch",
-  admittedAtMs: Date.now(),
-};
-const input: AppToolInvocation = {
-  name: "handoff_session",
-  arguments: {
-    idempotencyKey: "handoff-retry",
-    sessionId: "target",
-    followUpPrompt: "Continue the work",
-  },
-  caller: {
+describe("SessionHandoffAppTools", () => {
+  const authority: NodexAgentTurnContext = {
     threadId: "caller",
     turnId: "turn",
-    callId: "call",
-    hostId: "local",
-    generation: 1,
-    isActive: () => true,
-  },
-};
-const withNativeFacts = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(
-    Effect.provideService(ProjectWorkspace, {
-      getThread: () =>
-        Effect.succeed({
-          sessionId: "caller-session",
-          executionHostId: "local",
-          projectId: "project",
-        }),
-      getProjectSession: (id: string) =>
-        Effect.succeed({
-          id,
-          archived: false,
-          thread: {
-            threadId: id === "caller-session" ? "caller" : "target-thread",
+    rootThreadId: "caller",
+    actorProjectId: "project",
+    libraryId: "library",
+    storeEpoch: "epoch",
+    admittedAtMs: Date.now(),
+  };
+  const input: AppToolInvocation = {
+    name: "handoff_session",
+    arguments: {
+      idempotencyKey: "handoff-retry",
+      sessionId: "target",
+      followUpPrompt: "Continue the work",
+    },
+    caller: {
+      threadId: "caller",
+      turnId: "turn",
+      callId: "call",
+      hostId: "local",
+      generation: 1,
+      isActive: () => true,
+    },
+  };
+  const withNativeFacts = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(ProjectWorkspace, {
+        getThread: () =>
+          Effect.succeed({
+            sessionId: "caller-session",
             executionHostId: "local",
-            backendBinding: { driver: "codex", instanceId: "codex" },
-          },
-        }),
-    } as never),
-    Effect.provideService(CodexThreadDirectory, {
-      resolve: () =>
-        Effect.succeed({
-          canonical: {
-            hostId: "local",
-            currentPermissions: {
-              approvalPolicy: "never",
-              approvalsReviewer: "user",
-              sandboxPolicy: { type: "dangerFullAccess" },
+            projectId: "project",
+          }),
+        getProjectSession: (id: string) =>
+          Effect.succeed({
+            id,
+            archived: false,
+            thread: {
+              threadId: id === "caller-session" ? "caller" : "target-thread",
+              executionHostId: "local",
+              backendBinding: { driver: "codex", instanceId: "codex" },
             },
-            latestThreadSettings: {
-              model: "gpt",
-              collaborationMode: { mode: "default" },
-              approvalPolicy: "never",
-              sandboxPolicy: { type: "dangerFullAccess" },
+          }),
+      } as never),
+      Effect.provideService(CodexThreadDirectory, {
+        resolve: () =>
+          Effect.succeed({
+            canonical: {
+              hostId: "local",
+              currentPermissions: {
+                approvalPolicy: "never",
+                approvalsReviewer: "user",
+                sandboxPolicy: { type: "dangerFullAccess" },
+              },
+              latestThreadSettings: {
+                model: "gpt",
+                collaborationMode: { mode: "default" },
+                approvalPolicy: "never",
+                sandboxPolicy: { type: "dangerFullAccess" },
+              },
             },
-          },
-        }),
-    } as never),
+          }),
+      } as never),
+    );
+  const setup = (
+    options: {
+      denied?: boolean;
+      readOnly?: boolean;
+      failure?: boolean;
+      wrongOperation?: boolean;
+      backend?: string;
+      threadId?: string | null;
+      archived?: boolean;
+      afterAdmission?: () => void;
+    } = {},
+  ) => {
+    const admitted: ProjectWorkspaceApplyInput[] = [];
+    const starts: CodexLaunchThreadHandoffInput[] = [];
+    const seen = new Set<string>();
+    return {
+      admitted,
+      starts,
+      execute: withNativeFacts(
+        make.pipe(
+          Effect.provideService(AgentRuntimeApplication, {} as never),
+          Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+          Effect.provideService(CodexTurnAuthority, {
+            capture: () => Effect.succeed({ ...authority }),
+          } as never),
+          Effect.provideService(CoreModules, {
+            workspace: {
+              admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
+              read: () =>
+                Effect.succeed({
+                  value: {
+                    kind: "agent_session",
+                    session: {
+                      archived: options.archived ?? false,
+                      display_title: "Target session",
+                    },
+                    thread:
+                      options.threadId === null
+                        ? null
+                        : {
+                            thread_id: options.threadId ?? "target-thread",
+                            backend_binding: {
+                              driver:
+                                options.backend === "acp"
+                                  ? "acpRegistry"
+                                  : (options.backend ?? "codex"),
+                              instanceId: options.backend ?? "codex",
+                            },
+                          },
+                  },
+                }),
+              apply: (command: ProjectWorkspaceApplyInput) =>
+                Effect.gen(function* () {
+                  admitted.push(command);
+                  if (options.denied)
+                    return yield* coreRuntimeError({
+                      operation: "apply",
+                      reason: "operation",
+                      retryable: false,
+                    });
+                  const duplicate = seen.has(command.operationId);
+                  seen.add(command.operationId);
+                  options.afterAdmission?.();
+                  return {
+                    status: "no_op",
+                    receipt: { duplicate, affected_session_ids: ["target"] },
+                  };
+                }),
+            },
+          } as never),
+          Effect.provideService(CodexThreadHandoffRuntime, {
+            get: () =>
+              Effect.succeed(
+                options.failure ? null : { sourceThreadId: "target-thread", status: "success" },
+              ),
+            launch: (request: CodexLaunchThreadHandoffInput) =>
+              Effect.sync(() => {
+                starts.push(request);
+                return {
+                  sourceThreadId: options.wrongOperation ? "unrelated" : request.threadId,
+                  status: "running",
+                };
+              }),
+          } as never),
+        ),
+      ),
+    };
+  };
+
+  it.effect("reserves one dispatch and never repeats a repeated operation", () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const execute = yield* fixture.execute;
+      const first = yield* execute(input);
+      assert.strictEqual(first.structuredContent?.deliveryState, "started");
+      assert.include(fixture.starts[0], {
+        requestThreadId: input.caller.threadId,
+        threadTitle: "Target session",
+      });
+      assert.deepNestedInclude(first.structuredContent, { "operation.status": "running" });
+      const replay = yield* execute({
+        ...input,
+        arguments: { ...input.arguments, idempotencyKey: "handoff-retry" },
+        caller: { ...input.caller, callId: "retry" },
+      });
+      assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
+      assert.lengthOf(fixture.starts, 1);
+      assert.deepStrictEqual(fixture.admitted[0], fixture.admitted[1]);
+      assert.deepNestedInclude(fixture.admitted[0], {
+        "intent.kind": "agent_command",
+        "intent.provenance.authority.turn_id": "turn",
+        "intent.intent.kind": "admit_session_handoff",
+        "intent.intent.session_id": "target",
+        "intent.intent.thread_id": "target-thread",
+      });
+      assert.strictEqual(fixture.starts[0]?.threadId, "target-thread");
+      assert.isNull(fixture.starts[0]?.destinationHostId);
+      assert.strictEqual(fixture.starts[0]?.followUpPrompt, "Continue the work");
+    }),
   );
-const setup = (
-  options: {
-    denied?: boolean;
-    readOnly?: boolean;
-    failure?: boolean;
-    wrongOperation?: boolean;
-    backend?: string;
-    threadId?: string | null;
-    archived?: boolean;
-    afterAdmission?: () => void;
-  } = {},
-) => {
-  const admitted: ProjectWorkspaceApplyInput[] = [];
-  const starts: CodexLaunchThreadHandoffInput[] = [];
-  const seen = new Set<string>();
-  return {
-    admitted,
-    starts,
-    execute: withNativeFacts(
-      make.pipe(
-        Effect.provideService(AgentRuntimeApplication, {} as never),
+
+  it.effect("does not dispatch denied, inactive, unsupported or self-targeted handoffs", () =>
+    Effect.gen(function* () {
+      for (const options of [
+        { denied: true },
+        { archived: true },
+        { backend: "acp" },
+        { threadId: null },
+        { threadId: "caller" },
+      ]) {
+        const fixture = setup(options);
+        const execute = yield* fixture.execute;
+        assert.isTrue((yield* execute(input)).isError);
+        assert.lengthOf(fixture.starts, 0);
+      }
+      let active = true;
+      const fixture = setup({
+        afterAdmission: () => {
+          active = false;
+        },
+      });
+      const execute = yield* fixture.execute;
+      assert.isTrue(
+        (yield* execute({ ...input, arguments: { ...input.arguments, threadId: "forged" } }))
+          .isError,
+      );
+      assert.lengthOf(fixture.admitted, 0);
+      assert.isTrue(
+        (yield* execute({ ...input, caller: { ...input.caller, isActive: () => active } })).isError,
+      );
+      assert.lengthOf(fixture.starts, 0);
+    }),
+  );
+
+  it.effect("does not launch again when a reserved handoff has no retained outcome", () =>
+    Effect.gen(function* () {
+      const fixture = setup({ failure: true });
+      const execute = yield* fixture.execute;
+      const call = { ...input, arguments: { ...input.arguments, destinationHostId: "remote" } };
+      yield* execute(call);
+      const replay = yield* execute(call);
+      assert.deepInclude(replay.structuredContent, {
+        replay: true,
+        deliveryState: "unconfirmed",
+        operation: null,
+      });
+      assert.lengthOf(fixture.starts, 1);
+      assert.strictEqual(fixture.starts[0]?.destinationHostId, "remote");
+    }),
+  );
+
+  it.effect("does not expose another Thread's operation when an identity is already occupied", () =>
+    Effect.gen(function* () {
+      const fixture = setup({ wrongOperation: true });
+      const execute = yield* fixture.execute;
+      const result = yield* execute(input);
+      assert.isTrue(result.isError);
+      assert.deepNestedInclude(result.structuredContent, {
+        "error.code": "handoff_binding_changed",
+      });
+      assert.isUndefined(result.structuredContent?.operation);
+    }),
+  );
+
+  const runtimeFixture = (
+    options: {
+      withdrawOnInspect?: boolean;
+      wrongOperation?: boolean;
+      targetMode?: "approval-required" | "full-access";
+      denyCredit?: boolean;
+    } = {},
+  ) => {
+    let active = true;
+    const starts: CodexLaunchThreadHandoffInput[] = [];
+    const inspections: unknown[] = [];
+    const operations = new Map<string, { sourceThreadId: string; status: string }>();
+    const caller = createHostedAppToolCaller({
+      backend: "claude",
+      authority,
+      callId: "host-call",
+      generation: 3,
+      isActive: () => active,
+      capture: Effect.succeed(authority),
+      sessionContext: {
+        sessionId: "source-session",
+        projectId: "source-project",
+        runtimeId: "runtime",
+        rootThreadId: "source-root",
+        threadId: "source-child",
+        runId: null,
+        cwd: "/source",
+      },
+    });
+    const execute = withNativeFacts(
+      makeWithCapture(captureHostedAppToolAuthority).pipe(
         Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-        Effect.provideService(CodexTurnAuthority, {
-          capture: () => Effect.succeed({ ...authority }),
-        } as never),
         Effect.provideService(CoreModules, {
           workspace: {
             admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
@@ -116,332 +314,347 @@ const setup = (
               Effect.succeed({
                 value: {
                   kind: "agent_session",
-                  session: { archived: options.archived ?? false, display_title: "Target session" },
-                  thread:
-                    options.threadId === null
-                      ? null
-                      : {
-                          thread_id: options.threadId ?? "target-thread",
-                          backend_binding: {
-                            driver:
-                              options.backend === "acp"
-                                ? "acpRegistry"
-                                : (options.backend ?? "codex"),
-                            instanceId: options.backend ?? "codex",
-                          },
-                        },
+                  session: {
+                    archived: false,
+                    execution_ref: { runtime_id: "runtime", thread_id: "target-root" },
+                  },
+                  thread: null,
                 },
               }),
-            apply: (command: ProjectWorkspaceApplyInput) =>
-              Effect.gen(function* () {
-                admitted.push(command);
-                if (options.denied)
-                  return yield* coreRuntimeError({
-                    operation: "apply",
-                    reason: "operation",
-                    retryable: false,
-                  });
-                const duplicate = seen.has(command.operationId);
-                seen.add(command.operationId);
-                options.afterAdmission?.();
+            apply: () => Effect.die("Runtime handoffs are admitted by the handoff journal"),
+          },
+        } as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          assertModelPolicy: () =>
+            options.denyCredit
+              ? Effect.fail(
+                  Object.assign(
+                    new Error("Only the person can start Nodex models. Choose another provider."),
+                    { code: "credit_requires_person", retryable: false },
+                  ),
+                )
+              : Effect.void,
+          inspect: (target: unknown) =>
+            Effect.gen(function* () {
+              inspections.push({ target, agent: yield* CoreApplicationAgent });
+              if (options.withdrawOnInspect) active = false;
+              return {
+                sessionId: "target",
+                threadId: "target-root",
+                thread: {
+                  title: "Runtime target",
+                  runtimeMode:
+                    (target as { sessionId: string }).sessionId === "source-session"
+                      ? "approval-required"
+                      : (options.targetMode ?? "approval-required"),
+                  interactionMode: "plan",
+                  modelSelection: { instanceId: "claude", model: "model" },
+                },
+              };
+            }),
+        } as never),
+        Effect.provideService(CodexThreadHandoffRuntime, {
+          get: (operationId: string) => Effect.succeed(operations.get(operationId) ?? null),
+          launch: (request: CodexLaunchThreadHandoffInput) =>
+            Effect.sync(() => {
+              const previous = operations.get(request.operationId);
+              if (previous) return previous;
+              starts.push(request);
+              const operation = {
+                sourceThreadId: options.wrongOperation ? "other" : request.threadId,
+                status: "running",
+              };
+              operations.set(request.operationId, operation);
+              return operation;
+            }),
+        } as never),
+      ),
+    );
+    return { caller, execute, starts, inspections };
+  };
+
+  it.effect("routes hosted handoffs through the bound Runtime root and journal replay", () =>
+    Effect.gen(function* () {
+      const f = runtimeFixture();
+      const execute = yield* f.execute;
+      const first = yield* execute({ ...input, caller: f.caller });
+      assert.isFalse(first.isError ?? false);
+      assert.include(f.starts[0], {
+        threadId: "target-root",
+        requestThreadId: "source-child",
+        threadTitle: "Runtime target",
+      });
+      assert.deepNestedInclude(
+        f.inspections.find(
+          (entry) => (entry as { target: { sessionId: string } }).target.sessionId === "target",
+        ),
+        {
+          "target.sessionId": "target",
+          "agent.authority.thread_id": authority.threadId,
+        },
+      );
+      const replay = yield* execute({
+        ...input,
+        caller: f.caller,
+        arguments: {
+          ...input.arguments,
+          idempotencyKey: "handoff-retry",
+        },
+      });
+      assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
+      assert.lengthOf(f.starts, 1);
+    }),
+  );
+
+  it.effect("rejects a hosted child's own Session, withdrawn sources and unrelated outcomes", () =>
+    Effect.gen(function* () {
+      const self = runtimeFixture();
+      const execute = yield* self.execute;
+      const result = yield* execute({
+        ...input,
+        caller: self.caller,
+        arguments: { sessionId: "source-session" },
+      });
+      assert.deepNestedInclude(result.structuredContent, {
+        "error.code": "cannot_handoff_calling_session",
+      });
+      assert.lengthOf(self.starts, 0);
+      for (const options of [{ withdrawOnInspect: true }, { wrongOperation: true }]) {
+        const f = runtimeFixture(options);
+        const run = yield* f.execute;
+        const result = yield* run({ ...input, caller: f.caller });
+        assert.isTrue(result.isError);
+        assert.lengthOf(f.starts, options.withdrawOnInspect ? 0 : 1);
+      }
+    }),
+  );
+
+  it.effect("retains the caller ceiling and rejects a handoff follow-up above it", () =>
+    Effect.gen(function* () {
+      const allowed = runtimeFixture();
+      const execute = yield* allowed.execute;
+      assert.isNotTrue((yield* execute({ ...input, caller: allowed.caller })).isError);
+      assert.deepEqual(allowed.starts[0]?.modeLimit, {
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+      });
+      const denied = runtimeFixture({ targetMode: "full-access" });
+      const run = yield* denied.execute;
+      const result = yield* run({ ...input, caller: denied.caller });
+      assert.deepNestedInclude(result.structuredContent, {
+        "error.code": "runtime_mode_escalation_denied",
+      });
+      assert.isEmpty(denied.starts);
+    }),
+  );
+
+  it.effect("refuses a forbidden credit follow-up before launching any handoff", () =>
+    Effect.gen(function* () {
+      const f = runtimeFixture({ denyCredit: true });
+      const execute = yield* f.execute;
+      const result = yield* execute({ ...input, caller: f.caller });
+      assert.isTrue(result.isError);
+      assert.deepEqual(result.structuredContent, { error: { code: "credit_requires_person" } });
+      assert.lengthOf(f.starts, 0);
+    }),
+  );
+});
+
+describe("HandoffStatusAppTools", () => {
+  const make = makeHandoffStatusAppTools;
+  const makeWithCapture = makeWithCaptureHandoffStatusAppTools;
+  const input: AppToolInvocation = {
+    name: "get_handoff_status",
+    arguments: {
+      sessionId: "target",
+      operationId: createStableOperationId("app.handoff_session", 1, ["test"]),
+      afterRevision: 2,
+      waitMs: 60_000,
+    },
+    caller: {
+      threadId: "caller",
+      turnId: "turn",
+      callId: "call",
+      hostId: "local",
+      generation: 1,
+      isActive: () => true,
+    },
+  };
+  const setup = (
+    options: {
+      denied?: boolean;
+      changed?: boolean;
+      wrongOperation?: boolean;
+      withdrawn?: boolean;
+    } = {},
+  ) => {
+    let reads = 0;
+    const waits: unknown[][] = [];
+    let active = true;
+    const operation = {
+      sourceThreadId: options.wrongOperation ? "unrelated" : "target-thread",
+      revision: 3,
+      status: "success",
+    };
+    return {
+      waits,
+      call: { ...input, caller: { ...input.caller, isActive: () => active } },
+      execute: make.pipe(
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+        Effect.provideService(CodexTurnAuthority, {
+          capture: () =>
+            Effect.succeed({
+              threadId: "caller",
+              turnId: "turn",
+              rootThreadId: "caller",
+              actorProjectId: "project",
+              libraryId: "library",
+              storeEpoch: "epoch",
+              admittedAtMs: 1,
+              readOnly: true,
+              scope: "project",
+              source: "project_turn",
+            }),
+        } as never),
+        Effect.provideService(CoreModules, {
+          workspace: {
+            read: () =>
+              Effect.sync(() => {
+                reads += 1;
                 return {
-                  status: "no_op",
-                  receipt: { duplicate, affected_session_ids: ["target"] },
+                  value: {
+                    kind: "agent_session",
+                    session: { execution_ref: null },
+                    thread:
+                      options.denied || (options.changed && reads > 1)
+                        ? null
+                        : {
+                            thread_id: "target-thread",
+                            backend_binding: { driver: "codex", instanceId: "codex" },
+                          },
+                  },
                 };
               }),
           },
         } as never),
         Effect.provideService(CodexThreadHandoffRuntime, {
-          get: () =>
-            Effect.succeed(
-              options.failure ? null : { sourceThreadId: "target-thread", status: "success" },
-            ),
-          launch: (request: CodexLaunchThreadHandoffInput) =>
+          get: () => Effect.succeed(operation),
+          waitForRevision: (...args: unknown[]) =>
             Effect.sync(() => {
-              starts.push(request);
-              return {
-                sourceThreadId: options.wrongOperation ? "unrelated" : request.threadId,
-                status: "running",
-              };
+              waits.push(args);
+              if (options.withdrawn) active = false;
+              return operation;
             }),
         } as never),
       ),
-    ),
+    };
   };
-};
 
-it.effect("reserves one dispatch and never repeats a repeated operation", () =>
-  Effect.gen(function* () {
-    const fixture = setup();
-    const execute = yield* fixture.execute;
-    const first = yield* execute(input);
-    assert.strictEqual(first.structuredContent?.deliveryState, "started");
-    assert.include(fixture.starts[0], {
-      requestThreadId: input.caller.threadId,
-      threadTitle: "Target session",
-    });
-    assert.deepNestedInclude(first.structuredContent, { "operation.status": "running" });
-    const replay = yield* execute({
-      ...input,
-      arguments: { ...input.arguments, idempotencyKey: "handoff-retry" },
-      caller: { ...input.caller, callId: "retry" },
-    });
-    assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
-    assert.lengthOf(fixture.starts, 1);
-    assert.deepStrictEqual(fixture.admitted[0], fixture.admitted[1]);
-    assert.deepNestedInclude(fixture.admitted[0], {
-      "intent.kind": "agent_command",
-      "intent.provenance.authority.turn_id": "turn",
-      "intent.intent.kind": "admit_session_handoff",
-      "intent.intent.session_id": "target",
-      "intent.intent.thread_id": "target-thread",
-    });
-    assert.strictEqual(fixture.starts[0]?.threadId, "target-thread");
-    assert.isNull(fixture.starts[0]?.destinationHostId);
-    assert.strictEqual(fixture.starts[0]?.followUpPrompt, "Continue the work");
-  }),
-);
-
-it.effect("does not dispatch denied, inactive, unsupported or self-targeted handoffs", () =>
-  Effect.gen(function* () {
-    for (const options of [
-      { denied: true },
-      { archived: true },
-      { backend: "acp" },
-      { threadId: null },
-      { threadId: "caller" },
-    ]) {
-      const fixture = setup(options);
+  it.effect("waits on an exact Session handoff operation", () =>
+    Effect.gen(function* () {
+      const fixture = setup();
       const execute = yield* fixture.execute;
-      assert.isTrue((yield* execute(input)).isError);
-      assert.lengthOf(fixture.starts, 0);
-    }
-    let active = true;
-    const fixture = setup({
-      afterAdmission: () => {
-        active = false;
-      },
-    });
-    const execute = yield* fixture.execute;
-    assert.isTrue(
-      (yield* execute({ ...input, arguments: { ...input.arguments, threadId: "forged" } })).isError,
-    );
-    assert.lengthOf(fixture.admitted, 0);
-    assert.isTrue(
-      (yield* execute({ ...input, caller: { ...input.caller, isActive: () => active } })).isError,
-    );
-    assert.lengthOf(fixture.starts, 0);
-  }),
-);
-
-it.effect("does not launch again when a reserved handoff has no retained outcome", () =>
-  Effect.gen(function* () {
-    const fixture = setup({ failure: true });
-    const execute = yield* fixture.execute;
-    const call = { ...input, arguments: { ...input.arguments, destinationHostId: "remote" } };
-    yield* execute(call);
-    const replay = yield* execute(call);
-    assert.deepInclude(replay.structuredContent, {
-      replay: true,
-      deliveryState: "unconfirmed",
-      operation: null,
-    });
-    assert.lengthOf(fixture.starts, 1);
-    assert.strictEqual(fixture.starts[0]?.destinationHostId, "remote");
-  }),
-);
-
-it.effect("does not expose another Thread's operation when an identity is already occupied", () =>
-  Effect.gen(function* () {
-    const fixture = setup({ wrongOperation: true });
-    const execute = yield* fixture.execute;
-    const result = yield* execute(input);
-    assert.isTrue(result.isError);
-    assert.deepNestedInclude(result.structuredContent, { "error.code": "handoff_binding_changed" });
-    assert.isUndefined(result.structuredContent?.operation);
-  }),
-);
-
-const runtimeFixture = (
-  options: {
-    withdrawOnInspect?: boolean;
-    wrongOperation?: boolean;
-    targetMode?: "approval-required" | "full-access";
-    denyCredit?: boolean;
-  } = {},
-) => {
-  let active = true;
-  const starts: CodexLaunchThreadHandoffInput[] = [];
-  const inspections: unknown[] = [];
-  const operations = new Map<string, { sourceThreadId: string; status: string }>();
-  const caller = createHostedAppToolCaller({
-    backend: "claude",
-    authority,
-    callId: "host-call",
-    generation: 3,
-    isActive: () => active,
-    capture: Effect.succeed(authority),
-    sessionContext: {
-      sessionId: "source-session",
-      projectId: "source-project",
-      runtimeId: "runtime",
-      rootThreadId: "source-root",
-      threadId: "source-child",
-      runId: null,
-      cwd: "/source",
-    },
-  });
-  const execute = withNativeFacts(
-    makeWithCapture(captureHostedAppToolAuthority).pipe(
-      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-      Effect.provideService(CoreModules, {
-        workspace: {
-          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
-          read: () =>
-            Effect.succeed({
-              value: {
-                kind: "agent_session",
-                session: {
-                  archived: false,
-                  execution_ref: { runtime_id: "runtime", thread_id: "target-root" },
-                },
-                thread: null,
-              },
-            }),
-          apply: () => Effect.die("Runtime handoffs are admitted by the handoff journal"),
-        },
-      } as never),
-      Effect.provideService(AgentRuntimeApplication, {
-        assertModelPolicy: () =>
-          options.denyCredit
-            ? Effect.fail(
-                Object.assign(
-                  new Error("Only the person can start Nodex models. Choose another provider."),
-                  { code: "credit_requires_person", retryable: false },
-                ),
-              )
-            : Effect.void,
-        inspect: (target: unknown) =>
-          Effect.gen(function* () {
-            inspections.push({ target, agent: yield* CoreApplicationAgent });
-            if (options.withdrawOnInspect) active = false;
-            return {
-              sessionId: "target",
-              threadId: "target-root",
-              thread: {
-                title: "Runtime target",
-                runtimeMode:
-                  (target as { sessionId: string }).sessionId === "source-session"
-                    ? "approval-required"
-                    : (options.targetMode ?? "approval-required"),
-                interactionMode: "plan",
-                modelSelection: { instanceId: "claude", model: "model" },
-              },
-            };
-          }),
-      } as never),
-      Effect.provideService(CodexThreadHandoffRuntime, {
-        get: (operationId: string) => Effect.succeed(operations.get(operationId) ?? null),
-        launch: (request: CodexLaunchThreadHandoffInput) =>
-          Effect.sync(() => {
-            const previous = operations.get(request.operationId);
-            if (previous) return previous;
-            starts.push(request);
-            const operation = {
-              sourceThreadId: options.wrongOperation ? "other" : request.threadId,
-              status: "running",
-            };
-            operations.set(request.operationId, operation);
-            return operation;
-          }),
-      } as never),
-    ),
+      const result = yield* execute(fixture.call);
+      assert.deepNestedInclude(result.structuredContent, {
+        sessionId: "target",
+        "operation.status": "success",
+        "operation.revision": 3,
+      });
+      assert.deepEqual(fixture.waits, [[input.arguments.operationId, 2, 60_000]]);
+    }),
   );
-  return { caller, execute, starts, inspections };
-};
 
-it.effect("routes hosted handoffs through the bound Runtime root and journal replay", () =>
-  Effect.gen(function* () {
-    const f = runtimeFixture();
-    const execute = yield* f.execute;
-    const first = yield* execute({ ...input, caller: f.caller });
-    assert.isFalse(first.isError ?? false);
-    assert.include(f.starts[0], {
-      threadId: "target-root",
-      requestThreadId: "source-child",
-      threadTitle: "Runtime target",
-    });
-    assert.deepNestedInclude(
-      f.inspections.find(
-        (entry) => (entry as { target: { sessionId: string } }).target.sessionId === "target",
-      ),
-      {
-        "target.sessionId": "target",
-        "agent.authority.thread_id": authority.threadId,
-      },
-    );
-    const replay = yield* execute({
-      ...input,
-      caller: f.caller,
-      arguments: {
-        ...input.arguments,
-        idempotencyKey: "handoff-retry",
-      },
-    });
-    assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
-    assert.lengthOf(f.starts, 1);
-  }),
-);
+  it.effect(
+    "withholds results for missing Sessions, unrelated operations, changed bindings and withdrawn calls",
+    () =>
+      Effect.gen(function* () {
+        for (const options of [
+          { denied: true },
+          { wrongOperation: true },
+          { changed: true },
+          { withdrawn: true },
+        ]) {
+          const fixture = setup(options);
+          const execute = yield* fixture.execute;
+          assert.isTrue((yield* execute(fixture.call)).isError);
+          assert.lengthOf(fixture.waits, options.denied || options.wrongOperation ? 0 : 1);
+        }
+        const fixture = setup();
+        const execute = yield* fixture.execute;
+        assert.isTrue(
+          (yield* execute({ ...fixture.call, arguments: { ...input.arguments, waitMs: 60_001 } }))
+            .isError,
+        );
+        assert.lengthOf(fixture.waits, 0);
+      }),
+  );
 
-it.effect("rejects a hosted child's own Session, withdrawn sources and unrelated outcomes", () =>
-  Effect.gen(function* () {
-    const self = runtimeFixture();
-    const execute = yield* self.execute;
-    const result = yield* execute({
-      ...input,
-      caller: self.caller,
-      arguments: { sessionId: "source-session" },
-    });
-    assert.deepNestedInclude(result.structuredContent, {
-      "error.code": "cannot_handoff_calling_session",
-    });
-    assert.lengthOf(self.starts, 0);
-    for (const options of [{ withdrawOnInspect: true }, { wrongOperation: true }]) {
-      const f = runtimeFixture(options);
-      const run = yield* f.execute;
-      const result = yield* run({ ...input, caller: f.caller });
-      assert.isTrue(result.isError);
-      assert.lengthOf(f.starts, options.withdrawOnInspect ? 0 : 1);
-    }
-  }),
-);
-
-it.effect("retains the caller ceiling and rejects a handoff follow-up above it", () =>
-  Effect.gen(function* () {
-    const allowed = runtimeFixture();
-    const execute = yield* allowed.execute;
-    assert.isNotTrue((yield* execute({ ...input, caller: allowed.caller })).isError);
-    assert.deepEqual(allowed.starts[0]?.modeLimit, {
-      runtimeMode: "approval-required",
-      interactionMode: "plan",
-    });
-    const denied = runtimeFixture({ targetMode: "full-access" });
-    const run = yield* denied.execute;
-    const result = yield* run({ ...input, caller: denied.caller });
-    assert.deepNestedInclude(result.structuredContent, {
-      "error.code": "runtime_mode_escalation_denied",
-    });
-    assert.isEmpty(denied.starts);
-  }),
-);
-
-it.effect("refuses a forbidden credit follow-up before launching any handoff", () =>
-  Effect.gen(function* () {
-    const f = runtimeFixture({ denyCredit: true });
-    const execute = yield* f.execute;
-    const result = yield* execute({ ...input, caller: f.caller });
-    assert.isTrue(result.isError);
-    assert.deepEqual(result.structuredContent, { error: { code: "credit_requires_person" } });
-    assert.lengthOf(f.starts, 0);
-  }),
-);
+  it.effect("rereads hosted Runtime bindings after waiting and rejects a replaced root", () =>
+    Effect.gen(function* () {
+      for (const changed of [false, true]) {
+        let reads = 0;
+        let inspections = 0;
+        let waits = 0;
+        const authority = {
+          threadId: "runtime:source",
+          turnId: "native:source",
+          rootThreadId: "runtime:root",
+          actorProjectId: null,
+          libraryId: "library",
+          storeEpoch: "epoch",
+          admittedAtMs: 1,
+        };
+        const caller = createHostedAppToolCaller({
+          backend: "acp",
+          authority,
+          callId: "call",
+          generation: 2,
+          isActive: () => true,
+          capture: Effect.succeed(authority),
+        });
+        const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+          Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+          Effect.provideService(CoreModules, {
+            workspace: {
+              read: () =>
+                Effect.sync(() => {
+                  reads += 1;
+                  return {
+                    value: {
+                      kind: "agent_session",
+                      session: { execution_ref: { thread_id: "target-thread" } },
+                      thread: null,
+                    },
+                  };
+                }),
+            },
+          } as never),
+          Effect.provideService(AgentRuntimeApplication, {
+            inspect: () =>
+              Effect.gen(function* () {
+                assert.equal(
+                  (yield* CoreApplicationAgent)?.authority.thread_id,
+                  authority.threadId,
+                );
+                inspections += 1;
+                return { threadId: changed && inspections > 1 ? "replacement" : "target-thread" };
+              }),
+          } as never),
+          Effect.provideService(CodexThreadHandoffRuntime, {
+            get: () => Effect.succeed({ sourceThreadId: "target-thread" }),
+            waitForRevision: () =>
+              Effect.sync(() => {
+                waits += 1;
+                return { sourceThreadId: "target-thread", revision: 3 };
+              }),
+          } as never),
+        );
+        const result = yield* execute({ ...input, caller });
+        assert.equal(result.isError ?? false, changed);
+        assert.equal(reads, 2);
+        assert.equal(inspections, 2);
+        assert.equal(waits, 1);
+      }
+    }),
+  );
+});

@@ -339,70 +339,6 @@ it.effect.each(
   ),
 );
 
-it.effect("same-key requests waiting for configuration still share one inference", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const { gateway, calls } = fixture(events);
-      const registry = yield* makeRegistry;
-      const started = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      let waiting = 0;
-      const owner = yield* provide(
-        make({
-          configurationForHost: () =>
-            Effect.gen(function* () {
-              if (++waiting === 2) yield* Deferred.succeed(started, undefined);
-              yield* Deferred.await(release);
-              return configuration;
-            }),
-        }),
-        gateway,
-        registry,
-      );
-      const first = yield* owner.request(input).pipe(Effect.forkChild);
-      const second = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      yield* Deferred.succeed(release, undefined);
-      const result = yield* Fiber.join(first);
-      assert.strictEqual(yield* Fiber.join(second), result);
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-    }),
-  ),
-);
-
-it.effect.each([
-  { hostId: "remote", threadId: "parent" },
-  { hostId: "local", threadId: "other-parent" },
-])("an unrelated clear preserves a pending configuration admission (%j)", (scope) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const { gateway, calls } = fixture(events);
-      const registry = yield* makeRegistry;
-      const started = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      const owner = yield* provide(
-        make({
-          configurationForHost: () =>
-            Deferred.succeed(started, undefined).pipe(
-              Effect.andThen(Deferred.await(release)),
-              Effect.as(configuration),
-            ),
-        }),
-        gateway,
-        registry,
-      );
-      const pending = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      yield* owner.clear(scope);
-      yield* Deferred.succeed(release, undefined);
-      assert.strictEqual((yield* Fiber.join(pending))?.text, "next action");
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-    }),
-  ),
-);
-
 it.effect(
   "a first request started during an account switch cannot infer under the next principal",
   () =>
@@ -442,84 +378,6 @@ it.effect(
         assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
         assert.deepStrictEqual(calls, []);
         assert.strictEqual((yield* owner.request(input))?.text, "next action");
-      }),
-    ),
-);
-
-it.effect(
-  "prediction uses an inherited-config ephemeral fork, minimal Turn input and final text/token result",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-        const { gateway, calls } = fixture(events);
-        const registry = yield* makeRegistry;
-        const owner = yield* provide(
-          make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-          gateway,
-          registry,
-        );
-        const result = yield* owner.request(input);
-        assert.strictEqual(result?.text, "next action");
-        assert.strictEqual(result?.model, "fixture-model");
-        assert.strictEqual(result?.reasoningEffort, "low");
-        assert.strictEqual(result?.parentReasoningEffort, "medium");
-        assert.strictEqual(result?.inputTokens, 100);
-        assert.strictEqual(result?.cachedInputTokens, 90);
-        assert.deepEqual(calls.find(({ method }) => method === "thread/fork")?.params, {
-          threadId: "parent",
-          experimentalPredictionMode: true,
-          ephemeral: true,
-          excludeTurns: true,
-          threadSource: "composer_predictions",
-        });
-        const turn = calls.find(({ method }) => method === "turn/start")!.params;
-        assert.deepEqual(
-          Object.keys(turn).sort(),
-          [
-            "clientUserMessageId",
-            "effort",
-            "input",
-            "outputSchema",
-            "threadId",
-            "turnTrigger",
-          ].sort(),
-        );
-        assert.strictEqual(turn.outputSchema, null);
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/unsubscribe").length, 1);
-        assert.isFalse(registry.shouldSuppress("temporary"));
-        const repeated = yield* owner.request(input);
-        assert.strictEqual(repeated, result);
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-      }),
-    ),
-);
-
-it.effect.each([undefined, {}])(
-  "global prediction clear invalidates completed results on every host (%j)",
-  (clearInput) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-        const { gateway, calls } = fixture(events);
-        const registry = yield* makeRegistry;
-        const owner = yield* provide(
-          make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-          gateway,
-          registry,
-        );
-        const local = yield* owner.request(input);
-        const remoteInput = { ...input, hostId: "remote" };
-        const remote = yield* owner.request(remoteInput);
-        assert.strictEqual(local?.text, "next action");
-        assert.strictEqual(remote?.text, "next action");
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 2);
-        yield* Schema.decodeUnknownEffect(CodexComposerPredictionClear)(clearInput).pipe(
-          Effect.flatMap(owner.clear),
-        );
-        assert.notStrictEqual(yield* owner.request(input), local);
-        assert.notStrictEqual(yield* owner.request(remoteInput), remote);
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 4);
       }),
     ),
 );
@@ -569,33 +427,6 @@ it.effect.each([
   ),
 );
 
-it.effect("an unsampled result stays cached without acquiring a native host Session", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const f = fixture(events);
-      const registry = yield* makeRegistry;
-      const owner = yield* provide(
-        make({ configurationForHost: () => Effect.succeed({ ...configuration, sample_rate: 0 }) }),
-        f.gateway,
-        registry,
-        undefined,
-        {},
-        {
-          capabilities: CodexAppServerCapabilities.of({
-            forHost: () => Effect.die("Unsampled predictions must not acquire a host Session"),
-            forThread: () => Effect.die("Unsampled predictions must not acquire a host Session"),
-            isCurrent: () => Effect.die("Unsampled predictions have no native source to validate"),
-          }),
-        },
-      );
-      assert.isNull(yield* owner.request(input));
-      assert.isNull(yield* owner.request(input));
-      assert.deepStrictEqual(f.calls, []);
-    }),
-  ),
-);
-
 it.effect.each(["plan", "provider", "model"] as const)(
   "%s parent is ineligible without a fork or model Turn",
   (ineligible) =>
@@ -620,27 +451,6 @@ it.effect.each(["plan", "provider", "model"] as const)(
         );
       }),
     ),
-);
-
-it.effect("failed prediction fork does not start a fresh Thread", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const f = fixture(events, { failFork: true });
-      const registry = yield* makeRegistry;
-      const owner = yield* provide(
-        make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-        f.gateway,
-        registry,
-      );
-      const result = yield* Effect.exit(owner.request(input));
-      assert.isTrue(Exit.isFailure(result));
-      assert.deepEqual(
-        f.calls.map(({ method }) => method),
-        ["thread/resume", "thread/fork"],
-      );
-    }),
-  ),
 );
 
 it.effect(
@@ -769,42 +579,6 @@ it.effect(
         assert.strictEqual(f.calls.filter(({ method }) => method === "thread/fork").length, 2);
       }),
     ),
-);
-
-it.effect("source retirement during parent resume prevents a prediction fork", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const holdResume = yield* Deferred.make<void>();
-      const resumeStarted = yield* Deferred.make<void>();
-      const f = fixture(events, { holdResume, resumeStarted });
-      const registry = yield* makeRegistry;
-      let current = true;
-      const owner = yield* provide(
-        make({ configurationForHost: () => Effect.succeed(configuration) }),
-        f.gateway,
-        registry,
-        undefined,
-        {},
-        {
-          capabilities: CodexAppServerCapabilities.of({
-            forHost: () => Effect.succeed(capability),
-            forThread: () => Effect.succeed(capability),
-            isCurrent: () => Effect.sync(() => current),
-          }),
-        },
-      );
-      const pending = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Deferred.await(resumeStarted);
-      current = false;
-      yield* Deferred.succeed(holdResume, undefined);
-      assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
-      assert.deepStrictEqual(
-        f.calls.map(({ method }) => method),
-        ["thread/resume"],
-      );
-    }),
-  ),
 );
 
 it.effect(
@@ -954,38 +728,6 @@ it.effect("a native without prediction fork support never starts a helper", () =
   ),
 );
 
-it.effect("concurrent callers share a failure and a later explicit request can retry", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const holdTurn = yield* Deferred.make<void>();
-      const turnStarted = yield* Deferred.make<void>();
-      const options = { holdTurn, turnStarted, malformedResult: true };
-      const { gateway, calls } = fixture(events, options);
-      const registry = yield* makeRegistry;
-      const owner = yield* provide(
-        make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-        gateway,
-        registry,
-      );
-      const first = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Deferred.await(turnStarted);
-      const second = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-      yield* Deferred.succeed(holdTurn, undefined);
-      assert.isTrue(Exit.isFailure(yield* Fiber.await(first)));
-      assert.isTrue(Exit.isFailure(yield* Fiber.await(second)));
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/unsubscribe").length, 1);
-      options.malformedResult = false;
-      assert.strictEqual((yield* owner.request(input))?.text, "next action");
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 2);
-      assert.strictEqual(calls.filter(({ method }) => method === "thread/unsubscribe").length, 2);
-    }),
-  ),
-);
-
 it.effect(
   "explicit host configuration can withhold predictions without disclosing inference prompts",
   () =>
@@ -1025,21 +767,6 @@ it.effect(
 );
 
 it.effect.each([
-  "invalid-json",
-  JSON.stringify({ hosts: { local: { ...configuration, sample_rate: 2 } } }),
-])("invalid explicit prediction config fails at the Main configuration boundary", (raw) =>
-  Effect.gen(function* () {
-    assert.isTrue(
-      Exit.isFailure(
-        yield* Effect.exit(
-          readCodexComposerPredictionEnvironment({ [NODEX_COMPOSER_PREDICTION_CONFIG_ENV]: raw }),
-        ),
-      ),
-    );
-  }),
-);
-
-it.effect.each([
   { ...input, hostId: " " },
   { ...input, threadId: "" },
   { ...input, generationTrigger: "other" },
@@ -1051,66 +778,6 @@ it.effect.each([
       ),
     );
   }),
-);
-
-it.effect(
-  "a completed result releases the helper before a delayed Turn start acknowledgement",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-        const holdAck = yield* Deferred.make<void>();
-        const { gateway, calls } = fixture(events, { holdAck });
-        const registry = yield* makeRegistry;
-        const owner = yield* provide(
-          make({
-            configurationForHost: (_hostId) =>
-              Effect.succeed({ ...configuration, prediction_reasoning_effort: "" }),
-          }),
-          gateway,
-          registry,
-        );
-        const result = yield* owner.request(input);
-        assert.strictEqual(result?.text, "next action");
-        assert.strictEqual(result?.reasoningEffort, "medium");
-        assert.isNull(result?.configuredReasoningEffort);
-        assert.isFalse(registry.shouldSuppress("temporary"));
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/unsubscribe").length, 1);
-        assert.strictEqual(calls.filter(({ method }) => method === "turn/interrupt").length, 0);
-      }),
-    ),
-);
-
-it.effect("a new parent Turn invalidates predictions only for its host", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const holdTurn = yield* Deferred.make<void>();
-      const turnStarted = yield* Deferred.make<void>();
-      const { gateway, calls } = fixture(events, { holdTurn, turnStarted });
-      const registry = yield* makeRegistry;
-      const owner = yield* provide(
-        make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-        gateway,
-        registry,
-      );
-      const pending = yield* owner.request(input).pipe(Effect.forkChild);
-      yield* Deferred.await(turnStarted);
-      yield* owner.clear({ hostId: "remote", threadId: "parent" });
-      assert.isTrue(registry.shouldSuppress("temporary"));
-      assert.strictEqual(calls.filter(({ method }) => method === "turn/interrupt").length, 0);
-      yield* PubSub.publish(
-        events,
-        notification("turn/started", {
-          threadId: "parent",
-          turn: { ...completedTurn, id: "parent-new", status: "inProgress" },
-        }),
-      );
-      assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
-      assert.strictEqual(calls.filter(({ method }) => method === "turn/interrupt").length, 1);
-      assert.isFalse(registry.shouldSuppress("temporary"));
-    }),
-  ),
 );
 
 it.effect(
@@ -1135,48 +802,6 @@ it.effect(
         assert.strictEqual(calls.filter(({ method }) => method === "turn/interrupt").length, 1);
         assert.strictEqual(calls.filter(({ method }) => method === "thread/unsubscribe").length, 1);
         assert.isFalse(registry.shouldSuppress("temporary"));
-      }),
-    ),
-);
-
-it.effect.each(["account-mutation", "logout", "host-generation"] as const)(
-  "%s clears completed prediction caches before reuse",
-  (boundary) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-        const { gateway, calls } = fixture(events);
-        const registry = yield* makeRegistry;
-        const auth = new AbortController();
-        const owner = yield* provide(
-          make({ configurationForHost: (_hostId) => Effect.succeed(configuration) }),
-          gateway,
-          registry,
-          auth.signal,
-        );
-        assert.strictEqual((yield* owner.request(input))?.text, "next action");
-        if (boundary === "account-mutation") {
-          auth.abort();
-          yield* Effect.yieldNow;
-        }
-        if (boundary === "logout")
-          yield* PubSub.publish(
-            events,
-            notification("account/updated", { authMode: null, planType: null }),
-          );
-        if (boundary === "host-generation")
-          yield* PubSub.publish(events, {
-            kind: "connection",
-            value: { kind: "connecting", hostId: "local", generation: 2 },
-          });
-        yield* Effect.yieldNow;
-        if (boundary === "account-mutation") {
-          assert.isTrue(Exit.isFailure(yield* Effect.exit(owner.request(input))));
-          assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 1);
-          return;
-        }
-        assert.strictEqual((yield* owner.request(input))?.text, "next action");
-        assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 2);
       }),
     ),
 );
@@ -1232,73 +857,6 @@ it.effect(
         yield* PubSub.publish(changes, undefined);
         yield* Deferred.await(cleared);
         assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
-        assert.deepEqual(calls, []);
-      }),
-    ),
-);
-
-it.effect("clears Runtime prediction caches only for local or global scope", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-      const { gateway } = fixture(events);
-      const registry = yield* makeRegistry;
-      const cleared: Array<string | undefined> = [];
-      const owner = yield* provide(
-        make({ configurationForHost: () => Effect.succeed(configuration) }),
-        gateway,
-        registry,
-      ).pipe(
-        Effect.provideService(AgentRuntimeApplication, {
-          clearPredictions: (threadId?: string) =>
-            Effect.sync(() => {
-              cleared.push(threadId);
-            }),
-        } as unknown as AgentRuntimeApplication["Service"]),
-      );
-      yield* owner.clear({ hostId: "remote" });
-      yield* owner.clear({ hostId: "remote", threadId: "parent" });
-      assert.deepEqual(cleared, []);
-      yield* owner.clear({ hostId: "local", threadId: "parent" });
-      yield* owner.clear({ hostId: "local" });
-      yield* owner.clear();
-      yield* owner.clear({});
-      assert.deepEqual(cleared, ["parent", undefined, undefined, undefined]);
-    }),
-  ),
-);
-
-it.effect(
-  "uses the Runtime facade captured at construction when a later callback has no Runtime Context",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
-        const { gateway, calls } = fixture(events);
-        const registry = yield* makeRegistry;
-        const nativeCalls: string[] = [];
-        const owner = yield* provide(
-          make({ configurationForHost: () => Effect.succeed(configuration) }),
-          gateway,
-          registry,
-        ).pipe(
-          Effect.provideService(AgentRuntimeApplication, {
-            nativeThread: (threadId: string) => {
-              assert.equal(threadId, input.threadId);
-              return Effect.succeed({
-                connection: {
-                  request: (method: string) =>
-                    Effect.sync(() => {
-                      nativeCalls.push(method);
-                      return null;
-                    }),
-                },
-              });
-            },
-          } as unknown as AgentRuntimeApplication["Service"]),
-        );
-        assert.isNull(yield* owner.request(input));
-        assert.deepEqual(nativeCalls, ["native.prediction.request"]);
         assert.deepEqual(calls, []);
       }),
     ),

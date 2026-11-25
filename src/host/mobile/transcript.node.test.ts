@@ -1,3 +1,4 @@
+import { describe, expect, test } from "vite-plus/test";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { HostInvocation } from "../HostInvocation";
 import { it } from "@effect/vitest";
@@ -8,14 +9,13 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { expect } from "vitest";
 import { CHAT_STOP_RESERVED_REASON } from "../../shared/space-connection";
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import {
   agentRuntimeProviderFixture,
   agentRuntimeSnapshotFixture,
 } from "../../shared/testing/agent-runtime-snapshot";
-import type { ProjectSession } from "../../shared/types";
+import type { ProjectSession, ProjectSessionStart } from "../../shared/types";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
 import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
@@ -23,106 +23,377 @@ import { CodexNativeThreadLookup } from "../../main/codex-application/CodexNativ
 import { CodexGateway } from "../../main/codex-runtime/CodexGateway";
 import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
 import { ProjectWorkspace } from "../../main/project-application/ProjectWorkspace";
-import type { ProjectSessionStart } from "../../shared/types";
 import { parseAttachmentRef } from "./files";
 import { UserPresence } from "../UserPresence";
 import { PhoneMember } from "./rpc";
 import { testLayer } from "../../main/app/MainConfig";
 import { makeMobileTranscript as makeTranscriptOnHost } from "./transcript";
 import { chatItemId } from "./transcript-projection";
+import { CodexGitProbe } from "../../main/codex-application/CodexGitProbe";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
+import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
+import { InboxApplication } from "../inbox-application/InboxApplication";
+import {
+  makeMobileCatalog,
+  projectAgentCatalog,
+  projectChatRow,
+  rankedChatPage,
+  unreadChats,
+} from "./catalog";
+import { DEFAULT_INBOX_SETTINGS, resolveInboxModel } from "../../shared/inbox";
 
-/** This host writes paths the way a POSIX test machine does. */
-const makeMobileTranscript = (chats: Parameters<typeof makeTranscriptOnHost>[0]) =>
-  makeTranscriptOnHost(chats).pipe(Effect.provide(testLayer()));
+describe("transcript", () => {
+  /** This host writes paths the way a POSIX test machine does. */
+  const makeMobileTranscript = (chats: Parameters<typeof makeTranscriptOnHost>[0]) =>
+    makeTranscriptOnHost(chats).pipe(Effect.provide(testLayer()));
 
-/** Records which chats the phone holds in front of its Member. */
-const recordingPresence = (views: string[]) =>
-  ({
-    showOnPhone: ({ memberId, sessionId, conversationId }) =>
-      Effect.acquireRelease(
-        Effect.sync(() => views.push(`show ${memberId} ${sessionId} ${conversationId}`)),
-        () => Effect.sync(() => views.push(`hide ${sessionId}`)),
-      ),
-  }) as Pick<UserPresence["Service"], "showOnPhone"> as UserPresence["Service"];
+  /** Records which chats the phone holds in front of its Member. */
+  const recordingPresence = (views: string[]) =>
+    ({
+      showOnPhone: ({ memberId, sessionId, conversationId }) =>
+        Effect.acquireRelease(
+          Effect.sync(() => views.push(`show ${memberId} ${sessionId} ${conversationId}`)),
+          () => Effect.sync(() => views.push(`hide ${sessionId}`)),
+        ),
+    }) as Pick<UserPresence["Service"], "showOnPhone"> as UserPresence["Service"];
 
-it.effect(
-  "watermarks a reopened snapshot ahead of queued patches and preserves revisions during recovery",
-  () =>
-    Effect.gen(function* () {
-      const invalidations = yield* Queue.unbounded<ProjectSessionsChangeEvent>();
-      const queued = yield* Queue.unbounded<{ event: string; data: unknown }>();
-      const proofs: (string | null)[] = [];
-      let title = "Start";
-      let historyRevision = 0;
-      let selection = {
-        instanceId: "codex",
-        model: "model",
-        options: [] as { id: string; value: string }[],
-      };
-      const provider = agentRuntimeProviderFixture({
-        models: [
-          {
-            slug: "model",
-            name: "Model Name",
-            isCustom: false,
-            capabilities: {
-              optionDescriptors: [
-                {
-                  id: "effort",
-                  label: "Effort",
-                  type: "select",
-                  options: [
-                    { id: "medium", label: "Medium", isDefault: true },
-                    { id: "high", label: "High" },
-                  ],
-                },
-              ],
+  it.effect(
+    "watermarks a reopened snapshot ahead of queued patches and preserves revisions during recovery",
+    () =>
+      Effect.gen(function* () {
+        const invalidations = yield* Queue.unbounded<ProjectSessionsChangeEvent>();
+        const queued = yield* Queue.unbounded<{ event: string; data: unknown }>();
+        const proofs: (string | null)[] = [];
+        let title = "Start";
+        let historyRevision = 0;
+        let selection = {
+          instanceId: "codex",
+          model: "model",
+          options: [] as { id: string; value: string }[],
+        };
+        const provider = agentRuntimeProviderFixture({
+          models: [
+            {
+              slug: "model",
+              name: "Model Name",
+              isCustom: false,
+              capabilities: {
+                optionDescriptors: [
+                  {
+                    id: "effort",
+                    label: "Effort",
+                    type: "select",
+                    options: [
+                      { id: "medium", label: "Medium", isDefault: true },
+                      { id: "high", label: "High" },
+                    ],
+                  },
+                ],
+              },
             },
-          },
-          { slug: "plain", name: "Plain Model", isCustom: false, capabilities: {} },
-        ],
-      });
-      const sessionId = "session";
-      const views: string[] = [];
-      const refresh = (next: string) =>
-        Effect.gen(function* () {
-          title = next;
-          yield* Queue.offer(invalidations, {
-            changeType: "update",
-            summaryScopes: [],
-            detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
-          });
-          yield* TestClock.adjust("80 millis");
+            { slug: "plain", name: "Plain Model", isCustom: false, capabilities: {} },
+          ],
         });
+        const sessionId = "session";
+        const views: string[] = [];
+        const refresh = (next: string) =>
+          Effect.gen(function* () {
+            title = next;
+            yield* Queue.offer(invalidations, {
+              changeType: "update",
+              summaryScopes: [],
+              detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
+            });
+            yield* TestClock.adjust("80 millis");
+          });
+        const makeTranscript = yield* makeMobileTranscript({
+          session: () =>
+            Effect.sync(
+              () =>
+                ({
+                  id: sessionId,
+                  projectId: null,
+                  displayTitle: title,
+                  executionRef: { runtimeId: "runtime", threadId: "thread" },
+                }) as ProjectSession,
+            ),
+        }).pipe(
+          Effect.provideService(DatabaseNotifierRuntime, {
+            projectSessionInvalidations: Stream.fromQueue(invalidations),
+          } as DatabaseNotifierRuntime["Service"]),
+          Effect.provideService(AgentRuntimeApplication, {
+            catalog: () => Effect.succeed([provider]),
+            resolveTarget: () => Effect.never,
+            read: () =>
+              Effect.flatMap(HostInvocation, (proof) =>
+                Effect.sync(() => {
+                  proofs.push(proof);
+                  return {
+                    snapshot: agentRuntimeSnapshotFixture({
+                      thread: { historyRevision, modelSelection: selection },
+                    }),
+                  };
+                }),
+              ),
+          } as unknown as AgentRuntimeApplication["Service"]),
+          Effect.provideService(AgentRuntimeSessionActivity, {
+            read: Effect.succeed({ items: [] }),
+            activityChanges: Stream.never,
+          } as unknown as AgentRuntimeSessionActivity["Service"]),
+          Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
+          Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
+          Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
+          Effect.provideService(UserPresence, recordingPresence(views)),
+          Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+        );
+
+        const transcript = yield* makeTranscript((event, data) =>
+          Queue.offer(queued, { event, data }).pipe(Effect.asVoid),
+        ).pipe(
+          Effect.provideService(HostInvocation, "observation-proof"),
+          Effect.provideService(PhoneMember, "alice"),
+        );
+        const open = Effect.flatten(transcript.handlers["chat.open"]({ sessionId })).pipe(
+          Effect.provideService(HostInvocation, "request-proof"),
+        );
+        expect(yield* open).toMatchObject({
+          title: "Start",
+          revision: 0,
+          state: {
+            agentLabel: "Model Name",
+            agent: { providerInstanceId: "codex", model: "model", reasoningEffort: "medium" },
+          },
+        });
+        yield* refresh("First update");
+        yield* refresh("First update"); // This invalidation has no changes to send.
+        yield* refresh("Second update");
+        expect(yield* open).toMatchObject({ title: "Second update", revision: 2 });
+        // Reopening a watched chat keeps its one view in front of the phone's Member.
+        expect(views).toEqual(["show alice session thread"]);
+        expect(proofs).toEqual([
+          "request-proof",
+          "observation-proof",
+          "observation-proof",
+          "observation-proof",
+        ]);
+        expect(yield* Queue.take(queued)).toEqual({
+          event: "chat.patch",
+          data: { sessionId, revision: 1, ops: [{ op: "title", title: "First update" }] },
+        });
+
+        const recovered: unknown[] = [];
+        yield* transcript.recover(
+          (event, data) =>
+            Effect.sync(() => {
+              recovered.push({ event, data });
+            }),
+          Queue.clear(queued).pipe(Effect.asVoid),
+        );
+        expect(recovered).toEqual([
+          {
+            event: "chat.snapshot",
+            data: expect.objectContaining({ title: "Second update", revision: 2 }),
+          },
+        ]);
+        expect(yield* Queue.size(queued)).toBe(0);
+        yield* refresh("Third update");
+        expect(yield* Queue.take(queued)).toMatchObject({
+          event: "chat.patch",
+          data: { revision: 3 },
+        });
+
+        historyRevision++;
+        yield* refresh("History replaced");
+        expect(yield* Queue.take(queued)).toMatchObject({
+          event: "chat.snapshot",
+          data: { title: "History replaced", revision: 3 },
+        });
+        // Selection-only changes reach the open chat as state patches without changing its label.
+        for (const [model, effort, expected, label] of [
+          ["model", "high", "high", "Model Name"],
+          ["model", "unoffered", "medium", "Model Name"],
+          ["plain", "high", null, "Plain Model"],
+          ["unknown", "high", null, "unknown"],
+        ] as const) {
+          selection = { ...selection, model, options: [{ id: "effort", value: effort }] };
+          yield* refresh("History replaced");
+          const agent = { providerInstanceId: "codex", model, reasoningEffort: expected };
+          expect(yield* Queue.take(queued)).toMatchObject({
+            event: "chat.patch",
+            data: { ops: [{ op: "state", state: { agentLabel: label, agent } }] },
+          });
+          expect((yield* open).state.agent).toEqual(agent);
+        }
+        yield* transcript.handlers["chat.close"]({ sessionId });
+        expect(views).toEqual(["show alice session thread", "hide session"]);
+      }),
+  );
+
+  it.effect("keeps slow chat reads independent and recovery snapshots uninterrupted", () =>
+    Effect.gen(function* () {
+      const invalidations = yield* PubSub.unbounded<ProjectSessionsChangeEvent>();
+      const activityChanges = yield* PubSub.unbounded<{ type: "reset"; sequence: number }>();
+      const releaseRead = yield* Deferred.make<void>();
+      const reading = yield* Deferred.make<void>();
+      const recoveryStarted = yield* Deferred.make<void>();
+      const releaseRecovery = yield* Deferred.make<void>();
+      const events: { event: string; data: unknown }[] = [];
+      const reads: string[] = [];
+      let refreshing = false;
       const makeTranscript = yield* makeMobileTranscript({
-        session: () =>
-          Effect.sync(
-            () =>
-              ({
-                id: sessionId,
-                projectId: null,
-                displayTitle: title,
-                executionRef: { runtimeId: "runtime", threadId: "thread" },
-              }) as ProjectSession,
-          ),
+        session: (id) =>
+          Effect.succeed({
+            id,
+            projectId: null,
+            displayTitle: refreshing ? "Updated" : "Start",
+            executionRef: { runtimeId: "runtime", threadId: id },
+          } as ProjectSession),
       }).pipe(
         Effect.provideService(DatabaseNotifierRuntime, {
-          projectSessionInvalidations: Stream.fromQueue(invalidations),
+          projectSessionInvalidations: Stream.fromPubSub(invalidations),
         } as DatabaseNotifierRuntime["Service"]),
         Effect.provideService(AgentRuntimeApplication, {
-          catalog: () => Effect.succeed([provider]),
+          catalog: () => Effect.succeed([]),
           resolveTarget: () => Effect.never,
-          read: () =>
-            Effect.flatMap(HostInvocation, (proof) =>
-              Effect.sync(() => {
-                proofs.push(proof);
-                return {
-                  snapshot: agentRuntimeSnapshotFixture({
-                    thread: { historyRevision, modelSelection: selection },
-                  }),
-                };
-              }),
-            ),
+          read: ({ sessionId }: { sessionId: string }) =>
+            Effect.gen(function* () {
+              if (refreshing) reads.push(sessionId);
+              if (refreshing && sessionId === "slow") {
+                yield* Deferred.succeed(reading, undefined);
+                yield* Deferred.await(releaseRead);
+              }
+              return { snapshot: agentRuntimeSnapshotFixture({}) };
+            }),
+        } as unknown as AgentRuntimeApplication["Service"]),
+        Effect.provideService(AgentRuntimeSessionActivity, {
+          read: Effect.succeed({ items: [] }),
+          activityChanges: Stream.fromPubSub(activityChanges),
+        } as unknown as AgentRuntimeSessionActivity["Service"]),
+        Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
+        Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
+        Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
+        Effect.provideService(UserPresence, recordingPresence([])),
+        Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+      );
+      const transcript = yield* makeTranscript((event, data) =>
+        Effect.sync(() => {
+          events.push({ event, data });
+        }),
+      );
+      for (const sessionId of ["slow", "fast"])
+        yield* Effect.flatten(transcript.handlers["chat.open"]({ sessionId }));
+      yield* TestClock.adjust("1 millis");
+      refreshing = true;
+      yield* PubSub.publish(invalidations, {
+        changeType: "update",
+        summaryScopes: [],
+        detailInvalidation: { kind: "sessions", sessionIds: ["slow"] },
+      });
+      yield* TestClock.adjust("80 millis");
+      expect(yield* Deferred.isDone(reading)).toBe(true);
+      yield* PubSub.publish(invalidations, {
+        changeType: "update",
+        summaryScopes: [],
+        detailInvalidation: { kind: "sessions", sessionIds: ["fast"] },
+      });
+      yield* TestClock.adjust("80 millis");
+      expect(events).toEqual([
+        {
+          event: "chat.patch",
+          data: { sessionId: "fast", revision: 2, ops: [{ op: "title", title: "Updated" }] },
+        },
+      ]);
+
+      // A second source must not start another read of the blocked chat.
+      yield* PubSub.publish(activityChanges, { type: "reset" as const, sequence: 1 });
+      yield* TestClock.adjust("80 millis");
+      expect(reads.filter((id) => id === "slow")).toHaveLength(1);
+      const recovering = yield* transcript
+        .recover(
+          (event, data) =>
+            Effect.sync(() => {
+              events.push({ event, data });
+            }),
+          Deferred.succeed(recoveryStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(releaseRecovery)),
+          ),
+        )
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(recoveryStarted);
+      yield* Deferred.succeed(releaseRead, undefined);
+      yield* Effect.yieldNow;
+      expect(events).toHaveLength(1);
+      yield* Deferred.succeed(releaseRecovery, undefined);
+      yield* Fiber.join(recovering);
+      yield* TestClock.adjust("1 millis");
+      expect(events.slice(1, 3)).toMatchObject([
+        { event: "chat.snapshot", data: { sessionId: "slow", revision: 0, title: "Start" } },
+        { event: "chat.snapshot", data: { sessionId: "fast", revision: 2, title: "Updated" } },
+      ]);
+      expect(events.slice(3)).toEqual([
+        {
+          event: "chat.patch",
+          data: { sessionId: "slow", revision: 1, ops: [{ op: "title", title: "Updated" }] },
+        },
+      ]);
+      expect(reads.filter((id) => id === "slow")).toHaveLength(2);
+    }),
+  );
+
+  it.effect("a running command's step shows what it has written so far, until it ends", () =>
+    Effect.gen(function* () {
+      const sessionId = "session";
+      const at = "2026-11-08T04:32:02.000Z";
+      const command = (status: "running" | "completed", output?: string) =>
+        ({
+          id: "item",
+          threadId: "thread",
+          runId: "run",
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: { driver: "codex", nativeId: "call-1", strength: "strong" },
+          parentItemId: null,
+          ordinal: 0,
+          status,
+          title: null,
+          startedAt: at,
+          completedAt: status === "running" ? null : at,
+          updatedAt: at,
+          type: "command_execution",
+          input: "for i in $(seq 1 40); do echo tick $i; sleep 1; done",
+          ...(output === undefined ? {} : { output }),
+        }) as AgentTurnItem;
+      let current = command("running");
+      let written: string | null = "tick 1\n";
+      const reads: unknown[] = [];
+      const makeTranscript = yield* makeMobileTranscript({
+        session: () =>
+          Effect.succeed({
+            id: sessionId,
+            projectId: null,
+            displayTitle: "Ticks",
+            executionRef: { runtimeId: "runtime", threadId: "thread" },
+          } as ProjectSession),
+      }).pipe(
+        Effect.provideService(DatabaseNotifierRuntime, {
+          projectSessionInvalidations: Stream.never,
+        } as unknown as DatabaseNotifierRuntime["Service"]),
+        Effect.provideService(AgentRuntimeApplication, {
+          catalog: () => Effect.succeed([]),
+          resolveTarget: () => Effect.never,
+          item: () => Effect.sync(() => current),
+          backgroundOutput: (input: unknown) =>
+            Effect.suspend(() => {
+              reads.push(input);
+              return written === null
+                ? Effect.fail(new Error("The Agent is not reachable"))
+                : Effect.succeed({
+                    text: written,
+                    truncated: false,
+                    totalBytes: Buffer.byteLength(written),
+                  });
+            }),
         } as unknown as AgentRuntimeApplication["Service"]),
         Effect.provideService(AgentRuntimeSessionActivity, {
           read: Effect.succeed({ items: [] }),
@@ -131,594 +402,595 @@ it.effect(
         Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
         Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
         Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-        Effect.provideService(UserPresence, recordingPresence(views)),
+        Effect.provideService(UserPresence, recordingPresence([])),
         Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
       );
+      const transcript = yield* makeTranscript(() => Effect.void);
+      const open = transcript.handlers["chat.item"]({
+        sessionId,
+        itemId: chatItemId("thread", "item"),
+      });
 
-      const transcript = yield* makeTranscript((event, data) =>
-        Queue.offer(queued, { event, data }).pipe(Effect.asVoid),
-      ).pipe(
-        Effect.provideService(HostInvocation, "observation-proof"),
-        Effect.provideService(PhoneMember, "alice"),
-      );
-      const open = Effect.flatten(transcript.handlers["chat.open"]({ sessionId })).pipe(
-        Effect.provideService(HostInvocation, "request-proof"),
-      );
       expect(yield* open).toMatchObject({
-        title: "Start",
-        revision: 0,
-        state: {
-          agentLabel: "Model Name",
-          agent: { providerInstanceId: "codex", model: "model", reasoningEffort: "medium" },
-        },
+        kind: "activity",
+        status: "running",
+        output: "tick 1\n",
+        outputTruncated: false,
       });
-      yield* refresh("First update");
-      yield* refresh("First update"); // This invalidation has no changes to send.
-      yield* refresh("Second update");
-      expect(yield* open).toMatchObject({ title: "Second update", revision: 2 });
-      // Reopening a watched chat keeps its one view in front of the phone's Member.
-      expect(views).toEqual(["show alice session thread"]);
-      expect(proofs).toEqual([
-        "request-proof",
-        "observation-proof",
-        "observation-proof",
-        "observation-proof",
+      written = "tick 1\ntick 2\n";
+      expect(yield* open).toMatchObject({ status: "running", output: "tick 1\ntick 2\n" });
+      expect(reads).toEqual([
+        { sessionId, threadId: "thread", taskId: "call-1" },
+        { sessionId, threadId: "thread", taskId: "call-1" },
       ]);
-      expect(yield* Queue.take(queued)).toEqual({
-        event: "chat.patch",
-        data: { sessionId, revision: 1, ops: [{ op: "title", title: "First update" }] },
-      });
 
-      const recovered: unknown[] = [];
-      yield* transcript.recover(
-        (event, data) =>
-          Effect.sync(() => {
-            recovered.push({ event, data });
-          }),
-        Queue.clear(queued).pipe(Effect.asVoid),
+      // Only the end of a long output reaches the phone, marked as cut.
+      written = `${"x".repeat(128 * 1024)}tick 40\n`;
+      const long = yield* open;
+      if (long.kind !== "activity" || long.output === null) throw new Error("Expected output");
+      expect(long.outputTruncated).toBe(true);
+      expect(long.output.endsWith("tick 40\n")).toBe(true);
+      expect(Buffer.byteLength(long.output)).toBeLessThanOrEqual(64 * 1024);
+
+      // A read that fails still opens the step, with what its record holds.
+      written = null;
+      expect(yield* open).toMatchObject({ status: "running", output: null });
+
+      // Once it ends, its record holds the whole output and nothing live is read.
+      current = command("completed", "tick 1\ntick 2\ndone\n");
+      const settled = reads.length;
+      expect(yield* open).toMatchObject({ status: "done", output: "tick 1\ntick 2\ndone\n" });
+      expect(reads).toHaveLength(settled);
+    }),
+  );
+
+  it.effect(
+    "a step that returned a full-size screenshot opens on the phone, its picture apart",
+    () =>
+      Effect.gen(function* () {
+        const sessionId = "session";
+        const at = "2026-11-08T04:32:02.000Z";
+        // The full record keeps the bytes the host's attachment owner serves.
+        const screenshot = Buffer.alloc(3 * 1024 * 1024, 7).toString("base64");
+        const reads: unknown[] = [];
+        const makeTranscript = yield* makeMobileTranscript({
+          session: () =>
+            Effect.succeed({
+              id: sessionId,
+              projectId: null,
+              displayTitle: "Screenshot",
+              executionRef: { runtimeId: "runtime", threadId: "thread" },
+            } as ProjectSession),
+        }).pipe(
+          Effect.provideService(DatabaseNotifierRuntime, {
+            projectSessionInvalidations: Stream.never,
+          } as unknown as DatabaseNotifierRuntime["Service"]),
+          Effect.provideService(AgentRuntimeApplication, {
+            catalog: () => Effect.succeed([]),
+            resolveTarget: () => Effect.never,
+            item: (input: unknown) =>
+              Effect.sync(() => {
+                reads.push(input);
+                return {
+                  id: "item",
+                  threadId: "thread",
+                  runId: "run",
+                  nodeId: null,
+                  providerThreadId: null,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: 0,
+                  status: "completed",
+                  title: "Take a screenshot",
+                  startedAt: at,
+                  completedAt: at,
+                  updatedAt: at,
+                  type: "dynamic_tool",
+                  toolName: "browser.screenshot",
+                  input: {},
+                  mcpToolCall: {
+                    type: "mcpToolCall",
+                    id: "call",
+                    server: "browser",
+                    tool: "screenshot",
+                    status: "completed",
+                    arguments: {},
+                    result: {
+                      content: [
+                        { type: "text", text: "Captured the page." },
+                        { type: "image", data: screenshot, mimeType: "image/png" },
+                      ],
+                      structuredContent: null,
+                    },
+                  },
+                  resultImages: [{ attachmentId: "tool-result:1", mimeType: "image/png" }],
+                } as AgentTurnItem;
+              }),
+          } as unknown as AgentRuntimeApplication["Service"]),
+          Effect.provideService(AgentRuntimeSessionActivity, {
+            read: Effect.succeed({ items: [] }),
+            activityChanges: Stream.never,
+          } as unknown as AgentRuntimeSessionActivity["Service"]),
+          Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
+          Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
+          Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
+          Effect.provideService(UserPresence, recordingPresence([])),
+          Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+        );
+        const transcript = yield* makeTranscript(() => Effect.void);
+        const step = yield* transcript.handlers["chat.item"]({
+          sessionId,
+          itemId: chatItemId("source-thread", "source-item"),
+        });
+
+        expect(reads).toEqual([
+          { sessionId, sourceThreadId: "source-thread", itemId: "source-item", full: true },
+        ]);
+        expect(step).toMatchObject({
+          kind: "activity",
+          title: "Take a screenshot",
+          output: "Captured the page.",
+        });
+        if (step.kind !== "activity") throw new Error("Expected a step");
+        // The picture is fetched in ranges with the Member's authority, not carried in the reply.
+        expect(step.images.map(({ ref }) => parseAttachmentRef(ref))).toEqual([
+          [sessionId, "source-thread", "source-item", "tool-result:1"],
+        ]);
+        expect(Buffer.byteLength(JSON.stringify(step))).toBeLessThan(4 * 1024);
+      }),
+  );
+
+  it.effect("a chat opened before its host starts it says so and why, then follows its Run", () =>
+    Effect.gen(function* () {
+      const invalidations = yield* PubSub.unbounded<ProjectSessionsChangeEvent>();
+      const activityChanges = yield* PubSub.unbounded<{ type: "reset"; sequence: number }>();
+      const events: { event: string; data: unknown }[] = [];
+      const sessionId = "session";
+      let started = false;
+      let start: ProjectSessionStart | null = null;
+      let title = "Investigate";
+      const changed = Effect.gen(function* () {
+        yield* PubSub.publish(invalidations, {
+          changeType: "update",
+          summaryScopes: [],
+          detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
+        });
+        yield* TestClock.adjust("80 millis");
+      });
+      const makeTranscript = yield* makeMobileTranscript({
+        session: () =>
+          Effect.sync(
+            () =>
+              ({
+                id: sessionId,
+                projectId: null,
+                displayTitle: title,
+                archived: false,
+                thread: null,
+                executionRef: started ? { runtimeId: "runtime", threadId: "thread" } : null,
+              }) as ProjectSession,
+          ),
+      }).pipe(
+        Effect.provideService(DatabaseNotifierRuntime, {
+          projectSessionInvalidations: Stream.fromPubSub(invalidations),
+        } as DatabaseNotifierRuntime["Service"]),
+        Effect.provideService(AgentRuntimeApplication, {
+          catalog: () => Effect.succeed([]),
+          resolveTarget: () => Effect.never,
+          read: () => Effect.succeed({ snapshot: agentRuntimeSnapshotFixture({}) }),
+        } as unknown as AgentRuntimeApplication["Service"]),
+        Effect.provideService(AgentRuntimeSessionActivity, {
+          read: Effect.succeed({ items: [] }),
+          activityChanges: Stream.fromPubSub(activityChanges),
+        } as unknown as AgentRuntimeSessionActivity["Service"]),
+        Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
+        Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
+        Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
+        Effect.provideService(UserPresence, recordingPresence([])),
+        Effect.provideService(ProjectWorkspace, {
+          readSessionStart: () => Effect.sync(() => start),
+        } as unknown as ProjectWorkspace["Service"]),
       );
-      expect(recovered).toEqual([
+      const transcript = yield* makeTranscript((event, data) =>
+        Effect.sync(() => {
+          events.push({ event, data });
+        }),
+      );
+      const opened = yield* Effect.flatten(transcript.handlers["chat.open"]({ sessionId }));
+      // Not a conversation for another desktop: it simply has not started.
+      expect(opened).toMatchObject({
+        items: [],
+        state: { status: "idle", agent: null, sendBlockedReason: "This chat hasn't started yet." },
+      });
+      yield* TestClock.adjust("1 millis");
+
+      // Its Inbox decision could not start it: the phone says why and offers the decision again.
+      start = {
+        proposalId: "proposal",
+        pageId: "message",
+        state: "failed",
+        failureMessage: "The host has no Agent for this chat",
+        retryable: true,
+      };
+      yield* changed;
+      expect(events).toMatchObject([
         {
           event: "chat.snapshot",
-          data: expect.objectContaining({ title: "Second update", revision: 2 }),
-        },
-      ]);
-      expect(yield* Queue.size(queued)).toBe(0);
-      yield* refresh("Third update");
-      expect(yield* Queue.take(queued)).toMatchObject({
-        event: "chat.patch",
-        data: { revision: 3 },
-      });
-
-      historyRevision++;
-      yield* refresh("History replaced");
-      expect(yield* Queue.take(queued)).toMatchObject({
-        event: "chat.snapshot",
-        data: { title: "History replaced", revision: 3 },
-      });
-      // Selection-only changes reach the open chat as state patches without changing its label.
-      for (const [model, effort, expected, label] of [
-        ["model", "high", "high", "Model Name"],
-        ["model", "unoffered", "medium", "Model Name"],
-        ["plain", "high", null, "Plain Model"],
-        ["unknown", "high", null, "unknown"],
-      ] as const) {
-        selection = { ...selection, model, options: [{ id: "effort", value: effort }] };
-        yield* refresh("History replaced");
-        const agent = { providerInstanceId: "codex", model, reasoningEffort: expected };
-        expect(yield* Queue.take(queued)).toMatchObject({
-          event: "chat.patch",
-          data: { ops: [{ op: "state", state: { agentLabel: label, agent } }] },
-        });
-        expect((yield* open).state.agent).toEqual(agent);
-      }
-      yield* transcript.handlers["chat.close"]({ sessionId });
-      expect(views).toEqual(["show alice session thread", "hide session"]);
-    }),
-);
-
-it.effect("keeps slow chat reads independent and recovery snapshots uninterrupted", () =>
-  Effect.gen(function* () {
-    const invalidations = yield* PubSub.unbounded<ProjectSessionsChangeEvent>();
-    const activityChanges = yield* PubSub.unbounded<{ type: "reset"; sequence: number }>();
-    const releaseRead = yield* Deferred.make<void>();
-    const reading = yield* Deferred.make<void>();
-    const recoveryStarted = yield* Deferred.make<void>();
-    const releaseRecovery = yield* Deferred.make<void>();
-    const events: { event: string; data: unknown }[] = [];
-    const reads: string[] = [];
-    let refreshing = false;
-    const makeTranscript = yield* makeMobileTranscript({
-      session: (id) =>
-        Effect.succeed({
-          id,
-          projectId: null,
-          displayTitle: refreshing ? "Updated" : "Start",
-          executionRef: { runtimeId: "runtime", threadId: id },
-        } as ProjectSession),
-    }).pipe(
-      Effect.provideService(DatabaseNotifierRuntime, {
-        projectSessionInvalidations: Stream.fromPubSub(invalidations),
-      } as DatabaseNotifierRuntime["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([]),
-        resolveTarget: () => Effect.never,
-        read: ({ sessionId }: { sessionId: string }) =>
-          Effect.gen(function* () {
-            if (refreshing) reads.push(sessionId);
-            if (refreshing && sessionId === "slow") {
-              yield* Deferred.succeed(reading, undefined);
-              yield* Deferred.await(releaseRead);
-            }
-            return { snapshot: agentRuntimeSnapshotFixture({}) };
-          }),
-      } as unknown as AgentRuntimeApplication["Service"]),
-      Effect.provideService(AgentRuntimeSessionActivity, {
-        read: Effect.succeed({ items: [] }),
-        activityChanges: Stream.fromPubSub(activityChanges),
-      } as unknown as AgentRuntimeSessionActivity["Service"]),
-      Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
-      Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
-      Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-      Effect.provideService(UserPresence, recordingPresence([])),
-      Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
-    );
-    const transcript = yield* makeTranscript((event, data) =>
-      Effect.sync(() => {
-        events.push({ event, data });
-      }),
-    );
-    for (const sessionId of ["slow", "fast"])
-      yield* Effect.flatten(transcript.handlers["chat.open"]({ sessionId }));
-    yield* TestClock.adjust("1 millis");
-    refreshing = true;
-    yield* PubSub.publish(invalidations, {
-      changeType: "update",
-      summaryScopes: [],
-      detailInvalidation: { kind: "sessions", sessionIds: ["slow"] },
-    });
-    yield* TestClock.adjust("80 millis");
-    expect(yield* Deferred.isDone(reading)).toBe(true);
-    yield* PubSub.publish(invalidations, {
-      changeType: "update",
-      summaryScopes: [],
-      detailInvalidation: { kind: "sessions", sessionIds: ["fast"] },
-    });
-    yield* TestClock.adjust("80 millis");
-    expect(events).toEqual([
-      {
-        event: "chat.patch",
-        data: { sessionId: "fast", revision: 2, ops: [{ op: "title", title: "Updated" }] },
-      },
-    ]);
-
-    // A second source must not start another read of the blocked chat.
-    yield* PubSub.publish(activityChanges, { type: "reset" as const, sequence: 1 });
-    yield* TestClock.adjust("80 millis");
-    expect(reads.filter((id) => id === "slow")).toHaveLength(1);
-    const recovering = yield* transcript
-      .recover(
-        (event, data) =>
-          Effect.sync(() => {
-            events.push({ event, data });
-          }),
-        Deferred.succeed(recoveryStarted, undefined).pipe(
-          Effect.andThen(Deferred.await(releaseRecovery)),
-        ),
-      )
-      .pipe(Effect.forkScoped);
-    yield* Deferred.await(recoveryStarted);
-    yield* Deferred.succeed(releaseRead, undefined);
-    yield* Effect.yieldNow;
-    expect(events).toHaveLength(1);
-    yield* Deferred.succeed(releaseRecovery, undefined);
-    yield* Fiber.join(recovering);
-    yield* TestClock.adjust("1 millis");
-    expect(events.slice(1, 3)).toMatchObject([
-      { event: "chat.snapshot", data: { sessionId: "slow", revision: 0, title: "Start" } },
-      { event: "chat.snapshot", data: { sessionId: "fast", revision: 2, title: "Updated" } },
-    ]);
-    expect(events.slice(3)).toEqual([
-      {
-        event: "chat.patch",
-        data: { sessionId: "slow", revision: 1, ops: [{ op: "title", title: "Updated" }] },
-      },
-    ]);
-    expect(reads.filter((id) => id === "slow")).toHaveLength(2);
-  }),
-);
-
-it.effect("a running command's step shows what it has written so far, until it ends", () =>
-  Effect.gen(function* () {
-    const sessionId = "session";
-    const at = "2026-11-08T04:32:02.000Z";
-    const command = (status: "running" | "completed", output?: string) =>
-      ({
-        id: "item",
-        threadId: "thread",
-        runId: "run",
-        nodeId: null,
-        providerThreadId: null,
-        providerTurnId: null,
-        nativeItemRef: { driver: "codex", nativeId: "call-1", strength: "strong" },
-        parentItemId: null,
-        ordinal: 0,
-        status,
-        title: null,
-        startedAt: at,
-        completedAt: status === "running" ? null : at,
-        updatedAt: at,
-        type: "command_execution",
-        input: "for i in $(seq 1 40); do echo tick $i; sleep 1; done",
-        ...(output === undefined ? {} : { output }),
-      }) as AgentTurnItem;
-    let current = command("running");
-    let written: string | null = "tick 1\n";
-    const reads: unknown[] = [];
-    const makeTranscript = yield* makeMobileTranscript({
-      session: () =>
-        Effect.succeed({
-          id: sessionId,
-          projectId: null,
-          displayTitle: "Ticks",
-          executionRef: { runtimeId: "runtime", threadId: "thread" },
-        } as ProjectSession),
-    }).pipe(
-      Effect.provideService(DatabaseNotifierRuntime, {
-        projectSessionInvalidations: Stream.never,
-      } as unknown as DatabaseNotifierRuntime["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([]),
-        resolveTarget: () => Effect.never,
-        item: () => Effect.sync(() => current),
-        backgroundOutput: (input: unknown) =>
-          Effect.suspend(() => {
-            reads.push(input);
-            return written === null
-              ? Effect.fail(new Error("The Agent is not reachable"))
-              : Effect.succeed({
-                  text: written,
-                  truncated: false,
-                  totalBytes: Buffer.byteLength(written),
-                });
-          }),
-      } as unknown as AgentRuntimeApplication["Service"]),
-      Effect.provideService(AgentRuntimeSessionActivity, {
-        read: Effect.succeed({ items: [] }),
-        activityChanges: Stream.never,
-      } as unknown as AgentRuntimeSessionActivity["Service"]),
-      Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
-      Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
-      Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-      Effect.provideService(UserPresence, recordingPresence([])),
-      Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
-    );
-    const transcript = yield* makeTranscript(() => Effect.void);
-    const open = transcript.handlers["chat.item"]({
-      sessionId,
-      itemId: chatItemId("thread", "item"),
-    });
-
-    expect(yield* open).toMatchObject({
-      kind: "activity",
-      status: "running",
-      output: "tick 1\n",
-      outputTruncated: false,
-    });
-    written = "tick 1\ntick 2\n";
-    expect(yield* open).toMatchObject({ status: "running", output: "tick 1\ntick 2\n" });
-    expect(reads).toEqual([
-      { sessionId, threadId: "thread", taskId: "call-1" },
-      { sessionId, threadId: "thread", taskId: "call-1" },
-    ]);
-
-    // Only the end of a long output reaches the phone, marked as cut.
-    written = `${"x".repeat(128 * 1024)}tick 40\n`;
-    const long = yield* open;
-    if (long.kind !== "activity" || long.output === null) throw new Error("Expected output");
-    expect(long.outputTruncated).toBe(true);
-    expect(long.output.endsWith("tick 40\n")).toBe(true);
-    expect(Buffer.byteLength(long.output)).toBeLessThanOrEqual(64 * 1024);
-
-    // A read that fails still opens the step, with what its record holds.
-    written = null;
-    expect(yield* open).toMatchObject({ status: "running", output: null });
-
-    // Once it ends, its record holds the whole output and nothing live is read.
-    current = command("completed", "tick 1\ntick 2\ndone\n");
-    const settled = reads.length;
-    expect(yield* open).toMatchObject({ status: "done", output: "tick 1\ntick 2\ndone\n" });
-    expect(reads).toHaveLength(settled);
-  }),
-);
-
-it.effect("a step that returned a full-size screenshot opens on the phone, its picture apart", () =>
-  Effect.gen(function* () {
-    const sessionId = "session";
-    const at = "2026-11-08T04:32:02.000Z";
-    // The full record keeps the bytes the host's attachment owner serves.
-    const screenshot = Buffer.alloc(3 * 1024 * 1024, 7).toString("base64");
-    const reads: unknown[] = [];
-    const makeTranscript = yield* makeMobileTranscript({
-      session: () =>
-        Effect.succeed({
-          id: sessionId,
-          projectId: null,
-          displayTitle: "Screenshot",
-          executionRef: { runtimeId: "runtime", threadId: "thread" },
-        } as ProjectSession),
-    }).pipe(
-      Effect.provideService(DatabaseNotifierRuntime, {
-        projectSessionInvalidations: Stream.never,
-      } as unknown as DatabaseNotifierRuntime["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([]),
-        resolveTarget: () => Effect.never,
-        item: (input: unknown) =>
-          Effect.sync(() => {
-            reads.push(input);
-            return {
-              id: "item",
-              threadId: "thread",
-              runId: "run",
-              nodeId: null,
-              providerThreadId: null,
-              providerTurnId: null,
-              nativeItemRef: null,
-              parentItemId: null,
-              ordinal: 0,
-              status: "completed",
-              title: "Take a screenshot",
-              startedAt: at,
-              completedAt: at,
-              updatedAt: at,
-              type: "dynamic_tool",
-              toolName: "browser.screenshot",
-              input: {},
-              mcpToolCall: {
-                type: "mcpToolCall",
-                id: "call",
-                server: "browser",
-                tool: "screenshot",
-                status: "completed",
-                arguments: {},
-                result: {
-                  content: [
-                    { type: "text", text: "Captured the page." },
-                    { type: "image", data: screenshot, mimeType: "image/png" },
-                  ],
-                  structuredContent: null,
-                },
-              },
-              resultImages: [{ attachmentId: "tool-result:1", mimeType: "image/png" }],
-            } as AgentTurnItem;
-          }),
-      } as unknown as AgentRuntimeApplication["Service"]),
-      Effect.provideService(AgentRuntimeSessionActivity, {
-        read: Effect.succeed({ items: [] }),
-        activityChanges: Stream.never,
-      } as unknown as AgentRuntimeSessionActivity["Service"]),
-      Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
-      Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
-      Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-      Effect.provideService(UserPresence, recordingPresence([])),
-      Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
-    );
-    const transcript = yield* makeTranscript(() => Effect.void);
-    const step = yield* transcript.handlers["chat.item"]({
-      sessionId,
-      itemId: chatItemId("source-thread", "source-item"),
-    });
-
-    expect(reads).toEqual([
-      { sessionId, sourceThreadId: "source-thread", itemId: "source-item", full: true },
-    ]);
-    expect(step).toMatchObject({
-      kind: "activity",
-      title: "Take a screenshot",
-      output: "Captured the page.",
-    });
-    if (step.kind !== "activity") throw new Error("Expected a step");
-    // The picture is fetched in ranges with the Member's authority, not carried in the reply.
-    expect(step.images.map(({ ref }) => parseAttachmentRef(ref))).toEqual([
-      [sessionId, "source-thread", "source-item", "tool-result:1"],
-    ]);
-    expect(Buffer.byteLength(JSON.stringify(step))).toBeLessThan(4 * 1024);
-  }),
-);
-
-it.effect("a chat opened before its host starts it says so and why, then follows its Run", () =>
-  Effect.gen(function* () {
-    const invalidations = yield* PubSub.unbounded<ProjectSessionsChangeEvent>();
-    const activityChanges = yield* PubSub.unbounded<{ type: "reset"; sequence: number }>();
-    const events: { event: string; data: unknown }[] = [];
-    const sessionId = "session";
-    let started = false;
-    let start: ProjectSessionStart | null = null;
-    let title = "Investigate";
-    const changed = Effect.gen(function* () {
-      yield* PubSub.publish(invalidations, {
-        changeType: "update",
-        summaryScopes: [],
-        detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
-      });
-      yield* TestClock.adjust("80 millis");
-    });
-    const makeTranscript = yield* makeMobileTranscript({
-      session: () =>
-        Effect.sync(
-          () =>
-            ({
-              id: sessionId,
-              projectId: null,
-              displayTitle: title,
-              archived: false,
-              thread: null,
-              executionRef: started ? { runtimeId: "runtime", threadId: "thread" } : null,
-            }) as ProjectSession,
-        ),
-    }).pipe(
-      Effect.provideService(DatabaseNotifierRuntime, {
-        projectSessionInvalidations: Stream.fromPubSub(invalidations),
-      } as DatabaseNotifierRuntime["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([]),
-        resolveTarget: () => Effect.never,
-        read: () => Effect.succeed({ snapshot: agentRuntimeSnapshotFixture({}) }),
-      } as unknown as AgentRuntimeApplication["Service"]),
-      Effect.provideService(AgentRuntimeSessionActivity, {
-        read: Effect.succeed({ items: [] }),
-        activityChanges: Stream.fromPubSub(activityChanges),
-      } as unknown as AgentRuntimeSessionActivity["Service"]),
-      Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
-      Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
-      Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-      Effect.provideService(UserPresence, recordingPresence([])),
-      Effect.provideService(ProjectWorkspace, {
-        readSessionStart: () => Effect.sync(() => start),
-      } as unknown as ProjectWorkspace["Service"]),
-    );
-    const transcript = yield* makeTranscript((event, data) =>
-      Effect.sync(() => {
-        events.push({ event, data });
-      }),
-    );
-    const opened = yield* Effect.flatten(transcript.handlers["chat.open"]({ sessionId }));
-    // Not a conversation for another desktop: it simply has not started.
-    expect(opened).toMatchObject({
-      items: [],
-      state: { status: "idle", agent: null, sendBlockedReason: "This chat hasn't started yet." },
-    });
-    yield* TestClock.adjust("1 millis");
-
-    // Its Inbox decision could not start it: the phone says why and offers the decision again.
-    start = {
-      proposalId: "proposal",
-      pageId: "message",
-      state: "failed",
-      failureMessage: "The host has no Agent for this chat",
-      retryable: true,
-    };
-    yield* changed;
-    expect(events).toMatchObject([
-      {
-        event: "chat.snapshot",
-        data: {
-          state: {
-            sendBlockedReason: "This chat couldn’t start: The host has no Agent for this chat",
-            start: { state: "failed", retry: { entryId: "message", proposalId: "proposal" } },
+          data: {
+            state: {
+              sendBlockedReason: "This chat couldn’t start: The host has no Agent for this chat",
+              start: { state: "failed", retry: { entryId: "message", proposalId: "proposal" } },
+            },
           },
         },
+      ]);
+
+      started = true;
+      yield* changed;
+      expect(events.slice(1)).toMatchObject([
+        { event: "chat.snapshot", data: { state: { sendBlockedReason: null } } },
+      ]);
+
+      // From here the chat follows its Run, as one opened while it runs does.
+      title = "Investigating";
+      yield* PubSub.publish(activityChanges, { type: "reset" as const, sequence: 1 });
+      yield* TestClock.adjust("80 millis");
+      expect(events.slice(2)).toMatchObject([
+        { event: "chat.patch", data: { ops: [{ op: "title", title: "Investigating" }] } },
+      ]);
+    }),
+  );
+
+  it.effect(
+    "a phone offers stopping and archiving a hosted chat only as Core lets its Member",
+    () =>
+      Effect.gen(function* () {
+        const invalidations = yield* Queue.unbounded<ProjectSessionsChangeEvent>();
+        const queued = yield* Queue.unbounded<{ event: string; data: unknown }>();
+        const sessionId = "session";
+        // Bob reads Alice's chat: he neither manages it nor, until he asks for its Run, stops it.
+        let read = { canManage: false, canStop: false, archived: false };
+        const at = "2026-11-08T04:32:02.000Z";
+        let run: AgentSnapshot["projection"]["runs"][number] = {
+          id: "run",
+          threadId: "thread",
+          ordinal: 1,
+          status: "waiting",
+          providerInstanceId: "codex",
+          modelSelection: { instanceId: "codex", model: "model" },
+          providerThreadId: "provider-thread",
+          userMessageId: "user",
+          rootNodeId: "root",
+          activeAttemptId: "attempt",
+          requestedAt: at,
+          startedAt: at,
+          completedAt: null,
+          checkpointId: null,
+          contextHandoffId: null,
+        };
+        const makeTranscript = yield* makeMobileTranscript({
+          session: () =>
+            Effect.sync(
+              () =>
+                ({
+                  id: sessionId,
+                  projectId: null,
+                  displayTitle: "Alice's chat",
+                  executionRef: { runtimeId: "runtime", threadId: "thread" },
+                  ...read,
+                }) as ProjectSession,
+            ),
+        }).pipe(
+          Effect.provideService(DatabaseNotifierRuntime, {
+            projectSessionInvalidations: Stream.fromQueue(invalidations),
+          } as DatabaseNotifierRuntime["Service"]),
+          Effect.provideService(AgentRuntimeApplication, {
+            catalog: () => Effect.succeed([]),
+            resolveTarget: () => Effect.never,
+            read: () =>
+              Effect.sync(() => ({
+                snapshot: agentRuntimeSnapshotFixture({
+                  projection: { runs: [run] },
+                }),
+              })),
+          } as unknown as AgentRuntimeApplication["Service"]),
+          Effect.provideService(AgentRuntimeSessionActivity, {
+            read: Effect.succeed({ items: [] }),
+            activityChanges: Stream.never,
+          } as unknown as AgentRuntimeSessionActivity["Service"]),
+          Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
+          Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
+          Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
+          Effect.provideService(UserPresence, recordingPresence([])),
+          Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+        );
+        const transcript = yield* makeTranscript((event, data) =>
+          Queue.offer(queued, { event, data }).pipe(Effect.asVoid),
+        ).pipe(Effect.provideService(HostInvocation, "observation-proof"));
+        const open = Effect.flatten(transcript.handlers["chat.open"]({ sessionId })).pipe(
+          Effect.provideService(HostInvocation, "request-proof"),
+        );
+        expect((yield* open).state).toMatchObject({
+          stopBlockedReason: CHAT_STOP_RESERVED_REASON,
+          status: "waiting",
+          activeRunId: null,
+          archived: false,
+          canManage: false,
+        });
+
+        // Once Bob's own Run is the chat's work, Core lets him stop it, and the phone hears so.
+        read = { ...read, canStop: true };
+        run = { ...run, status: "running" };
+        yield* Queue.offer(invalidations, {
+          changeType: "update",
+          summaryScopes: [],
+          detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
+        });
+        yield* TestClock.adjust("80 millis");
+        expect(yield* Queue.take(queued)).toMatchObject({
+          event: "chat.patch",
+          data: {
+            ops: [
+              {
+                op: "state",
+                state: { stopBlockedReason: null, canManage: false, activeRunId: "run" },
+              },
+            ],
+          },
+        });
+      }),
+  );
+});
+
+describe("catalog", () => {
+  test("chat search continuations preserve rank and reject a different search or missing anchor", () => {
+    const ranked = ["third", "first", "second"];
+    const page = rankedChatPage(ranked, "query", undefined, 2);
+    expect(page?.sessionIds).toEqual(["third", "first"]);
+    expect(rankedChatPage(ranked, "query", page?.nextCursor, 2)).toEqual({
+      sessionIds: ["second"],
+      nextCursor: null,
+    });
+    expect(rankedChatPage(ranked, "another query", page?.nextCursor, 2)).toBeNull();
+    expect(rankedChatPage(["second", "third"], "query", page?.nextCursor, 2)).toBeNull();
+  });
+
+  it.effect("answers which asked-about chats the chat list still shows as unread", () =>
+    Effect.gen(function* () {
+      const reads: unknown[] = [];
+      const core = {
+        workspace: {
+          read: (input: unknown) => {
+            reads.push(input);
+            return Effect.succeed({
+              value: {
+                kind: "session_window",
+                sessions: {
+                  items: [
+                    { task: { session: { id: "unread", unread: true } } },
+                    { task: { session: { id: "read", unread: false } } },
+                  ],
+                },
+              },
+            });
+          },
+        },
+      } as unknown as CoreModules["Service"];
+      const unread = unreadChats(core);
+      // An archived or hidden chat is absent from the chat list, so it is not unread either.
+      expect(yield* unread({ sessionIds: ["unread", "read", "archived", "unread"] })).toEqual({
+        sessionIds: ["unread"],
+      });
+      expect(reads).toEqual([
+        {
+          kind: "session_window",
+          archived: false,
+          order: "identity",
+          session_ids: ["unread", "read", "archived"],
+          window: { first: 100 },
+        },
+      ]);
+      expect(yield* unread({ sessionIds: [] })).toEqual({ sessionIds: [] });
+      expect(reads).toHaveLength(1);
+    }),
+  );
+
+  const provider = agentRuntimeProviderFixture({
+    models: [
+      {
+        slug: "model",
+        name: "Model Name",
+        isCustom: false,
+        isDefault: true,
+        capabilities: {
+          optionDescriptors: [
+            {
+              type: "select",
+              id: "reasoningEffort",
+              label: "Reasoning",
+              currentValue: "medium",
+              options: [
+                { id: "high", label: "High", isDefault: true },
+                { id: "medium", label: "Medium" },
+                { id: "low", label: "Low" },
+              ],
+            },
+          ],
+        },
       },
-    ]);
+      { slug: "plain", name: "Plain Model", isCustom: false, capabilities: {} },
+    ],
+  });
 
-    started = true;
-    yield* changed;
-    expect(events.slice(1)).toMatchObject([
-      { event: "chat.snapshot", data: { state: { sendBlockedReason: null } } },
-    ]);
+  test.each([
+    [null, null, "medium"],
+    ["model", "high", "high"],
+    ["model", "unoffered", "medium"],
+    ["plain", "high", null],
+    ["missing", "high", "medium"],
+  ] as const)(
+    "projects offered efforts and the default chat choice (%s, %s)",
+    (model, reasoningEffort, expected) => {
+      const preference = { ...DEFAULT_INBOX_SETTINGS.chatAgent, model, reasoningEffort };
+      const catalog = projectAgentCatalog([provider], preference);
+      expect(catalog.providers[0]?.models).toEqual([
+        {
+          id: "model",
+          label: "Model Name",
+          efforts: [
+            { id: "high", label: "High" },
+            { id: "medium", label: "Medium" },
+            { id: "low", label: "Low" },
+          ],
+          defaultEffort: "medium",
+        },
+        { id: "plain", label: "Plain Model", efforts: [], defaultEffort: null },
+      ]);
+      expect(catalog.defaultChoice).toEqual({
+        providerInstanceId: "codex",
+        model: model === "plain" ? "plain" : "model",
+        reasoningEffort: expected,
+      });
+    },
+  );
 
-    // From here the chat follows its Run, as one opened while it runs does.
-    title = "Investigating";
-    yield* PubSub.publish(activityChanges, { type: "reset" as const, sequence: 1 });
-    yield* TestClock.adjust("80 millis");
-    expect(events.slice(2)).toMatchObject([
-      { event: "chat.patch", data: { ops: [{ op: "title", title: "Investigating" }] } },
-    ]);
-  }),
-);
-
-it.effect("a phone offers stopping and archiving a hosted chat only as Core lets its Member", () =>
-  Effect.gen(function* () {
-    const invalidations = yield* Queue.unbounded<ProjectSessionsChangeEvent>();
-    const queued = yield* Queue.unbounded<{ event: string; data: unknown }>();
-    const sessionId = "session";
-    // Bob reads Alice's chat: he neither manages it nor, until he asks for its Run, stops it.
-    let read = { canManage: false, canStop: false, archived: false };
-    const at = "2026-11-08T04:32:02.000Z";
-    let run: AgentSnapshot["projection"]["runs"][number] = {
-      id: "run",
-      threadId: "thread",
-      ordinal: 1,
-      status: "waiting",
-      providerInstanceId: "codex",
-      modelSelection: { instanceId: "codex", model: "model" },
-      providerThreadId: "provider-thread",
-      userMessageId: "user",
-      rootNodeId: "root",
-      activeAttemptId: "attempt",
-      requestedAt: at,
-      startedAt: at,
-      completedAt: null,
-      checkpointId: null,
-      contextHandoffId: null,
-    };
-    const makeTranscript = yield* makeMobileTranscript({
-      session: () =>
-        Effect.sync(
-          () =>
-            ({
-              id: sessionId,
-              projectId: null,
-              displayTitle: "Alice's chat",
-              executionRef: { runtimeId: "runtime", threadId: "thread" },
-              ...read,
-            }) as ProjectSession,
-        ),
-    }).pipe(
-      Effect.provideService(DatabaseNotifierRuntime, {
-        projectSessionInvalidations: Stream.fromQueue(invalidations),
-      } as DatabaseNotifierRuntime["Service"]),
-      Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([]),
-        resolveTarget: () => Effect.never,
-        read: () =>
-          Effect.sync(() => ({
-            snapshot: agentRuntimeSnapshotFixture({
-              projection: { runs: [run] },
-            }),
-          })),
-      } as unknown as AgentRuntimeApplication["Service"]),
-      Effect.provideService(AgentRuntimeSessionActivity, {
-        read: Effect.succeed({ items: [] }),
-        activityChanges: Stream.never,
-      } as unknown as AgentRuntimeSessionActivity["Service"]),
-      Effect.provideService(AgentRuntimeSupervisor, {} as AgentRuntimeSupervisor["Service"]),
-      Effect.provideService(CodexNativeThreadLookup, {} as CodexNativeThreadLookup["Service"]),
-      Effect.provideService(CodexGateway, {} as CodexGateway["Service"]),
-      Effect.provideService(UserPresence, recordingPresence([])),
-      Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+  test("projects the first marked default when the model has no current effort", () => {
+    const model = provider.models[0]!;
+    const descriptor = model.capabilities!.optionDescriptors![0]!;
+    const { currentValue: _current, ...withoutCurrent } = descriptor;
+    const catalog = projectAgentCatalog(
+      [
+        {
+          ...provider,
+          models: [{ ...model, capabilities: { optionDescriptors: [withoutCurrent] } }],
+        },
+      ],
+      DEFAULT_INBOX_SETTINGS.chatAgent,
     );
-    const transcript = yield* makeTranscript((event, data) =>
-      Queue.offer(queued, { event, data }).pipe(Effect.asVoid),
-    ).pipe(Effect.provideService(HostInvocation, "observation-proof"));
-    const open = Effect.flatten(transcript.handlers["chat.open"]({ sessionId })).pipe(
-      Effect.provideService(HostInvocation, "request-proof"),
-    );
-    expect((yield* open).state).toMatchObject({
-      stopBlockedReason: CHAT_STOP_RESERVED_REASON,
-      status: "waiting",
-      activeRunId: null,
-      archived: false,
-      canManage: false,
-    });
+    expect(catalog.providers[0]?.models[0]?.defaultEffort).toBe("high");
+    expect(catalog.defaultChoice?.reasoningEffort).toBe("high");
+  });
 
-    // Once Bob's own Run is the chat's work, Core lets him stop it, and the phone hears so.
-    read = { ...read, canStop: true };
-    run = { ...run, status: "running" };
-    yield* Queue.offer(invalidations, {
-      changeType: "update",
-      summaryScopes: [],
-      detailInvalidation: { kind: "sessions", sessionIds: [sessionId] },
-    });
-    yield* TestClock.adjust("80 millis");
-    expect(yield* Queue.take(queued)).toMatchObject({
-      event: "chat.patch",
-      data: {
-        ops: [
-          { op: "state", state: { stopBlockedReason: null, canManage: false, activeRunId: "run" } },
-        ],
+  test("chat rows use the exact Agent instance's model name and fall back to slugs", () => {
+    expect(projectChatRow(row, metadata, undefined, [provider]).agentLabel).toBe("Model Name");
+    expect(projectChatRow(row, metadata, undefined).agentLabel).toBe("model");
+    expect(
+      projectChatRow(row, { ...metadata!, providerInstanceId: "another" }, undefined, [provider])
+        .agentLabel,
+    ).toBe("model");
+  });
+
+  const row = {
+    project: null,
+    task: {
+      session: {
+        id: "chat",
+        display_title: "Chat",
+        execution_ref: { runtime_id: "runtime", thread_id: "thread" },
+        created_at: "2026-11-04T12:00:00Z",
+        activity_at: 1,
+        can_manage: true,
       },
-    });
-  }),
-);
+      thread: null,
+    },
+  } as unknown as Parameters<typeof projectChatRow>[0];
+  const metadata = {
+    threadId: "thread",
+    providerInstanceId: "codex",
+    model: "model",
+    title: "Chat",
+    status: "idle",
+    activeFlags: [],
+    preview: "",
+    pendingRequestCount: 0,
+    worktreePath: null,
+    branch: null,
+  } as unknown as Parameters<typeof projectChatRow>[1];
+
+  it.effect(
+    "uses the same default when starting and reads model names once per chat list, with catalog fallback",
+    () =>
+      Effect.gen(function* () {
+        let preference = {
+          ...DEFAULT_INBOX_SETTINGS.chatAgent,
+          reasoningEffort: "high",
+          serviceTier: "fast",
+        };
+        let failCatalog = false;
+        let reads = 0;
+        const catalog = yield* makeMobileCatalog.pipe(
+          Effect.provideService(AgentRuntimeApplication, {
+            catalog: () =>
+              Effect.suspend(() => {
+                reads++;
+                return failCatalog
+                  ? Effect.fail(new Error("Catalog unavailable"))
+                  : Effect.succeed([provider]);
+              }),
+            sessionMetadata: () => Effect.succeed([metadata]),
+          } as unknown as AgentRuntimeApplication["Service"]),
+          Effect.provideService(AgentRuntimeSessionActivity, {
+            read: Effect.succeed({ items: [] }),
+          } as unknown as AgentRuntimeSessionActivity["Service"]),
+          Effect.provideService(CoreModules, {
+            workspace: {
+              read: () =>
+                Effect.succeed({
+                  value: {
+                    kind: "session_window",
+                    sessions: {
+                      items: [
+                        row,
+                        {
+                          ...row,
+                          task: { ...row.task, session: { ...row.task.session, id: "second" } },
+                        },
+                      ],
+                      next_cursor: null,
+                    },
+                  },
+                }),
+            },
+          } as unknown as CoreModules["Service"]),
+          Effect.provideService(ApplicationSettings, {
+            snapshot: () =>
+              Effect.sync(() => ({ inbox: { ...DEFAULT_INBOX_SETTINGS, chatAgent: preference } })),
+          } as unknown as ApplicationSettings["Service"]),
+          Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+          Effect.provideService(InboxApplication, {} as InboxApplication["Service"]),
+          Effect.provideService(CodexGitProbe, {} as CodexGitProbe["Service"]),
+        );
+        const preferred = yield* catalog.agentChoice(null);
+        expect(preferred).toEqual({ ...preference, instanceId: "codex", model: "model" });
+        expect((yield* catalog.agents({})).defaultChoice?.reasoningEffort).toBe("high");
+        preference = { ...preference, model: "missing" };
+        const fallback = yield* catalog.agentChoice(null);
+        expect(fallback).toEqual({
+          instanceId: "codex",
+          model: "model",
+          reasoningEffort: null,
+          serviceTier: null,
+        });
+        const resolved = resolveInboxModel([provider], fallback, "chat");
+        expect(resolved).toMatchObject({
+          kind: "ready",
+          selection: { instanceId: "codex", model: "model" },
+        });
+        expect((yield* catalog.agents({})).defaultChoice?.reasoningEffort).toBe("medium");
+
+        reads = 0;
+        expect((yield* catalog.chats({})).items.map((item) => item.agentLabel)).toEqual([
+          "Model Name",
+          "Model Name",
+        ]);
+        expect(reads).toBe(1);
+        failCatalog = true;
+        expect((yield* catalog.chats({})).items.map((item) => item.agentLabel)).toEqual([
+          "model",
+          "model",
+        ]);
+        expect(reads).toBe(2);
+      }),
+  );
+});

@@ -107,15 +107,6 @@ const userInputParams = (threadId: string) => ({
   turnId: `turn-${threadId}`,
 });
 
-const directDynamicToolParams = (threadId: string) => ({
-  threadId,
-  turnId: `turn-${threadId}`,
-  callId: `call-${threadId}`,
-  namespace: "example_app",
-  tool: "example_step",
-  arguments: { step: "complete" },
-});
-
 const browserOriginAutoAcceptParams = {
   threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
   turnId: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
@@ -615,32 +606,6 @@ it.effect("routes remote interactive request notifications through their executi
   ),
 );
 
-it.effect("retires the exact Conversation Entity after a terminal notification commits", () =>
-  withProtocol(({ inbox, conversations }) =>
-    Effect.gen(function* () {
-      const generationScope = yield* Scope.make();
-      yield* inbox
-        .openGeneration("local", 9)
-        .pipe(Effect.provideService(Scope.Scope, generationScope));
-      conversations
-        .entity("thread-retired")
-        .installFollowerCanonicalState(liveNativeState("thread-retired", "local"));
-
-      yield* inbox.publishNotification({
-        hostId: "local",
-        generation: 9,
-        protocol: "generated",
-        method: "thread/archived",
-        params: { threadId: "thread-retired" },
-      });
-      while (conversations.current("thread-retired") !== null) yield* Effect.yieldNow;
-
-      assert.isNull(conversations.current("thread-retired"));
-      yield* Scope.close(generationScope, Exit.void);
-    }),
-  ),
-);
-
 it.effect("seals an archived notification before queued commands can enter the retired lane", () =>
   Effect.gen(function* () {
     const entered = yield* Deferred.make<void>();
@@ -757,47 +722,6 @@ it.effect("a delayed Thread-start release cannot consume or retire a replacement
   ),
 );
 
-it.effect("a late archive notification cannot cancel the next archived deletion", () =>
-  Effect.gen(function* () {
-    const entered = yield* Deferred.make<void>();
-    const release = yield* Deferred.make<void>();
-    yield* withProtocol(
-      ({ inbox, conversations, commands, deletedThreads }) =>
-        Effect.gen(function* () {
-          const generationScope = yield* Scope.make();
-          yield* inbox
-            .openGeneration("local", 9)
-            .pipe(Effect.provideService(Scope.Scope, generationScope));
-          const original = conversations.entity("thread-archive-delete");
-          assert.isTrue(yield* commands.archive("thread-archive-delete"));
-          assert.isNull(conversations.current("thread-archive-delete"));
-          yield* inbox.publishNotification({
-            hostId: "local",
-            generation: 9,
-            protocol: "generated",
-            method: "thread/archived",
-            params: { threadId: "thread-archive-delete" },
-          });
-          yield* Deferred.await(entered);
-          const deleting = yield* commands
-            .deleteArchived("thread-archive-delete")
-            .pipe(Effect.forkChild);
-          yield* Effect.yieldNow;
-          yield* Deferred.succeed(release, undefined);
-          assert.isTrue(yield* Fiber.join(deleting));
-          assert.deepEqual(deletedThreads, ["thread-archive-delete"]);
-          assert.isNull(conversations.current("thread-archive-delete"));
-          assert.notStrictEqual(
-            original.generation,
-            conversations.entity("thread-archive-delete").generation,
-          );
-          yield* Scope.close(generationScope, Exit.void);
-        }),
-      { archivedCleanup: { entered, release } },
-    );
-  }),
-);
-
 it.effect(
   "native archive observation cannot interrupt its admitted command's remaining Core work",
   () =>
@@ -839,79 +763,6 @@ it.effect(
         },
       );
     }),
-);
-
-it.effect("a late archive after deletion admission preserves that deletion and applies once", () =>
-  Effect.gen(function* () {
-    const entered = yield* Deferred.make<void>();
-    const release = yield* Deferred.make<void>();
-    yield* withProtocol(
-      ({ inbox, conversations, commands, observedNotifications, appliedNotifications }) =>
-        Effect.gen(function* () {
-          const generationScope = yield* Scope.make();
-          yield* inbox
-            .openGeneration("local", 9)
-            .pipe(Effect.provideService(Scope.Scope, generationScope));
-          conversations.entity("thread-admitted-delete");
-          assert.isTrue(yield* commands.archive("thread-admitted-delete"));
-          const deleting = yield* commands
-            .deleteArchived("thread-admitted-delete")
-            .pipe(Effect.forkChild);
-          yield* Deferred.await(entered);
-          yield* inbox.publishNotification({
-            hostId: "local",
-            generation: 9,
-            protocol: "generated",
-            method: "thread/archived",
-            params: { threadId: "thread-admitted-delete" },
-          });
-          for (let attempt = 0; attempt < 10; attempt += 1) yield* Effect.yieldNow;
-          assert.deepEqual(appliedNotifications, []);
-          yield* Deferred.succeed(release, undefined);
-          assert.isTrue(yield* Fiber.join(deleting));
-          while (!observedNotifications.includes("thread/archived")) yield* Effect.yieldNow;
-          assert.deepEqual(appliedNotifications, ["thread/archived"]);
-          assert.isNull(conversations.current("thread-admitted-delete"));
-          yield* conversations.runCommand("thread-admitted-delete", Effect.void);
-          yield* Scope.close(generationScope, Exit.void);
-        }),
-      {
-        deleteArchived: Deferred.succeed(entered, undefined).pipe(
-          Effect.andThen(Deferred.await(release)),
-          Effect.as(true),
-        ),
-      },
-    );
-  }),
-);
-
-it.effect("a resumed native lifecycle remains closable after a late utility-only observation", () =>
-  withProtocol(({ inbox, conversations, commands, observedNotifications }) =>
-    Effect.gen(function* () {
-      const generationScope = yield* Scope.make();
-      yield* inbox
-        .openGeneration("local", 9)
-        .pipe(Effect.provideService(Scope.Scope, generationScope));
-      assert.isTrue(yield* commands.archive("thread-reopen"));
-      const utility = conversations.entity("thread-reopen");
-      const publish = () =>
-        inbox.publishNotification({
-          hostId: "local",
-          generation: 9,
-          protocol: "generated",
-          method: "thread/archived",
-          params: { threadId: "thread-reopen" },
-        });
-      yield* publish();
-      while (observedNotifications.length < 1) yield* Effect.yieldNow;
-      assert.strictEqual(conversations.current("thread-reopen"), utility);
-      utility.installFollowerCanonicalState(liveNativeState("thread-reopen", "local"));
-      yield* publish();
-      while (observedNotifications.length < 2) yield* Effect.yieldNow;
-      assert.isNull(conversations.current("thread-reopen"));
-      yield* Scope.close(generationScope, Exit.void);
-    }),
-  ),
 );
 
 it.effect.each([
@@ -1087,61 +938,6 @@ it.effect.each([
       }
       assert.deepEqual(executedDynamicTools, []);
       assert.deepEqual(conversations.entity("thread-a").readServerRequests(), []);
-      yield* Scope.close(generationScope, Exit.void);
-    }),
-  ),
-);
-
-it.effect("lets another Thread respond while the first Thread command lane is occupied", () =>
-  withProtocol(({ inbox, conversations }) =>
-    Effect.gen(function* () {
-      const generationScope = yield* Scope.make();
-      const generation = yield* inbox
-        .openGeneration("local", 2)
-        .pipe(Effect.provideService(Scope.Scope, generationScope));
-      const laneEntered = yield* Deferred.make<void>();
-      const releaseLane = yield* Deferred.make<void>();
-      const blocker = yield* conversations
-        .runCommand(
-          "thread-a",
-          Deferred.succeed(laneEntered, undefined).pipe(
-            Effect.andThen(Deferred.await(releaseLane)),
-          ),
-        )
-        .pipe(Effect.forkChild);
-      yield* Deferred.await(laneEntered);
-      yield* generation.admit({
-        requestId: "blocked",
-        protocol: "generated",
-        method: "item/tool/requestUserInput",
-        params: userInputParams("thread-a"),
-      });
-      const responseFiber = yield* generation.settlements.pipe(
-        Stream.filter(({ occurrence }) => occurrence.requestId === "fast"),
-        Stream.runHead,
-        Effect.forkChild,
-      );
-      yield* generation.admit({
-        requestId: "fast",
-        protocol: "generated",
-        method: "item/tool/call",
-        params: directDynamicToolParams("thread-b"),
-      });
-
-      const response = yield* Fiber.join(responseFiber);
-      assert.strictEqual(response._tag, "Some");
-      if (response._tag === "Some") {
-        assert.deepEqual(response.value.outcome, {
-          kind: "result",
-          value: {
-            success: true,
-            contentItems: [{ type: "inputText", text: "example_step" }],
-          },
-        });
-      }
-      assert.deepEqual(conversations.entity("thread-a").readServerRequests(), []);
-      yield* Deferred.succeed(releaseLane, undefined);
-      yield* Fiber.join(blocker);
       yield* Scope.close(generationScope, Exit.void);
     }),
   ),

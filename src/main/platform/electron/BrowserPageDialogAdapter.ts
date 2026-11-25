@@ -11,7 +11,7 @@ export type BrowserPageDialogCallback = (accept: boolean, userInput: string) => 
 /**
  * Replaces Electron's internal -run-dialog / -cancel-dialogs events for Browser page guests.
  * There is no public deferred-answer alternative: disableDialogs answers immediately and
- * CDP cannot suppress the native box. src/main/browser-platform.integration.ts guards this seam.
+ * CDP cannot suppress the native box. src/main/browser-platform.nightly.integration.ts guards this seam.
  * The caller's guest listener Scope owns release; a released guest keeps a dismiss-only listener.
  */
 export function installBrowserPageDialogAdapter(

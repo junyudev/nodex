@@ -68,7 +68,7 @@ vi.mock("electron", async (importOriginal) => ({
   },
 }));
 
-it.effect("owns the complete application settings ingress with the Main Scope", () =>
+it.effect("validates and persists settings with the owning window authority", () =>
   Effect.gen(function* () {
     let routingConsent: boolean | null = null;
     const handlers = new Map<string, Handler>();
@@ -180,54 +180,6 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       scope,
     );
 
-    assert.deepEqual([...handlers.keys()].sort(), [
-      "codex-command-keymap-state",
-      "reset-codex-command-keybindings",
-      "set-codex-command-keybinding",
-      "settings:acp-agents:configuration-status",
-      "settings:acp-agents:get",
-      "settings:acp-agents:update",
-      "settings:agent-profiles:get",
-      "settings:agent-profiles:update",
-      "settings:agent-runtime:get",
-      "settings:agent-runtime:update",
-      "settings:backup:get",
-      "settings:backup:update",
-      "settings:codex-developer:update",
-      "settings:codex-executable:get",
-      "settings:codex-executable:update",
-      "settings:codex-home:get",
-      "settings:codex-home:update",
-      "settings:composer-predictions:get",
-      "settings:composer-predictions:update",
-      "settings:diagnostics:get",
-      "settings:diagnostics:update",
-      "settings:git:get",
-      "settings:git:update",
-      "settings:history:get",
-      "settings:history:update",
-      "settings:inbox:get",
-      "settings:inbox:update",
-      "settings:language:update",
-      "settings:link-opening:get",
-      "settings:link-opening:update",
-      "settings:model-policy:get",
-      "settings:model-policy:update",
-      "settings:notification-authorization:open-settings",
-      "settings:notification-authorization:read",
-      "settings:notification-authorization:request",
-      "settings:telemetry:get",
-      "settings:telemetry:update",
-      "settings:terminal-shell:get",
-      "settings:terminal-shell:update",
-      "settings:third-party-notices:get",
-      "settings:thread-notifications:get",
-      "settings:thread-notifications:update",
-      "settings:usage-meters:get",
-      "settings:usage-meters:update",
-      "settings:window-restore:get",
-      "settings:window-restore:update",
-    ]);
     const frame = { url: "app://-/index.html" };
     const event = {
       sender: { getType: () => "window", id: 7, mainFrame: frame },

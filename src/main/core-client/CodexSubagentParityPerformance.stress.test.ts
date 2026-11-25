@@ -1305,9 +1305,9 @@ it.live(
           rendererHotRows:
             "src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx :: mounts 4 active and 10 done rows, then expands all and collapses again",
           selectedOnlyPhysicalReads:
-            "tests/e2e/subagents.spec.ts :: keeps overview metadata-only, expands bounded windows, and hydrates only the selection",
+            "src/main/codex-application/CodexSubagentDirectory.node.test.ts :: keeps overview metadata-only, expands bounded windows, and hydrates only the selection",
           stopConvergence:
-            "tests/e2e/subagents.spec.ts :: stops the root, interrupts only a still-running child, and converges through invalidation",
+            "tests/e2e/scripted-agent-runtime.spec.ts :: stops the root, interrupts only a still-running child, and converges through invalidation",
         },
         gates: {
           initialMountedRowsAtMost: 14,
