@@ -1,3 +1,5 @@
+import { readableIpcError } from "../../lib/ipc-error-message";
+
 export type LocalConversationAttachmentState =
   | { readonly status: "idle" }
   | { readonly status: "attaching" }
@@ -21,10 +23,12 @@ function collectErrorMessages(error: unknown): string[] {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current !== undefined && current !== null; depth += 1) {
     const message = current instanceof Error ? current.message : readErrorField(current, "message");
-    if (typeof message === "string" && message.trim()) messages.push(message.trim());
+    // A rejected IPC call names its channel first; only the reason that follows is readable.
+    const readable = typeof message === "string" ? readableIpcError(message) : "";
+    if (readable) messages.push(readable);
     current = current instanceof Error ? current.cause : readErrorField(current, "cause");
   }
-  if (messages.length === 0) {
+  if (messages.length === 0 && !(error instanceof Error)) {
     const fallback = String(error).trim();
     if (fallback && fallback !== "[object Object]") messages.push(fallback);
   }

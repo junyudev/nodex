@@ -76,6 +76,16 @@ const START_FAILED_MESSAGE =
 const EXHAUSTED_MESSAGE =
   "Agent execution stopped unexpectedly several times, so Nodex paused restarts for a few minutes. Your next Agent action after that starts it again.";
 
+/** What a person is told when Agent execution is unavailable, instead of a generic failure. */
+export const agentRuntimeUnavailableMessage = (
+  error: AgentRuntimeSupervisorError,
+): string | undefined => {
+  if (error.profileBusyMessage) return error.profileBusyMessage;
+  if (error.operation === "start") return START_FAILED_MESSAGE;
+  if (error.operation === "recovery-exhausted") return EXHAUSTED_MESSAGE;
+  return undefined;
+};
+
 interface Usage {
   /** Requests, Host calls and retained observers currently using the process. */
   readonly busy: number;

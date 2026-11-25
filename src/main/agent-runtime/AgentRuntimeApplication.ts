@@ -5,7 +5,10 @@ import { isAbsolute } from "node:path";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { AgentRuntimeWorkLedger, countingCoreReads } from "./AgentRuntimeWork";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
-import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
+import {
+  AgentRuntimeSupervisorError,
+  agentRuntimeUnavailableMessage,
+} from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
 import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
@@ -571,9 +574,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     effect.pipe(
       Effect.mapError((cause) => {
         if (Schema.is(AgentRuntimeApplicationError)(cause)) return cause;
-        if (cause instanceof AgentRuntimeSupervisorError && cause.profileBusyMessage) {
-          return failure(operation, cause.profileBusyMessage, cause);
-        }
+        const unavailable =
+          cause instanceof AgentRuntimeSupervisorError
+            ? agentRuntimeUnavailableMessage(cause)
+            : undefined;
+        if (unavailable) return failure(operation, unavailable, cause);
         if (
           Schema.is(AgentRuntimeProcessError)(cause) &&
           cause.engineTag === "OrchestratorThreadAboveModeLimitError" &&
