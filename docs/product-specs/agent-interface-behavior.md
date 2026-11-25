@@ -86,6 +86,12 @@ arguments cannot supply execution identity. Execution rechecks the captured invo
 and current native lifetime. Mutations retain stable operation identities, and
 results must satisfy their content contract and the complete-response byte budget.
 
+Agents use Markdown references when a reply names a Page, Database View or chat.
+Tool results include a canonical same-Space `url` for the Pages, Views and Sessions
+they return. Fetches and search hits for a Block link to that Block on its Page.
+Saved View and Data Source queries link their Page rows, and a saved View result
+also links the View. SQL queries return the columns selected by the caller.
+
 The Agent `search` tool uses [Find](command-palette-behavior.md#text-matching).
 It searches all readable locations in the current Space by default, with the
 calling Project preferred. Omit `kinds` to find Pages and chats, or pass any
@@ -222,9 +228,10 @@ Expired observations and changed presentation require a new observation.
 Canvas in the calling Session's panel, or an explicitly selected Session. Agents use it
 after creating or editing an artifact when showing the result would help the user.
 Hidden Sessions retain their opened tabs without navigation. Its receipt names the
-surface that opened, plus the URL of a Browser tab, so an Agent can report what the
-user sees. Relative paths resolve against the target task's workspace, and workspace
-requests resolve within canonical selected roots. Existing Browser and Terminal
+surface that opened, including its URL for a Page, View or Browser tab.
+`navigate_to_session` returns the chat URL on success. Relative paths resolve
+against the target task's workspace, and workspace requests resolve within
+canonical selected roots. Existing Browser and Terminal
 identities must belong to the target Session. Review supports last-turn, staged,
 unstaged and branch sources, including an explicit base revision and file path. Source
 and file reveal requests are consumed once.
@@ -264,8 +271,8 @@ For a Database View, `read_tab_content` returns the viewport, loaded, or selecte
 occurrences with explicit coverage and bounded property selection. `query_displayed_view`
 instead executes captured effective rules, personal overrides, and search through Core.
 Core checks View, schema, preference revisions and resource lifecycle in one read snapshot.
-The result includes its rule fingerprint and separate display coverage; collapsed groups
-remain included in the effective query. Results are complete within the requested limit
+The result includes a `url` column for Page occurrences, its rule fingerprint and
+separate display coverage. The effective query includes collapsed groups. Results are complete within the requested limit
 or fail their budget. Separate calls are independent observations, with no SQL cursor.
 
 The bridge is scoped to the physical app-server connection. Restarting Nodex creates a new
@@ -420,6 +427,7 @@ otherwise; it does not borrow a rebound native incarnation.
 Omitting the source selects the caller's Session. Both same-directory and worktree forks
 finish workspace preparation and attach the new root to its stable product Session before
 returning `forkState: "attached"` with the Session, Thread and operation identities.
+Both `create_session` and `fork_session` return the new chat's `url`.
 Core verifies the captured caller and exact execution binding. A retry reconciles that
 same destination and native workspace ownership instead of forking again. Forking does
 not start a new Turn; an explicit follow-up starts work in the child, whose application
@@ -590,7 +598,8 @@ control again, so a retry cannot stop a later turn or repeat queue delivery.
 Project by default; a projectless caller sees its projectless lane. `scope: "profile"` explicitly
 includes every Project, while `projectId` selects a Project. Combining Profile scope with a
 Project is invalid. Runtime child executions are included by default and carry their root
-product Session identity plus `execution.threadId`; `includeSubagents: false` keeps only roots.
+product Session identity plus `execution.threadId`. The `url` opens that Session.
+`includeSubagents: false` keeps only roots.
 Native roots retain `threadId` and binding metadata without a Runtime execution selector.
 Active discovery excludes archived Projects. Results use conversation-recency order; pins remain placement metadata.
 `projectId` filters Project ownership and `query` matches the title or bounded first-user

@@ -152,6 +152,7 @@ it.effect(
       assert.deepStrictEqual(own.structuredContent, {
         operationId: own.structuredContent?.operationId,
         sessionId: "self",
+        url: "nodex://sessions/self",
         title: "Renamed",
         receipt: {},
       });
@@ -352,6 +353,7 @@ it.effect(
             rankKey: 1024,
             kind: "session",
             sessionId: "s",
+            url: "nodex://sessions/s",
             title: "Draft",
             archived: true,
           },
@@ -422,7 +424,7 @@ it.effect("discovers exact built-in Project and Session lanes through canonical 
     );
     assert.deepStrictEqual(reads, [{ lane: "pinned_sessions", window: { first: 1 } }]);
     assert.deepStrictEqual(result.structuredContent?.items, [
-      { kind: "session", sessionId: "draft:a", title: "Draft" },
+      { kind: "session", sessionId: "draft:a", title: "Draft", url: "nodex://sessions/draft%3Aa" },
     ]);
     assert.strictEqual(result.structuredContent?.orderRevision, "order:a");
     for (const sectionId of ["pinned", "canonical:chats"]) {

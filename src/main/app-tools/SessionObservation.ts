@@ -1,3 +1,4 @@
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
 import { historyResultBytes, HISTORY_READ_MAX_BYTES } from "@nodex/agent-runtime/history-read";
 import { createHash } from "node:crypto";
@@ -45,6 +46,7 @@ export interface SessionAgent {
 export interface SessionObservationResult {
   readonly schemaVersion: 2;
   readonly sessionId: string;
+  readonly url: string;
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
@@ -472,7 +474,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
         Effect.gen(function* () {
           const before = yield* authorize(input.sessionId, provenance);
           const resolved = yield* resolve(before, true, input.execution);
-          const base = {
+          const base = withSessionUrl({
             schemaVersion: 2 as const,
             sessionId: before.session.id,
             projectId: before.session.project_id ?? null,
@@ -483,7 +485,7 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
             archived: before.session.archived,
             pinned: before.session.pinned,
             status: { type: resolved.status, activeFlags: resolved.flags },
-          };
+          });
           if (!resolved.source) {
             if (input.itemId !== undefined)
               return yield* new SessionObservationError({

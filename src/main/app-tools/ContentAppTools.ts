@@ -4,6 +4,9 @@ import { LibraryModule } from "../library-application/LibraryModule";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { toCoreAgentExecutionAuthorization } from "../core-client/core-agent-execution-authorization";
 import { searchInputSchema } from "../../shared/nodex-app-tools/find-contract";
+import { buildPageDeepLink, buildSessionDeepLink } from "../../shared/nodex-deeplink";
+import { pageBlockUrl } from "../../shared/nodex-app-tools/reference-urls";
+import type { FindHit } from "../../shared/find";
 import { toolResultBytes } from "./app-tool-result";
 import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
@@ -26,6 +29,17 @@ import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-resu
 import type { AppToolCaller } from "./AppToolCaller";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 
+const resultUrl = (hit: FindHit): string => {
+  switch (hit.kind) {
+    case "block":
+      return pageBlockUrl(hit.pageId, hit.identity);
+    case "chat":
+      return buildSessionDeepLink({ sessionId: hit.identity });
+    case "page":
+      return buildPageDeepLink({ pageId: hit.identity });
+  }
+};
+
 export const makeWithCapture = (
   captureCaller: (caller: AppToolCaller) => Effect.Effect<NodexAgentTurnContext | null>,
 ) =>
@@ -44,8 +58,10 @@ export const makeWithCapture = (
     });
     return Effect.fn("ContentAppTools.execute")(function* (input: AppToolInvocation) {
       if (!isContentTool(input.name)) return toolFailure("unknown_tool");
-      const contract = appContentToolContracts[input.name];
-      const parsed = parseAppToolArguments(contract.inputSchema, input.arguments);
+      const parsed = parseAppToolArguments(
+        appContentToolContracts[input.name].inputSchema,
+        input.arguments,
+      );
       if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const capture = captureCaller(input.caller);
@@ -96,6 +112,7 @@ export const makeWithCapture = (
                 results: result.hits.map((hit) => ({
                   kind: hit.kind,
                   identity: hit.identity,
+                  url: resultUrl(hit),
                   title: hit.title,
                   location: hit.location,
                   evidence: hit.evidence,
@@ -119,6 +136,7 @@ export const makeWithCapture = (
           return toolFailure("source_limit", "The search result exceeds the response budget.");
         }).pipe(Effect.catch(() => Effect.succeed(toolFailure("search_unavailable"))));
       }
+      const contract = appContentToolContracts[input.name];
       const { idempotencyKey, ...args } = parsed.data as Record<string, unknown>;
       let operationId = createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
         input.caller.threadId,
@@ -142,7 +160,7 @@ export const makeWithCapture = (
       }).pipe(
         Effect.provideService(NodexAgentApplication, application),
         Effect.map((output) => {
-          const validated = contract.outputSchema.safeParse(output);
+          const validated = contract.serializeOutput(output);
           if (!validated.success) return toolFailure("invalid_result", undefined, { operationId });
           if (!input.caller.isActive())
             return toolFailure("call_withdrawn", undefined, { operationId });

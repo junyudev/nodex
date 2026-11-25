@@ -1,3 +1,8 @@
+import {
+  withPageUrl,
+  withSessionUrl,
+  withViewUrl,
+} from "../../shared/nodex-app-tools/reference-urls";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { WorkbenchObservedTab } from "../../shared/nodex-app-tools/workbench";
@@ -64,9 +69,14 @@ export const make = Effect.gen(function* () {
 
         surface,
       });
-      return description.status === "unavailable"
-        ? { ...base, ...description }
-        : { ...base, ...description, title: description.title.slice(0, 300) };
+      if (description.status === "unavailable") return { ...base, ...description };
+      const target =
+        description.kind === "page"
+          ? withPageUrl(description)
+          : description.kind === "database_view"
+            ? withViewUrl(description)
+            : description;
+      return { ...base, ...target, title: target.title.slice(0, 300) };
     }
     if (surface?.kind === "image_editor" || tab.auxiliary?.kind === "image_editor")
       return unavailable;
@@ -78,13 +88,13 @@ export const make = Effect.gen(function* () {
         title: tab.auxiliary!.title.slice(0, 300),
       };
     if (surface.kind === "conversation") {
-      return {
+      return withSessionUrl({
         ...base,
         status: "available",
         kind: "conversation",
         sessionId: surface.config.sessionId,
         title: surface.titleSnapshot.slice(0, 300),
-      };
+      });
     }
     if (surface.kind === "files" || surface.kind === "review" || surface.kind === "agents") {
       return {

@@ -79,6 +79,7 @@ describe("Codex desktop developer instructions", () => {
       writingBlockInstructions: true,
       additionalDeveloperInstructions: "Caller instructions",
     });
+    expect(instructions).toContain("<nodex://sessions/ID> for live titles");
     const order = ["<app-context>", "### Writing blocks", "Caller instructions"].map((section) =>
       instructions.indexOf(section),
     );

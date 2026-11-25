@@ -1,5 +1,6 @@
 use crate::cli::MutationArgs;
 use crate::data_source::stable_id;
+use crate::deeplink::LinkedPage;
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{
     CommandOutput, CompactReceipt, map_client_error, map_core_error, resolve_page_selector,
@@ -149,7 +150,7 @@ pub(crate) struct PropertyBatchReceipt {
     status: PropertyBatchStatus,
     operation_id: String,
     commit_seq: i64,
-    pages: Vec<DatabasePagePropertyResult>,
+    pages: Vec<LinkedPage<DatabasePagePropertyResult>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commit: Option<nodex_core_contracts::database::DatabaseCommitValue>,
 }
@@ -348,7 +349,12 @@ pub(crate) fn execute(
         },
         operation_id: receipt.mutation.operation_id.clone(),
         commit_seq: committed.commit_cursor(),
-        pages: receipt.page_properties.clone(),
+        pages: receipt
+            .page_properties
+            .iter()
+            .cloned()
+            .map(|page| LinkedPage::new(page, |page| &page.page_id))
+            .collect::<Result<_, _>>()?,
         commit: mutation
             .r#return
             .iter()

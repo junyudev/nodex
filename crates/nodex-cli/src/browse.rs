@@ -1,4 +1,5 @@
 use crate::data_source::WindowArgs;
+use crate::deeplink::{NodexDeepLinkKind, page_url, resource_url};
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{
     CommandOutput, resolve_page_selector, selected_project, unwrap_database, unwrap_library,
@@ -26,7 +27,7 @@ pub struct BrowseArgs {
 pub(crate) enum BrowseOutput {
     DirectPageChildren {
         parent: LibraryNavigationParent,
-        items: Vec<nodex_core_contracts::library::LibraryNavigationNode>,
+        items: Vec<BrowseChild>,
         next_cursor: Option<String>,
         has_more: bool,
         total: u64,
@@ -41,9 +42,33 @@ pub(crate) enum BrowseOutput {
     },
 }
 #[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct BrowseChild {
+    #[serde(flatten)]
+    node: nodex_core_contracts::library::LibraryNavigationNode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+}
+
+impl TryFrom<nodex_core_contracts::library::LibraryNavigationNode> for BrowseChild {
+    type Error = CliError;
+
+    fn try_from(
+        node: nodex_core_contracts::library::LibraryNavigationNode,
+    ) -> Result<Self, CliError> {
+        use nodex_core_contracts::library::LibraryNavigationNode::*;
+        let url = match &node {
+            Page { page_id, .. } => Some(page_url(page_id)?),
+            View { view_id, .. } => Some(resource_url(NodexDeepLinkKind::View, view_id)?),
+            Database { .. } | Canvas { .. } => None,
+        };
+        Ok(Self { node, url })
+    }
+}
+#[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct BrowsePage {
     pub kind: &'static str,
     pub page_id: String,
+    pub url: String,
     pub page_key: Option<String>,
     pub title: String,
 }
@@ -87,7 +112,10 @@ pub(crate) fn execute(
         };
         return output(BrowseOutput::DirectPageChildren {
             parent,
-            items,
+            items: items
+                .into_iter()
+                .map(BrowseChild::try_from)
+                .collect::<Result<_, _>>()?,
             next_cursor,
             has_more,
             total,
@@ -117,13 +145,16 @@ pub(crate) fn execute(
         .rows
         .items
         .into_iter()
-        .map(|row| BrowsePage {
-            kind: "page",
-            page_id: row.page_id,
-            page_key: row.page_key,
-            title: row.title,
+        .map(|row| {
+            Ok(BrowsePage {
+                kind: "page",
+                url: page_url(&row.page_id)?,
+                page_id: row.page_id,
+                page_key: row.page_key,
+                title: row.title,
+            })
         })
-        .collect();
+        .collect::<Result<_, CliError>>()?;
     output(BrowseOutput::DirectDataSourcePages {
         database_id,
         data_source_id: source_id,

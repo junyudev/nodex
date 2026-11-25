@@ -1,3 +1,4 @@
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { readModelPolicyFailure } from "../../shared/model-policy";
 import { RUNTIME_MODE_RANK } from "@nodex/agent-runtime/contracts";
@@ -118,12 +119,18 @@ export const makeWithCapture = (
             sourceRunId: hosted?.runId ?? input.caller.turnId,
           });
           if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-          return toolSuccess({
+          const receipt = {
             ...outcome,
             operationId,
             resolvedRunId: outcome.runId,
             deliveryState: outcome.delivery,
-          });
+          };
+          const targetSessionId = "sessionId" in outcome ? outcome.sessionId : undefined;
+          return toolSuccess(
+            typeof targetSessionId === "string"
+              ? withSessionUrl({ ...receipt, sessionId: targetSessionId })
+              : receipt,
+          );
         }
         if (input.name === "fork_session") {
           const parsed = parseAppToolArguments(sessionForkSchema, input.arguments);
@@ -155,7 +162,7 @@ export const makeWithCapture = (
             acceptedAt: acceptedAtMs,
             environment: request.environment.type,
           });
-          return toolSuccess({ ...result, operationId, forkState: "attached" });
+          return toolSuccess(withSessionUrl({ ...result, operationId, forkState: "attached" }));
         }
         if (input.name === "merge_session_back") {
           const parsed = parseAppToolArguments(sessionMergeSchema, input.arguments);
@@ -175,7 +182,9 @@ export const makeWithCapture = (
             sessionId: request.sessionId,
             requestId: operationId,
           });
-          return toolSuccess({ ...merged, operationId, mergeState: "pending_next_message" });
+          return toolSuccess(
+            withSessionUrl({ ...merged, operationId, mergeState: "pending_next_message" }),
+          );
         }
         if (input.name !== "create_session") return toolFailure("unknown_tool");
         const parsed = parseAppToolArguments(createSessionSchema, input.arguments);
@@ -236,13 +245,15 @@ export const makeWithCapture = (
         });
         const messageId = deriveSessionDispatchIdentity(operationId, "message", acceptedAtMs);
         const outcome = yield* application.execution({ sessionId: result.sessionId, messageId });
-        return toolSuccess({
-          ...result,
-          operationId,
-          messageId,
-          runId: outcome.selectedRunId,
-          launchState: "attached",
-        });
+        return toolSuccess(
+          withSessionUrl({
+            ...result,
+            operationId,
+            messageId,
+            runId: outcome.selectedRunId,
+            launchState: "attached",
+          }),
+        );
       });
       return yield* execute.pipe(
         Effect.provideService(CoreApplicationAgent, provenance),

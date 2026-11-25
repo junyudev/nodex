@@ -9,6 +9,7 @@ import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-a
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { SessionWaiter, type SessionWaitResult } from "./SessionWaiter";
@@ -23,8 +24,8 @@ import { SESSION_READ_MAX_BYTES } from "./SessionHistoryRead";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
 /** Keep every target observable even when its progress cannot fit the shared response. */
-export const boundSessionWaitResult = (result: SessionWaitResult): SessionWaitResult => {
-  const targets = [...result.targets];
+export const boundSessionWaitResult = (result: SessionWaitResult) => {
+  const targets = result.targets.map(withSessionUrl);
   const errors = [...result.errors];
   const fits = () => toolResultBytes({ ...result, targets, errors }) <= 32 * 1024;
   for (let index = targets.length - 1; index >= 0 && !fits(); index--) {
@@ -101,11 +102,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             Effect.map((result) => {
               if (!input.caller.isActive()) return toolFailure("call_withdrawn");
               const { entryCursors, ...value } = result;
-              let count = value.sessions.length;
+              const sessions = value.sessions.map(withSessionUrl);
+              let count = sessions.length;
               while (count > 0) {
                 const bounded = {
                   ...value,
-                  sessions: value.sessions.slice(0, count),
+                  sessions: sessions.slice(0, count),
                   nextCursor:
                     count === value.sessions.length ? value.nextCursor : entryCursors[count - 1]!,
                 };

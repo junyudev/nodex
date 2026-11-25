@@ -16,6 +16,7 @@ use crate::cli::{
     BoundaryPlacement, DataSourcePlacementArgs, MutationArgs, PageCreateArgs, PageDeleteArgs,
     PageDestinationArgs, PageDuplicateArgs, PageMoveArgs,
 };
+use crate::deeplink::{LinkedPage, page_url};
 use crate::error::{CliError, CliErrorCode};
 use crate::page_mutation::{
     MAX_BODY_INPUT_BYTES, read_content_input, validate_return_fields, validate_title,
@@ -30,6 +31,7 @@ pub(crate) struct PageCreationResult<'a> {
     operation_id: &'a str,
     duplicate: bool,
     page_id: &'a str,
+    url: String,
     page_key: &'a Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
@@ -57,6 +59,7 @@ pub(crate) struct PageCopyResult<'a> {
     duplicate: bool,
     source_page_id: &'a str,
     page_id: &'a str,
+    url: String,
     page_key: &'a Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
@@ -80,6 +83,7 @@ pub(crate) struct PageMoveResult<'a> {
     operation_id: &'a str,
     duplicate: bool,
     page_id: &'a str,
+    url: String,
     page_key: &'a Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<&'a nodex_core_contracts::library::LibraryPageWorkflowStatusValue>,
@@ -94,7 +98,7 @@ pub(crate) struct PageBatchMoveReceipt {
     operation_id: String,
     duplicate: bool,
     commit_seq: i64,
-    pages: Vec<nodex_core_contracts::library::LibraryAgentMovedPage>,
+    pages: Vec<LinkedPage<nodex_core_contracts::library::LibraryAgentMovedPage>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commit: Option<nodex_core_contracts::library::LibraryCommitValue>,
 }
@@ -207,6 +211,7 @@ pub(crate) fn create_page(
         operation_id: &committed.receipt().mutation.operation_id,
         duplicate: committed.receipt().mutation.duplicate,
         page_id: &created.page_id,
+        url: page_url(&created.page_id)?,
         page_key: &created.page_key,
         status: created.status.as_ref(),
         document_id: &created.document_id,
@@ -316,7 +321,12 @@ pub(crate) fn move_page(
         operation_id: committed.receipt().mutation.operation_id.clone(),
         duplicate: committed.receipt().mutation.duplicate,
         commit_seq: committed.commit_cursor(),
-        pages: result.pages.clone(),
+        pages: result
+            .pages
+            .iter()
+            .cloned()
+            .map(|page| LinkedPage::new(page, |page| &page.page_id))
+            .collect::<Result<_, _>>()?,
         commit: arguments
             .mutation
             .r#return
@@ -431,6 +441,7 @@ fn transfer_page(
             duplicate: committed.receipt().mutation.duplicate,
             source_page_id: &copied.source_page_id,
             page_id: &copied.page_id,
+            url: page_url(&copied.page_id)?,
             page_key: &copied.page_key,
             status: copied.status.as_ref(),
             document_id: &copied.document_id,
@@ -482,6 +493,7 @@ fn transfer_page(
             operation_id: &committed.receipt().mutation.operation_id,
             duplicate: committed.receipt().mutation.duplicate,
             page_id,
+            url: page_url(page_id)?,
             page_key,
             status: moved.page_statuses.get(page_id),
             commit_seq: committed.commit_cursor(),

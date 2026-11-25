@@ -3,6 +3,7 @@ import {
   readHostedAppToolSessionContext,
   type AppToolAuthorityCapture,
 } from "./AppToolCaller";
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { readModelPolicyFailure } from "../../shared/model-policy";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
@@ -141,12 +142,14 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
         if (operation.sourceThreadId !== target.threadId)
           return toolFailure("handoff_binding_changed", undefined, result);
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-        return toolSuccess({
-          ...result,
-          replay: existing !== null,
-          deliveryState: "started",
-          operation,
-        });
+        return toolSuccess(
+          withSessionUrl({
+            ...result,
+            replay: existing !== null,
+            deliveryState: "started",
+            operation,
+          }),
+        );
       }
       if (!thread || thread.backend_binding.driver !== "codex")
         return toolFailure("session_backend_unavailable");
@@ -184,12 +187,14 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
           .pipe(Effect.catch(() => Effect.succeed(null)));
         if (operation && operation.sourceThreadId !== thread.thread_id)
           return toolFailure("handoff_binding_changed", undefined, result);
-        return toolSuccess({
-          ...result,
-          replay: true,
-          operation,
-          deliveryState: operation ? "started" : "unconfirmed",
-        });
+        return toolSuccess(
+          withSessionUrl({
+            ...result,
+            replay: true,
+            operation,
+            deliveryState: operation ? "started" : "unconfirmed",
+          }),
+        );
       }
       if (!admission.receipt.affected_session_ids.includes(request.sessionId))
         return toolFailure("session_handoff_unconfirmed", undefined, result);
@@ -221,7 +226,9 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
         });
       if (operation.sourceThreadId !== thread.thread_id)
         return toolFailure("handoff_binding_changed", undefined, { ...result, committed: true });
-      return toolSuccess({ ...result, replay: false, deliveryState: "started", operation });
+      return toolSuccess(
+        withSessionUrl({ ...result, replay: false, deliveryState: "started", operation }),
+      );
     });
     return (input: AppToolInvocation) =>
       execute(input).pipe(

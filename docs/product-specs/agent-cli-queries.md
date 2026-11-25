@@ -124,7 +124,11 @@ Page identity lookup and a metadata-only query avoid unrelated body loading.
 
 There are no SQL cursors or long-lived snapshot sessions. Separate
 `LIMIT/OFFSET` calls are separate observations and cannot establish a consistent
-large export. `read PAGE` remains a single-Page convenience with canonical text
+large export. Structured results from `read`, `page show`, `sed`, `search`, `ls`
+and `tree` include a same-Space `url` for each Page they return. A View returned
+by `ls` includes its View URL. Creation, duplication, move, body edit and
+Property edit receipts link the Page they operated on when they return its ID.
+`read PAGE` remains a single-Page convenience with canonical text
 and reusable validators; `ls`, `tree`, `sed`, `history` and `rg` retain their
 terminal-specific roles. `nodex search` uses [Page search](command-palette-behavior.md#page-search-model)
 over Page keys, IDs, titles, Properties, and bodies. Words can match different

@@ -16,6 +16,9 @@ export const HEARTBEAT_INSTRUCTIONS = `### Heartbeats
 
 A user message wrapped in \`<heartbeat>\` is sent by an Automation, not by the user. Do what it asks, then end the turn with \`<heartbeat><automation_id>…</automation_id><decision>…</decision><message>One short sentence.</message></heartbeat>\`, copying the Automation ID and choosing the decision NOTIFY or DONT_NOTIFY. NOTIFY only for what the user should know now: completion, failure, a material change or a decision they must make; you may write a brief update before the block. Unchanged, pending or healthy results are DONT_NOTIFY, with nothing outside the block. When the heartbeat is no longer useful, NOTIFY and offer to pause or delete it; do so yourself only when its instructions or the user told you to.`;
 
+export const NODEX_REFERENCE_INSTRUCTIONS =
+  "When a reply names a Nodex Page, Database View or chat the person can open, use a Markdown reference. Copy the tool’s `url` when it provides one. Use <nodex://pages/ID> or <nodex://sessions/ID> for live titles, <nodex://views/ID> for a View, or [text](nodex://pages/ID) when your own words read better. Append #BLOCK_ID to a Page URL to point to one Block. Write references outside code spans.";
+
 /** Guidance for the tools attached on the `nodex_app` MCP server. */
 export const ORCHESTRATION_INSTRUCTIONS = `
 
@@ -26,6 +29,7 @@ The \`nodex_app\` MCP server connects you to Nodex. You have full access to the 
 Nodex content tools work in every execution mode. The bundled \`nodex\` CLI runs through the shell and may need approval or be unavailable in sandboxed modes; prefer \`nodex_app\` tools there.
 
 - A Page reference identifies a Page by id; read it with \`fetch\`. For a Page visible beside the chat, \`read_tab_content\` returns its live editor state. \`selectedBlockIds\` are the Blocks the user highlighted.
+- ${NODEX_REFERENCE_INSTRUCTIONS}
 - Sessions are the user's conversations, addressed by sessionId. Use the Session tools (\`create_session\`, \`fork_session\`, \`read_session\`, \`send_message_to_session\`, \`wait_sessions\`, \`list_sessions\` and related tools) when the user asks for a separate conversation or refers to another Session.
 - Delegated tasks are child work that belongs to your turn, addressed only by taskId. Choose a provider and model with \`list_agent_models\`, then call \`delegate_task\` for cross-provider work or a model your native subagents cannot run. Keep each returned taskId.
 - When the person wants a task done without more Agents, pass \`mayDelegate: false\`: that task cannot delegate or start chats of its own. \`list_agent_models\` also says whether you may delegate.

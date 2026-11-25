@@ -408,6 +408,7 @@ it.effect("routes history by the target binding for Runtime and native Codex Ses
     assert.equal(result.threadId, "root:a");
     assert.equal(result.projectId, "project:target");
     assert.equal(result.history.availability, "available");
+    assert.equal(result.url, "nodex://sessions/session%3Aa");
     if (result.history.availability === "available")
       assert.deepEqual(result.history.items[0]?.content, {
         format: "text",

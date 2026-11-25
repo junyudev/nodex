@@ -1,4 +1,8 @@
-import { AUTOMATION_INSTRUCTIONS, HEARTBEAT_INSTRUCTIONS } from "@nodex/agent-runtime/instructions";
+import {
+  AUTOMATION_INSTRUCTIONS,
+  HEARTBEAT_INSTRUCTIONS,
+  NODEX_REFERENCE_INSTRUCTIONS,
+} from "@nodex/agent-runtime/instructions";
 
 const CODEX_DESKTOP_CONTEXT = `# Codex desktop context
 - You are running inside the Codex (desktop) app, which allows some additional features not available in the CLI alone:
@@ -12,7 +16,8 @@ const CODEX_DESKTOP_CONTEXT = `# Codex desktop context
 - When a user asks to play an audio file, render it using Markdown image syntax with an absolute path (e.g. ![audio](/absolute/path.mp3)).
 - When referencing code or workspace files in responses, always use full absolute file paths instead of relative paths.
 - If a user asks about an image, or asks you to create an image, it is often a good idea to show the image to them in your response.
-- Return web URLs as Markdown links (e.g. [label](https://example.com)).`;
+- Return web URLs as Markdown links (e.g. [label](https://example.com)).
+- ${NODEX_REFERENCE_INSTRUCTIONS}`;
 
 const CODEX_WORKSPACE_DEPENDENCIES_CONTEXT = `### Workspace Dependencies
 - For sheets, slides, and documents, call \`load_workspace_dependencies\` to find the bundled runtime and libraries.`;

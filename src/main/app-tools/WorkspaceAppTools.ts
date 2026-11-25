@@ -1,3 +1,4 @@
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { captureAppToolAuthority, type AppToolAuthorityCapture } from "./AppToolCaller";
 import { createHash } from "node:crypto";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -117,12 +118,14 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           operationId,
           payload: { sessionId, input: { title: parsed.data.title } },
         });
-        return toolSuccess({
-          operationId,
-          sessionId: result.value.id,
-          title: result.value.displayTitle,
-          receipt: result.apply,
-        });
+        return toolSuccess(
+          withSessionUrl({
+            operationId,
+            sessionId: result.value.id,
+            title: result.value.displayTitle,
+            receipt: result.apply,
+          }),
+        );
       }
       if (input.name === "set_session_archived" || input.name === "set_session_pinned") {
         const parsed = parseAppToolArguments(sessionSchemas[input.name], input.arguments);
@@ -140,13 +143,15 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                 operationId,
                 payload: { sessionId, pinned: parsed.data.pinned },
               });
-        return toolSuccess({
-          operationId,
-          sessionId: result.value.id,
-          archived: result.value.archived,
-          pinned: result.value.pinned,
-          receipt: result.apply,
-        });
+        return toolSuccess(
+          withSessionUrl({
+            operationId,
+            sessionId: result.value.id,
+            archived: result.value.archived,
+            pinned: result.value.pinned,
+            receipt: result.apply,
+          }),
+        );
       }
       if (input.name === "list_sidebar_order") {
         const parsed = parseAppToolArguments(sidebarSchemas.list_sidebar_order, input.arguments);
@@ -157,7 +162,14 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         const lane = builtinLane(section, itemKind);
         if (!lane) return toolFailure("invalid_section_target");
         const window = yield* workspace.listBuiltinSidebarOrder(lane, windowInput);
-        return toolSuccess({ sectionId, itemKind, ...window });
+        return toolSuccess({
+          sectionId,
+          itemKind,
+          ...window,
+          items: window.items.map((item) =>
+            item.kind === "session" ? withSessionUrl(item) : item,
+          ),
+        });
       }
       if (input.name === "reorder_sidebar_projects") {
         const parsed = parseAppToolArguments(
@@ -201,12 +213,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
                   title: item.project.name,
                   archived: item.project.lifecycle === "archived",
                 }
-              : {
+              : withSessionUrl({
                   kind: item.kind,
                   sessionId: item.session.id,
                   title: item.session.displayTitle,
                   archived: item.session.archived,
-                }),
+                })),
           })),
         });
       }

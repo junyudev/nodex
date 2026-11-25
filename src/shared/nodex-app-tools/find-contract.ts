@@ -39,6 +39,7 @@ export const searchOutputSchema = z.strictObject({
       z.strictObject({
         kind,
         identity: id,
+        url: z.string(),
         title: z.string(),
         location: z.strictObject({ projectId: id.nullable(), label: z.string().nullable() }),
         evidence: z.array(
