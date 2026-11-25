@@ -1,3 +1,4 @@
+import { SUBAGENT_OVERVIEW_BATCH_LIMIT } from "./ActivityLimits.ts";
 import * as ProviderInstallationManagement from "./ProviderInstallationManagement.ts";
 import { GIT_DRAFT_LIMITS, prepareGitDraftGeneration } from "../textGeneration/GitDraft.ts";
 import { GitDraftError } from "../textGeneration/GitDraftError.ts";
@@ -116,6 +117,7 @@ import {
   readRootActivity,
   readActivityRootIds,
 } from "../orchestration-v2/ExecutionActivity.ts";
+import { readRecentRootRuns } from "../orchestration-v2/RecentRootRuns.ts";
 import {
   SESSION_CATALOG_MAX_LIMIT,
   readSessionCatalog,
@@ -382,6 +384,27 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       activeCursor: Schema.optional(Schema.String),
       terminalCursor: Schema.optional(Schema.String),
+    }),
+  ),
+  request(
+    "tasks.overviews",
+    Schema.Struct({
+      threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(SUBAGENT_OVERVIEW_BATCH_LIMIT)),
+      countsOnlyThreadIds: Schema.optional(
+        Schema.Array(ThreadId).check(Schema.isMaxLength(SUBAGENT_OVERVIEW_BATCH_LIMIT)),
+      ),
+    }),
+  ),
+  request(
+    "execution.recent-runs",
+    Schema.Struct({
+      since: Schema.String.check(Schema.isMaxLength(32)),
+      before: Schema.optional(
+        Schema.Struct({
+          completedAt: Schema.String.check(Schema.isMaxLength(32)),
+          runId: RunId,
+        }),
+      ),
     }),
   ),
   request("thread.delegation", Schema.Struct({ threadId: ThreadId })),
@@ -1286,6 +1309,20 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               : { terminalCursor: input.input.terminalCursor }),
           })
           .pipe(Effect.flatMap(encodeOverview));
+      case "tasks.overviews": {
+        const rows = yield* projections.getThreadSubagentOverviews(input.input);
+        return yield* Effect.forEach(rows, ({ overview, ...counts }) =>
+          overview === null
+            ? Effect.succeed({ ...counts, overview: null })
+            : encodeOverview(overview).pipe(
+                Effect.map((encoded) => ({ ...counts, overview: encoded })),
+              ),
+        );
+      }
+      case "execution.recent-runs":
+        return yield* readRecentRootRuns(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "execution.workspace-in-use":
         return yield* ExecutionRoots.workspaceInUse(input.input).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
@@ -2106,8 +2143,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const eventTypes =
           input.method === "execution.observe"
             ? [
+                "run.created",
                 "run.updated",
                 "thread.deleted",
+                "thread.metadata-updated",
                 "runtime-request.updated",
                 "subagent.updated",
                 "provider-thread.updated",
@@ -2162,13 +2201,15 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const consume: Effect.Effect<void, unknown> =
           input.method === "execution.observe"
             ? stream.pipe(
-                // Only secret cards and the write-once opening statement affect activity.
+                // Only attention cards and the write-once opening statement affect activity.
                 Stream.filterEffect((stored) =>
                   Effect.gen(function* () {
                     const event = stored.event;
                     if (
                       event.type !== "turn-item.updated" ||
-                      event.payload.type === "secret_request"
+                      event.payload.type === "secret_request" ||
+                      event.payload.type === "approval_request" ||
+                      event.payload.type === "user_input_request"
                     )
                       return true;
                     if (event.payload.runId === null || !canAdvanceReadback(event.payload))

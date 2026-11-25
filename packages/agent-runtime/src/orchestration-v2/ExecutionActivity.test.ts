@@ -1,3 +1,4 @@
+import { readRecentRootRuns } from "./RecentRootRuns.ts";
 import * as FileSystem from "effect/FileSystem";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { capReadback, READBACK_ACTION_TYPES } from "./RunReadback.ts";
@@ -893,6 +894,42 @@ it.effect("pages non-idle roots by cursor", () =>
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("reads only the latest terminal Run of each root within the window", () =>
+  Effect.gen(function* () {
+    const { thread, run, now } = yield* fixture;
+    const at = (minutes: number) =>
+      minutes < 0 ? DateTime.subtract(now, { minutes: -minutes }) : DateTime.add(now, { minutes });
+    const root = yield* thread("root:recent");
+    const newer = yield* thread("root:newer");
+    const stillRunning = yield* thread("root:running");
+    const expired = yield* thread("root:expired");
+    const child = yield* thread("child:recent", root);
+    yield* run(root, "completed");
+    yield* run(root, "failed", { ordinal: 2, completedAt: at(1) });
+    yield* run(root, "rolled_back", { ordinal: 3, completedAt: at(3) });
+    yield* run(newer, "interrupted", { completedAt: at(2) });
+    yield* run(stillRunning, "completed");
+    yield* run(stillRunning, "running", { ordinal: 2 });
+    yield* run(expired, "completed", { completedAt: at(-1) });
+    yield* run(child, "completed", { completedAt: at(3) });
+    const since = DateTime.formatIso(now);
+    const page = yield* readRecentRootRuns({ since });
+    assert.deepEqual(
+      page.items.map(({ rootThreadId, status }) => [rootThreadId, status]),
+      [
+        [newer, "interrupted"],
+        [root, "failed"],
+      ],
+    );
+    const { completedAt, runId } = page.items[0]!;
+    const older = yield* readRecentRootRuns({ since, before: { completedAt, runId } });
+    assert.deepEqual(
+      older.items.map((item) => item.rootThreadId),
+      [root],
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("reads activity from live-state indexes only at 10,000 historical Runs", () =>
   Effect.gen(function* () {
     const { thread, run, roster, request, secret, now, toolItem } = yield* fixture;
@@ -1400,6 +1437,7 @@ it.effect(
       );
       const activity = (yield* readRootActivity({ rootThreadIds: [root] })).items[0]!;
       assert.equal(activity.pendingRequestCount, 2);
+      assert.equal(activity.questionPrompt, "Which sources?");
       assert.deepEqual(activity.activeFlags, ["waitingOnApproval", "waitingOnUserInput"]);
       const details = yield* readSessionDetails(root, 1);
       assert.equal(details.pendingRequestCount, 2);

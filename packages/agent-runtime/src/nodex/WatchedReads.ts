@@ -24,6 +24,8 @@ export const AGENT_RUNTIME_WATCHED_READS: ReadonlySet<AgentRuntimeMethod> =
     "thread.item.content",
     "thread.attachment",
     "tasks.overview",
+    "tasks.overviews",
+    "execution.recent-runs",
     "events.observe",
   ]);
 

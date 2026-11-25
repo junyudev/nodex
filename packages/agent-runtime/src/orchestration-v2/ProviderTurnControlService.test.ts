@@ -250,6 +250,7 @@ it.effect(
           getRuntimeRecoveryProjection: () => Effect.die("unused getRuntimeRecoveryProjection"),
           getHostToolAuthorityContext: () => Effect.die("unused host tool authority"),
           getThreadSubagentOverview: () => Effect.die("unused task overview"),
+          getThreadSubagentOverviews: () => Effect.die("unused task overviews"),
           getProjectExecutionActivity: () => Effect.die("unused project activity"),
           getPlan: () => Effect.die("unused"),
           hasUnpairedRunInterruptRequest: () => Effect.die("unused interrupt read"),
