@@ -41,54 +41,6 @@ import {
   setMockInvokeImpl,
 } from "./workbench-testkit/workbench-shell-harness";
 describe("workbench session shell / sidebar-core", () => {
-  test.each([
-    { managed: false, projectId: "alpha" },
-    { managed: true, projectId: "alpha" },
-    { managed: false, projectId: null },
-    { managed: true, projectId: null },
-  ])("toggles managed=$managed for a chat in $projectId", async ({ managed, projectId }) => {
-    const source = makeAttachedSession({
-      id: "session:managed-toggle",
-      threadId: "thread-managed-toggle",
-      title: "Managed chat",
-      projectId,
-      managed,
-      tabs: [],
-    });
-    const view = renderWorkbench({
-      sessionsByProject: { alpha: projectId ? [makeSession(), source] : [makeSession()] },
-      projectlessSessions: projectId ? [] : [source],
-    });
-    const menu = vi
-      .spyOn(nativeContextMenu, "showNativeContextMenu")
-      .mockResolvedValue(SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged);
-    try {
-      const row = await waitForThreadRow(view.container, "Managed chat");
-      await act(async () => {
-        fireEvent.contextMenu(row);
-        await Promise.resolve();
-      });
-      await waitFor(() => {
-        const calls = invokeCalls.filter(([channel]) => channel === "project-sessions:set-managed");
-        expect(calls).toHaveLength(1);
-        expect(calls[0]![1]).toEqual({
-          operationId: expect.any(String),
-          payload: { sessionId: source.id, managed: !managed },
-        });
-      });
-      expect(menu.mock.calls[0]![0]).toContainEqual(
-        expect.objectContaining({
-          id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-          label: managed ? "Take back from Nodex" : "Hand to Nodex",
-        }),
-      );
-      expect(invokeCalls.some(([channel]) => channel === "project-sessions:managed")).toBe(false);
-      await settleAsyncRender();
-    } finally {
-      menu.mockRestore();
-    }
-  });
-
   test.each(["claude", "opencode"] as const)(
     "forks the right-clicked %s Runtime chat and opens the accepted Session",
     async (kind) => {

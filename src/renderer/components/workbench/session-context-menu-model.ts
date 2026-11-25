@@ -27,7 +27,6 @@ export const SESSION_CONTEXT_MENU_SNOOZED_UNTIL_PREFIX = "session.snoozedUntil:"
 
 export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   togglePin: "session.togglePin",
-  toggleManaged: "session.toggleManaged",
   removeFromProject: "session.removeFromProject",
   rename: "session.rename",
   archive: "archive-thread",
@@ -432,24 +431,6 @@ export function buildSessionContextMenuItems(
           },
         ]),
     buildSessionSnoozeSubmenu(session.snoozedUntil, input.now ?? new Date()),
-    ...(!hosted && !session.archived
-      ? [
-          {
-            id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
-            label: session.managed
-              ? intl.formatMessage({
-                  id: "workbench.sessionContextMenuModel.takeBackFromNodex",
-                  defaultMessage: "Take back from Nodex",
-                })
-              : intl.formatMessage({
-                  id: "workbench.sessionContextMenuModel.handToNodex",
-                  defaultMessage: "Hand to Nodex",
-                }),
-            enabled: true,
-            iconKey: "nodex" as const,
-          },
-        ]
-      : []),
     ...(session.canManage
       ? [
           {

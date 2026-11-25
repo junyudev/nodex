@@ -30,8 +30,7 @@ export type NativeContextMenuIconKey =
   | "splitLeft"
   | "splitRight"
   | "splitUp"
-  | "splitDown"
-  | "nodex";
+  | "splitDown";
 
 export interface NativeContextMenuBaseItem {
   id: string;

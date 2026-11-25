@@ -215,6 +215,7 @@ const TURN_SIGNATURES: Readonly<Record<TurnReason, EntrySignature>> = {
   question: { label: "Needs your answer", icon: "question", tone: "warning" },
   approval: { label: "Needs your approval", icon: "warning", tone: "warning" },
   review: { label: "Ready for your review", icon: "check", tone: "accent" },
+  reply: { label: "Needs your reply", icon: "chat", tone: "warning" },
   ready_to_start: { label: "Ready to start", icon: "clock", tone: "ink-3" },
   blocked: { label: "Blocked · needs you", icon: "warning", tone: "danger" },
   failed: { label: "Failed · needs you", icon: "warning", tone: "danger" },

@@ -441,6 +441,7 @@ function SharedConnectedSessionThread({
             : null);
 
   const openNativeDiagnostics = useOpenNativeRuntimeDiagnostics(provider?.diagnostics);
+  const manageable = session.canManage && !session.decisionRun;
   const actions = composeNativeThreadStageActions(
     {
       onQueueingEnabledChange,
@@ -459,7 +460,7 @@ function SharedConnectedSessionThread({
       onOpenSummaryBrowserRow,
       onOpenSummaryAutomation,
       onOpenSummaryGitReview,
-      ...(summary && session.projectId === null && session.canManage
+      ...(summary && session.projectId === null && manageable
         ? {
             onTurnChatFolderIntoProject: async () => {
               try {
@@ -479,10 +480,10 @@ function SharedConnectedSessionThread({
       onOpenProcessManager,
       onOpenBackgroundTerminalOutput,
       // Pins and snoozes are each Member's own; only the chat's owner or a Space Owner
-      // renames or archives a chat every Member shares.
-      onToggleThreadPin,
-      onSetThreadSnooze,
-      ...(session.canManage ? { onRequestRenameThread, onArchiveThread } : {}),
+      // renames or archives a chat every Member shares. A decision run is Nodex's record of one
+      // decision, so it is neither organized nor managed like a chat.
+      ...(session.decisionRun ? {} : { onToggleThreadPin, onSetThreadSnooze }),
+      ...(manageable ? { onRequestRenameThread, onArchiveThread } : {}),
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,
@@ -598,6 +599,8 @@ function SharedConnectedSessionThread({
     />
   );
   if (composerDock) {
+    // A decision run takes no messages, so it has no composer to dock.
+    if (session.decisionRun) return projectReset;
     return (
       <>
         {projectReset}
@@ -627,6 +630,7 @@ function SharedConnectedSessionThread({
       <div className="h-full min-h-0">
         <ConnectedThreadStage
           {...connectedStageProps}
+          decisionRecord={session.decisionRun != null}
           visualizationSurfaceId={JSON.stringify([
             "workbench-session",
             session.id,

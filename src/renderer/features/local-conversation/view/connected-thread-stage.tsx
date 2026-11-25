@@ -89,6 +89,7 @@ import {
 } from "../local-conversation-store";
 import { useConversationRuntimeHistory } from "../conversation-runtime-hooks";
 import { LocalConversationFooter } from "./local-conversation-footer";
+import { DecisionRunRecordNotice } from "./decision-run-record-notice";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import { LocalConversationNewThreadHomeScreen } from "./local-conversation-new-thread-home-screen";
@@ -199,6 +200,8 @@ function usePresentedConversationIds(
 interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
   /** Imported native history has no Nodex execution owner. Read capabilities remain available. */
   executionAvailable?: boolean;
+  /** How Nodex made one decision: its history reads like a chat but never takes a message. */
+  decisionRecord?: boolean;
   visualizationSurfaceId?: string;
   actions: ThreadStageActions;
   composerScopeIdentity?: string | null;
@@ -1388,7 +1391,8 @@ function ConnectedThreadStageContent({
   initialUiState,
   backgroundAgentDetail = false,
   backgroundAgentCanInteract = false,
-  executionAvailable = true,
+  executionAvailable: executionOwnerAvailable = true,
+  decisionRecord = false,
   rightPanelComposerOverlayEnabled = false,
   rightPanelComposerOverlayTarget = null,
   rightPanelComposerOverlayPlacement,
@@ -1402,6 +1406,8 @@ function ConnectedThreadStageContent({
   presentation = "primary",
   ...input
 }: ConnectedThreadStageProps) {
+  // A decision run is a record: its history loads like any chat's, but nothing executes from here.
+  const executionAvailable = executionOwnerAvailable && !decisionRecord;
   const intl = useIntl();
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
@@ -1843,7 +1849,9 @@ function ConnectedThreadStageContent({
             onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
             contentShiftX={summaryPanelContentShift}
             footer={
-              childControlsUnavailable ? null : (
+              decisionRecord ? (
+                <DecisionRunRecordNotice />
+              ) : childControlsUnavailable ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}

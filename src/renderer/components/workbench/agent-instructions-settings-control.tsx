@@ -257,7 +257,7 @@ export function EffectiveInstructionsRow() {
           {intl.formatMessage({
             id: "settings.agentInstructions.eachChatAlsoReceivesItsRuntime",
             defaultMessage:
-              "Each chat also receives its runtime details, the Nodex CLI and any coordinator or managed session role when it starts.",
+              "Each chat also receives its runtime details, the Nodex CLI and its work role, if Nodex handed it work, when it starts.",
           })}
         </p>
       </div>

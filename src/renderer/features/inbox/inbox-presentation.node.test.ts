@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
 import {
+  activityDecisionSessionId,
   describeInboxAction,
   inboxChatPageIds,
   describeInboxChatStatus,
@@ -898,4 +899,13 @@ it("admits only Page rows to the chat projection", () => {
     }),
   ];
   expect(inboxChatPageIds(rows)).toEqual(["intake", "turn", "answer", "card"]);
+});
+
+describe("activityDecisionSessionId", () => {
+  it("names the run behind a Nodex decision only when Core recorded one", () => {
+    expect(activityDecisionSessionId({ evidence: { decision_session_id: "run-1" } })).toBe("run-1");
+    expect(activityDecisionSessionId({ evidence: { decision_session_id: "" } })).toBeNull();
+    expect(activityDecisionSessionId({ evidence: { proposal_id: "p" } })).toBeNull();
+    expect(activityDecisionSessionId({ evidence: null })).toBeNull();
+  });
 });

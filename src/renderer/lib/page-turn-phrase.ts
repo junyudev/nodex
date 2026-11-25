@@ -89,6 +89,16 @@ const ASKS: Partial<Record<TurnReason, (holder: PageTurnHolder) => string>> = {
           { id: "lib.pageTurnPhrase.reviewOther", defaultMessage: "Ready for {name}’s review" },
           { name: holder.name },
         ),
+  reply: (holder) =>
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.replyYour",
+          defaultMessage: "Needs your reply",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.replyOther", defaultMessage: "Waiting for {name}’s reply" },
+          { name: holder.name },
+        ),
   blocked: (holder) =>
     holder.you
       ? getIntl().formatMessage({

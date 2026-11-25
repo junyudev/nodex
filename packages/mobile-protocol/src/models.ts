@@ -266,6 +266,7 @@ export const TurnEntrySchema = z.looseObject({
         "failed",
         "stalled",
         "review",
+        "reply",
         "ready_to_start",
         "starting",
         "waiting_on_prerequisite",

@@ -10,7 +10,7 @@ import {
   QuestionIcon,
 } from "@/components/shared/icons";
 import { WarningCircleIcon } from "@/components/shared/icons/plugin-detail-icons";
-import { PauseIcon } from "@/components/shared/icons/canonical-icons";
+import { ChatIcon, PauseIcon } from "@/components/shared/icons/canonical-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import {
@@ -30,6 +30,7 @@ const GLYPHS: Record<TurnReason, ComponentType<{ className?: string }>> = {
   question: QuestionIcon,
   approval: SuccessCircleIcon,
   review: SuccessCircleIcon,
+  reply: ChatIcon,
   blocked: WarningCircleIcon,
   failed: DeniedCircleIcon,
   stalled: WarningCircleIcon,
