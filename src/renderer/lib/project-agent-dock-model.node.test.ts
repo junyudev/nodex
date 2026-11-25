@@ -1,9 +1,16 @@
 import { describe, expect, test } from "vite-plus/test";
+import {
+  activateWorkbenchPanelLeaf,
+  makeWorkbenchPanelLayout,
+  setWorkbenchPanelMaximizedLeaf,
+  splitWorkbenchPanelLeaf,
+} from "../../shared/workbench-panel-layout";
 import type { ProjectSessionSummary } from "../../shared/types";
 import {
   attentionForIndicator,
   buildProjectAgentDockModel,
   buildProjectAgentDockPendingWorktreeModel,
+  resolveProjectAgentDockAnchor,
   resolveProjectAgentDockLiveIndicator,
   resolveProjectAgentDockPendingWorktree,
   type ProjectAgentDockPendingWorktreeEntry,
@@ -73,6 +80,44 @@ function pendingWorktree(
     ...overrides,
   };
 }
+
+describe("resolveProjectAgentDockAnchor", () => {
+  const split = splitWorkbenchPanelLeaf(
+    makeWorkbenchPanelLayout(["inbox", "board", "agents"], "inbox"),
+    {
+      leafId: "main",
+      tabId: "agents",
+      side: "right",
+      newLeafId: "beside",
+      newBranchId: "split",
+    },
+  );
+
+  test("uses the active group while the Inbox is selected in its neighbor", () => {
+    expect(resolveProjectAgentDockAnchor(split, "inbox")).toBe("active-group");
+  });
+
+  test("hides the Dock when Inbox is active", () => {
+    const inboxActive = activateWorkbenchPanelLeaf(split, "main", "inbox");
+    expect(resolveProjectAgentDockAnchor(inboxActive, "inbox")).toBe("hidden");
+  });
+
+  test("uses the full stack when another tab covers Inbox or the Inbox is absent", () => {
+    const boardShowing = activateWorkbenchPanelLeaf(split, "main", "board");
+    const agentsActive = activateWorkbenchPanelLeaf(boardShowing, "beside", "agents");
+    expect(resolveProjectAgentDockAnchor(agentsActive, "inbox")).toBe("stack");
+    expect(resolveProjectAgentDockAnchor(split, null)).toBe("stack");
+  });
+
+  test("only counts the rendered group when a split is maximized", () => {
+    expect(
+      resolveProjectAgentDockAnchor(setWorkbenchPanelMaximizedLeaf(split, "beside"), "inbox"),
+    ).toBe("stack");
+    expect(
+      resolveProjectAgentDockAnchor(setWorkbenchPanelMaximizedLeaf(split, "main"), "inbox"),
+    ).toBe("hidden");
+  });
+});
 
 describe("buildProjectAgentDockModel", () => {
   test("keeps New chat immediately available while the collection loads", () => {

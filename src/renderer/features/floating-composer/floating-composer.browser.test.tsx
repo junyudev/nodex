@@ -13,6 +13,10 @@ import {
   ComposerContextRail,
   ComposerContextRailSlot,
 } from "@/features/local-conversation/view/composer-context-rail";
+import {
+  RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_PX,
+  RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR,
+} from "@/lib/right-panel-composer-overlay-reserve";
 import { FloatingComposer, type FloatingComposerState } from "./floating-composer";
 
 const PANE = { left: 40, top: 30, width: 1000, height: 700 };
@@ -30,22 +34,34 @@ const SHOWN: FloatingComposerState = { visible: true };
 function Harness({
   initialState = SHOWN,
   transcript,
+  groupWidth,
+  anchorToGroup = false,
 }: {
   initialState?: FloatingComposerState;
   transcript?: ReactNode;
+  groupWidth?: number;
+  anchorToGroup?: boolean;
 }) {
-  const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  const [pane, setPane] = useState<HTMLDivElement | null>(null);
+  const [group, setGroup] = useState<HTMLDivElement | null>(null);
   const [state, setState] = useState<FloatingComposerState>(initialState);
   const [expanded, setExpanded] = useState(false);
   return (
     <div
-      ref={setTarget}
+      ref={setPane}
       data-testid="pane"
       style={{ position: "fixed", ...PANE }}
       className="bg-token-main-surface-primary"
     >
+      {groupWidth === undefined ? null : (
+        <div
+          ref={setGroup}
+          data-testid="right-group"
+          style={{ position: "absolute", inset: "0 0 0 auto", width: groupWidth }}
+        />
+      )}
       <FloatingComposer
-        target={target}
+        target={(anchorToGroup ? group : null) ?? pane}
         control={{
           state,
           attention: "none",
@@ -171,6 +187,55 @@ describe("FloatingComposer", () => {
 
   afterEach(() => {
     clearPersistedAtomStoreForTests();
+  });
+
+  test("retargets and resizes the body portal while keeping the prompt and conversation mounted", async () => {
+    const renderComposer = (groupWidth: number, anchorToGroup: boolean) => (
+      <NodexTooltipProvider>
+        <Harness
+          groupWidth={groupWidth}
+          anchorToGroup={anchorToGroup}
+          transcript={<p>Shipped the release notes.</p>}
+        />
+      </NodexTooltipProvider>
+    );
+    const view = renderWithAppMaitai(renderComposer(500, false));
+    const prompt = await view.findByRole("textbox", { name: "Prompt" });
+    const pane = view.getByTestId("pane");
+    const group = view.getByTestId("right-group");
+    const portal = view.getByTestId("right-panel-composer-overlay-host");
+    expect(portal.parentElement).toBe(document.body);
+    const reserve = `${RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_PX}px`;
+    expect(pane.style.getPropertyValue(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR)).toBe(reserve);
+
+    await act(async () => {
+      await userEvent.fill(prompt, "Keep this draft");
+    });
+    await act(async () => {
+      await userEvent.click(view.getByText("Work locally"));
+    });
+    const transcript = await view.findByText("Shipped the release notes.");
+
+    view.rerender(renderComposer(500, true));
+    const expectPortalOver = (target: HTMLElement) => {
+      const { left, top, width, height } = target.getBoundingClientRect();
+      expect(portal.getBoundingClientRect()).toMatchObject({ left, top, width, height });
+    };
+    expectPortalOver(group);
+    expect(pane.style.getPropertyValue(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR)).toBe("");
+    expect(group.style.getPropertyValue(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR)).toBe(reserve);
+
+    view.rerender(renderComposer(420, true));
+    await waitFor(() => expectPortalOver(group));
+    expect(view.getByRole("textbox", { name: "Prompt" })).toBe(prompt);
+    expect(prompt.textContent).toBe("Keep this draft");
+    expect(view.getByText("Shipped the release notes.")).toBe(transcript);
+
+    view.rerender(renderComposer(420, false));
+    expectPortalOver(pane);
+    expect(group.style.getPropertyValue(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR)).toBe("");
+    expect(pane.style.getPropertyValue(RIGHT_PANEL_COMPOSER_OVERLAY_RESERVE_VAR)).toBe(reserve);
+    expect(view.getByText("Shipped the release notes.")).toBe(transcript);
   });
 
   test("reveals its header for the prompt, minimizes to a corner bubble, and restores into the prompt", async () => {

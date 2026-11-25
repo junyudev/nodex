@@ -350,6 +350,7 @@ import {
   attentionForIndicator,
   buildProjectAgentDockPendingWorktreeModel,
   buildProjectAgentDockModel,
+  resolveProjectAgentDockAnchor,
   resolveProjectAgentDockLiveIndicator,
   resolveProjectAgentDockPendingWorktree,
   type ProjectAgentDockTargetRow,
@@ -1184,6 +1185,8 @@ export function WorkbenchRuntime({
   const [projectAgentDockQuery, setProjectAgentDockQuery] = useState("");
   const [rightPanelComposerOverlayTarget, setRightPanelComposerOverlayTarget] =
     useState<HTMLElement | null>(null);
+  const [projectAgentDockGroupTarget, setProjectAgentDockGroupTarget] =
+    useState<HTMLDivElement | null>(null);
   const terminalSessionVersion = useTerminalSessionStoreVersion();
   const {
     threadSummaryPanelPinnedOpen,
@@ -5595,6 +5598,16 @@ export function WorkbenchRuntime({
     if (!activeOwnedSceneOwner) return;
     await executeSceneCommand(activeOwnedSceneOwner, { kind: "close_tab", tabId });
   };
+  const presentedProjectScene = projectScenePresentation?.scene;
+  const projectAgentDockAnchor = presentedProjectScene
+    ? resolveProjectAgentDockAnchor(
+        presentedProjectScene.panels.right.layout,
+        presentedProjectScene.primary?.kind === "inbox" ? presentedProjectScene.primary.id : null,
+      )
+    : "stack";
+  const projectAgentDockTarget =
+    (projectAgentDockAnchor === "active-group" ? projectAgentDockGroupTarget : null) ??
+    rightPanelComposerOverlayTarget;
   const projectScenePanels =
     projectScenePresentation && activeProject && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
@@ -5632,6 +5645,8 @@ export function WorkbenchRuntime({
           rightPanelHeaderAfterList,
           rightPanelHeaderStartInsetWidth,
           bottomPanelGlobalHeaderInsetWidth,
+          rightPanelActiveLeafRef:
+            projectAgentDockAnchor === "active-group" ? setProjectAgentDockGroupTarget : undefined,
           renderSurface: renderProjectSceneSurface,
           onFocusGroup: (panelId, leafId) => {
             panelCommands.rememberFocusedPanelGroup(panelId, leafId);
@@ -5819,13 +5834,9 @@ export function WorkbenchRuntime({
         reserveContent: true,
       }
     : undefined;
-  const projectHomeActive =
-    activeProjectScene?.primary?.kind === "inbox" &&
-    getWorkbenchPanelActiveLeaf(activeProjectScene.panels.right.layout).activeTabId ===
-      activeProjectScene.primary.id;
   const projectAgentDock =
     !isRemoteSpace() &&
-    !projectHomeActive &&
+    projectAgentDockAnchor !== "hidden" &&
     selectedProjectSceneId &&
     projectSceneKey &&
     activeProjectScene?.agentDock &&
@@ -5847,7 +5858,7 @@ export function WorkbenchRuntime({
             projects={projects}
             composerDock={{
               visible: activeProjectScene.composerOverlay.visible,
-              target: rightPanelComposerOverlayTarget,
+              target: projectAgentDockTarget,
               placement: projectAgentDockPlacement,
               leadingContent: projectAgentDockLeadingContent,
             }}
@@ -5888,7 +5899,7 @@ export function WorkbenchRuntime({
         </WorkbenchSessionScopePath>
       ) : (
         <ProjectAgentDockUnavailableOverlay
-          target={rightPanelComposerOverlayTarget}
+          target={projectAgentDockTarget}
           placement={projectAgentDockPlacement}
           leadingContent={projectAgentDockLeadingContent}
           message={
