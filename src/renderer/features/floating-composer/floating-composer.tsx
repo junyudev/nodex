@@ -799,7 +799,19 @@ export function FloatingComposer({
     );
   };
 
-  const handleFrameDragEnd = (_event: PointerEvent, info: PanInfo) => {
+  const abandonFrameDrag = () => {
+    setDragging(false);
+    setDockApproach(NO_DOCK_APPROACH);
+    setPaneDropSide(null);
+    frameSettle.springHome();
+  };
+
+  const handleFrameDragEnd = (event: PointerEvent, info: PanInfo) => {
+    // The platform took the pointer, so nothing was dropped and nothing is placed.
+    if (event.type === "pointercancel") {
+      abandonFrameDrag();
+      return;
+    }
     setDragging(false);
     setDockApproach(NO_DOCK_APPROACH);
     setPaneDropSide(null);
@@ -827,10 +839,7 @@ export function FloatingComposer({
 
   const cancelDrag = useEffectEvent(() => {
     frameDragControls.cancel();
-    setDragging(false);
-    setDockApproach(NO_DOCK_APPROACH);
-    setPaneDropSide(null);
-    frameSettle.springHome();
+    abandonFrameDrag();
   });
 
   useEffect(() => {
@@ -845,11 +854,9 @@ export function FloatingComposer({
     };
     view.addEventListener("keydown", handleKeyDown, true);
     view.addEventListener("blur", cancelDrag);
-    view.addEventListener("pointercancel", cancelDrag, true);
     return () => {
       view.removeEventListener("keydown", handleKeyDown, true);
       view.removeEventListener("blur", cancelDrag);
-      view.removeEventListener("pointercancel", cancelDrag, true);
     };
   }, [dragging, target]);
 

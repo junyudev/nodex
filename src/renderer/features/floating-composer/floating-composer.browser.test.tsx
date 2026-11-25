@@ -134,11 +134,12 @@ function paneRect(element: Element) {
   };
 }
 
-/** Presses at `from`, moves in steps through `to`, then releases there. */
+/** Presses at `from`, moves in steps through `to`, then releases (or loses the pointer) there. */
 async function dragPointer(
   element: Element,
   from: { x: number; y: number },
   to: { x: number; y: number },
+  end: "release" | "cancel" = "release",
 ) {
   const pointer = { isPrimary: true, pointerId: 1, pointerType: "mouse" };
   await act(async () => {
@@ -165,7 +166,9 @@ async function dragPointer(
     }
   } finally {
     await act(async () => {
-      fireEvent.pointerUp(document, { ...pointer, button: 0, clientX: to.x, clientY: to.y });
+      const release = { ...pointer, button: 0, clientX: to.x, clientY: to.y };
+      if (end === "cancel") fireEvent.pointerCancel(document, release);
+      else fireEvent.pointerUp(document, release);
       await nextFrame();
     });
   }
@@ -368,6 +371,34 @@ describe("FloatingComposer", () => {
       const rect = paneRect(bubble);
       expect(rect.left).toBeCloseTo(16, 0);
       expect(rect.bottom).toBeCloseTo(16, 0);
+    });
+  });
+
+  test("returns home without minimizing when the platform cancels a drag over the minimize corner", async () => {
+    const view = renderHarness();
+    await act(async () => {
+      await userEvent.click(view.getByRole("textbox", { name: "Prompt" }));
+    });
+    await waitFor(() => expect(frameElement().dataset.floatingComposerChrome).toBe("revealed"));
+
+    await dragPointer(
+      frameElement(),
+      headerDragPoint(),
+      { x: PANE.left + 40, y: PANE.top + PANE.height - 20 },
+      "cancel",
+    );
+    // Motion reports a cancelled drag's end after its next render.
+    await act(async () => {
+      await nextFrame();
+      await nextFrame();
+    });
+
+    expect(view.queryByRole("button", { name: "Restore composer" })).toBeNull();
+    expect(states.some((state) => state.visible === false)).toBe(false);
+    // The frame glides back to its centred dock.
+    await waitFor(() => {
+      const rect = paneRect(frameElement());
+      expect(rect.left).toBeCloseTo(rect.right, 0);
     });
   });
 
