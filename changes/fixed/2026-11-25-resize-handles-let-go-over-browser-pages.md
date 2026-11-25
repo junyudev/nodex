@@ -1,1 +1,0 @@
-Panel edges no longer stay stuck to the pointer when you let go over a Browser page. Releasing the mouse over a web page used to go unnoticed, so the divider kept following the pointer after the button was up. Every resize handle and split divider now tracks the pointer across web pages while you drag, and ends where you let go.

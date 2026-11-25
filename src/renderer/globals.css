@@ -39,12 +39,13 @@
     @apply cursor-pointer;
   }
 
-  /* A pointer drag (lib/pointer-drag.ts) keeps the pressed pointer in this document. Embedded
-     guest pages take pointer input in their own process and would swallow its moves and release. */
+  /* A pointer drag (lib/pointer-drag.ts) suspends text selection while it lasts. */
   :root[data-pointer-drag] {
     user-select: none;
   }
-  :root[data-pointer-drag] :is(iframe, webview) {
+  /* A press keeps its moves and release in the document it began in (lib/guest-pointer-boundary.ts):
+     embedded guests take pointer input in their own process and would swallow them. */
+  :root[data-pointer-held] :is(iframe, webview) {
     pointer-events: none !important;
   }
 }

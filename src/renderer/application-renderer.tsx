@@ -11,6 +11,7 @@ import {
   createApplicationReadiness,
 } from "./bootstrap/application-surface";
 import { enableRendererFrameHealth } from "./lib/frame-health";
+import { installGuestPointerBoundary } from "./lib/guest-pointer-boundary";
 import { enableRendererRuntimeWork } from "./lib/runtime-work";
 import "./globals.css";
 
@@ -25,6 +26,7 @@ export async function mountApplicationRenderer({
   if (!rootElement) throw new Error("Nodex renderer root is missing");
 
   initializeApplicationAppearance();
+  installGuestPointerBoundary(window);
   if (runtimeCapabilities.enabledDevelopmentFeatures.includes("runtime-metrics")) {
     enableRendererRuntimeWork();
     enableRendererFrameHealth();
