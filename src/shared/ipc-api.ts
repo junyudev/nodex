@@ -1165,6 +1165,10 @@ export interface IpcApi
     args: [input: import("./inbox").InboxDispatchInput];
     result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
   };
+  "inbox:ensure-notes": {
+    args: [input: import("./inbox").InboxEnsureNotesInput];
+    result: CoreLocalCommitResult<import("./inbox").InboxEnsureNotesResult>;
+  };
   "inbox:snooze": {
     args: [input: import("./inbox").InboxSetSnoozeInput];
     result: CoreLocalCommitResult<void>;

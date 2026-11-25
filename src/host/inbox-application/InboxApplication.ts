@@ -31,6 +31,8 @@ import type {
   InboxUndoInput,
   InboxCounts,
   InboxDispatchInput,
+  InboxEnsureNotesInput,
+  InboxEnsureNotesResult,
   InboxEditInput,
   InboxPageIdsInput,
   InboxProposalInput,
@@ -67,6 +69,7 @@ import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   inboxChatFromCore,
   inboxCountsFromCore,
+  inboxDecisionFromCore,
   inboxDispatchActionFromCore,
   inboxPageBasisToCore,
   inboxExecutionSelectionToCore,
@@ -76,6 +79,7 @@ import {
   inboxScopeToCore,
   inboxStopSuggestionToCore,
   inboxSummaryFromCore,
+  inboxNotesFromCore,
   type CoreInboxDispatchContext,
   type CoreInboxDispatchWork,
   type CoreInboxPageBasis,
@@ -150,6 +154,7 @@ export class InboxApplication extends Context.Service<
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
     readonly entry: (pageId: string) => InboxEffect<import("../../shared/inbox").InboxItem | null>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
+    readonly ensureNotes: (input: InboxEnsureNotesInput) => InboxMutation<InboxEnsureNotesResult>;
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
@@ -337,10 +342,7 @@ export const make = Effect.gen(function* () {
   ): InboxMutation<InboxDecisionResult> =>
     apply(operation, intent, operationId).pipe(
       Effect.map((apply) => ({
-        value: {
-          undoToken: apply.outcome.inbox_undo_token ?? null,
-          createdPageIds: apply.outcome.inbox_created_page_ids ?? [],
-        },
+        value: inboxDecisionFromCore(apply.outcome),
         apply,
       })),
     );
@@ -354,6 +356,20 @@ export const make = Effect.gen(function* () {
     return yield* parse("summary", () =>
       inboxSummaryFromCore(expectVariant(snapshot, "inbox_summary").summary, snapshot.store_epoch),
     );
+  });
+
+  const ensureNotes = Effect.fn("InboxApplication.ensureNotes")(function* (
+    input: InboxEnsureNotesInput,
+  ) {
+    const parsed = yield* parse("ensure-notes", () => InboxSummaryInputSchema.parse(input));
+    const applied = yield* apply("ensure-notes", {
+      kind: "ensure_inbox_notes",
+      scope: inboxScopeToCore(parsed.scope),
+    });
+    const value = yield* parse("ensure-notes", () =>
+      inboxNotesFromCore(applied.outcome.inbox_notes),
+    );
+    return { value, apply: applied };
   });
 
   const counts = read("counts", { kind: "inbox_counts" }).pipe(
@@ -1341,6 +1357,7 @@ export const make = Effect.gen(function* () {
     holdAutomationDecision,
     confirmAutomationDecision,
     summary,
+    ensureNotes,
     chatTargets,
     counts,
     window,

@@ -316,7 +316,8 @@ simply vanishes: once decided, its card first says where it went, in its own
 place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
 `Open chat`, `Moved to <Project>`, `Added to Todo`, `Saved to Notes`, or `Done`. It folds out of
 the stream after a moment, or soon after the pointer resting on it leaves. Add to Todo, Save to Notes,
-Done and filing also offer `Undo` in a toast. A message handled elsewhere simply
+Done and filing also offer `Undo` in a toast. Save to Notes's toast also offers `Open`, which opens
+where the note landed, its section or the Notes Page, with the note first. A message handled elsewhere simply
 folds away. Clearing the last message shows an `All clear` state, and beneath
 it [how the Inbox plans](#how-the-inbox-plans).
 
@@ -326,10 +327,10 @@ Answers do not inflate it. It is never an unread count.
 ## Notes
 
 Save to Notes moves the message Page to the first position under its Inbox's
-Notes Page, or to the active section the person chooses. The first save creates
-and binds a top-level Library Page titled Notes. Every Project can bind its own
-Notes Page, and the Library Inbox has one for messages without a Project.
-Open Notes opens the bound Page. Its name and sections are ordinary content.
+Notes Page, or to the active section the person chooses. Opening Notes or
+saving a note creates and binds a top-level Library Page if the Inbox has none.
+A Project's Notes Page starts with the title `<Project> Notes`. The Library
+Inbox's Page starts with the title `Notes`. Its name and sections are ordinary content.
 It stays active while it is bound.
 
 The saved Page keeps its identity, Document, images and intake provenance. As
@@ -1067,7 +1068,9 @@ creates a second message, and does not count against the Agent budget again.
   - the `Inbox` and `Activity` views, as pills with their glyphs like a
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
-    Project's Inbox;
+    Project's Inbox, then `Open Notes` beside it: the two places a decided
+    message goes, todos to the Board and notes to Notes. `Open Notes` is always
+    offered and opens the Notes Page beside the Inbox like a message's Page;
   - `Inbox settings`, a panel that changes in place what routes and how new
     chats start. Each section shows its model, with the composer's model menu,
     then its switches: under `Nodex`, when suggestions run beside its title,

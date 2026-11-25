@@ -2196,7 +2196,10 @@ fn filing_by_hand_moves_and_records_the_pages_atomically() {
         },
         session_id: None,
     };
-    apply_host(module, "file:by-hand", file());
+    let filed = module
+        .apply(&host(), request("file:by-hand", file()))
+        .unwrap();
+    assert!(filed.committed.value.inbox_notes.is_none());
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
     assert!(
         !window_in(
@@ -8813,6 +8816,22 @@ fn a_first_inbox_handoff_captures_the_current_person_choice_as_its_attempt_basel
 #[path = "inbox_snooze_tests.rs"]
 mod snooze;
 
+fn notes_title(workspace: &TestWorkspace, page: &str) -> String {
+    workspace
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            Ok(connection.query_row(
+                "SELECT material.title FROM pages page
+                 JOIN document_materializations material ON material.document_id=page.document_id
+                 WHERE page.block_id=?1",
+                [page],
+                |row| row.get(0),
+            )?)
+        })
+        .unwrap()
+}
+
 #[test]
 fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {
     let workspace = seeded_workspace();
@@ -8828,19 +8847,38 @@ fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {
         };
         *item
     };
-    for (id, project, scope) in [
-        ("library-note", None, ProjectWorkspaceInboxScope::Library),
-        ("project-note", Some(PROJECT), project_scope()),
+    for (id, project, scope, title) in [
+        (
+            "library-note",
+            None,
+            ProjectWorkspaceInboxScope::Library,
+            "Notes",
+        ),
+        (
+            "project-note",
+            Some(PROJECT),
+            project_scope(),
+            "Nodex Notes",
+        ),
     ] {
+        let library_notes = summary_in(m, ProjectWorkspaceInboxScope::All).notes_page_id;
         assert!(summary_in(m, scope.clone()).notes_page_id.is_none());
         send_to(m, id, "Design reference", project);
         let page = format!("page:{id}");
-        let before = read_note(&page);
+        // The Library Inbox offers decisions on messages from every Project.
+        let before = window_in(
+            m,
+            ProjectWorkspaceInboxScope::All,
+            ProjectWorkspaceInboxWindowFilter::Inbox,
+        )
+        .into_iter()
+        .find(|entry| entry.page_id == page)
+        .expect("The message is in the combined Inbox");
         assert!(before.page_key.is_some());
         let save = |parent_page_id| ProjectWorkspaceIntent::DispatchInboxEntries {
             expected_store_epoch: "epoch-1".into(),
             proposal_id: format!("proposal:{id}"),
-            basis: pages_basis(m, vec![page.clone()]),
+            basis: vec![before.basis.clone()],
             execution_selection: None,
             page_ids: vec![page.clone()],
             action: ProjectWorkspaceInboxDispatchAction::SaveToNotes { parent_page_id },
@@ -8856,6 +8894,18 @@ fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {
             .unwrap();
         assert!(saved.committed.value.inbox_undo_token.is_some());
         let root = summary_in(m, scope.clone()).notes_page_id.unwrap();
+        assert_eq!(
+            saved.committed.value.inbox_notes.unwrap().notes_page_id,
+            root
+        );
+        if project.is_some() {
+            assert_ne!(library_notes.as_deref(), Some(root.as_str()));
+            assert_eq!(
+                summary_in(m, ProjectWorkspaceInboxScope::All).notes_page_id,
+                library_notes
+            );
+        }
+        assert_eq!(notes_title(&workspace, &root), title);
         assert_eq!(page_parent(&workspace, &page), root);
         let note = read_note(&page);
         assert_eq!(note.basis.content_hash, before.basis.content_hash);
@@ -8924,6 +8974,119 @@ fn notes_are_bound_to_the_inbox_and_retain_page_identity_when_returned() {
             },
         );
     }
+}
+
+#[test]
+fn ensure_notes_reuses_one_binding_for_open_and_save_in_the_same_inbox() {
+    let workspace = seeded_workspace();
+    let m = &workspace.module;
+    let other_project = "project:other";
+    super::test_support::create_project(m, "create:other", other_project);
+    let other_scope = ProjectWorkspaceInboxScope::Project {
+        project_id: other_project.into(),
+    };
+    let rename_project = |operation, revision, name: &str| {
+        apply_host(
+            m,
+            operation,
+            ProjectWorkspaceIntent::UpdateProject {
+                project_id: PROJECT.into(),
+                expected_binding_revision: revision,
+                name: Some(name.into()),
+                description: None,
+                appearance: None,
+                source_roots: None,
+            },
+        );
+    };
+    rename_project("rename:before-notes", 1, "Design *System*");
+    assert!(summary_in(m, project_scope()).notes_page_id.is_none());
+    let ensure = |operation| {
+        m.apply(
+            &host(),
+            request(
+                operation,
+                ProjectWorkspaceIntent::EnsureInboxNotes {
+                    scope: project_scope(),
+                },
+            ),
+        )
+        .unwrap()
+    };
+    let created = ensure("notes:ensure");
+    assert!(created.event.is_some());
+    let notes = created.committed.value.inbox_notes.unwrap();
+    let root = &notes.notes_page_id;
+    assert_eq!(
+        summary_in(m, project_scope()).notes_page_id.as_ref(),
+        Some(root)
+    );
+    assert!(summary_in(m, other_scope).notes_page_id.is_none());
+    assert!(summary(m).notes_page_id.is_none());
+
+    let repeated = ensure("notes:ensure-again");
+    assert!(repeated.event.is_none());
+    assert_eq!(repeated.committed.commit_seq, created.committed.commit_seq);
+    assert_eq!(repeated.committed.value.inbox_notes.as_ref(), Some(&notes));
+
+    rename_project("rename:after-notes", 2, "New name");
+    assert_eq!(notes_title(&workspace, root), "Design *System* Notes");
+    use nodex_core_contracts::library::{LibraryIntent, LibraryPageWriteDestination};
+    let section = crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel)
+        .apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
+                operation_id: "notes:create-section".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::CreatePageFromText {
+                    title_markdown: "References".into(),
+                    markdown: String::new(),
+                    destination: LibraryPageWriteDestination::Page {
+                        page_id: root.clone(),
+                        at: None,
+                    },
+                    values: vec![],
+                },
+            },
+        )
+        .unwrap()
+        .committed
+        .value
+        .page_create
+        .unwrap()
+        .page_id;
+    send_to(m, "after-open", "Design reference", Some(PROJECT));
+    let proposal = "proposal:save-after-open";
+    propose(
+        m,
+        proposal,
+        &pending(m).remove(0),
+        ProjectWorkspaceInboxDispatchAction::SaveToNotes {
+            parent_page_id: Some(section.clone()),
+        },
+    );
+    let saved = m
+        .apply(
+            &host(),
+            request(
+                "notes:save-after-open",
+                ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                    skill_invocations: vec![],
+                    confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::User,
+                    expected_store_epoch: "epoch-1".into(),
+                    basis: proposal_basis(m, proposal),
+                    execution_selection: None,
+                    proposal_id: proposal.into(),
+                    expected_revision: 1,
+                    action: None,
+                    session_id: None,
+                },
+            ),
+        )
+        .unwrap();
+    assert_eq!(saved.committed.value.inbox_notes.as_ref(), Some(&notes));
+    assert_eq!(page_parent(&workspace, "page:after-open"), section);
 }
 
 #[test]

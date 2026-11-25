@@ -34,6 +34,11 @@ impl ProjectWorkspaceInboxScope {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct InboxNotesResult {
+    pub notes_page_id: String,
+}
+
 /// User-editable classification of what an Inbox entry is. It never implies
 /// that work is authorized.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

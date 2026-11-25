@@ -44,6 +44,7 @@ import { CoreApiError } from "@/lib/core-api-error";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { InboxCaptureRecovery } from "./inbox-capture-recovery";
 import { InboxComposer } from "./inbox-composer";
+import { toast } from "@/components/ui/toast";
 
 vi.mock("./use-inbox-reply-destination", () => ({ useInboxReplyDestination: () => null }));
 
@@ -613,7 +614,7 @@ describe("Inbox capture ownership", () => {
           failure === "receipt_expired" ? expiredReceipt() : new Error("response lost"),
         )
         .mockResolvedValue({
-          value: { undoToken: null },
+          value: { undoToken: null, notesPageId: null },
           acknowledgement: {
             status: "no_op",
             observed: { store_epoch: "epoch:1", commit_head: 1 },
@@ -693,4 +694,58 @@ describe("Inbox capture ownership", () => {
       }
     },
   );
+  test("opens a saved note in the Notes Core saved it under, not the Inbox it was saved from", async () => {
+    const pageId = createUuidV7();
+    const onOpenNotes = vi.fn();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(prepareInboxConfirmation).mockImplementation(async (draft) => ({
+      ...draft,
+      operationId: createBoundedOperationId("inbox.confirm"),
+      proposalId: createUuidV7(),
+      sessionId: createUuidV7(),
+      executionSelection: null,
+    }));
+    // A Project message saved from the Library Inbox lands in that Project's Notes.
+    vi.mocked(dispatchInboxEntries).mockResolvedValue({
+      value: { undoToken: "undo:note", notesPageId: "project-notes" },
+      acknowledgement: { status: "no_op", observed: { store_epoch: "epoch:1", commit_head: 1 } },
+    });
+    const store = createMaitaiStore();
+    setMaitaiPersistenceTransport(store, new MemoryPersistence());
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(
+      () => ({
+        actions: useInboxActions([], LIBRARY_INBOX, "window:notes", "epoch:1", [], {
+          onOpenNotes,
+        }),
+        saved: useInboxCaptureState("window:notes", LIBRARY_INBOX),
+      }),
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <MaitaiProvider store={store}>
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+          </MaitaiProvider>
+        ),
+      },
+    );
+    try {
+      await waitFor(() => expect(hook.result.current.saved.state.status).toBe("ready"));
+      await act(async () => {
+        expect(
+          await hook.result.current.actions.saveToNotes(
+            [pageId],
+            [{ pageId, contentHash: "5".repeat(64) }],
+          ),
+        ).toBe(true);
+      });
+      const options = vi.mocked(toast.success).mock.lastCall?.[1];
+      expect(options?.secondaryAction?.label).toBe("Open");
+      options?.secondaryAction?.onClick();
+      expect(onOpenNotes).toHaveBeenCalledExactlyOnceWith("project-notes");
+    } finally {
+      hook.unmount();
+      disposeMaitaiStore(store);
+      client.clear();
+    }
+  });
 });

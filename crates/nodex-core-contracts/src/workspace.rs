@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 85;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 86;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -2731,6 +2731,10 @@ pub enum ProjectWorkspaceIntent {
         action: ProjectWorkspaceInboxDispatchAction,
         session_id: Option<String>,
     },
+    /// Open the Inbox's Notes Page, creating it when the Inbox has no binding.
+    EnsureInboxNotes {
+        scope: ProjectWorkspaceInboxScope,
+    },
     /// Keeps entries open without acting on their current suggestions.
     KeepInboxEntries {
         page_ids: Vec<String>,
@@ -2965,7 +2969,7 @@ pub struct InboxWriteResult {
     pub replay: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_folder: Option<ChatFolder>,
@@ -2981,6 +2985,8 @@ pub struct ProjectWorkspaceCommitValue {
     pub created_page: Option<ProjectWorkspaceCreatedPage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox_undo_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox_notes: Option<crate::inbox::InboxNotesResult>,
     pub affected_project_ids: Vec<String>,
     pub affected_session_ids: Vec<String>,
     pub affected_thread_ids: Vec<String>,

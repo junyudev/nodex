@@ -134,6 +134,7 @@ pub enum HostOperation {
     InboxSkillAvailability,
     InboxConfirm,
     InboxDispatch,
+    InboxEnsureNotes,
     InboxChatTargets,
     InboxRequestSuggestion,
     InboxStopSuggestion,

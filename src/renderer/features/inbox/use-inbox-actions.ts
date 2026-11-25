@@ -133,17 +133,21 @@ const clearedLabel = (outcome: "kept" | "done", count: number): string => {
       });
 };
 
-/**
- * Decisions keep their prepared identity across transport failure and renderer restart.
- * `onDecided` hears each decision once Core has accepted it.
- */
+export interface InboxActionListeners {
+  /** Hears each decision once Core has accepted it. */
+  readonly onDecided?: (pageIds: readonly string[], decision: InboxDecision) => void;
+  /** Opens where a saved note landed: its section, or the Notes Page of its own Inbox. */
+  readonly onOpenNotes?: (destinationPageId: string) => void;
+}
+
+/** Decisions keep their prepared identity across transport failure and renderer restart. */
 export function useInboxActions(
   projects: readonly Project[],
   scope: InboxScope,
   windowSessionId: string,
   storeEpoch: string | null,
   visibleItems: readonly InboxItem[],
-  onDecided: (pageIds: readonly string[], decision: InboxDecision) => void = () => {},
+  { onDecided = () => {}, onOpenNotes }: InboxActionListeners = {},
 ): InboxActions {
   const intl = useIntl();
   const queryClient = useQueryClient();
@@ -335,8 +339,12 @@ export function useInboxActions(
         ) {
           const undoToken = result.value.undoToken;
           const operationId = createBoundedOperationId("inbox.undo");
+          const notesDestination =
+            action.type === "save_to_notes"
+              ? (action.parentPageId ?? result.value.notesPageId)
+              : null;
           toast.success(
-            action?.type === "move_to_project"
+            action.type === "move_to_project"
               ? intl.formatMessage(
                   { id: "inbox.useInboxActions.movedToValue", defaultMessage: "Moved to {value1}" },
                   {
@@ -353,6 +361,19 @@ export function useInboxActions(
                   defaultMessage: "Saved to Notes",
                 }),
             {
+              // A saved note can be visited where it landed, at the top of its section or
+              // Notes. Core saves into the messages' own Inbox, which may not be this one.
+              ...(notesDestination && onOpenNotes
+                ? {
+                    secondaryAction: {
+                      label: intl.formatMessage({
+                        id: "inbox.useInboxActions.openNotes",
+                        defaultMessage: "Open",
+                      }),
+                      onClick: () => onOpenNotes(notesDestination),
+                    },
+                  }
+                : {}),
               action: {
                 label: intl.formatMessage({
                   id: "inbox.useInboxActions.undo",

@@ -478,6 +478,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:edit"
   | "inbox:confirm"
   | "inbox:dispatch"
+  | "inbox:ensure-notes"
   | "work:start"
   | "work:accept"
   | "sources:connect"

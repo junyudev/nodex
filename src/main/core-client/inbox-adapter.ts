@@ -8,7 +8,9 @@ import type {
   InboxChat,
   InboxAgentChoice,
   InboxCounts,
+  InboxDecisionResult,
   InboxDispatchAction,
+  InboxEnsureNotesResult,
   InboxItem,
   InboxLocation,
   InboxProposal,
@@ -21,6 +23,7 @@ import type {
   InboxExecutionSelection,
 } from "../../shared/inbox";
 import { InboxExecutionSelectionSchema } from "../../shared/schemas/inbox";
+import type { ProjectWorkspaceApplyResult } from "./types";
 
 type Schemas = components["schemas"];
 export type CoreInboxDispatchAction = Schemas["ProjectWorkspaceInboxDispatchAction"];
@@ -212,6 +215,21 @@ export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
   scope.kind === "project"
     ? { kind: "project", project_id: scope.projectId }
     : { kind: scope.kind };
+
+export const inboxDecisionFromCore = (
+  outcome: ProjectWorkspaceApplyResult["outcome"],
+): InboxDecisionResult => ({
+  undoToken: outcome.inbox_undo_token ?? null,
+  createdPageIds: outcome.inbox_created_page_ids ?? [],
+  notesPageId: outcome.inbox_notes?.notes_page_id ?? null,
+});
+
+export function inboxNotesFromCore(
+  notes: ProjectWorkspaceApplyResult["outcome"]["inbox_notes"],
+): InboxEnsureNotesResult {
+  if (!notes) throw new Error("Core did not return the Inbox Notes Page");
+  return { notesPageId: notes.notes_page_id };
+}
 
 export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {

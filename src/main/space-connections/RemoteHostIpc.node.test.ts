@@ -171,6 +171,7 @@ describe("RemoteHostIpc", () => {
               record("prepareConfirmation", input).pipe(Effect.as({ prepared: true })),
             confirm: refuse("confirm"),
             dispatch: refuse("dispatch"),
+            ensureNotes: refuse("ensureNotes"),
             requestSuggestion: refuse("requestSuggestion"),
             stopSuggestion: refuse("stopSuggestion"),
             retryDispatch: refuse("retryDispatch"),
@@ -249,6 +250,7 @@ describe("RemoteHostIpc", () => {
             "requestSuggestion",
             { requestId: "request", mode: "auto", pageIds: ["page:idea"], basis },
           ],
+          ["inbox:ensure-notes", "ensureNotes", { scope: { kind: "all" } }],
           ["inbox:stop-suggestion", "stopSuggestion", { pageId: "page:idea" }],
           ["inbox:retry-dispatch", "retryDispatch", { proposalId: "proposal" }],
         ] as const;
