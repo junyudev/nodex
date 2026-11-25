@@ -93,14 +93,7 @@ export function InboxTurnRow({
     reason === "failed" ||
     reason === "stalled";
   const unavailable = replyable && !data.active_chat;
-  // Work that has not started has no chat. Elsewhere the chat is what the row asks for only when
-  // it offers no decision of its own, and is a look closer beside the ones that do.
-  const chat =
-    reason === "ready_to_start"
-      ? null
-      : reason === "review" || (reason === "question" && data.options.length > 0)
-        ? "glance"
-        : "decision";
+  const openChatAsIcon = reason === "question" && data.options.length > 0;
   // A pending question is the Agent's exact words; everything else is written as Markdown.
   const exactQuestion = reason === "question" && !data.note_id;
   const problem =
@@ -170,8 +163,7 @@ export function InboxTurnRow({
           ) : null}
           <div className="ml-auto flex min-h-6 flex-wrap items-center justify-end gap-1.5">
             <SnoozeMenu onChoose={onSnooze} />
-            {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
-            {chat === "glance" ? (
+            {openChatAsIcon ? (
               <InboxIconAction
                 label={intl.formatMessage({
                   id: "inbox.inboxTurnRow.openChat",
@@ -195,6 +187,17 @@ export function InboxTurnRow({
               <NodexButton size="xs" variant="outline" className="gap-1.5" onClick={onReply}>
                 <Reply className="icon-xs shrink-0" />
                 <FormattedMessage id="inbox.inboxTurnRow.reply" defaultMessage="Reply" />
+              </NodexButton>
+            ) : null}
+            {reason !== "ready_to_start" && !openChatAsIcon ? (
+              <NodexButton
+                size="xs"
+                variant={reason === "review" ? "outline" : "primary"}
+                className="gap-1.5"
+                onClick={onOpenChat}
+              >
+                {reason === "review" ? <ChatIcon className="icon-xs shrink-0" /> : null}
+                <FormattedMessage id="inbox.inboxTurnRow.openChat" defaultMessage="Open chat" />
               </NodexButton>
             ) : null}
             {reason === "question" ? (
@@ -246,11 +249,6 @@ export function InboxTurnRow({
                 {hostAvailable
                   ? intl.formatMessage({ id: "inbox.inboxTurnRow.start", defaultMessage: "Start" })
                   : intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent)}
-              </NodexButton>
-            ) : null}
-            {chat === "decision" ? (
-              <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
-                <FormattedMessage id="inbox.inboxTurnRow.openChat" defaultMessage="Open chat" />
               </NodexButton>
             ) : null}
           </div>
