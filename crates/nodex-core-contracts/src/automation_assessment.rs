@@ -1,4 +1,4 @@
-//! Bounded Coordinator judgement. Core supplies policy, scope, target, and authority.
+//! Bounded assessment. Core supplies policy, scope, target, and authority.
 use crate::{automation::Automation, library::AgentWorkSelection};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -11,7 +11,7 @@ pub struct AutomationAssessmentRequest {
     pub policy_hash: String,
     pub automations: Vec<Automation>,
     pub trigger_ids: Vec<String>,
-    pub coordinator_session_id: Option<String>,
+    pub decision_session_id: Option<String>,
     pub handed_over_at_ms: Option<i64>,
     pub run_started_at_ms: Option<i64>,
 }
@@ -93,12 +93,12 @@ pub enum AutomationAssessmentCommand {
     Begin {
         request_id: String,
         generation: i64,
-        coordinator_session_id: String,
+        decision_session_id: String,
     },
     StartRun {
         request_id: String,
         generation: i64,
-        coordinator_session_id: String,
+        decision_session_id: String,
         started_at_ms: i64,
     },
     Fail {

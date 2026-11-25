@@ -66,7 +66,7 @@ pub(in crate::workspace) fn admit(
             .ok_or_else(|| invalid("Unknown Automation"))?;
         let id = decision_id(r, &a.automation_id);
         let audit = json!({"request_id":r.request_id,"generation":r.generation,"thread_id":r.thread_id,"matched":a.matched,"evidence_ids":a.evidence_ids});
-        c.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,automation_name,status,automation_revision,mode,reason,frozen_action_json,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms,assessment_json) VALUES(?1,?2,?3,'completed',?4,?5,?6,?7,?8,?9,?9,'{}',?9,?9,?10)",params![id,automation.automation_id,automation.name,automation.automation_revision,mode_text(automation.mode),a.reason,serde_json::to_string(automation).map_err(|_|invalid("Invalid Automation"))?,json!({"owner_member_id":automation.owner_member_id,"mode":automation.mode,"automation_revision":automation.automation_revision}).to_string(),at,audit.to_string()])?;
+        c.execute("INSERT INTO automation_decisions(dispatch_id,automation_id,automation_name,status,automation_revision,mode,reason,frozen_action_json,frozen_authority_json,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms,assessment_json,decision_session_id) VALUES(?1,?2,?3,'completed',?4,?5,?6,?7,?8,?9,?9,'{}',?9,?9,?10,?11)",params![id,automation.automation_id,automation.name,automation.automation_revision,mode_text(automation.mode),a.reason,serde_json::to_string(automation).map_err(|_|invalid("Invalid Automation"))?,json!({"owner_member_id":automation.owner_member_id,"mode":automation.mode,"automation_revision":automation.automation_revision}).to_string(),at,audit.to_string(),r.decision_session_id])?;
         for trigger in &r.trigger_ids {
             c.execute(
                 "INSERT INTO automation_decision_source_triggers(dispatch_id,trigger_id) VALUES(?1,?2)",
@@ -190,15 +190,13 @@ pub(in crate::workspace) fn admit(
         let basis = current_basis(c, &pages)?;
         c.execute("UPDATE automation_decisions SET page_id=?2,inbox_project_id=?3,status=?4,waiting_in_inbox=?5,hold_basis_json=?6,mode=?7 WHERE dispatch_id=?1",params![dispatch,page,project_id,if mode==AutomationMode::AskFirst{"held"}else{"admitted"},mode==AutomationMode::AskFirst,serde_json::to_string(&basis[0]).unwrap(),mode_text(mode)])?;
         if mode == AutomationMode::AskFirst {
+            let proposal_id =
+                stable_uuid_v7("automation-assessment-proposal", &dispatch, "proposal");
             insert_proposal(
                 c,
                 library,
                 NewProposal {
-                    proposal_id: &stable_uuid_v7(
-                        "automation-assessment-proposal",
-                        &dispatch,
-                        "proposal",
-                    ),
+                    proposal_id: &proposal_id,
                     origin: ProjectWorkspaceInboxProposalOrigin::Automation,
                     page_ids: &pages,
                     basis: &basis,
@@ -212,6 +210,10 @@ pub(in crate::workspace) fn admit(
                     produced_by: None,
                 },
                 now,
+            )?;
+            c.execute(
+                "UPDATE inbox_proposals SET decision_session_id=?2 WHERE proposal_id=?1",
+                params![proposal_id, r.decision_session_id],
             )?;
             continue;
         }

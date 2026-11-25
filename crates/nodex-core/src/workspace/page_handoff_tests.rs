@@ -380,7 +380,7 @@ fn runtime_launch_hands_off_initial_pages_for_new_and_existing_sessions() {
                 model: "gpt".into(),
                 effort: Some("high".into()),
             }),
-            coordinator: false,
+            decision_run: None,
             session_id: session_id.into(),
             project_id: Some(PROJECT.into()),
             title: "Work".into(),

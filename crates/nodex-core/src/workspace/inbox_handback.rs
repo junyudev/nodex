@@ -283,7 +283,7 @@ fn hand_back(
         .ok_or_else(|| conflict("A trusted inbound message is required to hand it back"))?;
     let session = &runtime.session_id;
     let managed = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM coordinator_managed_sessions WHERE session_id=?1)",
+        "SELECT EXISTS(SELECT 1 FROM managed_chats WHERE session_id=?1)",
         [session],
         |r| r.get::<_, bool>(0),
     )?;

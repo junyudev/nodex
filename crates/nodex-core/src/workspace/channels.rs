@@ -14,15 +14,17 @@ pub(super) fn enqueue(
     body: &str,
     provenance: Option<&AgentTurnProvenance>,
 ) -> Result<(), StoreError> {
-    let caller = provenance
-        .and_then(|p| p.authority.runtime.as_ref())
-        .map(|r| r.session_id.as_str());
-    if caller.is_none() || caller != super::coordinator::binding(c)?.as_deref() {
-        return Err(StoreError::new(
-            StoreErrorCode::Unauthorized,
-            "Only Nodex can reply to an origin",
-            false,
-        ));
+    if let Some(provenance) = provenance {
+        super::execution::require_root_agent(provenance)?;
+        let active = super::page_chat::active_chat(c, page)?;
+        let caller = crate::infrastructure::actors::turn_session(c, provenance)?;
+        if active.is_none_or(|chat| chat.session_id != caller) {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Only the root Agent of the Page's active chat may reply to its origin",
+                false,
+            ));
+        }
     }
     if body.trim().is_empty() || body.len() > 16384 || body.contains("<!-- nodex:") {
         return Err(invalid(

@@ -7,7 +7,9 @@ use crate::infrastructure::{
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
-use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeSessionBinding;
+use nodex_core_contracts::workspace::{
+    NodexDecisionRunInput, ProjectWorkspaceAgentRuntimeSessionBinding,
+};
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -39,13 +41,31 @@ pub(super) fn create_session(
     operation_kind: &'static str,
     detached_native_thread_id: Option<&str>,
     side_chat_source_session_id: Option<&str>,
-    coordinator: bool,
+    decision_run: Option<&NodexDecisionRunInput>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    if coordinator {
+    if decision_run.is_some() {
         require_host(context)?;
+        if context.agent_attribution.is_some() {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Decision runs belong to the Desktop Host",
+                false,
+            ));
+        }
+        if project_id.is_some()
+            || !initial_page_ids.is_empty()
+            || side_chat_source_session_id.is_some()
+            || detached_native_thread_id.is_some()
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "A decision run requires a projectless Session of its own",
+                false,
+            ));
+        }
     }
     // Agent commands prove Turn provenance; remote Members reach this through an exact
-    // Core-issued Host launch proof, a side chat's included. Coordinator binding stays Host-only.
+    // Core-issued Host launch proof, including a side chat's.
     if !matches!(
         context.adapter,
         AdapterKind::Agent | AdapterKind::RemoteMember
@@ -57,7 +77,8 @@ pub(super) fn create_session(
             require_host(context)?;
         }
         let source = require_session(connection, library_id, source_id)?;
-        if source_id == session_id
+        if super::decision_run::read(connection, source_id)?.is_some()
+            || source_id == session_id
             || source.project_id.as_deref() != project_id
             || source.archived
             || !initial_page_ids.is_empty()
@@ -72,6 +93,22 @@ pub(super) fn create_session(
     validate_id("runtime_id", runtime_id)?;
     validate_id("runtime_thread_id", runtime_thread_id)?;
     validate_id("launch_request_id", launch_request_id)?;
+    validate_id("session_id", session_id)?;
+    if let Some(run) = decision_run
+        && let Some(existing) = super::decision_run::find_session(connection, run)?
+    {
+        return super::mutation::finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            operation_kind,
+            vec![],
+            vec![existing],
+            &sqlite_now(connection)?,
+        );
+    }
     if is_runtime_bound(connection, session_id)? {
         let binding =
             read_binding(connection, context, library_id, session_id)?.ok_or_else(|| {
@@ -81,7 +118,12 @@ pub(super) fn create_session(
                     false,
                 )
             })?;
-        if binding.runtime_id != runtime_id
+        let existing_decision = super::decision_run::read(connection, session_id)?;
+        if existing_decision
+            .as_ref()
+            .map(|run| (run.kind, run.request_id.as_str(), run.generation))
+            != decision_run.map(|run| (run.kind, run.request_id.as_str(), run.generation))
+            || binding.runtime_id != runtime_id
             || binding.runtime_thread_id != runtime_thread_id
             || binding.launch_request_id != launch_request_id
             || binding.side_chat_source_session_id.as_deref() != side_chat_source_session_id
@@ -128,7 +170,6 @@ pub(super) fn create_session(
             false,
         ));
     }
-    validate_id("session_id", session_id)?;
     let existing = connection
         .query_row(
             "SELECT 1 FROM project_sessions WHERE id = ?1",
@@ -137,6 +178,13 @@ pub(super) fn create_session(
         )
         .optional()?
         .is_some();
+    if existing && decision_run.is_some() {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "A decision run requires a fresh Session",
+            false,
+        ));
+    }
     let now = if existing {
         let authority = require_session(connection, library_id, session_id)?;
         if authority.project_id.as_deref() != project_id
@@ -195,10 +243,9 @@ pub(super) fn create_session(
             now
         ],
     )?;
-    if coordinator {
-        super::coordinator::bind(connection, library_id, session_id, &now)?;
-    }
-    if let Some(agent) = agent_selection {
+    if let Some(run) = decision_run {
+        super::decision_run::insert(connection, session_id, run, &now)?;
+    } else if let Some(agent) = agent_selection {
         crate::library::validate_agent_selection(agent)?;
         // The Agent choice is known at admission, before execution is materialized.
         // Retain it in the existing observation owner without inventing Run progress.
@@ -209,6 +256,7 @@ pub(super) fn create_session(
             run_started_at: None,
             earlier_run_start: None,
             failure_reason: None,
+            last_reply_excerpt: None,
             pending_request_ids: vec![],
             pending_requests: vec![],
             queue: None,
@@ -308,7 +356,7 @@ pub(super) fn adopt_native_session(
         "adopt_native_session_execution",
         Some(expected_native_thread_id),
         None,
-        false,
+        None,
     )
 }
 
@@ -401,6 +449,8 @@ pub(super) fn read_binding_by_execution(
     read_binding(connection, context, library_id, &session_id)
 }
 
+/// Resolves execution roots to the chats they run. A decision run is Nodex's record, not a chat,
+/// so its root resolves to no Session here.
 pub(super) fn read_session_ids_by_execution(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -429,7 +479,9 @@ pub(super) fn read_session_ids_by_execution(
                ON binding.runtime_id = ?2 AND binding.runtime_thread_id = requested.value
              JOIN project_sessions session ON session.id = binding.session_id
              LEFT JOIN projects project ON project.id = session.project_id
-             WHERE session.project_id IS NULL OR project.library_id = ?1",
+             WHERE (session.project_id IS NULL OR project.library_id = ?1)
+               AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision
+                 WHERE decision.session_id = binding.session_id)",
         )?
         .query_map(params![library_id, runtime_id, requested], |row| {
             Ok((row.get(0)?, row.get(1)?))
@@ -567,10 +619,48 @@ mod tests {
     use super::super::test_support::{
         apply, context, create_library_page, create_project, read, request, seeded_workspace,
     };
+    #[test]
+    fn decision_run_roots_resolve_to_no_chat() {
+        let workspace = seeded_workspace();
+        apply(&workspace.module, "chat", create_intent("session:chat"));
+        let mut decision = create_intent("session:decision");
+        let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            project_id,
+            decision_run,
+            ..
+        } = &mut decision
+        else {
+            unreachable!()
+        };
+        *project_id = None;
+        *decision_run = Some(nodex_core_contracts::workspace::NodexDecisionRunInput {
+            kind: nodex_core_contracts::workspace::NodexDecisionRunKind::Routing,
+            request_id: "request".into(),
+            generation: 1,
+        });
+        apply(&workspace.module, "decision", decision);
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionIdsByExecution { session_ids } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionIdsByExecution {
+                runtime_id: "runtime:primary".into(),
+                runtime_thread_ids: vec![
+                    "thread:session:chat".into(),
+                    "thread:session:decision".into(),
+                ],
+            },
+        ) else {
+            panic!("batched execution binding")
+        };
+        assert_eq!(
+            session_ids,
+            [("thread:session:chat".into(), "session:chat".into())].into()
+        );
+    }
+
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: session_id.into(),
             project_id: Some("project:default".into()),
@@ -1328,6 +1418,7 @@ mod tests {
             run_started_at: Some(1),
             earlier_run_start: None,
             failure_reason: None,
+            last_reply_excerpt: None,
             pending_request_ids: vec![],
             pending_requests: vec![],
             queue: None,
@@ -1344,8 +1435,6 @@ mod tests {
                 session_id: "session:native".into(),
                 expected_revision: 0,
                 observation: observation.clone(),
-                events: vec![],
-                resolved_request_ids: vec![],
             },
         );
         apply(

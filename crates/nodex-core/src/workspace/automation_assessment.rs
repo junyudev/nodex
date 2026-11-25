@@ -1,8 +1,8 @@
 //! Serialized per-thread judgement. Network, model execution, and sleeping belong to Main.
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, agent::AgentTurnProvenance, automation::*,
-    automation_assessment::*, sources::*, workspace::*,
+    AdapterKind, BoundModuleContext, automation::*, automation_assessment::*, sources::*,
+    workspace::*,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
@@ -16,7 +16,7 @@ fn conflict(message: &str) -> StoreError {
 fn denied() -> StoreError {
     StoreError::new(
         StoreErrorCode::Unauthorized,
-        "Automation judgement belongs to the current Coordinator",
+        "Automation assessment requires its authorized caller",
         false,
     )
 }
@@ -33,24 +33,6 @@ fn now(c: &Connection) -> Result<i64, StoreError> {
         |r| r.get(0),
     )?)
 }
-fn coordinator(
-    c: &Connection,
-    library: &str,
-    context: &BoundModuleContext,
-    p: &AgentTurnProvenance,
-) -> Result<String, StoreError> {
-    super::agent_command::admit_read_caller(c, library, context, p)?;
-    let session = p
-        .authority
-        .runtime
-        .as_ref()
-        .map(|v| v.session_id.clone())
-        .ok_or_else(denied)?;
-    if super::coordinator::binding(c)?.as_deref() != Some(&session) {
-        return Err(denied());
-    }
-    Ok(session)
-}
 pub(super) fn authorize(
     c: &Connection,
     library: &str,
@@ -60,15 +42,29 @@ pub(super) fn authorize(
     let (command, provenance) = match intent {
         ProjectWorkspaceIntent::AutomationAssessment { command } => (command, None),
         ProjectWorkspaceIntent::AgentCommand { provenance, intent } => match intent.as_ref() {
-            ProjectWorkspaceIntent::AutomationAssessment { command } => (command, Some(provenance)),
+            ProjectWorkspaceIntent::AutomationAssessment { command } => {
+                (command, Some(provenance.as_ref()))
+            }
             _ => return Ok(()),
         },
         _ => return Ok(()),
     };
-    if let AutomationAssessmentCommand::Submit { request_id, .. } = command {
-        let session = coordinator(c, library, context, provenance.ok_or_else(denied)?)?;
+    if let AutomationAssessmentCommand::Submit {
+        request_id,
+        generation,
+        ..
+    } = command
+    {
+        let session = super::decision_run::caller(provenance)?;
+        super::decision_run::require(
+            c,
+            session,
+            NodexDecisionRunKind::Assessment,
+            request_id,
+            *generation,
+        )?;
         if let Some(r) = request(c, library, request_id)?
-            && r.coordinator_session_id.as_deref() != Some(&session)
+            && r.decision_session_id.as_deref() != Some(session)
         {
             return Err(denied());
         }
@@ -141,14 +137,14 @@ pub(super) fn request(
     library: &str,
     id: &str,
 ) -> Result<Option<AutomationAssessmentRequest>, StoreError> {
-    let raw=c.query_row("SELECT generation,thread_id,policy_hash,automations_json,coordinator_session_id,handed_over_at_ms,run_started_at_ms FROM automation_assessment_requests WHERE request_id=?1 AND library_id=?2 AND state='pending'",params![id,library],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get::<_,String>(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional()?;
+    let raw=c.query_row("SELECT generation,thread_id,policy_hash,automations_json,decision_session_id,handed_over_at_ms,run_started_at_ms FROM automation_assessment_requests WHERE request_id=?1 AND library_id=?2 AND state='pending'",params![id,library],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get::<_,String>(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).optional()?;
     raw.map(
         |(
             generation,
             thread_id,
             policy_hash,
             automations,
-            coordinator_session_id,
+            decision_session_id,
             handed_over_at_ms,
             run_started_at_ms,
         )| {
@@ -162,7 +158,7 @@ pub(super) fn request(
                     .into_iter()
                     .map(|t| t.id)
                     .collect(),
-                coordinator_session_id,
+                decision_session_id,
                 handed_over_at_ms,
                 run_started_at_ms,
             })
@@ -206,7 +202,7 @@ pub(super) fn enqueue(
     let pending:Option<String>=c.query_row("SELECT request_id FROM automation_assessment_requests WHERE thread_id=?1 AND state='pending'",[&event.thread_id],|r|r.get(0)).optional()?;
     if let Some(id) = pending {
         let r = request(c, library, &id)?.ok_or_else(|| invalid("Missing assessment"))?;
-        if r.coordinator_session_id.is_none() {
+        if r.decision_session_id.is_none() {
             let count:i64=c.query_row("SELECT count(*) FROM automation_assessment_triggers WHERE request_id=?1 AND generation=?2",params![id,r.generation],|r|r.get(0))?;
             if count < 100 {
                 c.execute("UPDATE automation_assessment_triggers SET request_id=?1,generation=?2 WHERE trigger_id=?3",params![id,r.generation,trigger_id])?;
@@ -295,7 +291,7 @@ fn refresh(
         return Ok(false);
     }
     let generation = r.generation + i64::from(!r.policy_hash.is_empty());
-    c.execute("UPDATE automation_assessment_requests SET generation=?2,policy_hash=?3,automations_json=?4,coordinator_session_id=NULL,handed_over_at_ms=NULL,run_started_at_ms=NULL,updated_at_ms=?5 WHERE request_id=?1",params![r.request_id,generation,policy,encode(&automations)?,now(c)?])?;
+    c.execute("UPDATE automation_assessment_requests SET generation=?2,policy_hash=?3,automations_json=?4,decision_session_id=NULL,handed_over_at_ms=NULL,run_started_at_ms=NULL,updated_at_ms=?5 WHERE request_id=?1",params![r.request_id,generation,policy,encode(&automations)?,now(c)?])?;
     c.execute(
         "UPDATE automation_assessment_triggers SET generation=?2 WHERE request_id=?1 AND generation=?3",
         params![r.request_id, generation, r.generation],
@@ -402,7 +398,7 @@ pub(super) fn read(
             {
                 return Err(denied());
             }
-            let ids=c.prepare("SELECT request_id FROM automation_assessment_requests WHERE library_id=?1 AND state='pending' ORDER BY created_at_ms,request_id LIMIT ?2")?.query_map(params![library,limit],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let ids=c.prepare("SELECT request_id FROM automation_assessment_requests WHERE library_id=?1 AND state='pending' ORDER BY decision_session_id IS NULL,created_at_ms,request_id LIMIT ?2")?.query_map(params![library,limit],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
             let mut requests = Vec::new();
             let mut bytes = 0;
             for id in ids {
@@ -437,9 +433,17 @@ pub(super) fn read(
             cursor,
             provenance,
         } => {
-            let session = coordinator(c, library, context, &provenance)?;
+            super::agent_command::admit_read_caller(c, library, context, &provenance)?;
+            let session = super::decision_run::caller(Some(&provenance))?;
+            super::decision_run::require(
+                c,
+                session,
+                NodexDecisionRunKind::Assessment,
+                &request_id,
+                generation,
+            )?;
             let r = require(c, library, &request_id, generation)?;
-            if r.coordinator_session_id.as_deref() != Some(&session) {
+            if r.decision_session_id.as_deref() != Some(session) {
                 return Err(denied());
             }
             let offset = cursor
@@ -532,27 +536,40 @@ pub(super) fn apply(
         }
         match command {
             AutomationAssessmentCommand::Begin {
-                coordinator_session_id,
+                decision_session_id,
                 ..
             } => {
                 if refresh(c, library, &r)? {
                     return Ok(effects);
                 }
-                if super::coordinator::binding(c)?.as_deref() != Some(coordinator_session_id)
-                    || r.coordinator_session_id
-                        .as_ref()
-                        .is_some_and(|id| id != coordinator_session_id)
+                super::decision_run::require(
+                    c,
+                    decision_session_id,
+                    NodexDecisionRunKind::Assessment,
+                    id,
+                    generation,
+                )?;
+                if r.decision_session_id
+                    .as_ref()
+                    .is_some_and(|id| id != decision_session_id)
                 {
                     return Err(denied());
                 }
-                c.execute("UPDATE automation_assessment_requests SET coordinator_session_id=?2,handed_over_at_ms=COALESCE(handed_over_at_ms,?3) WHERE request_id=?1",params![id,coordinator_session_id,now(c)?])?;
+                c.execute("UPDATE automation_assessment_requests SET decision_session_id=?2,handed_over_at_ms=COALESCE(handed_over_at_ms,?3) WHERE request_id=?1",params![id,decision_session_id,now(c)?])?;
             }
             AutomationAssessmentCommand::StartRun {
-                coordinator_session_id,
+                decision_session_id,
                 started_at_ms,
                 ..
             } => {
-                if r.coordinator_session_id.as_ref() != Some(coordinator_session_id)
+                super::decision_run::require(
+                    c,
+                    decision_session_id,
+                    NodexDecisionRunKind::Assessment,
+                    id,
+                    generation,
+                )?;
+                if r.decision_session_id.as_ref() != Some(decision_session_id)
                     || *started_at_ms < 0
                     || *started_at_ms > now(c)? + 5000
                 {

@@ -20,35 +20,16 @@ fn origin() -> TestWorkspace {
             Ok(())
         })
         .unwrap();
-    apply(
-        &w.module,
-        "coordinator",
-        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-            agent_selection: None,
-            coordinator: true,
-            side_chat_source_session_id: None,
-            session_id: "nodex".into(),
-            project_id: None,
-            title: "Nodex".into(),
-            initial_page_ids: vec![],
-            runtime_id: "runtime".into(),
-            runtime_thread_id: "thread:nodex".into(),
-            launch_request_id: "launch:nodex".into(),
-        },
-    );
     w
 }
 fn reply(w: &TestWorkspace, op: &str, body: &str) {
-    let mut intent = agent(
-        "nodex",
+    let intent = agent(
+        "work",
         command(SourceCommand::ReplyToOrigin {
             page_id: PAGE.into(),
             body: body.into(),
         }),
     );
-    if let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut intent {
-        provenance.authority.actor_project_id = None;
-    }
     apply(&w.module, op, intent);
 }
 fn outbox(w: &TestWorkspace) -> Vec<ChannelOutboxItem> {
@@ -436,7 +417,7 @@ fn card_session(w: &TestWorkspace, id: &str) {
         "new-work-chat",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: id.into(),
             project_id: Some("project:work".into()),
@@ -465,7 +446,7 @@ fn activity_is_paginated_filtered_and_records_channel_and_trigger_facts() {
         .unwrap();
     assert_eq!(channel.description, "Queued a reply on alice/repo #1");
     assert!(
-        matches!(&channel.actor,nodex_core_contracts::Actor::Agent {session_id,..} if session_id=="nodex")
+        matches!(&channel.actor,nodex_core_contracts::Actor::Agent {session_id,..} if session_id=="work")
     );
     let sent = outbox(&w).remove(0);
     claim_send(&w, &sent.id, "actor-delivery");
@@ -574,4 +555,53 @@ fn credential_problem_opens_immediately_and_success_resolves_it() {
             .len(),
         2
     );
+}
+
+#[test]
+fn only_the_active_roots_and_people_can_reply_to_origin() {
+    let w = origin();
+    card(&w, "019d0000-0000-7000-8000-000000000093", "related", false);
+    apply(
+        &w.module,
+        "related-link",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "related".into(),
+            intent: ProjectSessionIntent::LinkPage {
+                page_id: PAGE.into(),
+            },
+        },
+    );
+    let origin_reply = || SourceCommand::ReplyToOrigin {
+        page_id: PAGE.into(),
+        body: "I'll take a look.".into(),
+    };
+    let mut child = agent("work", command(origin_reply()));
+    let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut child else {
+        unreachable!()
+    };
+    provenance.authority.thread_id = "thread:delegated".into();
+    for (op, intent) in [
+        ("related-reply", agent("related", command(origin_reply()))),
+        ("child-reply", child),
+    ] {
+        let error = w.module.apply(&context(), request(op, intent)).unwrap_err();
+        assert_eq!(
+            error.code,
+            nodex_core_contracts::CoreErrorCode::Unauthorized
+        );
+    }
+    // Only the work chat speaks to the origin; nobody posts there directly as the Space.
+    let error = w
+        .module
+        .apply(&context(), request("person-reply", command(origin_reply())))
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        nodex_core_contracts::CoreErrorCode::Unauthorized
+    );
+    assert!(outbox(&w).is_empty());
+    reply(&w, "root-reply", "I'll take a look.");
+    let items = outbox(&w);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].body, "I'll take a look.");
 }

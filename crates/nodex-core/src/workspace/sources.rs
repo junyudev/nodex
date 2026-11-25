@@ -404,10 +404,9 @@ pub(super) fn apply(
         operation,
         hash,
     } = source_receipt_identity;
-    if matches!(
-        command,
-        SourceCommand::FollowThread { .. } | SourceCommand::ReplyToOrigin { .. }
-    ) {
+    if matches!(command, SourceCommand::FollowThread { .. })
+        || (provenance.is_some() && matches!(command, SourceCommand::ReplyToOrigin { .. }))
+    {
         if provenance.is_none()
             || !matches!(
                 context.adapter,

@@ -235,6 +235,7 @@ pub(super) fn delete_session(
         )?;
     }
     let authority = require_session(connection, library_id, session_id)?;
+    super::decision_run::require_chat(connection, session_id)?;
     let session_ids = super::session_side_chats::attached_session_ids(connection, session_id)?;
     let mut thread_ids = Vec::new();
     let mut project_ids = Vec::new();
@@ -324,6 +325,13 @@ pub(super) fn move_session(
         require_manual_placement_authority(context)?;
     }
     validate_id("session_id", session_id)?;
+    if super::decision_run::read(connection, session_id)?.is_some() {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidInput,
+            "Decision runs cannot be moved",
+            false,
+        ));
+    }
     if let Some(project_id) = project_id {
         validate_id("project_id", project_id)?;
         require_project(connection, library_id, project_id, true)?;
@@ -478,6 +486,7 @@ pub(super) fn place_session(
     session_id: &str,
     placement: &ProjectWorkspaceSessionPlacement,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    super::decision_run::require_chat(connection, session_id)?;
     let member = crate::infrastructure::actors::requesting_member(connection, context)?;
     if super::sidebar_pins::is_pinned(connection, &member, session_id)? {
         let now = sqlite_now(connection)?;

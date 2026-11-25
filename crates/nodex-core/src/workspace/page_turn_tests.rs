@@ -59,8 +59,6 @@ fn capture(w: &TestWorkspace, revision: i64, observation: SessionExecutionObserv
             session_id: "chat".into(),
             expected_revision: revision,
             observation,
-            events: vec![],
-            resolved_request_ids: vec![],
         },
     );
 }
@@ -174,8 +172,6 @@ fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_pe
                 session_id: "chat".into(),
                 expected_revision: 0,
                 observation: observation(SessionExecutionState::Working),
-                events: vec![],
-                resolved_request_ids: vec![],
             },
         ),
     );
@@ -190,8 +186,6 @@ fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_pe
                 session_id: "chat".into(),
                 expected_revision: 3,
                 observation: observation(SessionExecutionState::Working),
-                events: vec![],
-                resolved_request_ids: vec![],
             },
         ),
     );
@@ -221,41 +215,15 @@ fn observations_are_revisioned_host_facts_and_unavailable_is_not_failure_or_a_pe
     assert!(result.is_err());
 }
 #[test]
-fn unavailable_execution_preserves_the_managed_notification_baseline() {
-    let w = setup();
-    let baseline = || {
-        let ProjectWorkspaceReadValue::SessionExecutionObserver {
-            observer: Some(observer),
-        } = read(
-            &w.module,
-            ProjectWorkspaceRead::SessionExecutionObserver {
-                session_id: "chat".into(),
-            },
-        )
-        else {
-            panic!()
-        };
-        observer.managed.unwrap()
-    };
-    capture(&w, 0, observation(SessionExecutionState::Unavailable));
-    assert!(baseline().observed_json.is_none());
-    capture(&w, 1, observation(SessionExecutionState::Working));
-    let working = baseline();
-    assert!(working.observed_json.is_some());
-    capture(&w, 2, observation(SessionExecutionState::Unavailable));
-    assert_eq!(baseline(), working);
-}
-#[test]
 fn unmanaged_active_chats_are_observed_without_becoming_managed() {
     let w = setup();
-    apply(
-        &w.module,
-        "unmanage",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "chat".into(),
-            managed: false,
-        },
-    );
+    w.kernel
+        .writer()
+        .call(|connection| {
+            connection.execute("DELETE FROM managed_chats WHERE session_id='chat'", [])?;
+            Ok::<_, crate::infrastructure::sqlite::StoreError>(())
+        })
+        .unwrap();
     let ProjectWorkspaceReadValue::SessionExecutionObservers { observers } = read(
         &w.module,
         ProjectWorkspaceRead::SessionExecutionObservers {
@@ -266,7 +234,7 @@ fn unmanaged_active_chats_are_observed_without_becoming_managed() {
         panic!()
     };
     assert_eq!(observers.len(), 1);
-    assert!(observers[0].managed.is_none());
+    assert!(!observers[0].managed);
     capture(&w, 0, observation(SessionExecutionState::Working));
     assert_eq!(turn(&w).reason, Some(TurnReason::Working));
 }
@@ -590,4 +558,149 @@ fn holds_choose_the_most_specific_scope_and_refresh_every_covered_turn() {
     );
     assert_eq!(read_page(OUTSIDE).reason, None);
     assert_eq!(turn(&w).reason, Some(TurnReason::Working));
+}
+
+#[test]
+fn completed_chat_needs_its_owner_to_reply_and_projects_the_reply_body() {
+    let w = setup();
+    let mut completed = observation(SessionExecutionState::Idle);
+    completed.terminal_status = Some(SessionExecutionTerminalStatus::Completed);
+    capture(&w, 0, completed.clone());
+    assert_eq!(turn(&w).reason, None, "completion predates the Active chat");
+    let selected_ms: i64 = w.kernel.readers().read_default(|c| Ok(c.query_row(
+        "SELECT CAST(round(unixepoch(set_at,'subsec')*1000) AS INTEGER) FROM page_active_chats WHERE page_id=?1",
+        [PAGE], |r| r.get(0),
+    )?)).unwrap();
+    completed.run_started_at = Some(selected_ms + 1);
+    completed.last_reply_excerpt = Some("Which option should I take?".into());
+    capture(&w, 1, completed.clone());
+    let reply = turn(&w);
+    assert_eq!(reply.reason, Some(TurnReason::Reply));
+    assert_eq!(
+        reply.actor,
+        TurnActor::Member {
+            member_id: local_member(&w)
+        }
+    );
+
+    let visible = w
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            super::inbox_projection::item(connection, "library-1", PAGE, "turn")
+        })
+        .unwrap();
+    assert_eq!(visible.body, "Which option should I take?");
+    capture(&w, 2, completed.clone());
+    assert_eq!(turn(&w).episode, reply.episode);
+
+    let mut oversized = completed.clone();
+    oversized.last_reply_excerpt = Some("界".repeat(401));
+    let error = w
+        .module
+        .apply(
+            &context(),
+            request(
+                "oversize",
+                ProjectWorkspaceIntent::RecordSessionExecution {
+                    session_id: "chat".into(),
+                    expected_revision: 3,
+                    observation: oversized,
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::InvalidInput);
+
+    let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+        read(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+    else {
+        panic!("Turn notifications")
+    };
+    assert_eq!(intents.len(), 1);
+    assert_eq!(intents[0].episode, reply.episode);
+    apply(
+        &w.module,
+        "claimed-reply",
+        ProjectWorkspaceIntent::ClaimTurnNotification {
+            page_id: PAGE.into(),
+            episode: reply.episode.clone(),
+        },
+    );
+    let scope = ExecutionHoldScope::Page {
+        page_id: PAGE.into(),
+    };
+    apply(
+        &w.module,
+        "pause-reply",
+        ProjectWorkspaceIntent::PauseWork {
+            scope: scope.clone(),
+        },
+    );
+    apply(
+        &w.module,
+        "resume-reply",
+        ProjectWorkspaceIntent::ResumeWork { scope },
+    );
+    assert_eq!(turn(&w).episode, reply.episode);
+    let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+        read(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+    else {
+        panic!("Turn notifications")
+    };
+    assert!(intents.is_empty());
+
+    completed.run_id = Some("next".into());
+    completed.run_started_at = Some(selected_ms + 2);
+    capture(&w, 3, completed);
+    let next = turn(&w);
+    assert_ne!(next.episode, reply.episode);
+    let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+        read(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+    else {
+        panic!("Turn notifications")
+    };
+    assert_eq!(intents.len(), 1);
+    assert_eq!(intents[0].episode, next.episode);
+}
+
+#[test]
+fn notification_intents_follow_the_current_member_turn() {
+    let w = setup();
+    let mut question = observation(SessionExecutionState::Idle);
+    question.pending_requests.push(SessionExecutionRequest {
+        id: "question".into(),
+        kind: SessionExecutionRequestKind::Question,
+        question: Some("Continue?".into()),
+        options: vec![],
+    });
+    let mut approval = question.clone();
+    approval.pending_requests[0].kind = SessionExecutionRequestKind::Approval;
+    let mut stalled = observation(SessionExecutionState::Working);
+    stalled.stalled = true;
+    let cases = [
+        (question, TurnReason::Question, true),
+        (approval, TurnReason::Approval, true),
+        (
+            observation(SessionExecutionState::Failed),
+            TurnReason::Failed,
+            true,
+        ),
+        (stalled, TurnReason::Stalled, false),
+    ];
+    for (revision, (fact, reason, notify)) in cases.into_iter().enumerate() {
+        capture(&w, revision as i64, fact);
+        let episode = turn(&w);
+        assert_eq!(episode.reason, Some(reason));
+        let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+            read(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+        else {
+            panic!("Turn notifications")
+        };
+        assert_eq!(intents.len(), usize::from(notify));
+        if let Some(intent) = intents.first() {
+            assert_eq!(intent.episode, episode.episode);
+            assert_eq!(intent.member_id, local_member(&w));
+        }
+    }
 }

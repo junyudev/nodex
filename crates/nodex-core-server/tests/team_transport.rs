@@ -1110,7 +1110,7 @@ fn remote_attention_belongs_to_the_requesting_member() {
         .unwrap();
     assert_eq!(launch["actor_label"], "by Bob");
     local_apply(
-        json!({"kind":"record_session_execution","session_id":"bob-work","expected_revision":0,"observation":{"state":"waiting","runId":"bob-run","runStartedAt":0,"pendingRequestIds":["question"],"pendingRequests":[{"id":"question","kind":"question","question":"Continue?","options":["Yes","No"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"question","progressSince":0},"events":[],"resolved_request_ids":[]}),
+        json!({"kind":"record_session_execution","session_id":"bob-work","expected_revision":0,"observation":{"state":"waiting","runId":"bob-run","runStartedAt":0,"pendingRequestIds":["question"],"pendingRequests":[{"id":"question","kind":"question","question":"Continue?","options":["Yes","No"]}],"queue":null,"terminalStatus":null,"personStopped":false,"stalled":false,"progressFingerprint":"question","progressSince":0}}),
     );
     let inbox = remote_read(
         json!({"kind":"inbox_window","scope":{"kind":"all"},"filter":"inbox","window":{"first":20}}),
@@ -1637,7 +1637,7 @@ fn phone_push_registration_is_the_phones_own_request_and_recipients_follow_core(
         json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
         "operation_id":team_operation_id(),"intent":{"kind":"create_agent_runtime_session","session_id":"push-session",
         "project_id":null,"title":"Push","initial_page_ids":[],"runtime_id":"runtime","runtime_thread_id":"thread",
-        "launch_request_id":"launch","coordinator":false}}));
+        "launch_request_id":"launch"}}));
     assert_eq!(created["status"], "ok", "{created}");
     // A personal Space's only Member hears about its chats, on the Device that registered.
     let (status, found) = recipients(json!({"kind":"request","run_id":"run","request":"question"}));
@@ -1761,7 +1761,7 @@ fn phone_stream_authentication_invocation_proofs_budgets_and_revocation() {
         json!({"contract_version":nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,"store_epoch":host.store_epoch,
         "operation_id":team_operation_id(),"intent":{"kind":"create_agent_runtime_session","session_id":"phone-delivery-session",
         "project_id":null,"title":"Delivery","initial_page_ids":[],"runtime_id":"runtime","runtime_thread_id":"thread",
-        "launch_request_id":"launch","coordinator":false}}));
+        "launch_request_id":"launch"}}));
     assert_eq!(created["status"], "ok", "{created}");
     let delivery = |proof: &str, id: &str, author: Value| {
         core.local_request_proof("/core/v1/modules/workspace/apply",binding,
@@ -3339,7 +3339,7 @@ impl HostedChats {
                 "expected_revision":revision,"observation":{"state":"working","runId":run,
                 "runStartedAt":0,"pendingRequestIds":[],"pendingRequests":[],"queue":null,
                 "terminalStatus":null,"personStopped":false,"stalled":false,
-                "progressFingerprint":run,"progressSince":0},"events":[],"resolved_request_ids":[]}),
+                "progressFingerprint":run,"progressSince":0}}),
         );
         assert_eq!(observed["status"], "ok", "{observed}");
     }

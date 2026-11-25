@@ -5877,11 +5877,11 @@
             "required": [
               "request_id",
               "generation",
-              "coordinator_session_id",
+              "decision_session_id",
               "kind"
             ],
             "properties": {
-              "coordinator_session_id": {
+              "decision_session_id": {
                 "type": "string"
               },
               "generation": {
@@ -5904,12 +5904,12 @@
             "required": [
               "request_id",
               "generation",
-              "coordinator_session_id",
+              "decision_session_id",
               "started_at_ms",
               "kind"
             ],
             "properties": {
-              "coordinator_session_id": {
+              "decision_session_id": {
                 "type": "string"
               },
               "generation": {
@@ -6214,7 +6214,7 @@
               "$ref": "#/components/schemas/Automation"
             }
           },
-          "coordinator_session_id": {
+          "decision_session_id": {
             "type": [
               "string",
               "null"
@@ -12133,204 +12133,6 @@
               }
             }
           }
-        ]
-      },
-      "CoordinatorEventBatch": {
-        "type": "object",
-        "required": [
-          "batch_id",
-          "coordinator_session_id",
-          "message_id",
-          "body",
-          "fingerprint",
-          "created_at"
-        ],
-        "properties": {
-          "accepted_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "batch_id": {
-            "type": "string"
-          },
-          "body": {
-            "type": "string"
-          },
-          "coordinator_session_id": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "fingerprint": {
-            "type": "string"
-          },
-          "invalidated_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "message_id": {
-            "type": "string"
-          }
-        }
-      },
-      "CoordinatorManagedSession": {
-        "type": "object",
-        "required": [
-          "active_page_ids",
-          "session_id",
-          "since",
-          "observed_revision"
-        ],
-        "properties": {
-          "active_page_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "latest_report_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_json": {},
-          "observed_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "session_id": {
-            "type": "string"
-          },
-          "since": {
-            "type": "string"
-          }
-        }
-      },
-      "CoordinatorObservationInput": {
-        "type": "object",
-        "required": [
-          "resolved_request_ids",
-          "session_id",
-          "observed_json",
-          "expected_revision"
-        ],
-        "properties": {
-          "expected_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "observed_json": {},
-          "resolved_request_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "session_id": {
-            "type": "string"
-          }
-        }
-      },
-      "CoordinatorWorkEvent": {
-        "type": "object",
-        "required": [
-          "event_id",
-          "dedupe_key",
-          "kind",
-          "payload",
-          "created_at"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "dedupe_key": {
-            "type": "string"
-          },
-          "event_id": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/CoordinatorWorkEventKind"
-          },
-          "page_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "page_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "page_title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "payload": {},
-          "session_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "session_title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "CoordinatorWorkEventInput": {
-        "type": "object",
-        "required": [
-          "kind",
-          "payload",
-          "dedupe_key"
-        ],
-        "properties": {
-          "dedupe_key": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/CoordinatorWorkEventKind"
-          },
-          "page_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "payload": {},
-          "session_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "CoordinatorWorkEventKind": {
-        "type": "string",
-        "enum": [
-          "report",
-          "attention",
-          "turn_ended",
-          "failed",
-          "stalled",
-          "ready_to_start",
-          "started"
         ]
       },
       "CoreArtifactIdentity": {
@@ -21550,7 +21352,6 @@
           "sessions_set_settled",
           "work_start",
           "workspace_refresh",
-          "coordinator_open",
           "inbox_settings",
           "inbox_reply_destination",
           "inbox_send",
@@ -21834,36 +21635,15 @@
         ],
         "description": "Host observation used only for the first capture decision. Core validates its post and chat."
       },
-      "InboxRoutingCancellation": {
-        "type": "object",
-        "description": "An admitted delivery whose result no longer belongs to an open request.",
-        "required": [
-          "request_id",
-          "generation",
-          "coordinator_session_id"
-        ],
-        "properties": {
-          "coordinator_session_id": {
-            "type": "string"
-          },
-          "generation": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "request_id": {
-            "type": "string"
-          }
-        }
-      },
       "InboxRoutingDelivery": {
         "type": "object",
         "description": "Handover and the carrying Run start survive restarts.",
         "required": [
-          "coordinator_session_id",
+          "decision_session_id",
           "handed_over_at_ms"
         ],
         "properties": {
-          "coordinator_session_id": {
+          "decision_session_id": {
             "type": "string"
           },
           "handed_over_at_ms": {
@@ -22041,12 +21821,6 @@
             ]
           },
           "delivery_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "note_id": {
             "type": [
               "string",
               "null"
@@ -32587,6 +32361,21 @@
           "operational_journal"
         ]
       },
+      "ManagedChat": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "since"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "since": {
+            "type": "string"
+          }
+        }
+      },
       "ManagedThreadFollowRole": {
         "type": "string",
         "enum": [
@@ -35075,17 +34864,9 @@
                   "session_id",
                   "expected_revision",
                   "observation",
-                  "events",
-                  "resolved_request_ids",
                   "kind"
                 ],
                 "properties": {
-                  "events": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/CoordinatorWorkEventInput"
-                    }
-                  },
                   "expected_revision": {
                     "type": "integer",
                     "format": "int64"
@@ -35098,12 +34879,6 @@
                   },
                   "observation": {
                     "$ref": "#/components/schemas/SessionExecutionObservation"
-                  },
-                  "resolved_request_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
                   },
                   "session_id": {
                     "type": "string"
@@ -35417,64 +35192,6 @@
               },
               {
                 "type": "object",
-                "required": [
-                  "session_id",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "bind_coordinator"
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "session_id",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "unbind_coordinator"
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "session_id",
-                  "managed",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "set_session_managed"
-                    ]
-                  },
-                  "managed": {
-                    "type": "boolean"
-                  },
-                  "session_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
                 "description": "Accepts reviewed work for a Member: the person, or the Member an Agent acts for.",
                 "required": [
                   "page_id",
@@ -35523,115 +35240,6 @@
                   },
                   "summary": {
                     "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "events",
-                  "observed",
-                  "kind"
-                ],
-                "properties": {
-                  "events": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/CoordinatorWorkEventInput"
-                    }
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "record_work_events"
-                    ]
-                  },
-                  "observed": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/CoordinatorObservationInput"
-                    }
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "batch_id",
-                  "coordinator_session_id",
-                  "event_ids",
-                  "message_id",
-                  "body",
-                  "fingerprint",
-                  "kind"
-                ],
-                "properties": {
-                  "batch_id": {
-                    "type": "string"
-                  },
-                  "body": {
-                    "type": "string"
-                  },
-                  "coordinator_session_id": {
-                    "type": "string"
-                  },
-                  "event_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "fingerprint": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "create_event_batch"
-                    ]
-                  },
-                  "message_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "batch_id",
-                  "kind"
-                ],
-                "properties": {
-                  "batch_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "discard_event_batch"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "batch_id",
-                  "accepted_at",
-                  "kind"
-                ],
-                "properties": {
-                  "accepted_at": {
-                    "type": "string"
-                  },
-                  "batch_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "settle_event_batch"
-                    ]
                   }
                 }
               },
@@ -36412,9 +36020,16 @@
                       }
                     ]
                   },
-                  "coordinator": {
-                    "type": "boolean",
-                    "description": "Host-only role binding, atomic with Session/execution admission."
+                  "decision_run": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/NodexDecisionRunInput",
+                        "description": "Host-only role binding, atomic with Session/execution admission."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "initial_page_ids": {
                     "type": "array",
@@ -36454,6 +36069,25 @@
                     ]
                   },
                   "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The Host confirmed that execution stopped while retaining the decision transcript.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "acknowledge_decision_run_stopped"
+                    ]
+                  },
+                  "session_id": {
                     "type": "string"
                   }
                 }
@@ -37606,45 +37240,10 @@
               },
               {
                 "type": "object",
-                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+                "description": "Answers a message that belongs to the calling routing run’s current request.",
                 "required": [
-                  "page_id",
-                  "note_id",
-                  "body",
-                  "event_ids",
-                  "notify",
-                  "kind"
-                ],
-                "properties": {
-                  "body": {
-                    "type": "string"
-                  },
-                  "event_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "write_turn_note"
-                    ]
-                  },
-                  "note_id": {
-                    "type": "string"
-                  },
-                  "notify": {
-                    "type": "boolean"
-                  },
-                  "page_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
+                  "request_id",
+                  "generation",
                   "question_page_id",
                   "page_id",
                   "document_id",
@@ -37658,6 +37257,10 @@
                   "document_id": {
                     "type": "string"
                   },
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
@@ -37668,6 +37271,9 @@
                     "type": "string"
                   },
                   "question_page_id": {
+                    "type": "string"
+                  },
+                  "request_id": {
                     "type": "string"
                   }
                 }
@@ -37853,11 +37459,11 @@
                 "required": [
                   "request_id",
                   "generation",
-                  "coordinator_session_id",
+                  "decision_session_id",
                   "kind"
                 ],
                 "properties": {
-                  "coordinator_session_id": {
+                  "decision_session_id": {
                     "type": "string"
                   },
                   "generation": {
@@ -37886,12 +37492,12 @@
                 "required": [
                   "request_id",
                   "generation",
-                  "coordinator_session_id",
+                  "decision_session_id",
                   "reason",
                   "kind"
                 ],
                 "properties": {
-                  "coordinator_session_id": {
+                  "decision_session_id": {
                     "type": "string"
                   },
                   "generation": {
@@ -37917,12 +37523,12 @@
                 "required": [
                   "request_id",
                   "generation",
-                  "coordinator_session_id",
+                  "decision_session_id",
                   "run_started_at_ms",
                   "kind"
                 ],
                 "properties": {
-                  "coordinator_session_id": {
+                  "decision_session_id": {
                     "type": "string"
                   },
                   "generation": {
@@ -37946,6 +37552,7 @@
               },
               {
                 "type": "object",
+                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
                 "required": [
                   "page_id",
                   "document_id",
@@ -38014,69 +37621,6 @@
                     "items": {
                       "type": "string"
                     }
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Records one suggestion for current entry content. It never authorizes work.",
-                "required": [
-                  "proposal_id",
-                  "page_ids",
-                  "basis",
-                  "action",
-                  "summary",
-                  "kind"
-                ],
-                "properties": {
-                  "action": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
-                  },
-                  "basis": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
-                    }
-                  },
-                  "entry_kind": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "propose_inbox_dispatch"
-                    ]
-                  },
-                  "page_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "produced_by": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "proposal_id": {
-                    "type": "string"
-                  },
-                  "rationale": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "summary": {
-                    "type": "string"
                   }
                 }
               },
@@ -38512,6 +38056,7 @@
               },
               {
                 "type": "object",
+                "description": "Records advice for current Inbox content; work still requires separate confirmation.",
                 "required": [
                   "request_id",
                   "generation",
@@ -38522,6 +38067,13 @@
                 "properties": {
                   "automatic_dispatch": {
                     "type": "boolean"
+                  },
+                  "decision_session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Required for a successful settlement. Host failures may have no decision run."
                   },
                   "error": {
                     "type": [
@@ -43197,13 +42749,51 @@
               {
                 "type": "object",
                 "required": [
+                  "session_id",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "read_coordinator"
+                      "decision_run"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "decision_run_reservations"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "after_session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "retired_decision_runs"
                     ]
                   }
                 }
@@ -43218,96 +42808,11 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "read_managed_session"
+                      "managed_chat"
                     ]
                   },
                   "session_id": {
                     "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Identity-ordered, bounded managed chat metadata; no transcript bodies.",
-                "required": [
-                  "limit",
-                  "kind"
-                ],
-                "properties": {
-                  "after_session_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "read_managed_sessions"
-                    ]
-                  },
-                  "limit": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "limit",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "read_pending_work_events"
-                    ]
-                  },
-                  "limit": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "batch_id",
-                  "kind"
-                ],
-                "properties": {
-                  "batch_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "read_event_batch"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "limit",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "read_open_event_batches"
-                    ]
-                  },
-                  "limit": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
                   }
                 }
               },
@@ -45064,6 +44569,62 @@
             ]
           }
         }
+      },
+      "NodexDecisionRun": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "kind",
+          "request_id",
+          "generation",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodexDecisionRunKind"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "NodexDecisionRunInput": {
+        "type": "object",
+        "required": [
+          "kind",
+          "request_id",
+          "generation"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodexDecisionRunKind"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NodexDecisionRunKind": {
+        "type": "string",
+        "enum": [
+          "routing",
+          "assessment"
+        ]
       },
       "NodexEntryPurpose": {
         "type": "string",
@@ -49803,17 +49364,9 @@
               "session_id",
               "expected_revision",
               "observation",
-              "events",
-              "resolved_request_ids",
               "kind"
             ],
             "properties": {
-              "events": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CoordinatorWorkEventInput"
-                }
-              },
               "expected_revision": {
                 "type": "integer",
                 "format": "int64"
@@ -49826,12 +49379,6 @@
               },
               "observation": {
                 "$ref": "#/components/schemas/SessionExecutionObservation"
-              },
-              "resolved_request_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               },
               "session_id": {
                 "type": "string"
@@ -50145,64 +49692,6 @@
           },
           {
             "type": "object",
-            "required": [
-              "session_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "bind_coordinator"
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "session_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "unbind_coordinator"
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "session_id",
-              "managed",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "set_session_managed"
-                ]
-              },
-              "managed": {
-                "type": "boolean"
-              },
-              "session_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Accepts reviewed work for a Member: the person, or the Member an Agent acts for.",
             "required": [
               "page_id",
@@ -50251,115 +49740,6 @@
               },
               "summary": {
                 "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "events",
-              "observed",
-              "kind"
-            ],
-            "properties": {
-              "events": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CoordinatorWorkEventInput"
-                }
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "record_work_events"
-                ]
-              },
-              "observed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CoordinatorObservationInput"
-                }
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "batch_id",
-              "coordinator_session_id",
-              "event_ids",
-              "message_id",
-              "body",
-              "fingerprint",
-              "kind"
-            ],
-            "properties": {
-              "batch_id": {
-                "type": "string"
-              },
-              "body": {
-                "type": "string"
-              },
-              "coordinator_session_id": {
-                "type": "string"
-              },
-              "event_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "fingerprint": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "create_event_batch"
-                ]
-              },
-              "message_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "batch_id",
-              "kind"
-            ],
-            "properties": {
-              "batch_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "discard_event_batch"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "batch_id",
-              "accepted_at",
-              "kind"
-            ],
-            "properties": {
-              "accepted_at": {
-                "type": "string"
-              },
-              "batch_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "settle_event_batch"
-                ]
               }
             }
           },
@@ -51140,9 +50520,16 @@
                   }
                 ]
               },
-              "coordinator": {
-                "type": "boolean",
-                "description": "Host-only role binding, atomic with Session/execution admission."
+              "decision_run": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NodexDecisionRunInput",
+                    "description": "Host-only role binding, atomic with Session/execution admission."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "initial_page_ids": {
                 "type": "array",
@@ -51182,6 +50569,25 @@
                 ]
               },
               "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The Host confirmed that execution stopped while retaining the decision transcript.",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "acknowledge_decision_run_stopped"
+                ]
+              },
+              "session_id": {
                 "type": "string"
               }
             }
@@ -52334,45 +51740,10 @@
           },
           {
             "type": "object",
-            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+            "description": "Answers a message that belongs to the calling routing run’s current request.",
             "required": [
-              "page_id",
-              "note_id",
-              "body",
-              "event_ids",
-              "notify",
-              "kind"
-            ],
-            "properties": {
-              "body": {
-                "type": "string"
-              },
-              "event_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "write_turn_note"
-                ]
-              },
-              "note_id": {
-                "type": "string"
-              },
-              "notify": {
-                "type": "boolean"
-              },
-              "page_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
+              "request_id",
+              "generation",
               "question_page_id",
               "page_id",
               "document_id",
@@ -52386,6 +51757,10 @@
               "document_id": {
                 "type": "string"
               },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -52396,6 +51771,9 @@
                 "type": "string"
               },
               "question_page_id": {
+                "type": "string"
+              },
+              "request_id": {
                 "type": "string"
               }
             }
@@ -52581,11 +51959,11 @@
             "required": [
               "request_id",
               "generation",
-              "coordinator_session_id",
+              "decision_session_id",
               "kind"
             ],
             "properties": {
-              "coordinator_session_id": {
+              "decision_session_id": {
                 "type": "string"
               },
               "generation": {
@@ -52614,12 +51992,12 @@
             "required": [
               "request_id",
               "generation",
-              "coordinator_session_id",
+              "decision_session_id",
               "reason",
               "kind"
             ],
             "properties": {
-              "coordinator_session_id": {
+              "decision_session_id": {
                 "type": "string"
               },
               "generation": {
@@ -52645,12 +52023,12 @@
             "required": [
               "request_id",
               "generation",
-              "coordinator_session_id",
+              "decision_session_id",
               "run_started_at_ms",
               "kind"
             ],
             "properties": {
-              "coordinator_session_id": {
+              "decision_session_id": {
                 "type": "string"
               },
               "generation": {
@@ -52674,6 +52052,7 @@
           },
           {
             "type": "object",
+            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
             "required": [
               "page_id",
               "document_id",
@@ -52742,69 +52121,6 @@
                 "items": {
                   "type": "string"
                 }
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Records one suggestion for current entry content. It never authorizes work.",
-            "required": [
-              "proposal_id",
-              "page_ids",
-              "basis",
-              "action",
-              "summary",
-              "kind"
-            ],
-            "properties": {
-              "action": {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
-              },
-              "basis": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
-                }
-              },
-              "entry_kind": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "propose_inbox_dispatch"
-                ]
-              },
-              "page_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "produced_by": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "proposal_id": {
-                "type": "string"
-              },
-              "rationale": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "summary": {
-                "type": "string"
               }
             }
           },
@@ -53240,6 +52556,7 @@
           },
           {
             "type": "object",
+            "description": "Records advice for current Inbox content; work still requires separate confirmation.",
             "required": [
               "request_id",
               "generation",
@@ -53250,6 +52567,13 @@
             "properties": {
               "automatic_dispatch": {
                 "type": "boolean"
+              },
+              "decision_session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Required for a successful settlement. Host failures may have no decision run."
               },
               "error": {
                 "type": [
@@ -54562,6 +53886,16 @@
           },
           "created_at": {
             "type": "string"
+          },
+          "decision_run_kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NodexDecisionRunKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "display_title": {
             "type": "string"
@@ -63421,17 +62755,71 @@
                           "kind"
                         ],
                         "properties": {
+                          "decision_run": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/NodexDecisionRun"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "read_coordinator"
+                              "decision_run"
                             ]
                           },
-                          "session_id": {
-                            "type": [
-                              "string",
-                              "null"
+                          "pending": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "routing",
+                          "assessment",
+                          "kind"
+                        ],
+                        "properties": {
+                          "assessment": {
+                            "type": "integer",
+                            "format": "int32",
+                            "minimum": 0
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "decision_run_reservations"
                             ]
+                          },
+                          "routing": {
+                            "type": "integer",
+                            "format": "int32",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "runs",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "retired_decision_runs"
+                            ]
+                          },
+                          "runs": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/NodexDecisionRun"
+                            }
                           }
                         }
                       },
@@ -63444,104 +62832,17 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "read_managed_session"
+                              "managed_chat"
                             ]
                           },
                           "managed": {
                             "oneOf": [
                               {
-                                "$ref": "#/components/schemas/CoordinatorManagedSession"
+                                "$ref": "#/components/schemas/ManagedChat"
                               },
                               {
                                 "type": "null"
                               }
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "sessions",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "read_managed_sessions"
-                            ]
-                          },
-                          "sessions": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/CoordinatorManagedSession"
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "events",
-                          "kind"
-                        ],
-                        "properties": {
-                          "events": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/CoordinatorWorkEvent"
-                            }
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "read_pending_work_events"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "kind"
-                        ],
-                        "properties": {
-                          "batch": {
-                            "oneOf": [
-                              {
-                                "$ref": "#/components/schemas/CoordinatorEventBatch"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "read_event_batch"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "batches",
-                          "kind"
-                        ],
-                        "properties": {
-                          "batches": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/CoordinatorEventBatch"
-                            }
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "read_open_event_batches"
                             ]
                           }
                         }
@@ -64763,16 +64064,9 @@
                         "type": "object",
                         "required": [
                           "request_ids",
-                          "cancelled_deliveries",
                           "kind"
                         ],
                         "properties": {
-                          "cancelled_deliveries": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/InboxRoutingCancellation"
-                            }
-                          },
                           "kind": {
                             "type": "string",
                             "enum": [
@@ -65407,6 +64701,13 @@
               "null"
             ]
           },
+          "lastReplyExcerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Excerpt of the last reply for the observed Run, bounded to 400 characters."
+          },
           "pendingRequestIds": {
             "type": "array",
             "items": {
@@ -65479,18 +64780,12 @@
         "required": [
           "session_id",
           "since",
-          "revision"
+          "revision",
+          "managed"
         ],
         "properties": {
           "managed": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CoordinatorManagedSession"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "boolean"
           },
           "observation": {
             "oneOf": [
@@ -67850,6 +67145,7 @@
           "failed",
           "stalled",
           "review",
+          "reply",
           "ready_to_start",
           "starting",
           "waiting_on_prerequisite"

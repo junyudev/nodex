@@ -37,8 +37,18 @@ pub(super) fn validate_current_store_data(connection: &Connection) -> Result<(),
     validate_member_default_drafts(connection)?;
     validate_current_document_projections(connection)?;
     // A later Run clears report facts while preserving the monotonic report revision.
-    let invalid: i64 = connection.query_row("SELECT (SELECT count(*) FROM coordinator c JOIN coordinator_managed_sessions m ON m.session_id=c.session_id) + (SELECT count(*) FROM coordinator c JOIN project_sessions session ON session.id=c.session_id WHERE session.project_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM project_session_execution_bindings binding WHERE binding.session_id=c.session_id)) + (SELECT count(*) FROM project_session_pages WHERE (report_outcome IS NULL AND (report_summary IS NOT NULL OR report_at IS NOT NULL)) OR (report_outcome IS NOT NULL AND (report_summary IS NULL OR length(trim(report_summary))=0 OR length(report_summary)>4000 OR report_at IS NULL OR report_revision<1)))", [], |r|r.get(0))?;
-    expect_zero(invalid, "invalid Coordinator membership or work reports")?;
+    let invalid: i64 = connection.query_row("SELECT count(*) FROM project_session_pages WHERE (report_outcome IS NULL AND (report_summary IS NOT NULL OR report_at IS NOT NULL)) OR (report_outcome IS NOT NULL AND (report_summary IS NULL OR length(trim(report_summary))=0 OR length(report_summary)>4000 OR report_at IS NULL OR report_revision<1))", [], |r|r.get(0))?;
+    expect_zero(invalid, "invalid work reports")?;
+    let invalid_runs: i64 = connection.query_row(
+        "SELECT count(*) FROM nodex_decision_runs run JOIN project_sessions session ON session.id=run.session_id
+         WHERE session.project_id IS NOT NULL
+           OR NOT EXISTS(SELECT 1 FROM project_session_execution_bindings binding WHERE binding.session_id=run.session_id)
+           OR EXISTS(SELECT 1 FROM managed_chats chat WHERE chat.session_id=run.session_id)
+           OR EXISTS(SELECT 1 FROM session_execution_observations observation WHERE observation.session_id=run.session_id)
+           OR EXISTS(SELECT 1 FROM project_session_pages link WHERE link.session_id=run.session_id)",
+        [], |row| row.get(0),
+    )?;
+    expect_zero(invalid_runs, "invalid decision run Session")?;
     crate::workspace::validate_inbox_markdown_serialization(connection, false)?;
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),

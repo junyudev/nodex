@@ -303,18 +303,10 @@ pub struct InboxRoutingDelivery {
     pub skill_offers: Vec<InboxSkillOffer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_ms: Option<i64>,
-    pub coordinator_session_id: String,
+    pub decision_session_id: String,
     pub handed_over_at_ms: i64,
     pub run_started_at_ms: Option<i64>,
     pub last_refusal: Option<String>,
-}
-
-/// An admitted delivery whose result no longer belongs to an open request.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct InboxRoutingCancellation {
-    pub request_id: String,
-    pub generation: i64,
-    pub coordinator_session_id: String,
 }
 
 /// The decision behind an Automation's message, as it stands now.
@@ -751,7 +743,6 @@ pub enum InboxRowKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct InboxTurn {
     pub turn: crate::workspace::PageTurn,
-    pub note_id: Option<String>,
     pub active_chat: Option<ProjectWorkspaceInboxChat>,
     pub options: Vec<String>,
     pub pull_request_url: Option<String>,

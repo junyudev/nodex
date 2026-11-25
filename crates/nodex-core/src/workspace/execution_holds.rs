@@ -52,13 +52,6 @@ pub(crate) fn session_predicate(session: &str) -> String {
         "(EXISTS(SELECT 1 FROM execution_holds h WHERE (h.scope_kind='space' AND h.scope_id=(SELECT id FROM libraries LIMIT 1)) OR (h.scope_kind='project' AND h.scope_id=(SELECT project_id FROM project_sessions WHERE id={session}))) OR EXISTS(SELECT 1 FROM (SELECT session_id,page_id FROM page_active_chats UNION SELECT session_id,page_id FROM session_workspaces JOIN page_workspaces USING(workspace_id) UNION SELECT session_id,page_id FROM page_work_launches) work WHERE work.session_id={session} AND {page}))"
     )
 }
-pub(crate) fn event_predicate(page: &str, session: &str) -> String {
-    format!(
-        "(EXISTS(SELECT 1 FROM execution_holds WHERE scope_kind='space') OR {} OR {})",
-        page_predicate(page),
-        session_predicate(session)
-    )
-}
 pub(crate) fn for_page(
     connection: &Connection,
     page: &str,
@@ -99,23 +92,6 @@ pub(crate) fn for_session(
     holds.sort_by(|a, b| coordinates(&a.scope, "").cmp(&coordinates(&b.scope, "")));
     holds.dedup();
     Ok(holds)
-}
-pub(crate) fn event_held(
-    connection: &Connection,
-    page: Option<&str>,
-    session: Option<&str>,
-) -> Result<bool, StoreError> {
-    if let Some(page) = page
-        && !for_page(connection, page)?.is_empty()
-    {
-        return Ok(true);
-    }
-    if let Some(session) = session
-        && !for_session(connection, session)?.is_empty()
-    {
-        return Ok(true);
-    }
-    Ok(false)
 }
 pub(crate) fn routing_held(connection: &Connection, request: &str) -> Result<bool, StoreError> {
     let predicate = page_predicate("work.page_id");
@@ -272,10 +248,6 @@ pub(super) fn apply(
     let predicate = page_condition("page.block_id");
     connection.execute(&format!("INSERT INTO page_turn_dirty SELECT page.block_id FROM pages page CROSS JOIN (SELECT ?1 AS scope_kind,?2 AS scope_id) hold WHERE {predicate} ON CONFLICT DO NOTHING"),params![kind,id])?;
     reconcile_routing_clocks(connection)?;
-    // Frozen messages are immutable. Main reconciles acceptance before releasing their facts.
-    if pause {
-        connection.execute("UPDATE coordinator_event_batches SET invalidated_at=?1 WHERE accepted_at IS NULL AND discarded_at IS NULL",[&now])?;
-    }
     let pages = match scope {
         ExecutionHoldScope::Page { page_id } => vec![page_id.clone()],
         _ => vec![],

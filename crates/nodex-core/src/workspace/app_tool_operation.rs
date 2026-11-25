@@ -196,7 +196,7 @@ mod tests {
             "launch:root",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 side_chat_source_session_id: None,
                 session_id: "session:root".into(),
                 project_id: Some("project:default".into()),
@@ -289,7 +289,7 @@ mod tests {
             "launch:other",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 side_chat_source_session_id: None,
                 session_id: "session:other".into(),
                 project_id: Some("project:default".into()),
@@ -337,7 +337,7 @@ mod tests {
             .unwrap();
         let intent = ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: "session:new".into(),
             project_id: None,
@@ -480,7 +480,7 @@ mod tests {
                             provenance: Box::new(request.provenance.clone().unwrap()),
                             intent: Box::new(ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                                 agent_selection: None,
-                                coordinator: false,
+                                decision_run: None,
                                 side_chat_source_session_id: None,
                                 session_id: format!("session:{id}"),
                                 project_id: None,

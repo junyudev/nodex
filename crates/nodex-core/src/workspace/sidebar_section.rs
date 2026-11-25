@@ -99,7 +99,7 @@ pub(super) fn read_session_sidebar_placements(
              SELECT session.id, session.project_id, EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?3), \
                (SELECT snooze.snoozed_until FROM member_session_snoozes snooze WHERE snooze.session_id=session.id AND snooze.member_id=?3), \
                CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
-                 WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) THEN COALESCE( \
+                 WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) THEN COALESCE( \
                  (SELECT item.section_id FROM workspace_sidebar_section_items item \
                    JOIN workspace_sidebar_sections section \
                      ON section.library_id = item.library_id AND section.section_id = item.section_id \
@@ -111,8 +111,8 @@ pub(super) fn read_session_sidebar_placements(
                    WHERE item.library_id = ?1 AND item.project_id = session.project_id \
                      AND section.kind = 'custom' AND section.lifecycle = 'active')) END, \
                EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) \
-                 OR EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id), \
-               EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id=session.id), \
+                 OR EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=session.id), \
+               EXISTS(SELECT 1 FROM managed_chats managed WHERE managed.session_id=session.id), \
                (SELECT active.page_id FROM page_active_chats active \
                  JOIN blocks block ON block.id=active.page_id AND block.library_id=?1 AND block.lifecycle='active' \
                  WHERE active.session_id=session.id ORDER BY active.set_at DESC, active.page_id LIMIT 1) \
@@ -318,7 +318,7 @@ pub(super) fn read_section_item_window(
          LEFT JOIN project_sessions session ON session.id = item.session_id \
          LEFT JOIN project_session_threads link ON link.session_id = session.id \
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = item.session_id) \
+         WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = item.session_id) \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
              OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0) AND {settled_at} IS NULL)) \
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
@@ -1068,7 +1068,7 @@ fn section_metrics(
             let direct = connection.query_row(
                 "SELECT count(*) FROM workspace_sidebar_section_items item
                  WHERE library_id=?1 AND section_id=?2
-                   AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=item.session_id)
+                   AND NOT EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=item.session_id)
                    AND NOT EXISTS(SELECT 1 FROM member_session_settled s WHERE s.session_id=item.session_id AND s.member_id=?3)",
                 params![library_id, section_id, member],
                 |row| row.get::<_, i64>(0),
@@ -1086,7 +1086,7 @@ fn section_metrics(
                   + (SELECT count(*) FROM project_sessions session \
                     JOIN member_session_pins pin ON pin.session_id = session.id AND pin.member_id = ?2 \
                     LEFT JOIN projects project ON project.id = session.project_id \
-                    WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+                    WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
                       AND (session.project_id IS NULL OR project.library_id = ?1))",
                 params![library_id, member],
                 |row| row.get::<_, i64>(0),
@@ -1095,7 +1095,7 @@ fn section_metrics(
                 .prepare(
                     "SELECT session.id FROM project_sessions session \
                      LEFT JOIN projects project ON project.id = session.project_id \
-                     WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND (EXISTS ( \
+                     WHERE session.archived = 0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND (EXISTS ( \
                        SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) OR EXISTS ( \
                        SELECT 1 FROM pinned_project_order pinned \
                        WHERE pinned.project_id = session.project_id)) \
@@ -1133,7 +1133,7 @@ fn section_metrics(
                     "SELECT session.id FROM project_sessions session \
                      WHERE session.project_id IS NULL AND session.archived = 0 \
                        AND NOT EXISTS (SELECT 1 FROM member_session_pins pin WHERE pin.session_id = session.id AND pin.member_id = ?2) \
-                       AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+                       AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
                          JOIN workspace_sidebar_sections section \
                            ON section.library_id = item.library_id \
@@ -1168,7 +1168,7 @@ fn effective_session_ids(
     connection
         .prepare(
             "SELECT session.id FROM project_sessions session \
-             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND session.archived=0 AND NOT EXISTS(
+             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND session.archived=0 AND NOT EXISTS(
                SELECT 1 FROM member_session_settled s WHERE s.session_id=session.id AND s.member_id=?3) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
                  WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
@@ -1646,7 +1646,9 @@ mod tests {
         ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
     };
 
-    use super::super::test_support::{apply, create_session_thread, read, seeded_workspace};
+    use super::super::test_support::{
+        apply, create_session_thread, mark_managed, read, seeded_workspace,
+    };
     use crate::infrastructure::sqlite::with_immediate_transaction;
 
     #[test]
@@ -1722,7 +1724,7 @@ mod tests {
             "side-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 session_id: "session:side".into(),
                 project_id: Some("project:default".into()),
                 title: "Side".into(),
@@ -1735,12 +1737,25 @@ mod tests {
         );
         apply(
             module,
-            "managed",
-            ProjectWorkspaceIntent::SetSessionManaged {
-                session_id: "session:override".into(),
-                managed: true,
+            "decision",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                agent_selection: None,
+                decision_run: Some(nodex_core_contracts::workspace::NodexDecisionRunInput {
+                    kind: nodex_core_contracts::workspace::NodexDecisionRunKind::Routing,
+                    request_id: "request".into(),
+                    generation: 1,
+                }),
+                session_id: "session:decision".into(),
+                project_id: None,
+                title: "Decision".into(),
+                initial_page_ids: vec![],
+                runtime_id: "runtime:test".into(),
+                runtime_thread_id: "thread:decision".into(),
+                launch_request_id: "launch:decision".into(),
+                side_chat_source_session_id: None,
             },
         );
+        mark_managed(&workspace, "session:override");
         let observe = || {
             let ProjectWorkspaceReadValue::SessionSidebarPlacements { placements, .. } = read(
                 module,
@@ -1753,6 +1768,7 @@ mod tests {
                         "archived",
                         "missing",
                         "side",
+                        "decision",
                         "direct",
                     ]
                     .map(|id| format!("session:{id}"))
@@ -1767,7 +1783,7 @@ mod tests {
                     .filter(|p| p.hidden)
                     .map(|p| p.session_id.as_str())
                     .collect::<Vec<_>>(),
-                ["session:side"],
+                ["session:decision", "session:side"],
             );
             assert_eq!(
                 placements
@@ -1785,6 +1801,7 @@ mod tests {
         assert_eq!(
             observe(),
             vec![
+                ("session:decision".into(), None, None, false),
                 (
                     "session:direct".into(),
                     None,
@@ -1825,7 +1842,7 @@ mod tests {
                 expected_revision: revision,
             },
         );
-        assert_eq!(observe()[2].2, Some("section:project".into()));
+        assert_eq!(observe()[3].2, Some("section:project".into()));
     }
 
     #[test]

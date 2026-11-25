@@ -79,7 +79,7 @@ fn settle(connection: &Connection) -> Result<(), StoreError> {
             FROM json_each(state_json) thread);
         DELETE FROM codex_background_processes;
 
-        -- Source polling, Coordinator assessment and both directions of delivery
+        -- Source polling, Automation assessment and both directions of delivery
         -- have separate recovery queues.
         UPDATE sources SET enabled=0, enabled_at_ms=NULL, revision=revision+1 WHERE enabled=1;
         UPDATE source_positions SET lease_token=NULL, lease_expires_at_ms=NULL
@@ -115,7 +115,7 @@ fn settle(connection: &Connection) -> Result<(), StoreError> {
         WHERE suggestion_state IN ('waiting','pending');
         DELETE FROM inbox_decision_undo;
 
-        -- Even manually started Pages can generate Coordinator turns from
+        -- Even manually started Pages can need attention from
         -- readiness or managed-chat observations. Pause copied Page work and
         -- require explicit enrollment for further managed chat observations.
         INSERT INTO execution_holds(scope_kind,scope_id,actor,revision,paused_at)
@@ -136,12 +136,7 @@ fn settle(connection: &Connection) -> Result<(), StoreError> {
         WHERE property_key='work' AND json_extract(value_json,'$.auto_start')=1;
         UPDATE page_work_launches SET rejection='Cancelled when this Profile was cloned'
         WHERE accepted_at IS NULL AND rejection IS NULL;
-        DELETE FROM coordinator_managed_sessions;
-        UPDATE coordinator_work_events SET resolved_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-        WHERE resolved_at IS NULL AND (batch_id IS NULL OR batch_id IN (
-          SELECT batch_id FROM coordinator_event_batches WHERE accepted_at IS NULL));
-        UPDATE coordinator_event_batches SET discarded_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-        WHERE accepted_at IS NULL AND discarded_at IS NULL;
+        DELETE FROM managed_chats;
 
         -- Worktree repair and cleanup must not act on the source Profile's checkouts.
         UPDATE page_workspaces

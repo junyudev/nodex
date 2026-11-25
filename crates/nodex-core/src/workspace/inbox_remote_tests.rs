@@ -60,7 +60,7 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
             runtime_thread_id: "thread".into(),
             launch_request_id: "launch".into(),
             side_chat_source_session_id: None,
-            coordinator: false,
+            decision_run: None,
         },
     )
     .unwrap();
@@ -75,7 +75,7 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
     };
     assert_eq!(observers.len(), 1);
     assert_eq!(observers[0].session_id, "session:standalone");
-    assert!(observers[0].managed.is_none());
+    assert!(!observers[0].managed);
     assert!(observers[0].observation.is_none());
     let principal = bob.principal.as_ref().unwrap();
     assert!(
@@ -98,8 +98,6 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
             session_id: "session:standalone".into(),
             expected_revision: observers[0].revision,
             observation,
-            events: vec![],
-            resolved_request_ids: vec![],
         },
     );
     let ProjectWorkspaceReadValue::SessionExecutionObserver {
@@ -113,7 +111,7 @@ fn standalone_runtime_chats_are_observed_and_only_the_requesting_member_can_answ
     else {
         panic!("Expected standalone execution observation")
     };
-    assert!(observer.managed.is_none());
+    assert!(!observer.managed);
     assert_eq!(
         observer.observation.unwrap().pending_requests[0].id,
         "approval"
@@ -155,7 +153,7 @@ fn chat_events_concern_the_member_core_entitles_never_another() {
             runtime_thread_id: "thread".into(),
             launch_request_id: "launch".into(),
             side_chat_source_session_id: None,
-            coordinator: false,
+            decision_run: None,
         },
     )
     .unwrap();
@@ -247,7 +245,7 @@ fn remote_members_read_session_execution_routes_without_host_or_agent_authority(
             runtime_thread_id: "thread".into(),
             launch_request_id: "launch".into(),
             side_chat_source_session_id: None,
-            coordinator: false,
+            decision_run: None,
         },
     );
     let reads = [
@@ -360,8 +358,6 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
                     session_id: format!("chat:{page}"),
                     expected_revision: 0,
                     observation,
-                    events: vec![],
-                    resolved_request_ids: vec![],
                 },
             );
         }
@@ -582,14 +578,9 @@ fn remote_members_start_and_accept_work_but_cannot_claim_host_or_agent_authority
     assert_eq!(before.page_turn, Some(review.clone()));
     let episode = review.episode;
     for intent in [
-        ProjectWorkspaceIntent::WriteTurnNote {
-            note_id: "note".into(),
-            page_id: page.into(),
-            event_ids: vec!["event".into()],
-            body: "A note".into(),
-            notify: true,
-        },
         ProjectWorkspaceIntent::AnswerInboxQuestion {
+            request_id: "request".into(),
+            generation: 1,
             question_page_id: "question".into(),
             page_id: "answer".into(),
             document_id: "answer:doc".into(),

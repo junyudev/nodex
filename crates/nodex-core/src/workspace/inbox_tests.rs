@@ -37,7 +37,10 @@ fn host() -> BoundModuleContext {
 
 fn apply_host(module: &ProjectWorkspaceModule, operation_id: &str, intent: ProjectWorkspaceIntent) {
     module
-        .apply(&host(), request(operation_id, intent))
+        .apply(
+            &host(),
+            request(operation_id, with_routing_delivery(module, intent)),
+        )
         .unwrap_or_else(|error| panic!("{operation_id}: {}", error.message));
 }
 
@@ -47,9 +50,163 @@ fn apply_host_error(
     intent: ProjectWorkspaceIntent,
 ) -> CoreErrorCode {
     module
-        .apply(&host(), request(operation_id, intent))
+        .apply(
+            &host(),
+            request(operation_id, with_routing_delivery(module, intent)),
+        )
         .expect_err(operation_id)
         .code
+}
+
+fn routing_session(
+    module: &ProjectWorkspaceModule,
+    session_id: &str,
+    request_id: &str,
+    generation: i64,
+) {
+    use nodex_core_contracts::workspace::{NodexDecisionRunInput, NodexDecisionRunKind};
+    module
+        .apply(
+            &host(),
+            request(
+                &format!("launch:{session_id}"),
+                ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    decision_run: Some(NodexDecisionRunInput {
+                        kind: NodexDecisionRunKind::Routing,
+                        request_id: request_id.into(),
+                        generation,
+                    }),
+                    session_id: session_id.into(),
+                    project_id: None,
+                    title: "Routing".into(),
+                    initial_page_ids: vec![],
+                    agent_selection: None,
+                    side_chat_source_session_id: None,
+                    runtime_id: "runtime:test".into(),
+                    runtime_thread_id: format!("thread:{session_id}"),
+                    launch_request_id: format!("launch:{session_id}"),
+                },
+            ),
+        )
+        .expect("decision run");
+}
+
+/// Tests of proposal content admit the real routing delivery without setting up a provider.
+pub(super) fn with_routing_delivery(
+    module: &ProjectWorkspaceModule,
+    mut intent: ProjectWorkspaceIntent,
+) -> ProjectWorkspaceIntent {
+    let ProjectWorkspaceIntent::SettleInboxSuggestion {
+        decision_session_id,
+        request_id,
+        generation,
+        error: None,
+        ..
+    } = &mut intent
+    else {
+        return intent;
+    };
+    if decision_session_id.is_some() {
+        return intent;
+    }
+    let session_id = format!("routing:{request_id}:{generation}");
+    if let ProjectWorkspaceReadValue::InboxSuggestionRequest {
+        request: Some(current),
+    } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxSuggestionRequest {
+            request_id: request_id.clone(),
+        },
+    ) && current.generation == *generation
+    {
+        if let Some(delivery) = current.delivery {
+            *decision_session_id = Some(delivery.decision_session_id);
+            return intent;
+        }
+        routing_session(module, &session_id, request_id, *generation);
+        module
+            .apply(
+                &host(),
+                request(
+                    &format!("delivery:{session_id}"),
+                    ProjectWorkspaceIntent::BeginInboxRouting {
+                        request_id: request_id.clone(),
+                        generation: *generation,
+                        decision_session_id: session_id.clone(),
+                        skill_offers: vec![],
+                    },
+                ),
+            )
+            .expect("routing delivery");
+    }
+    *decision_session_id = Some(session_id);
+    intent
+}
+
+struct TestProposal {
+    proposal_id: String,
+    page_ids: Vec<String>,
+    basis: Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis>,
+    action: ProjectWorkspaceInboxDispatchAction,
+    entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
+    summary: String,
+    rationale: Option<String>,
+    produced_by: Option<String>,
+}
+
+fn apply_proposal(
+    module: &ProjectWorkspaceModule,
+    operation_id: &str,
+    proposal: TestProposal,
+) -> Result<super::ProjectWorkspaceApplyOutcome, nodex_core_contracts::CoreError> {
+    let request_id = format!("request:{}", proposal.proposal_id);
+    module.apply(
+        &host(),
+        request(
+            &format!("request:{operation_id}"),
+            ProjectWorkspaceIntent::RequestInboxSuggestion {
+                request_id: request_id.clone(),
+                mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Grouped,
+                page_ids: proposal.page_ids.clone(),
+                basis: proposal.basis,
+                proposal_id: None,
+                expected_revision: None,
+                correction: None,
+            },
+        ),
+    )?;
+    let intent = with_routing_delivery(
+        module,
+        ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
+            automatic_dispatch: false,
+            request_id,
+            generation: 1,
+            titles: vec![],
+            error: None,
+            produced_by: proposal.produced_by,
+            suggestions: vec![
+                nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestedDispatch {
+                    proposal_id: proposal.proposal_id,
+                    page_ids: proposal.page_ids,
+                    action: proposal.action,
+                    entry_kind: proposal.entry_kind,
+                    summary: proposal.summary,
+                    rationale: proposal.rationale,
+                    explicit_request: false,
+                },
+            ],
+        },
+    );
+    module.apply(&host(), request(operation_id, intent))
+}
+
+fn apply_proposal_error(
+    module: &ProjectWorkspaceModule,
+    op: &str,
+    proposal: TestProposal,
+) -> CoreErrorCode {
+    apply_proposal(module, op, proposal).expect_err(op).code
 }
 
 fn read_host(
@@ -192,10 +349,10 @@ fn propose(
     entry: &ProjectWorkspaceInboxSuggestionInput,
     action: ProjectWorkspaceInboxDispatchAction,
 ) {
-    apply_host(
+    apply_proposal(
         module,
         &format!("propose:{proposal_id}"),
-        ProjectWorkspaceIntent::ProposeInboxDispatch {
+        TestProposal {
             proposal_id: proposal_id.to_owned(),
             page_ids: vec![entry.page_id.clone()],
             basis: vec![entry.basis.clone()],
@@ -205,10 +362,11 @@ fn propose(
             rationale: Some("This is still an open question".to_owned()),
             produced_by: Some("Test".to_owned()),
         },
-    );
+    )
+    .unwrap();
 }
 
-fn count(workspace: &TestWorkspace, sql: &'static str) -> i64 {
+fn count(workspace: &TestWorkspace, sql: &str) -> i64 {
     workspace
         .kernel
         .readers()
@@ -539,17 +697,14 @@ fn chat_suggestions_freeze_only_the_confirmed_additions_and_skills() {
         } else {
             "session:planned"
         };
-        let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read_host(
-            module,
-            ProjectWorkspaceRead::ReadManagedSession {
-                session_id: receiving_session.into(),
-            },
-        ) else {
-            panic!("managed read");
-        };
         assert_eq!(
-            managed.expect("confirmed dispatch is managed").session_id,
-            receiving_session
+            count(
+                &workspace,
+                &format!(
+                    "SELECT COUNT(*) FROM managed_chats WHERE session_id='{receiving_session}'"
+                )
+            ),
+            1
         );
         let work = outbox(module).remove(0);
         let text = work.final_text.as_deref().expect("frozen text");
@@ -577,19 +732,19 @@ fn chat_suggestions_freeze_only_the_confirmed_additions_and_skills() {
 
 #[test]
 fn chat_additions_reject_invalid_values_and_accept_the_character_and_count_limits() {
-    let workspace = seeded_workspace();
-    let module = &workspace.module;
-    create_session_thread(
-        module,
-        "target",
-        "session:target",
-        "thread:target",
-        Some(PROJECT),
-        1,
-    );
-    send(module, "review", "Review the onboarding flow");
-    let entry = pending(module).remove(0);
     for existing_chat in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        create_session_thread(
+            module,
+            "target",
+            "session:target",
+            "thread:target",
+            Some(PROJECT),
+            1,
+        );
+        send(module, "review", "Review the onboarding flow");
+        let entry = pending(module).remove(0);
         let action = |additions| {
             if existing_chat {
                 return ProjectWorkspaceInboxDispatchAction::SendToChat {
@@ -623,25 +778,22 @@ fn chat_additions_reject_invalid_values_and_accept_the_character_and_count_limit
                 "A dispatch can have at most 12 additions",
             ),
         ] {
-            let error = module
-                .apply(
-                    &host(),
-                    request(
-                        "propose:invalid",
-                        ProjectWorkspaceIntent::ProposeInboxDispatch {
-                            proposal_id: "proposal:invalid".into(),
-                            page_ids: vec![entry.page_id.clone()],
-                            basis: vec![entry.basis.clone()],
-                            action: action(additions),
-                            entry_kind: None,
-                            summary: "Review onboarding".into(),
-                            rationale: None,
-                            produced_by: None,
-                        },
-                    ),
-                )
-                .expect_err("reject invalid additions");
-            assert_eq!(error.code, CoreErrorCode::InvalidInput);
+            let error = apply_proposal(
+                module,
+                "propose:invalid",
+                TestProposal {
+                    proposal_id: "proposal:invalid".into(),
+                    page_ids: vec![entry.page_id.clone()],
+                    basis: vec![entry.basis.clone()],
+                    action: action(additions),
+                    entry_kind: None,
+                    summary: "Review onboarding".into(),
+                    rationale: None,
+                    produced_by: None,
+                },
+            )
+            .expect_err("reject invalid additions");
+            assert_eq!(error.code, CoreErrorCode::InvalidInput, "{}", error.message);
             assert_eq!(error.message, message);
             assert_eq!(
                 count(
@@ -743,10 +895,10 @@ fn edited_messages_invalidate_unedited_suggestions() {
     let mut entry = pending(module).remove(0);
     entry.basis.content_hash = "0".repeat(64);
     assert_eq!(
-        apply_host_error(
+        apply_proposal_error(
             module,
             "propose:stale",
-            ProjectWorkspaceIntent::ProposeInboxDispatch {
+            TestProposal {
                 proposal_id: "proposal:stale".into(),
                 page_ids: vec![entry.page_id.clone()],
                 basis: vec![entry.basis],
@@ -1359,10 +1511,10 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
     send(module, "sibling", "Also rotate the staging credentials");
     let entries = pending(module);
     // One grouped suggestion covers both messages and quotes the secret.
-    apply_host(
+    apply_proposal(
         module,
         "propose:group",
-        ProjectWorkspaceIntent::ProposeInboxDispatch {
+        TestProposal {
             proposal_id: "proposal:group".into(),
             page_ids: entries.iter().map(|entry| entry.page_id.clone()).collect(),
             basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
@@ -1378,7 +1530,8 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
             rationale: None,
             produced_by: Some("Test".into()),
         },
-    );
+    )
+    .unwrap();
     // An edit burst that has not become a revision yet must not outlive the erasure either.
     workspace
         .kernel
@@ -1535,7 +1688,7 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: "session:runtime-source".into(),
             project_id: Some("project:default".into()),
@@ -2276,10 +2429,10 @@ fn a_project_inbox_routes_only_inside_its_project() {
     );
 
     let propose_error = |id: &str, action| {
-        apply_host_error(
+        apply_proposal_error(
             module,
             &format!("propose:{id}"),
-            ProjectWorkspaceIntent::ProposeInboxDispatch {
+            TestProposal {
                 proposal_id: format!("proposal:{id}"),
                 page_ids: vec![entry.page_id.clone()],
                 basis: vec![entry.basis.clone()],
@@ -2525,10 +2678,10 @@ fn document_edits_keep_group_advice_visible_and_never_queue_more_spending() {
     send(module, "a", "Survey onboarding flows");
     send(module, "b", "Compare their empty states");
     let entries = pending(module);
-    apply_host(
+    apply_proposal(
         module,
         "propose:group",
-        ProjectWorkspaceIntent::ProposeInboxDispatch {
+        TestProposal {
             proposal_id: "proposal:group".into(),
             page_ids: entries.iter().map(|entry| entry.page_id.clone()).collect(),
             basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
@@ -2538,7 +2691,8 @@ fn document_edits_keep_group_advice_visible_and_never_queue_more_spending() {
             rationale: None,
             produced_by: None,
         },
-    );
+    )
+    .unwrap();
     let original = item(module, "page:a");
     let edit = prepare_edit(
         module,
@@ -3275,6 +3429,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
     let pages = vec!["page:a".into(), "page:b".into()];
     grouped_request(module, "request:ab", pages.clone());
     let settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
+        decision_session_id: None,
         automatic_dispatch: false,
         request_id: "request:ab".into(),
         generation: 1,
@@ -3389,10 +3544,10 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
     send(module, "a", "First");
     send(module, "b", "Second");
     let pages = vec!["page:a".into(), "page:b".into()];
-    apply_host(
+    apply_proposal(
         module,
         "suggest:before-filing",
-        ProjectWorkspaceIntent::ProposeInboxDispatch {
+        TestProposal {
             proposal_id: "proposal:before-filing".into(),
             page_ids: pages.clone(),
             basis: pages_basis(module, pages.clone()),
@@ -3402,7 +3557,8 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
             rationale: None,
             produced_by: None,
         },
-    );
+    )
+    .unwrap();
     let move_intent = |proposal: &str| ProjectWorkspaceIntent::DispatchInboxEntries {
         expected_store_epoch: "epoch-1".into(),
         basis: pages_basis(module, pages.clone()),
@@ -3688,6 +3844,7 @@ fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member(
                 module,
                 operation,
                 ProjectWorkspaceIntent::SettleInboxSuggestion {
+                    decision_session_id: None,
                     automatic_dispatch: false,
                     request_id: input.request_id.clone(),
                     generation: input.generation,
@@ -3758,6 +3915,7 @@ fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
             module,
             "settle:bad",
             ProjectWorkspaceIntent::SettleInboxSuggestion {
+                decision_session_id: None,
                 automatic_dispatch: false,
                 request_id: input.request_id,
                 generation: input.generation,
@@ -3989,6 +4147,7 @@ fn keep_request(
 ) -> ProjectWorkspaceIntent {
     use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestedDispatch;
     ProjectWorkspaceIntent::SettleInboxSuggestion {
+        decision_session_id: None,
         automatic_dispatch: false,
         request_id: request.request_id.clone(),
         generation: request.generation,
@@ -8154,6 +8313,8 @@ fn inbox_migration_never_claims_replaced_images_as_reviewed_even_at_the_same_doc
         }
         replace_inbox_test_image(&workspace, "reviewed", "replacement");
         workspace.kernel.writer().call(move |connection| {
+            // The historical advice predates the current routing request that seeded it.
+            connection.execute("DELETE FROM inbox_suggestion_requests WHERE request_id='request:proposal:legacy'", [])?;
             connection.execute("UPDATE inbox_proposals SET basis_json=?1 WHERE proposal_id='proposal:legacy'", [&legacy])?;
             connection.execute("UPDATE inbox_suggestion_requests SET basis_json=?1,inputs_json='[]' WHERE request_id='request:legacy'", [&legacy])?;
             connection.execute("UPDATE inbox_entries SET suggestion_state='pending' WHERE page_id='page:reviewed'", [])?;
@@ -8226,13 +8387,7 @@ fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
                 .apply(&host(), request("confirm:atomic", confirm.clone()))
                 .is_err()
         );
-        assert_eq!(
-            count(
-                &workspace,
-                "SELECT count(*) FROM coordinator_managed_sessions"
-            ),
-            0
-        );
+        assert_eq!(count(&workspace, "SELECT count(*) FROM managed_chats"), 0);
         assert!(outbox(module).is_empty());
         assert_eq!(
             item(module, "page:work").proposal.unwrap().revision,
@@ -8263,13 +8418,7 @@ fn inbox_confirmation_rolls_back_managed_membership_with_a_rejected_handoff() {
             })
             .unwrap();
         apply_host(module, "confirm:atomic", confirm);
-        assert_eq!(
-            count(
-                &workspace,
-                "SELECT count(*) FROM coordinator_managed_sessions"
-            ),
-            1
-        );
+        assert_eq!(count(&workspace, "SELECT count(*) FROM managed_chats"), 1);
         assert_eq!(outbox(module).len(), 1);
     }
 }
@@ -8527,6 +8676,7 @@ mod plans {
         let pages = vec!["page:first".into(), "page:second".into()];
         grouped_request(&w.module, "request:plan", pages.clone());
         let mut settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
             automatic_dispatch: true,
             request_id: "request:plan".into(),
             generation: 1,
@@ -8609,24 +8759,21 @@ mod plans {
                 _ => unreachable!(),
             }
             assert!(
-                w.module
-                    .apply(
-                        &host(),
-                        request(
-                            &format!("invalid:{index}"),
-                            ProjectWorkspaceIntent::ProposeInboxDispatch {
-                                proposal_id: format!("invalid:{index}"),
-                                page_ids: vec![entry.page_id.clone()],
-                                basis: vec![entry.basis.clone()],
-                                action,
-                                entry_kind: None,
-                                summary: "Plan".into(),
-                                rationale: None,
-                                produced_by: None
-                            }
-                        )
-                    )
-                    .is_err(),
+                apply_proposal(
+                    &w.module,
+                    &format!("invalid:{index}"),
+                    TestProposal {
+                        proposal_id: format!("invalid:{index}"),
+                        page_ids: vec![entry.page_id.clone()],
+                        basis: vec![entry.basis.clone()],
+                        action,
+                        entry_kind: None,
+                        summary: "Plan".into(),
+                        rationale: None,
+                        produced_by: None
+                    }
+                )
+                .is_err(),
                 "{kind}"
             );
         }

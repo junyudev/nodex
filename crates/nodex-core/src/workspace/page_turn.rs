@@ -27,7 +27,7 @@ struct Facts {
     delivery_attempt: Option<(String, String)>,
     work: PageWork,
     stage: Option<String>,
-    active: bool,
+    active: Option<(String, Option<i64>)>,
     active_agent: Option<PageAssignee>,
     observation: Option<SessionExecutionObservation>,
     report: Option<String>,
@@ -165,6 +165,27 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
         }
         return (owner(), Some(Review));
     }
+    if facts.stage.as_deref() == Some("doing")
+        && matches!(facts.work.assignee, Some(PageAssignee::Agent { .. }))
+        && facts.report.is_none()
+        && facts.observation.as_ref().is_some_and(|observation| {
+            observation.state == SessionExecutionState::Idle
+                && observation.run_id.is_some()
+                && facts.active.as_ref().is_some_and(|(_, selected_at)| {
+                    observation
+                        .run_started_at
+                        .zip(*selected_at)
+                        .is_some_and(|(started, selected_at)| started > selected_at)
+                })
+                && observation.terminal_status == Some(SessionExecutionTerminalStatus::Completed)
+                && !observation.person_stopped
+                && !observation.stalled
+                && observation.pending_request_ids.is_empty()
+                && observation.pending_requests.is_empty()
+        })
+    {
+        return (owner(), Some(Reply));
+    }
     if let Some(page) = &facts.blocker {
         return (
             TurnActor::Page {
@@ -174,7 +195,7 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
             Some(WaitingOnPrerequisite),
         );
     }
-    if !facts.active
+    if facts.active.is_none()
         && matches!(facts.stage.as_deref(), Some("triage" | "plan"))
         && matches!(facts.work.assignee, Some(PageAssignee::Agent { .. }))
     {
@@ -220,7 +241,7 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
     };
     let blockers = crate::database::work_graph::summaries(connection, ids)?;
     let mut holds = super::execution_holds::for_pages(connection, ids)?;
-    let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,observation.observed_json,report.report_outcome,
+    let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,CAST(round(unixepoch(active.set_at,'subsec')*1000) AS INTEGER),observation.observed_json,report.report_outcome,
         CASE WHEN report.report_outcome='ready' AND report.report_status_moved
             AND report.status_fence=page.status_person_revision THEN
           NOT COALESCE((json_extract(observation.observed_json,'$.state') IN ('idle','failed')
@@ -235,11 +256,11 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
                     AND json_extract(observation.observed_json,'$.runStartedAt') IS NULL)),0)
         ELSE 0 END
         FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id")?
-        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<String>>(4)?, row.get::<_,Option<String>>(5)?, row.get::<_,bool>(6)?)))?
+        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<i64>>(4)?, row.get::<_,Option<String>>(5)?, row.get::<_,Option<String>>(6)?, row.get::<_,bool>(7)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     rows.into_iter()
         .map(
-            |(id, work, stage, active, observation, report, report_awaits_quiet)| {
+            |(id, work, stage, active, selected_at, observation, report, report_awaits_quiet)| {
                 let work = crate::library::parse_page_work(&decode(work)?)?;
                 let active_agent = active
                     .as_deref()
@@ -279,7 +300,7 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
                         holds: holds.remove(&id).unwrap_or_default(),
                         work,
                         stage,
-                        active: active.is_some(),
+                        active: active.map(|id| (id, selected_at)),
                         active_agent,
                         observation,
                         report,
@@ -294,7 +315,7 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
 
 // Leave room in a workspace event for both Session and Project identities.
 const MAX_CHAT_TURN_INVALIDATIONS: usize = 128;
-const CHAT_ATTENTION_REASON: &str = "(episode.signature ->> '$[1]' IN ('question','approval','review','blocked','failed','stalled'))";
+const CHAT_ATTENTION_REASON: &str = "(episode.signature ->> '$[1]' IN ('question','approval','review','blocked','failed','stalled','reply'))";
 
 /// The persisted episode contains everything an attention Turn needs. Snoozing that episode
 /// changes when the Inbox shows it, while the chat still has the same current Turn.
@@ -344,7 +365,20 @@ fn signature(actor: &TurnActor, reason: Option<TurnReason>, facts: &Facts) -> St
     {
         return json!([actor, reason, hold, attempt]).to_string();
     }
+    if reason == Some(TurnReason::Reply) {
+        let session_id = facts.active.as_ref().map(|(id, _)| id);
+        let run_id = facts.observation.as_ref().and_then(|o| o.run_id.as_ref());
+        return json!([actor, reason, hold, [session_id, run_id]]).to_string();
+    }
     json!([actor, reason, hold]).to_string()
+}
+
+fn episode_id(page: &str, reason: Option<TurnReason>, signature: &str, change: &str) -> String {
+    // A completed Run asks its Owner once, even when a hold briefly hides its Turn.
+    if reason == Some(TurnReason::Reply) {
+        return crate::domain::identity::stable_uuid_v7("page-turn-reply", signature, page);
+    }
+    crate::domain::identity::stable_uuid_v7("page-turn", change, page)
 }
 
 pub(super) fn read_turns(
@@ -407,10 +441,7 @@ pub(crate) fn turns(
                     let (identity, now) = open
                         .clone()
                         .unwrap_or_else(|| ("initial".into(), "1970-01-01T00:00:00.000Z".into()));
-                    (
-                        crate::domain::identity::stable_uuid_v7("page-turn", &identity, id),
-                        now,
-                    )
+                    (episode_id(id, reason, &current_signature, &identity), now)
                 }
             };
             Ok(PageTurn {
@@ -431,11 +462,11 @@ pub(crate) fn turns(
 
 #[derive(Default)]
 pub(crate) struct TurnRefresh {
-    affected: Vec<String>,
+    pub(crate) affected: Vec<String>,
     changed: Vec<String>,
 }
 
-/// Migration uses the same decision as ordinary commits, without manufacturing Work events.
+/// Migrations and commits derive episodes from the same durable facts.
 pub(crate) fn initialize(
     connection: &Connection,
     identity: &str,
@@ -463,7 +494,7 @@ pub(crate) fn initialize(
         for (id, facts) in current {
             let (actor, reason) = choose(&facts);
             let signature = signature(&actor, reason, &facts);
-            let episode = crate::domain::identity::stable_uuid_v7("page-turn", identity, &id);
+            let episode = episode_id(&id, reason, &signature, identity);
             let updated = connection.execute("INSERT INTO page_turn_episodes(page_id,signature,episode,since) VALUES(?1,?2,?3,?4) ON CONFLICT(page_id) DO UPDATE SET signature=excluded.signature,episode=excluded.episode,since=excluded.since WHERE page_turn_episodes.signature<>excluded.signature",params![id,signature,episode,now])?;
             if updated > 0 {
                 changed.push(id);
@@ -475,7 +506,7 @@ pub(crate) fn initialize(
         [],
         |r| r.get::<_, bool>(0),
     )? {
-        connection.execute("INSERT INTO page_turn_notification_intents(member_id,page_id,episode,created_at) SELECT json_extract(episode.signature,'$[0].member_id'),episode.page_id,episode.episode,episode.since FROM page_turn_episodes episode JOIN inbox_rows rows ON rows.page_id=episode.page_id AND rows.row_kind='turn' WHERE json_extract(episode.signature,'$[1]') IN ('question','approval') AND episode.page_id IN (SELECT value FROM json_each(?1)) ON CONFLICT DO NOTHING",[json!(affected).to_string()])?;
+        connection.execute("INSERT INTO page_turn_notification_intents(member_id,page_id,episode,created_at) SELECT member.id,episode.page_id,episode.episode,episode.since FROM page_turn_episodes episode JOIN inbox_rows rows ON rows.page_id=episode.page_id AND rows.row_kind='turn' JOIN members member ON member.id=json_extract(episode.signature,'$[0].member_id') AND member.library_id=rows.library_id AND member.lifecycle='active' WHERE json_extract(episode.signature,'$[1]') IN ('question','approval','review','blocked','failed','reply') AND episode.page_id IN (SELECT value FROM json_each(?1)) ON CONFLICT DO NOTHING",[json!(affected).to_string()])?;
     }
     connection.execute("DELETE FROM page_turn_dirty", [])?;
     Ok(TurnRefresh { affected, changed })
@@ -585,14 +616,14 @@ pub(super) fn observer(
     id: &str,
 ) -> Result<Option<SessionExecutionObserver>, StoreError> {
     super::session_mutation::validate_id("session_id", id)?;
-    let row: Option<(String,i64,Option<String>)> = connection.query_row("SELECT session.created_at,COALESCE(observation.revision,0),observation.observed_json FROM project_sessions session LEFT JOIN session_execution_observations observation ON observation.session_id=session.id WHERE session.id=?1 AND session.archived=0 AND (EXISTS (SELECT 1 FROM coordinator_managed_sessions WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id))",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-    row.map(|(since, revision, observation)| {
+    let row: Option<(String,i64,Option<String>,bool)> = connection.query_row("SELECT session.created_at,COALESCE(observation.revision,0),observation.observed_json,EXISTS(SELECT 1 FROM managed_chats WHERE session_id=session.id) FROM project_sessions session LEFT JOIN session_execution_observations observation ON observation.session_id=session.id WHERE session.id=?1 AND session.archived=0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs WHERE session_id=session.id) AND (EXISTS (SELECT 1 FROM managed_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id))",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+    row.map(|(since, revision, observation, managed)| {
         Ok(SessionExecutionObserver {
             session_id: id.into(),
             since,
             revision,
             observation: observation.map(decode).transpose()?,
-            managed: super::coordinator::managed(connection, id)?,
+            managed,
         })
     })
     .transpose()
@@ -605,7 +636,7 @@ pub(super) fn observers(
     if !(1..=100).contains(&limit) {
         return Err(invalid("Observation window is bounded to 100 Sessions"));
     }
-    let ids=connection.prepare("SELECT id FROM project_sessions session WHERE archived=0 AND (?1 IS NULL OR id>?1) AND (EXISTS (SELECT 1 FROM coordinator_managed_sessions WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id)) ORDER BY id LIMIT ?2")?.query_map(params![after,limit],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let ids=connection.prepare("SELECT id FROM project_sessions session WHERE archived=0 AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs WHERE session_id=session.id) AND (?1 IS NULL OR id>?1) AND (EXISTS (SELECT 1 FROM managed_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM page_active_chats WHERE session_id=session.id) OR EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id=session.id)) ORDER BY id LIMIT ?2")?.query_map(params![after,limit],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     ids.iter()
         .map(|id| observer(connection, id)?.ok_or_else(|| invalid("Observed Session disappeared")))
         .collect()
@@ -630,7 +661,7 @@ mod tests {
                 auto_start: false,
             },
             stage: Some("plan".into()),
-            active: false,
+            active: None,
             active_agent: None,
             observation: None,
             report: None,
@@ -639,6 +670,105 @@ mod tests {
             holds: vec![],
         }
     }
+    #[test]
+    fn reply_requires_an_idle_completed_run_without_other_attention_or_report() {
+        use SessionExecutionState as State;
+        use TurnReason::*;
+        let mut facts = base();
+        facts.stage = Some("doing".into());
+        facts.active = Some(("chat".into(), Some(0)));
+        let mut completed = observation(State::Idle);
+        completed.run_id = Some("run".into());
+        completed.run_started_at = Some(1);
+        completed.terminal_status = Some(SessionExecutionTerminalStatus::Completed);
+        facts.observation = Some(completed.clone());
+        facts.blocker = Some(nodex_core_contracts::database::DatabaseWorkPage {
+            page_id: "blocker".into(),
+            page_key: None,
+            title: "Prerequisite".into(),
+            status: None,
+        });
+        assert_eq!(
+            choose(&facts),
+            (
+                TurnActor::Member {
+                    member_id: "owner".into()
+                },
+                Some(Reply)
+            )
+        );
+
+        let (owner, reason) = choose(&facts);
+        let first = signature(&owner, reason, &facts);
+        assert_eq!(
+            episode_id("page", reason, &first, "before"),
+            episode_id("page", reason, &first, "after")
+        );
+        facts.observation.as_mut().unwrap().run_id = Some("next".into());
+        let next = signature(&owner, reason, &facts);
+        assert_ne!(
+            episode_id("page", reason, &first, "before"),
+            episode_id("page", reason, &next, "before")
+        );
+        facts.observation = Some(completed.clone());
+        facts.active = Some(("another-chat".into(), Some(0)));
+        assert_ne!(signature(&owner, reason, &facts), first);
+        facts.active = Some(("chat".into(), Some(1)));
+        assert_eq!(choose(&facts).1, Some(WaitingOnPrerequisite));
+        facts.active = Some(("chat".into(), Some(0)));
+        let agent = facts.work.assignee.replace(PageAssignee::Member {
+            member_id: "assignee".into(),
+        });
+        facts.blocker = None;
+        assert_eq!(
+            choose(&facts),
+            (
+                TurnActor::Member {
+                    member_id: "assignee".into()
+                },
+                Some(Working)
+            )
+        );
+        facts.work.assignee = agent;
+        facts.blocker = Some(nodex_core_contracts::database::DatabaseWorkPage {
+            page_id: "blocker".into(),
+            page_key: None,
+            title: "Prerequisite".into(),
+            status: None,
+        });
+
+        let mut stopped = completed.clone();
+        stopped.person_stopped = true;
+        let mut failed = completed.clone();
+        failed.state = State::Failed;
+        let mut stalled = completed.clone();
+        stalled.stalled = true;
+        let mut pending = completed.clone();
+        pending.pending_requests = vec![SessionExecutionRequest {
+            id: "question".into(),
+            kind: SessionExecutionRequestKind::Question,
+            question: None,
+            options: vec![],
+        }];
+        let mut pending_identity_only = completed.clone();
+        pending_identity_only.pending_request_ids = vec!["request".into()];
+        for (fact, reason) in [
+            (stopped, WaitingOnPrerequisite),
+            (failed, Failed),
+            (stalled, Stalled),
+            (pending, Question),
+            (pending_identity_only, WaitingOnPrerequisite),
+        ] {
+            facts.observation = Some(fact);
+            assert_eq!(choose(&facts).1, Some(reason));
+        }
+        facts.observation = Some(completed);
+        facts.report = Some("ready".into());
+        assert_eq!(choose(&facts).1, Some(WaitingOnPrerequisite));
+        facts.stage = Some("review".into());
+        assert_eq!(choose(&facts).1, Some(Review));
+    }
+
     fn observation(state: SessionExecutionState) -> SessionExecutionObservation {
         SessionExecutionObservation {
             agent: None,
@@ -647,6 +777,7 @@ mod tests {
             run_started_at: Some(0),
             earlier_run_start: None,
             failure_reason: None,
+            last_reply_excerpt: None,
             pending_request_ids: vec![],
             pending_requests: vec![],
             queue: None,
@@ -665,7 +796,7 @@ mod tests {
         assert_eq!(choose(&f).1, Some(ReadyToStart));
         f.work.auto_start = true;
         assert_eq!(choose(&f).1, Some(Starting));
-        f.active = true;
+        f.active = Some(("chat".into(), Some(0)));
         assert_eq!(choose(&f), (TurnActor::None, None));
         f.work.assignee = Some(PageAssignee::Member {
             member_id: "person".into(),

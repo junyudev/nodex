@@ -26,7 +26,7 @@ mod reply;
 #[path = "inbox_scheduled.rs"]
 pub(crate) mod scheduled;
 #[path = "inbox_snooze.rs"]
-pub(super) mod snooze;
+pub(crate) mod snooze;
 pub(super) use reliable::{
     apply_reliable, read_pending_request_ids, read_requests, stop_suggestion,
 };
@@ -844,7 +844,7 @@ fn capture_message_in_scope(
     )?;
     let seq = allocate_seq(connection, library_id, now)?;
     if source.kind == "answer" {
-        connection.execute("INSERT INTO inbox_answers(page_id,question_page_id,library_id,scope_project_id,coordinator_session_id,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![page_id,source.reply_to_page_id,library_id,inbox_project,source.session_id,now])?;
+        connection.execute("INSERT INTO inbox_answers(page_id,question_page_id,library_id,scope_project_id,decision_session_id,created_at) VALUES(?1,?2,?3,?4,?5,?6)",params![page_id,source.reply_to_page_id,library_id,inbox_project,source.session_id,now])?;
     } else {
         connection.execute(
                 "INSERT INTO inbox_entries(\
@@ -1248,83 +1248,6 @@ pub(super) fn keep_message_status(
 // ---------------------------------------------------------------------------
 // Proposals
 // ---------------------------------------------------------------------------
-
-pub(super) struct ProposalInput<'a> {
-    pub(super) proposal_id: &'a str,
-    pub(super) page_ids: &'a [String],
-    pub(super) basis: &'a [ProjectWorkspaceInboxPageBasis],
-    pub(super) action: &'a ProjectWorkspaceInboxDispatchAction,
-    pub(super) entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
-    pub(super) summary: &'a str,
-    pub(super) rationale: Option<&'a str>,
-    pub(super) produced_by: Option<&'a str>,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn propose(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    input: ProposalInput<'_>,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_host(context)?;
-    validate_id("proposal_id", input.proposal_id)?;
-    let page_ids = unique_page_ids(input.page_ids, MAX_PROPOSAL_PAGES)?;
-    for page in &page_ids {
-        if crate::automation::firing::item(connection, page)?.is_some_and(|firing| {
-            firing.status == nodex_core_contracts::automation::AutomationDecisionStatus::Held
-        }) {
-            return Err(conflict("This Automation already has its own decision"));
-        }
-    }
-    require_open_entries(connection, library_id, &page_ids)?;
-    require_basis(connection, &page_ids, input.basis)?;
-    let scope = require_one_scope(connection, &page_ids)?;
-    let action = normalize_action(connection, library_id, scope.as_deref(), input.action)?;
-    let summary = bounded_text("summary", input.summary, MAX_SUMMARY_CHARS)?;
-    let rationale = input
-        .rationale
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| bounded_text("rationale", value, MAX_RATIONALE_CHARS))
-        .transpose()?;
-    let produced_by = input
-        .produced_by
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| truncate_chars(value, MAX_PRODUCED_BY_CHARS));
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            insert_proposal(
-                connection,
-                library_id,
-                NewProposal {
-                    proposal_id: input.proposal_id,
-                    origin: ProjectWorkspaceInboxProposalOrigin::Agent,
-                    page_ids: &page_ids,
-                    basis: input.basis,
-                    action: &action,
-                    entry_kind: input.entry_kind,
-                    summary: &summary,
-                    rationale: rationale.as_deref(),
-                    produced_by: produced_by.as_deref(),
-                },
-                &now,
-            )?;
-            Ok(simple_effects("inbox_propose_dispatch", &now))
-        },
-    )
-}
 
 struct NewProposal<'a> {
     proposal_id: &'a str,
@@ -1769,7 +1692,7 @@ fn start_dispatch(
     thread_id: Option<&str>,
     now: &str,
 ) -> Result<(), StoreError> {
-    super::coordinator::set_managed(connection, session_id, true, now)?;
+    super::work_facts::mark_chat_managed(connection, session_id, now)?;
     connection.execute(
         "UPDATE inbox_proposals SET state = 'dispatching', action_json = ?2, \
            dispatch_session_id = ?3, dispatch_thread_id = ?4, confirmed_at = ?5, confirmed_by='user', \
@@ -2787,6 +2710,9 @@ fn normalize_action(
             validate_id("session_id", session_id)?;
             let authority =
                 super::session_mutation::require_session(connection, library_id, session_id)?;
+            if super::decision_run::read(connection, session_id)?.is_some() {
+                return Err(invalid("Decision runs cannot receive work"));
+            }
             if authority.archived {
                 return Err(conflict("The target chat is archived"));
             }

@@ -125,7 +125,6 @@ pub enum HostOperation {
     SessionsSetSettled,
     WorkStart,
     WorkspaceRefresh,
-    CoordinatorOpen,
     /// The host's Inbox settings: the Agents its suggestions and new chats run on. Every Member
     /// reads them; each Member's own consent to start their requests stays in Core.
     InboxSettings,

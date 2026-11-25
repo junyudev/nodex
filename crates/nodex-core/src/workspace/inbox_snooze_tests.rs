@@ -488,10 +488,10 @@ fn deferral_preserves_group_advice_and_a_running_request() {
         .into_iter()
         .map(|item| item.basis)
         .collect();
-    apply_host(
+    apply_proposal(
         m,
         "suggest-group",
-        ProjectWorkspaceIntent::ProposeInboxDispatch {
+        TestProposal {
             proposal_id: "proposal:group".into(),
             page_ids: pages,
             basis,
@@ -501,7 +501,8 @@ fn deferral_preserves_group_advice_and_a_running_request() {
             rationale: None,
             produced_by: None,
         },
-    );
+    )
+    .unwrap();
     send(m, "waiting", "Still waiting");
     grouped_request(m, "request:waiting", vec!["page:waiting".into()]);
     let before = requests(m);
@@ -523,6 +524,7 @@ fn deferral_preserves_group_advice_and_a_running_request() {
         m,
         "settle-deferred-request",
         ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
             automatic_dispatch: false,
             request_id: after[0].request_id.clone(),
             generation: after[0].generation,

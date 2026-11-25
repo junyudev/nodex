@@ -173,23 +173,15 @@ pub enum ProjectWorkspaceRead {
     PageWorkOutbox {
         limit: u32,
     },
-    ReadCoordinator,
-    ReadManagedSession {
+    DecisionRun {
         session_id: String,
     },
-    /// Identity-ordered, bounded managed chat metadata; no transcript bodies.
-    ReadManagedSessions {
+    DecisionRunReservations,
+    RetiredDecisionRuns {
         after_session_id: Option<String>,
-        limit: u32,
     },
-    ReadPendingWorkEvents {
-        limit: u32,
-    },
-    ReadEventBatch {
-        batch_id: String,
-    },
-    ReadOpenEventBatches {
-        limit: u32,
+    ManagedChat {
+        session_id: String,
     },
     /// The earliest chat snooze or unfinished delivery, at most one item.
     NextSessionSnooze,
@@ -541,23 +533,20 @@ pub enum ProjectWorkspaceReadValue {
     PageWorkOutbox {
         launches: Vec<PageWorkLaunch>,
     },
-    ReadCoordinator {
-        session_id: Option<String>,
+    DecisionRun {
+        decision_run: Option<NodexDecisionRun>,
+        #[serde(default)]
+        pending: bool,
     },
-    ReadManagedSession {
-        managed: Option<CoordinatorManagedSession>,
+    DecisionRunReservations {
+        routing: u32,
+        assessment: u32,
     },
-    ReadManagedSessions {
-        sessions: Vec<CoordinatorManagedSession>,
+    RetiredDecisionRuns {
+        runs: Vec<NodexDecisionRun>,
     },
-    ReadPendingWorkEvents {
-        events: Vec<CoordinatorWorkEvent>,
-    },
-    ReadEventBatch {
-        batch: Option<CoordinatorEventBatch>,
-    },
-    ReadOpenEventBatches {
-        batches: Vec<CoordinatorEventBatch>,
+    ManagedChat {
+        managed: Option<ManagedChat>,
     },
     /// The earliest snooze any Member is owed, with the chat as that Member reads it.
     NextSessionSnooze {
@@ -749,7 +738,6 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxPendingSuggestionRequestIds {
         request_ids: Vec<String>,
-        cancelled_deliveries: Vec<crate::inbox::InboxRoutingCancellation>,
     },
     InboxPendingSuggestions {
         entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
@@ -1770,63 +1758,32 @@ pub struct PageWorkDescriptor {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum CoordinatorWorkEventKind {
-    Report,
-    Attention,
-    TurnEnded,
-    Failed,
-    Stalled,
-    ReadyToStart,
-    Started,
+pub enum NodexDecisionRunKind {
+    Routing,
+    Assessment,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct CoordinatorWorkEventInput {
-    pub kind: CoordinatorWorkEventKind,
-    pub session_id: Option<String>,
-    pub page_id: Option<String>,
-    pub payload: serde_json::Value,
-    pub dedupe_key: String,
+#[serde(deny_unknown_fields)]
+pub struct NodexDecisionRunInput {
+    pub kind: NodexDecisionRunKind,
+    pub request_id: String,
+    pub generation: i64,
 }
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct CoordinatorObservationInput {
-    pub resolved_request_ids: Vec<String>,
-    pub session_id: String,
-    pub observed_json: serde_json::Value,
-    pub expected_revision: i64,
-}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct CoordinatorManagedSession {
-    pub active_page_ids: Vec<String>,
+pub struct ManagedChat {
     pub session_id: String,
     pub since: String,
-    pub observed_json: Option<serde_json::Value>,
-    pub observed_revision: i64,
-    pub latest_report_at: Option<String>,
 }
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct CoordinatorWorkEvent {
-    pub event_id: String,
-    pub dedupe_key: String,
-    pub kind: CoordinatorWorkEventKind,
-    pub session_id: Option<String>,
-    pub page_id: Option<String>,
-    pub payload: serde_json::Value,
+pub struct NodexDecisionRun {
+    pub session_id: String,
+    pub kind: NodexDecisionRunKind,
+    pub request_id: String,
+    pub generation: i64,
     pub created_at: String,
-    pub session_title: Option<String>,
-    pub page_title: Option<String>,
-    pub page_key: Option<String>,
-}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct CoordinatorEventBatch {
-    pub invalidated_at: Option<String>,
-    pub batch_id: String,
-    pub coordinator_session_id: String,
-    pub message_id: String,
-    pub body: String,
-    pub fingerprint: String,
-    pub created_at: String,
-    pub accepted_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1990,6 +1947,8 @@ pub struct ProjectWorkspaceSessionSummary {
     /// manage it, or they asked for its current Run.
     pub can_stop: bool,
     pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_run_kind: Option<NodexDecisionRunKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2207,8 +2166,6 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         expected_revision: i64,
         observation: SessionExecutionObservation,
-        events: Vec<CoordinatorWorkEventInput>,
-        resolved_request_ids: Vec<String>,
     },
     ClaimPageWorkspace {
         workspace_id: String,
@@ -2270,16 +2227,6 @@ pub enum ProjectWorkspaceIntent {
         accepted_at: Option<String>,
         rejection: Option<String>,
     },
-    BindCoordinator {
-        session_id: String,
-    },
-    UnbindCoordinator {
-        session_id: String,
-    },
-    SetSessionManaged {
-        session_id: String,
-        managed: bool,
-    },
     /// Accepts reviewed work for a Member: the person, or the Member an Agent acts for.
     AcceptPageWork {
         page_id: String,
@@ -2290,25 +2237,6 @@ pub enum ProjectWorkspaceIntent {
         page_id: Option<String>,
         outcome: WorkReportOutcome,
         summary: String,
-    },
-    RecordWorkEvents {
-        events: Vec<CoordinatorWorkEventInput>,
-        observed: Vec<CoordinatorObservationInput>,
-    },
-    CreateEventBatch {
-        batch_id: String,
-        coordinator_session_id: String,
-        event_ids: Vec<String>,
-        message_id: String,
-        body: String,
-        fingerprint: String,
-    },
-    DiscardEventBatch {
-        batch_id: String,
-    },
-    SettleEventBatch {
-        batch_id: String,
-        accepted_at: String,
     },
     CreatePageFor {
         #[serde(rename = "for")]
@@ -2449,8 +2377,8 @@ pub enum ProjectWorkspaceIntent {
     /// Core does not execute the launch or persist the external Thread's mutable state.
     CreateAgentRuntimeSession {
         /// Host-only role binding, atomic with Session/execution admission.
-        #[serde(default)]
-        coordinator: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision_run: Option<NodexDecisionRunInput>,
         session_id: String,
         project_id: Option<String>,
         title: String,
@@ -2464,6 +2392,10 @@ pub enum ProjectWorkspaceIntent {
         launch_request_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         side_chat_source_session_id: Option<String>,
+    },
+    /// The Host confirmed that execution stopped while retaining the decision transcript.
+    AcknowledgeDecisionRunStopped {
+        session_id: String,
     },
     /// Replaces one exact Native root relation after its history is durably imported.
     /// The product Session, placement and Page links retain their identity.
@@ -2687,20 +2619,10 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         intent: ProjectSessionIntent,
     },
-    /// Captures one message as a Page. A Library Inbox message becomes a Page in the
-    /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
-    /// that Project's Database. Agent provenance, when present, becomes immutable source.
-    /// The body is message text with the message shape, text followed by images, and
-    /// becomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional
-    /// title that the suggestion Agent may later replace.
-    WriteTurnNote {
-        page_id: String,
-        note_id: String,
-        body: String,
-        event_ids: Vec<String>,
-        notify: bool,
-    },
+    /// Answers a message that belongs to the calling routing run’s current request.
     AnswerInboxQuestion {
+        request_id: String,
+        generation: i64,
         question_page_id: String,
         page_id: String,
         document_id: String,
@@ -2744,20 +2666,26 @@ pub enum ProjectWorkspaceIntent {
         skill_offers: Vec<crate::inbox::InboxSkillOffer>,
         request_id: String,
         generation: i64,
-        coordinator_session_id: String,
+        decision_session_id: String,
     },
     RecordInboxRoutingRefusal {
         request_id: String,
         generation: i64,
-        coordinator_session_id: String,
+        decision_session_id: String,
         reason: String,
     },
     StartInboxRoutingRun {
         request_id: String,
         generation: i64,
-        coordinator_session_id: String,
+        decision_session_id: String,
         run_started_at_ms: i64,
     },
+    /// Captures one message as a Page. A Library Inbox message becomes a Page in the
+    /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
+    /// that Project's Database. Agent provenance, when present, becomes immutable source.
+    /// The body is message text with the message shape, text followed by images, and
+    /// becomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional
+    /// title that the suggestion Agent may later replace.
     SendInboxMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply_to_page_id: Option<String>,
@@ -2778,17 +2706,6 @@ pub enum ProjectWorkspaceIntent {
     /// collects what remains. Only Pages still in their own Inbox's Database qualify.
     DeleteInboxMessages {
         page_ids: Vec<String>,
-    },
-    /// Records one suggestion for current entry content. It never authorizes work.
-    ProposeInboxDispatch {
-        proposal_id: String,
-        page_ids: Vec<String>,
-        basis: Vec<ProjectWorkspaceInboxPageBasis>,
-        action: ProjectWorkspaceInboxDispatchAction,
-        entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
-        summary: String,
-        rationale: Option<String>,
-        produced_by: Option<String>,
     },
     /// The user authorizes one exact proposal revision, optionally with edits.
     ConfirmInboxDispatch {
@@ -2865,7 +2782,11 @@ pub enum ProjectWorkspaceIntent {
     StopInboxSuggestion {
         page_id: String,
     },
+    /// Records advice for current Inbox content; work still requires separate confirmation.
     SettleInboxSuggestion {
+        /// Required for a successful settlement. Host failures may have no decision run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision_session_id: Option<String>,
         #[serde(default)]
         automatic_dispatch: bool,
         request_id: String,
@@ -3414,6 +3335,7 @@ pub enum TurnReason {
     Failed,
     Stalled,
     Review,
+    Reply,
     ReadyToStart,
     Starting,
     WaitingOnPrerequisite,
@@ -3478,6 +3400,9 @@ pub struct SessionExecutionObservation {
     pub earlier_run_start: Option<SessionExecutionRunStart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    /// Excerpt of the last reply for the observed Run, bounded to 400 characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reply_excerpt: Option<String>,
     pub pending_request_ids: Vec<String>,
     pub pending_requests: Vec<SessionExecutionRequest>,
     pub queue: Option<SessionExecutionQueue>,
@@ -3493,5 +3418,53 @@ pub struct SessionExecutionObserver {
     pub since: String,
     pub revision: i64,
     pub observation: Option<SessionExecutionObservation>,
-    pub managed: Option<CoordinatorManagedSession>,
+    pub managed: bool,
+}
+
+#[cfg(test)]
+mod decision_contract_tests {
+    use super::*;
+    use serde_json::{from_value, json, to_value};
+
+    #[test]
+    fn decision_run_and_reply_observation_use_the_wire_names() {
+        let input = json!({
+            "kind":"create_agent_runtime_session",
+            "decision_run":{"kind":"routing","request_id":"request","generation":2},
+            "session_id":"run-chat","project_id":null,"title":"Routing",
+            "initial_page_ids":[],"runtime_id":"runtime","runtime_thread_id":"thread",
+            "launch_request_id":"launch"
+        });
+        let intent: ProjectWorkspaceIntent = from_value(input.clone()).unwrap();
+        assert!(matches!(
+            &intent,
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                decision_run: Some(NodexDecisionRunInput {
+                    kind: NodexDecisionRunKind::Routing,
+                    generation: 2,
+                    ..
+                }),
+                ..
+            }
+        ));
+        assert_eq!(
+            to_value(intent).unwrap()["decision_run"],
+            input["decision_run"]
+        );
+
+        let observation = json!({
+            "state":"idle","runId":"run","runStartedAt":1,"pendingRequestIds":[],
+            "pendingRequests":[],"queue":null,"terminalStatus":"completed",
+            "personStopped":false,"stalled":false,"progressFingerprint":null,"progressSince":1
+        });
+        let mut parsed: SessionExecutionObservation = from_value(observation.clone()).unwrap();
+        assert_eq!(parsed.last_reply_excerpt, None);
+        assert_eq!(to_value(&parsed).unwrap(), observation);
+        parsed.last_reply_excerpt = Some("Ready for your input.".into());
+        assert_eq!(
+            to_value(parsed).unwrap()["lastReplyExcerpt"],
+            "Ready for your input."
+        );
+        assert_eq!(to_value(TurnReason::Reply).unwrap(), "reply");
+    }
 }

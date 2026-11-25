@@ -7,7 +7,7 @@ use crate::workspace::inbox_content::{
 use nodex_core_contracts::inbox::*;
 use nodex_core_contracts::library::{LibraryBlockTransferUndoToken, LibraryPageWriteDestination};
 use nodex_core_contracts::workspace::{
-    ProjectWorkspaceIntent, ProjectWorkspaceSessionExecutionRef,
+    NodexDecisionRunKind, ProjectWorkspaceIntent, ProjectWorkspaceSessionExecutionRef,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -169,7 +169,7 @@ pub(in crate::workspace) fn apply_reliable(
                 ProjectWorkspaceIntent::BeginInboxRouting {
                     request_id,
                     generation,
-                    coordinator_session_id,
+                    decision_session_id,
                     skill_offers,
                 } => {
                     require_host(context)?;
@@ -181,26 +181,29 @@ pub(in crate::workspace) fn apply_reliable(
                     {
                         return Err(conflict("This request is no longer pending"));
                     }
-                    if super::super::coordinator::binding(connection)?.as_deref()
-                        != Some(&coordinator_session_id)
-                    {
-                        return Err(invalid("Routing requires the current Coordinator"));
-                    }
-                    let count: i64 = connection.query_row("SELECT count(*) FROM inbox_routing_deliveries delivery JOIN inbox_suggestion_requests request USING(request_id) WHERE request.state='pending' AND request.generation=delivery.generation", [], |r|r.get(0))?;
-                    if count >= 16 {
+                    super::super::decision_run::require(
+                        connection,
+                        &decision_session_id,
+                        NodexDecisionRunKind::Routing,
+                        &request_id,
+                        generation,
+                    )?;
+                    let (routing, _) =
+                        super::super::decision_run::reservations(connection, library_id)?;
+                    if routing >= 16 {
                         return Err(conflict("Too many routing requests are already pending"));
                     }
                     let offers = encode(&skill_offers)?;
                     if offers.len() > 16384 {
                         return Err(invalid("Inbox skill offers exceed the routing budget"));
                     }
-                    connection.execute("INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms,skill_offers_json) VALUES(?1,?2,?3,CAST(unixepoch('subsec')*1000 AS INTEGER),?4)",params![request_id,generation,coordinator_session_id,offers])?;
+                    connection.execute("INSERT INTO inbox_routing_deliveries(request_id,generation,decision_session_id,handed_over_at_ms,skill_offers_json) VALUES(?1,?2,?3,CAST(unixepoch('subsec')*1000 AS INTEGER),?4)",params![request_id,generation,decision_session_id,offers])?;
                     Ok(simple_effects("inbox_begin_routing", &now))
                 }
                 ProjectWorkspaceIntent::RecordInboxRoutingRefusal {
                     request_id,
                     generation,
-                    coordinator_session_id,
+                    decision_session_id,
                     reason,
                 } => {
                     require_host(context)?;
@@ -212,7 +215,7 @@ pub(in crate::workspace) fn apply_reliable(
                     {
                         return Err(conflict("This routing request is no longer pending"));
                     }
-                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET last_refusal=?4 WHERE request_id=?1 AND generation=?2 AND coordinator_session_id=?3", params![request_id,generation,coordinator_session_id,reason])?;
+                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET last_refusal=?4 WHERE request_id=?1 AND generation=?2 AND decision_session_id=?3", params![request_id,generation,decision_session_id,reason])?;
                     if changed == 0 {
                         return Err(conflict("The routing delivery changed"));
                     }
@@ -221,7 +224,7 @@ pub(in crate::workspace) fn apply_reliable(
                 ProjectWorkspaceIntent::StartInboxRoutingRun {
                     request_id,
                     generation,
-                    coordinator_session_id,
+                    decision_session_id,
                     run_started_at_ms,
                 } => {
                     require_host(context)?;
@@ -231,7 +234,7 @@ pub(in crate::workspace) fn apply_reliable(
                     {
                         return Err(conflict("This routing request is no longer pending"));
                     }
-                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET run_started_at_ms=COALESCE(run_started_at_ms,?4) WHERE request_id=?1 AND generation=?2 AND coordinator_session_id=?3", params![request_id,generation,coordinator_session_id,run_started_at_ms])?;
+                    let changed = connection.execute("UPDATE inbox_routing_deliveries SET run_started_at_ms=COALESCE(run_started_at_ms,?4) WHERE request_id=?1 AND generation=?2 AND decision_session_id=?3", params![request_id,generation,decision_session_id,run_started_at_ms])?;
                     if changed == 0 {
                         return Err(conflict("The routing delivery changed"));
                     }
@@ -587,6 +590,7 @@ pub(in crate::workspace) fn apply_reliable(
                     Ok(simple_effects("inbox_request_suggestion", &now))
                 }
                 ProjectWorkspaceIntent::SettleInboxSuggestion {
+                    decision_session_id,
                     automatic_dispatch,
                     request_id,
                     generation,
@@ -607,6 +611,7 @@ pub(in crate::workspace) fn apply_reliable(
                         &titles,
                         &suggestions,
                         produced_by.as_deref(),
+                        decision_session_id.as_deref(),
                         error.as_deref(),
                         &now,
                     )?;
@@ -1433,6 +1438,34 @@ fn create_request(
 fn request_pages(connection: &Connection, id: &str) -> Result<Vec<String>, StoreError> {
     Ok(connection.prepare("SELECT page_id FROM inbox_suggestion_request_pages WHERE request_id=?1 ORDER BY position")?.query_map([id],|r|r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }
+pub(super) fn require_routing_delivery(
+    connection: &Connection,
+    library: &str,
+    request_id: &str,
+    generation: i64,
+    session_id: &str,
+) -> Result<(), StoreError> {
+    super::super::decision_run::require(
+        connection,
+        session_id,
+        NodexDecisionRunKind::Routing,
+        request_id,
+        generation,
+    )?;
+    let delivery = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM inbox_routing_deliveries delivery
+         JOIN inbox_suggestion_requests request USING(request_id)
+         WHERE request.library_id=?1 AND request.request_id=?2
+         AND delivery.generation=?3 AND delivery.decision_session_id=?4)",
+        params![library, request_id, generation, session_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !delivery {
+        return Err(super::super::decision_run::denied());
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn settle_request(
     connection: &Connection,
@@ -1445,6 +1478,7 @@ fn settle_request(
     titles: &[ProjectWorkspaceInboxSuggestionTitle],
     suggestions: &[ProjectWorkspaceInboxSuggestedDispatch],
     produced_by: Option<&str>,
+    decision_session_id: Option<&str>,
     error: Option<&str>,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -1476,6 +1510,13 @@ fn settle_request(
         fail_request(connection, id, error, now)?;
         return Ok(());
     }
+    require_routing_delivery(
+        connection,
+        library_id,
+        id,
+        generation,
+        decision_session_id.ok_or_else(super::super::decision_run::denied)?,
+    )?;
     if mode != "auto" && suggestions.len() != 1 {
         return Err(invalid(
             "A grouped request requires one suggestion for all selected messages",
@@ -1483,6 +1524,7 @@ fn settle_request(
     }
     let mut covered = BTreeSet::new();
     for suggestion in suggestions {
+        validate_id("proposal_id", &suggestion.proposal_id)?;
         unique_page_ids(&suggestion.page_ids, MAX_PROPOSAL_PAGES)?;
         for page in &suggestion.page_ids {
             if !pages.contains(page) || !covered.insert(page.clone()) {
@@ -1574,16 +1616,25 @@ fn settle_request(
                 action: &action,
                 entry_kind: suggestion.entry_kind,
                 summary: &bounded_text("summary", &suggestion.summary, MAX_SUMMARY_CHARS)?,
-                rationale: suggestion.rationale.as_deref(),
+                rationale: suggestion
+                    .rationale
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| bounded_text("rationale", value, MAX_RATIONALE_CHARS))
+                    .transpose()?
+                    .as_deref(),
                 produced_by: produced_by
-                    .map(|s| truncate_chars(s, MAX_PRODUCED_BY_CHARS))
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| truncate_chars(value, MAX_PRODUCED_BY_CHARS))
                     .as_deref(),
             },
             now,
         )?;
         connection.execute(
-            "UPDATE inbox_proposals SET explicit_request=?2 WHERE proposal_id=?1",
-            params![suggestion.proposal_id, suggestion.explicit_request],
+            "UPDATE inbox_proposals SET explicit_request=?2,decision_session_id=?3 WHERE proposal_id=?1",
+            params![suggestion.proposal_id, suggestion.explicit_request, decision_session_id],
         )?;
     }
     connection.execute("UPDATE inbox_suggestion_requests SET state='settled',correction=NULL,updated_at=?2 WHERE request_id=?1",params![id,now])?;
@@ -1617,13 +1668,19 @@ fn pending_requests(
 ) -> Result<Vec<PendingRequest>, StoreError> {
     // Filter lifecycle changes before windowing; bad inputs are handled per request below.
     let live = pending_request_filter();
-    Ok(connection.prepare(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE {live} ORDER BY created_at,request_id"))?.query_map([library_id],|row|Ok(PendingRequest {
+    Ok(connection.prepare(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE {live} ORDER BY EXISTS (
+        SELECT 1 FROM inbox_routing_deliveries delivery
+        WHERE delivery.request_id=inbox_suggestion_requests.request_id
+          AND delivery.generation=inbox_suggestion_requests.generation
+    ) DESC,created_at,request_id"))?.query_map([library_id],|row|Ok(PendingRequest {
         id:row.get(0)?,generation:row.get(1)?,mode:row.get(2)?,basis:row.get(3)?,proposal_id:row.get(4)?,expected_revision:row.get(5)?,correction:row.get(6)?,
     }))?.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-fn pending_request_filter() -> String {
-    format!("library_id=?1 AND state='pending' AND request_id NOT IN ({STALE_REQUESTS})")
+pub(in crate::workspace) fn pending_request_filter() -> String {
+    format!(
+        "inbox_suggestion_requests.library_id=?1 AND inbox_suggestion_requests.state='pending' AND inbox_suggestion_requests.request_id NOT IN ({STALE_REQUESTS})"
+    )
 }
 
 pub(in crate::workspace) fn read_pending_request_ids(
@@ -1631,7 +1688,7 @@ pub(in crate::workspace) fn read_pending_request_ids(
     context: &BoundModuleContext,
     library_id: &str,
     request_ids: &[String],
-) -> Result<(Vec<String>, Vec<InboxRoutingCancellation>), StoreError> {
+) -> Result<Vec<String>, StoreError> {
     require_host(context)?;
     if request_ids.len() > 16 {
         return Err(invalid(
@@ -1642,31 +1699,15 @@ pub(in crate::workspace) fn read_pending_request_ids(
         validate_id("request_id", id)?;
     }
     let ids = encode(request_ids)?;
-    let stale = format!("request_id IN ({STALE_REQUESTS})");
-    let mut statement = connection.prepare(&format!(
-        "SELECT request_id, state='pending' AND NOT ({stale}), delivery.generation, coordinator_session_id
-         FROM inbox_suggestion_requests
-         LEFT JOIN inbox_routing_deliveries delivery USING (request_id)
-         WHERE library_id=?1 AND state IN ('pending','superseded')
-           AND request_id IN (SELECT value FROM json_each(?2))
+    let pending = pending_request_filter();
+    Ok(connection
+        .prepare(&format!(
+            "SELECT request_id FROM inbox_suggestion_requests
+         WHERE {pending} AND request_id IN (SELECT value FROM json_each(?2))
          ORDER BY created_at,request_id"
-    ))?;
-    let mut rows = statement.query(params![library_id, ids])?;
-    let mut pending = Vec::new();
-    let mut cancelled = Vec::new();
-    while let Some(row) = rows.next()? {
-        let request_id = row.get(0)?;
-        if row.get::<_, bool>(1)? {
-            pending.push(request_id);
-        } else if let Some(coordinator_session_id) = row.get::<_, Option<String>>(3)? {
-            cancelled.push(InboxRoutingCancellation {
-                request_id,
-                generation: row.get(2)?,
-                coordinator_session_id,
-            });
-        }
-    }
-    Ok((pending, cancelled))
+        ))?
+        .query_map(params![library_id, ids], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
 fn pickup_request(
@@ -1739,7 +1780,7 @@ fn pickup_request(
         }];
     }
     Ok(ProjectWorkspaceInboxSuggestionRequest {
-        delivery: connection.query_row("SELECT coordinator_session_id,handed_over_at_ms,run_started_at_ms,last_refusal,skill_offers_json FROM inbox_routing_deliveries WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|r|Ok((InboxRoutingDelivery {paused_ms:connection.query_row("SELECT elapsed_ms + CASE WHEN paused_at_ms IS NULL THEN 0 ELSE MAX(0,CAST(unixepoch('subsec')*1000 AS INTEGER)-paused_at_ms) END FROM execution_hold_routing_clocks WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|clock|clock.get(0)).optional()?,coordinator_session_id:r.get(0)?,handed_over_at_ms:r.get(1)?,run_started_at_ms:r.get(2)?,last_refusal:r.get(3)?,skill_offers:vec![]}, r.get::<_, String>(4)?))).optional()?.map(|(mut delivery, raw)| -> Result<_, StoreError> {
+        delivery: connection.query_row("SELECT decision_session_id,handed_over_at_ms,run_started_at_ms,last_refusal,skill_offers_json FROM inbox_routing_deliveries WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|r|Ok((InboxRoutingDelivery {paused_ms:connection.query_row("SELECT elapsed_ms + CASE WHEN paused_at_ms IS NULL THEN 0 ELSE MAX(0,CAST(unixepoch('subsec')*1000 AS INTEGER)-paused_at_ms) END FROM execution_hold_routing_clocks WHERE request_id=?1 AND generation=?2",params![row.id,row.generation],|clock|clock.get(0)).optional()?,decision_session_id:r.get(0)?,handed_over_at_ms:r.get(1)?,run_started_at_ms:r.get(2)?,last_refusal:r.get(3)?,skill_offers:vec![]}, r.get::<_, String>(4)?))).optional()?.map(|(mut delivery, raw)| -> Result<_, StoreError> {
             delivery.skill_offers = serde_json::from_str(&raw).map_err(|_| corrupt("Invalid Inbox skill offers"))?;
             Ok(delivery)
         }).transpose()?,

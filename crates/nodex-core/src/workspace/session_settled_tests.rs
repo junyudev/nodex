@@ -762,7 +762,7 @@ fn idle_sweep_finishes_only_quiet_started_chats_and_repeats_as_a_no_op() {
         "snoozed",
         "archived",
         "side",
-        "coordinator",
+        "decision-run",
         "child",
         "finished",
         "filed",
@@ -821,7 +821,7 @@ fn idle_sweep_finishes_only_quiet_started_chats_and_repeats_as_a_no_op() {
              UPDATE codex_threads SET status_type = 'active' WHERE thread_id = 'thread:working';
              UPDATE project_sessions SET archived = 1, archived_at = '{NOW}' WHERE id = 'session:archived';
              INSERT INTO project_session_side_chats(session_id, source_session_id) VALUES ('session:side', 'session:idle');
-             INSERT INTO coordinator(id, session_id, created_at) VALUES (1, 'session:coordinator', '{NOW}');
+             INSERT INTO nodex_decision_runs(session_id,kind,request_id,generation,created_at) VALUES ('session:decision-run','routing','request',1,'{NOW}');
              UPDATE codex_threads SET parent_thread_id = 'thread:idle' WHERE thread_id = 'thread:child';
              UPDATE projects SET lifecycle = 'archived' WHERE id = 'project:archived';
              INSERT INTO member_session_settled(member_id, session_id, settled_at) VALUES ('{member}', 'session:finished', 7);"

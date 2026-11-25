@@ -16,7 +16,7 @@ fn lane(
         "SELECT session.id, session.manual_rank FROM project_sessions session \
          WHERE session.project_id IS ?1 AND session.id <> ?2 AND session.archived = 0 \
            AND NOT EXISTS (SELECT 1 FROM member_session_pins pin WHERE pin.session_id=session.id AND pin.member_id=?3) \
-           AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+           AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
            AND NOT EXISTS (SELECT 1 FROM project_session_threads link JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE link.session_id=session.id AND thread.parent_thread_id IS NOT NULL) \
            AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item JOIN workspace_sidebar_sections section ON section.section_id=item.section_id WHERE item.session_id=session.id AND section.lifecycle='active') \
          ORDER BY session.manual_rank IS NOT NULL, CASE WHEN session.manual_rank IS NULL THEN -session.activity_at ELSE session.manual_rank END, session.id"
@@ -75,7 +75,7 @@ fn place_at(
     let eligible = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM project_sessions session WHERE id=?1 AND project_id IS ?2 AND archived=0 \
           AND NOT EXISTS(SELECT 1 FROM member_session_pins pin WHERE pin.session_id=session.id AND pin.member_id=?3) \
-          AND NOT EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+          AND NOT EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
           AND NOT EXISTS(SELECT 1 FROM workspace_sidebar_section_items item JOIN workspace_sidebar_sections section ON section.section_id=item.section_id WHERE item.session_id=session.id AND section.lifecycle='active'))",
         params![moved, project_id, member], |r| r.get::<_, bool>(0))?;
     if !eligible {
