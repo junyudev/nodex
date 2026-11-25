@@ -91,6 +91,29 @@ export const verifyFullCiContracts = (
   requireFullAppTestMatrix(workflow, "app-tests", workflowName);
 };
 
+export const verifyNightlyTierContract = (workflow: UnknownRecord, aggregateId: string): void => {
+  const jobs = requireRecord(workflow.jobs, "Nightly tier workflow jobs");
+  const nightly = requireRecord(jobs["app-nightly"], "Nightly application tier job");
+  const steps = Array.isArray(nightly.steps) ? nightly.steps.filter(isRecord) : [];
+  if (
+    nightly["runs-on"] !== "ubuntu-latest" ||
+    nightly.if !== undefined ||
+    nightly["continue-on-error"] !== undefined ||
+    !steps.some(
+      (step) =>
+        step.uses === "./.github/actions/run-nightly-tests" &&
+        step.if === undefined &&
+        step["continue-on-error"] === undefined,
+    )
+  ) {
+    throw new Error("The nightly application tier must run on Linux and propagate failures.");
+  }
+  const aggregate = requireRecord(jobs[aggregateId], aggregateId + " job");
+  if (!declaredNeeds(aggregate.needs, aggregateId).has("app-nightly")) {
+    throw new Error(aggregateId + " must require the nightly application tier.");
+  }
+};
+
 export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
   const jobs = requireRecord(workflow.jobs, "Application test workflow jobs");
   const testJob = requireRecord(jobs.test, "Application test matrix job");
@@ -567,10 +590,12 @@ const main = (): void => {
   const nightly = readWorkflow(path.join(repositoryRoot, ".github/workflows/ci-nightly.yml"));
   verifyFullCiContracts(nightly);
   verifyNightlyMacApplicationContracts(nightly);
-  verifyFullCiContracts(
-    readWorkflow(path.join(repositoryRoot, ".github/workflows/_certify-release-source.yml")),
-    "Release certification",
+  verifyNightlyTierContract(nightly, "complete");
+  const certification = readWorkflow(
+    path.join(repositoryRoot, ".github/workflows/_certify-release-source.yml"),
   );
+  verifyFullCiContracts(certification, "Release certification");
+  verifyNightlyTierContract(certification, "certify");
   verifyAppTestMatrixContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml")),
   );

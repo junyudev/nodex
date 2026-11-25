@@ -7,7 +7,8 @@ import { defineConfig } from "vite-plus";
 import { rendererViteResolve } from "./renderer-vite-shared";
 import { filesForSuite } from "./test-suites";
 
-const testFiles = filesForSuite("core-client", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("core-client", tier);
 
 export default defineConfig({
   resolve: rendererViteResolve,
@@ -20,7 +21,7 @@ export default defineConfig({
     exclude: testFiles.exclude,
     maxWorkers: testFiles.isStress ? 1 : 4,
     fileParallelism: !testFiles.isStress,
-    passWithNoTests: testFiles.isStress,
+    passWithNoTests: tier !== "default",
     ...vitestTimeouts(testFiles.isStress),
   },
 });

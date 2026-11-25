@@ -14,7 +14,6 @@ const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
   relatedPaths: [],
   rustFast: false,
   rustFull: false,
-  rustMigration: false,
   staticGroups: STATIC_GROUPS,
   testMode: "full",
   windowsChecks: false,

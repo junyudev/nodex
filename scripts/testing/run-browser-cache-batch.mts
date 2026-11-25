@@ -21,7 +21,7 @@ import {
   type LocalInputs,
   type PathState,
 } from "./test-cache-inputs.ts";
-import { prioritizeTests } from "./cache-test-order.ts";
+import { prioritizeTests, runSelectedTestFiles } from "./cache-test-order.ts";
 import type { TestEvidence } from "./test-cache-evidence.ts";
 import { relativeInput } from "./test-cache-policy.ts";
 
@@ -141,7 +141,14 @@ async function resolutionEvidence(
       .filter((file) => /\.(?:[cm]?[jt]s|[jt]sx)$/u.test(file))
       .map(async (file) => {
         const importer = path.join(root, file);
-        const parsedSource = await readFile(importer, "utf8");
+        const parsedSource = await readFile(importer, "utf8").catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return undefined;
+            throw error;
+          },
+        );
+        if (parsedSource === undefined)
+          return exclude("browser input removed during recording", file);
         const parsed = parseSync(file, parsedSource);
         if (parsed.errors.length) return exclude("unparsed browser module resolution", file);
         const { staticImports, staticExports, dynamicImports, importMetas } = parsed.module;
@@ -374,7 +381,7 @@ const runner = await createVitest(
   { cacheDir: path.join(directory, "vite"), plugins: [vite.plugin] },
 );
 try {
-  await runner.start();
+  await runSelectedTestFiles(runner, root, batch.files);
 } finally {
   await runner.close();
 }

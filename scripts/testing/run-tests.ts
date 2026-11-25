@@ -4,6 +4,7 @@ import { runTimedCommand } from "../ci/run-timed.ts";
 import path from "node:path";
 import {
   STANDARD_TEST_SUITES,
+  NIGHTLY_TEST_SUITES,
   STRESS_TEST_SUITES,
   LIVE_TEST_SUITES,
   nativeRequirements,
@@ -26,6 +27,13 @@ export interface TestSelection {
   readonly args: readonly string[];
 }
 
+const tierSelections = {
+  standard: STANDARD_TEST_SUITES,
+  nightly: NIGHTLY_TEST_SUITES,
+  stress: STRESS_TEST_SUITES,
+  live: LIVE_TEST_SUITES,
+} as const;
+
 export function parseTestSelection(
   args: readonly string[],
   tier = resolveVitestTestTier(),
@@ -33,17 +41,12 @@ export function parseTestSelection(
   const [name, ...rest] = args;
   const related = rest[0] === "--related";
   const forwarded = related ? rest.slice(1) : rest;
-  if (!name) throw new Error("Expected standard, stress, live, or a test suite.");
-  if (name === "standard" || name === "stress" || name === "live") {
+  if (!name) throw new Error("Expected standard, nightly, stress, live, or a test suite.");
+  if (name === "standard" || name === "nightly" || name === "stress" || name === "live") {
     if (forwarded.length || related)
       throw new Error("Use a named suite for focused or related tests.");
     return {
-      suites:
-        name === "standard"
-          ? STANDARD_TEST_SUITES
-          : name === "stress"
-            ? STRESS_TEST_SUITES
-            : LIVE_TEST_SUITES,
+      suites: tierSelections[name],
       tier: name === "standard" ? "default" : name,
       related: false,
       args: [],
@@ -98,7 +101,7 @@ export async function runTests(selection: TestSelection, context: TestRunContext
     if (context.signal.aborted) return 130;
     const needsSelection =
       nativeRequirements(suite).length > 0 &&
-      (selection.tier === "stress" || selection.related || selection.args.length > 0);
+      (selection.tier !== "default" || selection.related || selection.args.length > 0);
     const files =
       context.exactFiles ??
       (needsSelection

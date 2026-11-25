@@ -103,12 +103,6 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "search kernel WASM freshness",
   },
   {
-    command: ["run", "tooling:verify"],
-    group: "repository-contracts",
-    id: "tooling-contracts",
-    name: "tooling contracts",
-  },
-  {
     command: ["run", "verify:renderer-command-boundaries"],
     group: "repository-contracts",
     id: "renderer-command-boundaries",
@@ -149,6 +143,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     group: "repository-contracts",
     id: "version-surfaces",
     name: "version surfaces",
+  },
+  {
+    command: ["run", "tooling:verify"],
+    group: "tooling-contracts",
+    id: "tooling-contracts",
+    name: "tooling contracts",
   },
   {
     command: ["pm", "audit", "--level", "low"],

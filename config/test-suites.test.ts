@@ -10,6 +10,7 @@ import {
   PROFILE_CLONE_TEST,
   AUTOMATIONS_CLI_TEST,
   ownersOfTest,
+  NIGHTLY_TEST_SUITES,
   STRESS_TEST_SUITES,
   LIVE_TEST_SUITES,
   YJS_YRS_TEST,
@@ -51,6 +52,19 @@ describe("application test ownership", () => {
       "packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.live.test.ts",
       "agent-runtime",
       "live",
+    ],
+    ["config/behavior.nightly.test.ts", "unit", "nightly"],
+    ["src/renderer/behavior.nightly.node.test.tsx", "unit", "nightly"],
+    ["src/host/behavior.nightly.node.test.ts", "core-client", "nightly"],
+    ["src/main/behavior.nightly.test.ts", "main", "nightly"],
+    ["src/renderer/behavior.nightly.test.tsx", "renderer", "nightly"],
+    ["packages/landing/src/behavior.nightly.jsdom.test.ts", "renderer", "nightly"],
+    ["src/renderer/behavior.nightly.integration.ts", "integration", "nightly"],
+    ["src/renderer/behavior.nightly.browser.test.tsx", "browser", "nightly"],
+    [
+      "packages/agent-runtime/vendor/shared/src/behavior.nightly.integration.test.ts",
+      "agent-runtime",
+      "nightly",
     ],
     [YJS_YRS_TEST, "core-client", "default"],
   ])("assigns %s to one runtime and tier", (file, suite, tier) => {
@@ -96,6 +110,9 @@ describe("application test ownership", () => {
       "core-server",
     ]);
     expect(nativeRequirements("integration")).toEqual(["core-server"]);
+    expect(NIGHTLY_TEST_SUITES).toContain("browser");
+    expect(NIGHTLY_TEST_SUITES).not.toContain("effect-codex");
+    expect(filesForSuite("effect-codex", "nightly").include).toEqual([]);
     expect(STRESS_TEST_SUITES).toContain("core-client");
     expect(LIVE_TEST_SUITES).toEqual(["agent-runtime"]);
     expect(filesForSuite("effect-codex", "stress").include).toEqual([]);

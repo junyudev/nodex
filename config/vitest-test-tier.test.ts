@@ -3,9 +3,10 @@ import { resolveVitestTestTier } from "./vitest-test-tier";
 
 test("validates explicit test tiers", () => {
   expect(resolveVitestTestTier("default")).toBe("default");
+  expect(resolveVitestTestTier("nightly")).toBe("nightly");
   expect(resolveVitestTestTier("stress")).toBe("stress");
   expect(resolveVitestTestTier("live")).toBe("live");
   expect(() => resolveVitestTestTier("slow")).toThrow(
-    'NODEX_TEST_TIER must be "default", "stress", or "live"',
+    'NODEX_TEST_TIER must be "default", "nightly", "stress", or "live"',
   );
 });

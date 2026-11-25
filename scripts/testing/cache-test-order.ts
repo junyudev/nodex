@@ -1,8 +1,8 @@
-import { BaseSequencer, type TestSpecification } from "vite-plus/test/node";
+import { BaseSequencer, type TestSpecification, type Vitest } from "vite-plus/test/node";
 import { relativeInput } from "./test-cache-policy.ts";
 
 // Discovery records workspace-relative paths, while Vitest uses Vite's module IDs.
-export function testFileSelection(root: string, files: readonly string[]) {
+function testFileSelection(root: string, files: readonly string[]) {
   const selected = new Set(files);
   return {
     size: selected.size,
@@ -11,6 +11,15 @@ export function testFileSelection(root: string, files: readonly string[]) {
       return file !== undefined && selected.has(file);
     },
   };
+}
+
+export async function runSelectedTestFiles(runner: Vitest, root: string, files: readonly string[]) {
+  const selected = testFileSelection(root, files);
+  await runner.standalone();
+  const specifications = (await runner.globTestSpecifications()).filter(selected.matches);
+  if (specifications.length !== selected.size)
+    throw new Error("Test selection changed during discovery.");
+  await runner.runTestSpecifications(specifications);
 }
 
 export function prioritizeTests(root: string, files: readonly string[]) {

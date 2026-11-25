@@ -10,6 +10,7 @@ import {
   verifyFullCiContracts,
   verifyMainCiBaseContract,
   verifyNightlyMacApplicationContracts,
+  verifyNightlyTierContract,
   verifyPreMergeCiContract,
   verifyRustCacheOwnership,
   verifyWindowsCiContracts,
@@ -39,7 +40,6 @@ const nightlyWorkflow = ({
     relatedPaths: [],
     rustFast: true,
     rustFull: true,
-    rustMigration: true,
     staticGroups: STATIC_GROUPS,
     testMode: "full",
     windowsChecks: false,
@@ -313,6 +313,23 @@ test("keeps the full Windows matrix off pull requests and main pushes", () => {
   expect(() =>
     verifyWindowsCiContracts({ ...full, on: { ...triggers, push: { branches: ["main"] } } }, slim),
   ).toThrow("Full Windows push branches");
+});
+
+test.each([
+  ["ci-nightly.yml", "complete"],
+  ["_certify-release-source.yml", "certify"],
+])("%s gates its aggregate on Linux nightly tests", (filename, aggregateId) => {
+  const workflow = readWorkflow(path.join(repositoryRoot, ".github/workflows", filename));
+  expect(() => verifyNightlyTierContract(workflow, aggregateId)).not.toThrow();
+
+  const jobs = requireRecord(workflow.jobs, "jobs");
+  const aggregate = requireRecord(jobs[aggregateId], "aggregate");
+  expect(() =>
+    verifyNightlyTierContract(
+      { ...workflow, jobs: { ...jobs, [aggregateId]: { ...aggregate, needs: ["app-tests"] } } },
+      aggregateId,
+    ),
+  ).toThrow("must require the nightly application tier");
 });
 
 describe("Nightly macOS application coverage", () => {

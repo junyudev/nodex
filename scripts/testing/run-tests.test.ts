@@ -76,6 +76,18 @@ describe("test execution", () => {
     });
     expect(parseTestSelection(["core-client", "--related", ...args], "default").related).toBe(true);
     expect(parseTestSelection(["standard"], "stress").tier).toBe("default");
+    expect(parseTestSelection(["nightly"], "default")).toMatchObject({
+      tier: "nightly",
+      suites: [
+        "unit",
+        "agent-runtime",
+        "core-client",
+        "main",
+        "renderer",
+        "integration",
+        "browser",
+      ],
+    });
     expect(parseTestSelection(["live"], "default")).toEqual({
       suites: ["agent-runtime"],
       tier: "live",
@@ -235,24 +247,30 @@ describe("test execution", () => {
   });
 });
 
-test("a full Core stress tier does not prepare the default-only bridge", async () => {
-  await runTests(parseTestSelection(["core-client"], "stress"), {
-    repositoryRoot: root,
-    prepareElectron: async () => "/tmp/electron",
-    env: {},
-    signal: new AbortController().signal,
-    discover: async (_suite, _args, _related, context) => {
-      expect(context.env?.NODEX_TEST_TIER).toBe("stress");
-      return ["src/main/core-client/database-context-menu-scenario.stress.node.test.ts"];
-    },
-    prepare: async (artifacts, context) => {
-      expect(artifacts).toEqual(["core-server"]);
-      expect(context.profile).toBe("release");
-      return { executables: { "core-server": "/tmp/core" } };
-    },
-    execute: async () => result(),
-  });
-});
+test.each([
+  ["stress", "release"],
+  ["nightly", "dev"],
+] as const)(
+  "the Core %s tier prepares only selected artifacts with the %s profile",
+  async (tier, profile) => {
+    await runTests(parseTestSelection(["core-client"], tier), {
+      repositoryRoot: root,
+      prepareElectron: async () => "/tmp/electron",
+      env: {},
+      signal: new AbortController().signal,
+      discover: async (_suite, _args, _related, context) => {
+        expect(context.env?.NODEX_TEST_TIER).toBe(tier);
+        return [`src/main/core-client/database-context-menu-scenario.${tier}.node.test.ts`];
+      },
+      prepare: async (artifacts, context) => {
+        expect(artifacts).toEqual(["core-server"]);
+        expect(context.profile).toBe(profile);
+        return { executables: { "core-server": "/tmp/core" } };
+      },
+      execute: async () => result(),
+    });
+  },
+);
 
 test("declares the locked Agent runtime for a discovered real-history pressure gate", async () => {
   const events: string[] = [];

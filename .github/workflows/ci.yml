@@ -76,14 +76,13 @@ jobs:
 
   rust-checks:
     name: rust checks
-    if: ${{ fromJSON(needs.classify.outputs.plan).rustFast || fromJSON(needs.classify.outputs.plan).protocolContracts || fromJSON(needs.classify.outputs.plan).rustMigration }}
+    if: ${{ fromJSON(needs.classify.outputs.plan).rustFast || fromJSON(needs.classify.outputs.plan).protocolContracts }}
     needs: classify
     uses: ./.github/workflows/_rust-checks.yml
     with:
       changed_paths_json: ${{ needs.classify.outputs.changed_paths }}
       full_workspace: ${{ fromJSON(needs.classify.outputs.plan).rustFull }}
       run_fast: ${{ fromJSON(needs.classify.outputs.plan).rustFast }}
-      run_migration: ${{ fromJSON(needs.classify.outputs.plan).rustMigration }}
       run_protocol: ${{ fromJSON(needs.classify.outputs.plan).protocolContracts }}
       timing_prefix: pr-rust
 

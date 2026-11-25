@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { VitestTestTier } from "./vitest-test-tier.ts";
+import { VITEST_TEST_TIERS, type VitestTestTier } from "./vitest-test-tier.ts";
 
 export const APP_TEST_SUITES = [
   "unit",
@@ -70,6 +70,7 @@ interface TestSuite {
   readonly runtime: TestRuntime;
   readonly include: readonly string[];
   readonly exclude: readonly string[];
+  readonly nightly: readonly string[];
   readonly stress: readonly string[];
   readonly live?: readonly string[];
   readonly native: readonly NativeArtifactId[];
@@ -101,6 +102,14 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/renderer/**/*.stress.test.{ts,tsx}",
       "third_party/**",
     ],
+    nightly: [
+      "config/**/*.nightly.test.ts",
+      "scripts/**/*.nightly.test.ts",
+      "src/shared/**/*.nightly.test.ts",
+      "src/renderer/**/*.nightly.test.ts",
+      "src/renderer/**/*.nightly.node.test.{ts,tsx}",
+      "packages/landing/src/**/*.nightly.test.ts",
+    ],
     stress: [
       "config/**/*.stress.test.ts",
       "scripts/**/*.stress.test.ts",
@@ -115,6 +124,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     runtime: "host-node",
     include: ["packages/effect-codex-app-server/src/**/*.test.ts"],
     exclude: [],
+    nightly: [],
     stress: [],
     native: [],
   },
@@ -126,6 +136,8 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "packages/agent-runtime/vendor/*/src/**/*.test.ts",
     ],
     exclude: [],
+    // Upstream-derived suites keep upstream's file layout and run on every change; see the package README.
+    nightly: [],
     stress: [],
     // OpenCode 2 needs OPENCODE2_BIN; orchestrator probes also need explicit fixture/auth setup.
     live: [
@@ -139,6 +151,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     runtime: "host-node",
     include: ["src/main/**/*.node.test.ts", "src/host/**/*.node.test.ts", YJS_YRS_TEST],
     exclude: [],
+    nightly: ["src/main/**/*.nightly.node.test.ts", "src/host/**/*.nightly.node.test.ts"],
     stress: ["src/main/**/*.stress.node.test.ts", "src/host/**/*.stress.node.test.ts"],
     native: ["core-server", "yjs-yrs-bridge", "cli"],
   },
@@ -152,6 +165,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/main/**/*.node.test.ts",
       "src/host/**/*.node.test.ts",
     ],
+    nightly: ["src/main/**/*.nightly.test.ts", "src/host/**/*.nightly.test.ts"],
     stress: ["src/main/**/*.stress*.test.ts", "src/host/**/*.stress*.test.ts"],
     native: ["core-server"],
   },
@@ -169,6 +183,11 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/renderer/**/*.node.test.{ts,tsx}",
       "src/renderer/**/*.integration.ts",
     ],
+    nightly: [
+      "src/renderer/**/*.nightly.test.tsx",
+      "src/renderer/**/*.nightly.jsdom.test.ts",
+      "packages/landing/src/**/*.nightly.jsdom.test.ts",
+    ],
     stress: ["src/renderer/**/*.stress.test.{ts,tsx}"],
     native: [],
   },
@@ -181,6 +200,11 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "src/renderer/**/*.integration.ts",
     ],
     exclude: [],
+    nightly: [
+      "src/main/**/*.nightly.integration.ts",
+      "src/host/**/*.nightly.integration.ts",
+      "src/renderer/**/*.nightly.integration.ts",
+    ],
     stress: [
       "src/main/**/*.stress.integration.ts",
       "src/host/**/*.stress.integration.ts",
@@ -197,12 +221,16 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
       "third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToImage.browser.test.ts",
     ],
     exclude: [],
+    nightly: ["src/renderer/**/*.nightly.browser.test.{ts,tsx}"],
     stress: ["src/renderer/**/*.stress.browser.test.{ts,tsx}"],
     native: [],
   },
 };
 
 export const STANDARD_TEST_SUITES = APP_TEST_SUITES.filter((suite) => suite !== "browser");
+export const NIGHTLY_TEST_SUITES = APP_TEST_SUITES.filter(
+  (suite) => suites[suite].nightly.length > 0,
+);
 export const STRESS_TEST_SUITES = APP_TEST_SUITES.filter(
   (suite) => suites[suite].stress.length > 0,
 );
@@ -223,7 +251,7 @@ export function filesForSuite(suite: SuiteId, tier: VitestTestTier = "default") 
     include: [...(tier === "default" ? definition.include : (definition[tier] ?? []))],
     exclude: [
       ...definition.exclude,
-      ...(tier === "default" ? ["**/*.stress.*", "**/*.live.*"] : []),
+      ...(tier === "default" ? ["**/*.nightly.*", "**/*.stress.*", "**/*.live.*"] : []),
     ],
     isStress: tier === "stress",
   };
@@ -231,11 +259,9 @@ export function filesForSuite(suite: SuiteId, tier: VitestTestTier = "default") 
 
 export function ownersOfTest(file: string): readonly { suite: SuiteId; tier: VitestTestTier }[] {
   const normalized = file.replaceAll("\\", "/").replace(/^\.\//u, "");
-  const tier: VitestTestTier = normalized.includes(".live.")
-    ? "live"
-    : normalized.includes(".stress.")
-      ? "stress"
-      : "default";
+  const tier =
+    VITEST_TEST_TIERS.findLast((tier) => tier !== "default" && normalized.includes(`.${tier}.`)) ??
+    "default";
   return APP_TEST_SUITES.flatMap((suite) => {
     const { include, exclude } = filesForSuite(suite, tier);
     const matches = (glob: string) => path.posix.matchesGlob(normalized, glob);
