@@ -93,7 +93,6 @@ import {
   Paw16Glyph,
   Paperclip16Glyph,
   AppshotWindow16Glyph,
-  PuzzlePiece16Glyph,
   Tag16Glyph,
   Person16Glyph,
   TextFormat16Glyph,
@@ -1956,14 +1955,35 @@ export function ComposerAppshotIcon({ className }: IconProps) {
   );
 }
 
-export function PluginsIcon({ className, ariaHidden, "aria-hidden": ariaHiddenAttr }: IconProps) {
+const PLUGINS_OUTLINE_PATH =
+  "M13.2 10A3.2 8 0 0 1 7.03 12.97M6.8 10A3.2 8 0 0 1 12.97 7.03M10 13.2A8 3.2 0 0 1 7.03 7.03M10 6.8A8 3.2 0 0 1 12.97 12.97";
+
+const PLUGINS_FILLED_PATH =
+  "M10 1.65A3.5 8.35 0 0 1 13.02 5.78Q13.15 6.37 12.58 6.54C11.46 6.96 10.45 7.65 9.66 8.54Q9.09 9.3 8.46 8.59C7.46 7.25 6.92 5.38 7.66 3.79A3.5 8.35 0 0 1 10 1.65ZM18.35 10A8.35 3.5 0 0 1 14.22 13.02Q13.63 13.15 13.46 12.58C13.04 11.46 12.35 10.45 11.46 9.66Q10.7 9.09 11.41 8.46C12.75 7.46 14.62 6.92 16.21 7.66A8.35 3.5 0 0 1 18.35 10ZM10 18.35A3.5 8.35 0 0 1 6.98 14.22Q6.85 13.63 7.42 13.46C8.54 13.04 9.55 12.35 10.34 11.46Q10.91 10.7 11.54 11.41C12.54 12.75 13.08 14.62 12.34 16.21A3.5 8.35 0 0 1 10 18.35ZM1.65 10A8.35 3.5 0 0 1 5.78 6.98Q6.37 6.85 6.54 7.42C6.96 8.54 7.65 9.55 8.54 10.34Q9.3 10.91 8.59 11.54C7.25 12.54 5.38 13.08 3.79 12.34A8.35 3.5 0 0 1 1.65 10Z";
+
+/** Two interlocking woven ellipses; fills into four organic swirling petals when active. */
+export function PluginsIcon({
+  className,
+  ariaHidden,
+  "aria-hidden": ariaHiddenAttr,
+  filled = false,
+}: IconProps & { readonly filled?: boolean }) {
   return (
-    <PuzzlePiece16Glyph
-      width={20}
-      height={20}
-      aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr) ?? true}
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
       className={cn("icon-xs shrink-0", className)}
-    />
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr) ?? true}
+    >
+      {filled ? (
+        <path d={PLUGINS_FILLED_PATH} fill="currentColor" />
+      ) : (
+        <path d={PLUGINS_OUTLINE_PATH} stroke="currentColor" strokeWidth="1.2" />
+      )}
+    </svg>
   );
 }
 

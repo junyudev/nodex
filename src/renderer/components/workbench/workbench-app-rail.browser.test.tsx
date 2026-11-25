@@ -76,6 +76,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(current()).toEqual(["Automations"]);
 
   // Places come first; Insights reads across them below the hairline.
+  expect(plugins.querySelector("path")?.getAttribute("stroke")).toBe("currentColor");
   await act(async () => {
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
@@ -83,6 +84,8 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(document.activeElement).toBe(plugins);
   expect(onPlugins).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Plugins"]);
+  expect(plugins.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+  expect(plugins.querySelector("path")?.getAttribute("stroke")).toBeNull();
 
   await act(async () => {
     await userEvent.tab();
@@ -91,6 +94,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(document.activeElement).toBe(insights);
   expect(onInsights).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Insights"]);
+  expect(plugins.querySelector("path")?.getAttribute("stroke")).toBe("currentColor");
 
   await act(async () => {
     await userEvent.tab({ shift: true });

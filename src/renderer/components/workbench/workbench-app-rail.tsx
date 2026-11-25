@@ -120,7 +120,7 @@ export function WorkbenchAppRail({
       }),
       peekArea: "plugins",
       group: "places",
-      icon: () => <PluginsIcon className="size-5" />,
+      icon: (active) => <PluginsIcon filled={active} className="size-5" />,
       onSelect: onPlugins,
     },
   ];

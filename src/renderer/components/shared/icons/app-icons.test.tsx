@@ -31,6 +31,7 @@ import {
   PageIcon,
   PanelRightHiddenIcon,
   PanelRightVisibleIcon,
+  PluginsIcon,
   SidebarHiddenIcon,
   SidebarVisibleIcon,
   PendingWorktreeLocalIcon,
@@ -68,6 +69,7 @@ describe("shared icon intrinsic geometry", () => {
     ["calendar", CalendarIcon, "16"],
     ["calendar overdue", CalendarOverdueIcon, "16"],
     ["clock", ClockIcon, "16"],
+    ["plugins", PluginsIcon, "16"],
     ["multi-select", MultiSelectIcon, "20"],
     ["tags", TagsIcon, "20"],
     ["worktree setup", WorktreeSetupStatusIcon, "10"],
@@ -244,6 +246,22 @@ describe("shared action icon geometry", () => {
     expect(pathSignature(panelHidden.container)).toEqual(pathSignature(showSidebar.container));
     expect(pathSignature(showSidebar.container)).not.toEqual(pathSignature(hideSidebar.container));
     expect(pathSignature(expand.container)).not.toEqual(pathSignature(restore.container));
+  });
+
+  test("renders the woven-ellipse outline and organic swirl filled plugins states", () => {
+    const resting = render(<PluginsIcon />).container.querySelector("svg");
+    const active = render(<PluginsIcon filled />).container.querySelector("svg");
+    const restingPath = resting?.querySelector("path");
+    const activePath = active?.querySelector("path");
+
+    expect(resting?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(active?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(resting?.getAttribute("aria-hidden")).toBe("true");
+    expect(restingPath?.getAttribute("stroke")).toBe("currentColor");
+    expect(restingPath?.getAttribute("fill")).toBeNull();
+    expect(activePath?.getAttribute("fill")).toBe("currentColor");
+    expect(activePath?.getAttribute("stroke")).toBeNull();
+    expect(activePath?.getAttribute("d")).not.toBe(restingPath?.getAttribute("d"));
   });
 });
 
