@@ -409,4 +409,4 @@ Primary implementation:
 Current regression coverage:
 
 - `src/renderer/components/board/editor/child-group-enter.test.ts`
-- `src/renderer/components/board/editor/child-group-backspace.test.ts`
+- `src/renderer/components/board/editor/nfm-structural-backspace.node.test.ts`
