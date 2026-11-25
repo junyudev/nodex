@@ -1,3 +1,4 @@
+import { readBrowserImageDragToken } from "../../../../../shared/browser/browser-image-drag";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { resolveThreadInProgressFollowUpMode } from "@/lib/thread-composer-follow-up-mode";
 import { registerBrowserAnnotationAdmission } from "../../../browser-sidebar/browser-annotation-delivery";
@@ -319,12 +320,13 @@ import {
 import {
   consumeBrowserImageAttachments,
   getBrowserImageAttachmentsSnapshot,
+  publishBrowserImageAttachment,
   subscribeBrowserImageAttachments,
 } from "../../../browser-sidebar/browser-image-attachments";
 import {
-  clearBrowserImageDragState,
   getBrowserImageDragSnapshot,
   subscribeBrowserImageDragState,
+  type BrowserImageDragIntent,
 } from "../../../browser-sidebar/browser-image-drag-state";
 import {
   clearImageEditComposerDraft,
@@ -1695,7 +1697,11 @@ function HydratedThreadComposer({
   const [pausedQueueSendDialogOpen, setPausedQueueSendDialogOpen] = useState(false);
   const [promptIntrinsicWidthPx, setPromptIntrinsicWidthPx] = useState<number | null>(null);
   const [compactInputWidthPx, setCompactInputWidthPx] = useState<number | null>(null);
-  const fileDrag = useDragDepth();
+  const composerDrag = useDragDepth();
+  const [hoveredDrag, setHoveredDrag] = useState<{
+    dragToken: string | null;
+    hasFiles: boolean;
+  } | null>(null);
   if (
     pausedQueueSendDialogOpen &&
     model.composerShell.queuedFollowUpStatus === "ready" &&
@@ -1837,6 +1843,11 @@ function HydratedThreadComposer({
     getBrowserImageDrag,
     getBrowserImageDrag,
   );
+  const browserImageDropActive =
+    composerDrag.active &&
+    browserImageDrag !== null &&
+    hoveredDrag?.dragToken === browserImageDrag.dragToken;
+  const fileDropActive = composerDrag.active && hoveredDrag?.hasFiles === true;
   const getImageEditDraftSnapshot = useCallback(
     () => getImageEditComposerDraftSnapshot(imageEditComposerChannelId),
     [imageEditComposerChannelId],
@@ -3221,73 +3232,79 @@ function HydratedThreadComposer({
     [setAppshotContexts],
   );
 
+  const getMatchingBrowserImageDrag = (dragToken: string | null) => {
+    const current = getBrowserImageDragSnapshot(browserAnnotationConversationId);
+    return current?.dragToken === dragToken ? current : null;
+  };
+
   const handleComposerDragEnter = (event: DragEvent<HTMLDivElement>) => {
-    if (!browserImageDrag && !hasComposerFileDataTransfer(event.dataTransfer)) return;
+    const dragToken = readBrowserImageDragToken(event.dataTransfer.types);
+    const hasFiles = hasComposerFileDataTransfer(event.dataTransfer);
+    if (!dragToken && !hasFiles) return;
+    composerDrag.enter();
+    setHoveredDrag({ dragToken, hasFiles });
+    if (!getMatchingBrowserImageDrag(dragToken) && !hasFiles) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
-    fileDrag.enter();
   };
 
   const handleComposerDragLeave = (event: DragEvent<HTMLDivElement>) => {
-    if (!fileDrag.leave()) return;
+    if (!composerDrag.leave()) return;
     event.preventDefault();
     event.stopPropagation();
   };
 
-  const handleComposerDragOver = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      if (!browserImageDrag && !hasComposerFileDataTransfer(event.dataTransfer)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = "copy";
-    },
-    [browserImageDrag],
-  );
-
-  const handleBrowserImageDrop = async (event: DragEvent<HTMLDivElement>) => {
-    if (!browserImageDrag) return;
+  const handleComposerDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const dragToken = readBrowserImageDragToken(event.dataTransfer.types);
+    if (!getMatchingBrowserImageDrag(dragToken) && !hasComposerFileDataTransfer(event.dataTransfer))
+      return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
-    return runWithCleanup(
-      async () => {
-        const result = await invokeBrowserSidebarCommand({
-          type: "attach-dragged-image",
-          browserConversationId: browserImageDrag.browserConversationId,
-          browserViewScopeId: browserImageDrag.browserViewScopeId,
-          browserTabId: browserImageDrag.browserTabId,
+  };
+
+  const handleBrowserImageDrop = async (
+    event: DragEvent<HTMLDivElement>,
+    drag: BrowserImageDragIntent,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    const failureTitle = getIntl().formatMessage({
+      id: "conversation.localConversationThreadComposer.addBrowserImageFailed",
+      defaultMessage: "Couldn’t add the Browser image",
+    });
+    try {
+      const result = await invokeBrowserSidebarCommand({
+        type: "attach-dragged-image",
+        browserConversationId: drag.browserConversationId,
+        browserViewScopeId: drag.browserViewScopeId,
+        browserTabId: drag.browserTabId,
+        dragToken: drag.dragToken,
+      });
+      if (!result.ok) {
+        toastFailure(failureTitle, result.message);
+        return;
+      }
+      const image = result.imageAttachment;
+      if (image) {
+        publishBrowserImageAttachment(drag.attachmentConversationId, {
+          id: image.id,
+          filename: image.fileName,
+          source: image.source,
         });
-        if (!result.ok)
-          toastFailure(
-            getIntl().formatMessage({
-              id: "conversation.localConversationThreadComposer.addBrowserImageFailed",
-              defaultMessage: "Couldn’t add the Browser image",
-            }),
-            result.message,
-          );
-      },
-      {
-        cleanup: () => {
-          clearBrowserImageDragState(browserAnnotationConversationId);
-        },
-        onError: (error) => {
-          toastFailure(
-            getIntl().formatMessage({
-              id: "conversation.localConversationThreadComposer.addBrowserImageFailed",
-              defaultMessage: "Couldn’t add the Browser image",
-            }),
-            error,
-          );
-        },
-      },
-    );
+      }
+    } catch (error) {
+      toastFailure(failureTitle, error);
+    }
   };
 
   const handleComposerDrop = (event: DragEvent<HTMLDivElement>) => {
-    fileDrag.end();
-    if (browserImageDrag) {
-      void handleBrowserImageDrop(event);
+    composerDrag.end();
+    const drag = getMatchingBrowserImageDrag(readBrowserImageDragToken(event.dataTransfer.types));
+    if (drag) {
+      void handleBrowserImageDrop(event, drag);
       return;
     }
 
@@ -5070,11 +5087,11 @@ function HydratedThreadComposer({
         inert={draftCaptureLocked}
         className={cn(
           "relative",
-          (browserImageDrag || fileDrag.active) && COMPOSER_DROP_TARGET_CLASS_NAME,
+          (browserImageDropActive || fileDropActive) && COMPOSER_DROP_TARGET_CLASS_NAME,
         )}
         data-composer-context-suggestions={contextSuggestionOpen ? "true" : undefined}
-        data-browser-image-drop-active={browserImageDrag ? "true" : "false"}
-        data-file-drop-active={fileDrag.active ? "true" : "false"}
+        data-browser-image-drop-active={browserImageDropActive ? "true" : "false"}
+        data-file-drop-active={fileDropActive ? "true" : "false"}
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
         onDragOver={handleComposerDragOver}

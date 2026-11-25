@@ -1,3 +1,8 @@
+import {
+  clearBrowserImageDragState,
+  publishBrowserImageDragState,
+} from "../../../browser-sidebar/browser-image-drag-state";
+import { browserImageDragType } from "../../../../../shared/browser/browser-image-drag";
 import { deliverBrowserAnnotations } from "../../../browser-sidebar/browser-annotation-delivery";
 import { composerDraftIntents, useComposerDraftIntent } from "@/lib/composer-draft-intents";
 import { buildComposerActions as buildActions } from "@/test/composer-actions-fixture";
@@ -1127,6 +1132,113 @@ describe("ThreadComposer speed menu", () => {
         ],
       },
     ]);
+  });
+
+  test("matches a Browser image drag without intercepting an operating-system drop", async () => {
+    resetStorage();
+    const savedImages: unknown[] = [];
+    const browserCommands: unknown[] = [];
+    const dragToken = "1".repeat(32);
+    const browserTab = {
+      browserConversationId: "session-1",
+      browserViewScopeId: "window-1",
+      browserTabId: "tab-1",
+    };
+    const view = await renderComposer(undefined, undefined, async (channel, ...args) => {
+      if (channel === "asset:image:save") {
+        savedImages.push(args[0]);
+        return { source: "nodex://assets/dropped.png" };
+      }
+      if (
+        channel === "browser-sidebar-command" &&
+        (args[0] as { type?: string } | undefined)?.type === "attach-dragged-image"
+      ) {
+        browserCommands.push(args[0]);
+        return {
+          ok: true,
+          imageAttachment: {
+            id: "browser-image",
+            fileName: "browser.png",
+            source: "nodex://assets/browser.png",
+          },
+        };
+      }
+      return undefined;
+    });
+    const dropTarget = view.container.querySelector<HTMLElement>('[data-file-drop-active="false"]');
+    if (!dropTarget) throw new Error("Expected Composer file drop target");
+    const image = new File(["image"], "dropped.png", { type: "image/png" });
+    Object.defineProperty(image, "arrayBuffer", {
+      configurable: true,
+      value: async () => new TextEncoder().encode("image").buffer,
+    });
+    const dataTransfer = {
+      files: [image],
+      items: [
+        {
+          kind: "file",
+          type: image.type,
+          getAsFile: () => image,
+        },
+      ],
+      types: ["Files"],
+      getData: () => "",
+      dropEffect: "none",
+    };
+
+    const browserDropActive = () => dropTarget.getAttribute("data-browser-image-drop-active");
+
+    try {
+      await act(async () => {
+        publishBrowserImageDragState("thread_1", { ...browserTab, dragToken, isActive: true });
+      });
+      expect(browserDropActive()).toBe("false");
+
+      const staleTransfer = {
+        types: [browserImageDragType("2".repeat(32))],
+        files: [],
+        items: [],
+        getData: () => "",
+        dropEffect: "none",
+      };
+      await act(async () => {
+        fireEvent.dragEnter(dropTarget, { dataTransfer: staleTransfer });
+        fireEvent.dragOver(dropTarget, { dataTransfer: staleTransfer });
+      });
+      expect(browserDropActive()).toBe("false");
+      await act(async () => {
+        fireEvent.drop(dropTarget, { dataTransfer: staleTransfer });
+        fireEvent.dragEnter(dropTarget, { dataTransfer });
+      });
+      expect(browserDropActive()).toBe("false");
+      expect(dropTarget.getAttribute("data-file-drop-active")).toBe("true");
+
+      await act(async () => {
+        fireEvent.drop(dropTarget, { dataTransfer });
+      });
+      const thumbnail = await view.findByRole("button", { name: "dropped.png" });
+      expect(thumbnail.getAttribute("data-composer-image-attachment-size")).toBe("80");
+      await waitFor(() => expect(savedImages).toHaveLength(1));
+      expect(dataTransfer.dropEffect).toBe("copy");
+      expect(browserCommands).toEqual([]);
+
+      const browserTransfer = { ...staleTransfer, types: [browserImageDragType(dragToken)] };
+      await act(async () => {
+        fireEvent.dragEnter(dropTarget, { dataTransfer: browserTransfer });
+        fireEvent.dragOver(dropTarget, { dataTransfer: browserTransfer });
+      });
+      expect(browserDropActive()).toBe("true");
+      expect(browserTransfer.dropEffect).toBe("copy");
+
+      await act(async () => {
+        fireEvent.drop(dropTarget, { dataTransfer: browserTransfer });
+      });
+      expect(browserDropActive()).toBe("false");
+      expect(await view.findByRole("button", { name: "browser.png" })).toBeDefined();
+      expect(browserCommands).toEqual([{ ...browserTab, type: "attach-dragged-image", dragToken }]);
+    } finally {
+      await act(async () => clearBrowserImageDragState(dragToken));
+    }
   });
 
   test("queues the readable image snapshot while materialization is pending", async () => {

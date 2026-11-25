@@ -46,7 +46,14 @@ export interface BrowserSidebarOpenSurfaceRequest extends BrowserSidebarTabIdent
 }
 
 export interface BrowserSidebarImageDragStateEvent extends BrowserSidebarTabIdentity {
+  dragToken: string;
   isActive: boolean;
+}
+
+export interface BrowserImageAttachment {
+  id: string;
+  fileName: string;
+  source: string;
 }
 
 export type BrowserSidebarContextMenuActionEvent =
@@ -59,11 +66,7 @@ export type BrowserSidebarContextMenuActionEvent =
     })
   | (BrowserSidebarTabIdentity & {
       action: "image-attached";
-      attachment: {
-        id: string;
-        fileName: string;
-        source: string;
-      };
+      attachment: BrowserImageAttachment;
     })
   | (BrowserSidebarTabIdentity & {
       action: "error";
@@ -657,7 +660,7 @@ export type BrowserSidebarCommand =
   | BrowserSidebarTargetedCommand<{ type: "find-previous" }>
   | BrowserSidebarTargetedCommand<{ type: "capture-screenshot" }>
   | BrowserSidebarTargetedCommand<{ type: "print" }>
-  | BrowserSidebarTargetedCommand<{ type: "attach-dragged-image" }>
+  | BrowserSidebarTargetedCommand<{ type: "attach-dragged-image"; dragToken: string }>
   | BrowserSidebarTargetedCommand<{
       type: "browser-use-cursor-arrived";
       moveSequence: number;
@@ -687,6 +690,7 @@ export type BrowserSidebarCommandResult =
       ok: true;
       annotation?: BrowserSavedAnnotation;
       dataUrl?: string;
+      imageAttachment?: BrowserImageAttachment;
       snapshot?: BrowserSidebarTabSnapshot;
     }
   | { ok: false; message: string };

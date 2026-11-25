@@ -94,7 +94,7 @@ export interface BrowserGuestHost {
     ownerWebContentsId: number,
     guestWebContentsId: number,
   ) => BrowserAttachedGuestOwnership | null;
-  readonly endImageDrag: (guestWebContentsId: number) => void;
+  readonly endImageDrag: (guestWebContentsId: number, dragToken: string) => void;
   readonly getIdentity: (guestWebContentsId: number) => BrowserSidebarTabIdentity | null;
   readonly getOwnerWebContentsId: (guestWebContentsId: number) => number | null;
   readonly isAuthorized: (guestWebContentsId: number) => boolean;
@@ -120,7 +120,11 @@ export interface BrowserGuestHost {
   ) => void;
   readonly releaseOwner: (ownerWebContentsId: number) => void;
   readonly revokeAttachment: (attachToken: string) => void;
-  readonly startImageDrag: (guestWebContentsId: number, sourceUrl: string) => boolean;
+  readonly startImageDrag: (
+    guestWebContentsId: number,
+    sourceUrl: string,
+    dragToken: string,
+  ) => boolean;
 }
 
 /** Browser state projection consumed by profile and presentation capabilities. */
@@ -312,7 +316,8 @@ export const live = (
             ownerWebContentsId,
             guestWebContentsId,
           ),
-        endImageDrag: (guestWebContentsId) => state.endBrowserImageDrag(guestWebContentsId),
+        endImageDrag: (guestWebContentsId, dragToken) =>
+          state.endBrowserImageDrag(guestWebContentsId, dragToken),
         getIdentity: (guestWebContentsId) => state.getIdentityForWebContents(guestWebContentsId),
         getOwnerWebContentsId: (guestWebContentsId) =>
           state.getOwnerWebContentsIdForGuest(guestWebContentsId),
@@ -335,8 +340,8 @@ export const live = (
           ),
         releaseOwner: (ownerWebContentsId) => state.releaseRendererOwner(ownerWebContentsId),
         revokeAttachment: (attachToken) => state.revokeAuthorizedWebviewAttachment(attachToken),
-        startImageDrag: (guestWebContentsId, sourceUrl) =>
-          state.startBrowserImageDrag(guestWebContentsId, sourceUrl),
+        startImageDrag: (guestWebContentsId, sourceUrl, dragToken) =>
+          state.startBrowserImageDrag(guestWebContentsId, sourceUrl, dragToken),
       };
       const automation: BrowserAutomationHost = {
         assertNavigationAllowed: (identity, url) =>

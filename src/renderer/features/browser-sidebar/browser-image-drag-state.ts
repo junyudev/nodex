@@ -5,11 +5,11 @@ import type {
 
 export interface BrowserImageDragIntent extends BrowserSidebarTabIdentity {
   attachmentConversationId: string;
+  dragToken: string;
 }
 
-const activeByAttachmentConversation = new Map<string, BrowserImageDragIntent>();
+let activeDrag: BrowserImageDragIntent | null = null;
 const listeners = new Set<() => void>();
-const EMPTY_DRAG: BrowserImageDragIntent | null = null;
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -19,39 +19,27 @@ export function publishBrowserImageDragState(
   attachmentConversationId: string,
   event: BrowserSidebarImageDragStateEvent,
 ): void {
-  if (!attachmentConversationId) return;
-  const current = activeByAttachmentConversation.get(attachmentConversationId);
-  if (event.isActive) {
-    activeByAttachmentConversation.set(attachmentConversationId, {
-      attachmentConversationId,
-      browserConversationId: event.browserConversationId,
-      browserViewScopeId: event.browserViewScopeId,
-      browserTabId: event.browserTabId,
-    });
-    notify();
-    return;
-  }
-  if (
-    !current ||
-    current.browserConversationId !== event.browserConversationId ||
-    current.browserViewScopeId !== event.browserViewScopeId ||
-    current.browserTabId !== event.browserTabId
-  ) {
-    return;
-  }
-  activeByAttachmentConversation.delete(attachmentConversationId);
+  if (!attachmentConversationId || !event.isActive) return;
+  activeDrag = {
+    attachmentConversationId,
+    dragToken: event.dragToken,
+    browserConversationId: event.browserConversationId,
+    browserViewScopeId: event.browserViewScopeId,
+    browserTabId: event.browserTabId,
+  };
   notify();
 }
 
-export function clearBrowserImageDragState(attachmentConversationId: string): void {
-  if (!activeByAttachmentConversation.delete(attachmentConversationId)) return;
+export function clearBrowserImageDragState(dragToken: string): void {
+  if (activeDrag?.dragToken !== dragToken) return;
+  activeDrag = null;
   notify();
 }
 
 export function getBrowserImageDragSnapshot(
   attachmentConversationId: string,
 ): BrowserImageDragIntent | null {
-  return activeByAttachmentConversation.get(attachmentConversationId) ?? EMPTY_DRAG;
+  return activeDrag?.attachmentConversationId === attachmentConversationId ? activeDrag : null;
 }
 
 export function subscribeBrowserImageDragState(listener: () => void): () => void {

@@ -23,7 +23,7 @@ The prompt editor classifies one `DataTransfer` before the ordinary ProseMirror 
 - any ordinary file payload is consumed by the attachment owner
 - media-only HTML is bounded to 100,000 characters, requires visible `img`, `svg`, `canvas`, or `video`, and ignores metadata, script/style/template content, hidden nodes, and text owned by the media element itself
 
-Native file drag uses copy semantics and a nested drag counter, so entering child elements does not flicker the Composer drop affordance. Internal Browser image drag remains a separate producer but converges on the same image controller after its source is resolved.
+Native file drag uses copy semantics and a nested drag counter, so entering child elements does not flicker the Composer drop affordance. Dragging an image from Browser highlights its chat’s Composer while the drag is over the drop target. Dropping attaches the image to that Composer. Canceling the drag or navigating away from the source page ends the handoff. Dropped Browser images use the same image controller as other image attachments.
 
 ## Draft model and materialization
 

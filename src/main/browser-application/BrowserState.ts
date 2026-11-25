@@ -30,6 +30,7 @@ import {
   type BrowserSidebarBrowserUseViewportEvent,
   type BrowserSidebarCommand,
   type BrowserSidebarCommandResult,
+  type BrowserImageAttachment,
   type BrowserSidebarClonedTabInput,
   type BrowserSidebarDestroyWebviewRequest,
   type BrowserSidebarPhysicalHostIdentity,
@@ -327,6 +328,7 @@ interface AttachedBrowserWebviewOwnership {
 }
 
 interface ActiveBrowserImageDrag extends BrowserSidebarTabIdentity {
+  dragToken: string;
   guestWebContentsId: number;
   ownerWebContentsId: number;
   sourceUrl: string;
@@ -748,7 +750,7 @@ export class BrowserState {
     return this.attachedWebviewOwnership.get(webContentsId)?.ownerWebContentsId ?? null;
   }
 
-  startBrowserImageDrag(guestWebContentsId: number, sourceUrl: string): boolean {
+  startBrowserImageDrag(guestWebContentsId: number, sourceUrl: string, dragToken: string): boolean {
     const ownership = this.attachedWebviewOwnership.get(guestWebContentsId);
     if (!ownership || sourceUrl.length === 0) {
       return false;
@@ -761,6 +763,7 @@ export class BrowserState {
     }
     const active: ActiveBrowserImageDrag = {
       ...browserIdentity(ownership.identity),
+      dragToken,
       guestWebContentsId,
       ownerWebContentsId: ownership.ownerWebContentsId,
       sourceUrl,
@@ -769,17 +772,29 @@ export class BrowserState {
     this.activeImageDragsByOwnerWebContentsId.set(ownership.ownerWebContentsId, active);
     this.events.publish({
       kind: "imageDragState",
-      value: { ...browserIdentity(active), isActive: true },
+      value: { ...browserIdentity(active), dragToken, isActive: true },
     });
     return true;
   }
 
-  endBrowserImageDrag(guestWebContentsId: number): void {
+  endBrowserImageDrag(guestWebContentsId: number, dragToken: string): void {
+    const active = this.getBrowserImageDragForGuest(guestWebContentsId);
+    if (!active || active.dragToken !== dragToken) return;
+    this.clearBrowserImageDrag(active.ownerWebContentsId);
+  }
+
+  private getBrowserImageDragForGuest(
+    guestWebContentsId: number,
+  ): ActiveBrowserImageDrag | undefined {
     const ownership = this.attachedWebviewOwnership.get(guestWebContentsId);
-    if (!ownership) return;
+    if (!ownership) return undefined;
     const active = this.activeImageDragsByOwnerWebContentsId.get(ownership.ownerWebContentsId);
-    if (active?.guestWebContentsId !== guestWebContentsId) return;
-    this.clearBrowserImageDrag(ownership.ownerWebContentsId);
+    return active?.guestWebContentsId === guestWebContentsId ? active : undefined;
+  }
+
+  private clearBrowserImageDragForGuest(guestWebContentsId: number): void {
+    const active = this.getBrowserImageDragForGuest(guestWebContentsId);
+    if (active) this.clearBrowserImageDrag(active.ownerWebContentsId);
   }
 
   isBrowserUseIdentity(identity: BrowserSidebarTabIdentity): boolean {
@@ -2166,6 +2181,7 @@ export class BrowserState {
           const active = this.activeImageDragsByOwnerWebContentsId.get(ownerWebContentsId);
           if (
             !active ||
+            active.dragToken !== command.dragToken ||
             browserTabKey(active) !== key ||
             active.guestWebContentsId !== tab.webContentsId
           ) {
@@ -2175,7 +2191,7 @@ export class BrowserState {
             };
           }
           this.clearBrowserImageDrag(ownerWebContentsId);
-          return yield* this.attachContextMenuImage(
+          return yield* this.prepareBrowserImageAttachment(
             active.guestWebContentsId,
             contents,
             tab,
@@ -2281,7 +2297,21 @@ export class BrowserState {
         },
         attachImage: (sourceUrl) => {
           this.fork(
-            this.attachContextMenuImage(webContentsId, contents, tab, sourceUrl).pipe(
+            this.prepareBrowserImageAttachment(webContentsId, contents, tab, sourceUrl).pipe(
+              Effect.tap((result) =>
+                Effect.sync(() => {
+                  this.events.publish({
+                    kind: "contextMenuAction",
+                    value: result.ok
+                      ? {
+                          ...identity,
+                          action: "image-attached",
+                          attachment: result.imageAttachment,
+                        }
+                      : { ...identity, action: "error", message: result.message },
+                  });
+                }),
+              ),
               Effect.asVoid,
             ),
           );
@@ -2343,16 +2373,18 @@ export class BrowserState {
     this.activeImageDragsByOwnerWebContentsId.delete(ownerWebContentsId);
     this.events.publish({
       kind: "imageDragState",
-      value: { ...browserIdentity(active), isActive: false },
+      value: { ...browserIdentity(active), dragToken: active.dragToken, isActive: false },
     });
   }
 
-  private attachContextMenuImage(
+  private prepareBrowserImageAttachment(
     webContentsId: number,
     contents: BrowserWebContentsLike,
     tab: BrowserSidebarTabSnapshot,
     sourceUrl: string,
-  ): Effect.Effect<BrowserSidebarCommandResult> {
+  ): Effect.Effect<
+    { ok: true; imageAttachment: BrowserImageAttachment } | { ok: false; message: string }
+  > {
     const identity = browserIdentity(tab);
     return Effect.gen(
       function* (this: BrowserState) {
@@ -2367,10 +2399,6 @@ export class BrowserState {
         );
         if (fetched._tag === "Failure") {
           const message = Cause.pretty(fetched.cause);
-          this.events.publish({
-            kind: "contextMenuAction",
-            value: { ...identity, action: "error", message },
-          });
           this.logger.warn("Failed to attach Browser image", { ...identity, error: message });
           return { ok: false as const, message };
         }
@@ -2379,7 +2407,7 @@ export class BrowserState {
           this.webContentsTabIds.get(webContentsId) !== browserTabKey(tab)
         ) {
           return {
-            ok: false,
+            ok: false as const,
             message: "Browser page changed before the image was attached",
           };
         }
@@ -2394,21 +2422,19 @@ export class BrowserState {
           contents.isDestroyed() ||
           this.webContentsTabIds.get(webContentsId) !== browserTabKey(tab)
         ) {
-          return { ok: false, message: "Browser page changed before the image was attached" };
+          return {
+            ok: false as const,
+            message: "Browser page changed before the image was attached",
+          };
         }
-        this.events.publish({
-          kind: "contextMenuAction",
-          value: {
-            ...identity,
-            action: "image-attached",
-            attachment: {
-              id: saved.fileName,
-              fileName: fetched.value.name,
-              source: saved.source,
-            },
+        return {
+          ok: true,
+          imageAttachment: {
+            id: saved.fileName,
+            fileName: fetched.value.name,
+            source: saved.source,
           },
-        });
-        return { ok: true } as const;
+        } as const;
       }.bind(this),
     );
   }
@@ -2712,6 +2738,7 @@ export class BrowserState {
     const detachedWebContentsId =
       typeof webContentsId === "number" ? webContentsId : current.webContentsId;
     if (detachedWebContentsId !== null && detachedWebContentsId !== undefined) {
+      this.clearBrowserImageDragForGuest(detachedWebContentsId);
       this.permissions.release(detachedWebContentsId);
       this.permissionNavigationVersions.delete(detachedWebContentsId);
       this.permissionInputTimes.delete(detachedWebContentsId);
@@ -2806,8 +2833,7 @@ export class BrowserState {
         dialogs.settle();
         const activeTabId = this.webContentsTabIds.get(webContentsId) ?? tabId;
         this.logger.info("Browser webContents destroyed", { tabId: activeTabId, webContentsId });
-        const ownership = this.attachedWebviewOwnership.get(webContentsId);
-        if (ownership) this.clearBrowserImageDrag(ownership.ownerWebContentsId);
+        this.clearBrowserImageDragForGuest(webContentsId);
         this.attachedWebviewOwnership.delete(webContentsId);
         this.fork(this.pageEmulation.release(contents));
         this.runtimeRegistry.releaseGuest(webContentsId);
@@ -2895,6 +2921,7 @@ export class BrowserState {
         if (tab) this.syncAnnotationPresentation(tab);
       });
       add("did-navigate", (...args) => {
+        this.clearBrowserImageDragForGuest(webContentsId);
         dialogs.committed();
         this.initialLoads.delete(webContentsId);
         this.updateTabForWebContents(webContentsId, contents, {
@@ -2949,6 +2976,7 @@ export class BrowserState {
         this.handleLoadFailure(webContentsId, contents, args),
       );
       add("render-process-gone", (...args) => {
+        this.clearBrowserImageDragForGuest(webContentsId);
         dialogs.settle();
         this.permissions.release(webContentsId);
         this.permissionInputTimes.delete(webContentsId);

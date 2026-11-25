@@ -160,6 +160,7 @@ const makeFixture = (
     readonly contents?: FakeWebContents;
     readonly page?: BrowserSerializedPage;
     readonly permissionStore?: BrowserPermissionStore;
+    readonly saveBrowserImage?: ConstructorParameters<typeof BrowserState>[0]["saveBrowserImage"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -202,9 +203,11 @@ const makeFixture = (
       pageEmulation: makeBrowserPageEmulationRuntimeUnsafe(),
       pageStore: pages.runtime,
       runtimeRegistry,
-      saveBrowserImage: () => {
-        throw new Error("Unexpected browser image save");
-      },
+      saveBrowserImage:
+        options.saveBrowserImage ??
+        (() => {
+          throw new Error("Unexpected browser image save");
+        }),
       siteStatus: { cachedCommentModeBlocked: () => null },
       webContentsListeners: yield* makeBrowserWebContentsListenerRuntime,
     });
@@ -1377,44 +1380,51 @@ describe("Browser entry-point navigation policies", () => {
   );
 });
 
-const permissionFixture = Effect.gen(function* () {
-  const fixture = yield* makeFixture();
-  const { state, runtimeRegistry, contents } = fixture;
-  yield* registerTab(state);
-  const route = {
-    ...identity,
-    browserStorageId: "browser:durable",
-    rendererInstanceId: "permission-renderer",
-    hostGeneration: 1,
-    mountGeneration: 2,
-  };
-  runtimeRegistry.registerRendererSession({
-    browserViewScopeId: identity.browserViewScopeId,
-    ownerWebContentsId: 7,
-    rendererInstanceId: route.rendererInstanceId,
-  });
-  const registered = runtimeRegistry.registerHost(7, {
-    ...route,
-    hostKind: "panel",
-    pagePersistence: "durable",
-  });
-  assert.isTrue(registered.ok);
-  const admission = state.authorizeWebviewAttachment(7, route);
-  if (!admission.ok) throw new Error("Permission guest admission failed");
-  state.consumeAuthorizedWebviewAttachment(admission.authorization.attachToken, 7, contents.id);
-  state.registerAttachedWebviewOwnership(7, contents.id, route, route.browserStorageId);
-  yield* state.handleWebviewHostCreated(
-    {
+const attachedBrowserFixture = (options?: Parameters<typeof makeFixture>[0]) =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture(options);
+    const { state, runtimeRegistry, contents } = fixture;
+    yield* registerTab(state);
+    const route = {
+      ...identity,
+      browserStorageId: "browser:durable",
+      rendererInstanceId: "permission-renderer",
+      hostGeneration: 1,
+      mountGeneration: 2,
+    };
+    runtimeRegistry.registerRendererSession({
+      browserViewScopeId: identity.browserViewScopeId,
+      ownerWebContentsId: 7,
+      rendererInstanceId: route.rendererInstanceId,
+    });
+    const registered = runtimeRegistry.registerHost(7, {
       ...route,
-      projectId: "project-1",
       hostKind: "panel",
-      webContentsId: contents.id,
-      initialUrl: "https://example.com/page",
-    },
-    7,
-  );
-  contents.url = "https://example.com/page";
-  contents.emit("did-navigate", {}, contents.url);
+      pagePersistence: "durable",
+    });
+    assert.isTrue(registered.ok);
+    const admission = state.authorizeWebviewAttachment(7, route);
+    if (!admission.ok) throw new Error("Permission guest admission failed");
+    state.consumeAuthorizedWebviewAttachment(admission.authorization.attachToken, 7, contents.id);
+    state.registerAttachedWebviewOwnership(7, contents.id, route, route.browserStorageId);
+    yield* state.handleWebviewHostCreated(
+      {
+        ...route,
+        projectId: "project-1",
+        hostKind: "panel",
+        webContentsId: contents.id,
+        initialUrl: "https://example.com/page",
+      },
+      7,
+    );
+    contents.url = "https://example.com/page";
+    contents.emit("did-navigate", {}, contents.url);
+    return { ...fixture, route };
+  });
+
+const permissionFixture = Effect.gen(function* () {
+  const fixture = yield* attachedBrowserFixture();
+  const { state, contents } = fixture;
   const results: boolean[] = [];
   const request = () =>
     state.permissions.request(
@@ -1423,7 +1433,64 @@ const permissionFixture = Effect.gen(function* () {
       (allowed) => results.push(allowed),
       { requestingUrl: contents.url, isMainFrame: true },
     );
-  return { ...fixture, results, request, route };
+  return { ...fixture, results, request };
+});
+
+describe("Browser image drag lifetime", () => {
+  const imageUrl = "https://example.com/image.png";
+  const currentToken = "1".repeat(32);
+  const oldToken = "2".repeat(32);
+  const attach = (state: BrowserState, dragToken: string, ownerWebContentsId = 7) =>
+    state.handleCommand(
+      { ...identity, type: "attach-dragged-image", dragToken },
+      { ownerWebContentsId },
+    );
+
+  it.effect("consumes only the matching drag token for its owner", () =>
+    Effect.gen(function* () {
+      const { state, contents } = yield* attachedBrowserFixture({
+        saveBrowserImage: async () => ({
+          fileName: "saved.png",
+          source: "nodex://assets/saved.png",
+        }),
+      });
+      assert.isTrue(state.startBrowserImageDrag(contents.id, imageUrl, oldToken));
+      assert.isTrue(state.startBrowserImageDrag(contents.id, imageUrl, currentToken));
+      state.endBrowserImageDrag(contents.id, oldToken);
+      assert.isFalse((yield* attach(state, oldToken)).ok);
+      assert.isFalse((yield* attach(state, currentToken, 8)).ok);
+      contents.emit("did-navigate-in-page", {}, contents.url + "#hash", true);
+      expect(yield* attach(state, currentToken)).toEqual({
+        ok: true,
+        imageAttachment: {
+          id: "saved.png",
+          fileName: "image.png",
+          source: "nodex://assets/saved.png",
+        },
+      });
+      assert.isFalse((yield* attach(state, currentToken)).ok);
+    }),
+  );
+
+  for (const end of ["navigation", "crash", "destroy"] as const) {
+    it.effect(`retires the source drag when the guest ends by ${end}`, () =>
+      Effect.gen(function* () {
+        const { state, contents, events } = yield* attachedBrowserFixture();
+        assert.isTrue(state.startBrowserImageDrag(contents.id, imageUrl, currentToken));
+        if (end === "navigation") contents.emit("did-navigate", {}, contents.url);
+        if (end === "crash") contents.emit("render-process-gone", {}, { reason: "crashed" });
+        if (end === "destroy") {
+          contents.destroyed = true;
+          contents.emit("destroyed");
+        }
+        expect(events).toContainEqual({
+          kind: "imageDragState",
+          value: { ...identity, dragToken: currentToken, isActive: false },
+        });
+        assert.isFalse((yield* attach(state, currentToken)).ok);
+      }),
+    );
+  }
 });
 
 describe("Browser permission presentation lifetime", () => {

@@ -5,6 +5,7 @@ import {
   resolveBrowserAnnotationFrame,
   resolveBrowserAnnotationSelector,
 } from "./browser-annotation-anchors";
+import { browserImageDragType } from "../shared/browser/browser-image-drag";
 import { browserAnnotationAvailability } from "../shared/browser-annotation-interaction";
 import { matchesKeyboardEventToAccelerator } from "../shared/command-keybindings";
 import type { RuntimePlatform } from "../shared/runtime-platform";
@@ -432,7 +433,14 @@ window.addEventListener(
   true,
 );
 
-let browserImageDragActive = false;
+let browserImageDragToken: string | null = null;
+
+function endBrowserImageDrag(): void {
+  const dragToken = browserImageDragToken;
+  if (!dragToken) return;
+  browserImageDragToken = null;
+  ipcRenderer.send("browser-image-drag-ended", dragToken);
+}
 
 function findDraggedImage(event: DragEvent): HTMLImageElement | null {
   for (const candidate of event.composedPath()) {
@@ -444,12 +452,27 @@ function findDraggedImage(event: DragEvent): HTMLImageElement | null {
 window.addEventListener(
   "dragstart",
   (event) => {
-    if (!event.isTrusted) return;
+    if (!event.isTrusted || !event.dataTransfer) return;
+    endBrowserImageDrag();
     const image = findDraggedImage(event);
     const sourceUrl = image?.currentSrc || image?.src || "";
     if (!sourceUrl || sourceUrl.length > 16_384) return;
-    browserImageDragActive = true;
-    ipcRenderer.send("browser-image-drag-started", { sourceUrl });
+    // getRandomValues is available on HTTP pages as well as secure origins.
+    const dragToken = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    event.dataTransfer.setData(browserImageDragType(dragToken), dragToken);
+    browserImageDragToken = dragToken;
+    // Write the type synchronously but wait for the page's dragstart handlers
+    // to finish before publishing the intent.
+    setTimeout(() => {
+      if (browserImageDragToken !== dragToken) return;
+      if (event.defaultPrevented) {
+        browserImageDragToken = null;
+        return;
+      }
+      ipcRenderer.send("browser-image-drag-started", { sourceUrl, dragToken });
+    }, 0);
   },
   true,
 );
@@ -457,9 +480,7 @@ window.addEventListener(
 window.addEventListener(
   "dragend",
   (event) => {
-    if (!event.isTrusted || !browserImageDragActive) return;
-    browserImageDragActive = false;
-    ipcRenderer.send("browser-image-drag-ended");
+    if (event.isTrusted) endBrowserImageDrag();
   },
   true,
 );
