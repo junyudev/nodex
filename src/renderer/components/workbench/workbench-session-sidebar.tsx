@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { InboxCounts } from "../../../shared/inbox";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
 import {
@@ -268,10 +269,15 @@ export interface SidebarChatLifecycle {
   readonly onHiddenShelvesChange: (shelves: readonly SidebarOptionalShelf[]) => void;
 }
 
-/** A team Space names itself, so the person always knows whose work they are looking at. */
-function useHomeTitle(): string {
+/**
+ * A team Space names itself, so the person always knows whose work they are looking at. The
+ * person's own Nodex carries its mark.
+ */
+function useHomeTitle(): { title: string; ownNodex: boolean } {
   const space = useCurrentSpace();
-  return space.kind === "team" ? space.name : "Nodex";
+  return space.kind === "team"
+    ? { title: space.name, ownNodex: false }
+    : { title: "Nodex", ownNodex: true };
 }
 
 /** A chat row shows only the reader's own Turns, so it words them for the reader. */
@@ -2673,7 +2679,8 @@ export function ProjectSessionSidebar({
           })}
         >
           <WorkbenchSidebarHeader
-            title={homeTitle}
+            title={homeTitle.title}
+            titleMark={homeTitle.ownNodex ? <NodexHomeMark variant="title" /> : null}
             searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
             scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
             onSearch={onOpenCommandPalette}

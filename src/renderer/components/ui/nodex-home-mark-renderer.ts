@@ -15,7 +15,6 @@ import {
 
 const DESIGN_SIZE = 800;
 const FRAME_COORD_SIZE = 1120;
-const FRAME_CSS_SIZE = 78.4;
 const FRAME_OFFSET = (FRAME_COORD_SIZE - DESIGN_SIZE) / 2;
 const HERO_GEOMETRY_SCALE = 1.17;
 const FITTED_SCALE = 544.3973872;
@@ -392,18 +391,22 @@ function writeOutwardNormals(boundary: Float32Array, output: Float32Array) {
 
 export function createNodexHomeMarkRenderer(input: {
   devicePixelRatio: number;
+  /** The CSS size of the static mark; the canvas frame leaves room around it for the turn. */
+  markCssSize: number;
   onContextLost: () => void;
 }): NodexHomeMarkRenderer | null {
+  const frameCssSize = (input.markCssSize * FRAME_COORD_SIZE) / DESIGN_SIZE;
+  const frameInset = `${(input.markCssSize - frameCssSize) / 2}px`;
   const canvas = document.createElement("canvas");
   canvas.dataset.nodexHomeMarkCanvas = "true";
   canvas.setAttribute("aria-hidden", "true");
   Object.assign(canvas.style, {
     position: "absolute",
-    top: "-11.2px",
-    left: "-11.2px",
+    top: frameInset,
+    left: frameInset,
     display: "block",
-    width: `${FRAME_CSS_SIZE}px`,
-    height: `${FRAME_CSS_SIZE}px`,
+    width: `${frameCssSize}px`,
+    height: `${frameCssSize}px`,
     visibility: "hidden",
     pointerEvents: "none",
   });
@@ -501,6 +504,7 @@ export function createNodexHomeMarkRenderer(input: {
     const framebuffer = resolveNodexHomeMarkFramebuffer({
       devicePixelRatio: input.devicePixelRatio,
       chargedScale,
+      frameCssSize,
     });
     if (canvas.width !== framebuffer.size || canvas.height !== framebuffer.size) {
       canvas.width = framebuffer.size;

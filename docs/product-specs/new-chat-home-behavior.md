@@ -9,6 +9,7 @@ The New Chat home is one focused composition: a decorative Nodex mark, a Project
 - A primary click rotates the mark toward the click direction. Nearby repeated clicks add full turns to the active rotor; differently directed clicks compose independent rotors. Every rotor closes at the pose that existed before the click sequence.
 - During rotation the fitted brand projection becomes a rounded cube. Top, front, and right faces may contain centered white insets; the left face remains dark. Glyphs belong to the front face and follow its projection, occlusion, and antialiasing.
 - Reduced-motion users always receive the static mark. The mark is decorative and does not enter keyboard navigation or the accessibility tree.
+- In the personal Space, Home's sidebar title leads with the same mark at 18px in the title's own color. It answers hover and clicks exactly as the hero mark does. A team Space's title has no mark. The Runtime ownership rules below apply to both marks, each sizing its canvas and backing store to itself.
 
 ## Runtime ownership
 

@@ -159,7 +159,7 @@ export interface NodexHomeMarkFramebufferMetrics {
 export function resolveNodexHomeMarkFramebuffer(input: {
   devicePixelRatio: number;
   chargedScale: number;
-  frameCssSize?: number;
+  frameCssSize: number;
   maximumPixelRatio?: number;
   maximumChargedScale?: number;
   headroom?: number;
@@ -167,7 +167,7 @@ export function resolveNodexHomeMarkFramebuffer(input: {
   const {
     devicePixelRatio,
     chargedScale,
-    frameCssSize = 78.4,
+    frameCssSize,
     maximumPixelRatio = 3,
     maximumChargedScale = 1.17,
     headroom = 1.08,

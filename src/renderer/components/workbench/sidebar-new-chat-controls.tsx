@@ -118,7 +118,9 @@ export interface SidebarInboxEntry {
  * One header for every contextual sidebar destination: a 52px title row with
  * trailing tool buttons, then the destination's primary rows. Home and Space
  * keep the same title, search, and first-row positions, so switching
- * destinations never shifts the chrome.
+ * destinations never shifts the chrome. A title mark leads inside the title,
+ * so it starts where every other title starts; an 18px mark and 6px gap set
+ * the text on the same line as the labels of the rows below.
  */
 /** A header Search that filters the sidebar in place instead of opening the command palette. */
 export interface WorkbenchSidebarInlineSearch {
@@ -132,6 +134,7 @@ export interface WorkbenchSidebarInlineSearch {
 
 export function WorkbenchSidebarHeader({
   title,
+  titleMark,
   searchShortcutLabel,
   scrolledContentUnderHeader,
   onSearch,
@@ -140,6 +143,8 @@ export function WorkbenchSidebarHeader({
   children,
 }: {
   title: string;
+  /** A decorative mark ahead of the title text. */
+  titleMark?: ReactNode;
   searchShortcutLabel?: string;
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
@@ -168,8 +173,9 @@ export function WorkbenchSidebarHeader({
         data-workbench-sidebar-title-row=""
         className="ms-2 flex h-(--sidebar-navigation-header-height) min-w-0 items-center pe-1"
       >
-        <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-heading-sm)] leading-6 font-semibold text-token-foreground select-none">
-          {title}
+        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[length:var(--text-heading-sm)] leading-6 font-semibold text-token-foreground select-none">
+          {titleMark}
+          <span className="min-w-0 truncate">{title}</span>
         </h2>
         <div className="flex shrink-0 items-center gap-1">
           {tools}

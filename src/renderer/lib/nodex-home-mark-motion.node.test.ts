@@ -81,24 +81,36 @@ describe("Nodex home mark motion", () => {
     expect(resolveNodexHomeMarkFieldMorph(90)).toBe(1);
   });
 
-  test("keeps the DPR-aware framebuffer bounded", () => {
+  test("keeps the DPR-aware framebuffer bounded and scaled to the mark", () => {
+    const heroFrame = 78.4;
     expect(
       resolveNodexHomeMarkFramebuffer({
         devicePixelRatio: 1,
         chargedScale: 1,
+        frameCssSize: heroFrame,
       }).size,
     ).toBe(100);
     expect(
       resolveNodexHomeMarkFramebuffer({
         devicePixelRatio: 2,
         chargedScale: 1,
+        frameCssSize: heroFrame,
       }).size,
     ).toBe(200);
     expect(
       resolveNodexHomeMarkFramebuffer({
         devicePixelRatio: 4,
         chargedScale: 1.17,
+        frameCssSize: heroFrame,
       }).size,
     ).toBe(298);
+    // The 18px title mark allocates a backing store for its own size, not the hero's.
+    expect(
+      resolveNodexHomeMarkFramebuffer({
+        devicePixelRatio: 2,
+        chargedScale: 1,
+        frameCssSize: 25.2,
+      }).size,
+    ).toBe(64);
   });
 });

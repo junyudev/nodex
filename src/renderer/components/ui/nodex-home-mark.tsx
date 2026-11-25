@@ -1,6 +1,7 @@
 import { animate, motionValue, type MotionValue } from "motion/react";
 import { useLayoutEffect, useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
+import { cn } from "@/lib/utils";
 import { resolveCssColorSrgba, type SrgbaColor } from "@/lib/css-color-srgba";
 import { setNodexHomeMarkLayerOwner } from "@/lib/nodex-home-mark-layer-ownership";
 import { retireNodexHomeMarkRendererAfterPaint } from "@/lib/nodex-home-mark-renderer-retirement";
@@ -43,12 +44,34 @@ function preloadRuntime(): Promise<readonly [RendererModule, GlyphModule]> {
 
 const FALLBACK_COLOR: SrgbaColor = [223 / 255, 223 / 255, 223 / 255, 1];
 
-/** The canvas paints in the same color and alpha as the SVG's `currentColor`. */
-function readElementColor(element: HTMLElement): SrgbaColor {
-  return resolveCssColorSrgba(getComputedStyle(element).color) ?? FALLBACK_COLOR;
+interface ResolvedColor {
+  readonly css: string;
+  readonly srgba: SrgbaColor;
 }
 
-export function NodexHomeMark() {
+/**
+ * The canvas paints in the host's current `color`, as the SVG's `currentColor` does, so a
+ * color that changes mid-turn, such as a theme switch, carries into the turn.
+ */
+function followElementColor(element: HTMLElement, previous: ResolvedColor | null): ResolvedColor {
+  const css = getComputedStyle(element).color;
+  if (previous?.css === css) return previous;
+  return { css, srgba: resolveCssColorSrgba(css) ?? FALLBACK_COLOR };
+}
+
+/**
+ * The New Chat hero stands alone, quietly, above its heading. The title mark is part of the
+ * Home sidebar title and wears its color; its glyph performance is the hover response.
+ */
+const VARIANTS = {
+  hero: { cssSize: 56, box: "size-14", tone: "text-token-foreground opacity-30 hover:opacity-40" },
+  title: { cssSize: 18, box: "size-4.5", tone: "text-inherit" },
+} as const;
+
+export type NodexHomeMarkVariant = keyof typeof VARIANTS;
+
+export function NodexHomeMark({ variant = "hero" }: { variant?: NodexHomeMarkVariant }) {
+  const { cssSize, box, tone } = VARIANTS[variant];
   const reducedMotion = useResolvedReducedMotion();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const visualRef = useRef<HTMLDivElement | null>(null);
@@ -59,7 +82,7 @@ export function NodexHomeMark() {
   const performanceRef = useRef<NodexHomeMarkGlyphPerformance | null>(null);
   const rendererRef = useRef<NodexHomeMarkRenderer | null>(null);
   const rendererCreationRef = useRef<Promise<NodexHomeMarkRenderer | null> | null>(null);
-  const rendererColorRef = useRef<SrgbaColor>(FALLBACK_COLOR);
+  const rendererColorRef = useRef<ResolvedColor | null>(null);
   const activeRotorsRef = useRef<ActiveRotor[]>([]);
   const scaleMotionRef = useRef(motionValue(1));
   const scaleControlsRef = useRef<AnimationControls | null>(null);
@@ -121,7 +144,9 @@ export function NodexHomeMark() {
     visual.style.transform = `scale(${chargedScale})`;
     const renderer = rendererRef.current;
     const glyphScene = glyphSceneRef.current;
-    if (!renderer || !glyphScene) return;
+    const host = hostRef.current;
+    if (!renderer || !glyphScene || !host) return;
+    rendererColorRef.current = followElementColor(host, rendererColorRef.current);
     const rotation = composeNodexMarkRotorPose(
       activeRotorsRef.current.map((rotor) => ({
         axis: rotor.axis,
@@ -132,7 +157,7 @@ export function NodexHomeMark() {
       rotation,
       morph: resolveNodexHomeMarkFieldMorph(nodexMarkPoseDistanceDegrees(rotation)),
       chargedScale,
-      color: rendererColorRef.current,
+      color: rendererColorRef.current.srgba,
       glyphScene,
     });
   };
@@ -219,11 +244,11 @@ export function NodexHomeMark() {
         ensurePerformance(glyphModule);
         const renderer = rendererModule.createNodexHomeMarkRenderer({
           devicePixelRatio: globalThis.devicePixelRatio || 1,
+          markCssSize: cssSize,
           onContextLost: disposeRuntime,
         });
         if (!renderer || !hostRef.current) return null;
         rendererRef.current = renderer;
-        rendererColorRef.current = readElementColor(hostRef.current);
         visualRef.current.append(renderer.canvas);
         flushRender();
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -398,17 +423,21 @@ export function NodexHomeMark() {
   return (
     <div
       ref={hostRef}
-      className="relative size-14 shrink-0 cursor-pointer touch-manipulation overflow-visible text-token-foreground opacity-30 select-none hover:opacity-40 motion-reduce:cursor-default"
+      className={cn(
+        "relative shrink-0 cursor-pointer touch-manipulation overflow-visible select-none motion-reduce:cursor-default",
+        box,
+        tone,
+      )}
       aria-hidden="true"
       data-nodex-home-mark="true"
       onPointerEnter={handlePointerEnter}
       onPointerUp={handlePointerUp}
     >
-      <div ref={visualRef} className="relative size-14 origin-center">
+      <div ref={visualRef} className={cn("relative origin-center", box)}>
         <svg
           ref={staticMarkRef}
           viewBox="0 0 800 800"
-          className="size-14 overflow-visible"
+          className={cn("overflow-visible", box)}
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
