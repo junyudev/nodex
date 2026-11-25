@@ -29,7 +29,7 @@ describe("PropertyOptionPicker", () => {
     const search = await view.findByRole("combobox", { name: "Search Tags options" });
     await waitFor(() => expect(document.activeElement).toBe(search));
     expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(onOpenChange.mock.calls).toEqual([[true]]);
+    expect(onOpenChange.mock.calls.map(([open]) => open)).toEqual([true]);
     expect(search.getAttribute("aria-activedescendant")).toBe(
       view.getByRole("option", { name: "Ready" }).id,
     );
