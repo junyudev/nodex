@@ -1076,20 +1076,19 @@ Main delivers frozen launches as automatic work-tree starts through local-chat a
 path as Inbox dispatches. A lost reply is reconciled against Runtime admission
 before another launch is sent. In a Git Project, work starts allocate or reuse the
 Page's Workspace; non-Git Projects retain their local environment.
-`start_work` is available to any verified Agent, the Coordinator included, and accepts a
-Page and optional Agent selection; it cannot grant automatic launch or start another
-attempt. Core records the start as that Agent's command on behalf of its Member; the
-Coordinator's start of a Page set to Start automatically acts for the granting Member.
+Any verified Agent can call `start_work` with a Page and optional Agent selection.
+Automatic-start consent and later attempts are separate actions. Core records an
+Agent's start on behalf of its Member. Nodex's automatic starts act for the granting
+Member.
 Agents start a Page that isn't set to Start automatically only when the person asked, by
 instruction rather than refusal.
 
 The Main scheduler checks ready work at startup, on Database, Library, and
 Workspace changes, and every 60 seconds. Automatic launches use a stable identity
 from the Page and readiness epoch. Core rechecks that epoch and automatic consent
-inside the start transaction. Ask Pages record one `ready_to_start` event per
-epoch for Nodex, including their satisfied prerequisites. Zero-prerequisite
-Pages follow the same launch policy. Duplicate work-event captures publish no
-new invalidation.
+inside the start transaction. When Prerequisites finish on a Page without
+automatic-start consent, its Inbox Turn offers Start and names what finished.
+Pages without Prerequisites follow the same launch policy.
 
 Removing a Property requires explicit confirmation and is blocked while a View
 still references it. Core rechecks the current schema and View references at

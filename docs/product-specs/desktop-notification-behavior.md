@@ -18,7 +18,11 @@ toasts, Page reminders, and remote cloud-task watchers are separate features.
 
 Nodex has these task notification families:
 
-- `nodex`: one current local-Member Page Turn episode. Question and approval notify by rule; review, blocked, failed and stalled notify when Nodex's Turn note requests it. A durable Member/Page/episode intent is claimed once while current. Answers stay quiet. Clicking opens its Inbox row, or the Page after the row leaves. The same Turn reaches that Member's phones while they are away.
+- `nodex`: one current local-Member Page Turn episode. Question, approval, review,
+  blocked, failed and reply episodes notify by rule. Stalled and ready-to-start
+  Turns and Inbox answers stay quiet. A durable Member/Page/episode intent is
+  claimed once while current. Clicking opens its Inbox row, or the Page after
+  the row leaves. The same Turn reaches that Member's phones while they are away.
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
 - `question`: an asynchronous question arrived or a user-input request became pending, including ordinary
@@ -149,12 +153,11 @@ Turn policy is evaluated in this order. Steps 1–6 decide whether the occurrenc
 is worth telling anyone and are shared by every channel; steps 7–10 belong to the
 desktop.
 
-A managed chat first suppresses its own terminal-turn notification with reason `managed`,
-on every channel; Nodex receives its work events instead. The host resolves membership
-from the occurrence Session or the exact native host/root binding before any channel
-decides. Managed question, approval and reminder notifications also yield to Page Turn
-intents, on the phone as on the desktop, preventing duplicate interruptions. Shared
-observation occurrences remain intact. See [Coordinator behavior](coordinator-behavior.md).
+A managed chat's Page Turn supplies its notifications. The host resolves managed
+membership from the occurrence Session or the exact native host/root binding before
+any channel decides. Both channels suppress its chat-level notifications for terminal
+turns (reason `managed`), questions, approvals and reminders. The Host still observes
+the chat for derivation of its Page Turn. See [Nodex coordination](nodex-coordination-behavior.md#nodex-in-the-inbox).
 
 1. non-default hosts do not emit turn notifications;
 2. for a completed or interrupted Turn, an Automation decision of `DONT_NOTIFY` suppresses;
@@ -462,7 +465,7 @@ The app icon shows how many chats the chat list shows as unread to you, across
 every Project of every Space this desktop has open: its personal Space and each
 team Space it has joined. Each Space's Core counts its own chats with the chat
 list's membership rules and your own unread state there: root chats that are not
-side chats, the Coordinator or archived, in no Project or an unarchived one.
+side chats, decision runs or archived, in no Project or an unarchived one.
 Delegated children and side chats never add to it, and another Member's unread
 chats never do. One read per Space keeps its part current.
 

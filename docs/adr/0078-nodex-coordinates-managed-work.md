@@ -1,6 +1,6 @@
 # ADR 0078: Nodex coordinates managed work
 
-- Status: Accepted; Status transitions and prerequisite satisfaction superseded by [ADR 0079](0079-status-moves-on-facts-a-persons-move-wins.md)
+- Status: Accepted; Status transitions and prerequisite satisfaction superseded by [ADR 0079](0079-status-moves-on-facts-a-persons-move-wins.md); the persistent Coordinator chat, Work events and Turn notes superseded by [ADR 0090](0090-nodex-decides-in-single-purpose-runs.md)
 - Date: 2026-11-03
 - Owners: Nodex maintainers
 - Refines: Inbox dispatch in [ADR 0067](0067-inbox-entries-and-dispatch-proposals.md), held runs in

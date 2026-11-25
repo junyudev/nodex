@@ -18,7 +18,7 @@ representative thread, because each thread's text depends on its tools and works
 
 Nodex guidance covers the `nodex_app` tools, Automations and heartbeats. It is attached to
 chats that have Nodex tools. Chat context covers runtime details, the Nodex CLI and the
-coordinator or managed-session role. It depends on the chat, so Nodex describes it rather than
+decision-run or managed-chat role. It depends on the chat, so Nodex describes it rather than
 showing a fixed text.
 
 ## Your instructions

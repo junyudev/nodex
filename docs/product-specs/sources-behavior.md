@@ -198,16 +198,16 @@ until explicitly classified.
 
 ## Channels
 
-Nodex can reply to the request that originated a Page through
-`reply_to_origin { pageId, body }`. Only the Coordinator may use it. The body must
-contain 1–100 words, counted by the shared reader-oriented `countWords` rules,
-and cannot contain a reserved Nodex marker. A Page without an origin Follow has
+The root Agent of a Page's active chat can reply to the request that originated
+the Page through `reply_to_origin { pageId, body }`. The body must contain 1–100
+words, counted by the shared reader-oriented `countWords` rules, and cannot
+contain a reserved Nodex marker. A Page without an origin Follow has
 no reply address. If a grouped request supplied several origins, the earliest
 origin Follow is the reply address. The tool cannot provide an alternate address.
 
-Use it once to acknowledge work starting on an outside request, or once when its
-result is ready or merged. Routine progress and repeated acknowledgements/results
-stay quiet. Work chats continue replying to PR reviews themselves in their Workspace.
+The root Agent acknowledges the request once when work starts, naming what it
+will do, and sends one result when the work is ready or merged. Routine progress
+stays quiet. Work chats reply to PR reviews in their Workspace.
 
 Core freezes the exact body and hash, origin thread, selected Source account,
 Turn episode, hidden marker and order in that thread. Repeating the same Page,
@@ -261,7 +261,7 @@ envelopes, truncated responses and incomplete searches fail the complete read.
 
 Activity derives from committed facts: intake dispositions, proposals and
 confirmations (including automatic starts), Trigger routing, own-PR moves and
-skipped moves with reasons, deliveries, Channel sends, Turn notes, handbacks,
+skipped moves with reasons, deliveries, Channel sends, handbacks,
 Automation assessments, and Problems opening and resolving. Each row carries time, actor, description,
 reason and links to its Page, chat and external evidence where available.
 The [Inbox Activity tab](inbox-behavior.md#activity) reads bounded, scope-bound

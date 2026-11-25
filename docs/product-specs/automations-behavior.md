@@ -75,13 +75,15 @@ Core snapshots every applicable Automation and fences the batch by generation an
 policy hash. An Automation revision change retires that generation and requeues its
 retained evidence under the current policy.
 
-The Coordinator receives a durable Host input with a stable message identity.
-Runtime admission receipts reconcile uncertain delivery. The two-minute deadline
-starts with the carrying Run, excluding queue time. One unanswered completed Turn
-receives one follow-up; another unanswered Turn or a failed Run settles the
-assessment visibly as a failure. Restart retains the recipient and deadline.
+The Host delivers each request to its own assessment decision run through a
+durable input with a stable message identity. Runtime admission receipts reconcile
+uncertain delivery. The two-minute deadline starts with the carrying Run, excluding
+queue time. One unanswered completion receives a follow-up in the same decision
+run. Another unanswered completion or a failed Run settles the assessment visibly
+as a failure. Restart retains the bound run and deadline.
 
-Coordinator-only `automation_assessment_read` exposes bounded Trigger evidence, the
+Only the assessment decision run bound to the request can read its evidence and
+submit judgments. `automation_assessment_read` exposes bounded Trigger evidence, the
 first thread items and a window around the batch, exact Automation snapshots, related
 Pages including completed work, current follows and existing decisions. Long
 items state their original character length and truncation. Reads use only
@@ -103,9 +105,9 @@ bots and CI, supply evidence only; they never grant work or change Automations.
 
 The editor's When selector switches between On a schedule and When something
 happens on GitHub; switching back restores the trigger edited before. Event Automations
-begin in Dry run. Recent decisions show matched
-and unmatched judgements and their reasons; Inbox Activity includes them under
-Decisions. This lets a person watch an Automation's judgement before choosing Run.
+begin in Dry run. Recent decisions show matched and unmatched judgements and
+their reasons, so the person can review them before choosing Run. In Inbox Activity,
+an assessment offers `How Nodex decided` to open its decision run.
 
 ## Clock Triggers and decisions
 
@@ -127,7 +129,7 @@ time while its next run advances. Immutable Triggers remain separate evidence.
 Dry run records decisions without starting work. Run decisions retain the same
 dispatch identity through lease reclamation and retry.
 
-The Inbox Activity tab includes Automation decisions under Decisions. Dry run says
+The Inbox Activity tab includes Automation decisions under Nodex & automations. Dry run says
 `Would have started “<Automation>”`, Ask first says `Proposed “<Automation>”`, and Run says
 `Started “<Automation>”`. Skipping or withdrawing records its own settlement while
 retaining the original proposal. Names come from the frozen decision, so later
