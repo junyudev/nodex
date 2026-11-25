@@ -13,6 +13,8 @@ import {
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -21,6 +23,7 @@ import type * as ProviderAdapter from "@nodex/provider-core/server/ProviderAdapt
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { ProjectionStoreV2, layer as storeLayer } from "../orchestration-v2/ProjectionStore.ts";
+import { OrchestrationEffectWorkerV2 } from "../orchestration-v2/EffectWorker.ts";
 import { EffectOutboxV2, layer as outboxLayer } from "../orchestration-v2/EffectOutbox.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as Registry from "../orchestration-v2/ProviderAdapterRegistry.ts";
@@ -37,15 +40,21 @@ const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
   planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
   openSession: () => Effect.die("This boundary proves durable admission without native startup"),
 };
-const database = SqlitePersistence.layerMemory;
-const runtimeLayer = Harness.layerWithRegistry(
-  { name: "execution-location" },
-  Registry.layerSingle(adapter),
-  { runEffectWorker: false, databaseLayer: database },
-).pipe(Layer.provideMerge(Layer.merge(storeLayer, outboxLayer).pipe(Layer.provideMerge(database))));
-const layer = EventSink.layer.pipe(
-  Layer.provideMerge(EventStore.layer.pipe(Layer.provideMerge(runtimeLayer))),
-);
+function makeLayer(
+  database: NonNullable<Harness.OrchestratorV2ProviderReplayOptions["databaseLayer"]>,
+) {
+  const runtime = Harness.layerWithRegistry(
+    { name: "execution-location" },
+    Registry.layerSingle(adapter),
+    { runEffectWorker: false, databaseLayer: database },
+  ).pipe(
+    Layer.provideMerge(Layer.merge(storeLayer, outboxLayer).pipe(Layer.provideMerge(database))),
+  );
+  return EventSink.layer.pipe(
+    Layer.provideMerge(EventStore.layer.pipe(Layer.provideMerge(runtime))),
+  );
+}
+const layer = makeLayer(SqlitePersistence.layerMemory);
 const source = {
   hostId: "local",
   cwd: process.cwd(),
@@ -55,7 +64,7 @@ const source = {
   projectlessOutputDirectory: null,
   projectlessWorkspaceBrowserRoot: null,
 };
-const create = Effect.fnUntraced(function* (id: string) {
+const create = Effect.fnUntraced(function* (id: string, cwd = source.cwd) {
   const writer = yield* OrchestratorV2;
   const threadId = ThreadId.make(id);
   yield* writer.dispatch({
@@ -68,7 +77,7 @@ const create = Effect.fnUntraced(function* (id: string) {
     runtimeMode: "full-access",
     interactionMode: "default",
     branch: null,
-    worktreePath: source.cwd,
+    worktreePath: cwd,
     createdBy: "user",
     creationSource: "web",
   });
@@ -753,4 +762,129 @@ it.effect(
       assert.isFalse(settled.isRetirementTarget);
       yield* restarted.hold({ threadId, operationId: "terminal-race", action: "release" });
     }).pipe(Effect.provide(layer)),
+);
+
+const waitOnMissingDirectory = Effect.fnUntraced(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const writer = yield* OrchestratorV2;
+  const worker = yield* OrchestrationEffectWorkerV2;
+  const store = yield* ProjectionStoreV2;
+  const folder = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-workspace-retry-" });
+  const cwd = `${folder}/missing`;
+  const threadId = yield* create("thread:missing", cwd);
+  const message = send(threadId, "original");
+  yield* writer.dispatch(message);
+  yield* worker.drain();
+  const run = (yield* store.getThreadRecords(threadId, ["runs"])).runs[0]!;
+  assert.equal(run.status, "failed");
+  return { cwd, writer, store, threadId, run, message };
+});
+
+it.effect.each(["newer Run", "active Run", "archived", "deleted", "handoff in progress"] as const)(
+  "keeps the original Run failed after restore when blocked by %s",
+  (blocked) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const { cwd, writer, store, threadId, run } = yield* waitOnMissingDirectory();
+      if (blocked === "newer Run" || blocked === "active Run") {
+        yield* writer.dispatch(send(threadId, "newer"));
+        if (blocked === "newer Run") {
+          const newer = (yield* store.getThreadRecords(threadId, ["runs"])).runs.at(-1)!;
+          yield* writer.dispatch({
+            type: "run.interrupt",
+            commandId: CommandId.make("stop-newer"),
+            threadId,
+            runId: newer.id,
+          });
+          assert.equal(
+            (yield* store.getRunOutcome({ threadId, runId: newer.id }))?.status,
+            "interrupted",
+          );
+        }
+      }
+      if (blocked === "archived" || blocked === "deleted") {
+        yield* writer.dispatch({
+          type: blocked === "archived" ? "thread.archive" : "thread.delete",
+          commandId: CommandId.make(blocked),
+          threadId,
+        });
+      }
+      if (blocked === "handoff in progress") {
+        const execution = yield* make;
+        yield* execution.hold({
+          threadId,
+          operationId: "held",
+          action: "acquire",
+          sourceLocation: { ...source, cwd, workspaceRoots: [cwd] },
+        });
+      }
+      yield* fs.makeDirectory(cwd);
+      const result = yield* writer.dispatch({
+        type: "run.workspace-missing.retry",
+        commandId: CommandId.make("restored"),
+        threadId,
+      });
+      assert.isEmpty(result.storedEvents);
+      assert.equal((yield* store.getRunOutcome({ threadId, runId: run.id }))?.status, "failed");
+    }).pipe(Effect.provide(layer), Effect.provide(NodeServices.layer)),
+);
+
+it.effect("recovers the original Run after a restart at execution hold release", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const folder = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-workspace-retry-db-" });
+    const runtime = makeLayer(
+      SqlitePersistence.layerFromPath(`${folder}/runtime.sqlite`).pipe(
+        Layer.provide(NodeServices.layer),
+      ),
+    );
+    const operationId = "missing-move";
+    const { threadId, runId } = yield* Effect.gen(function* () {
+      const { cwd, writer, store, threadId, run, message } = yield* waitOnMissingDirectory();
+      const execution = yield* make;
+      yield* execution.hold({
+        threadId,
+        operationId,
+        action: "acquire",
+        sourceLocation: { ...source, cwd, workspaceRoots: [cwd] },
+      });
+      yield* execution.quiesce({ threadId, operationId });
+      yield* execution.commit({ threadId, operationId, location: source });
+      assert.equal((yield* store.getRunOutcome({ threadId, runId: run.id }))?.status, "failed");
+
+      // Exit immediately after the release commits, before its queue-resume call.
+      const releasing = yield* make.pipe(
+        Effect.provideService(OrchestratorV2, { ...writer, resumeThreadQueue: () => Effect.void }),
+      );
+      yield* releasing.hold({ threadId, operationId, action: "release" });
+      const queued = yield* store.getThreadRecords(threadId, ["runs"]);
+      assert.isNull(queued.thread.executionHandoff);
+      assert.deepEqual(
+        queued.runs.map(({ id, userMessageId, status }) => ({ id, userMessageId, status })),
+        [{ id: run.id, userMessageId: message.messageId, status: "queued" }],
+      );
+      return { threadId, runId: run.id };
+    }).pipe(Effect.provide(runtime));
+
+    yield* Effect.gen(function* () {
+      const writer = yield* OrchestratorV2;
+      const store = yield* ProjectionStoreV2;
+      const execution = yield* make;
+      yield* execution.hold({ threadId, operationId, action: "release" });
+      assert.equal(yield* writer.resumeQueuedRuns, 1);
+      assert.equal(yield* writer.resumeQueuedRuns, 0);
+      const started = yield* store.getThreadRecords(threadId, [
+        "runs",
+        "attempts",
+        "checkpointScopes",
+      ]);
+      assert.equal(started.runs[0]?.id, runId);
+      assert.equal(started.runs[0]?.status, "starting");
+      assert.lengthOf(started.attempts, 2);
+      assert.equal(
+        started.checkpointScopes.find((scope) => scope.nodeId === started.runs[0]?.rootNodeId)?.cwd,
+        source.cwd,
+      );
+    }).pipe(Effect.provide(runtime));
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

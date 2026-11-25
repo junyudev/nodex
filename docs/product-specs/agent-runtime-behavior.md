@@ -815,7 +815,10 @@ be restored carries the failure and its `Retry` itself.
 A one-off failure is a toast that says what failed with the reason underneath: a message
 that did not go out keeps its draft and says `Message not sent`, and attachment, draft,
 stop, resume, header, transcript, branch and Git actions name their own failure. A Run that
-fails after it started is part of the transcript instead.
+fails after it started is part of the transcript instead. A Run that could not send its
+message because the working directory was missing waits for that directory to be fixed.
+When the chat works locally or its worktree is restored, Nodex retries the same Run and
+message if the Run is still the latest and the chat is available to run.
 
 ### Context window
 

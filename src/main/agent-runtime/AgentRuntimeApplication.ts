@@ -2185,6 +2185,21 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { retried: true as const };
   });
 
+  /** Called after restoring a Runtime chat's working directory in place. */
+  const retryWorkspaceMissingRun = (input: { readonly threadId: string }) =>
+    ownedWrite(
+      "retry-workspace-missing-run",
+      Effect.gen(function* () {
+        if (!validId(input.threadId)) return yield* failure("thread", "Thread identity is invalid");
+        const connection = yield* options.connect;
+        yield* dispatch(connection, {
+          type: "run.workspace-missing.retry",
+          commandId: createOperationId("agent-runtime.retry-workspace-missing"),
+          threadId: input.threadId,
+        });
+      }),
+    );
+
   /** Whether Core records this chat as working in a Page Workspace. */
   const joinedPageWorkspace = (sessionId: string) =>
     options.pageWorkspaces
@@ -5512,6 +5527,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ownedWrite("stop-host-input", stopHostInput(input)),
     retryPreparation: (input: Parameters<typeof retryPreparation>[0]) =>
       ownedWrite("retry-preparation", retryPreparation(input)),
+    retryWorkspaceMissingRun,
     reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
     reconcileStore: (connection: AgentRuntimeApplicationConnection, coordinate: string) =>
       ownedWrite("reconcile-store", host(reconcileStore(connection, coordinate))),

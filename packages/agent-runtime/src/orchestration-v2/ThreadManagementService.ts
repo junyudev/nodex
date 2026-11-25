@@ -96,6 +96,9 @@ export function existingThreadIdsForCommand(
     case "thread.visit":
     case "thread.mark-unread":
       return [];
+    // Only canonical Runtime Runs can be waiting on a missing directory.
+    case "run.workspace-missing.retry":
+      return [];
     case "thread.fork":
       return [command.sourceThreadId];
     case "thread.merge_back":

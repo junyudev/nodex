@@ -49,6 +49,7 @@ export function classifyRunRecovery(failure: OrchestrationV2ProviderFailure): Ru
     case "model_not_applied":
     case "refused":
     case "unrecoverable":
+    case "workspace_missing":
       return "none";
   }
 }

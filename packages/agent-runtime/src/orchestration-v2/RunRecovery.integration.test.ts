@@ -11,6 +11,7 @@ import {
   CommandId,
   EventId,
   MessageId,
+  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -71,6 +72,7 @@ type Services =
 const withRecovery = <A, E>(
   test: (input: {
     readonly started: Turn[];
+    readonly cwd: string;
     readonly interruptCalls: () => number;
     readonly emit: (event: ProviderAdapter.ProviderAdapterV2Event) => Effect.Effect<boolean>;
     readonly threadId: ThreadId;
@@ -82,11 +84,13 @@ const withRecovery = <A, E>(
     readonly automatic?: boolean;
     readonly automation?: boolean;
     readonly restart?: boolean;
+    readonly missingWorkspace?: boolean;
   } = {},
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const cwd = yield* checkpointWorkspace("run-recovery");
+      const workspace = yield* checkpointWorkspace("run-recovery");
+      const cwd = options.missingWorkspace ? `${workspace}/missing` : workspace;
       const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
       const started: Turn[] = [];
       let interrupts = 0;
@@ -263,6 +267,7 @@ const withRecovery = <A, E>(
             : {}),
         });
         yield* worker.drain();
+        if (options.missingWorkspace) return;
         yield* waitEvent(
           (event) => event.type === "provider-turn.updated" && event.payload.status === "running",
         );
@@ -283,6 +288,7 @@ const withRecovery = <A, E>(
         }
         return yield* test({
           started,
+          cwd,
           interruptCalls: () => interrupts,
           emit: (event) => Queue.offer(events, event),
           threadId,
@@ -290,6 +296,70 @@ const withRecovery = <A, E>(
       }).pipe(Effect.provide(layer));
     }),
   );
+
+it.effect("sends the same Run and message once when its missing directory is restored", () =>
+  withRecovery(
+    ({ started, cwd, threadId }) =>
+      Effect.gen(function* () {
+        const writer = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const store = yield* ProjectionStore.ProjectionStoreV2;
+        const failed = yield* store.getThreadRecords(threadId, ["runs", "messages", "turnItems"]);
+        const run = failed.runs[0]!;
+        const message = failed.messages[0]!;
+        const item = failed.turnItems.find((item) => item.type === "error");
+        assert.lengthOf(started, 0);
+        assert.equal(run.status, "failed");
+        assert.isNull(run.startedAt);
+        assert.isUndefined(run.recovery);
+        assert.equal(message.delivery, "pending");
+        assert.equal(item?.status, "failed");
+        assert.equal(item?.failure.code, ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE);
+        assert.equal(item?.failure.message, "This chat’s working directory no longer exists");
+        assert.include(item?.failure.diagnostic ?? "", cwd);
+        assert.isTrue(item?.failure.retryable);
+
+        const retry = {
+          type: "run.workspace-missing.retry" as const,
+          threadId,
+          commandId: CommandId.make("missing-directory"),
+        };
+        assert.isEmpty((yield* writer.dispatch(retry)).storedEvents);
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.makeDirectory(cwd);
+        const restored = { ...retry, commandId: CommandId.make("restored-directory") };
+        const accepted = yield* writer.dispatch(restored);
+        assert.equal((yield* writer.dispatch(restored)).sequence, accepted.sequence);
+        assert.isEmpty(
+          (yield* writer.dispatch({ ...retry, commandId: CommandId.make("repeat-restore") }))
+            .storedEvents,
+        );
+        yield* worker.drain();
+        assert.lengthOf(started, 1);
+        assert.equal(started[0]?.runId, run.id);
+        assert.notEqual(started[0]?.attemptId, run.activeAttemptId);
+        assert.equal(started[0]?.message.messageId, message.id);
+        assert.equal(started[0]?.message.text, message.providerText ?? message.text);
+        assert.deepEqual(started[0]?.message.attachments, message.attachments);
+        assert.equal(started[0]?.runtimePolicy.cwd, cwd);
+
+        const retried = yield* store.getThreadRecords(threadId, ["runs", "messages", "turnItems"]);
+        assert.deepEqual(
+          retried.runs.map((run) => run.id),
+          [run.id],
+        );
+        assert.deepEqual(
+          retried.messages.map((message) => message.id),
+          [message.id],
+        );
+        assert.equal(
+          retried.turnItems.find((candidate) => candidate.id === item?.id)?.status,
+          "cancelled",
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    { missingWorkspace: true },
+  ),
+);
 
 const reconcileRestart = Effect.gen(function* () {
   const store = yield* ProjectionStore.ProjectionStoreV2;

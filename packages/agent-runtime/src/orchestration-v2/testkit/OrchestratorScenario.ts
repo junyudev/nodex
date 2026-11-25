@@ -173,6 +173,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "provider-session.detach":
     case "message.dispatch":
     case "run.recover":
+    case "run.workspace-missing.retry":
     case "run.context-recover":
     case "notification.delivery.accept":
     case "prepared-run.release":
