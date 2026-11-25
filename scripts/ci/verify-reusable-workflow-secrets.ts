@@ -13,6 +13,7 @@ import type { UnknownRecord } from "./github-workflow-files";
 const secretReferencePattern = /secrets\.([A-Za-z_][A-Za-z0-9_]*)/gu;
 const environmentSecretContracts = new Map<string, ReadonlySet<string>>([
   ["sparkle-feed-finalization", new Set(["SPARKLE_ED25519_PRIVATE_KEY"])],
+  ["release-publish", new Set(["NODEX_RELEASE_TAG_TOKEN"])],
 ]);
 const environmentSecretNames = new Set(
   [...environmentSecretContracts.values()].flatMap((names) => [...names]),
