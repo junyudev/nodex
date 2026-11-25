@@ -949,7 +949,7 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
         context.addIssue({
           code: "custom",
           path: ["panelSurfacesById"],
-          message: "A Scene can have only one Agents tab",
+          message: "A Scene can have only one Aerial view",
         });
       }
       for (const [surfaceId] of agents) {

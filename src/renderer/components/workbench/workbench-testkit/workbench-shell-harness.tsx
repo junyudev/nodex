@@ -1271,7 +1271,7 @@ vi.mock("../workbench-canvas-stage-panel", () => ({
   },
 }));
 
-// The Agents tab's content reads live Runtime work; shell tests cover only where the tab goes.
+// Aerial view's content reads live Runtime work; shell tests cover only where the tab goes.
 vi.mock("../workbench-agents-surface", () => ({
   WorkbenchAgentsSurface: () => createElement("div", { "data-testid": "workbench-agents-surface" }),
 }));

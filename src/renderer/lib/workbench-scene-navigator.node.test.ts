@@ -156,7 +156,7 @@ describe("WorkbenchSceneNavigator", () => {
     { owner: { kind: "inbox" }, projectId: null, existingSplit: true },
     { owner: { kind: "project", projectId: "alpha" }, projectId: "alpha", existingSplit: false },
   ] as const)(
-    "opens one Agents tab beside the $owner.kind Home",
+    "opens one Aerial view beside the $owner.kind Home",
     async ({ owner, projectId, existingSplit }) => {
       const harness = createHarness();
       const key = makeWorkbenchSceneKey(owner);

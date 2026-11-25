@@ -38,7 +38,7 @@ import {
   NoteIcon,
   TodoIcon,
   BoardIcon,
-  DelegationMapIcon,
+  AerialViewIcon,
   NodexLogoMarkIcon,
   CheckmarkIcon,
   ClockIcon,
@@ -55,7 +55,7 @@ import {
   SURFACE_TOOLBAR_ROW_CLASS,
   surfaceViewPillClassName,
 } from "@/components/workbench/surface-toolbar";
-import { AGENTS_TAB_TITLE } from "@/lib/workbench-panel-actions";
+import { AERIAL_VIEW_TITLE } from "@/lib/workbench-panel-actions";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
 import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
 import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
@@ -236,8 +236,8 @@ function InboxHeader({
             <NoteIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
-        <ToolbarIconButton label={intl.formatMessage(AGENTS_TAB_TITLE)} onClick={onOpenAgents}>
-          <DelegationMapIcon className="icon-sm" />
+        <ToolbarIconButton label={intl.formatMessage(AERIAL_VIEW_TITLE)} onClick={onOpenAgents}>
+          <AerialViewIcon className="icon-sm" />
         </ToolbarIconButton>
         {databaseId ? (
           <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>

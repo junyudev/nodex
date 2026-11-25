@@ -1098,7 +1098,7 @@ and never hydrates child histories. Runtime persistence owns the lifetime and tr
 affinity of its independent read-only SQLite connection.
 Live Session activity (running, waiting, queued, background) is one Main-owned projection derived from
 the Runtime per process generation and served to every window; it is never copied into Core.
-The Agents map is a Main-owned composition of Session activity, Runtime subagent overviews and
+The Agents map behind [Aerial view](product-specs/aerial-view-behavior.md) is a Main-owned composition of Session activity, Runtime subagent overviews and
 Core placement that is never copied into Core.
 Claude subscription usage is likewise one Main-owned snapshot served to every window, read only
 through the Claude Agents' own Runtime provider checks rather than from the account directly.

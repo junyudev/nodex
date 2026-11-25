@@ -11,7 +11,7 @@ import {
 } from "../../shared/command-keybindings";
 import {
   SidePanelBrowserIcon,
-  DelegationMapIcon,
+  AerialViewIcon,
   SidePanelFilesIcon,
   SidePanelReviewIcon,
   SidePanelSideChatIcon,
@@ -58,9 +58,10 @@ const NODEX_PANEL_OPTION_ACTION_KIND_SET = new Set<PanelNewTabActionKind>(
   NODEX_PANEL_OPTION_ACTION_ORDER,
 );
 
-export const AGENTS_TAB_TITLE = defineMessage({
+/** The `agents` surface's name wherever people meet it. */
+export const AERIAL_VIEW_TITLE = defineMessage({
   id: "lib.workbenchPanelActions.agents.label",
-  defaultMessage: "Agents",
+  defaultMessage: "Aerial view",
 });
 
 export const PANEL_TOOL_TITLE_MESSAGES = defineMessages({
@@ -76,15 +77,15 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     defaultPanelId: "right",
     targetPanelIds: ["right", "bottom"],
     get label() {
-      return getIntl().formatMessage(AGENTS_TAB_TITLE);
+      return getIntl().formatMessage(AERIAL_VIEW_TITLE);
     },
     get description() {
       return getIntl().formatMessage({
         id: "lib.workbenchPanelActions.agents.description",
-        defaultMessage: "See live Agent work and subagents",
+        defaultMessage: "Every chat at work, with its subagents",
       });
     },
-    Icon: DelegationMapIcon,
+    Icon: AerialViewIcon,
   },
   {
     kind: "files",

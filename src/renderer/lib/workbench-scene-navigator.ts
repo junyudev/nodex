@@ -1,5 +1,5 @@
 import type { AgentsMapScope } from "../../shared/agents-map";
-import { AGENTS_TAB_TITLE } from "./workbench-panel-actions";
+import { AERIAL_VIEW_TITLE } from "./workbench-panel-actions";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { getIntl } from "@/lib/i18n";
 import type { PluginAppBinding } from "../../shared/agent-plugins/app-entrypoints";
@@ -384,7 +384,7 @@ function makeSurfaceDescriptor(
       return {
         ...common,
         kind: request.kind,
-        titleSnapshot: getIntl().formatMessage(AGENTS_TAB_TITLE),
+        titleSnapshot: getIntl().formatMessage(AERIAL_VIEW_TITLE),
         config: request.config,
       };
     case "review":

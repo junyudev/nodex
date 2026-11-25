@@ -1,15 +1,16 @@
-# Agents Tab Behavior
+# Aerial View Behavior
 
 Status: Active
-Last Updated: 2026-11-25
+Last Updated: 2026-11-26
 
 ## Intent
 
 Running many chats at once, each delegating to subagents that delegate again, leaves no single
 place that answers what all of that work is doing right now. The sidebar shows each chat, the
-Inbox what needs the person, Activity what already happened and the Board the work itself. The
-Agents tab shows the work in motion: every chat with live work in its scope, the whole tree of
-subagents under it, and how each part stands.
+Inbox what needs the person, Activity what already happened and the Board the work itself.
+**Aerial view** (鸟瞰 in Simplified Chinese) shows the work in motion from above: every chat with
+live work in its scope, the whole tree of subagents under it, and how each part stands. A chat's
+own Subagents map is the close-up of one tree; Aerial view steps back to all of them.
 
 It is an ordinary tab, so it can stay open beside the Inbox or beside a chat while the person
 works elsewhere. It reads; it never becomes a second Inbox. Questions and approvals are answered
@@ -21,20 +22,21 @@ renderer lays it out with the same map a chat's Subagents tab draws.
 
 ## Opening and placement
 
-- The tab is the `agents` surface. A Scene holds at most one; opening it again selects the one
+- Aerial view is the `agents` surface. A Scene holds at most one; opening it again selects the one
   already open, with the scope it keeps.
 - It opens in the Library Inbox Scene, a Project Scene and a chat's content or bottom panel, never
   in Space.
-- **Agents** in an Inbox's header, beside the Board button, opens it in the group to the Inbox's
-  right, creating that split, so the Inbox and the Agents tab show side by side. A chat's
-  Subagents map offers **All agents**, which opens it beside that chat. The command palette and
-  the panel's new-tab menus offer it too.
+- **Aerial view** in an Inbox's header, beside the Board button, opens it in the group to the
+  Inbox's right, creating that split, so the Inbox and Aerial view show side by side. A chat's
+  Subagents map offers **Aerial view** beside its Map and List switch, which opens it beside that
+  chat. The command palette (`Open aerial view`) and the panel's new-tab menus offer it too.
 - Its scope is one Project, or every Project together with chats that belong to none. It starts
   as the place it opened from: a Project Scene's Project, every Project from the Library Inbox,
   and a chat's Project, or every Project for a chat without one. The picker at the top of the tab
   changes it, and the tab keeps the choice.
 - The tab's glyph says how work in scope stands, as a chat's own tab does: the question bubble
-  while a chat waits on its person, a spinner while any chat works, and the map's glyph otherwise.
+  while a chat waits on its person, a spinner while any chat works, and otherwise Aerial view's
+  own glyph: a lead with one subagent beside it and one stepped in beneath it.
   It keeps saying so while another tab is selected.
 
 ## What it shows
@@ -68,7 +70,7 @@ Above a band, a quiet line names the chat's Project while every Project shares t
 Page it is the active chat of, and the Nodex mark when Nodex watches it.
 
 **Recent** lists the chats whose work ended in the last 24 hours, newest first, ten at a time with
-**Show more**: the Agent's mark, the title, a dot while its result is unread, how many subagents
+**Show more**, up to 500: the Agent's mark, the title, a dot while its result is unread, how many subagents
 it had, its Project while every Project shares the view, and when it ended, with `Failed` or
 `Stopped` when it did not finish.
 
@@ -85,6 +87,7 @@ while their Agents work.
 
 ## Live updates
 
-While the tab shows, it follows live work and its clocks tick; while it is hidden it stops
-following and holds its lines still, and catches up when it shows again. The glyph alone keeps
+While the tab shows, it follows live work. Elapsed times tick every second while a chat or any of
+its subagents works; how long ago chats ended refreshes every half minute. While it is hidden it
+stops following and holds its lines still, and catches up when it shows again. The glyph alone keeps
 following while hidden. A view that cannot hold every live chat says so below the list.
