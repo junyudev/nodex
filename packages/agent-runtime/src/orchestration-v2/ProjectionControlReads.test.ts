@@ -1800,6 +1800,35 @@ it.effect.each(storageCases)(
       assert.isTrue(first.terminal.items.every((task) => task.taskId === "turn:" + task.id));
       assert.isTrue(first.terminal.items.every((task) => task.id.startsWith("z-done-")));
 
+      const [rootOverview, forkOverview, childCounts] = yield* store.getThreadSubagentOverviews({
+        threadIds: [threadId, fork],
+        countsOnlyThreadIds: [appChild],
+      });
+      assert.deepEqual(rootOverview, {
+        threadId,
+        overview: first,
+        activeCount: 5,
+        terminalCount: 12,
+      });
+      assert.deepEqual(
+        forkOverview?.overview?.active.items.map(({ id }) => id),
+        ["fork-task"],
+      );
+      assert.deepEqual(childCounts, {
+        threadId: appChild,
+        overview: null,
+        activeCount: 2,
+        terminalCount: 1,
+      });
+      assert.equal(
+        (yield* Effect.exit(
+          store.getThreadSubagentOverviews({
+            threadIds: Array.from({ length: 101 }, (_, index) => ThreadId.make(`root:${index}`)),
+          }),
+        ))._tag,
+        "Failure",
+      );
+
       const next = yield* store.getThreadSubagentOverview({
         threadId,
         activeCursor: first.active.nextCursor!,

@@ -35,6 +35,10 @@ export type {
   HostTurnPreparation,
 } from "@nodex/provider-core/server/ExecutionHost";
 export type * from "./Interface.ts";
+export {
+  EXECUTION_ACTIVITY_MAX_POINT_READS,
+  SUBAGENT_OVERVIEW_BATCH_LIMIT,
+} from "./ActivityLimits.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
 export {
   AGENT_RUNTIME_CODEX_THREAD_SOURCE,

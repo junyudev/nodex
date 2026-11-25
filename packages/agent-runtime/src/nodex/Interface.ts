@@ -238,6 +238,15 @@ export interface AgentRunReadback {
 }
 
 /** Live execution facts for one non-idle root Thread. */
+export interface AgentExecutionAgentSelection {
+  readonly driver:
+    | AgentWire<import("@nodex/runtime-contracts").ProviderInstanceRef>["driver"]
+    | null;
+  readonly providerInstanceId: string | null;
+  readonly model: string | null;
+  readonly options: AgentWire<ModelSelection>["options"];
+}
+
 export interface AgentRootActivity {
   readonly rootThreadId: string;
   /** Attached side chats surface user attention through their source Session. */
@@ -245,9 +254,10 @@ export interface AgentRootActivity {
   /**
    * `waiting`: own approvals/live input, async questions between working Runs, live secret
    * cards, or live delegated approvals need the user. Side-chat attention reaches its source.
-   * `background`: live work remains without a foreground Run. Waiting takes precedence.
+   * `background`: live work remains without a foreground Run. `queued`: awaiting Run admission.
+   * Waiting takes precedence.
    */
-  readonly status: "running" | "waiting" | "background";
+  readonly status: "running" | "waiting" | "background" | "queued";
   readonly hasWork: boolean;
   /**
    * A command or Monitor is running, and no live Run owes the next step outside a tool call.
@@ -260,6 +270,10 @@ export interface AgentRootActivity {
   readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
+  readonly questionPrompt?: string | null;
+  readonly startedAt?: string | null;
+  readonly queuePosition?: number | null;
+  readonly agentSelection?: AgentExecutionAgentSelection;
   readonly backgroundTasks: ReadonlyArray<AgentBackgroundTask>;
   /** The active Run's readback once it has one; absent without an active Run. */
   readonly readback?: AgentRunReadback | null;
@@ -512,6 +526,22 @@ export interface AgentRuntimeOperations
       readonly terminalCursor?: string;
     };
     readonly output: AgentSubagentOverview;
+  };
+  readonly "tasks.overviews": {
+    readonly input: {
+      readonly threadIds: readonly string[];
+      readonly countsOnlyThreadIds?: readonly string[];
+    };
+    readonly output: readonly {
+      readonly threadId: string;
+      readonly activeCount: number;
+      readonly terminalCount: number;
+      readonly overview: AgentSubagentOverview | null;
+    }[];
+  };
+  readonly "execution.recent-runs": {
+    readonly input: import("../orchestration-v2/RecentRootRuns.ts").RecentRootRunsInput;
+    readonly output: import("../orchestration-v2/RecentRootRuns.ts").RecentRootRunsPage;
   };
   readonly "execution.workspace-in-use": {
     readonly input: { readonly path: string };

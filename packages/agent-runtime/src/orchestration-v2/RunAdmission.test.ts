@@ -1,3 +1,4 @@
+import { readRootActivity } from "./ExecutionActivity.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -226,6 +227,19 @@ it.effect(
       assert.deepEqual((yield* readSessionDetails("third", 1)).waitingAdmissions, [
         { runId: "third", position: 2, waitingSince: "1970-01-01T00:00:00.000Z" },
       ]);
+      const queued = yield* readRootActivity({ rootThreadIds: ["second", "third"] });
+      assert.deepEqual(
+        queued.items.map(({ rootThreadId, status, queuePosition, startedAt }) => [
+          rootThreadId,
+          status,
+          queuePosition,
+          startedAt,
+        ]),
+        [
+          ["second", "queued", 1, "1970-01-01T00:00:00.000Z"],
+          ["third", "queued", 2, "1970-01-01T00:00:00.000Z"],
+        ],
+      );
       yield* finish("occupied");
       yield* finish("child");
       assert.isTrue(Option.isNone(yield* claim), "native background work retains the episode");

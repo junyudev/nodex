@@ -210,11 +210,14 @@ export const configure = Effect.fn("RunAdmission.configure")(function* (capacity
   yield* sql`UPDATE orchestration_v2_admission_configuration SET capacity = ${capacity} WHERE singleton = 1`;
 });
 
+/** Rank once across the whole queue, before filtering to a conversation. */
+export const waitingAdmissionsSql = (sql: SqlClient.SqlClient) => sql`
+  SELECT run_id AS runId, thread_id, waiting_since AS waitingSince,
+    ROW_NUMBER() OVER (ORDER BY sequence) AS position
+  FROM orchestration_v2_run_activations WHERE state = 'waiting'`;
+
 export const readWaiting = Effect.fn("RunAdmission.readWaiting")(function* (threadId: string) {
   const sql = yield* SqlClient.SqlClient;
-  return yield* sql<WaitingAdmission>`WITH waiting AS (
-    SELECT run_id AS runId, thread_id, waiting_since AS waitingSince,
-      ROW_NUMBER() OVER (ORDER BY sequence) AS position
-    FROM orchestration_v2_run_activations WHERE state = 'waiting'
-  ) SELECT runId, position, waitingSince FROM waiting WHERE thread_id = ${threadId} ORDER BY position`;
+  return yield* sql<WaitingAdmission>`WITH waiting AS (${waitingAdmissionsSql(sql)})
+    SELECT runId, position, waitingSince FROM waiting WHERE thread_id = ${threadId} ORDER BY position`;
 });

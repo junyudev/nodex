@@ -1,4 +1,4 @@
-import type { AgentRunReadback } from "../nodex/Interface.ts";
+import type { AgentExecutionAgentSelection, AgentRunReadback } from "../nodex/Interface.ts";
 import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -23,9 +23,13 @@ import {
   SECRET_CARD_ATTENTION_FACT_FROM_SQL,
 } from "./SessionAttention.ts";
 
+import { EXECUTION_ACTIVITY_MAX_POINT_READS } from "../nodex/ActivityLimits.ts";
+import { waitingAdmissionsSql } from "./RunAdmission.ts";
+
+export { EXECUTION_ACTIVITY_MAX_POINT_READS } from "../nodex/ActivityLimits.ts";
+
 export const EXECUTION_ACTIVITY_PAGE_LIMIT = 200;
 export const EXECUTION_ACTIVITY_MAX_PAGE_LIMIT = 500;
-export const EXECUTION_ACTIVITY_MAX_POINT_READS = 64;
 
 export const EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT = 25;
 
@@ -51,7 +55,7 @@ export interface RootActivity {
   readonly rootThreadId: string;
   /** Temporary side chats surface user attention through their source Session. */
   readonly sideChatSourceThreadId?: string;
-  readonly status: "running" | "waiting" | "background";
+  readonly status: "running" | "waiting" | "background" | "queued";
   /** Work can continue elsewhere in a tree that also has pending attention. */
   readonly hasWork: boolean;
   /**
@@ -65,6 +69,10 @@ export interface RootActivity {
   readonly latestRequestAt?: string | null;
   readonly activeFlags?: readonly ThreadActiveFlag[];
   readonly approvalPrompt?: string | null;
+  readonly questionPrompt?: string | null;
+  readonly startedAt?: string | null;
+  readonly queuePosition?: number | null;
+  readonly agentSelection?: AgentExecutionAgentSelection;
   readonly backgroundTasks: ReadonlyArray<RootActivityBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
@@ -165,17 +173,25 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly approval_prompt: string | null;
         readonly active_tasks: number;
         readonly awaiting_commands: number;
+        readonly queue_position: number | null;
+        readonly started_at: string | null;
+        readonly question_prompt: string | null;
         readonly resumes: number;
         readonly progress_at: string | null;
         readonly background_tasks_json: string;
       }>`
         WITH RECURSIVE facts(thread_id, kind, at, amount, background_task, request_id, has_command, acting_run) AS MATERIALIZED (
-          SELECT thread_id, 'run', requested_at, 1, NULL, NULL,
+          SELECT live_run.thread_id, 'run', live_run.requested_at, 1, NULL, NULL,
             EXISTS (SELECT 1 ${inFlightToolsForRun} AND tool_item.type = 'command_execution'),
             CASE WHEN ${sql.literal(WORKING_RUN_PREDICATE)}
               THEN NOT EXISTS (SELECT 1 ${inFlightToolsForRun}) ELSE 0 END
           FROM orchestration_v2_projection_runs AS live_run
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
+            AND NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations AS admission
+              WHERE admission.run_id = live_run.run_id AND admission.state = 'waiting')
+          UNION ALL
+          SELECT thread_id, 'admission', waitingSince, position, NULL, NULL, 0, 0
+          FROM (${waitingAdmissionsSql(sql)})
           UNION ALL
           SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL, runtime_request_id, 0, 0
           FROM orchestration_v2_projection_runtime_requests
@@ -234,11 +250,11 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
         ), activity_facts AS MATERIALIZED (
           SELECT root_thread_id, thread_id, kind, progress_at, amount, NULL AS request_at,
-            has_command, acting_run FROM rooted
+            has_command, acting_run, at FROM rooted
           WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
           SELECT root_thread_id, thread_id, kind, progress_at, amount, at AS request_at,
-            0, 0 FROM attention
+            0, 0, at FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
@@ -248,6 +264,8 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           MAX(kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})) AS has_input,
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
           MAX(has_command) = 1 AND MAX(acting_run) = 0 AS awaiting_commands,
+          MIN(CASE WHEN kind = 'admission' THEN amount END) AS queue_position,
+          MIN(at) AS started_at,
           MAX(kind = 'wake' AND thread_id = root_thread_id) AS resumes,
           MAX(progress_at) AS progress_at
         FROM activity_facts
@@ -255,7 +273,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           AND (${input.cursor ?? null} IS NULL OR root_thread_id > ${input.cursor ?? null})
           ${roots === undefined ? sql`` : sql`AND root_thread_id IN ${sql.in(roots)}`}
         GROUP BY root_thread_id
-        HAVING active_runs > 0 OR pending_requests > 0 OR active_tasks > 0 OR resumes > 0
+        HAVING active_runs > 0 OR pending_requests > 0 OR active_tasks > 0 OR resumes > 0 OR queue_position IS NOT NULL
         ORDER BY root_thread_id
         LIMIT ${roots === undefined ? limit + 1 : roots.length}
         ), roster_tasks AS MATERIALIZED (
@@ -301,7 +319,17 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             WHERE attention.root_thread_id = activity.root_thread_id AND attention.kind = ${ATTENTION_KINDS.approval}
               AND json_extract(request.payload_json, '$.responseCapability.type') IN ('live', 'runtime')
               AND TRIM(COALESCE(json_extract(item.payload_json, '$.prompt'), '')) <> ''
-            ORDER BY attention.at, attention.thread_id, attention.request_id, item.ordinal DESC LIMIT 1) AS approval_prompt
+            ORDER BY attention.at, attention.thread_id, attention.request_id, item.ordinal DESC LIMIT 1) AS approval_prompt,
+          (SELECT substr(json_extract(item.payload_json, '$.questions[0].question'), 1, 512) FROM attention
+            CROSS JOIN orchestration_v2_projection_runtime_requests AS request
+              ON request.thread_id = attention.thread_id AND request.runtime_request_id = attention.request_id
+            CROSS JOIN orchestration_v2_projection_turn_items AS item
+              INDEXED BY orchestration_v2_projection_turn_items_node_ordinal_idx
+              ON item.node_id = request.node_id AND item.thread_id = request.thread_id AND item.type = 'user_input_request'
+            WHERE attention.root_thread_id = activity.root_thread_id
+              AND attention.kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})
+              AND json_extract(item.payload_json, '$.requestId') = attention.request_id
+            ORDER BY attention.at, attention.thread_id, attention.request_id, item.ordinal DESC LIMIT 1) AS question_prompt
         FROM activity LEFT JOIN background_tasks ON background_tasks.root_thread_id = activity.root_thread_id
         ORDER BY activity.root_thread_id`;
 
@@ -315,16 +343,22 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
               readonly model: string | null;
               readonly updated_at: string;
               readonly active_run_id: string | null;
+              readonly provider_driver: AgentExecutionAgentSelection["driver"];
+              readonly model_options: string | null;
               readonly side_chat_source_thread_id: string | null;
             }>`
               SELECT thread.thread_id, thread.provider_instance_id,
                 json_extract(thread.payload_json, '$.modelSelection.model') AS model,
+                json_extract(thread.payload_json, '$.providerDriver') AS provider_driver,
+                json_extract(thread.payload_json, '$.modelSelection.options') AS model_options,
                 thread.updated_at,
                 json_extract(thread.payload_json, '$.sideChat.sourceThreadId') AS side_chat_source_thread_id,
                 (SELECT run.run_id FROM orchestration_v2_projection_runs AS run
                   INDEXED BY orchestration_v2_projection_runs_thread_status_idx
                   WHERE run.thread_id = thread.thread_id
                     AND ${sql.literal(LIVE_RUN_PREDICATE)}
+                    AND NOT EXISTS (SELECT 1 FROM orchestration_v2_run_activations AS admission
+                      WHERE admission.run_id = run.run_id AND admission.state = 'waiting')
                   ORDER BY run.ordinal DESC LIMIT 1) AS active_run_id
               FROM orchestration_v2_projection_threads AS thread
               WHERE thread.thread_id IN ${sql.in(page.map((row) => row.root_thread_id))}`;
@@ -336,42 +370,53 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           ? []
           : yield* sql<{
               readonly run_id: string;
-              readonly item_id: string;
-              readonly text: string;
+              readonly item_id: string | null;
+              readonly text: string | null;
               readonly started_by_person: number;
+              readonly started_at: string;
             }>`SELECT run_id, json_extract(payload_json, '$.readback.itemId') AS item_id,
+          COALESCE(json_extract(payload_json, '$.startedAt'), requested_at) AS started_at,
           json_extract(payload_json, '$.readback.text') AS text,
           COALESCE(json_extract(payload_json, '$.startedByPerson'), 0) AS started_by_person
-        FROM orchestration_v2_projection_runs WHERE run_id IN ${sql.in(readbacks)}
-          AND json_extract(payload_json, '$.readback') IS NOT NULL`;
-      const readbackOf = new Map(
-        readbackRows.map((row) => [
-          row.run_id,
-          {
-            runId: row.run_id,
-            itemId: row.item_id,
-            text: row.text,
-            startedByPerson: row.started_by_person === 1,
-          },
-        ]),
-      );
+        FROM orchestration_v2_projection_runs WHERE run_id IN ${sql.in(readbacks)}`;
+      const runOf = new Map(readbackRows.map((row) => [row.run_id, row]));
       const headOf = new Map(heads.map((head) => [head.thread_id, head]));
       const items: Array<RootActivity> = [];
       for (const row of page) {
         const head = headOf.get(row.root_thread_id);
         if (head === undefined) continue;
+        const run = head.active_run_id === null ? undefined : runOf.get(head.active_run_id);
+        const backgroundTasks = yield* decodeBackgroundTasks(row.background_tasks_json);
         items.push({
           rootThreadId: row.root_thread_id,
           ...(head.side_chat_source_thread_id === null
             ? {}
             : { sideChatSourceThreadId: head.side_chat_source_thread_id }),
           status:
-            row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
+            row.pending_requests > 0
+              ? "waiting"
+              : row.active_runs > 0
+                ? "running"
+                : row.active_tasks > 0 || row.resumes > 0
+                  ? "background"
+                  : "queued",
           hasWork: row.active_runs > 0 || row.active_tasks > 0 || row.resumes > 0,
           awaitingCommands: row.awaiting_commands === 1,
           activeRunId: head.active_run_id,
           readback:
-            head.active_run_id === null ? null : (readbackOf.get(head.active_run_id) ?? null),
+            run?.item_id != null && run.text != null
+              ? {
+                  runId: run.run_id,
+                  itemId: run.item_id,
+                  text: run.text,
+                  startedByPerson: run.started_by_person === 1,
+                }
+              : null,
+          startedAt:
+            run?.started_at ??
+            backgroundTasks.find((task) => task.startedAt)?.startedAt ??
+            row.started_at,
+          queuePosition: row.queue_position,
           pendingRequestCount: row.pending_requests,
           latestRequestAt: row.latest_request_at,
           activeFlags: sessionAttentionFlags([
@@ -379,7 +424,14 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             { kind: ATTENTION_KINDS.input, awaitsPerson: row.has_input > 0 },
           ]),
           approvalPrompt: row.approval_prompt,
-          backgroundTasks: yield* decodeBackgroundTasks(row.background_tasks_json),
+          questionPrompt: row.question_prompt,
+          backgroundTasks,
+          agentSelection: {
+            driver: head.provider_driver,
+            providerInstanceId: head.provider_instance_id,
+            model: head.model,
+            options: head.model_options === null ? undefined : JSON.parse(head.model_options),
+          },
           providerInstanceId: head.provider_instance_id ?? "",
           model: head.model ?? "",
           updatedAt:

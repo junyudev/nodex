@@ -1,3 +1,4 @@
+import { SUBAGENT_OVERVIEW_BATCH_LIMIT } from "../nodex/ActivityLimits.ts";
 import { currentSubagentTurn } from "../nodex/SubagentTurns.ts";
 import { projectRunReadback, recordRunReadback } from "./RunReadback.ts";
 import * as ExecutionPauseState from "./ExecutionPauseState.ts";
@@ -656,6 +657,16 @@ export interface ProjectionSubagentOverview {
   readonly active: ProjectionSubagentOverviewPage;
   readonly terminal: ProjectionSubagentOverviewPage;
 }
+export interface ProjectionSubagentOverviewBatchInput {
+  readonly threadIds: readonly ThreadId[];
+  readonly countsOnlyThreadIds?: readonly ThreadId[] | undefined;
+}
+export interface ProjectionSubagentOverviewBatchEntry {
+  readonly threadId: ThreadId;
+  readonly activeCount: number;
+  readonly terminalCount: number;
+  readonly overview: ProjectionSubagentOverview | null;
+}
 export interface ProjectionSubagentOverviewInput {
   readonly threadId: ThreadId;
   /** Restrict the overview to the subagent that owns this task, which may be any of its turns. */
@@ -1288,6 +1299,9 @@ export interface ProjectionStoreV2Shape {
   readonly getThreadSubagentOverview: (
     input: ProjectionSubagentOverviewInput,
   ) => Effect.Effect<ProjectionSubagentOverview, ProjectionStoreV2Error>;
+  readonly getThreadSubagentOverviews: (
+    input: ProjectionSubagentOverviewBatchInput,
+  ) => Effect.Effect<readonly ProjectionSubagentOverviewBatchEntry[], ProjectionStoreV2Error>;
   readonly getProjectProviderSessionBindings: (
     projectId: ProjectId,
     cursor?: string,
@@ -7662,91 +7676,103 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           Effect.mapError((cause) => new ProjectionStoreProjectReadError({ projectId, cause })),
         );
 
-    const getThreadSubagentOverview: ProjectionStoreV2Shape["getThreadSubagentOverview"] = (
-      input,
+    const readSubagentOverviews = (
+      batch: ProjectionSubagentOverviewBatchInput,
+      detail?: ProjectionSubagentOverviewInput,
     ) =>
-      sql
-        .withTransaction(
-          Effect.gen(function* () {
-            yield* requireThread(input.threadId);
-            // Start a page at the requested conversation and walk the indexed delegation lineage.
-            // For an addressed read, walk up from the task's owner instead of scanning its siblings.
-            const scope =
-              input.taskId === undefined
-                ? sql`WITH RECURSIVE
-                    children(thread_id, parent_thread_id) AS MATERIALIZED (
-                      SELECT thread_id, json_extract(payload_json,'$.lineage.parentThreadId')
-                      FROM orchestration_v2_projection_threads
-                      WHERE json_extract(payload_json,'$.lineage.rootThreadId') = (
-                        SELECT json_extract(payload_json,'$.lineage.rootThreadId')
-                        FROM orchestration_v2_projection_threads WHERE thread_id = ${input.threadId}
-                      ) AND json_extract(payload_json,'$.lineage.relationshipToParent') = 'subagent'
-                    ),
-                    overview_threads(thread_id) AS (
-                      SELECT ${input.threadId}
-                      UNION
-                      SELECT child.thread_id FROM overview_threads AS owner
-                      JOIN children AS child ON child.parent_thread_id = owner.thread_id
-                    )`
-                : sql`WITH RECURSIVE ancestors(thread_id) AS (
-                    SELECT thread_id FROM orchestration_v2_projection_subagents
-                    WHERE subagent_id = ${input.taskId}
-                    UNION
-                    SELECT json_extract(owner.payload_json,'$.lineage.parentThreadId')
-                    FROM ancestors JOIN orchestration_v2_projection_threads AS owner USING (thread_id)
-                    WHERE json_extract(owner.payload_json,'$.lineage.relationshipToParent') = 'subagent'
-                      AND ancestors.thread_id <> ${input.threadId}
-                  )`;
-            const scopedTasks =
-              input.taskId === undefined
-                ? sql`FROM overview_threads AS owner
-                    CROSS JOIN orchestration_v2_projection_subagents AS task USING (thread_id)`
-                : sql`FROM orchestration_v2_projection_subagents AS addressed
-                    CROSS JOIN orchestration_v2_projection_subagents AS task
-                    ON task.thread_id = addressed.thread_id
-                      -- Every turn of a child conversation, or the native task alone.
-                      AND (task.child_thread_id = addressed.child_thread_id
-                        OR (addressed.child_thread_id IS NULL
-                          AND task.subagent_id = addressed.subagent_id))
-                    WHERE addressed.subagent_id = ${input.taskId}
-                      AND EXISTS (SELECT 1 FROM ancestors WHERE thread_id = ${input.threadId})`;
-            const activeAnchor =
-              input.activeCursor === undefined
-                ? null
-                : decodeSubagentOverviewCursor(input.activeCursor, input, "active");
-            const terminalAnchor =
-              input.terminalCursor === undefined
-                ? null
-                : decodeSubagentOverviewCursor(input.terminalCursor, input, "terminal");
-            if (
-              (input.activeCursor !== undefined && activeAnchor === null) ||
-              (input.terminalCursor !== undefined && terminalAnchor === null)
-            )
-              return yield* new ProjectionStoreReadError({
-                threadId: input.threadId,
-                cause: new Error("Invalid subagent overview cursor"),
-              });
+      sql.withTransaction(
+        Effect.gen(function* () {
+          const full = new Set(batch.threadIds);
+          const threadIds = [...new Set([...full, ...(batch.countsOnlyThreadIds ?? [])])];
+          if (threadIds.length > SUBAGENT_OVERVIEW_BATCH_LIMIT)
+            return yield* new ProjectionStoreReadError({
+              threadId: threadIds[0]!,
+              cause: new Error("Subagent overview exceeds its root bound"),
+            });
+          if (threadIds.length === 0) return [];
+          if (detail) yield* requireThread(detail.threadId);
+          const activeAnchor =
+            detail?.activeCursor === undefined
+              ? null
+              : decodeSubagentOverviewCursor(detail.activeCursor, detail, "active");
+          const terminalAnchor =
+            detail?.terminalCursor === undefined
+              ? null
+              : decodeSubagentOverviewCursor(detail.terminalCursor, detail, "terminal");
+          if (
+            detail &&
+            ((detail.activeCursor !== undefined && activeAnchor === null) ||
+              (detail.terminalCursor !== undefined && terminalAnchor === null))
+          )
+            return yield* new ProjectionStoreReadError({
+              threadId: detail.threadId,
+              cause: new Error("Invalid subagent overview cursor"),
+            });
 
-            const afterAnchor = (anchor: { updatedAt: string; id: string } | null) =>
-              anchor === null
-                ? sql``
-                : sql`
-                AND (updated_at < ${anchor.updatedAt}
-                  OR (updated_at = ${anchor.updatedAt} AND identity_id < ${anchor.id}))`;
-            // Match currentSubagentTurn in SubagentTurns.ts. Only pending turns
-            // need the indexed carrying-Run lookup, and only page members need task bodies.
-            const pageRows = yield* sql<
-              {
-                phase: SubagentOverviewPhase;
-                total_count: number;
-              } & (
-                | { identity_id: NodeId; task_id: NodeId; updated_at: string }
-                | { identity_id: null; task_id: null; updated_at: null }
-              )
-            >`
-              ${scope},
-              candidates AS MATERIALIZED (
-                SELECT task.thread_id, COALESCE(task.child_thread_id, task.subagent_id) AS subagent_key,
+          // Start at each requested Thread and walk only its delegation lineage. Addressed
+          // reads walk up from the task owner, keeping reports independent of sibling history.
+          const requested = JSON.stringify(threadIds);
+          const scope =
+            detail?.taskId === undefined
+              ? sql`WITH RECURSIVE
+                  requested(root_id, lineage_id) AS MATERIALIZED (
+                    SELECT thread.thread_id, json_extract(thread.payload_json,'$.lineage.rootThreadId')
+                    FROM json_each(${requested}) AS id
+                    CROSS JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = id.value
+                  ),
+                  children(lineage_id, thread_id, parent_thread_id) AS MATERIALIZED (
+                    SELECT DISTINCT requested.lineage_id, child.thread_id,
+                      json_extract(child.payload_json,'$.lineage.parentThreadId')
+                    FROM requested
+                    CROSS JOIN orchestration_v2_projection_threads AS child
+                      ON json_extract(child.payload_json,'$.lineage.rootThreadId') = requested.lineage_id
+                    WHERE json_extract(child.payload_json,'$.lineage.relationshipToParent') = 'subagent'
+                  ),
+                  overview_threads(root_id, lineage_id, thread_id) AS (
+                    SELECT root_id, lineage_id, root_id FROM requested
+                    UNION
+                    SELECT owner.root_id, owner.lineage_id, child.thread_id FROM overview_threads AS owner
+                    JOIN children AS child ON child.lineage_id = owner.lineage_id
+                      AND child.parent_thread_id = owner.thread_id
+                  )`
+              : sql`WITH RECURSIVE ancestors(thread_id) AS (
+                  SELECT thread_id FROM orchestration_v2_projection_subagents
+                  WHERE subagent_id = ${detail.taskId}
+                  UNION
+                  SELECT json_extract(owner.payload_json,'$.lineage.parentThreadId')
+                  FROM ancestors JOIN orchestration_v2_projection_threads AS owner USING (thread_id)
+                  WHERE json_extract(owner.payload_json,'$.lineage.relationshipToParent') = 'subagent'
+                    AND ancestors.thread_id <> ${detail.threadId}
+                ), overview_threads(root_id) AS (
+                  SELECT ${detail.threadId} FROM ancestors WHERE thread_id = ${detail.threadId}
+                )`;
+          const scopedTasks =
+            detail?.taskId === undefined
+              ? sql`FROM overview_threads AS owner
+                  CROSS JOIN orchestration_v2_projection_subagents AS task USING (thread_id)`
+              : sql`FROM overview_threads AS owner
+                  CROSS JOIN orchestration_v2_projection_subagents AS addressed
+                  CROSS JOIN orchestration_v2_projection_subagents AS task
+                  ON task.thread_id = addressed.thread_id
+                    AND (task.child_thread_id = addressed.child_thread_id
+                      OR (addressed.child_thread_id IS NULL AND task.subagent_id = addressed.subagent_id))
+                  WHERE addressed.subagent_id = ${detail.taskId}`;
+          const afterAnchor = (anchor: { updatedAt: string; id: string } | null) =>
+            anchor === null
+              ? sql``
+              : sql`AND (updated_at, identity_id) < (${anchor.updatedAt}, ${anchor.id})`;
+          type PageRow = {
+            root_id: ThreadId;
+            phase: SubagentOverviewPhase;
+            total_count: number;
+          } & (
+            | { identity_id: NodeId; task_id: NodeId; updated_at: string; position: number }
+            | { identity_id: null; task_id: null; updated_at: null; position: null }
+          );
+          const pageRows = yield* sql<PageRow>`
+            ${scope},
+            candidates AS MATERIALIZED (
+                SELECT owner.root_id, task.thread_id, COALESCE(task.child_thread_id, task.subagent_id) AS subagent_key,
                   task.subagent_id, task.started_at, task.completed_at, task.updated_at,
                   (SELECT json_extract(child.payload_json, '$.forkedFrom.nodeId')
                     FROM orchestration_v2_projection_threads AS child
@@ -7762,7 +7788,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ${scopedTasks}
               ),
               ranked AS (
-                SELECT subagent_id AS task_id, rank,
+                SELECT root_id, subagent_id AS task_id, rank,
                   FIRST_VALUE(subagent_id) OVER (subagents ORDER BY
                     (subagent_id IS spawn_id) DESC, started_at, subagent_id) AS identity_id,
                   MAX(updated_at) OVER subagents AS updated_at,
@@ -7773,38 +7799,36 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     CASE WHEN rank = 2 THEN started_at END DESC,
                     subagent_id DESC) AS turn_position
                 FROM candidates
-                WINDOW subagents AS (PARTITION BY thread_id, subagent_key)
+                WINDOW subagents AS (PARTITION BY root_id, thread_id, subagent_key)
               ),
               subagents AS MATERIALIZED (
-                SELECT task_id, identity_id, updated_at,
+                SELECT root_id, task_id, identity_id, updated_at,
                   CASE WHEN rank = 2 THEN 'terminal' ELSE 'active' END AS phase
                 FROM ranked WHERE turn_position = 1
               ),
-              totals AS (SELECT phase, COUNT(*) AS total_count FROM subagents GROUP BY phase),
-              active AS (
-                SELECT * FROM subagents WHERE phase = 'active' ${afterAnchor(activeAnchor)}
-                ORDER BY updated_at DESC, identity_id DESC LIMIT 5
+              totals AS (
+                SELECT root_id, phase, COUNT(*) AS total_count FROM subagents GROUP BY root_id, phase
               ),
-              terminal AS (
-                SELECT * FROM subagents WHERE phase = 'terminal' ${afterAnchor(terminalAnchor)}
-                ORDER BY updated_at DESC, identity_id DESC LIMIT 11
+              ranked_page AS (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY root_id, phase
+                  ORDER BY updated_at DESC, identity_id DESC) AS position
+                FROM subagents
+                WHERE root_id IN (SELECT value FROM json_each(${JSON.stringify([...full])}))
+                  AND ((phase = 'active' ${afterAnchor(activeAnchor)})
+                    OR (phase = 'terminal' ${afterAnchor(terminalAnchor)}))
               ),
-              page AS (SELECT * FROM active UNION ALL SELECT * FROM terminal)
-              SELECT totals.phase, totals.total_count, page.identity_id, page.task_id, page.updated_at
-              FROM totals LEFT JOIN page USING (phase)
-              ORDER BY page.updated_at DESC, page.identity_id DESC`;
-
-            const readPage = Effect.fnUntraced(function* (
-              phase: SubagentOverviewPhase,
-              limit: number,
-            ) {
-              const phaseRows = pageRows.filter((row) => row.phase === phase);
-              const totalCount = phaseRows[0]?.total_count ?? 0;
-              const ids = phaseRows.filter((row) => row.task_id !== null);
-              const admitted = ids.slice(0, limit);
-              if (admitted.length === 0)
-                return { items: [], nextCursor: null, hasMore: false, totalCount };
-              const rows = yield* sql<PayloadRow>`SELECT json_patch(json_object(
+              page AS (SELECT * FROM ranked_page WHERE position <= CASE phase WHEN 'active' THEN 5 ELSE 11 END)
+              SELECT totals.*, page.identity_id, page.task_id, page.updated_at, page.position
+              FROM totals LEFT JOIN page USING (root_id, phase)
+              ORDER BY totals.root_id, totals.phase, page.position`;
+          const pageLimit = (phase: SubagentOverviewPhase) => (phase === "active" ? 4 : 10);
+          const admitted = pageRows.filter(
+            (row) => row.position !== null && row.position <= pageLimit(row.phase),
+          );
+          const payloads =
+            admitted.length === 0
+              ? []
+              : yield* sql<PayloadRow>`SELECT json_patch(json_object(
             'id', identity.subagent_id, 'taskId', task.subagent_id, 'delegatedAt', identity.started_at,
             'threadId', identity.thread_id, 'runId', task.run_id,
             'origin', identity.origin, 'driver', task.driver,
@@ -7847,7 +7871,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               (SELECT local.subagent_id FROM orchestration_v2_projection_subagents AS local
                 WHERE local.subagent_id = identity.parent_node_id AND local.thread_id = identity.thread_id),
               (SELECT spawn.subagent_id FROM orchestration_v2_projection_subagents AS spawn
-                WHERE identity.thread_id <> ${input.threadId}
+                WHERE identity.thread_id <> (admitted.value ->> '$.root_id')
                   AND spawn.child_thread_id = identity.thread_id
                   AND spawn.thread_id = json_extract(owner.payload_json, '$.lineage.parentThreadId')
                   AND spawn.subagent_id = COALESCE(
@@ -7856,25 +7880,68 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     spawn.subagent_id)
                 ORDER BY spawn.subagent_id LIMIT 1))
             ORDER BY admitted.key`;
-              const items = yield* decodeRows(decodeSubagentOverview, input.threadId)(rows);
-              const last = admitted.at(-1)!;
-              const hasMore = ids.length > limit;
+          const items = yield* decodeRows(decodeSubagentOverview, threadIds[0]!)(payloads);
+          const itemOf = new Map(admitted.map((row, index) => [row, items[index]!]));
+          const rowsByRoot = new Map<ThreadId, PageRow[]>();
+          for (const row of pageRows) {
+            const rows = rowsByRoot.get(row.root_id);
+            if (rows) rows.push(row);
+            else rowsByRoot.set(row.root_id, [row]);
+          }
+          return threadIds.map((threadId): ProjectionSubagentOverviewBatchEntry => {
+            const rows = rowsByRoot.get(threadId) ?? [];
+            const total = (phase: SubagentOverviewPhase) =>
+              rows.find((row) => row.phase === phase)?.total_count ?? 0;
+            const page = (phase: SubagentOverviewPhase): ProjectionSubagentOverviewPage => {
+              const candidates = rows.filter((row) => row.phase === phase && row.task_id !== null);
+              const visible = candidates.slice(0, pageLimit(phase));
+              const last = visible.at(-1);
+              const hasMore = candidates.length > visible.length;
               return {
-                items,
+                items: visible.map((row) => itemOf.get(row)!),
+                totalCount: total(phase),
                 hasMore,
-                totalCount,
-                nextCursor: hasMore
-                  ? encodeSubagentOverviewCursor(input, phase, last.updated_at, last.identity_id)
-                  : null,
+                nextCursor:
+                  hasMore && last?.identity_id != null
+                    ? encodeSubagentOverviewCursor(
+                        detail ?? { threadId },
+                        phase,
+                        last.updated_at,
+                        last.identity_id,
+                      )
+                    : null,
               };
-            });
-            return {
-              active: yield* readPage("active", 4),
-              terminal: yield* readPage("terminal", 10),
             };
-          }),
-        )
-        .pipe(Effect.mapError(controlReadError(input.threadId)));
+            return {
+              threadId,
+              activeCount: total("active"),
+              terminalCount: total("terminal"),
+              overview: full.has(threadId)
+                ? { active: page("active"), terminal: page("terminal") }
+                : null,
+            };
+          });
+        }),
+      );
+
+    const getThreadSubagentOverview: ProjectionStoreV2Shape["getThreadSubagentOverview"] = (
+      input,
+    ) =>
+      readSubagentOverviews({ threadIds: [input.threadId] }, input).pipe(
+        Effect.map((rows) => rows[0]!.overview!),
+        Effect.mapError(controlReadError(input.threadId)),
+      );
+
+    const getThreadSubagentOverviews: ProjectionStoreV2Shape["getThreadSubagentOverviews"] = (
+      input,
+    ) =>
+      readSubagentOverviews(input).pipe(
+        Effect.mapError(
+          controlReadError(
+            input.threadIds[0] ?? input.countsOnlyThreadIds?.[0] ?? ThreadId.make("overview"),
+          ),
+        ),
+      );
 
     const getPendingNativeRequests: ProjectionStoreV2Shape["getPendingNativeRequests"] = (
       threadId,
@@ -10279,6 +10346,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getRuntimeRecoveryProjection,
       getHostToolAuthorityContext,
       getThreadSubagentOverview,
+      getThreadSubagentOverviews,
       getProjectExecutionActivity,
       getProjectRoots,
       getQueuedRunHead,
@@ -10370,6 +10438,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getRuntimeRecoveryProjection: readOnReader(service.getRuntimeRecoveryProjection),
       getHostToolAuthorityContext: readOnReader(service.getHostToolAuthorityContext),
       getThreadSubagentOverview: readOnReader(service.getThreadSubagentOverview),
+      getThreadSubagentOverviews: readOnReader(service.getThreadSubagentOverviews),
       getProjectExecutionActivity: readOnReader(service.getProjectExecutionActivity),
       getProjectRoots: readOnReader(service.getProjectRoots),
       getQueuedRunHead: readOnReader(service.getQueuedRunHead),
@@ -12326,6 +12395,31 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             terminal: yield* page("terminal", input.terminalCursor, 10),
           };
         }),
+      getThreadSubagentOverviews: (input) => {
+        const full = new Set(input.threadIds);
+        const ids = [...new Set([...full, ...(input.countsOnlyThreadIds ?? [])])];
+        if (ids.length > SUBAGENT_OVERVIEW_BATCH_LIMIT)
+          return Effect.fail(
+            new ProjectionStoreReadError({
+              threadId: ids[0]!,
+              cause: new Error("Subagent overview exceeds its root bound"),
+            }),
+          );
+        return Effect.forEach(ids, (threadId) =>
+          service.getThreadSubagentOverview({ threadId }).pipe(
+            Effect.catchTag("ProjectionStoreThreadNotFoundError", () => {
+              const empty = { items: [], nextCursor: null, hasMore: false, totalCount: 0 };
+              return Effect.succeed({ active: empty, terminal: empty });
+            }),
+            Effect.map((overview) => ({
+              threadId,
+              activeCount: overview.active.totalCount,
+              terminalCount: overview.terminal.totalCount,
+              overview: full.has(threadId) ? overview : null,
+            })),
+          ),
+        );
+      },
       getRuntimeRecoveryProjection: (threadId) => service.getThreadProjection(threadId),
       getHostToolAuthorityContext: (threadId, runId, providerThreadId) =>
         service.getThreadProjection(threadId).pipe(
