@@ -874,14 +874,16 @@
   mix-blend-mode: normal;
 }
 
-/* ===== NFM Table Block ===== */
+/* ===== NFM Tables ===== */
+/*
+ * One table look for Page editors, read-only Page renderers and chat Markdown. A column is
+ * auto (sized from its content; its cells carry data-nfm-cell-fit) or pinned (a stored px
+ * width); data-nfm-table-layout names the mix. Contract:
+ * docs/product-specs/nfm-editor-table-block-behavior.md.
+ */
 
+/* The Block hugs its table so selection and hover trace the table, not the empty line beside it. */
 .nfm-editor .bn-block-content[data-content-type="table"] {
-  --nfm-table-border: color-mix(in srgb, var(--foreground) 13%, transparent);
-  --nfm-table-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
-  --nfm-table-selection: var(--color-token-focus-border);
-  --nfm-table-cell-min-width: 120px;
-  --nfm-table-cell-max-width: 240px;
   width: fit-content;
   max-width: 100%;
   overflow: visible;
@@ -891,85 +893,174 @@
   line-height: var(--leading-relaxed);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] .tableWrapper {
-  overflow-x: auto;
+/*
+ * The scroller hugs its table and scrolls only when the table cannot fit the text column. While
+ * it overflows, the edge with more table beyond it fades out; a table that fits has no active
+ * scroll timeline and keeps crisp edges. Longhands keep the timeline through minification, as
+ * truncate-fade-css.node.test.ts holds.
+ */
+:is(.nfm-editor .bn-block-content[data-content-type="table"] .tableWrapper, .nfm-table-scroll) {
+  --edge-fade-distance: 2rem;
+  width: fit-content;
   max-width: 100%;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--left-fade) calc(100% - var(--right-fade)),
+    transparent
+  );
+  animation-name: edge-fade-horizontal;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-timeline: scroll(self inline);
+}
+
+.nfm-editor .bn-block-content[data-content-type="table"] .tableWrapper {
   margin-block: 4px;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll) table {
+  --nfm-table-line: color-mix(in srgb, var(--foreground) 11%, transparent);
+  --nfm-table-column-line: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --nfm-table-header: color-mix(in srgb, var(--foreground) 4%, transparent);
+  width: auto;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--nfm-table-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Default table type, kept at zero specificity so a context's own scale, such as chat's, owns it. */
+:where(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll) table {
+  font-size: 0.9375em;
+  line-height: 1.5;
+}
+
+/* Pinned tables render their stored widths exactly; the editor writes the total width inline. */
+:is(
+  .nfm-editor .bn-block-content[data-nfm-table-layout="pinned"] table,
+  table.nfm-table[data-nfm-table-layout="pinned"]
+) {
+  table-layout: fixed;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll) tr > :is(th, td) {
+  box-sizing: border-box;
+  min-width: 2.5em;
+  max-width: none;
+  padding: 0.5em 0.875em;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  tr
+  + tr
+  > :is(th, td) {
+  border-top: 1px solid var(--nfm-table-line);
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll) tr > th {
+  background: var(--nfm-table-header);
+  font-weight: 560;
+  text-wrap: balance;
+}
+
+.nfm-table-scroll th {
+  text-align: start;
+}
+
+/*
+ * Short cells stay on one line, prose keeps a readable measure, and empty columns stay typeable.
+ * A column being resized drops these floors so its edge can follow the pointer below them.
+ */
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  [data-nfm-cell-fit="short"]:not(.column-resize-dragging) {
+  white-space: nowrap;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  td[data-nfm-cell-fit="long"]:not(.column-resize-dragging) {
+  min-width: 11em;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  th[data-nfm-cell-fit="long"]:not(.column-resize-dragging) {
+  min-width: 8em;
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  [data-nfm-cell-fit="blank"]:not(.column-resize-dragging) {
+  min-width: 9em;
+}
+
+.nfm-editor .bn-block-content[data-content-type="table"] :is(th, td) > * {
+  min-height: 1lh;
   padding: 0;
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] .tableWrapper-inner {
-  width: max-content;
-  min-width: 100%;
-}
-
-.nfm-editor .bn-block-content[data-content-type="table"] table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: max-content;
-  min-width: 100%;
-}
-
-.nfm-editor .bn-block-content[data-content-type="table"] th,
-.nfm-editor .bn-block-content[data-content-type="table"] td {
-  min-width: var(--nfm-table-cell-min-width);
-  max-width: var(--nfm-table-cell-max-width);
-  min-height: 32px;
-  border: 1px solid var(--nfm-table-border);
-  background: transparent;
-  color: var(--foreground);
-  vertical-align: top;
-}
-
-.nfm-editor .bn-block-content[data-content-type="table"] th {
-  background: color-mix(in srgb, var(--foreground) 4%, transparent);
-  font-weight: 500;
+/* Column rules appear only while the pointer works the table, so resting tables read as prose. */
+.nfm-editor .bn-block-content[data-content-type="table"] tr > :is(th, td) + :is(th, td) {
+  border-left: 1px solid transparent;
+  transition: border-color 150ms ease;
 }
 
 .nfm-editor
   .bn-block-content[data-content-type="table"]
+  .tableWrapper:is(:hover, :has(.selectedCell))
+  tr
+  > :is(th, td)
+  + :is(th, td) {
+  border-left-color: var(--nfm-table-column-line);
+}
+
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="gray"] {
   background-color: color-mix(in srgb, var(--color-token-foreground) 12%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="brown"] {
   background-color: color-mix(in srgb, var(--color-token-charts-orange) 24%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="orange"] {
   background-color: color-mix(in srgb, var(--color-token-charts-orange) 24%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="yellow"] {
   background-color: color-mix(in srgb, var(--color-token-charts-yellow) 30%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="green"] {
   background-color: color-mix(in srgb, var(--color-token-charts-green) 24%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="blue"] {
   background-color: color-mix(in srgb, var(--blue-300) 22%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="purple"] {
   background-color: color-mix(in srgb, var(--color-token-charts-purple) 24%, transparent);
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="pink"] {
   background-color: color-mix(
     in srgb,
@@ -978,17 +1069,18 @@
   );
 }
 
-.nfm-editor
-  .bn-block-content[data-content-type="table"]
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
   :where(th, td)[data-background-color="red"] {
   background-color: color-mix(in srgb, var(--color-token-charts-red) 24%, transparent);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="gray"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="gray"] {
   color: color-mix(in srgb, var(--color-token-foreground) 42%, transparent);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="brown"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="brown"] {
   color: color-mix(
     in srgb,
     var(--color-token-charts-orange) 70%,
@@ -996,27 +1088,33 @@
   );
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="orange"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="orange"] {
   color: var(--color-token-charts-orange);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="yellow"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="yellow"] {
   color: var(--color-token-charts-yellow);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="green"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="green"] {
   color: var(--color-token-charts-green);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="blue"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="blue"] {
   color: var(--blue-300);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="purple"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="purple"] {
   color: var(--color-token-charts-purple);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="pink"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="pink"] {
   color: color-mix(
     in srgb,
     var(--color-token-charts-purple) 56%,
@@ -1024,30 +1122,20 @@
   );
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="red"] {
+:is(.nfm-editor .bn-block-content[data-content-type="table"], .nfm-table-scroll)
+  :where(table, th, td)[data-text-color="red"] {
   color: var(--color-token-charts-red);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] :is(th, td) > * {
-  min-height: 32px;
-  padding: 7px 9px;
-}
-
-.nfm-editor .bn-block-content[data-content-type="table"] .selectedCell {
+.nfm-editor .bn-block-content[data-content-type="table"] .selectedCell::after {
   background: var(--color-background-text-selection);
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"] .selectedCell::after {
-  border: 2px solid var(--nfm-table-selection);
-}
-
+/* prosemirror-tables renders this rule only while a column edge is under the pointer. */
 .nfm-editor .bn-block-content[data-content-type="table"] .column-resize-handle {
-  background: transparent;
-  transition: background 150ms ease 50ms;
-}
-
-.nfm-editor .bn-block-content[data-content-type="table"] .column-resize-handle:hover {
-  background: color-mix(in srgb, var(--color-token-focus-border) 65%, transparent);
+  right: -1.5px;
+  width: 2px;
+  background: var(--color-token-focus-border);
 }
 
 .nfm-editor .table-widgets-container {
@@ -1058,9 +1146,9 @@
 .nfm-editor .bn-table-cell-handle,
 .nfm-editor .bn-extend-button {
   pointer-events: auto;
-  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
   background: color-mix(in srgb, var(--color-token-dropdown-background) 92%, transparent);
-  border: 0.5px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--foreground) 12%, transparent);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(12px);
 }
@@ -1069,20 +1157,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 26px;
-  border-radius: 4px;
-  opacity: 0.85;
-  transform: scale(0.96);
+  width: 14px;
+  height: 22px;
+  border-radius: 5px;
+  opacity: 0.8;
+  transform: scale(0.94);
   transition:
     opacity 100ms ease-in-out,
-    transform 100ms ease-in-out;
+    transform 100ms ease-in-out,
+    color 100ms ease-in-out;
 }
 
 .nfm-editor .bn-table-handle:hover,
 .nfm-editor .bn-table-handle-dragging {
   color: var(--foreground);
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: var(--color-token-dropdown-background);
 }
 
 .nfm-editor .bn-table-handle:not(.bn-table-handle-not-draggable) {
@@ -1102,35 +1191,33 @@
 }
 
 .nfm-editor .bn-table-handle .nfm-table-handle-glyph svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .nfm-editor .bn-table-cell-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 4px;
   opacity: 0.85;
   transition: opacity 150ms ease 50ms;
 }
 
 .nfm-editor .bn-extend-button {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  opacity: 0.75;
+  opacity: 0.7;
   transition: opacity 150ms ease 50ms;
 }
 
-.nfm-editor .bn-block-content[data-content-type="table"]:hover .bn-table-handle,
-.nfm-editor .bn-block-content[data-content-type="table"]:focus-within .bn-table-handle,
-.nfm-editor .bn-block-content[data-content-type="table"]:hover .bn-table-cell-handle,
-.nfm-editor .bn-block-content[data-content-type="table"]:focus-within .bn-table-cell-handle,
-.nfm-editor .bn-block-content[data-content-type="table"]:hover .bn-extend-button,
-.nfm-editor .bn-block-content[data-content-type="table"]:focus-within .bn-extend-button {
+.nfm-editor .bn-table-handle:hover,
+.nfm-editor .bn-table-handle-dragging,
+.nfm-editor .bn-table-cell-handle:hover,
+.nfm-editor .bn-extend-button:hover {
   opacity: 1;
   transform: scale(1);
 }
@@ -1272,15 +1359,6 @@
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
-}
-
-.nfm-render-table table {
-  color: var(--foreground);
-}
-
-.nfm-render-table th,
-.nfm-render-table td {
-  min-height: 32px;
 }
 
 /* ===== ProseMirror / DnD Overrides ===== */

@@ -12,6 +12,7 @@ import {
 import { useThreadMentionRuntime } from "./thread-mention-chip";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
+import { nfmTableLayoutExtension } from "./nfm-table-layout-extension";
 import { BoardIcon, PageIcon } from "@/components/shared/icons";
 import {
   useCallback,
@@ -388,7 +389,7 @@ function ReadonlyNfmPreviewContent({
     {
       schema: readonlyMarkdownBlockNotePreviewSchema,
       dictionary: locale === "zh-CN" ? zh : en,
-      extensions: [nfmSyntaxHighlighter],
+      extensions: [nfmSyntaxHighlighter, nfmTableLayoutExtension],
       initialContent: previewDocument.initialContent,
       resolveFileUrl: async (source) => {
         if (parseFileSource(source)) {

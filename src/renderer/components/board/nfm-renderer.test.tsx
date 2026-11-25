@@ -53,6 +53,52 @@ function installDateMentionClock(start: string) {
 }
 
 describe("NfmRenderer", () => {
+  test("renders pinned and content-sized columns with NFM cell attributes", async () => {
+    const { findByRole } = render(
+      <NfmDocument
+        blocks={[
+          {
+            type: "table",
+            content: {
+              type: "tableContent",
+              columnWidths: [120, undefined],
+              headerCols: 1,
+              rows: [
+                {
+                  cells: [
+                    { content: [{ type: "text", text: "Pinned" }] },
+                    {
+                      content: [
+                        {
+                          type: "link",
+                          content: [{ type: "text", text: "A long label inside a link" }],
+                        },
+                      ],
+                      props: { backgroundColor: "blue", textColor: "red", textAlignment: "right" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    const table = (await findByRole("table")) as HTMLTableElement;
+    const [pinned, auto] = table.querySelectorAll("col");
+    expect(table.dataset.nfmTableLayout).toBe("mixed");
+    expect(pinned.style.width).toBe("120px");
+    expect(auto.style.width).toBe("");
+    const [header, data] = table.rows[0].cells;
+    expect(header.tagName).toBe("TH");
+    expect(header.dataset.nfmCellFit).toBeUndefined();
+    expect(data.dataset.nfmCellFit).toBe("long");
+    expect(data.dataset.backgroundColor).toBe("blue");
+    expect(data.dataset.textColor).toBe("red");
+    expect(data.style.textAlign).toBe("right");
+  });
+
   test("renders owning Page UUIDs and Page mention URLs", async () => {
     const { container } = render(
       <NfmRenderer content={'::page{id="019f-card"}\n\n::page-ref{page="019f-target"}'} />,

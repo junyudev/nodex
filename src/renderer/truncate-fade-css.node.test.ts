@@ -27,15 +27,37 @@ function productionMinifiers(): ReadonlyArray<readonly [string, LightningCss]> {
 }
 
 const globalsCss = readFileSync(fileURLToPath(new URL("./globals.css", import.meta.url)), "utf8");
-const utility = /@utility truncate-fade \{([^}]*)\}/u.exec(globalsCss)?.[1];
 
-describe("truncate-fade", () => {
-  it.each(productionMinifiers())("keeps its scroll timeline through %s's minifier", (_, css) => {
-    if (!utility) throw new Error("globals.css no longer defines truncate-fade");
+/** The declarations of the first rule in globals.css that starts with `prelude`. */
+function ruleBody(prelude: string): string {
+  const start = globalsCss.indexOf(`${prelude} {`);
+  if (start < 0) throw new Error(`globals.css no longer defines ${prelude}`);
+  const open = globalsCss.indexOf("{", start + prelude.length);
+  return globalsCss.slice(open + 1, globalsCss.indexOf("}", open));
+}
+
+/** Rules that fade an edge from their own inline scroll timeline. */
+const scrollTimelineFades = [
+  ["truncate-fade", ".truncate-fade", ruleBody("@utility truncate-fade")],
+  [
+    "table scroller",
+    ".nfm-table-scroll",
+    ruleBody(
+      ':is(.nfm-editor .bn-block-content[data-content-type="table"] .tableWrapper, .nfm-table-scroll)',
+    ),
+  ],
+] as const;
+
+describe("scroll-timeline fades", () => {
+  it.each(
+    scrollTimelineFades.flatMap(([name, selector, body]) =>
+      productionMinifiers().map(([tool, css]) => [name, tool, selector, body, css] as const),
+    ),
+  )("%s keeps its scroll timeline through %s's minifier", (_, __, selector, body, css) => {
     const built = new TextDecoder().decode(
       css.transform({
-        filename: "truncate-fade.css",
-        code: new TextEncoder().encode(`.truncate-fade{${utility}}`),
+        filename: "scroll-timeline-fade.css",
+        code: new TextEncoder().encode(`${selector}{${body}}`),
         minify: true,
         targets: { chrome: 130 << 16 },
       }).code,

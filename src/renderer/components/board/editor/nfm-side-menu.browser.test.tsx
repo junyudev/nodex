@@ -1,4 +1,4 @@
-import { BlockNoteEditor } from "@blocknote/core";
+import { BlockNoteEditor, type PartialBlock } from "@blocknote/core";
 import { BlockNoteViewRaw } from "@blocknote/react";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -57,15 +57,17 @@ async function openSideMenu({
   height = 700,
   left,
   top = 200,
+  initialBlock = { id: "block-1", type: "paragraph", content: "A block" },
 }: {
   readonly width?: number;
   readonly height?: number;
   readonly left: number;
   readonly top?: number;
+  readonly initialBlock?: PartialBlock;
 }) {
   await page.viewport(width, height);
   const editor = BlockNoteEditor.create({
-    initialContent: [{ id: "block-1", type: "paragraph", content: "A block" }],
+    initialContent: [initialBlock],
     extensions: [selectedBlockDecorationsExtension()],
   });
   const deleteBlocks = vi.fn(() => true);
@@ -153,6 +155,70 @@ function requireScrollContainer(element: HTMLElement): HTMLElement {
   }
   throw new Error("Expected a scroll container for overflowing menu actions.");
 }
+
+test("fits a table to its block width and restores content sizing", async () => {
+  const fixture = await openSideMenu({
+    left: 600,
+    initialBlock: {
+      id: "block-1",
+      type: "table",
+      content: { type: "tableContent", rows: [{ cells: [["Name"], ["Some longer text"]] }] },
+    },
+  });
+  const getColumnWidths = () => {
+    const block = fixture.editor.getBlock("block-1");
+    if (block?.type !== "table") throw new Error("Expected the table Block");
+    return block.content.columnWidths;
+  };
+
+  try {
+    const tableBlock = fixture.editor.domElement?.querySelector<HTMLElement>(
+      '.bn-block-content[data-content-type="table"]',
+    );
+    // ProseMirror re-renders the Block container when the menu selects it, so narrow the editor's
+    // own container and read the width the Block takes from it.
+    const editorContainer = fixture.editor.domElement?.parentElement;
+    if (!tableBlock?.parentElement || !editorContainer)
+      throw new Error("Expected the mounted table");
+    editorContainer.style.width = "520px";
+    const availableWidth = tableBlock.parentElement.clientWidth;
+    expect(availableWidth).toBeLessThanOrEqual(520);
+
+    const fitToPage = fixture.view.getByRole("option", { name: "Fit to page width" });
+    await act(async () => {
+      await userEvent.click(fitToPage);
+      await settleFloatingSurface();
+    });
+    const widths = getColumnWidths();
+    expect(widths.every((width) => width !== undefined && width >= 35)).toBe(true);
+    // The table, frame included, spans the Block container without overflowing it. The fit
+    // rebuilds the table view, so read the mounted table each time.
+    await waitFor(() => {
+      const tableWidth =
+        fixture.editor.domElement
+          ?.querySelector('.bn-block-content[data-content-type="table"] table')
+          ?.getBoundingClientRect().width ?? 0;
+      expect(tableWidth).toBeLessThanOrEqual(availableWidth);
+      expect(tableWidth).toBeGreaterThan(availableWidth - 1);
+    });
+
+    await waitFor(() => expect(fixture.dialog.isConnected).toBe(false));
+    await act(async () => {
+      await userEvent.click(fixture.trigger);
+      await settleFloatingSurface();
+    });
+    const fitToContent = await fixture.view.findByRole("option", {
+      name: "Fit columns to content",
+    });
+    await act(async () => {
+      await userEvent.click(fitToContent);
+      await settleFloatingSurface();
+    });
+    expect(getColumnWidths()).toEqual([undefined, undefined]);
+  } finally {
+    fixture.close();
+  }
+});
 
 describe("NFM side menu viewport collisions in Chromium", () => {
   test("keeps its Block target visible across menu focus and releases it when dismissed", async () => {

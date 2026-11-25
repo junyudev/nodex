@@ -4920,6 +4920,8 @@
   "editor.nfmSideMenuModel.downloadDiagram": "将图表下载为 JPEG",
   "editor.nfmSideMenuModel.duplicate": "创建副本",
   "editor.nfmSideMenuModel.expandDiagram": "展开图表",
+  "editor.nfmSideMenuModel.fitColumnsToContent": "列宽随内容",
+  "editor.nfmSideMenuModel.fitPageWidth": "适应页面宽度",
   "editor.nfmSideMenuModel.formatCode": "格式化代码",
   "editor.nfmSideMenuModel.headerColumn": "表头列",
   "editor.nfmSideMenuModel.headerRow": "表头行",

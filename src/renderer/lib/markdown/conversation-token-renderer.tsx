@@ -26,6 +26,8 @@ import { markdownPublicLeafComponents } from "./markdown-public-leaves";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 import { findMarkdownOpenCodeFence } from "./markdown-prefix";
 import { classifyConversationMedia } from "@/lib/content-image";
+import { NfmReadonlyTable } from "@/components/shared/nfm-readonly-table";
+import { classifyNfmTable } from "../nfm-table-layout";
 
 type Owner = ReturnType<typeof createConversationDocumentOwner>;
 interface RenderOptions {
@@ -61,6 +63,31 @@ function primitive(
 ) {
   const Component = components[tag] ?? markdownPublicLeafComponents[tag] ?? tag;
   return createElement(Component as ComponentType<Record<string, unknown>>, props, children);
+}
+
+function conversationCellPlainText(nodes: readonly ConversationRenderNode[]): string {
+  return nodes
+    .map(({ token, children }) => {
+      switch (token.type) {
+        case "text":
+        case "escape":
+          return children.length
+            ? conversationCellPlainText(children)
+            : decodeConversationText(token.text);
+        case "codespan":
+        case "math":
+          return token.text;
+        case "br":
+          return "\n";
+        case "html":
+          return /^<br\s*\/?>$/iu.test(token.text.trim()) ? "\n" : token.text;
+        case "image":
+          return "";
+        default:
+          return conversationCellPlainText(children);
+      }
+    })
+    .join("");
 }
 
 function containsMediaNode(node: ConversationRenderNode): boolean {
@@ -395,32 +422,39 @@ function TokenNode({
     case "list_item":
       return children();
     case "table": {
-      const columns = token.header.length;
-      const cell = (index: number, header: boolean) =>
-        primitive(
-          header ? "th" : "td",
+      const columnCount = token.header.length;
+      const rows = [token.header, ...token.rows];
+      const { layout, columns, cellFits } = classifyNfmTable(
+        rows.map((row, rowIndex) =>
+          row.map((_cell, columnIndex) =>
+            conversationCellPlainText(node.cells[rowIndex * columnCount + columnIndex] ?? []),
+          ),
+        ),
+      );
+      const cell = (rowIndex: number, columnIndex: number) => {
+        const index = rowIndex * columnCount + columnIndex;
+        return primitive(
+          rowIndex === 0 ? "th" : "td",
           options.components,
           renderNodes(node.cells[index] ?? [], options),
           {
             key: `${node.key}:cell:${index}`,
-            style: { textAlign: token.align[index % columns] ?? undefined },
+            "data-nfm-cell-fit": cellFits[rowIndex][columnIndex],
+            style: { textAlign: token.align[columnIndex] ?? undefined },
           },
         );
+      };
       return (
-        <div className="my-3 overflow-x-auto">
-          <table>
-            <thead>
-              <tr>{token.header.map((_cell, index) => cell(index, true))}</tr>
-            </thead>
-            <tbody>
-              {token.rows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {row.map((_cell, index) => cell(columns + rowIndex * columns + index, false))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <NfmReadonlyTable layout={layout} columns={columns}>
+          <thead>
+            <tr>{token.header.map((_cell, index) => cell(0, index))}</tr>
+          </thead>
+          <tbody>
+            {token.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>{row.map((_cell, index) => cell(rowIndex + 1, index))}</tr>
+            ))}
+          </tbody>
+        </NfmReadonlyTable>
       );
     }
     case "codexDirective": {
