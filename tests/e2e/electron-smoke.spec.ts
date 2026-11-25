@@ -1263,7 +1263,9 @@ test.describe("parallel functional Electron smoke", () => {
       const after = sourceEditor.locator(`.bn-block[data-id="${seeded.blockIds[1]}"]`);
       await expect(owner).toBeVisible();
 
-      await owner.getByRole("button", { name: "Edit abc title" }).click();
+      // A pointer on the title opens the Subpage; renaming in place is the keyboard path.
+      await owner.getByRole("button", { name: "Edit abc title" }).focus();
+      await page.keyboard.press("Enter");
       const ownerTitle = owner.getByRole("textbox", { name: "Edit abc title" });
       await expect(ownerTitle).toBeFocused();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+A`);

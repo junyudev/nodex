@@ -767,12 +767,6 @@
   margin-top: 0.25em;
 }
 
-/* Page Documents keep their own Y.Doc but use the editor's native toggle gutter. */
-.nfm-editor [data-page-outliner-caret]::before {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E");
-}
-
 /* ===== Side Menu ===== */
 
 /*

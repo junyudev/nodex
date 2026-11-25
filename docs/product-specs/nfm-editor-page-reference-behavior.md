@@ -1,7 +1,7 @@
 # Page Connections
 
 Status: Active
-Last updated: 2026-11-18
+Last updated: 2026-11-26
 
 ## Purpose
 
@@ -117,6 +117,30 @@ The embed picker preserves its source Block before opening and inserts only if t
 Cancel creates no placeholder; a stale insertion point is reported and leaves the Document unchanged.
 Changing an existing Reference Block’s target is intentionally not an operation: remove the old shell and run `/Embed page…` again so the new connection has a new shell identity and disclosure state.
 Turning a Reference Block into another Block type from its Block menu keeps the connection: a rich-text Block (Text, headings, lists, to-dos, toggles, quotes, callouts, Prompts) holds a Page Mention of the same Page, and a Code or Equation Block holds its canonical deeplink as literal text.
+
+## Page rows
+
+A Subpage and a Page Reference Block share one row: the target Page's glyph and
+its title. The glyph is the Page icon, or the current workflow Status of an
+embedded Database Page; a Subpage never has a Status. The title reads as a link,
+in the Page Mention's weight and soft underline, and choosing it anywhere on the
+row's title line opens the Page through the host navigator. The row is a Page you
+open, not a toggle.
+
+While the pointer rests on the row's title line, or its glyph has keyboard focus,
+the glyph becomes the disclosure chevron, as a sidebar folder's marker does.
+Choosing it discloses the Page's body beneath the title as an independent editor;
+`Mod+Enter` toggles it from the row. A Subpage starts collapsed. An embed starts
+disclosed, since showing its Page's body is why it exists. Each shell keeps its
+reader's choice on that device by Block identity, so two embeds of one Page
+disclose independently.
+
+The title link is the row's tab stop, and `Enter` on it opens the Page. Renaming
+in place is the arrow-key path: `ArrowUp` and `ArrowDown` move through a row's
+title as through any line, and while focus is in the title a pointer places the
+caret instead of opening the Page. A row that cannot disclose (self, cycle,
+archived or unavailable) shows its glyph without a chevron; an unavailable
+Page's title is plain text.
 
 ## Page Link and paste
 

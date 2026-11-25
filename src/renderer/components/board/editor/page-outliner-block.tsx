@@ -33,6 +33,7 @@ import {
   pageRefBlockConfig,
 } from "../../../../shared/block-documents/blocknote-schema-config";
 import { libraryContentRoute } from "../../../../shared/content-routing-context";
+import { usePageStatusGlyph } from "../use-page-status-glyph";
 
 import {
   moveFromEmbeddedSurfaceToHostNeighbor,
@@ -122,9 +123,11 @@ export function PageOutlinerBlock({
   });
   const expandable =
     host !== null && target.status === "available" && target.inlineMode === "editable";
+  // A Subpage is a Page you open; an embed exists to show its Page's body here.
   const activation = usePageOutlinerActivation({
     disclosureKey: shellBlockId,
     expandable,
+    defaultExpanded: relationship === "reference",
     disclosureStore,
     activationBudget,
     visibilityOverride,
@@ -186,8 +189,14 @@ export function PageOutlinerBlock({
   const plainTitle =
     (target.status === "available" && target.page.title.trim()) ||
     intl.formatMessage(outlinerTitleMessages[target.status]);
+  // Only an embedded Page can be a Database Page with a Status; a Subpage never is.
+  const statusGlyph = usePageStatusGlyph(
+    target.status === "available" ? target.contentRoutingContext : contentRoutingContext,
+    relationship === "reference" && target.status === "available" ? target.page : null,
+  );
   const rowProps: PageOutlinerRowChromeProps = {
     plainTitle,
+    icon: statusGlyph,
     stateLabel: formatOutlinerState(intl, target),
     expanded: activation.expanded,
     expandable,
@@ -214,6 +223,9 @@ export function PageOutlinerBlock({
       <button
         type="button"
         data-page-outliner-title-trigger
+        // With a link over the title, the link is the row's tab stop; renaming
+        // stays reachable by arrowing into the title.
+        tabIndex={host?.openPage ? -1 : undefined}
         aria-label={intl.formatMessage(
           { id: "editor.pageOutlinerBlock.editTitle", defaultMessage: "Edit {title} title" },
           { title: plainTitle },

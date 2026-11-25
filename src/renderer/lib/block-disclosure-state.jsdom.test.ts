@@ -39,6 +39,22 @@ describe("BlockDisclosureStateStore", () => {
     expect(secondNotifications).toBe(0);
   });
 
+  test("keeps a collapsed default-expanded Block collapsed across store lifetimes", () => {
+    const persistence = new MemoryBlockDisclosurePersistence();
+    const store = new BlockDisclosureStateStore(persistence);
+    let notifications = 0;
+    store.subscribe("page-ref", () => {
+      notifications += 1;
+    });
+
+    expect(store.isExpanded("page-ref", true)).toBe(true);
+    store.setExpanded("page-ref", false);
+
+    expect(store.isExpanded("page-ref", true)).toBe(false);
+    expect(new BlockDisclosureStateStore(persistence).isExpanded("page-ref", true)).toBe(false);
+    expect(notifications).toBe(1);
+  });
+
   test("falls back to live renderer state when persistence is unavailable", () => {
     const unavailablePersistence: BlockDisclosurePersistence = {
       read: () => {

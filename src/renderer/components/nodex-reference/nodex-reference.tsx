@@ -9,7 +9,6 @@ import { BoardIcon, ChatIcon, PageIcon } from "@/components/shared/icons";
 import { InlineReferenceVisual } from "@/components/board/inline-reference-visual";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { usePageTargetReadModel, useDatabaseViewReadModel } from "@/lib/block-reference-queries";
-import { useContentPageDetail } from "@/lib/content-page-detail";
 import { snapshotLinkActivation } from "@/lib/link-activation";
 import {
   buildNodexDestinationLink,
@@ -19,12 +18,11 @@ import {
   type NodexReferenceSource,
 } from "@/lib/nodex-reference-router";
 import { openNodexReferenceContextMenu } from "@/lib/nodex-reference-context-menu";
-import { readPageDetailWorkflowStatus } from "@/lib/page-stage-properties";
 import { projectSessionDetailQueryOptions, projectsListQueryOptions } from "@/lib/query-options";
 import { presentSessionTitle } from "@/lib/session-title-presentation";
-import { StatusIcon } from "@/lib/status-presentation";
 import { useChatReplyPreview } from "@/lib/chat-reply-previews";
 import { cn } from "@/lib/utils";
+import { usePageStatusGlyph } from "@/components/board/use-page-status-glyph";
 import { libraryContentRoute } from "../../../shared/content-routing-context";
 import type { NodexDestination, NodexReferenceGesture } from "../../../shared/nodex-reference";
 import {
@@ -76,12 +74,7 @@ function PageReference(
   const { pageId } = props.destination;
   const target = usePageTargetReadModel(libraryContentRoute, pageId);
   const page = target.data?.status === "available" ? target.data.page : null;
-  const detail = useContentPageDetail(
-    page?.libraryId ?? null,
-    libraryContentRoute,
-    page?.pageId ?? null,
-  );
-  const workflowStatus = readPageDetailWorkflowStatus(detail.detail);
+  const statusGlyph = usePageStatusGlyph(libraryContentRoute, page);
   const presentation = resolvePageReferencePresentation(
     { targetPageId: pageId, target: target.data, loading: target.loading, error: target.error },
     intl,
@@ -98,11 +91,7 @@ function PageReference(
       {...props}
       model={{
         label,
-        icon: workflowStatus ? (
-          <StatusIcon statusId={workflowStatus} className="size-full" />
-        ) : (
-          <PageIcon className="size-full" />
-        ),
+        icon: statusGlyph ?? <PageIcon className="size-full" />,
         openable: page !== null || target.loading,
         tooltip: <PageReferenceTooltipBody presentation={presentation} />,
         ...(page ? { title: presentation.label } : {}),

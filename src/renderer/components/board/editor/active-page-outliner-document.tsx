@@ -21,6 +21,7 @@ import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-b
 import { PortableRichTitle } from "@/components/block-documents/portable-rich-title";
 import type { BlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { NodexButton } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { AvailablePageOutlinerTarget } from "@/lib/page-outliner-target";
 import {
   focusRichTitleDomAtPoint,
@@ -227,7 +228,11 @@ function ActivePageOutlinerContent({
             ref={titleRef}
             title={surface.title}
             historyScope={surface.descriptor}
-            className="px-0 py-0 text-[1em] leading-6 font-normal"
+            // Matches the row's projected title, which reads as a link when the Page can open.
+            className={cn(
+              "px-0 py-0 text-[1em] leading-6",
+              rowProps.onOpenPage ? "font-medium" : "font-normal",
+            )}
             aria-label={intl.formatMessage(
               {
                 id: "editor.activePageOutlinerDocument.titleLabel",
@@ -235,6 +240,9 @@ function ActivePageOutlinerContent({
               },
               { title: target.page.title.trim() || target.fallbackTitle },
             )}
+            // With a link over the title, the link is the row's tab stop; arrowing
+            // into the title still focuses it for renaming.
+            tabIndex={rowProps.onOpenPage ? -1 : undefined}
             onKeyDown={handleTitleKeyDown}
             onFocus={onTitleFocus}
             onBlur={onTitleBlur}

@@ -1489,12 +1489,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       );
       await expect(targetEmbeds).toHaveCount(2);
       const insertedEmbed = targetEmbeds.last();
-      await expect(insertedEmbed).toHaveAttribute("data-page-outliner-expanded", "false");
-      await insertedEmbed
-        .getByRole("button", {
-          name: "Expand Keep projection updates bounded",
-        })
-        .click();
+      // An embed shows its Page's body from the start.
       await expect(insertedEmbed).toHaveAttribute("data-page-outliner-expanded", "true");
       await expect(insertedEmbed.locator("[data-page-outliner-body]")).toContainText(
         "affected projection window",
