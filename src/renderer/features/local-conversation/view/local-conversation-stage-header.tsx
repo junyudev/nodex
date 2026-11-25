@@ -43,7 +43,11 @@ import type {
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import { sessionForkDestinations } from "@/lib/session-fork";
 import { describeChatSnooze } from "@/lib/chat-snooze";
-import { CustomSnoozeDialog, SnoozeMenuItems } from "@/components/shared/snooze-menu";
+import {
+  CustomSnoozeDialog,
+  SnoozeMenuItems,
+  useCustomSnoozeHandoff,
+} from "@/components/shared/snooze-menu";
 import { SubagentAvatar } from "./shared/subagent-avatar";
 import { useThreadStageHeaderSlot } from "./thread-stage-header-slot";
 
@@ -68,7 +72,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
     if (open) setMenuOpenedAt(new Date());
     setMenuOpen(open);
   }, []);
-  const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
+  const customSnooze = useCustomSnoozeHandoff();
   const [forking, setForking] = useState(false);
   const forkInFlight = useRef(false);
   const pendingModal = useRef<(() => void) | null>(null);
@@ -112,11 +116,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       }),
     );
   const customSnoozeDialog = canSetSnooze ? (
-    <CustomSnoozeDialog
-      open={customSnoozeOpen}
-      onOpenChange={setCustomSnoozeOpen}
-      onChoose={snoozeChat}
-    />
+    <CustomSnoozeDialog {...customSnooze.dialog} onChoose={snoozeChat} />
   ) : null;
 
   const handleCopyText = useCallback(async (value: string | null, successMessage: string) => {
@@ -139,6 +139,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       open={menuOpen}
       onOpenChange={handleMenuOpenChange}
       finalFocus={() => {
+        if (customSnooze.handOff()) return true;
         if (!pendingModal.current) return true;
         const showDiagnostics = pendingModal.current;
         pendingModal.current = null;
@@ -244,7 +245,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           <SnoozeMenuItems
             now={menuOpenedAt}
             onChoose={snoozeChat}
-            onCustom={() => setCustomSnoozeOpen(true)}
+            onCustom={customSnooze.request}
           />
         </NodexDropdownFlyoutSubmenuItem>
       ) : null}

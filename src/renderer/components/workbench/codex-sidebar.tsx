@@ -100,6 +100,7 @@ import {
 } from "@/lib/session-linked-page";
 import { StatusIcon } from "@/lib/status-presentation";
 import { SnoozeMenu } from "@/components/shared/snooze-menu";
+import { cameThroughPortal } from "@/lib/portal-events";
 import type { PageTurnPhrase } from "@/lib/page-turn-phrase";
 import { PAGE_TURN_TONE_CLASS_NAME } from "./page-turn-chip";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
@@ -281,6 +282,19 @@ function stopCodexSidebarRowActionKeyPropagation(event: KeyboardEvent<HTMLElemen
   if (event.key !== "Enter" && event.key !== " ") return;
   event.stopPropagation();
 }
+
+/**
+ * Keeps a row's actions to themselves. React passes the events of a portaled menu or dialog up
+ * the component tree rather than the page, so without this boundary a choice in a row's menu would
+ * also open, drag or rename the row behind it. Other keys still reach the app's shortcuts.
+ */
+const CODEX_SIDEBAR_ROW_ACTIONS_BOUNDARY = {
+  onPointerDown: stopCodexSidebarRowActionPropagation,
+  onMouseDown: stopCodexSidebarRowActionPropagation,
+  onClick: stopCodexSidebarRowActionPropagation,
+  onDoubleClick: stopCodexSidebarRowActionPropagation,
+  onKeyDown: stopCodexSidebarRowActionKeyPropagation,
+};
 
 function clearCodexSidebarTextSelection(): void {
   document.getSelection()?.removeAllRanges();
@@ -711,9 +725,7 @@ export const CodexProjectActionsMenu = forwardRef<
           ? "opacity-100"
           : "opacity-0 group-hover/folder-row:opacity-100 group-focus-within/folder-row:opacity-100"
       }
-      onPointerDown={stopCodexSidebarRowActionPropagation}
-      onKeyDown={stopCodexSidebarRowActionKeyPropagation}
-      onClick={stopCodexSidebarRowActionPropagation}
+      {...CODEX_SIDEBAR_ROW_ACTIONS_BOUNDARY}
     >
       {canShowNativeContextMenu() ? (
         triggerButton
@@ -2280,7 +2292,7 @@ function CodexSidebarThreadRowView({
       }}
       onClick={onSelect}
       onContextMenu={(event) => {
-        if (!canOpenContextMenu) return;
+        if (!canOpenContextMenu || cameThroughPortal(event)) return;
         event.preventDefault();
         onOpenContextMenu?.(item, event);
       }}
@@ -2441,6 +2453,7 @@ function CodexSidebarThreadRowView({
             )}
             data-state={actionsOpen ? "open" : "closed"}
             data-app-action-sidebar-thread-action-rail=""
+            {...CODEX_SIDEBAR_ROW_ACTIONS_BOUNDARY}
           >
             {showRailPinSlot ? (
               <div
@@ -2457,9 +2470,6 @@ function CodexSidebarThreadRowView({
                   )}
                   data-state={contextMenuOpen ? "open" : "closed"}
                   data-app-action-sidebar-thread-pin-session=""
-                  onPointerDown={stopCodexSidebarRowActionPropagation}
-                  onMouseDown={stopCodexSidebarRowActionPropagation}
-                  onKeyDown={stopCodexSidebarRowActionPropagation}
                   onClick={handleTogglePinnedClick}
                 >
                   {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
@@ -2486,10 +2496,6 @@ function CodexSidebarThreadRowView({
                     })}
                     className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                     data-app-action-sidebar-thread-snooze=""
-                    onPointerDown={stopCodexSidebarRowActionPropagation}
-                    onMouseDown={stopCodexSidebarRowActionPropagation}
-                    onKeyDown={stopCodexSidebarRowActionPropagation}
-                    onClick={(event) => event.stopPropagation()}
                   >
                     <ClockIcon />
                   </button>
@@ -2504,9 +2510,6 @@ function CodexSidebarThreadRowView({
                 disabled={!settled && needsAttention}
                 className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                 data-app-action-sidebar-thread-settled={String(settled)}
-                onPointerDown={stopCodexSidebarRowActionPropagation}
-                onMouseDown={stopCodexSidebarRowActionPropagation}
-                onKeyDown={stopCodexSidebarRowActionPropagation}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -2527,9 +2530,6 @@ function CodexSidebarThreadRowView({
                 disabled={archiveDisabled}
                 className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                 data-app-action-sidebar-thread-archive=""
-                onPointerDown={stopCodexSidebarRowActionPropagation}
-                onMouseDown={stopCodexSidebarRowActionPropagation}
-                onKeyDown={stopCodexSidebarRowActionPropagation}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -2572,7 +2572,8 @@ function CodexSidebarThreadRowView({
             }
           />
         }
-        disabled={item.disabled}
+        // A row's open menu owns the moment; its details wait until the menu closes.
+        disabled={item.disabled || actionsOpen}
         open={hoverCardOpen}
         onOpenChange={handleHoverCardOpenChange}
       >

@@ -364,10 +364,13 @@ describe("workbench session shell / chat lifecycle", () => {
   test("snoozing a chat from its row sets it aside until the time chosen", async () => {
     setSidebarOrganizeForTest("attention");
     const later = chat("Come back to this", { activityAt: fixtureSessionActivityAt(1) });
-    const screen = await renderSettled({ sessionsByProject: { alpha: [later] } });
+    const reading = chat("Reading this", { activityAt: fixtureSessionActivityAt(2) });
+    const screen = await renderSettled({ sessionsByProject: { alpha: [later, reading] } });
     await waitFor(() =>
-      expect(laneTitles(screen.container, "Active")).toEqual(["Come back to this"]),
+      expect(laneTitles(screen.container, "Active")).toEqual(["Come back to this", "Reading this"]),
     );
+    await selectSidebarSession(screen.container, "Reading this");
+    expect(getMountedSessionIds(screen.container)).toEqual([reading.id]);
 
     await act(async () => {
       const trigger = within(getThreadRow(screen.container, "Come back to this")).getByRole(
@@ -394,7 +397,9 @@ describe("workbench session shell / chat lifecycle", () => {
     );
     expect(snoozes).toHaveLength(1);
     expect(typeof rendererCommandPayload(snoozes[0]!)?.snoozedUntil).toBe("string");
-    await waitFor(() => expect(laneTitles(screen.container, "Active")).toEqual([]));
+    // Choosing in a row's menu acts on that chat without opening it.
+    expect(getMountedSessionIds(screen.container)).toEqual([reading.id]);
+    await waitFor(() => expect(laneTitles(screen.container, "Active")).toEqual(["Reading this"]));
     expect(
       getSidebarSection(screen.container, "Snoozed").getAttribute(
         "data-app-action-sidebar-section-collapsed",
