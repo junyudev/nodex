@@ -1,11 +1,12 @@
-import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-allocation";
+import type * as FileSystem from "effect/FileSystem";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import type {
-  ManagedWorktreeAvailability,
+  ThreadWorkspaceAvailability,
   ManagedWorktreeRecord,
   ManagedWorktreeRestoreResult,
   ManagedWorktreeSettings,
@@ -34,6 +35,10 @@ import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
+import {
+  makeThreadWorkspaceInspection,
+  type ThreadWorkspaceLocation,
+} from "./ThreadWorkspaceInspection";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { ManagedWorktreeRetentionRuntime } from "./ManagedWorktreeRetentionRuntime";
 
@@ -61,7 +66,7 @@ export class ManagedWorktreeCatalog extends Context.Service<
     ) => Effect.Effect<readonly ManagedWorktreeRecord[], ManagedWorktreeCatalogError>;
     readonly inspectThread: (
       threadId: string,
-    ) => Effect.Effect<ManagedWorktreeAvailability, ManagedWorktreeCatalogError>;
+    ) => Effect.Effect<ThreadWorkspaceAvailability, ManagedWorktreeCatalogError>;
     readonly restoreThread: (
       threadId: string,
     ) => Effect.Effect<ManagedWorktreeRestoreResult, ManagedWorktreeCatalogError>;
@@ -76,27 +81,13 @@ export class ManagedWorktreeCatalog extends Context.Service<
   }
 >()("nodex/main/codex-application/ManagedWorktreeCatalog") {}
 
-interface ManagedThreadContext {
-  readonly threadId: string;
-  readonly hostId: string;
-  readonly worktreeGitRoot: string;
-  readonly cwd: string;
-  readonly candidateRepositoryPaths: readonly string[];
-}
-
-const toManagedWorktreeInspection = (context: ManagedThreadContext) => ({
-  hostId: context.hostId,
-  worktreeGitRoot: context.worktreeGitRoot,
-  cwd: context.cwd,
-  candidateRepositoryPaths: context.candidateRepositoryPaths,
-});
-
 export const make = (
   options: ManagedWorktreeCatalogOptions,
 ): Effect.Effect<
   ManagedWorktreeCatalog["Service"],
   never,
   | AgentChatWorktrees
+  | FileSystem.FileSystem
   | CodexApplicationEventHub
   | ExecutionHostRuntime
   | ManagedWorktreeConfiguration
@@ -113,6 +104,7 @@ export const make = (
     const managed = yield* ManagedWorktreeRuntime;
     const retention = yield* ManagedWorktreeRetentionRuntime;
     const workspace = yield* ProjectWorkspace;
+    const inspection = yield* makeThreadWorkspaceInspection;
     const ownerScope = yield* Scope.Scope;
 
     const fail = (
@@ -135,98 +127,23 @@ export const make = (
         try: () => resolveWorktreePathComparisonKey(path),
         catch: (cause) => fail(operation, cause),
       });
-    const resolveThreadContext = (
+    const resolveLocation = Effect.fn("ManagedWorktreeCatalog.resolveLocation")(function* (
       threadId: string,
-      operation: "inspect-thread" | "restore-thread",
-    ): Effect.Effect<ManagedThreadContext | null, ManagedWorktreeCatalogError> =>
-      Effect.gen(function* () {
-        if (isAgentExecutionThreadId(threadId))
-          return yield* resolveAgentChatContext(threadId, operation);
-        const thread = yield* project(operation, workspace.getThread(threadId));
-        const worktreeGitRoot = thread?.managedWorktreePath?.trim();
-        const cwd = thread?.cwd?.trim();
-        if (!thread || !worktreeGitRoot || !cwd) return null;
-
-        const candidates = yield* projectSourceRoots(operation, thread.projectId);
-        if (candidates.size === 0) {
-          const inventory = yield* managed.list(thread.executionHostId).pipe(
-            Effect.mapError((cause) => fail(operation, cause)),
-            Effect.catch(() => Effect.succeed(null)),
-          );
-          const normalizedPath = normalizeWorktreePathForIdentity(worktreeGitRoot);
-          for (const entry of inventory?.entries ?? []) {
-            if (
-              normalizeWorktreePathForIdentity(entry.worktreeGitRoot) === normalizedPath &&
-              entry.repositoryPath?.trim()
-            ) {
-              candidates.add(entry.repositoryPath.trim());
-            }
-          }
-        }
-        return {
-          threadId: thread.threadId,
-          hostId: thread.executionHostId,
-          worktreeGitRoot,
-          cwd,
-          candidateRepositoryPaths: [...candidates],
-        };
-      });
-
-    const projectSourceRoots = (
-      operation: ManagedWorktreeCatalogError["operation"],
-      projectId: string | null,
-    ) =>
-      project(operation, workspace.readManagedWorktreeLifecycleSnapshot).pipe(
-        Effect.map(
-          (lifecycle) =>
-            new Set(
-              lifecycle.projects
-                .filter((entry) => entry.projectId === projectId)
-                .flatMap((entry) => entry.sourceRoots)
-                .map((root) => root.trim())
-                .filter(Boolean),
-            ),
-        ),
-      );
-    /**
-     * An Agent chat records only where it works. Its managed worktree is the one its owner
-     * metadata names, or, once removed, the allocation that contains its working directory.
-     */
-    function resolveAgentChatContext(
-      threadId: string,
-      operation: "inspect-thread" | "restore-thread",
-    ): Effect.Effect<ManagedThreadContext | null, ManagedWorktreeCatalogError> {
-      return Effect.gen(function* () {
-        const source = yield* agentChats.source.pipe(
-          Effect.mapError((cause) => fail(operation, cause)),
-        );
-        const location = yield* source
-          .location(threadId)
-          .pipe(Effect.mapError((cause) => fail(operation, cause)));
-        if (!location) return null;
-        const host = yield* executionHosts
-          .resolve(CODEX_APP_LOCAL_HOST_ID)
-          .pipe(Effect.mapError((cause) => fail(operation, cause)));
-        const inventory = yield* managed.list(host.descriptor.hostId).pipe(
-          Effect.mapError((cause) => fail(operation, cause)),
-          Effect.catch(() => Effect.succeed(null)),
-        );
-        const owned = inventory?.entries.find((entry) => entry.ownerThreadId === threadId);
-        const worktreeGitRoot =
-          owned?.worktreeGitRoot ??
-          managedWorktreeGitRootContaining(host.descriptor.managedRoot, location.cwd);
-        if (!worktreeGitRoot) return null;
-        const candidates = yield* projectSourceRoots(operation, location.projectId);
-        if (owned?.repositoryPath?.trim()) candidates.add(owned.repositoryPath.trim());
-        return {
-          threadId,
-          hostId: host.descriptor.hostId,
-          worktreeGitRoot,
-          cwd: location.cwd,
-          candidateRepositoryPaths: [...candidates],
-        };
-      });
-    }
+    ): Effect.fn.Return<ThreadWorkspaceLocation | null, unknown> {
+      if (!threadId) return null;
+      if (isAgentExecutionThreadId(threadId)) {
+        const source = yield* agentChats.source;
+        return yield* source.location(threadId);
+      }
+      const thread = yield* workspace.getThread(threadId);
+      if (!thread?.cwd) return null;
+      return {
+        hostId: thread.executionHostId,
+        cwd: thread.cwd,
+        managedWorktreePath: thread.managedWorktreePath,
+        projectId: thread.projectId,
+      };
+    });
     const ownersOf = (
       hostId: string,
       entries: readonly {
@@ -373,58 +290,44 @@ export const make = (
             }),
           ),
         ),
-      inspectThread: (threadId) => {
-        const normalizedThreadId = threadId.trim();
-        if (!normalizedThreadId) {
-          return Effect.succeed<ManagedWorktreeAvailability>({ state: "not-managed" });
-        }
-        return runOwned(
-          Effect.gen(function* () {
-            const context = yield* resolveThreadContext(normalizedThreadId, "inspect-thread");
-            if (!context) {
-              return { state: "not-managed" } satisfies ManagedWorktreeAvailability;
-            }
-            return yield* managed.inspect(toManagedWorktreeInspection(context)).pipe(
-              Effect.map((result) => result.availability),
-              Effect.catch((error) =>
-                Effect.succeed<ManagedWorktreeAvailability>({
-                  state: "unavailable",
-                  reason: "inspection-failed",
-                  message: error.cause instanceof Error ? error.cause.message : String(error.cause),
-                }),
-              ),
-            );
-          }),
-        );
-      },
+      inspectThread: (threadId) =>
+        runOwned(
+          resolveLocation(threadId.trim()).pipe(
+            Effect.flatMap((location) => inspection.inspect(location)),
+            Effect.catch((cause) => Effect.succeed(inspection.unavailable(cause))),
+          ),
+        ),
       restoreThread: (threadId) =>
         runOwned(
           Effect.gen(function* () {
-            const context = yield* resolveThreadContext(threadId.trim(), "restore-thread");
-            if (!context) {
-              return yield* Effect.fail(
-                fail("restore-thread", new Error("Thread does not use a managed worktree")),
-              );
+            const id = threadId.trim();
+            const location = yield* resolveLocation(id);
+            if (!location?.managedWorktreePath) {
+              return yield* Effect.fail(new Error("Thread does not use a managed worktree"));
             }
-            const result = yield* managed
-              .restore({
-                ...toManagedWorktreeInspection(context),
-                ownerThreadId: context.threadId,
-              })
-              .pipe(Effect.mapError((cause) => fail("restore-thread", cause)));
+            const input = yield* inspection.managedInput(location, location.managedWorktreePath);
+            const result = yield* managed.restore({ ...input, ownerThreadId: id });
+            // An Agent chat's message that waited for this directory goes out now. The
+            // restore itself succeeded, so a failure here is only logged.
+            if (isAgentExecutionThreadId(id))
+              yield* agentChats.source.pipe(
+                Effect.flatMap((source) => source.resumeAfterRestore(id)),
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Couldn't resume the chat after restoring its worktree").pipe(
+                    Effect.annotateLogs({ threadId: id, cause: Cause.pretty(cause) }),
+                  ),
+                ),
+              );
             if (result.ownerWarning) {
               yield* Effect.logWarning("Restored managed worktree without owner metadata").pipe(
                 Effect.annotateLogs({
-                  threadId: context.threadId,
-                  hostId: context.hostId,
+                  threadId: id,
+                  hostId: location.hostId,
                   warning: result.ownerWarning,
                 }),
               );
             }
-            const persisted = yield* project(
-              "restore-thread",
-              workspace.getThread(context.threadId),
-            );
+            const persisted = yield* project("restore-thread", workspace.getThread(id));
             if (persisted) {
               events.publish({
                 kind: "codex",
@@ -435,7 +338,7 @@ export const make = (
               availability: { state: "available" as const },
               ownerWarning: result.ownerWarning,
             };
-          }),
+          }).pipe(Effect.mapError((cause) => fail("restore-thread", cause))),
         ),
       delete: (hostId, worktreePath) =>
         runOwned(

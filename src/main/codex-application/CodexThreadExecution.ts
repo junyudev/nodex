@@ -211,6 +211,21 @@ export const live: Layer.Layer<
       sandboxPolicy: { type: "dangerFullAccess" },
     });
 
+    const projectRuntimeLocation = (
+      threadId: string,
+      location: CodexThreadExecutionLocation,
+      permissions = fullAccessEvidence(location.workspaceRoots),
+    ) =>
+      projection.relocateExecution({
+        threadId,
+        cwd: location.cwd,
+        managedWorktreePath: location.managedWorktreePath,
+        projectId: location.projectId,
+        projectlessOutputDirectory: location.projectlessOutputDirectory,
+        projectlessWorkspaceBrowserRoot: location.projectlessWorkspaceBrowserRoot,
+        permissions,
+      });
+
     const switchRuntime = (
       threadId: string,
       location: CodexThreadExecutionLocation,
@@ -287,6 +302,13 @@ export const live: Layer.Layer<
             yield* ensureCurrent(capability);
           }
         }
+        // The original cwd of a relocation is missing. Restore its metadata without resuming it.
+        if (
+          preparation?.prepared.direction === "relocate" &&
+          location.cwd !== preparation.destination.cwd
+        )
+          return yield* projectRuntimeLocation(threadId, location, permissions);
+
         const toolConfig =
           location.hostId === gateway.localHostId
             ? yield* tools.threadConfig(location.cwd)
@@ -325,15 +347,7 @@ export const live: Layer.Layer<
           try: () => assertResumeLocation(threadId, location, response),
           catch: (cause) => error("switch-runtime", threadId, cause),
         });
-        yield* projection.relocateExecution({
-          threadId,
-          cwd: location.cwd,
-          managedWorktreePath: location.managedWorktreePath,
-          projectId: location.projectId,
-          projectlessOutputDirectory: location.projectlessOutputDirectory,
-          projectlessWorkspaceBrowserRoot: location.projectlessWorkspaceBrowserRoot,
-          permissions,
-        });
+        yield* projectRuntimeLocation(threadId, location, permissions);
       }).pipe(
         Effect.mapError((cause) =>
           cause instanceof CodexThreadExecutionError
@@ -369,7 +383,6 @@ export const live: Layer.Layer<
       switchRuntime,
       relocate: (input) =>
         Effect.gen(function* () {
-          const permissions = fullAccessEvidence(input.location.workspaceRoots);
           if (input.loaded) {
             yield* gateway
               .requestOnHost(input.location.hostId, "thread/settings/update", {
@@ -385,15 +398,7 @@ export const live: Layer.Layer<
                 ),
               );
           }
-          yield* projection.relocateExecution({
-            threadId: input.threadId,
-            cwd: input.location.cwd,
-            managedWorktreePath: input.location.managedWorktreePath,
-            projectId: input.location.projectId,
-            projectlessOutputDirectory: input.location.projectlessOutputDirectory,
-            projectlessWorkspaceBrowserRoot: input.location.projectlessWorkspaceBrowserRoot,
-            permissions,
-          });
+          yield* projectRuntimeLocation(input.threadId, input.location);
         }).pipe(
           Effect.mapError((cause) =>
             cause instanceof CodexThreadExecutionError

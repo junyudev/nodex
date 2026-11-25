@@ -160,7 +160,7 @@ const AvailabilitySchema = z.discriminatedUnion("state", [
     repositoryPath: AbsolutePathSchema,
     snapshotRef: SnapshotRefSchema,
   }),
-  z.object({ state: z.literal("gone") }),
+  z.object({ state: z.literal("gone"), worktree: z.boolean() }),
   z.object({
     state: z.literal("unavailable"),
     reason: z.enum(["inspection-failed", "no-candidate-roots"]),

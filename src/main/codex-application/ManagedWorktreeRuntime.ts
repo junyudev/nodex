@@ -68,6 +68,7 @@ export class ManagedWorktreeRuntime extends Context.Service<
     ) => Effect.Effect<CodexWorktreeWorkerRemoveResult, ManagedWorktreeRuntimeError>;
     readonly inspect: (
       input: ManagedWorktreeInspectInput,
+      options?: { readonly fresh: boolean },
     ) => Effect.Effect<CodexWorktreeWorkerInspectResult, ManagedWorktreeRuntimeError>;
     readonly list: (
       hostId: string,
@@ -199,30 +200,32 @@ export const live: Layer.Layer<ManagedWorktreeRuntime, never, ExecutionHostRunti
         return yield* Deferred.await(deferred);
       });
 
+    const inspectOnHost = Effect.fn("ManagedWorktreeRuntime.inspectOnHost")(function* (
+      input: ManagedWorktreeInspectInput,
+    ) {
+      const target = yield* host(input.hostId, "inspect");
+      return yield* target
+        .request({
+          operation: "inspect",
+          input: {
+            requestId: `lifecycle:inspect:${randomUUID()}`,
+            hostId: input.hostId,
+            worktreeGitRoot: input.worktreeGitRoot,
+            cwd: input.cwd,
+            candidateRepositoryPaths: input.candidateRepositoryPaths,
+          },
+        })
+        .pipe(
+          Effect.mapError((cause) => error("inspect", input.hostId, cause, input.worktreeGitRoot)),
+        );
+    });
+
     const runInspection = Effect.fn("ManagedWorktreeRuntime.runInspection")(function* (
       input: ManagedWorktreeInspectInput,
       operationKey: string,
       deferred: Deferred.Deferred<CodexWorktreeWorkerInspectResult, ManagedWorktreeRuntimeError>,
     ) {
-      const operation = Effect.gen(function* () {
-        const target = yield* host(input.hostId, "inspect");
-        return yield* target
-          .request({
-            operation: "inspect",
-            input: {
-              requestId: `lifecycle:inspect:${randomUUID()}`,
-              hostId: input.hostId,
-              worktreeGitRoot: input.worktreeGitRoot,
-              cwd: input.cwd,
-              candidateRepositoryPaths: input.candidateRepositoryPaths,
-            },
-          })
-          .pipe(
-            Effect.mapError((cause) =>
-              error("inspect", input.hostId, cause, input.worktreeGitRoot),
-            ),
-          );
-      }).pipe(
+      const operation = inspectOnHost(input).pipe(
         Effect.ensuring(
           Ref.update(inspections, (current) => {
             if (current.get(operationKey) !== deferred) return current;
@@ -238,8 +241,10 @@ export const live: Layer.Layer<ManagedWorktreeRuntime, never, ExecutionHostRunti
 
     const inspect = (
       input: ManagedWorktreeInspectInput,
+      options?: { readonly fresh: boolean },
     ): Effect.Effect<CodexWorktreeWorkerInspectResult, ManagedWorktreeRuntimeError> =>
       Effect.gen(function* () {
+        if (options?.fresh) return yield* inspectOnHost(input);
         const operationKey = inspectionKey(input);
         const deferred = yield* inspectionLock.withPermits(1)(
           Effect.gen(function* () {

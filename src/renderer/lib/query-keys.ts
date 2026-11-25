@@ -236,6 +236,9 @@ export const queryKeys = {
     all: () => spaceQueryKey(["threadExecution"] as const),
     location: (threadId: string) =>
       spaceQueryKey(["threadExecution", "location", threadId] as const),
+    /** Whether the chat's working directory is still there, and how to recover when it isn't. */
+    workspace: (threadId: string) =>
+      spaceQueryKey(["threadExecution", "workspace", threadId] as const),
   },
   pageChats: {
     all: () => spaceQueryKey(["pageChats"] as const),

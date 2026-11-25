@@ -800,8 +800,12 @@ place. What keeps the chat itself from taking a message holds sending instead: t
 stays editable, the send action is unavailable, and sending anyway says `Message not sent`
 with the reason. The same notice names the condition and its fix, before any other notice:
 
-- a cleaned-up worktree: `Worktree cleaned up` with `Restore worktree`;
-- a working directory that no longer exists: `Working directory missing`;
+- a cleaned-up worktree: `Worktree cleaned up` with `Restore worktree` and `Work locally`,
+  which asks first because the worktree's saved changes stay in its snapshot;
+- a working directory that no longer exists: `Working directory missing`. `Work locally`
+  is available when the Project has another local folder and the missing directory is the
+  chat’s managed checkout or its working directory outside a managed worktree;
+- a chat moving to its Project folder: `Moving to the Project folder…`, until the move settles;
 - a worktree Nodex could not inspect: `Couldn’t check worktree status` with `Retry`;
 - a chat another app is writing to: `This chat is open in another app` with `Retry`;
 - a chat that could not connect: `Couldn’t connect to this chat` with the reason and `Retry`.
@@ -817,8 +821,10 @@ that did not go out keeps its draft and says `Message not sent`, and attachment,
 stop, resume, header, transcript, branch and Git actions name their own failure. A Run that
 fails after it started is part of the transcript instead. A Run that could not send its
 message because the working directory was missing waits for that directory to be fixed.
-When the chat works locally or its worktree is restored, Nodex retries the same Run and
-message if the Run is still the latest and the chat is available to run.
+When the chat works locally or its working directory becomes available again, Nodex retries
+the same Run and message if the Run is still the latest and the chat is available to run.
+This also applies when the directory reappears outside Nodex and the chat next checks its
+availability.
 
 ### Context window
 
@@ -1081,7 +1087,13 @@ A local Runtime Session keeps its Core product identity and immutable execution 
 moving between a checkout and managed worktree. Runtime Thread metadata owns the complete
 execution location; Core owns Session placement and binding. Main coordinates Git effects and
 the durable handoff journal.
-Provider runtime observations cannot overwrite the canonical location.
+Launch and workspace preparation record the working directory, workspace roots,
+execution host and managed checkout together. The location remains authoritative
+when its directory is missing. Provider runtime observations cannot overwrite it.
+When a Chat has only an older working-directory record, Nodex requires Git to
+confirm an existing managed checkout is a linked worktree before it can transfer
+changes. The layout of a missing directory can identify a possible snapshot or
+a location-only move.
 Session archive, deletion and Project moves share the handoff's per-Session admission
 lane. They wait for an in-progress move and reject a durable recovery hold before any
 Core lifecycle mutation. Stop and cancellation remain available during that hold.
@@ -1112,7 +1124,8 @@ preparation had not started. Pending native retirement still blocks release. Com
 operation reads do not repeat Git work or follow-up
 messages. Follow-up retries share one durable message identity.
 
-Runtime handoff supports local checkout/worktree moves. Explicit remote native Codex Sessions
+Runtime handoff supports local checkout and worktree moves, including continuing a
+Chat in the Project folder after its working directory disappears. Explicit remote native Codex Sessions
 retain their own execution-host path and native location authority. Git transfer, staged and
 untracked state, compensation and progress contracts belong to
 [Managed worktree lifecycle](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).

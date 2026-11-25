@@ -35,7 +35,7 @@ export const handoffStatusSchema = z.strictObject({
 export const sessionHandoffTool: Tool = {
   name: "handoff_session",
   description:
-    "Move another Agent Session between its checkout and managed worktree, or to an explicitly selected execution host. Running work is interrupted. Omit destinationHostId for the current-host toggle. Use only when the user authorizes the move; followUpPrompt sends a message after success. Returns immediately with operationId and progress. Retry with identical arguments and idempotencyKey; a replay never moves again. The calling Session cannot move itself. ",
+    "Move another Agent Session between its checkout and managed worktree, or to an explicitly selected execution host. Running work is interrupted. If the worktree is missing, a move to local continues the chat in the Project folder without its uncommitted changes. Omit destinationHostId for the current-host toggle. Use only when the user authorizes the move; followUpPrompt sends a message after success. Returns immediately with operationId and progress. Retry with identical arguments and idempotencyKey; a replay never moves again. The calling Session cannot move itself. ",
   inputSchema: toolInputSchema(sessionHandoffSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

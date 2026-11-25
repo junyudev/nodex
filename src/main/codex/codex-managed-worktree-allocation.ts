@@ -78,3 +78,48 @@ export function managedWorktreeGitRootContaining(
   if (second && isManagedWorktreeAllocationId(first)) return join(managedRoot, first, second);
   return null;
 }
+
+/** Whether the exact Git toplevel has a managed allocation layout. */
+export function isManagedWorktreeAllocationPath(root: string): boolean {
+  const paths = executionPath(root);
+  return (
+    isSupersededFlatWorktreeDirectory(paths.basename(root)) ||
+    isManagedWorktreeAllocationId(paths.basename(paths.dirname(root)))
+  );
+}
+
+/**
+ * Recognizes historical allocations independently of the host's current managed root. A
+ * checkout is `<root>/<allocation>/<repository>`, named after its source repository, so a
+ * candidate with a Project source's name wins over a directory that only sits beside a
+ * hex-like name, such as a home folder or a subfolder of the checkout.
+ */
+export function legacyManagedWorktreeRoot(
+  cwd: string,
+  projectSourceRoots: readonly string[],
+): string | null {
+  const paths = executionPath(cwd);
+  const pathKey = (value: string) => {
+    const normalized = paths.resolve(value).normalize("NFC");
+    return paths === path.win32 ? normalized.toLowerCase() : normalized;
+  };
+  const sources = new Set(projectSourceRoots.map(pathKey));
+  const sourceNames = new Set(
+    projectSourceRoots.map((root) => pathKey(paths.basename(paths.resolve(root)))),
+  );
+  const candidates: string[] = [];
+  for (
+    let candidate = paths.resolve(cwd);
+    paths.dirname(candidate) !== candidate;
+    candidate = paths.dirname(candidate)
+  ) {
+    // The Project source and enclosing directories can't be this Chat's allocation.
+    if (sources.has(pathKey(candidate))) return null;
+    if (isManagedWorktreeAllocationPath(candidate)) candidates.push(candidate);
+  }
+  return (
+    candidates.find((candidate) => sourceNames.has(pathKey(paths.basename(candidate)))) ??
+    candidates[0] ??
+    null
+  );
+}

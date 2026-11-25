@@ -156,6 +156,7 @@ describe("CodexThreadHandoffIpc", () => {
         threadTitle: null,
         projectId: "project-1",
         sourceHostId: "local",
+        strategy: "transfer",
         direction: "local-to-worktree",
         localBranch: null,
         sourceBranch: null,
@@ -203,7 +204,12 @@ describe("CodexThreadHandoffIpc", () => {
         scope,
       );
       const handoff = handlers.get("thread-execution:handoff")!;
-      const valid = { threadId: " thread-1 ", operationId: " move-1 ", destination: "worktree" };
+      const valid = {
+        threadId: " thread-1 ",
+        operationId: " move-1 ",
+        destination: "worktree",
+        expectedSource: "present",
+      };
       assert.deepEqual(yield* handoff(rendererEvent(7), valid), result);
       assert.deepEqual(launches, [
         {
@@ -211,12 +217,15 @@ describe("CodexThreadHandoffIpc", () => {
           operationId: "move-1",
           requestThreadId: "thread-1",
           expectedDestination: "worktree",
+          expectedSource: "present",
           destinationHostId: null,
           followUpPrompt: null,
         },
       ]);
       for (const input of [
         { ...valid, destination: "remote" },
+        { ...valid, expectedSource: "unknown" },
+        { ...valid, expectedSource: undefined },
         { ...valid, threadId: " " },
         { ...valid, operationId: "" },
         { ...valid, threadId: "t".repeat(1025) },

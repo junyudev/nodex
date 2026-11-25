@@ -1,14 +1,16 @@
 import type {
   CodexExecutionHostSettings,
-  ManagedWorktreeAvailability,
   ManagedWorktreeRecord,
   ManagedWorktreeRestoreResult,
   ManagedWorktreeSettings,
   UpdateManagedWorktreeSettingsInput,
   UpdateWorktreeEnvironmentConfigInput,
   WorktreeEnvironmentConfigRecord,
+  ThreadWorkspaceAvailability,
   WorktreeEnvironmentSaveResult,
 } from "./types";
+import { queryOptions } from "@tanstack/react-query";
+import { queryKeys } from "./query-keys";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 const updateManagedWorktreeSettingsCommand = defineRendererCommand({
@@ -61,9 +63,23 @@ export const managedWorktreeSettingsService: ManagedWorktreesSettingsService = {
     await invokePlainCommand(deleteManagedWorktreeCommand, hostId, worktreePath),
 };
 
-export function readManagedWorktreeAvailability(
+/**
+ * The one query for a chat's working directory. Every observer shares these options, so a
+ * passive reader never replaces the fetch the composer's check relies on.
+ */
+export function threadWorkspaceAvailabilityQuery(threadId: string) {
+  return queryOptions({
+    queryKey: queryKeys.threadExecution.workspace(threadId),
+    queryFn: async () => await readThreadWorkspaceAvailability(threadId),
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+/** Whether a chat's working directory is still there, and how to recover when it isn't. */
+export function readThreadWorkspaceAvailability(
   threadId: string,
-): Promise<ManagedWorktreeAvailability> {
+): Promise<ThreadWorkspaceAvailability> {
   return invokeRendererQuery("worktrees:thread:availability", threadId);
 }
 

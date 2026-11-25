@@ -1090,6 +1090,41 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(opened).toEqual(["runtime-only"]);
   });
 
+  test("keeps a chat whose worktree is gone movable without its Git rows", async () => {
+    mockInvokeImpl = async (channel: string, input?: unknown) => {
+      if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
+      // Git finds no repository where the worktree used to be.
+      if (channel === "review-summary")
+        return {
+          ...makeSnapshot((input as { source: GitReviewSource }).source, 0, 0),
+          isGitRepository: false,
+        };
+      return null;
+    };
+    const view = renderSummary(
+      <ThreadFloatingSummaryPanel
+        mounted
+        open
+        activeThreadId="thread-1"
+        cwd="/managed/ab12/project"
+        projectWorkspacePath="/repo/project"
+        turns={[]}
+        activeThreadIsManagedWorktree
+        executionLocation={{
+          threadId: "thread-1",
+          kind: "worktree",
+          canMove: true,
+          source: "gone",
+        }}
+      />,
+    );
+    // Once Git finds no repository at the missing folder, only where the chat runs remains.
+    await waitFor(() => expect(view.queryByText("Changes")).toBeNull());
+    expect(view.getByText("Environment")).toBeTruthy();
+    const trigger = view.getByText("Worktree").closest("[role='button']");
+    expect(trigger?.getAttribute("aria-haspopup")).toBe("menu");
+  });
+
   for (const kind of ["local", "worktree"] as const) {
     test(`moves the attached ${kind} chat through its execution owner`, async () => {
       mockInvokeImpl = async (channel: string, input?: unknown) => {
@@ -1119,7 +1154,7 @@ describe("ThreadFloatingSummaryPanel", () => {
           projectWorkspacePath="/repo/project"
           turns={[]}
           activeThreadIsManagedWorktree={kind === "worktree"}
-          executionLocation={{ threadId: "thread-1", kind, canMove: true }}
+          executionLocation={{ threadId: "thread-1", kind, canMove: true, source: "present" }}
         />,
       );
 
@@ -1159,7 +1194,12 @@ describe("ThreadFloatingSummaryPanel", () => {
         expect(invokeCalls.filter(([channel]) => channel === "thread-execution:handoff")).toEqual([
           [
             "thread-execution:handoff",
-            { threadId: "thread-1", operationId: expect.any(String), destination },
+            {
+              threadId: "thread-1",
+              operationId: expect.any(String),
+              destination,
+              expectedSource: "present",
+            },
           ],
         ]),
       );

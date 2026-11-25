@@ -51,6 +51,7 @@ export const live: Layer.Layer<
                   threadId: z.string().trim().min(1).max(1024),
                   operationId: z.string().trim().min(1).max(1024),
                   destination: z.enum(["local", "worktree"]),
+                  expectedSource: z.enum(["present", "missing"]),
                 })
                 .strict()
                 .parse(input),
@@ -63,6 +64,7 @@ export const live: Layer.Layer<
             threadId: parsed.threadId,
             requestThreadId: parsed.threadId,
             expectedDestination: parsed.destination,
+            expectedSource: parsed.expectedSource,
             destinationHostId: null,
             followUpPrompt: null,
           }),

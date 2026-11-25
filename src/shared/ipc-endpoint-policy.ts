@@ -634,6 +634,7 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:stop-background"
   | "agent-runtime:session:cancel-task"
   | "agent-runtime:session:retry-preparation"
+  | "agent-runtime:session:retry-workspace-missing-run"
   | "agent-runtime:session:move"
   | "agent-import:apply"
   | "native-sessions:import"

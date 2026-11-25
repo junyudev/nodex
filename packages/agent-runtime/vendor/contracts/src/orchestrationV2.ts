@@ -3299,6 +3299,7 @@ export const OrchestrationV2Command = Schema.Union([
     interactionMode: ProviderInteractionMode,
     branch: Schema.NullOr(TrimmedNonEmptyString),
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+    executionLocation: Schema.optional(OrchestrationV2ExecutionLocation),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

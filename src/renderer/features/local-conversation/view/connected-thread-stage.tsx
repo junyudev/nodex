@@ -102,7 +102,8 @@ import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
 import { useRightPanelComposerPresentation } from "./right-panel-composer-presentation";
 import { useElapsed } from "@/lib/use-elapsed";
-import { useManagedWorktreeSendGate } from "./managed-worktree-send-gate";
+import { ThreadMoveDialog } from "./thread-move-dialog";
+import { useWorkspaceSendGate } from "./workspace-send-gate";
 import { useReconnectWhenShown } from "./use-reconnect-when-shown";
 import { NewThreadHomeHero } from "./new-thread-home-hero";
 import {
@@ -1584,10 +1585,22 @@ function ConnectedThreadStageContent({
     stage: input,
     actions,
   });
-  const worktreeSendGate = useManagedWorktreeSendGate(activeThreadId, {
-    managed: activeThreadIsManagedWorktree,
-    requiresCheck: !runtimeSession,
+  // Runtime handoff serves every local provider; native ACP has no move owner.
+  const canMoveExecution =
+    executionAvailable &&
+    !activeThreadProjectless &&
+    (runtimeSession || runtime.kind !== "acpRegistry") &&
+    runtime.hostId === "local";
+  const workspace = useWorkspaceSendGate(activeThreadId, {
+    // A cold native chat knows from its Core summary that it runs in a worktree before its
+    // resident cwd arrives; that is enough to check, and nothing resumes until it is checked.
+    inspect:
+      !input.isNewThreadTab &&
+      (runtimeSession ? runtimeLocation !== null : Boolean(cwd) || activeThreadIsManagedWorktree),
+    requiresCheck: !runtimeSession && activeThreadIsManagedWorktree,
+    canMove: canMoveExecution,
   });
+  const worktreeSendGate = workspace.gate;
   // Nothing resumes into a worktree that holds sending.
   const worktreeRuntimeAvailable = worktreeSendGate === null;
   const activeThreadHasRuntimeWork = Boolean(
@@ -1629,12 +1642,8 @@ function ConnectedThreadStageContent({
           ? {
               threadId: activeThreadId,
               kind: activeThreadIsManagedWorktree ? ("worktree" as const) : ("local" as const),
-              // Runtime handoff serves every local provider; native ACP has no move owner.
-              canMove:
-                executionAvailable &&
-                !activeThreadProjectless &&
-                (runtimeSession || runtime.kind !== "acpRegistry") &&
-                runtime.hostId === "local",
+              canMove: canMoveExecution,
+              source: workspace.source,
             }
           : null,
       actions,
@@ -1650,7 +1659,8 @@ function ConnectedThreadStageContent({
       activeThreadTitle,
       activeThreadIsManagedWorktree,
       activeThreadProjectless,
-      executionAvailable,
+      canMoveExecution,
+      workspace.source,
       runtimeSession,
       runtimeLocation,
       intl,
@@ -1836,6 +1846,14 @@ function ConnectedThreadStageContent({
         <RemoteHostedPipHostLayoutReporter isCodexHomeAvailable={summaryPanelMounted} />
       ) : null}
       {ownsAppShellHeader ? <AppShellHeaderContentRegistrar content={threadHeaderContent} /> : null}
+      {activeThreadId ? (
+        <ThreadMoveDialog
+          location={workspace.location}
+          destination={workspace.confirmation.open ? "local" : null}
+          source={workspace.source}
+          onClose={workspace.confirmation.close}
+        />
+      ) : null}
       <LocalConversationStageScreen
         onReadInteraction={onReadInteraction}
         header={null}

@@ -1,3 +1,5 @@
+import { CodexGitProbe, make as makeGitProbe } from "../codex-application/CodexGitProbe";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EventEmitter } from "node:events";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -186,6 +188,8 @@ export const conversationWorkHarness = Effect.fn("test.conversationWorkHarness")
       ensureWorkspaceRoot: Effect.void,
     },
   }).pipe(
+    Effect.provideService(CodexGitProbe, makeGitProbe({ environment: process.env })),
+    Effect.provide(NodeServices.layer),
     Effect.provideService(CoreModules, core as never),
     Effect.provideService(ProjectWorkspace, {} as never),
     Effect.provideService(ProjectRuntimeLifecycleRuntime, { runExclusive: (_id, use) => use }),

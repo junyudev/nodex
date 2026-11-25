@@ -225,6 +225,20 @@ export async function snapshotManagedWorktree(
   }
 }
 
+async function inspectDirectory(directory: string): Promise<boolean> {
+  try {
+    return (await stat(directory)).isDirectory();
+  } catch (cause) {
+    if (
+      cause instanceof Error &&
+      "code" in cause &&
+      (cause.code === "ENOENT" || cause.code === "ENOTDIR")
+    )
+      return false;
+    throw cause;
+  }
+}
+
 export async function inspectManagedWorktree(
   input: CodexWorktreeWorkerInspectInput,
   signal?: AbortSignal,
@@ -233,11 +247,11 @@ export async function inspectManagedWorktree(
   if (!isPathWithin(worktreeGitRoot, input.cwd)) {
     throw new Error("Worktree cwd is outside the worktree root");
   }
-  const cwdEntry = await stat(input.cwd).catch(() => null);
+  const cwdExists = await inspectDirectory(input.cwd);
   throwIfCodexRequestAborted(signal);
-  if (cwdEntry?.isDirectory()) return { availability: { state: "available" } };
-  const worktreeEntry = await stat(worktreeGitRoot).catch(() => null);
-  if (worktreeEntry?.isDirectory()) return { availability: { state: "gone" } };
+  if (cwdExists) return { availability: { state: "available" } };
+  if (await inspectDirectory(worktreeGitRoot))
+    return { availability: { state: "gone", worktree: false } };
   if (input.candidateRepositoryPaths.length === 0) {
     return {
       availability: {
@@ -260,9 +274,14 @@ export async function inspectManagedWorktree(
           })
         ).stdout.trim() === "true";
       if (!isRepository) continue;
+      const references = await runCodexGitCommand(
+        ["for-each-ref", "--count=1", "--format=%(refname)", snapshotRef],
+        repositoryPath,
+        { signal },
+      );
+      if (references.stderr.trim()) throw new Error(references.stderr.trim());
       completedInspection = true;
-      const commitId = await readRef(repositoryPath, snapshotRef, signal);
-      if (commitId) {
+      if (references.stdout.trim() === snapshotRef) {
         return {
           availability: { state: "restorable", repositoryPath, snapshotRef },
         };
@@ -272,7 +291,7 @@ export async function inspectManagedWorktree(
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  if (completedInspection) return { availability: { state: "gone" } };
+  if (completedInspection && !lastError) return { availability: { state: "gone", worktree: true } };
   return {
     availability: {
       state: "unavailable",

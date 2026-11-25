@@ -1,18 +1,13 @@
 import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
-import { HostWorkspace } from "../../host/HostWorkspace";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { CodexGitProbe } from "../codex-application/CodexGitProbe";
-import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import type { ManagedWorktreeHandoffPreparation } from "../codex-application/ManagedWorktreeHandoff";
 import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentRuntimeApplication } from "./AgentRuntimeApplication";
 import { AgentRuntimeSupervisor } from "./AgentRuntimeSupervisor";
 
@@ -24,12 +19,7 @@ export class AgentRuntimeThreadExecutionError extends Schema.TaggedError<AgentRu
 /** Coordinates physical handoff with the Runtime's durable execution hold and Session lane. */
 export const make = Effect.gen(function* () {
   const application = yield* AgentRuntimeApplication;
-  const hostWorkspace = yield* HostWorkspace;
   const supervisor = yield* AgentRuntimeSupervisor;
-  const workspace = yield* ProjectWorkspace;
-  const git = yield* CodexGitProbe;
-  const hosts = yield* ExecutionHostRuntime;
-  const fs = yield* FileSystem.FileSystem;
   const error = (operation: string, threadId: string, cause: unknown) =>
     new AgentRuntimeThreadExecutionError({ operation, threadId, cause });
   const fail = (operation: string, threadId: string, message: string) =>
@@ -56,75 +46,16 @@ export const make = Effect.gen(function* () {
   const location = Effect.fn("AgentRuntimeThreadExecution.location")(function* (
     captured: Captured,
   ) {
-    if (captured.thread.executionLocation) return captured.thread.executionLocation;
-    const cwd = captured.thread.worktreePath;
-    if (!cwd || !path.isAbsolute(cwd))
+    const saved = yield* application
+      .executionLocation(captured)
+      .pipe(Effect.mapError((cause) => error("read", captured.thread.id, cause)));
+    if (!saved)
       return yield* fail(
         "read",
         captured.thread.id,
         "The Session has no absolute execution folder",
       );
-    const session = yield* workspace
-      .getProjectSession(captured.sessionId)
-      .pipe(Effect.mapError((cause) => error("read-session", captured.thread.id, cause)));
-    if (!session) return yield* fail("read-session", captured.thread.id, "Session was removed");
-    if (session.projectId === null && session.folder?.path === cwd) {
-      return {
-        hostId: "local",
-        cwd,
-        workspaceRoots: [cwd],
-        managedWorktreePath: null,
-        projectId: null,
-        projectlessOutputDirectory: session.folder.outputDirectory,
-        projectlessWorkspaceBrowserRoot: cwd,
-      } satisfies CodexThreadExecutionLocation;
-    }
-    const project = session.projectId
-      ? yield* workspace
-          .getProject(session.projectId)
-          .pipe(Effect.mapError((cause) => error("read-project", captured.thread.id, cause)))
-      : null;
-    const root = yield* git.readPath(cwd, ["rev-parse", "--show-toplevel"]);
-    const host = yield* hosts
-      .get("local")
-      .pipe(Effect.mapError((cause) => error("read-host", captured.thread.id, cause)));
-    if (!host)
-      return yield* fail("read-host", captured.thread.id, "Local execution host is unavailable");
-    const canonical = yield* Effect.all([
-      fs
-        .realPath(host.descriptor.managedRoot)
-        .pipe(Effect.orElseSucceed(() => path.resolve(host.descriptor.managedRoot))),
-      root
-        ? fs.realPath(root).pipe(Effect.orElseSucceed(() => path.resolve(root)))
-        : Effect.succeed(null),
-    ]);
-    const relative = canonical[1] === null ? null : path.relative(canonical[0], canonical[1]);
-    const managed =
-      relative !== null &&
-      relative !== "" &&
-      relative !== ".." &&
-      !relative.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relative)
-        ? root
-        : null;
-    return {
-      hostId: "local",
-      cwd,
-      workspaceRoots: [
-        ...new Set([
-          root ?? cwd,
-          ...(project
-            ? yield* hostWorkspace
-                .resolve(project.sources)
-                .pipe(Effect.mapError((cause) => error("workspace", captured.thread.id, cause)))
-            : []),
-        ]),
-      ],
-      managedWorktreePath: managed,
-      projectId: session.projectId,
-      projectlessOutputDirectory: null,
-      projectlessWorkspaceBrowserRoot: null,
-    } satisfies CodexThreadExecutionLocation;
+    return saved;
   });
   const operation = (captured: Captured, operationId?: string) => {
     const id = operationId ?? captured.thread.executionHandoff?.operationId;
@@ -256,9 +187,9 @@ export const make = Effect.gen(function* () {
             location: destination,
             childrenOnly: true,
             sourceWorkspaceRoot:
-              destination.workspaceRoots[0] === sourceWorkspaceRoot
-                ? destinationWorkspaceRoot
-                : sourceWorkspaceRoot,
+              destination.cwd === preparation.destination.cwd
+                ? sourceWorkspaceRoot
+                : destinationWorkspaceRoot,
           });
         }
         return yield* use;

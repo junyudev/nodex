@@ -455,7 +455,9 @@ location. Runtime handoff supports the local host. An explicit remote native Cod
 continues through its own supported local or cross-host coordinator.
 
 Core checks the captured caller and exact Session binding. The calling Session cannot move
-itself, including through a delegated child. Reusing the same `idempotencyKey` reads or resumes
+itself, including through a delegated child. When moving to local after a worktree
+disappears, the Session continues in the Project folder without the worktree's
+uncommitted changes. Reusing the same `idempotencyKey` reads or resumes
 the same journal operation across retries and restarts. Recovery retains the hold while native
 retirement, location or Git restoration is uncertain. A Runtime follow-up uses a stable message
 identity after verified completion, so retrying delivery cannot start duplicate work.

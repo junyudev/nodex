@@ -255,6 +255,16 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:retry-preparation", (event, value) =>
       handle(event, Inputs.AgentRuntimePreparationRetrySchema, value, application.retryPreparation),
     );
+    yield* ipc.handlePlainCommand(
+      "agent-runtime:session:retry-workspace-missing-run",
+      (event, value) =>
+        handle(
+          event,
+          Inputs.AgentRuntimeThreadIdentitySchema,
+          value,
+          application.retryWorkspaceMissingRun,
+        ),
+    );
     yield* ipc.handlePlainCommand("agent-runtime:session:stop-task", (event, value) =>
       handle(event, Inputs.AgentRuntimeTaskStopSchema, value, application.stopTask),
     );

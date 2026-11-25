@@ -1,3 +1,12 @@
+import type * as FileSystem from "effect/FileSystem";
+import {
+  CONFIRM_SOURCE_MISSING_STEP,
+  STALE_THREAD_HANDOFF_LOCATION,
+  type ThreadHandoffStrategy,
+} from "../../shared/codex-thread-handoff";
+import { planWorkspaceRelocation } from "../codex/codex-workspace-relocation";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { makeThreadWorkspaceInspection } from "./ThreadWorkspaceInspection";
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
@@ -48,8 +57,16 @@ export class ManagedWorktreeHandoffError extends Schema.TaggedError<ManagedWorkt
 export class ManagedWorktreeHandoff extends Context.Service<
   ManagedWorktreeHandoff,
   {
+    readonly isMissingLocalSource: (
+      threadId: string,
+      source: CodexThreadExecutionLocation,
+    ) => Effect.Effect<boolean, ManagedWorktreeHandoffError>;
+    readonly selectStrategy: (
+      entry: CodexThreadHandoffJournalEntry,
+    ) => Effect.Effect<ThreadHandoffStrategy, ManagedWorktreeHandoffError>;
     readonly prepare: (
       entry: CodexThreadHandoffJournalEntry,
+      strategy: ThreadHandoffStrategy,
       onProgress?: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
     ) => Effect.Effect<ManagedWorktreeHandoffPreparation, ManagedWorktreeHandoffError>;
     readonly transferOwner: (
@@ -101,6 +118,8 @@ export const live: Layer.Layer<
   | CodexGateway
   | CodexAppServerCapabilities
   | CoreModules
+  | FileSystem.FileSystem
+  | ProjectWorkspace
   | CrossHostThreadHandoff
   | ExecutionHostRuntime
   | ManagedWorktreeRetentionRuntime
@@ -115,9 +134,17 @@ export const live: Layer.Layer<
     const executionHosts = yield* ExecutionHostRuntime;
     const managedWorktrees = yield* ManagedWorktreeRuntime;
     const retention = yield* ManagedWorktreeRetentionRuntime;
+    const inspection = yield* makeThreadWorkspaceInspection;
 
     const error = (operation: string, threadId: string, cause: unknown) =>
       new ManagedWorktreeHandoffError({ operation, threadId, cause });
+    const isMissingLocalSource = (threadId: string, source: CodexThreadExecutionLocation) =>
+      source.hostId === "local"
+        ? inspection.localDirectory(source.managedWorktreePath ?? source.cwd).pipe(
+            Effect.map((present) => !present),
+            Effect.mapError((cause) => error("inspect-source", threadId, cause)),
+          )
+        : Effect.succeed(false);
     const publish = (
       event: CodexWorktreeWorkerEvent,
       onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
@@ -178,17 +205,100 @@ export const live: Layer.Layer<
         );
     };
 
+    const selectStrategy = Effect.fn("ManagedWorktreeHandoff.selectStrategy")(function* (
+      entry: CodexThreadHandoffJournalEntry,
+    ) {
+      const { source, threadId, expectedSource, requestedDestination } = entry;
+      const destinationHostId = entry.requestedDestinationHostId ?? source.hostId;
+      const movingLocally = source.hostId === "local" && destinationHostId === "local";
+      const managed = source.managedWorktreePath !== null;
+      const toLocal = requestedDestination === "local" || managed;
+      const stale = () =>
+        error("inspect-source", threadId, new Error(STALE_THREAD_HANDOFF_LOCATION));
+      if (requestedDestination === "worktree" && managed) return yield* stale();
+      if (!movingLocally && expectedSource !== "missing") return "transfer" as const;
+      if (!toLocal && expectedSource === undefined) return "transfer" as const;
+
+      const missing = movingLocally && (yield* isMissingLocalSource(threadId, source));
+      if (
+        (expectedSource !== undefined && expectedSource !== (missing ? "missing" : "present")) ||
+        (requestedDestination === "local" && !missing && !managed) ||
+        (missing && !toLocal)
+      )
+        return yield* stale();
+      if (missing) return "relocate" as const;
+      if (
+        source.managedWorktreePath &&
+        source.cwd !== source.managedWorktreePath &&
+        !(yield* inspection
+          .localDirectory(source.cwd)
+          .pipe(Effect.mapError((cause) => error("inspect-source", threadId, cause))))
+      )
+        return yield* error(
+          "inspect-source",
+          threadId,
+          new Error("This chat’s working directory no longer exists"),
+        );
+      return "transfer" as const;
+    });
+
+    const prepareRelocation = Effect.fn("ManagedWorktreeHandoff.prepareRelocation")(function* (
+      entry: CodexThreadHandoffJournalEntry,
+      onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
+    ) {
+      yield* onProgress({ phase: CONFIRM_SOURCE_MISSING_STEP, status: "running" });
+      const availability = yield* inspection.inspect(entry.source, { fresh: true });
+      if (
+        availability.state === "available" ||
+        !(yield* isMissingLocalSource(entry.threadId, entry.source))
+      )
+        return yield* Effect.fail(new Error(STALE_THREAD_HANDOFF_LOCATION));
+      if (availability.state === "unavailable")
+        return yield* Effect.fail(new Error(availability.message));
+      const checkout = availability.projectCheckout;
+      if (!checkout)
+        return yield* Effect.fail(
+          new Error("The Project has no available local folder to continue this chat in"),
+        );
+
+      const plan = planWorkspaceRelocation(entry.source, checkout);
+      const exists = (directory: string) =>
+        inspection.localDirectory(directory).pipe(Effect.orElseSucceed(() => false));
+      const cwd = (yield* exists(plan.mappedCwd)) ? plan.mappedCwd : checkout;
+      const additionalRoots = yield* Effect.forEach(
+        plan.additionalRoots,
+        (root) => exists(root).pipe(Effect.map((present) => (present ? root : null))),
+        { concurrency: 4 },
+      );
+      yield* onProgress({ phase: CONFIRM_SOURCE_MISSING_STEP, status: "success" });
+      return {
+        prepared: {
+          direction: "relocate",
+          sourceWorkspaceRoot: entry.source.workspaceRoots[0] ?? entry.source.cwd,
+          destinationWorkspaceRoot: checkout,
+        },
+        destination: {
+          ...entry.source,
+          cwd,
+          workspaceRoots: [checkout, ...additionalRoots.filter((root) => root !== null)],
+          managedWorktreePath: null,
+        },
+      } satisfies ManagedWorktreeHandoffPreparation;
+    });
+
     const prepare = (
       entry: CodexThreadHandoffJournalEntry,
+      strategy: ThreadHandoffStrategy,
       onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error> = () =>
         Effect.void,
     ): Effect.Effect<ManagedWorktreeHandoffPreparation, ManagedWorktreeHandoffError> =>
       Effect.suspend(() => {
         let workerStarted = false;
         return Effect.gen(function* () {
+          if (strategy === "relocate") return yield* prepareRelocation(entry, onProgress);
+          const destinationHostId = entry.requestedDestinationHostId ?? entry.source.hostId;
           const owningProject = yield* project(entry);
           const title = yield* threadTitle(entry);
-          const destinationHostId = entry.requestedDestinationHostId ?? entry.source.hostId;
           const destinationHost = yield* executionHosts
             .resolve(
               destinationHostId,
@@ -342,7 +452,7 @@ export const live: Layer.Layer<
             );
           }
           const localSourcePrimary =
-            entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? checkoutRoot;
+            entry.source.managedWorktreePath ?? entry.source.workspaceRoots[0] ?? checkoutRoot;
           let allocatedWorktreePath: string | null = null;
           if (!entry.source.managedWorktreePath) {
             const { root } = yield* destinationHost
@@ -462,32 +572,38 @@ export const live: Layer.Layer<
         );
       });
 
-    const transferOwner = (threadId: string, preparation: ManagedWorktreeHandoffPreparation) =>
-      managedWorktrees
+    const transferOwner = (threadId: string, preparation: ManagedWorktreeHandoffPreparation) => {
+      const { prepared } = preparation;
+      if (prepared.direction === "relocate") return Effect.void;
+      return managedWorktrees
         .setOwner({
           hostId: preparation.destination.hostId,
-          worktreeGitRoot: preparation.prepared.managedWorktreePath,
+          worktreeGitRoot: prepared.managedWorktreePath,
           ownerThreadId: threadId,
         })
         .pipe(
           Effect.mapError((cause) => error("transfer-owner", threadId, cause)),
           Effect.ensuring(
-            (preparation.prepared.direction === "to-worktree" ||
-            preparation.prepared.direction === "cross-host"
+            (prepared.direction === "to-worktree" || prepared.direction === "cross-host"
               ? managedWorktrees.releaseNewborn({
                   hostId: preparation.destination.hostId,
-                  worktreeGitRoot: preparation.prepared.managedWorktreePath,
+                  worktreeGitRoot: prepared.managedWorktreePath,
                 })
               : Effect.void
             ).pipe(Effect.andThen(retention.request)),
           ),
         );
+    };
 
     const rollback = (
       threadId: string,
       preparation: ManagedWorktreeHandoffPreparation,
     ): Effect.Effect<readonly string[], ManagedWorktreeHandoffError> => {
-      if (preparation.prepared.direction === "cross-host") return Effect.succeed([]);
+      if (
+        preparation.prepared.direction === "cross-host" ||
+        preparation.prepared.direction === "relocate"
+      )
+        return Effect.succeed([]);
       const prepared = preparation.prepared;
       return Effect.gen(function* () {
         const host = yield* executionHosts
@@ -522,6 +638,7 @@ export const live: Layer.Layer<
       preparation: ManagedWorktreeHandoffPreparation,
       outcome: "committed" | "rolled-back",
     ): Effect.Effect<readonly string[]> => {
+      if (preparation.prepared.direction === "relocate") return Effect.succeed([]);
       if (preparation.prepared.direction !== "cross-host") {
         const prepared = preparation.prepared;
         return executionHosts.resolve(preparation.destination.hostId, "cleanup-handoff").pipe(
@@ -563,6 +680,13 @@ export const live: Layer.Layer<
       });
     };
 
-    return ManagedWorktreeHandoff.of({ prepare, transferOwner, rollback, cleanup });
+    return ManagedWorktreeHandoff.of({
+      isMissingLocalSource,
+      selectStrategy,
+      prepare,
+      transferOwner,
+      rollback,
+      cleanup,
+    });
   }),
 );

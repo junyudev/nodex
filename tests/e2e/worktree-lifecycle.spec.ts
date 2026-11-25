@@ -6,15 +6,26 @@ import os from "node:os";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { DictationSettingsStore } from "../../src/main/dictation/dictation-settings-store";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import type { AgentRuntimeMessageInput } from "../../src/shared/agent-runtime-api";
 import type { ProjectSessionSummary } from "../../src/shared/types";
+import {
+  readRuntimeConversation,
+  waitForRuntimeCompletedAgentTurn,
+} from "./support/agent-smoke-harness";
+import { openSummaryPanel } from "./support/subagents-panel";
 
 const repositoryRoot = process.cwd();
 const worktreeElectronEnvironment = {
   NODEX_CORE_IDLE_TIMEOUT_MS: "250",
   NODEX_LOG_CONSOLE: "0",
 } as const;
+
+const openingPrompt = "Report the current working directory.";
+const reviewScreenshotsDir = process.env.NODEX_REVIEW_SCREENSHOTS_DIR;
+const promptEditorSelector = '[contenteditable="true"][aria-label="Do anything"]';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -96,6 +107,10 @@ async function createWorktreeHarness(label: string): Promise<ElectronScenarioHar
     harness.profile.runRoot,
     path.join(repositoryRoot, "tests/e2e/fixtures/codex-queue-app-server.mjs"),
   );
+  if (reviewScreenshotsDir) {
+    // Record the first-launch nudge as seen before opening the review fixture.
+    await new DictationSettingsStore(harness.profile.nodexHome).consumeGlobalShortcutNudge();
+  }
   return harness;
 }
 
@@ -181,7 +196,7 @@ async function composeWorktreeChat(page: Page, projectId: string, prompt: string
     .getByRole("button", { name: "Start new chat in Managed Worktree E2E", exact: true })
     .click();
   await waitForProjectDraft(page, projectId);
-  const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
+  const composer = page.locator(promptEditorSelector);
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await composer.fill(prompt);
   await expect(composer).toHaveText(prompt);
@@ -223,8 +238,7 @@ async function sendWorktreeChat(
   fixture: WorktreeFixture,
   reviewDraft?: () => Promise<void>,
 ) {
-  const prompt = "Report the current working directory.";
-  const sendButton = await composeWorktreeChat(fixture.page, fixture.projectId, prompt);
+  const sendButton = await composeWorktreeChat(fixture.page, fixture.projectId, openingPrompt);
   await reviewDraft?.();
   await sendButton.click();
   await expect(fixture.page.getByText("The task completed successfully.").first()).toBeVisible({
@@ -238,6 +252,127 @@ async function sendWorktreeChat(
     true,
   );
   return { session: await agentSession(fixture.page, fixture.projectId), worktreeGitRoot };
+}
+
+/** Waits for the worktree's inventory entry and returns the path accepted by Worktrees settings. */
+async function listedWorktreePath(
+  page: Page,
+  worktreeGitRoot: string,
+  sessionId: string,
+): Promise<string> {
+  const realWorktreeGitRoot = fs.realpathSync(worktreeGitRoot);
+  let inventoryPath: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const entries = (await invokeIpc(page, "worktrees:list", "local")) as Array<{
+          path: string;
+          conversations: Array<{ sessionId: string | null }>;
+        }>;
+        const record = entries.find((entry) => fs.realpathSync(entry.path) === realWorktreeGitRoot);
+        inventoryPath = record?.path;
+        return record?.conversations.map((conversation) => conversation.sessionId) ?? null;
+      },
+      { timeout: 30_000 },
+    )
+    .toEqual([sessionId]);
+  if (!inventoryPath) throw new Error("The chat's worktree is missing from the host inventory");
+  return inventoryPath;
+}
+
+async function createAgentWorktreeChat(harness: ElectronScenarioHarness, fixture: WorktreeFixture) {
+  const { session, worktreeGitRoot } = await sendWorktreeChat(harness, fixture);
+  if (!session.executionRef) throw new Error("The worktree chat has no Runtime execution");
+  const target = { sessionId: session.id, threadId: session.executionRef.threadId };
+  await waitForRuntimeCompletedAgentTurn(fixture.page, target);
+  return { target, worktreeGitRoot };
+}
+
+function removeWorktreeOutsideNodex(sourceRoot: string, worktreeGitRoot: string): void {
+  fs.rmSync(worktreeGitRoot, { recursive: true });
+  runGit(sourceRoot, ["worktree", "prune", "--expire", "now"]);
+}
+
+async function reopenWorktreeChat(page: Page, threadId: string): Promise<void> {
+  if (reviewScreenshotsDir) await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await page.evaluate(() => window.api?.awaitInitialization?.());
+  await page.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
+  if (reviewScreenshotsDir) await page.mouse.move(0, 0);
+  await expect(transcriptMessages(page)).toHaveText([openingPrompt]);
+}
+
+const transcriptMessages = (page: Page) => page.locator('[data-user-message-bubble="true"]');
+const composerNotice = (page: Page) => page.locator("[data-composer-notice]");
+const workLocallyAction = (page: Page) =>
+  composerNotice(page).getByRole("button", { name: "Work locally", exact: true });
+
+async function expectMissingWorktreeLocation(page: Page) {
+  const summary = await openSummaryPanel(page);
+  const environment = summary.locator("section").filter({
+    has: page.getByRole("button", { name: "Environment", exact: true }),
+  });
+  const location = environment.locator('[data-thread-execution-location-trigger="true"]');
+  await expect(location).toBeVisible();
+  await expect(location).toHaveText("Worktree");
+  await expect(environment.getByText("Changes", { exact: true })).toHaveCount(0);
+  return location;
+}
+
+async function expectLocalLocation(page: Page): Promise<void> {
+  await expect(workLocallyAction(page)).toHaveCount(0);
+  const summary = await openSummaryPanel(page);
+  await expect(summary.locator('[data-thread-execution-location-trigger="true"]')).toHaveText(
+    "Local",
+  );
+}
+
+function turnsForPrompt(harness: ElectronScenarioHarness, prompt: string) {
+  return fakeRequests(harness)
+    .filter(
+      ({ method, params }) =>
+        method === "turn/start" &&
+        Array.isArray(params.input) &&
+        params.input.some((item) => isRecord(item) && item.type === "text" && item.text === prompt),
+    )
+    .map(({ params }) => params);
+}
+
+function expectOneLocalTurn(
+  harness: ElectronScenarioHarness,
+  prompt: string,
+  sourceRoot: string,
+): void {
+  const turns = turnsForPrompt(harness, prompt);
+  expect(turns).toHaveLength(1);
+  const cwd = turns[0]?.cwd;
+  expect(typeof cwd).toBe("string");
+  expect(fs.realpathSync(String(cwd))).toBe(fs.realpathSync(sourceRoot));
+}
+
+async function captureReviewScreenshot(page: Page, filename: string): Promise<void> {
+  if (!reviewScreenshotsDir) return;
+  await page.mouse.move(0, 0);
+  await page.screenshot({
+    path: path.join(reviewScreenshotsDir, filename),
+    animations: "disabled",
+  });
+}
+
+async function workLocallyWithoutConfirmation(page: Page, captureProgress = false): Promise<void> {
+  await workLocallyAction(page).click();
+  if (captureProgress && reviewScreenshotsDir) {
+    const progress = composerNotice(page).getByText("Moving to the Project folder…", {
+      exact: true,
+    });
+    if (await progress.isVisible()) {
+      const screenshot = await page.screenshot();
+      if (await progress.isVisible())
+        fs.writeFileSync(path.join(reviewScreenshotsDir, "04-moving-to-project.png"), screenshot);
+    }
+  }
+  await expect(composerNotice(page)).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Work locally", exact: true })).toHaveCount(0);
 }
 
 test("a worktree that cannot be prepared offers Retry and Work locally, and runs locally", async () => {
@@ -342,7 +477,7 @@ test("creates a new-worktree chat through the Composer and runs it there", async
       await page.keyboard.press("Escape");
       await expect(environment).toHaveCount(0);
       await expect(configure).toBeFocused();
-      await expect(page.locator('[contenteditable="true"][aria-label="Do anything"]')).toHaveText(
+      await expect(page.locator(promptEditorSelector)).toHaveText(
         "Report the current working directory.",
       );
     });
@@ -382,31 +517,8 @@ test("lists an Agent chat's worktree, archives the chat when it is deleted, and 
     const threadId = session.executionRef!.threadId;
 
     const page = await harness.restart();
-    const listed = async () =>
-      (await invokeIpc(page, "worktrees:list", "local")) as Array<{
-        path: string;
-        conversations: Array<{
-          threadId: string;
-          sessionId: string | null;
-          sessionTitle: string | null;
-        }>;
-      }>;
-    await expect
-      .poll(
-        async () => {
-          const record = (await listed()).find(
-            (entry) => fs.realpathSync(entry.path) === fs.realpathSync(worktreeGitRoot),
-          );
-          return record?.conversations.map((conversation) => conversation.sessionId) ?? null;
-        },
-        { timeout: 30_000 },
-      )
-      .toEqual([session.id]);
-
-    const record = (await listed()).find(
-      (entry) => fs.realpathSync(entry.path) === fs.realpathSync(worktreeGitRoot),
-    )!;
-    await invokeIpc(page, "worktrees:delete", "local", record.path);
+    const inventoryPath = await listedWorktreePath(page, worktreeGitRoot, session.id);
+    await invokeIpc(page, "worktrees:delete", "local", inventoryPath);
     await expect.poll(() => fs.existsSync(worktreeGitRoot), { timeout: 20_000 }).toBe(false);
     expect(
       ((await invokeIpc(page, "project-sessions:get", session.id)) as { archived: boolean })
@@ -416,6 +528,7 @@ test("lists an Agent chat's worktree, archives the chat when it is deleted, and 
       state: "restorable",
       repositoryPath: fixture.sourceRoot,
       snapshotRef: expect.stringMatching(/^refs\/codex\/snapshots\/[a-f0-9]{40}$/u),
+      projectCheckout: fixture.sourceRoot,
     });
 
     expect(await invokeIpc(page, "worktrees:thread:restore", threadId)).toEqual({
@@ -430,5 +543,183 @@ test("lists an Agent chat's worktree, archives the chat when it is deleted, and 
   } finally {
     await harness.close();
     removeFixtureRoot(fixtureRoot, "ndx-wt-life-");
+  }
+});
+
+test("moves a chat with a missing worktree to the Project folder and keeps its history", async () => {
+  const prefix = "ndx-wt-gone-";
+  const harness = await createWorktreeHarness("worktree-missing");
+  let fixtureRoot: string | undefined;
+  try {
+    const fixture = await openWorktreeProject(harness, prefix);
+    fixtureRoot = fixture.fixtureRoot;
+    const { page, sourceRoot } = fixture;
+    const { target, worktreeGitRoot } = await createAgentWorktreeChat(harness, fixture);
+    removeWorktreeOutsideNodex(sourceRoot, worktreeGitRoot);
+    await reopenWorktreeChat(page, target.threadId);
+
+    const notice = composerNotice(page);
+    await expect(notice.getByText("Working directory missing", { exact: true })).toBeVisible();
+    await expect(
+      notice.getByText("This chat’s worktree no longer exists", { exact: true }),
+    ).toBeVisible();
+    await expect(workLocallyAction(page)).toBeVisible();
+    const prompt = "Continue the review from the Project folder.";
+    const composer = page.locator('[data-codex-composer="true"][contenteditable="true"]:visible');
+    await composer.fill(prompt);
+    const sendButton = page.getByRole("button", { name: "Send prompt", exact: true });
+    await expect(sendButton).toBeDisabled();
+    const location = await expectMissingWorktreeLocation(page);
+    await captureReviewScreenshot(page, "01-gone-notice.png");
+
+    await location.click();
+    await expect(page.getByText("Continue in", { exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Local", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Work locally", exact: true });
+    await expect(dialog).toHaveAccessibleDescription(/^This chat’s worktree no longer exists\./u);
+    await captureReviewScreenshot(page, "07-continue-in-local-dialog.png");
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(workLocallyAction(page)).toBeVisible();
+
+    await composer.press("Enter");
+    const blockedSend = page.getByRole("alert").filter({ hasText: "Message not sent" });
+    await expect(blockedSend).toBeVisible();
+    await expect(composer).toHaveText(prompt);
+    expect(turnsForPrompt(harness, prompt)).toHaveLength(0);
+    await blockedSend.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(blockedSend).toHaveCount(0);
+
+    await workLocallyWithoutConfirmation(page, true);
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
+    await expect(transcriptMessages(page)).toHaveText([openingPrompt, prompt]);
+    await expect(page.getByText("The task completed successfully.", { exact: true })).toHaveCount(
+      2,
+    );
+    expectOneLocalTurn(harness, prompt, sourceRoot);
+    const { snapshot } = await waitForRuntimeCompletedAgentTurn(page, target);
+    expect(snapshot.projection.runs.at(-1)).toMatchObject({ ordinal: 2 });
+    await expectLocalLocation(page);
+    if (reviewScreenshotsDir) await transcriptMessages(page).first().scrollIntoViewIfNeeded();
+    await captureReviewScreenshot(page, "05-chat-now-local.png");
+  } finally {
+    await harness.close();
+    removeFixtureRoot(fixtureRoot, prefix);
+  }
+});
+
+test("sends the same waiting message once after working locally", async () => {
+  const prefix = "ndx-wt-wait-";
+  const harness = await createWorktreeHarness("worktree-waiting-message");
+  let fixtureRoot: string | undefined;
+  try {
+    const fixture = await openWorktreeProject(harness, prefix);
+    fixtureRoot = fixture.fixtureRoot;
+    const { page, sourceRoot } = fixture;
+    const { target, worktreeGitRoot } = await createAgentWorktreeChat(harness, fixture);
+    removeWorktreeOutsideNodex(sourceRoot, worktreeGitRoot);
+    await reopenWorktreeChat(page, target.threadId);
+
+    // Admit the message through the composer's Runtime command after the checkout has gone.
+    const prompt = "List the files in the Project folder.";
+    const messageId = createUuidV7();
+    await invokeIpc(page, "agent-runtime:session:message", {
+      ...target,
+      message: { messageId, text: prompt },
+    } satisfies AgentRuntimeMessageInput);
+
+    const waitingTurn = page.locator("[data-turn-key]").filter({ hasText: prompt });
+    await expect(
+      waitingTurn.getByRole("button", { name: "Working directory missing", exact: true }),
+    ).toBeVisible();
+    await expect(waitingTurn.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    expect(turnsForPrompt(harness, prompt)).toHaveLength(0);
+    const failed = (await readRuntimeConversation(page, target)).snapshot.projection;
+    const run = failed.runs.at(-1);
+    if (!run) throw new Error("The waiting message did not create a Runtime Run");
+    expect(run).toMatchObject({ status: "failed", startedAt: null, userMessageId: messageId });
+    expect(failed.visibleTurnItems.map(({ item }) => item)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        runId: run.id,
+        failure: expect.objectContaining({ code: "workspace_missing" }),
+      }),
+    );
+    await captureReviewScreenshot(page, "06-waiting-run.png");
+
+    await workLocallyWithoutConfirmation(page);
+    await expect
+      .poll(async () => (await readRuntimeConversation(page, target)).snapshot.projection.runs)
+      .toMatchObject([
+        ...failed.runs.slice(0, -1).map(({ id }) => ({ id })),
+        { id: run.id, status: "completed", userMessageId: messageId },
+      ]);
+    expectOneLocalTurn(harness, prompt, sourceRoot);
+    await expect(transcriptMessages(page)).toHaveText([openingPrompt, prompt]);
+  } finally {
+    await harness.close();
+    removeFixtureRoot(fixtureRoot, prefix);
+  }
+});
+
+test("asks before working locally when the worktree can be restored", async () => {
+  const prefix = "ndx-wt-save-";
+  const harness = await createWorktreeHarness("worktree-restorable");
+  let fixtureRoot: string | undefined;
+  try {
+    const fixture = await openWorktreeProject(harness, prefix);
+    fixtureRoot = fixture.fixtureRoot;
+    const { page, sourceRoot } = fixture;
+    const { target, worktreeGitRoot } = await createAgentWorktreeChat(harness, fixture);
+    fs.writeFileSync(path.join(worktreeGitRoot, "README.md"), "Saved worktree changes\n");
+    const inventoryPath = await listedWorktreePath(page, worktreeGitRoot, target.sessionId);
+    await invokeIpc(page, "worktrees:delete", "local", inventoryPath);
+    // Worktrees settings archives the chat on removal. Reopen it while the snapshot is still saved.
+    requireCoreValue(
+      await invokeIpc(page, "project-sessions:unarchive", {
+        operationId: createBoundedOperationId("e2e.worktree.recovery.unarchive"),
+        payload: { sessionId: target.sessionId },
+      }),
+      "Chat unarchive",
+    );
+    await reopenWorktreeChat(page, target.threadId);
+
+    const notice = composerNotice(page);
+    await expect(notice.getByText("Worktree cleaned up", { exact: true })).toBeVisible();
+    await expect(notice.getByText("Removed to save disk space", { exact: true })).toBeVisible();
+    await expect(
+      notice.getByRole("button", { name: "Restore worktree", exact: true }),
+    ).toBeEnabled();
+    await expect(workLocallyAction(page)).toBeEnabled();
+    await expectMissingWorktreeLocation(page);
+    await captureReviewScreenshot(page, "02-restorable-notice.png");
+
+    await workLocallyAction(page).click();
+    const dialog = page.getByRole("dialog", { name: "Work locally", exact: true });
+    await expect(dialog).toHaveAccessibleDescription(
+      "The chat continues in the Project folder. Changes saved when its worktree was cleaned up stay in the worktree’s snapshot and won’t come along. Restore the worktree first to keep them.",
+    );
+    await captureReviewScreenshot(page, "03-work-locally-dialog.png");
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(notice.getByText("Worktree cleaned up", { exact: true })).toBeVisible();
+
+    await workLocallyAction(page).click();
+    await dialog.getByRole("button", { name: "Work locally", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expectLocalLocation(page);
+    await expect(transcriptMessages(page)).toHaveText([openingPrompt]);
+    expect(fs.existsSync(worktreeGitRoot)).toBe(false);
+    expect(runGit(sourceRoot, ["status", "--porcelain"])).toBe("");
+    const snapshot = runGit(sourceRoot, [
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/codex/snapshots",
+    ]);
+    expect(runGit(sourceRoot, ["show", `${snapshot}:README.md`])).toBe("Saved worktree changes");
+  } finally {
+    await harness.close();
+    removeFixtureRoot(fixtureRoot, prefix);
   }
 });

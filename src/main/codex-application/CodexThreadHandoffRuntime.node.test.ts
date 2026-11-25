@@ -8,6 +8,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { assert, it } from "@effect/vitest";
+import { parseCodexThreadHandoffJournal } from "../codex/codex-thread-handoff-journal";
 import type { CodexSshExecutionHostConfig } from "../../shared/types";
 import type {
   CodexThreadExecutionLocation,
@@ -77,6 +78,15 @@ describe("CodexThreadHandoffRuntime", () => {
       managedWorktreePath: destination.cwd,
       createdWorktree: true,
       warnings: [],
+    },
+  };
+
+  const relocation: ManagedWorktreeHandoffPreparation = {
+    destination: source,
+    prepared: {
+      direction: "relocate",
+      sourceWorkspaceRoot: destination.cwd,
+      destinationWorkspaceRoot: source.cwd,
     },
   };
 
@@ -165,6 +175,8 @@ describe("CodexThreadHandoffRuntime", () => {
     readonly rollbackWarnings?: readonly string[];
     readonly cleanupWarnings?: readonly string[];
     readonly safety?: { required: boolean; readonly changes: boolean[] };
+    readonly relocating?: boolean;
+    readonly selectStrategy?: ManagedWorktreeHandoff["Service"]["selectStrategy"];
     readonly preparationFailure?: "restored" | "uncertain";
     readonly onRead?: () => void;
   }) =>
@@ -174,7 +186,8 @@ describe("CodexThreadHandoffRuntime", () => {
       let destinationCommitAttempted = false;
       let handoffActive = false;
       const safety = input.safety ?? { required: false, changes: [] };
-      const isSource = (location: CodexThreadExecutionLocation) => location.cwd === source.cwd;
+      const isSource = (location: CodexThreadExecutionLocation) =>
+        location.cwd === (input.relocating ? destination.cwd : source.cwd);
       const record = (name: string): Effect.Effect<void, ThreadExecutionError> =>
         Effect.sync(() => input.calls.push(name)).pipe(
           Effect.asVoid,
@@ -280,9 +293,22 @@ describe("CodexThreadHandoffRuntime", () => {
           }),
       });
       const handoff = ManagedWorktreeHandoff.of({
-        prepare: (_entry, onProgress) =>
+        isMissingLocalSource: () => Effect.succeed(input.relocating === true),
+        selectStrategy: (entry) =>
+          input.selectStrategy?.(entry) ??
+          Effect.succeed(input.relocating ? "relocate" : "transfer"),
+        prepare: (_entry, strategy, onProgress) =>
           Effect.gen(function* () {
             input.calls.push("prepare");
+            if (strategy === "relocate") {
+              yield* (
+                onProgress?.({ phase: "confirm-source-missing", status: "running" }) ?? Effect.void
+              );
+              yield* (
+                onProgress?.({ phase: "confirm-source-missing", status: "success" }) ?? Effect.void
+              );
+              return relocation;
+            }
             yield* (
               onProgress?.({
                 phase: "create-new-worktree",
@@ -1027,6 +1053,173 @@ describe("CodexThreadHandoffRuntime", () => {
       assert.equal(entries[0]?.phase, "completed-with-warning");
       assert.include(entries[0]?.warnings.join(" "), "original caller is unavailable");
     }),
+  );
+
+  it.effect.each([destination.managedWorktreePath, null])(
+    "commits a move from a missing working directory (%s) and reports only the relocation steps",
+    (managedWorktreePath) =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const canonical = { ...destination, managedWorktreePath };
+        const runtime = yield* makeHarness({ calls, canonical, relocating: true });
+        const input = {
+          operationId: "move-local",
+          threadId: "thread-1",
+          destinationHostId: null,
+          expectedDestination: "local" as const,
+          expectedSource: "missing" as const,
+          followUpPrompt: null,
+        };
+        const result = yield* runtime.start(input);
+        assert.strictEqual(result.phase, "completed");
+        assert.deepEqual(result.destination, source);
+        const operation = yield* runtime.get(result.operationId);
+        assert.strictEqual(operation?.strategy, "relocate");
+        assert.deepEqual(
+          operation?.steps.map(({ id }) => id),
+          ["confirm-source-missing", "switching-thread"],
+        );
+        assert.deepEqual(yield* runtime.start(input), result);
+        assert.deepEqual(calls, ["stop", "prepare", "runtime:destination", "core:destination"]);
+      }),
+  );
+
+  it.effect("rolls back only execution metadata when a relocation's commit reply is lost", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({
+        calls,
+        canonical: destination,
+        relocating: true,
+        loseCommitReply: true,
+      });
+      const result = yield* start(runtime);
+      assert.strictEqual(result.phase, "failed");
+      assert.isFalse(result.coreCommitted);
+      assert.deepEqual(calls, [
+        "stop",
+        "prepare",
+        "runtime:destination",
+        "core:destination",
+        "runtime:source",
+        "core:source",
+      ]);
+    }),
+  );
+
+  it.effect("recovers relocations from the durable location without Git compensation", () =>
+    Effect.gen(function* () {
+      const journal: CodexThreadHandoffJournalEntry = {
+        ...makeEntry(),
+        source: destination,
+        destination: source,
+        prepared: relocation.prepared,
+        requestedDestination: "local",
+        strategy: "relocate",
+        preparationSteps: [{ id: "confirm-source-missing", status: "success", updatedAt: 2 }],
+        followUpPrompt: null,
+      };
+      const persisted = parseCodexThreadHandoffJournal(
+        JSON.stringify({ schemaVersion: 1, entries: [journal] }),
+      );
+      assert.deepEqual(persisted, [journal]);
+      for (const [canonical, phase, call] of [
+        [source, "completed", "runtime:destination"],
+        [destination, "failed", "runtime:source"],
+      ] as const) {
+        const calls: string[] = [];
+        const runtime = yield* makeHarness({
+          calls,
+          canonical,
+          relocating: true,
+          initial: persisted!,
+        });
+        assert.strictEqual((yield* runtime.recover())[0]?.phase, phase);
+        assert.deepEqual(calls, [call]);
+        assert.deepEqual(yield* runtime.recover(), []);
+      }
+    }),
+  );
+
+  it.effect("releases an interrupted inspection or relocation even if the source reappeared", () =>
+    Effect.gen(function* () {
+      for (const [phase, strategy, sourceMissing] of [
+        ["inspecting-source", undefined, false],
+        ["preparing-destination", "relocate", true],
+        ["preparing-destination", "relocate", false],
+        ["preparing-destination", "transfer", false],
+      ] as const) {
+        const calls: string[] = [];
+        const safety = { required: false, changes: [] as boolean[] };
+        const journal: CodexThreadHandoffJournalEntry = {
+          ...makeEntry(),
+          source: destination,
+          destination: null,
+          phase,
+          ...(strategy ? { strategy } : {}),
+          prepared: null,
+          runtimeSwitched: false,
+          coreCommitted: false,
+        };
+        const runtime = yield* makeHarness({
+          calls,
+          safety,
+          initial: [journal],
+          canonical: destination,
+          relocating: sourceMissing,
+        });
+        const recovered = (yield* runtime.recover())[0];
+        const unverifiedGit = strategy === "transfer";
+        assert.equal(recovered?.phase, unverifiedGit ? "recovery-required" : "failed");
+        assert.equal(safety.required, unverifiedGit);
+        assert.isEmpty(calls);
+      }
+    }),
+  );
+
+  it.effect(
+    "checks source intent under the hold before stopping execution and compares replays",
+    () =>
+      Effect.gen(function* () {
+        const safety = { required: false, changes: [] as boolean[] };
+        const calls: string[] = [];
+        const runtime = yield* makeHarness({
+          calls,
+          safety,
+          canonical: destination,
+          relocating: true,
+          selectStrategy: (entry) =>
+            Effect.suspend(() => {
+              assert.isTrue(safety.required);
+              assert.equal(entry.expectedSource, "missing");
+              return Effect.fail(
+                new ManagedWorktreeHandoffError({
+                  operation: "inspect-source",
+                  threadId: entry.threadId,
+                  cause: new Error("Chat execution location changed. Reopen the location menu."),
+                }),
+              );
+            }),
+        });
+        const request = {
+          operationId: "stale-source",
+          threadId: "thread-1",
+          destinationHostId: null,
+          followUpPrompt: null,
+          expectedDestination: "local",
+          expectedSource: "missing",
+        } as const;
+        const entry = yield* runtime.start(request);
+        assert.equal(entry.phase, "failed");
+        assert.include(entry.lastError ?? "", "Chat execution location changed.");
+        assert.isFalse(safety.required);
+        assert.isEmpty(calls);
+        assert.equal((yield* runtime.start(request)).operationId, entry.operationId);
+        assert.include(
+          (yield* Effect.flip(runtime.start({ ...request, expectedSource: "present" }))).message,
+          "destination intent",
+        );
+      }),
   );
 });
 

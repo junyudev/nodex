@@ -14,6 +14,7 @@ export function buildThreadHandoffOperation(
     projectId: "project-1",
     sourceHostId: "local",
     threadTitle: "Release notes",
+    strategy: "transfer",
     direction: "local-to-worktree",
     localBranch: "main",
     sourceBranch: "main",

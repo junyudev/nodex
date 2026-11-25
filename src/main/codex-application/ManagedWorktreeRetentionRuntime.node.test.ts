@@ -5,12 +5,18 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import { systemError } from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
-import type { ManagedWorktreeSettings, CodexSshExecutionHostConfig } from "../../shared/types";
+import type {
+  ManagedWorktreeSettings,
+  CodexSshExecutionHostConfig,
+  Project,
+} from "../../shared/types";
 import { AutomationApplication } from "../../host/automation-application/AutomationApplication";
 import {
   ProjectWorkspace,
@@ -73,11 +79,7 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CrossHostThreadHandoff } from "./CrossHostThreadHandoff";
-import {
-  ManagedWorktreeHandoff,
-  live,
-  type ManagedWorktreeHandoffPreparation,
-} from "./ManagedWorktreeHandoff";
+import { ManagedWorktreeHandoff, live } from "./ManagedWorktreeHandoff";
 
 describe("ManagedWorktreeRetentionRuntime", () => {
   const disabledSettings: ManagedWorktreeSettings = {
@@ -722,6 +724,7 @@ describe("ManagedWorktreeRetentionRuntime", () => {
             ),
           location: () => Effect.die("unused"),
           archive: () => Effect.die("unused"),
+          resumeAfterRestore: () => Effect.die("unused"),
         },
       });
 
@@ -1162,6 +1165,10 @@ describe("ManagedWorktreeHandoff", () => {
       preparationRestored?: boolean;
       rollbackWarnings?: readonly string[];
       noNativeThread?: boolean;
+      directories?: readonly string[];
+      availability?: Effect.Success<
+        ReturnType<ManagedWorktreeRuntime["Service"]["inspect"]>
+      >["availability"];
     } = {},
   ) =>
     Effect.gen(function* () {
@@ -1227,6 +1234,23 @@ describe("ManagedWorktreeHandoff", () => {
         live.pipe(
           Layer.provide(
             Layer.mergeAll(
+              Layer.succeed(
+                FileSystem.FileSystem,
+                FileSystem.makeNoop({
+                  stat: (directory) =>
+                    (options.directories ?? ["/repo"]).includes(directory)
+                      ? Effect.succeed({ type: "Directory" } as FileSystem.File.Info)
+                      : Effect.fail(
+                          systemError({ _tag: "NotFound", module: "FileSystem", method: "stat" }),
+                        ),
+                }),
+              ),
+              Layer.succeed(ProjectWorkspace, {
+                getProject: () =>
+                  Effect.succeed({
+                    sources: [{ kind: "directory", path: "/repo", order: 0 }],
+                  } as Project),
+              } as unknown as ProjectWorkspace["Service"]),
               Layer.succeed(CodexGateway, {} as CodexGateway["Service"]),
               Layer.succeed(
                 CodexAppServerCapabilities,
@@ -1287,9 +1311,15 @@ describe("ManagedWorktreeHandoff", () => {
                   Effect.sync(() => newborns.has(worktreeGitRoot)),
                 list: () => Effect.die("Unused inventory"),
                 remove: () => Effect.die("Unused removal"),
-                inspect: () => Effect.die("Unused inspection"),
+                inspect: (input, settings) =>
+                  Effect.sync(() => {
+                    assert.isTrue(settings?.fresh);
+                    assert.strictEqual(input.worktreeGitRoot, "/old-worktrees/abcd/repo");
+                    assert.isDefined(options.availability);
+                    return { availability: options.availability! };
+                  }),
                 restore: () => Effect.die("Unused restore"),
-                setOwner: () => Effect.void,
+                setOwner: () => Effect.die("Unexpected worktree owner mutation"),
               }),
             ),
           ),
@@ -1306,7 +1336,7 @@ describe("ManagedWorktreeHandoff", () => {
         const checkpoint = yield* Deferred.make<string>();
         const persisted = yield* Deferred.make<void>();
         const preparing = yield* fixture.handoff
-          .prepare(entry, (progress) =>
+          .prepare(entry, "transfer", (progress) =>
             progress.allocatedDestination
               ? Deferred.succeed(checkpoint, progress.allocatedDestination.worktreeGitRoot).pipe(
                   Effect.andThen(Deferred.await(persisted)),
@@ -1335,11 +1365,10 @@ describe("ManagedWorktreeHandoff", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* makeFixture({ noNativeThread: true });
-        yield* f.handoff.prepare({
-          ...entry,
-          threadId: "runtime-root",
-          threadTitle: "Runtime conversation",
-        });
+        yield* f.handoff.prepare(
+          { ...entry, threadId: "runtime-root", threadTitle: "Runtime conversation" },
+          "transfer",
+        );
         assert.equal(f.requests[1]?.operation, "prepare-handoff");
         if (f.requests[1]?.operation === "prepare-handoff")
           assert.equal(f.requests[1].input.threadTitle, "Runtime conversation");
@@ -1352,7 +1381,7 @@ describe("ManagedWorktreeHandoff", () => {
       Effect.gen(function* () {
         const fixture = yield* makeFixture();
         const result = yield* fixture.handoff
-          .prepare(entry, () =>
+          .prepare(entry, "transfer", () =>
             Effect.fail(
               new CodexThreadHandoffJournalStorageError({
                 operation: "persist",
@@ -1376,7 +1405,7 @@ describe("ManagedWorktreeHandoff", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeFixture({ failWorker: true });
-        const result = yield* fixture.handoff.prepare(entry).pipe(Effect.result);
+        const result = yield* fixture.handoff.prepare(entry, "transfer").pipe(Effect.result);
         assert.strictEqual(result._tag, "Failure");
         if (result._tag === "Failure") assert.isUndefined(result.failure.preparationRestored);
         assert.strictEqual(fixture.newborns.size, 1);
@@ -1389,7 +1418,7 @@ describe("ManagedWorktreeHandoff", () => {
       Effect.gen(function* () {
         for (const preparationRestored of [true, false]) {
           const fixture = yield* makeFixture({ failWorker: true, preparationRestored });
-          const result = yield* fixture.handoff.prepare(entry).pipe(Effect.result);
+          const result = yield* fixture.handoff.prepare(entry, "transfer").pipe(Effect.result);
           assert.strictEqual(result._tag, "Failure");
           if (result._tag === "Failure")
             assert.strictEqual(
@@ -1405,17 +1434,155 @@ describe("ManagedWorktreeHandoff", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const created = yield* makeFixture();
-        const preparation: ManagedWorktreeHandoffPreparation =
-          yield* created.handoff.prepare(entry);
+        const preparation = yield* created.handoff.prepare(entry, "transfer");
+        const { prepared } = preparation;
+        if (prepared.direction !== "to-worktree") throw new Error("Expected a prepared worktree");
         for (const options of [
           { failWorker: true },
           { rollbackWarnings: ["Source restoration incomplete"] },
         ]) {
           const fixture = yield* makeFixture(options);
-          fixture.newborns.add(preparation.prepared.managedWorktreePath);
+          fixture.newborns.add(prepared.managedWorktreePath);
           yield* fixture.handoff.rollback(entry.threadId, preparation).pipe(Effect.result);
-          assert.isTrue(fixture.newborns.has(preparation.prepared.managedWorktreePath));
+          assert.isTrue(fixture.newborns.has(prepared.managedWorktreePath));
         }
+      }),
+    ),
+  );
+
+  const missingWorktree = {
+    ...entry,
+    source: {
+      ...entry.source,
+      cwd: "/old-worktrees/abcd/repo/packages/app",
+      workspaceRoots: [
+        "/old-worktrees/abcd/repo/packages/app",
+        "/secondary/z",
+        "/old-worktrees/abcd/repo",
+        "/secondary/missing",
+        "/secondary/a",
+      ],
+      managedWorktreePath: "/old-worktrees/abcd/repo",
+    },
+  };
+
+  it.effect("relocates from a restorable worktree without touching Git or worktree ownership", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({
+          directories: ["/repo", "/repo/packages/app", "/secondary/z", "/secondary/a"],
+          availability: {
+            state: "restorable",
+            repositoryPath: "/repo",
+            snapshotRef: "refs/codex/snapshots/old",
+          },
+        });
+        const progress: string[] = [];
+        const prepared = yield* fixture.handoff.prepare(missingWorktree, "relocate", (step) =>
+          Effect.sync(() => void progress.push(`${step.phase}:${step.status}`)),
+        );
+        assert.strictEqual(prepared.prepared.direction, "relocate");
+        assert.deepEqual(prepared.destination, {
+          ...missingWorktree.source,
+          cwd: "/repo/packages/app",
+          workspaceRoots: ["/repo", "/secondary/z", "/secondary/a"],
+          managedWorktreePath: null,
+        });
+        yield* fixture.handoff.transferOwner(entry.threadId, prepared);
+        assert.deepEqual(yield* fixture.handoff.rollback(entry.threadId, prepared), []);
+        assert.deepEqual(yield* fixture.handoff.cleanup(entry.threadId, prepared, "committed"), []);
+        assert.deepEqual(progress, [
+          "confirm-source-missing:running",
+          "confirm-source-missing:success",
+        ]);
+        assert.deepEqual(fixture.requests, []);
+        assert.isEmpty(fixture.newborns);
+      }),
+    ),
+  );
+
+  it.effect(
+    "uses the checkout root when the relative folder is absent and rejects unverified moves",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fallback = yield* makeFixture({
+            directories: ["/repo"],
+            availability: { state: "gone", worktree: true },
+          });
+          assert.strictEqual(
+            (yield* fallback.handoff.prepare(missingWorktree, "relocate")).destination.cwd,
+            "/repo",
+          );
+
+          const noCheckout = yield* makeFixture({
+            directories: [],
+            availability: { state: "gone", worktree: true },
+          });
+          const noCheckoutError = yield* Effect.flip(
+            noCheckout.handoff.prepare(missingWorktree, "relocate"),
+          );
+          assert.isTrue(noCheckoutError.preparationRestored);
+          assert.include(String(noCheckoutError.cause), "no available local folder");
+          assert.deepEqual(noCheckout.requests, []);
+
+          const unavailable = yield* makeFixture({
+            directories: ["/repo"],
+            availability: {
+              state: "unavailable",
+              reason: "inspection-failed",
+              message: "Repository is offline",
+            },
+          });
+          const unavailableError = yield* Effect.flip(
+            unavailable.handoff.prepare(missingWorktree, "relocate"),
+          );
+          assert.isTrue(unavailableError.preparationRestored);
+          assert.include(String(unavailableError.cause), "Repository is offline");
+          assert.deepEqual(unavailable.requests, []);
+        }),
+      ),
+  );
+
+  it.effect("checks the checkout separately from its nested working directory", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const checkout = missingWorktree.source.managedWorktreePath;
+        const move = { ...missingWorktree, requestedDestination: "local" as const };
+        const missing = yield* makeFixture({ directories: ["/repo"] });
+        const nestedMissing = yield* makeFixture({
+          directories: ["/repo", checkout],
+        });
+        const restored = yield* makeFixture({
+          directories: ["/repo", checkout, move.source.cwd],
+        });
+        assert.equal(
+          yield* missing.handoff.selectStrategy({ ...move, expectedSource: "missing" }),
+          "relocate",
+        );
+        assert.equal(
+          yield* restored.handoff.selectStrategy({ ...move, expectedSource: "present" }),
+          "transfer",
+        );
+        for (const [fixture, expectedSource] of [
+          [restored, "missing"],
+          [missing, "present"],
+          [nestedMissing, "missing"],
+        ] as const) {
+          const stale = yield* Effect.flip(
+            fixture.handoff.selectStrategy({ ...move, expectedSource }),
+          );
+          assert.include(
+            String(stale.cause),
+            "Chat execution location changed. Reopen the location menu.",
+          );
+          assert.isEmpty(fixture.requests);
+        }
+        const failure = yield* Effect.flip(nestedMissing.handoff.selectStrategy(move));
+        assert.include(String(failure.cause), "working directory no longer exists");
+        const staleRelocation = yield* Effect.flip(nestedMissing.handoff.prepare(move, "relocate"));
+        assert.include(String(staleRelocation.cause), "Chat execution location changed");
+        assert.isEmpty(nestedMissing.requests);
       }),
     ),
   );
