@@ -8,11 +8,10 @@ Android APK, and iOS TestFlight build. It signs fresh Stable appcasts and compat
 Stable history. Stable enclosures and the Homebrew cask point to the Stable
 release's own copies.
 
-- **Nightly Release** samples protected `main` every three hours. It requires
-  green Main CI for that exact commit, then certifies, builds, probes, finalizes
-  and publishes a GitHub prerelease and the Nightly feeds. Missing or pending CI
-  defers the build. Failed CI links the blocking run. A validated version advance
-  and an already published build each produce an explicit skip.
+- **Nightly Release** runs every three hours and on manual dispatch. It selects
+  the most recent successful Main CI push on protected `main` whose commit is
+  reachable from current `main`. It certifies, builds, probes, finalizes and
+  publishes that commit as a GitHub prerelease and in the Nightly feeds.
 - **Release** runs on dispatch from `main`. It verifies the selected Nightly and
   its retained artifacts before feed signing. It publishes GitHub Latest, the
   Stable feeds, Agent Skills, Homebrew and TestFlight.
@@ -529,6 +528,22 @@ permission capability reads without prompting, and clean helper exit; an
 incompatible ready handshake fails immediately with the observed version.
 
 `vp run test:all` remains a compatibility alias for `verify:source`.
+
+## Nightly source selection
+
+The verified commit supplies the Build and Release Identities, including the
+source version and first-parent build ordinal. The run summary identifies the
+commit, links its Main CI run, and counts the commits that have landed since it.
+Pending and cancelled runs are skipped. The summary also links the newest failed
+Main CI push on current `main` when its run is newer than the selected success.
+A newer failure leaves the verified commit eligible.
+
+The summary reports `eligible` when a candidate can proceed,
+`no-verified-commit` when no successful push run verifies a reachable commit,
+or `already-published` when the exact Nightly is already published and its
+remote identity and assets verify. A commit that only advances a Stable release
+reports `version-advance-only`. Certification independently verifies the exact
+source on protected `main` before the build starts.
 
 ## Rehearse a candidate
 

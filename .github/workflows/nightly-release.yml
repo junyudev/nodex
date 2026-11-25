@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: ${{ github.workflow_sha }}
       - uses: ./.github/actions/setup-vite-plus
       - run: vp install --frozen-lockfile
 
@@ -41,57 +41,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          # The full checkout fetches main alongside the pinned workflow tools.
+          main_head="$(git rev-parse --verify 'refs/remotes/origin/main^{commit}')"
           result="${RUNNER_TEMP}/nightly-candidate.json"
-          identity="${RUNNER_TEMP}/nightly-identity.json"
-          vp run release:resolve:nightly -- --head "${source_sha}" --output "${result}"
+          vp run release:resolve:nightly -- --repo "${GITHUB_REPOSITORY}" --head "${main_head}" --output "${result}"
           # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
-            const result = require(process.argv[1]);
-            if (!result.shouldRelease) {
-              fs.writeFileSync(process.env.GITHUB_OUTPUT, `should_release=false\nsource_sha=${result.sourceSha}\n`);
-              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly decision: \`${result.reason}\` for \`${result.sourceSha}\`.\n`);
-              process.exit(0);
+            const { decision, headSha, verified, newerFailure, identity } = require(process.argv[1]);
+            const summary = [`Nightly decision: \`${decision}\`.`];
+            if (verified) {
+              const { sourceSha, runUrl, commitsBehindHead } = verified;
+              summary.push(`Verified source \`${sourceSha}\` ([Main CI](${runUrl})), ${commitsBehindHead} commit(s) behind main HEAD \`${headSha}\`.`);
+            } else {
+              summary.push(`No successful Main CI push run found for an ancestor of main HEAD \`${headSha}\`.`);
             }
-            const { channel, tag, ...build } = result.identity;
-            fs.writeFileSync(process.argv[2], `${JSON.stringify(result.identity, null, 2)}\n`);
-            fs.writeFileSync(process.argv[3], `${JSON.stringify(build, null, 2)}\n`);
-          ' "${result}" "${identity}" "${RUNNER_TEMP}/build-identity.json"
-          if [[ "$(node -p "require('${result}').shouldRelease")" != "true" ]]; then exit 0; fi
-          ci_result="${RUNNER_TEMP}/nightly-source-ci.json"
-          vp exec tsx scripts/release/cli.ts check-nightly-ci \
-            --repo "${GITHUB_REPOSITORY}" --head "${source_sha}" --output "${ci_result}"
-          # shellcheck disable=SC2016
-          node -e '
-            const fs = require("node:fs");
-            const result = require(process.argv[1]);
-            const run = result.runUrl ? ` [Main CI](${result.runUrl})` : "";
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly source CI: \`${result.decision}\` for \`${result.sourceSha}\`.${run}\n`);
-            if (result.decision === "failed") {
-              throw new Error(`Nightly blocked by unsuccessful Main CI for ${result.sourceSha}: ${result.runUrl}`);
+            if (newerFailure) {
+              summary.push(`[Main CI failed](${newerFailure.runUrl}) for \`${newerFailure.sourceSha}\`.`);
             }
-          ' "${ci_result}"
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join("\n\n") + "\n");
 
-          if [[ "$(node -p "require('${ci_result}').decision")" != "eligible" ]]; then exit 0; fi
-          tag="$(node -p "require('${identity}').tag")"
-          vp run release:check:nightly-remote -- --repo "${GITHUB_REPOSITORY}" --identity "${identity}" --output "${RUNNER_TEMP}/remote.json"
-          remote_decision="$(node -p "require('${RUNNER_TEMP}/remote.json').decision")"
-          if [[ "${remote_decision}" == "already-published" ]]; then
-            printf 'should_release=false\nsource_sha=%s\n' "${source_sha}" > "${GITHUB_OUTPUT}"
-            echo 'Nightly decision: no-source-change. the exact source identity is already published.' >> "${GITHUB_STEP_SUMMARY}"
-            exit 0
-          fi
-          if [[ "${remote_decision}" != "publish" && "${remote_decision}" != "resume-draft" ]]; then
-            echo "Unknown Nightly remote decision: ${remote_decision}" >&2
-            exit 1
-          fi
-          {
-            echo "should_release=true"
-            echo "source_sha=$(node -p "require('${identity}').sourceSha")"
-            echo "tag=${tag}"
-            echo "version=$(node -p "require('${identity}').version")"
-          } > "${GITHUB_OUTPUT}"
+            const outputs = [`should_release=${decision === "eligible"}`];
+            if (decision === "eligible") {
+              const { channel, tag, ...build } = identity;
+              fs.writeFileSync(process.argv[2], `${JSON.stringify(build, null, 2)}\n`);
+              outputs.push(`source_sha=${build.sourceSha}`, `tag=${tag}`, `version=${build.version}`);
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, outputs.join("\n") + "\n");
+          ' "${result}" "${RUNNER_TEMP}/build-identity.json"
 
       - name: Upload Build Identity
         if: steps.candidate.outputs.should_release == 'true'

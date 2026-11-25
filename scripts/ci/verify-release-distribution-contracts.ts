@@ -24,6 +24,58 @@ const assertNeeds = (job: UnknownRecord, dependencies: readonly string[], label:
     throw new Error(`${label} must require ${dependencies.join(", ")}.`);
 };
 
+function verifyNightlySource(jobs: UnknownRecord): void {
+  const source = "${{ needs.resolve.outputs.source_sha }}";
+  const resolve = requireRecord(jobs.resolve, "Nightly resolve");
+  const outputs = requireRecord(resolve.outputs, "Nightly resolve outputs");
+  if (outputs.source_sha !== "${{ steps.candidate.outputs.source_sha }}") {
+    throw new Error("Nightly must export its verified candidate source SHA.");
+  }
+
+  const certification = requireRecord(jobs.certification, "Nightly certification");
+  if (certification.uses !== "./.github/workflows/_certify-release-source.yml") {
+    throw new Error("Nightly must certify the verified candidate source.");
+  }
+
+  for (const name of [
+    "certification",
+    "distribution",
+    "windows-distribution",
+    "mobile-distribution",
+    "assemble",
+    "promote",
+  ]) {
+    const job = requireRecord(jobs[name], `Nightly ${name}`);
+    assertNeeds(job, ["resolve"], `Nightly ${name}`);
+    if (requireRecord(job.with, `Nightly ${name} inputs`).source_sha !== source) {
+      throw new Error(`Nightly ${name} must use the verified candidate source SHA.`);
+    }
+  }
+  assertNeeds(
+    requireRecord(jobs.distribution, "Nightly distribution"),
+    ["certification"],
+    "Nightly distribution",
+  );
+
+  const finalizer = requireRecord(jobs["finalize-sparkle"], "Nightly finalizer");
+  assertNeeds(finalizer, ["resolve"], "Nightly finalizer");
+  const steps = Array.isArray(finalizer.steps) ? finalizer.steps.filter(isRecord) : [];
+  const checkouts = steps.filter(
+    (step) => typeof step.uses === "string" && step.uses.startsWith("actions/checkout@"),
+  );
+  const finalize = steps.find((step) => step.uses === "./.github/actions/finalize-sparkle");
+  if (
+    checkouts.length === 0 ||
+    checkouts.some((step) => !isRecord(step.with) || step.with.ref !== source) ||
+    !isRecord(finalize?.with) ||
+    finalize.with.source_sha !== source
+  ) {
+    throw new Error(
+      "Nightly finalization must check out and use the verified candidate source SHA.",
+    );
+  }
+}
+
 /** Architecture completeness and the protected signing boundary are release admission contracts. */
 export function verifyReleaseDistributionWorkflows(
   workflows: ReadonlyMap<string, UnknownRecord>,
@@ -153,6 +205,7 @@ export function verifyReleaseDistributionWorkflows(
         : ["distribution", "windows-distribution", "mobile-distribution", "finalize-sparkle"],
       filename,
     );
+    if (filename === "nightly-release.yml") verifyNightlySource(callerJobs);
   }
 }
 

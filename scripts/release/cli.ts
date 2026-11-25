@@ -30,7 +30,6 @@ import {
 import { parseBuildIdentity, parseReleaseIdentity, publicationIdentity } from "./model";
 import {
   assertSameBuildIdentity,
-  resolveNightlyCandidate,
   resolveBuildIdentity,
   verifyBuildIdentityAtRef,
 } from "./candidate";
@@ -43,7 +42,7 @@ import {
 import { runSparkleFinalizeCli, runSparkleHistoryCli } from "./sparkle";
 import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
 import { runNightlyRetention } from "./retention";
-import { inspectNightlySourceCi } from "./source-ci";
+import { resolveNightlyRelease } from "./nightly";
 
 const projectRoot = resolve(import.meta.dirname, "../..");
 
@@ -181,18 +180,12 @@ const main = async (): Promise<void> => {
   }
   if (command === "resolve-nightly") {
     writeJson(
-      required(flags, "output"),
-      resolveNightlyCandidate({
+      flags.get("output"),
+      resolveNightlyRelease({
         cwd: projectRoot,
-        head: flags.get("head") ?? "HEAD",
+        repo: required(flags, "repo"),
+        headSha: required(flags, "head"),
       }),
-    );
-    return;
-  }
-  if (command === "check-nightly-ci") {
-    writeJson(
-      required(flags, "output"),
-      inspectNightlySourceCi(required(flags, "repo"), required(flags, "head")),
     );
     return;
   }
