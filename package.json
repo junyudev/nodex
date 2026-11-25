@@ -1,6 +1,6 @@
 {
   "name": "nodex",
-  "version": "0.5.14",
+  "version": "0.5.15",
   "private": true,
   "description": "Block-based Agent Orchestrator",
   "license": "Apache-2.0",

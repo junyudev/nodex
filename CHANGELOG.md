@@ -2,6 +2,34 @@
 
 The notes of every Nodex release, newest first. Changes that have not been released yet are files in [`changes/`](changes/).
 
+## [0.5.14] - 2026-11-25
+
+See every Agent at work in one tab
+
+### Added
+
+- Accept work from the chat where you reviewed it. When a Page is ready for your review, its chat shows the Page and **Accept** right above where you type, so you can decide without leaving what the Agent did; replying instead sends the work back with your changes.
+- See every Agent at work in one place. The new **Agents** tab shows each chat that is working, waiting on you or queued, with the whole tree of subagents it delegated to and how each stands, so you can watch many chats at once. Open it from **Agents** in the Inbox header to keep it beside your Inbox, or from **All agents** in a chat's Subagents map; in a Project, opening a chat from it shows the chat in the Agent Dock so the overview stays in view.
+- Antigravity chats show running background commands in the Chat Summary. Select a command to follow its live output.
+- Create a linked Page, jump to a chat's Project, or change a linked Page's Status straight from a chat's sidebar hover card. Chats without a linked Page now show a **New page** button at the bottom of their hover card that creates and links a new Page titled after the chat and pre-opens it in that chat's right panel without leaving your current view, new Pages created inside any chat now default to that chat's title instead of `Untitled`, clicking the Project row opens the Project Scene, and clicking a linked Page's Status glyph opens the Status picker in place.
+- Browse every settled chat on the new **Settled** page. Open it from **View all** on the Settled shelf, the shelf's heading or **Go to Settled** (`G` `E`): it counts your settled chats, groups them by when you settled them, searches their titles and first messages, shows one Project's at a time, and reopens a chat from its row. The shelf itself now says how many settled chats there are and when you have reached the end.
+
+### Changed
+
+- Accepting work gives you a few seconds to undo it, wherever you accept it: the Inbox, the Page, its chat or its row in the sidebar. A chat waiting for your review now offers **Accept** by name on its row instead of the Settle check, and every action on a chat's row names itself when you point at it.
+- Agents now leave problems they notice outside their task in your Inbox, so they are not lost. A defect, a recurring friction or a better long-term design an Agent finds while working arrives as a message from its chat, with its evidence and a suggested direction, ready to hand to another chat. The Agent keeps its current change to the task. It sends one only when the finding matters beyond the task and is not already tracked.
+- The usage ring now shows when the 5-hour limit, not the week, is what's holding you back. While the 5-hour window has less left than the weekly one, the ring is solid only up to the 5-hour level and fades on to the weekly level, which returns when the 5-hour window resets; a used-up 5-hour window turns only that faded stretch red, so it no longer looks like a used-up week. The card counts down to the 5-hour reset.
+
+### Removed
+
+- Windows releases and automatic updates now support x64 PCs only; Nodex no longer ships a separate Windows on Arm build.
+
+### Fixed
+
+- Antigravity profiles and API key connections now show model switches in **Settings > Agents** as soon as their models are discovered.
+- A chat waiting on a long command no longer shows "Stalled · needs you" in the sidebar and Inbox. A build or test that ran quietly for more than twenty minutes, in the foreground or as a background command or Monitor the chat would be woken by, looked like a stall because a command shows no progress while it runs. Waiting on commands no longer counts toward a stall, and the twenty minutes start over once the command ends. An Agent that stops responding is still flagged, even while a command such as a dev server runs beside it.
+- **Show more** on the Settled shelf no longer stops after about fifty chats. Chat lists threw away the older chats they had just read whenever any other chat changed, and folded back to their first fifty on every change; they now keep everything you revealed, read on from where they stopped, and offer **Retry** when a read fails.
+
 ## [0.5.13] - 2026-11-25
 
 Snooze, settle and organize chats

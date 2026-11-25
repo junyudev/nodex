@@ -1,1 +1,0 @@
-**Show more** on the Settled shelf no longer stops after about fifty chats. Chat lists threw away the older chats they had just read whenever any other chat changed, and folded back to their first fifty on every change; they now keep everything you revealed, read on from where they stopped, and offer **Retry** when a read fails.
