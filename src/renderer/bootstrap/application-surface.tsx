@@ -10,7 +10,7 @@ import {
 } from "react";
 import { FormattedMessage } from "../lib/i18n";
 import { startupShellMessages } from "./startup-messages";
-import { NODEX_LOGO_GEOMETRY, NODEX_LOGO_VIEW_BOX } from "./nodex-logo-source";
+import { NODEX_LOGO_GEOMETRY, NODEX_LOGO_VIEW_BOX } from "../../shared/nodex-logo";
 
 interface ApplicationReadiness {
   readonly ready: Promise<void>;

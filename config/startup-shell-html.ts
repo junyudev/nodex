@@ -4,7 +4,7 @@ import {
   NODEX_LOGO_GEOMETRY,
   NODEX_LOGO_MASK_IMAGE,
   NODEX_LOGO_VIEW_BOX,
-} from "../src/renderer/bootstrap/nodex-logo-source";
+} from "../src/shared/nodex-logo";
 
 export const STARTUP_SHELL_STYLE_ANCHOR = "<!-- nodex-startup-shell:styles -->";
 export const STARTUP_SHELL_OVERLAY_ANCHOR = "<!-- nodex-startup-shell:overlay -->";

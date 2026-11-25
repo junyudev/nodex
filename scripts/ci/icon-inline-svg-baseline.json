@@ -4,7 +4,6 @@
       "count": 1,
       "reason": "Startup failure presents the canonical Nodex brand logo without loading the Workbench icon graph."
     },
-    "src/renderer/bootstrap/nodex-logo-source.ts": 1,
     "src/renderer/components/board/editor/image-layout.browser.test.tsx": {
       "count": 2,
       "reason": "Browser test fixture uses SVG image bytes with exact dimensions to verify image layout stability."

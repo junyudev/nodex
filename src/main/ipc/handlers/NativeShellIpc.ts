@@ -99,16 +99,6 @@ const menuTemplate = (
         submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor, platform),
       };
     }
-    if (item.type === "checkbox") {
-      return {
-        ...base,
-        type: "checkbox",
-        checked: item.checked === true,
-        click: () => {
-          if (enabled) onSelect(item.id);
-        },
-      };
-    }
     return {
       ...base,
       click: () => {

@@ -1,5 +1,5 @@
 import { cn } from "../../lib/utils";
-import { NODEX_LOGO_MASK_IMAGE } from "../../bootstrap/nodex-logo-source";
+import { NODEX_LOGO_MASK_IMAGE } from "../../../shared/nodex-logo";
 
 const MASK_STYLE = {
   WebkitMaskImage: NODEX_LOGO_MASK_IMAGE,
