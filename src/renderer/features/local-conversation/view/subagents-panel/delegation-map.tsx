@@ -1,7 +1,7 @@
 import { defineMessages, useIntl, type IntlShape } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { AgentInstanceIcon } from "@/components/shared/icons/provider-icons";
 import { conversationIdentityQueryOptions } from "@/lib/conversation-identity";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
@@ -52,151 +52,177 @@ export function DelegationMap({
   rootThreadId,
   rows,
   summary,
+  lead,
+  leadPlacement = "centered",
+  leadWidthRem = 13,
   more,
   nowMs,
+  still = false,
   onSelect,
   onStop,
   isStopping,
 }: {
   readonly rootThreadId: string;
   readonly rows: readonly SubagentOverviewRow[];
-  readonly summary: { readonly total: number; readonly back: number };
+  /** How many subagents the default lead counts as delegated and back. */
+  readonly summary?: { readonly total: number; readonly back: number };
+  /** A lead card of the caller's own, in place of the conversation's lead. */
+  readonly lead?: ReactNode;
+  readonly leadPlacement?: "centered" | "top";
+  readonly leadWidthRem?: number;
   readonly more: DelegationMapMore | null;
   readonly nowMs: number;
+  /** Holds every line still, as reduced motion does, while the map is out of sight. */
+  readonly still?: boolean;
   readonly onSelect: (row: SubagentOverviewRow) => void;
   readonly onStop?: (row: SubagentOverviewRow) => void;
   readonly isStopping?: (row: SubagentOverviewRow) => boolean;
 }) {
-  const reducedMotion = useResolvedReducedMotion();
-  const map = projectDelegationMap({ rootThreadId, rows, moreAbove: more !== null });
+  const reducedMotion = useResolvedReducedMotion() || still;
+  const map = projectDelegationMap({
+    rootThreadId,
+    rows,
+    moreAbove: more !== null,
+    leadPlacement,
+  });
   const settle = reducedMotion ? "" : "transition-[margin] duration-200 ease-out";
   const fan = map.rails.find((rail) => rail.parentKey === null);
   const railWidth = (map.maxDepth + 1) * GEOMETRY.indent;
+  const hasTree = map.nodes.length > 0 || more !== null;
 
   return (
     <div className="@container" data-delegation-map={rootThreadId}>
       <div
-        className="grid gap-y-3 @[34rem]:grid-cols-[13rem_4rem_minmax(0,22rem)] @[34rem]:justify-center @[34rem]:gap-y-0"
+        className="grid gap-y-3 @[34rem]:grid-cols-[var(--delegation-lead-width)_4rem_minmax(0,22rem)] @[34rem]:justify-center @[34rem]:gap-y-0"
         style={
           {
+            "--delegation-lead-width": `${leadWidthRem}rem`,
             "--delegation-lead-top": rem(map.beside.leadTop),
             "--delegation-column-top": rem(map.beside.columnTop),
           } as CSSProperties
         }
       >
-        <DelegationLead
-          rootThreadId={rootThreadId}
-          summary={summary}
-          className={cn("@[34rem]:mt-(--delegation-lead-top) @[34rem]:h-26", settle)}
-        />
-        <svg
-          aria-hidden="true"
-          className="hidden text-token-text-tertiary @[34rem]:block"
-          viewBox={`0 0 ${GEOMETRY.fanWidth} ${map.beside.height}`}
-          style={{ width: rem(GEOMETRY.fanWidth), height: rem(map.beside.height) }}
-          fill="none"
-        >
-          {fan?.nodes.map((node) => {
-            const path = delegationFanPath(
-              map.beside.leadCenterY,
-              map.beside.columnTop + node.centerY,
-            );
-            return (
-              <DelegationEdge
-                key={node.row.threadId}
-                agent={node.row.agent}
-                state={node.edge}
-                line={path}
-                returnPath={path}
-                reducedMotion={reducedMotion}
-              />
-            );
-          })}
-        </svg>
-        <div className={cn("min-w-0 @[34rem]:mt-(--delegation-column-top)", settle)}>
-          <div className="relative pl-7 @[34rem]:pl-0">
+        <div className={cn("min-w-0 @[34rem]:mt-(--delegation-lead-top) @[34rem]:h-26", settle)}>
+          {lead ?? (
+            <DelegationLead
+              rootThreadId={rootThreadId}
+              summary={summary ?? { total: 0, back: 0 }}
+              className="h-full"
+            />
+          )}
+        </div>
+        {hasTree ? (
+          <>
             <svg
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 left-0 overflow-visible text-token-text-tertiary @[34rem]:-translate-x-7"
-              viewBox={`0 0 ${railWidth} ${map.columnHeight}`}
-              style={{ width: rem(railWidth), height: rem(map.columnHeight) }}
+              className="hidden text-token-text-tertiary @[34rem]:block"
+              viewBox={`0 0 ${GEOMETRY.fanWidth} ${map.beside.height}`}
+              style={{ width: rem(GEOMETRY.fanWidth), height: rem(map.beside.height) }}
               fill="none"
             >
-              {map.rails.map((rail) => {
-                const lastWorking = rail.nodes.findLast((node) => node.edge === "flowing");
+              {fan?.nodes.map((node) => {
+                const path = delegationFanPath(
+                  map.beside.leadCenterY,
+                  map.beside.columnTop + node.centerY,
+                );
                 return (
-                  <g
-                    key={rail.parentKey ?? "lead"}
-                    // Beside its subagents the lead fans out instead of running a rail.
-                    className={rail.parentKey === null ? "@[34rem]:hidden" : undefined}
-                  >
-                    <path
-                      d={delegationRailTrunkPath(rail)}
-                      stroke={NEUTRAL_EDGE}
-                      strokeOpacity={0.3}
-                      strokeWidth={1.5}
-                    />
-                    {/* Subagents on different harnesses share this line, so work runs down it in
-                        no harness's color and takes one where it turns off. */}
-                    {lastWorking ? (
-                      <FlowDashes
-                        d={delegationRailTrunkPath(rail, lastWorking)}
-                        color={NEUTRAL_EDGE}
-                        opacity={0.6}
-                        moving={!reducedMotion}
-                      />
-                    ) : null}
-                    {rail.nodes.map((node) => (
-                      <DelegationEdge
-                        key={node.row.threadId}
-                        agent={node.row.agent}
-                        state={node.edge}
-                        line={delegationRailBranchPath(rail, node)}
-                        returnPath={delegationRailRunPath(rail, node)}
-                        reducedMotion={reducedMotion}
-                      />
-                    ))}
-                  </g>
+                  <DelegationEdge
+                    key={node.row.threadId}
+                    agent={node.row.agent}
+                    state={node.edge}
+                    line={path}
+                    returnPath={path}
+                    reducedMotion={reducedMotion}
+                  />
                 );
               })}
             </svg>
-            <ol className="flex flex-col gap-2">
-              {more ? (
-                <li className="flex h-7 items-center">
-                  <button
-                    type="button"
-                    className="cursor-interaction rounded-md px-3 text-xs text-token-text-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
-                    onClick={more.onClick}
-                  >
-                    {more.label}
-                  </button>
-                </li>
-              ) : null}
-              <AnimatePresence initial={false}>
-                {map.nodes.map((node) => (
-                  <motion.li
-                    key={node.row.threadId}
-                    initial={reducedMotion ? false : { opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className={node.density === "full" ? "h-21" : "h-9"}
-                    style={{ marginLeft: rem((node.depth - 1) * GEOMETRY.indent) }}
-                    data-delegation-node={node.row.threadId}
-                    data-delegation-edge={node.edge}
-                  >
-                    <DelegationNodeCard
-                      node={node}
-                      nowMs={nowMs}
-                      onSelect={onSelect}
-                      onStop={onStop}
-                      stopping={isStopping?.(node.row) === true}
-                    />
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ol>
-          </div>
-        </div>
+            <div className={cn("min-w-0 @[34rem]:mt-(--delegation-column-top)", settle)}>
+              <div className="relative pl-7 @[34rem]:pl-0">
+                <svg
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-0 left-0 overflow-visible text-token-text-tertiary @[34rem]:-translate-x-7"
+                  viewBox={`0 0 ${railWidth} ${map.columnHeight}`}
+                  style={{ width: rem(railWidth), height: rem(map.columnHeight) }}
+                  fill="none"
+                >
+                  {map.rails.map((rail) => {
+                    const lastWorking = rail.nodes.findLast((node) => node.edge === "flowing");
+                    return (
+                      <g
+                        key={rail.parentKey ?? "lead"}
+                        // Beside its subagents the lead fans out instead of running a rail.
+                        className={rail.parentKey === null ? "@[34rem]:hidden" : undefined}
+                      >
+                        <path
+                          d={delegationRailTrunkPath(rail)}
+                          stroke={NEUTRAL_EDGE}
+                          strokeOpacity={0.3}
+                          strokeWidth={1.5}
+                        />
+                        {/* Subagents on different harnesses share this line, so work runs down it in
+                        no harness's color and takes one where it turns off. */}
+                        {lastWorking ? (
+                          <FlowDashes
+                            d={delegationRailTrunkPath(rail, lastWorking)}
+                            color={NEUTRAL_EDGE}
+                            opacity={0.6}
+                            moving={!reducedMotion}
+                          />
+                        ) : null}
+                        {rail.nodes.map((node) => (
+                          <DelegationEdge
+                            key={node.row.threadId}
+                            agent={node.row.agent}
+                            state={node.edge}
+                            line={delegationRailBranchPath(rail, node)}
+                            returnPath={delegationRailRunPath(rail, node)}
+                            reducedMotion={reducedMotion}
+                          />
+                        ))}
+                      </g>
+                    );
+                  })}
+                </svg>
+                <ol className="flex flex-col gap-2">
+                  {more ? (
+                    <li className="flex h-7 items-center">
+                      <button
+                        type="button"
+                        className="cursor-interaction rounded-md px-3 text-xs text-token-text-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
+                        onClick={more.onClick}
+                      >
+                        {more.label}
+                      </button>
+                    </li>
+                  ) : null}
+                  <AnimatePresence initial={false}>
+                    {map.nodes.map((node) => (
+                      <motion.li
+                        key={node.row.threadId}
+                        initial={reducedMotion ? false : { opacity: 0, x: 8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className={node.density === "full" ? "h-21" : "h-9"}
+                        style={{ marginLeft: rem((node.depth - 1) * GEOMETRY.indent) }}
+                        data-delegation-node={node.row.threadId}
+                        data-delegation-edge={node.edge}
+                      >
+                        <DelegationNodeCard
+                          node={node}
+                          nowMs={nowMs}
+                          onSelect={onSelect}
+                          onStop={onStop}
+                          stopping={isStopping?.(node.row) === true}
+                        />
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </ol>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -312,7 +338,6 @@ function DelegationLead({
   const conversation = useQuery(conversationIdentityQueryOptions(rootThreadId)).data ?? null;
   const agent = useAgentIdentity(conversation?.agent);
   const settings = agent ? agentIdentityText(agent, "settings") : null;
-  const settled = summary.back >= summary.total;
   return (
     <div
       className={cn(
@@ -344,28 +369,45 @@ function DelegationLead({
         <span className="truncate text-xs/4 text-token-text-secondary">{settings}</span>
       ) : null}
       <span className="truncate text-xs/4 text-token-text-tertiary tabular-nums" role="status">
-        {settled
-          ? intl.formatMessage(
-              {
-                id: "conversation.delegationMap.allBack",
-                defaultMessage: "{total, plural, one {# subagent back} other {All # back}}",
-              },
-              { total: summary.total },
-            )
-          : intl.formatMessage(
-              {
-                id: "conversation.delegationMap.delegating",
-                defaultMessage: "Delegating · {back}/{total} back",
-              },
-              { back: summary.back, total: summary.total },
-            )}
+        {delegationSummaryText(summary, intl)}
       </span>
     </div>
   );
 }
 
+/**
+ * How many of a lead's subagents have reported back, as its card says it. A card that already
+ * says how its work stands leaves out that it is delegating.
+ */
+export function delegationSummaryText(
+  summary: { readonly total: number; readonly back: number },
+  intl: IntlShape,
+  form: "full" | "short" = "full",
+): string {
+  if (summary.back >= summary.total)
+    return intl.formatMessage(
+      {
+        id: "conversation.delegationMap.allBack",
+        defaultMessage: "{total, plural, one {# subagent back} other {All # back}}",
+      },
+      { total: summary.total },
+    );
+  return form === "short"
+    ? intl.formatMessage(
+        { id: "conversation.delegationMap.back", defaultMessage: "{back}/{total} back" },
+        { back: summary.back, total: summary.total },
+      )
+    : intl.formatMessage(
+        {
+          id: "conversation.delegationMap.delegating",
+          defaultMessage: "Delegating · {back}/{total} back",
+        },
+        { back: summary.back, total: summary.total },
+      );
+}
+
 /** A harness mark in the slot the cards share, so marks, avatars and words line up down a map. */
-function HarnessMark({
+export function HarnessMark({
   agent,
   identity,
 }: {

@@ -921,6 +921,8 @@ The Subagents overview draws the conversation's work tree as a map or as a list.
 at the top of the overview switches between them. The choice belongs to the person, applies to
 every chat and window, and starts as the map. Until the conversation has a subagent the
 overview says so in words and offers no choice.
+**All agents**, next to the switch, steps out to every chat's work: it opens the
+[Agents tab](agents-tab-behavior.md) beside the conversation, showing the chat's Project.
 
 Beside that control, **Let subagents delegate** shows whether this conversation's subagents may
 delegate or start chats, from the first delegation on. It follows Settings → Agents and reads
@@ -1420,7 +1422,11 @@ secret cards and approvals also reach their source Session whenever their own co
 would wait; nested side chats follow the source chain. Their execution activity remains
 independent. The work Coordinator uses the same execution tree as the sidebar. A Session is otherwise running while its root or a delegated conversation has a
 live Run, and background while delegated or native background work is live or a delegated
-result will wake it; idle Sessions are absent. Only requests that make the Session wait count
+result will wake it; idle Sessions are absent. A Session whose next Run waits for the Runtime to admit it
+is queued, with its place in the queue; the sidebar, chat tabs and the phone show it as idle, and
+the [Agents tab](agents-tab-behavior.md) shows it as queued. Each live Session also keeps when
+its current stretch of live work began, which moving between running, waiting, queued and
+background does not change. Only requests that make the Session wait count
 in its pending request count. Each activity names the root Thread, active Run, provider, model,
 and up to 25 live background tasks with their owning conversation, name, command and start time.
 Core never stores these facts.

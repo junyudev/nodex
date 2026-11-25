@@ -347,6 +347,25 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(screen.queryByTestId("library-right-panel")).toBeNull();
   });
 
+  test("the Inbox Agents button keeps the Inbox visible in its own group", async () => {
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [] } });
+    const row = within(await screen.findByTestId("sidebar-inbox-row-wrapper")).getByRole("button");
+    await act(async () => {
+      fireEvent.click(row);
+      await Promise.resolve();
+    });
+    const inbox = await screen.findByTestId("inbox-route");
+    await act(async () => {
+      fireEvent.click(within(inbox).getByRole("button", { name: "Agents" }));
+      await Promise.resolve();
+    });
+    const agents = await screen.findByRole("tab", { name: "Agents", selected: true });
+    const home = getInboxHomeTab(screen);
+    expect(home.getAttribute("aria-selected")).toBe("true");
+    expect(agents.closest('[role="tablist"]')).not.toBe(home.closest('[role="tablist"]'));
+    expect(screen.getByTestId("inbox-route")).toBeTruthy();
+  });
+
   test("empty Project bottom panel opens a Project-scoped Terminal", async () => {
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/Users/asc/repo/nodex")],

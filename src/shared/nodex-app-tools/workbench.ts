@@ -1,3 +1,4 @@
+import { WorkbenchAgentsSurfaceConfigSchema } from "../schemas/workbench-agents";
 import { pluginAppBindingKey } from "../agent-plugins/app-entrypoints";
 import { WorkbenchPanelPluginAppBindingSchema } from "../schemas/workbench-scene";
 import { WorkbenchSkillSurfaceConfigSchema } from "../schemas/workbench-skill";
@@ -161,6 +162,11 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
     ...referenceBase,
     kind: z.literal("side_chat"),
     config: z.strictObject({ sessionId: identity }),
+  }),
+  z.strictObject({
+    ...referenceBase,
+    kind: z.literal("agents"),
+    config: WorkbenchAgentsSurfaceConfigSchema,
   }),
 ]);
 export type WorkbenchSurfaceReference = z.infer<typeof WorkbenchSurfaceReferenceSchema>;
@@ -471,7 +477,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   if (kind === "files")
     return JSON.stringify([kind, config.projectId, workbenchFilesResourceKey(config)]);
   if (kind === "plugin_app") return pluginAppBindingKey(config);
-  if (kind === "review") return JSON.stringify([kind, config.projectId]);
+  if (kind === "review" || kind === "agents") return JSON.stringify([kind, config.projectId]);
   if (kind === "terminal")
     return JSON.stringify([
       kind,

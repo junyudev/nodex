@@ -91,6 +91,11 @@ export function projectDelegationMap(input: {
   readonly rows: readonly SubagentOverviewRow[];
   /** Whether a control for the subagents not shown yet takes the top of the column. */
   readonly moreAbove: boolean;
+  /**
+   * Where the lead sits beside its subagents: centered on a short column, or at the top, where a
+   * stack of maps keeps every lead in line under its caption.
+   */
+  readonly leadPlacement?: "centered" | "top";
 }): DelegationMap {
   const geometry = DELEGATION_MAP_GEOMETRY;
   const byKey = new Map(input.rows.map((row) => [row.threadId, row]));
@@ -149,8 +154,11 @@ export function projectDelegationMap(input: {
 
   const columnHeight = Math.max(0, top - geometry.gap);
   const halfLead = geometry.leadHeight / 2;
-  const leadCenterY = Math.min(Math.max(columnHeight / 2, halfLead), geometry.leadPinY);
-  const columnTop = Math.max(0, halfLead - columnHeight / 2);
+  const atTop = input.leadPlacement === "top";
+  const leadCenterY = atTop
+    ? halfLead
+    : Math.min(Math.max(columnHeight / 2, halfLead), geometry.leadPinY);
+  const columnTop = atTop ? 0 : Math.max(0, halfLead - columnHeight / 2);
   return {
     nodes,
     rails,

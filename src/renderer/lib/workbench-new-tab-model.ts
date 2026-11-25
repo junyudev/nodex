@@ -12,6 +12,7 @@ export const NEW_TAB_TOOL_RANK: readonly PanelNewTabActionKind[] = [
   "terminal",
   "files",
   "review",
+  "agents",
   "page_stage",
   "db_view",
   "canvas_stage",

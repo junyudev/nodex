@@ -1,4 +1,4 @@
-import { defineMessages, getIntl } from "@/lib/i18n";
+import { defineMessage, defineMessages, getIntl } from "@/lib/i18n";
 import type { ComponentType } from "react";
 import {
   createCommandKeymapState,
@@ -11,6 +11,7 @@ import {
 } from "../../shared/command-keybindings";
 import {
   SidePanelBrowserIcon,
+  DelegationMapIcon,
   SidePanelFilesIcon,
   SidePanelReviewIcon,
   SidePanelSideChatIcon,
@@ -57,6 +58,11 @@ const NODEX_PANEL_OPTION_ACTION_KIND_SET = new Set<PanelNewTabActionKind>(
   NODEX_PANEL_OPTION_ACTION_ORDER,
 );
 
+export const AGENTS_TAB_TITLE = defineMessage({
+  id: "lib.workbenchPanelActions.agents.label",
+  defaultMessage: "Agents",
+});
+
 export const PANEL_TOOL_TITLE_MESSAGES = defineMessages({
   files: { id: "lib.workbenchPanelActions.files.label", defaultMessage: "Files" },
   review: { id: "lib.workbenchPanelActions.review.label", defaultMessage: "Review" },
@@ -65,6 +71,21 @@ export const PANEL_TOOL_TITLE_MESSAGES = defineMessages({
 });
 
 export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
+  {
+    kind: "agents",
+    defaultPanelId: "right",
+    targetPanelIds: ["right", "bottom"],
+    get label() {
+      return getIntl().formatMessage(AGENTS_TAB_TITLE);
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.agents.description",
+        defaultMessage: "See live Agent work and subagents",
+      });
+    },
+    Icon: DelegationMapIcon,
+  },
   {
     kind: "files",
     defaultPanelId: "right",

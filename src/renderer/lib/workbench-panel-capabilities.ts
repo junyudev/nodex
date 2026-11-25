@@ -66,6 +66,7 @@ const PROJECT_SESSION_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "db_view",
   "page_stage",
   "canvas_stage",
+  "agents",
 ];
 
 const PROJECT_SCENE_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
@@ -76,6 +77,7 @@ const PROJECT_SCENE_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "db_view",
   "page_stage",
   "canvas_stage",
+  "agents",
 ];
 
 const PROJECTLESS_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
@@ -85,6 +87,7 @@ const PROJECTLESS_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "terminal",
   "files",
   "new_page",
+  "agents",
 ];
 
 const ALL_ACTION_KINDS: readonly WorkbenchPanelActionKind[] = [...PROJECT_SESSION_ACTION_ORDER];
@@ -95,6 +98,7 @@ const BOTTOM_PANEL_ACTIONS = new Set<WorkbenchPanelActionKind>([
   "browser",
   "files",
   "side_chat",
+  "agents",
 ]);
 const PROJECT_REQUIRED_ACTIONS = new Set<WorkbenchPanelActionKind>([
   "db_view",
@@ -116,6 +120,13 @@ function resolveActionCapability(
 ): WorkbenchPanelActionCapability {
   const owner = input.owner;
   if (!owner) return unavailable("no_session");
+  // The Agents action can always focus its existing tab.
+  if (kind === "agents") {
+    if (owner.kind === "library") return unavailable("owner_not_supported");
+    return input.panelId === "right" || owner.kind === "session"
+      ? { available: true, reason: null }
+      : unavailable("panel_not_supported");
+  }
   if (owner.kind === "library" || owner.kind === "inbox") return unavailable("owner_not_supported");
 
   const supportedActions = input.panelId === "right" ? RIGHT_PANEL_ACTIONS : BOTTOM_PANEL_ACTIONS;
@@ -163,7 +174,9 @@ export function resolveWorkbenchPanelCapabilities(
         ? PROJECTLESS_ACTION_ORDER
         : input.owner?.kind === "session"
           ? PROJECT_SESSION_ACTION_ORDER
-          : [];
+          : input.owner?.kind === "inbox"
+            ? ["agents" as const]
+            : [];
 
   return {
     actions,

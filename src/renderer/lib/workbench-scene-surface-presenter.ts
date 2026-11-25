@@ -1,5 +1,8 @@
 import { getIntl } from "@/lib/i18n";
-import { findNearestWorkbenchPanelLeafToRight } from "../../shared/workbench-panel-layout";
+import {
+  findNearestWorkbenchPanelLeafToRight,
+  findWorkbenchPanelLeafForTab,
+} from "../../shared/workbench-panel-layout";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import {
   getWorkbenchSurfaceReuseKey,
@@ -50,7 +53,7 @@ export function createWorkbenchSceneSurfacePresenter(
         : undefined;
     const adjacent =
       source?.panelId && source.groupId
-        ? openBesidePage(initialScene, source.panelId, source.groupId)
+        ? openBeside(initialScene, source.panelId, source.groupId)
         : null;
     if (source && !adjacent)
       return {
@@ -64,8 +67,16 @@ export function createWorkbenchSceneSurfacePresenter(
     const matching = adjacent
       ? matches.find((tab) => tab.panelId === adjacent.panelId && tab.groupId === adjacent.leafId)
       : matches[0];
+    const inboxLeaf =
+      !matching &&
+      surface.kind === "agents" &&
+      placement?.kind === "adjacent-right" &&
+      initialScene.primary?.kind === "inbox" &&
+      findWorkbenchPanelLeafForTab(initialScene.panels.right.layout, initialScene.primary.id);
+    const besideInbox = inboxLeaf ? openBeside(initialScene, "right", inboxLeaf.id) : null;
     const target =
       adjacent ??
+      besideInbox ??
       (matching?.panelId && matching.groupId
         ? { scene: initialScene, panelId: matching.panelId, leafId: matching.groupId }
         : resolvePanelSurfaceTarget(
@@ -127,7 +138,7 @@ export function createWorkbenchSceneSurfacePresenter(
   };
 }
 
-function openBesidePage(
+function openBeside(
   scene: Parameters<typeof insertWorkbenchSceneLeaf>[0],
   panelId: PresentWorkbenchPanelSurfaceInput["target"]["panelId"],
   groupId: string,

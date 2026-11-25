@@ -1,4 +1,5 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
+import { AgentsTabIcon } from "@/features/agents/agents-surface";
 import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import type { ReactNode } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
@@ -144,12 +145,19 @@ function makePanelItems(
               isLoading={browserTabSnapshot?.isLoading ?? false}
               isWaitingForResponse={browserTabSnapshot?.isWaitingForResponse ?? false}
             />
+          ) : surface.kind === "agents" ? (
+            <AgentsTabIcon scope={surface.config} className="icon-xs" />
           ) : surface.kind === "plugin_app" ? (
             <PluginAppLogo presentation={surface.config.presentation} className="icon-xs" />
           ) : undefined,
         closable: surface.id !== scene.primary?.id,
         preview,
-        placement: surface.id === scene.primary?.id ? undefined : EVERY_PANEL,
+        placement:
+          surface.id === scene.primary?.id
+            ? undefined
+            : surface.kind === "agents"
+              ? ["right"]
+              : EVERY_PANEL,
         renderPanel: (_close, context) =>
           isRemoteSpace() && ["files", "terminal", "review"].includes(surface.kind) ? (
             <p className="p-3 text-sm text-token-text-secondary">

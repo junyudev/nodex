@@ -19,6 +19,7 @@ import {
   WORKBENCH_SCENE_VERSION,
   inboxSurface,
   isLibrarySceneSurfaceAllowed,
+  isWorkbenchAgentsPanelAllowed,
   isWorkbenchScenePanelSurfaceAllowed,
   makeWorkbenchSceneKey,
   migrateWorkbenchSceneV1ToV4,
@@ -41,6 +42,7 @@ import { inboxScopeKey, LIBRARY_INBOX, projectInbox } from "../inbox";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
 import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
+import { WorkbenchAgentsSurfaceConfigSchema } from "./workbench-agents";
 import {
   MAX_WORKBENCH_SESSION_VIEW_JSON_BYTES,
   WorkbenchPanelStateSchema,
@@ -381,6 +383,11 @@ export const WorkbenchSurfaceDescriptorSchema = z
       ...surfaceBaseSchema,
       kind: z.literal("side_chat"),
       config: WorkbenchSideChatSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...surfaceBaseSchema,
+      kind: z.literal("agents"),
+      config: WorkbenchAgentsSurfaceConfigSchema,
     }),
   ])
   .superRefine((surface, context) => {
@@ -750,9 +757,15 @@ function stripDatabaseLayoutsFromScene(value: unknown): unknown {
   };
 }
 
+const knownSurfaceKinds = new Set<unknown>(
+  WorkbenchSurfaceDescriptorSchema.options.map((surface) => surface.shape.kind.value),
+);
+
 function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): boolean {
   if (!surface || typeof surface !== "object" || Array.isArray(surface)) return true;
   const record = surface as Record<string, unknown>;
+  // Leave unsupported kinds and Agents descriptors for the strict parser to validate.
+  if (record.kind === "agents" || !knownSurfaceKinds.has(record.kind)) return true;
   if (ownerKind === "project") {
     return (
       record.kind !== "conversation" &&
@@ -931,6 +944,26 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
     .strict()
     .superRefine((scene, context) => {
       const entries = Object.entries(scene.panelSurfacesById);
+      const agents = entries.filter(([, surface]) => surface.kind === "agents");
+      if (agents.length > 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["panelSurfacesById"],
+          message: "A Scene can have only one Agents tab",
+        });
+      }
+      for (const [surfaceId] of agents) {
+        const panelId = findWorkbenchPanelLeafForTab(scene.panels.bottom.layout, surfaceId)
+          ? "bottom"
+          : "right";
+        if (isWorkbenchAgentsPanelAllowed(scene.owner, panelId)) continue;
+        context.addIssue({
+          code: "custom",
+          path: ["panelSurfacesById", surfaceId],
+          message: "Agents cannot be placed in this Scene panel",
+        });
+      }
+
       if (entries.length > WORKBENCH_SCENE_MAX_PANEL_SURFACES) {
         context.addIssue({
           code: "custom",
@@ -1059,7 +1092,11 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
               message: "Inbox Scene cannot own execution composer state",
             });
           }
-          if (entries.some(([, surface]) => !isLibrarySceneSurfaceAllowed(surface))) {
+          if (
+            entries.some(
+              ([, surface]) => !isWorkbenchScenePanelSurfaceAllowed(scene.owner, surface),
+            )
+          ) {
             context.addIssue({
               code: "custom",
               path: ["panelSurfacesById"],

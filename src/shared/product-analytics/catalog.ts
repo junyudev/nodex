@@ -133,6 +133,7 @@ const rendererEvents = [
   /** A surface a person looked at or used in a window session: adoption, not volume. */
   event("feature_used", {
     feature: z.enum([
+      "agents",
       "browser",
       "canvas",
       "command_palette",

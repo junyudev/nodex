@@ -105,6 +105,7 @@ interface WorkbenchCommandPaletteHostProps {
   readonly toggleSidePanel: () => void;
   readonly openAutomations: () => void;
   readonly openInbox: () => void;
+  readonly openAgentsTab: (() => void) | null;
   /** Creates a Page where the current place's work lives, or null where there is none. */
   readonly newPage: (() => void) | null;
   readonly openLibraryFiles: () => void;
@@ -139,6 +140,7 @@ export function WorkbenchCommandPaletteHost({
   toggleSidePanel,
   openAutomations,
   openInbox,
+  openAgentsTab,
   newPage,
   openLibraryFiles,
   openProcessManager,
@@ -234,12 +236,15 @@ export function WorkbenchCommandPaletteHost({
     canExportConversationMarkdown: activeSession
       ? resolveSessionMarkdownExport(resolveSessionExecution(activeSession)) !== null
       : false,
-    panelActionAvailability: Object.fromEntries(
-      Object.entries(panelCapabilities.actions).map(([kind, capability]) => [
-        kind,
-        capability.available,
-      ]),
-    ) as CommandPaletteShellCommandContext["panelActionAvailability"],
+    panelActionAvailability: {
+      ...(Object.fromEntries(
+        Object.entries(panelCapabilities.actions).map(([kind, capability]) => [
+          kind,
+          capability.available,
+        ]),
+      ) as CommandPaletteShellCommandContext["panelActionAvailability"]),
+      agents: openAgentsTab !== null,
+    },
     canOpenSessionInNewWindow,
     commandKeymapState,
     gitBlameEnabled: activeLineBlame.enabled,
@@ -332,6 +337,7 @@ export function WorkbenchCommandPaletteHost({
     openBrowserTab: () => {
       void panelCommands.dispatchPanelAction("browser", { panelId: "right" });
     },
+    openAgentsTab: () => openAgentsTab?.(),
     openReviewTab: () => {
       void panelCommands.dispatchPanelAction("review", { panelId: "right" });
     },

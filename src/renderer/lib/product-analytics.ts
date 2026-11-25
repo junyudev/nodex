@@ -31,6 +31,7 @@ export function recordFeatureUsed(feature: Feature): void {
 }
 
 const FEATURE_OF_SURFACE: Partial<Record<WorkbenchSurfaceKind, Feature>> = {
+  agents: "agents",
   browser: "browser",
   canvas_stage: "canvas",
   db_view: "database",

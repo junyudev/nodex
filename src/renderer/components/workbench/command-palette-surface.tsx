@@ -55,6 +55,7 @@ import {
   FileIcon,
   FolderIcon,
   BoardIcon,
+  DelegationMapIcon,
   SidePanelSideChatIcon,
   SidebarVisibleIcon,
 } from "@/components/shared/icons";
@@ -276,6 +277,7 @@ function CommandGlyph({ id, className }: { id: string; className: string }) {
   if (id === "wakeThread" || isSnoozeThreadCommandId(id))
     return <ClockIcon className={className} />;
   if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return <BoardIcon className={className} />;
+  if (id === "openAgentsTab") return <DelegationMapIcon className={className} />;
   if (id === "openSideChat") return <SidePanelSideChatIcon className={className} />;
   if (id === "toggleThreadUnread") return <NativeMenuIcon iconKey="unread" className={className} />;
   if (id === "settleThread") return <NativeMenuIcon iconKey="markRead" className={className} />;

@@ -21,6 +21,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "terminal",
       "files",
       "new_page",
+      "agents",
     ]);
   });
 
@@ -36,7 +37,13 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["side_chat", "browser", "terminal", "files"]);
+    expect(result.availableActionKinds).toEqual([
+      "side_chat",
+      "browser",
+      "terminal",
+      "files",
+      "agents",
+    ]);
   });
 
   it("keeps Review unavailable without an attached thread", () => {
@@ -76,8 +83,14 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(blank.availableActionKinds).toEqual(["browser", "terminal", "files", "new_page"]);
-    expect(bottom.availableActionKinds).toEqual(["browser", "terminal", "files"]);
+    expect(blank.availableActionKinds).toEqual([
+      "browser",
+      "terminal",
+      "files",
+      "new_page",
+      "agents",
+    ]);
+    expect(bottom.availableActionKinds).toEqual(["browser", "terminal", "files", "agents"]);
     expect(blank.actions.side_chat.reason).toBe("no_thread");
   });
 
@@ -131,8 +144,15 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "db_view",
       "page_stage",
       "canvas_stage",
+      "agents",
     ]);
-    expect(bottom.availableActionKinds).toEqual(["terminal", "browser", "files", "side_chat"]);
+    expect(bottom.availableActionKinds).toEqual([
+      "terminal",
+      "browser",
+      "files",
+      "side_chat",
+      "agents",
+    ]);
   });
 
   it("offers an independent side chat from ACP history while native Review remains unavailable", () => {
@@ -159,6 +179,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "db_view",
       "page_stage",
       "canvas_stage",
+      "agents",
     ]);
   });
 
@@ -172,11 +193,12 @@ describe("resolveWorkbenchPanelCapabilities", () => {
         hasAttachedThread: true,
         cwd: "/workspace",
       },
-      existingTabKinds: ["review", "browser"],
+      existingTabKinds: ["review", "browser", "agents"],
     });
 
     expect(result.actions.review.reason).toBe("singleton_exists");
     expect(result.actions.browser.available).toBe(true);
+    expect(result.actions.agents.available).toBe(true);
   });
 
   it("keeps Session-only actions out of Project Scenes", () => {
@@ -197,6 +219,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "db_view",
       "page_stage",
       "canvas_stage",
+      "agents",
     ]);
     expect(result.actions.review.reason).toBe("session_required");
     expect(result.actions.side_chat.reason).toBe("session_required");
@@ -217,6 +240,16 @@ describe("resolveWorkbenchPanelCapabilities", () => {
 
     expect(result.actions.review.reason).toBe("no_thread");
     expect(result.availableActionKinds).not.toContain("review");
+  });
+
+  it("offers only Agents in the Library Inbox's content panel", () => {
+    const owner = { kind: "inbox" } as const;
+    expect(
+      resolveWorkbenchPanelCapabilities({ owner, panelId: "right" }).availableActionKinds,
+    ).toEqual(["agents"]);
+    expect(
+      resolveWorkbenchPanelCapabilities({ owner, panelId: "bottom" }).availableActionKinds,
+    ).toEqual([]);
   });
 
   it("does not expose generic execution actions in the Library Scene", () => {

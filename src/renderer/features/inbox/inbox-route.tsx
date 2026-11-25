@@ -38,6 +38,7 @@ import {
   NoteIcon,
   TodoIcon,
   BoardIcon,
+  DelegationMapIcon,
   NodexLogoMarkIcon,
   CheckmarkIcon,
   ClockIcon,
@@ -54,6 +55,7 @@ import {
   SURFACE_TOOLBAR_ROW_CLASS,
   surfaceViewPillClassName,
 } from "@/components/workbench/surface-toolbar";
+import { AGENTS_TAB_TITLE } from "@/lib/workbench-panel-actions";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
 import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
 import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
@@ -137,6 +139,7 @@ export interface InboxRouteProps {
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
   readonly onOpenGitHubSettings: () => void;
+  readonly onOpenAgents: () => void;
   /** Whether this Inbox is the visible surface; only then does its first load hold startup. */
   readonly visible?: boolean;
 }
@@ -150,6 +153,7 @@ function InboxHeader({
   notesPageId,
   agents,
   onViewChange,
+  onOpenAgents,
   onOpenDatabase,
   onOpenPage,
   onOpenSettings,
@@ -166,6 +170,7 @@ function InboxHeader({
   readonly notesPageId: string | null;
   readonly agents: InboxAgents;
   readonly onViewChange: (view: InboxView) => void;
+  readonly onOpenAgents: () => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   readonly onOpenSettings: () => void;
@@ -231,6 +236,9 @@ function InboxHeader({
             <NoteIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
+        <ToolbarIconButton label={intl.formatMessage(AGENTS_TAB_TITLE)} onClick={onOpenAgents}>
+          <DelegationMapIcon className="icon-sm" />
+        </ToolbarIconButton>
         {databaseId ? (
           <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
             <BoardIcon className="icon-sm" />
@@ -372,6 +380,7 @@ export function InboxRoute({
   onOpenDatabase,
   onOpenSettings,
   onOpenGitHubSettings,
+  onOpenAgents,
   visible = true,
 }: InboxRouteProps) {
   const intl = useIntl();
@@ -793,6 +802,7 @@ export function InboxRoute({
       onViewChange={changeView}
       agents={agents}
       onOpenDatabase={onOpenDatabase}
+      onOpenAgents={onOpenAgents}
       onOpenSettings={onOpenSettings}
       onOpenNodex={() =>
         void openNodex().then(onOpenSession, (error: unknown) =>
