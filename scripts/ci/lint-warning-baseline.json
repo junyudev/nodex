@@ -97,9 +97,6 @@
   "packages/nodex-app-tools-mcp/src/pipe.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 3
   },
-  "scripts/agent-eval/compare.test.ts": {
-    "nodex(no-explicit-test-timeout)": 3
-  },
   "scripts/ci/run-timed.test.ts": {
     "nodex(no-explicit-test-timeout)": 1
   },
@@ -160,26 +157,17 @@
   "src/main/browser-use/chrome/ChromeExtensionPipeRegistry.node.test.ts": {
     "nodex(no-wall-clock-in-tests)": 1
   },
-  "src/main/browser/browser-profile-helper-client.test.ts": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/main/chat-search/ChatSearch.core-scenario.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
   "src/main/codex-application/CodexAccount.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2
   },
   "src/main/codex-application/CodexApplicationProtocol.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 14
+    "nodex(no-polling-loop-in-tests)": 10
   },
   "src/main/codex-application/CodexConnectionLifecycle.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/codex-application/CodexRealtimeVoice.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2
-  },
-  "src/main/codex-application/CodexThreadReadState.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/codex-application/ManagedWorktreeRuntime.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
@@ -189,9 +177,6 @@
   },
   "src/main/codex-runtime/CodexRuntime.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
-  },
-  "src/main/codex/codex-local-thread-handoff-git.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
   },
   "src/main/codex/codex-runtime.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
@@ -222,45 +207,20 @@
     "nodex(no-explicit-test-timeout)": 1,
     "nodex(no-wall-clock-in-tests)": 1
   },
-  "src/main/core-client/development-seed-sandbox.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
-  "src/main/core-client/editor-history-lifecycle-scenario.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
-  "src/main/core-client/editor-history-process-scenario.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 2
-  },
   "src/main/core-client/host-relay.node.test.ts": {
     "nodex(no-wall-clock-in-tests)": 1
-  },
-  "src/main/core-client/page-file-provenance-scenario.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
-  "src/main/core-client/remote-events.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/core-client/remote-faults.node.test.ts": {
     "nodex(no-explicit-test-timeout)": 2,
     "nodex(no-real-time-wait-in-tests)": 5
-  },
-  "src/main/core-client/remote-http.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 3,
-    "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/main/core-client/rust-core-runtime-benchmark.node.test.ts": {
     "nodex(no-explicit-test-timeout)": 2,
     "nodex(no-polling-loop-in-tests)": 3,
     "nodex(no-real-time-wait-in-tests)": 4
   },
-  "src/main/core-client/sidebar-custom-sections-scenario.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
   "src/main/core-runtime/CoreEventHub.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 3
-  },
-  "src/main/core-runtime/DocumentLiveRuntime.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/core-runtime/LocalCommitRuntime.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2
@@ -268,18 +228,12 @@
   "src/main/core-runtime/ProjectionAudienceRuntime.node.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/main/core-runtime/ProjectionLiveRuntime.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
-  },
   "src/main/core-runtime/StoreAdministration.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/dictation/mac-dictation-native-helper-client.test.ts": {
     "nodex(no-explicit-test-timeout)": 1,
     "nodex(no-wall-clock-in-tests)": 1
-  },
-  "src/main/file-watch-host.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
   },
   "src/main/git-worker/repository-watcher.test.ts": {
     "nodex(no-polling-loop-in-tests)": 5
@@ -293,18 +247,11 @@
   "src/main/host-runtime/ApplicationSchedulers.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/main/host-runtime/RendererClientRuntime.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
-  },
   "src/main/logging/terminal-sink.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 4
   },
   "src/main/platform/electron/DictationPolicyClient.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
-  },
-  "src/main/platform/node/AgentRuntimeProcess.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1,
-    "nodex(no-real-time-wait-in-tests)": 6
   },
   "src/main/platform/node/ClaudeSdkBoundary.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2,
@@ -325,20 +272,11 @@
   "src/main/product-analytics/ProductAnalytics.node.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/main/terminal-runtime/TerminalRuntimeMap.node.test.ts": {
-    "nodex(no-polling-loop-in-tests)": 1
-  },
   "src/main/terminal-runtime/TerminalSessions.node.test.ts": {
     "nodex(no-polling-loop-in-tests)": 2
   },
   "src/renderer/components/block-documents/long-page-open.stress.browser.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1,
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/renderer/components/block-documents/owned-block-document-boundary.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/renderer/components/board/editor/automatic-transform-history.jsdom.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/renderer/components/board/editor/nfm-code-block.browser.test.tsx": {
@@ -374,9 +312,6 @@
   "src/renderer/components/workbench/sidebar-thread-reorder.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
   "src/renderer/features/acp-agents/acp-agents-settings-section.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
@@ -387,7 +322,6 @@
     "nodex(no-real-time-wait-in-tests)": 2
   },
   "src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts": {
-    "nodex(no-explicit-test-timeout)": 1,
     "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/renderer/features/local-conversation/local-conversation-store.test.tsx": {
@@ -397,16 +331,10 @@
   "src/renderer/features/local-conversation/transcript/local-transcript-connection.jsdom.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
   "src/renderer/features/local-conversation/view/composer/composer-prediction.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/renderer/features/local-conversation/view/composer/use-composer-prediction.test.tsx": {
@@ -415,25 +343,13 @@
   "src/renderer/features/local-conversation/view/local-conversation-find-placement.browser.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
-  "src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 4
-  },
   "src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 2
   },
   "src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx": {
     "nodex(no-real-time-wait-in-tests)": 3
   },
-  "src/renderer/features/local-conversation/view/shared/loading-motion-parity.browser.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 2
-  },
   "src/renderer/features/local-conversation/view/shared/loading-motion-parity.stress.browser.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx": {
-    "nodex(no-real-time-wait-in-tests)": 2
-  },
-  "src/renderer/features/opencode-setup/opencode-setup-owner.test.ts": {
     "nodex(no-real-time-wait-in-tests)": 1
   },
   "src/renderer/features/review/review-diff-highlight.browser.test.tsx": {
@@ -484,12 +400,6 @@
   },
   "src/renderer/test/dom.tsx": {
     "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/shared/codex-conversation-state/codex-active-history-eviction.test.ts": {
-    "nodex(no-real-time-wait-in-tests)": 1
-  },
-  "src/shared/database-view-rules.test.ts": {
-    "nodex(no-wall-clock-in-tests)": 1
   },
   "tests/e2e/acp-agent-setup.spec.ts": {
     "nodex(no-explicit-test-timeout)": 8

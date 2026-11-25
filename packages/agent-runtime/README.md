@@ -192,6 +192,12 @@ delegation and bounded-transport verification. Run focused tests with this packa
 `vite.config.ts`. Its strict TypeScript configuration is independent of Electron
 and renderer projects.
 
+Tests ported from the upstream source keep its file names and layout and run in the
+default tier on every change, as upstream runs them. Most are regression tests for
+provider protocol behavior, and a one-to-one layout lets an upstream patch carry its
+tests with it. Keep their time down with weighted CI shards rather than by merging,
+splitting or deferring them.
+
 Source provenance and license notices are recorded in `UPSTREAM.json` and
 `LICENSE.t3code`. Bundled distribution must retain those notices.
 Everything else carries Nodex's own name, including code adapted from that source: packages,

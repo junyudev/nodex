@@ -162,8 +162,7 @@ to `%USERPROFILE%\.nodex`; development continues to use the launcher's isolated
 Development HTTP, HMR and renderer port checks use loopback only; no Windows
 Firewall network-access permission is needed. The pinned Vite+ patch skips its
 wildcard availability probes for strict ports: the requested loopback bind itself
-is the availability check. Keep `strictPort` enabled and verify transient binds
-with `config/electron-development-network.test.ts` when upgrading Vite+.
+is the availability check. Keep `strictPort` enabled when upgrading Vite+.
 Packaged Agent Runtime and OAuth HTTP listeners also bind `127.0.0.1`; Core,
 app-tools and conversation peers use local named pipes on Windows. The template
 picker uses stdio, with no network listener.
@@ -1207,10 +1206,16 @@ The test commands follow production boundaries:
   Cargo rebuilds the affected profile and ordinary dev bypasses shared native
   reuse. Core hashes its executable during startup, so keep debug data outside
   that executable admission input.
+- `vp run test:nightly` runs the deep `nightly` tier (`*.nightly.*`) using
+  development native binaries for exhaustive multi-provider matrices, heavy
+  multi-process scenarios, and slow replay fixtures. It runs on Linux in
+  Nightly CI and release certification; PR/Main CI and local `check:changed`
+  run only the nightly suites a change touches.
 - `vp run test:stress` runs every catalogued stress owner, including core-client,
   one worker at a time, independently of the ordinary suite.
 - `vp run verify:test-inventory` compares independent repository enumeration with
-  Vitest discovery in each actual runtime. Duplicates, unowned files, omitted
+  Vitest discovery in each actual runtime across all four tiers (`default`,
+  `nightly`, `stress`, `live`). Duplicates, unowned files, omitted
   collection, and wrong tiers fail the gate. Nightly and release certification
   validate their full suite lists against the same catalog.
 - `vp run test:complete` runs both ordinary and stress tiers without the
@@ -1220,7 +1225,9 @@ The test commands follow production boundaries:
   weekly Performance CI.
 - `vp run core:fmt`, `vp run core:clippy`, and the Core test tiers validate
   the native authority. `vp run core:test:pr` is the fast CI tier (nextest
-  plus doctests); `vp run core:test:full` adds migration compatibility, and
+  plus doctests); `vp run core:test:full` runs the workspace suite once
+  (covering `infrastructure::` migration tests without running them twice;
+  `vp run core:test:migration` remains available for focused local runs), and
   `vp run core:test:nightly` runs every explicitly named ignored scale,
   performance, and reliability gate. `vp run core:test`
   remains the complete local/source-verification alias.
@@ -1331,8 +1338,8 @@ tests:
 | `dual-window`      | `runtime-short` and a three-paragraph reply, observed by two windows            | Upstream observations per Thread and Runtime → Main bytes per window                                                                             |
 
 ```bash
-vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/testkit/StreamSteadyWork.integration.test.ts
-vp run test:core-client src/main/agent-runtime/AgentRuntimeConversationWork.node.test.ts
+NODEX_TEST_TIER=nightly vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/testkit/StreamSteadyWork.nightly.integration.test.ts
+NODEX_TEST_TIER=nightly vp run test:core-client src/main/agent-runtime/AgentRuntimeConversationWork.nightly.node.test.ts
 vp run test:core-client:stress src/main/agent-runtime/AgentRuntimeConversationWork.stress.node.test.ts
 ```
 
@@ -1488,6 +1495,17 @@ isolated runs without gesture retries:
 ```bash
 vp exec playwright test --config config/playwright.e2e.config.ts \
   --grep "@dnd-smoke" --repeat-each=10
+```
+
+Use the `.nightly.` filename segment for exhaustive multi-provider matrices,
+heavy multi-process scenarios, or slow replay fixtures that should run nightly
+on Linux and during release certification rather than on every PR/Main push:
+
+```text
+feature.nightly.test.ts
+feature.nightly.node.test.ts
+feature.nightly.integration.test.ts
+feature.nightly.browser.test.tsx
 ```
 
 Use the `.stress.` filename segment for a test that intentionally exercises

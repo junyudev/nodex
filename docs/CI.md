@@ -9,7 +9,7 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
 
 - `.github/workflows/ci-main.yml` verifies landed changes after the fast local
   check. It selects static groups, application suites, affected Rust crates,
-  protocol and Store migration contracts, and native Windows x64 coverage from
+  protocol contracts, and native Windows x64 coverage from
   the newest green Main CI ancestor to the tested `main` commit. One push run
   stays active while GitHub keeps the newest push pending. Comparing against
   the last green commit covers intervening changes even when a pending run is
@@ -24,8 +24,9 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   contracts. The run summary marks the reduced plan. Marking the PR ready or
   adding `ci:full` reruns classification with the ordinary selection.
 - `.github/workflows/ci-nightly.yml` runs every deterministic static and Rust
-  gate, and all default application suites including browser on Linux and
-  standard `macos-26`. Two macOS application suites can run at once, leaving
+  gate, all default application suites including browser on Linux and
+  standard `macos-26`, and the deep `nightly` tier (`vp run test:nightly`) on
+  Linux. Two macOS application suites can run at once, leaving
   three macOS slots for stress, runtime contracts, and curated Electron E2E.
   The `nightly complete` aggregate requires all of these jobs. Paid-agent and
   UI performance tests remain excluded.
@@ -141,14 +142,15 @@ or test. Application installs use the shared Vite+ dependency cache.
 
 Pre-merge and Main CI use the classifier to choose suites, then validate every
 file in each selected suite through the test result cache. A file with missing,
-changed, or unobservable inputs executes. Browser remains one Chromium unit.
-Nightly and release certification execute their complete suites independently.
+changed, or unobservable inputs executes. Browser shards execute only their
+assigned files and cache per shard. Nightly and release certification execute
+their complete default and `nightly` tiers independently.
 
-Linux CI splits unit, renderer, Core-client, and Agent Runtime into two shards
-each by repository-relative file path. Adding a test does not move existing
-files. The application matrix uses one job per selected suite on average.
-Shards and shorter suites share jobs to stay within that budget on every
-plan. Each selected shard must succeed independently of cache reuse.
+Linux CI splits browser into three dedicated shards and splits unit, renderer,
+Core-client, and Agent Runtime into two shards each by repository-relative file
+path. Adding a test does not move existing files. Non-browser shards and shorter
+suites share jobs to stay within budget on every plan. Each selected shard must
+succeed independently of cache reuse.
 
 The reusable application matrix owns `unit`, `effect-codex`, `agent-runtime`,
 `core-client`, `main`, `renderer`, `integration`, and `browser`. Browser is a
@@ -212,18 +214,20 @@ the same plan as the executable edit alone; docs-only and landing-plus-docs
 remain explicit narrow plans.
 
 Changed test files use the repository filename convention to select exactly one
-owning suite. Explicit stress
+owning suite. Explicit `nightly` (`*.nightly.*`) and `stress` (`*.stress.*`)
 files remain Nightly-owned. Vitest configuration, TypeScript project
 configuration, lockfiles, CI orchestration, and deleted files promote selection
 to `full`.
 
 ## Static jobs
 
-The reusable workflow schedules types, UI contracts, and repository contracts
-in separate Linux jobs. Selected source ownership, CI contracts, dependency
-security, generated resources, and landing checks share one job and one
-dependency install. Each group still reports its own command timing, and the
-shared job fails if any selected check fails.
+The reusable workflow schedules types, UI contracts, repository contracts, and
+tooling contracts (`vp run tooling:verify`, selected only for tooling, lint,
+workflow, config, and dependency changes) in separate Linux jobs. Selected
+source ownership, CI contracts, dependency security, generated resources, and
+landing checks share one job and one dependency install. Each group still
+reports its own command timing, and the shared job fails if any selected check
+fails.
 
 ## Dependency security
 
@@ -241,9 +245,10 @@ Accepted advisory policy belongs to [Security](SECURITY.md#dependency-maintenanc
 
 ## Rust lanes
 
-`_rust-checks.yml` runs formatting, Clippy, nextest/Rustdoc, protocol
-verification, and migration as independent jobs. Formatting remains
-workspace-wide. For ordinary crate changes, Clippy and tests resolve the
+`_rust-checks.yml` runs formatting, Clippy, nextest/Rustdoc, and protocol
+verification as independent jobs. Formatting remains workspace-wide, and
+nextest covers the Store migration tests inside `nodex-core` without running
+them a second time. For ordinary crate changes, Clippy and tests resolve the
 directly changed workspace package plus every transitive reverse dependent
 from `cargo metadata`. Root manifests, lockfiles, toolchains, unknown crate
 paths, dependencies, explicit-full runs, nightly, and release certification
@@ -252,7 +257,7 @@ fail closed to the whole workspace.
 Canonical local commands remain in `package.json`:
 
 - `vp run core:test:pr`: workspace nextest plus Rustdoc contracts.
-- `vp run core:test:migration`: supported Store baseline and convergence.
+- `vp run core:test:migration`: focused local runner for `nodex-core` `infrastructure::` migration tests.
 - `vp run core:test:scale`: explicitly named ignored scale contracts.
 - `vp run core:test`: complete local Rust verification.
 
