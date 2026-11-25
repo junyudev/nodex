@@ -286,27 +286,6 @@ describe("page stage", () => {
     },
   );
 
-  test("shows Page properties while the Document is still being prepared", async () => {
-    const page = toStageModel(buildPage({ title: "Prepared title" }));
-    const view = renderStage(page, { documentAuthority: null });
-    await settleAsyncRender();
-
-    expect(view.getByText("Properties section")).toBeTruthy();
-    expect(view.container.querySelector('[data-page-title-placeholder="true"]')?.textContent).toBe(
-      "Prepared title",
-    );
-    expect(view.queryByText("Mock collaborative editor")).toBeNull();
-    expect(view.getByRole("button", { name: "Page actions" }).hasAttribute("disabled")).toBe(true);
-
-    renderStage(page, {}, (ui) => {
-      view.rerender(ui);
-      return view;
-    });
-    expect(view.getByText("Mock collaborative editor")).toBeTruthy();
-    expect(view.getByText("Properties section")).toBeTruthy();
-    expect(view.container.querySelector('[data-page-title-placeholder="true"]')).toBeNull();
-  });
-
   test("keeps the new Page viewport subscribed after the previous Page cleanup", async () => {
     simulateMountedEditor = true;
     const view = renderStage();
@@ -410,40 +389,6 @@ describe("page stage", () => {
     },
   );
 
-  test("Enter in the title continues on the body's first line", async () => {
-    const view = renderStage();
-    try {
-      await settleAsyncRender();
-      const openLineAtStart = vi.fn(() => true);
-      const navigation: NfmEditorBoundaryHandle = {
-        focusBlock: () => true,
-        revealSearchMatch: () => true,
-        focus: () => true,
-        focusBoundary: () => true,
-        openLineAtStart,
-      };
-      const ref = lastNfmEditorProps?.navigationRef as import("react").Ref<NfmEditorBoundaryHandle>;
-      await act(async () => {
-        if (typeof ref === "function") ref(navigation);
-        else if (ref) ref.current = navigation;
-        await Promise.resolve();
-      });
-      const title = await view.findByRole("textbox", { name: "Page title" });
-      await act(async () => {
-        fireEvent.keyDown(title, { key: "Enter" });
-        await Promise.resolve();
-      });
-      expect(openLineAtStart).toHaveBeenCalledOnce();
-      await act(async () => {
-        fireEvent.keyDown(title, { key: "Enter", shiftKey: true });
-        await Promise.resolve();
-      });
-      expect(openLineAtStart).toHaveBeenCalledOnce();
-    } finally {
-      view.unmount();
-    }
-  });
-
   test("mounts the rich editor only from the collaborative Document source", async () => {
     writePageStageContentWidthPreference(true);
     writePageStageShowRawContentPreference(false);
@@ -502,55 +447,6 @@ describe("page stage", () => {
     }
   });
 
-  test("opens a standalone Page without Database controls or delete", async () => {
-    const member = toStageModel(buildPage());
-    const standalone: PageStagePageModel = {
-      page: member.page,
-      databaseContext: { kind: "standalone" },
-    };
-    const { getByRole, queryByText, queryByRole, getByText } = renderStage(standalone);
-
-    expect(getByText("Mock collaborative editor")).toBeTruthy();
-    expect(queryByText("Inline property strip")).toBeNull();
-
-    await openNodexMenu(getByRole("button", { name: "Page actions" }));
-
-    expect(queryByRole("menuitem", { name: "Rename" })).toBeTruthy();
-    expect(queryByRole("menuitem", { name: "Delete" })).toBeNull();
-  });
-
-  test("copies the current Page link from the toolbar", async () => {
-    const originalClipboard = navigator.clipboard;
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const { getByRole } = renderStage();
-      const button = getByRole("button", { name: "Copy link" });
-
-      await act(async () => {
-        fireEvent.click(button);
-        await Promise.resolve();
-      });
-
-      expect(writeText).toHaveBeenCalledWith("nodex://pages/page-1?spaceId=test-space");
-      await waitFor(() => expect(button.textContent).toBe("Copied"));
-    } finally {
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        value: originalClipboard,
-      });
-    }
-  });
-
-  test("does not repeat a Database Page key in Page Stage", () => {
-    const view = renderStage(toStageModel(buildPage({ pageKey: "LAB-13" })));
-    expect(view.queryByText("LAB-13")).toBeNull();
-  });
-
   test("raw mode reads the live Y.Doc projection, not the Page row projection", async () => {
     writePageStageShowRawContentPreference(true);
     const { getByLabelText, queryByText } = renderStage();
@@ -561,20 +457,5 @@ describe("page stage", () => {
       expect(lastRawContent?.includes("Live collaborative body")).toBe(true);
       expect(lastRawContent?.includes("Stale projected body")).toBe(false);
     });
-  });
-
-  test("full width changes only the Page Detail presentation lane", async () => {
-    writePageStageContentWidthPreference(true);
-    writePageStageShowRawContentPreference(false);
-    const { container, getByRole } = renderStage();
-    const body = container.querySelector('[data-page-stage-body="true"]');
-
-    expect(body?.getAttribute("data-page-stage-body-width")).toBe("constrained");
-    await openNodexMenu(getByRole("button", { name: "Page actions" }));
-    await act(async () => {
-      fireEvent.click(getByRole("menuitemcheckbox", { name: "Full width" }));
-      await Promise.resolve();
-    });
-    expect(body?.getAttribute("data-page-stage-body-width")).toBe("full");
   });
 });

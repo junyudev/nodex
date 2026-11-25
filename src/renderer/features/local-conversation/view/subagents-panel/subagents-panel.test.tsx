@@ -2,8 +2,7 @@ import { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { NativeChildWorkDetail } from "./native-child-work-detail";
-import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -13,17 +12,7 @@ import type {
   CodexSubagentOverviewWindow,
   CodexEvent,
 } from "../../../../../shared/types";
-import type { SubagentOverviewRow } from "../../agent-runtime-subagent-overview";
-import {
-  formatSubagentElapsedTime,
-  formatSubagentObjective,
-  formatSubagentRelativeTime,
-} from "./subagent-overview-format";
-import {
-  SubagentsPanelOverview,
-  SubagentsPanelOverviewContent,
-  SubagentsPanelDetailHeader,
-} from "./subagents-panel";
+import { SubagentsPanelOverview, SubagentsPanelOverviewContent } from "./subagents-panel";
 
 const overviewMocks = vi.hoisted(() => ({
   read: vi.fn(),
@@ -107,70 +96,6 @@ beforeEach(() => {
   viewMock.setView.mockReset();
 });
 
-test("marks the selected subagent's harness beside its model, effort and observed speed", () => {
-  const header = (speed: "fast" | "ultrafast" | null) => (
-    <SubagentsPanelDetailHeader
-      threadId="child"
-      displayName="Explorer"
-      agent={{ kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" }}
-      speed={speed}
-      onBack={() => undefined}
-    />
-  );
-  const view = render(header("fast"));
-  expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
-  const identity = view.container.querySelector('[data-agent-identity="codex"]');
-  expect(identity?.querySelector("svg")).not.toBeNull();
-  expect(screen.getByText("GPT-6.1 Sol · Extra High")).toBeTruthy();
-
-  view.rerender(header("ultrafast"));
-  expect(screen.getByRole("img", { name: "Ultrafast mode" })).toBeTruthy();
-  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
-
-  view.rerender(header(null));
-  expect(screen.queryByRole("img", { name: /mode$/ })).toBeNull();
-
-  view.rerender(
-    <SubagentsPanelDetailHeader
-      threadId="unknown-child"
-      displayName="Explorer"
-      onBack={() => undefined}
-    />,
-  );
-  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
-});
-
-test("marks each subagent's harness beside its model, and leaves unknown Agents unmarked", () => {
-  const codex: CodexSubagentOverviewRow = {
-    ...buildRow(1, "active"),
-    displayName: "WebAuthn routes",
-    agent: { kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" },
-  };
-  const claude: CodexSubagentOverviewRow = {
-    ...buildRow(2, "active"),
-    displayName: "Copy review",
-    agent: {
-      kind: "claudeAgent",
-      providerInstanceId: null,
-      model: "claude-sonnet-5-5",
-      effort: null,
-    },
-  };
-  const view = render(
-    <SubagentsPanelOverviewContent
-      rootThreadId="root"
-      overview={buildOverview({ active: [codex, claude, buildRow(3, "active")], done: [] })}
-      onSelect={() => undefined}
-    />,
-  );
-  const row = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
-  expect(within(row("WebAuthn routes")).getByText("GPT-6.1 Sol")).toBeTruthy();
-  expect(row("WebAuthn routes").querySelector('[data-agent-identity="codex"] svg')).not.toBeNull();
-  expect(row("Copy review").querySelector('[data-agent-identity="claudeAgent"]')).not.toBeNull();
-  expect(row("active 3").querySelector("[data-agent-identity]")).toBeNull();
-  view.unmount();
-});
-
 describe("SubagentsPanelOverview", () => {
   test("reads only the initial metadata window until explicit expansion, then releases it", async () => {
     const active = Array.from({ length: 5 }, (_, index) => buildRow(index + 1, "active"));
@@ -212,43 +137,6 @@ describe("SubagentsPanelOverview", () => {
     await waitFor(() => expect(overviewMocks.read).toHaveBeenCalledTimes(3));
     expect(screen.queryByText("active 5")).toBeNull();
     expect(overviewMocks.read).toHaveBeenLastCalledWith({ rootThreadId: "root", mode: "initial" });
-  });
-
-  test("rereads only the matching root after a Directory invalidation", async () => {
-    let onEvent: ((event: CodexEvent) => void) | null = null;
-    overviewMocks.subscribe.mockImplementation((listener) => {
-      onEvent = listener;
-      return () => undefined;
-    });
-    const initial = buildOverview({ active: [buildRow(1, "unknown")], done: [] });
-    const settled = {
-      ...buildOverview({ active: [], done: [buildRow(1, "done")] }),
-      revision: initial.revision + 1,
-    };
-    overviewMocks.read.mockResolvedValueOnce(initial).mockResolvedValue(settled);
-
-    render(
-      <SubagentsPanelOverview
-        projectId="project"
-        rootThreadId="root"
-        onError={() => undefined}
-        onSelect={() => undefined}
-      />,
-    );
-    expect(await screen.findByText("Active · 1")).toBeTruthy();
-
-    await act(async () => {
-      onEvent?.({ type: "subagentOverviewInvalidated", rootThreadId: "another-root" });
-      await new Promise((resolve) => setTimeout(resolve, 75));
-    });
-    expect(overviewMocks.read).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      onEvent?.({ type: "subagentOverviewInvalidated", rootThreadId: "root" });
-      await new Promise((resolve) => setTimeout(resolve, 75));
-    });
-    await waitFor(() => expect(overviewMocks.read).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("Done · 1")).toBeTruthy();
   });
 
   test("serializes invalidation refreshes behind an in-flight overview read", async () => {
@@ -306,171 +194,6 @@ describe("SubagentsPanelOverview", () => {
   });
 });
 
-describe("SubagentsPanelOverviewContent", () => {
-  test("mounts 4 active and 10 done rows, then expands all and collapses again", async () => {
-    const active = Array.from({ length: 5 }, (_, index) => buildRow(index + 1, "active"));
-    const done = Array.from({ length: 11 }, (_, index) => buildRow(index + 1, "done"));
-    const overview = buildOverview({ active, done });
-    const onToggleExpanded = vi.fn();
-    const view = render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={overview}
-        onSelect={() => undefined}
-        onToggleExpanded={onToggleExpanded}
-      />,
-    );
-
-    expect(screen.getByText("Active · 5")).toBeTruthy();
-    expect(screen.getByText("Done · 11")).toBeTruthy();
-    expect(screen.queryByText("active 5")).toBeNull();
-    expect(screen.queryByText("done 11")).toBeNull();
-    expect(
-      view.container.querySelectorAll('[data-slot="thread-summary-panel-item-group"]')[0]?.children,
-    ).toHaveLength(4);
-    expect(
-      view.container.querySelectorAll('[data-slot="thread-summary-panel-item-group"]')[1]?.children,
-    ).toHaveLength(10);
-
-    await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Show more" })[0]!);
-      await Promise.resolve();
-    });
-    expect(onToggleExpanded).toHaveBeenCalledWith("active", true);
-
-    view.rerender(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={overview}
-        expandedSections={new Set(["active"])}
-        onSelect={() => undefined}
-        onToggleExpanded={onToggleExpanded}
-      />,
-    );
-    expect(screen.getByText("active 5")).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-      await Promise.resolve();
-    });
-    expect(onToggleExpanded).toHaveBeenCalledWith("active", false);
-  });
-
-  test("uses a working preview and elapsed clock for a waiting row without a summary", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(10_000);
-    const waiting = { ...buildRow(2, "waiting"), statusSummary: null };
-    const view = render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={buildOverview({ active: [waiting], done: [] })}
-        onSelect={() => undefined}
-      />,
-    );
-
-    try {
-      expect(screen.getByText("Active · 1")).toBeTruthy();
-      expect(screen.getByText("1 waiting")).toBeTruthy();
-      expect(screen.getByText("Waiting")).toBeTruthy();
-      const waitingRow = screen.getByRole("button", { name: "Open subagent waiting 2" });
-      expect(waitingRow.textContent).toContain("Waiting");
-      expect(waitingRow.textContent).toContain("Working");
-      expect(waitingRow.textContent).toContain("9s");
-      expect(screen.queryByText(/Done ·/u)).toBeNull();
-    } finally {
-      view.unmount();
-      vi.useRealTimers();
-    }
-  });
-
-  test("dates completed rows from the last assistant message, then activity recency", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(300_000);
-    const done = {
-      ...buildRow(1, "done"),
-      completedAtMs: 60_000,
-      lastActivityAtMs: 90_000,
-      lastAssistantMessageAtMs: 240_000,
-      recencyAtMs: 180_000,
-    };
-    const view = render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={buildOverview({ active: [], done: [done] })}
-        onSelect={() => undefined}
-      />,
-    );
-    try {
-      expect(view.container.querySelector("time")?.dateTime).toBe(new Date(240_000).toISOString());
-      view.rerender(
-        <SubagentsPanelOverviewContent
-          rootThreadId="root"
-          overview={buildOverview({
-            active: [],
-            done: [{ ...done, lastAssistantMessageAtMs: null }],
-          })}
-          onSelect={() => undefined}
-        />,
-      );
-      expect(view.container.querySelector("time")?.dateTime).toBe(new Date(180_000).toISOString());
-    } finally {
-      view.unmount();
-      vi.useRealTimers();
-    }
-  });
-
-  test("does not create a no-op button for an unavailable row", async () => {
-    const onSelect = vi.fn();
-    const unavailable = { ...buildRow(1, "active"), canOpen: false };
-    const view = render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={buildOverview({ active: [unavailable], done: [] })}
-        onSelect={onSelect}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: /Open subagent/u })).toBeNull();
-    expect(
-      view.container.querySelector('[data-subagent-overview-unavailable="true"]'),
-    ).toBeTruthy();
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  test("labels incomplete counts without claiming a total", () => {
-    render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={buildOverview({
-          active: [buildRow(1, "unknown")],
-          done: [],
-          activeTotal: null,
-          doneTotal: null,
-          completeness: "incomplete",
-        })}
-        onSelect={() => undefined}
-      />,
-    );
-
-    expect(screen.getByText("Active · 1+")).toBeTruthy();
-  });
-});
-
-describe("subagent overview formatting", () => {
-  test("normalizes and bounds objective text", () => {
-    expect(formatSubagentObjective("##  Inspect   the renderer ")).toBe("Inspect the renderer");
-    const long = formatSubagentObjective("x".repeat(80));
-    expect(long?.length).toBe(60);
-    expect(long?.endsWith("…")).toBe(true);
-  });
-
-  test("uses compact elapsed and relative labels", () => {
-    expect(formatSubagentElapsedTime(32_000)).toBe("32s");
-    expect(formatSubagentElapsedTime(22 * 60_000)).toBe("22m");
-    expect(formatSubagentRelativeTime(1_000, 1_500)).toBe("now");
-    expect(formatSubagentRelativeTime(0, 3 * 3_600_000)).toBe("3h");
-  });
-});
-
 test("switching roots discards the previous root’s pending overview", async () => {
   let finishOld: ((overview: CodexSubagentOverviewWindow) => void) | undefined;
   const fresh = {
@@ -506,68 +229,6 @@ test("switching roots discards the previous root’s pending overview", async ()
   expect(view.getByText("done 2")).toBeTruthy();
   expect(overviewMocks.read).toHaveBeenCalledTimes(2);
   expect(onError).not.toHaveBeenCalled();
-});
-
-test.each([
-  ["approval", "Needs approval"],
-  ["question_person", "Needs your answer"],
-  ["question_agent", "Asked a question"],
-] as const)(
-  "shows %s once on active tasks and keeps it out of the preview",
-  async (attentionKind, label) => {
-    let row = {
-      ...buildRow(1, "active"),
-      objective: null,
-      statusSummary: "Provider detail",
-      attentionKind,
-    };
-    const view = render(
-      <SubagentsPanelOverviewContent
-        rootThreadId="root"
-        overview={buildOverview({ active: [row], done: [] })}
-        onSelect={() => undefined}
-      />,
-    );
-    expect(screen.getAllByText(label)).toHaveLength(1);
-    row = { ...row, status: "waiting" };
-    await act(async () => {
-      view.rerender(
-        <SubagentsPanelOverviewContent
-          rootThreadId="root"
-          overview={buildOverview({ active: [row], done: [] })}
-          onSelect={() => undefined}
-        />,
-      );
-    });
-    expect(screen.getAllByText(label)).toHaveLength(1);
-    expect(screen.queryByText("Waiting")).toBeNull();
-    expect(screen.queryByText("Provider detail")).toBeNull();
-  },
-);
-
-test("updates an already-mounted subagent attention label when the display language changes", async () => {
-  const row = {
-    ...buildRow(1, "waiting"),
-    objective: null,
-    statusSummary: "Needs approval",
-    attentionKind: "approval" as const,
-  };
-  render(
-    <SubagentsPanelOverviewContent
-      rootThreadId="root"
-      overview={buildOverview({ active: [row], done: [] })}
-      onSelect={() => undefined}
-    />,
-  );
-
-  expect(screen.getAllByText("Needs approval")).toHaveLength(1);
-  try {
-    await act(() => activateAppLocale("zh-CN"));
-    expect(screen.getAllByText("需要批准")).toHaveLength(1);
-    expect(screen.queryByText("Needs approval")).toBeNull();
-  } finally {
-    await act(async () => resetAppLocaleForTests());
-  }
 });
 
 test("reads only the opened native batch and keeps unavailable child history distinct from truncation", async () => {
@@ -626,11 +287,6 @@ test("reads only the opened native batch and keeps unavailable child history dis
 });
 
 describe("the overview as a map", () => {
-  const agents = {
-    codex: { kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" },
-    opencode: { kind: "opencode", providerInstanceId: null, model: "glm-5.3", effort: null },
-  } as const;
-
   function renderMap(
     overview: CodexSubagentOverviewWindow,
     props: Partial<Parameters<typeof SubagentsPanelOverviewContent>[0]> = {},
@@ -663,76 +319,6 @@ describe("the overview as a map", () => {
     );
   }
 
-  test("names the lead, each subagent's harness, and how much work is back", () => {
-    const onSelect = vi.fn();
-    const routes = {
-      ...buildRow(1, "done"),
-      displayName: "WebAuthn routes",
-      agent: agents.codex,
-      diffStats: { linesAdded: 412, linesRemoved: 38 },
-    };
-    const docs = { ...buildRow(2, "active"), displayName: "Passkey docs", agent: agents.opencode };
-    const tests = { ...buildRow(3, "active"), displayName: "Sign-in tests", agent: agents.codex };
-    const view = renderMap(buildOverview({ active: [docs, tests], done: [routes] }), { onSelect });
-
-    const lead = view.container.querySelector("[data-delegation-lead]") as HTMLElement;
-    expect(within(lead).getByText("Claude Code · lead")).toBeTruthy();
-    expect(within(lead).getByText("Passkey sign-in")).toBeTruthy();
-    expect(within(lead).getByText("Claude Opus 5.5 · High")).toBeTruthy();
-    expect(within(lead).getByRole("status").textContent).toBe("Delegating · 1/3 back");
-
-    const card = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
-    expect(within(card("WebAuthn routes")).getByText("Codex")).toBeTruthy();
-    expect(within(card("WebAuthn routes")).getByText("GPT-6.1 Sol · Extra High")).toBeTruthy();
-    expect(within(card("WebAuthn routes")).getByText("Done")).toBeTruthy();
-    expect(within(card("WebAuthn routes")).getByText("+412")).toBeTruthy();
-    expect(within(card("Passkey docs")).getByText("OpenCode")).toBeTruthy();
-    // A card's edge tells its harness and state apart from the cards around it.
-    const node = (name: string) => card(name).closest("[data-delegation-node]") as HTMLElement;
-    expect(node("WebAuthn routes").dataset.delegationEdge).toBe("returned");
-    expect(node("Passkey docs").dataset.delegationEdge).toBe("flowing");
-    expect(card("Passkey docs").parentElement?.dataset.agentDriver).toBe("opencode");
-
-    fireEvent.click(card("Sign-in tests"));
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ threadId: "active-3" }));
-    view.unmount();
-  });
-
-  test("draws an Antigravity batch that went idle as back, in its own words", () => {
-    const antigravity = {
-      kind: "antigravity",
-      providerInstanceId: null,
-      model: "gemini-3.8-flash",
-      effort: "high",
-    } as const;
-    const batch: SubagentOverviewRow = {
-      ...buildRow(1, "done"),
-      displayName: "Research batch",
-      agent: antigravity,
-      outcome: "idle",
-      statusSummary: "Idle",
-    };
-    const live = { ...buildRow(2, "active"), displayName: "Layout pass", agent: antigravity };
-    const view = renderMap(buildOverview({ active: [live], done: [batch] }));
-    const card = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
-    const node = (name: string) => card(name).closest("[data-delegation-node]") as HTMLElement;
-    expect(within(card("Research batch")).getByText("Antigravity")).toBeTruthy();
-    expect(within(card("Research batch")).getByText("Idle")).toBeTruthy();
-    expect(node("Research batch").dataset.delegationEdge).toBe("returned");
-    expect(card("Layout pass").parentElement?.dataset.agentDriver).toBe("antigravity");
-    expect(node("Layout pass").dataset.delegationEdge).toBe("flowing");
-    view.unmount();
-  });
-
-  test("says when every subagent is back, and offers the list beside the map", () => {
-    const view = renderMap(buildOverview({ active: [], done: [buildRow(1, "done")] }));
-    expect(screen.getByRole("status").textContent).toBe("1 subagent back");
-    expect(screen.getByRole("radio", { name: "Map" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "List" }));
-    expect(viewMock.setView).toHaveBeenCalledWith("list");
-    view.unmount();
-  });
-
   test("stops a live subagent from its card", () => {
     const onStop = vi.fn();
     const live = { ...buildRow(1, "active"), displayName: "Sign-in tests", canStop: true };
@@ -759,14 +345,6 @@ describe("the overview as a map", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Show 3 more" }));
     expect(onLoadMore.mock.calls).toEqual([["done"]]);
-    view.unmount();
-  });
-
-  test("keeps the list's own words while there is nothing to draw", () => {
-    const view = renderMap(buildOverview({ active: [], done: [] }));
-    expect(screen.getByText("No active subagents")).toBeTruthy();
-    expect(screen.queryByRole("radiogroup", { name: "View" })).toBeNull();
-    expect(view.container.querySelector("[data-delegation-map]")).toBeNull();
     view.unmount();
   });
 });

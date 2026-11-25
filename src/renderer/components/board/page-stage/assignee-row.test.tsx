@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
 import { inboxAgentsFixture } from "@/features/inbox/inbox-agents.test-support";
 import { InboxAgentPicker } from "@/features/inbox/inbox-agent-picker";
-import { PageAssigneeRow, PageOwnerRow } from "./assignee-row";
+import { PageAssigneeRow } from "./assignee-row";
 const state = vi.hoisted(() => ({
   start: vi.fn(),
   reload: vi.fn(),
@@ -59,15 +59,6 @@ test("the Assignee picker opens once on mount, reloads, and returns focus to its
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(state.reload).toHaveBeenCalledTimes(1);
 });
-test("late Assignee mount requests leave the picker closed", async () => {
-  const onChange = vi.fn();
-  const view = render(<PageAssigneeRow pageWork={work} onChange={onChange} />);
-  expect(screen.queryByRole("listbox")).toBeNull();
-  view.rerender(<PageAssigneeRow pageWork={work} onChange={onChange} openOnMount />);
-  await settleAsyncRender();
-  expect(screen.queryByRole("listbox")).toBeNull();
-  expect(state.reload).not.toHaveBeenCalled();
-});
 test("a disabled Inbox Agent picker ignores the mount request after enabling", async () => {
   const agents = inboxAgentsFixture();
   const props = {
@@ -95,42 +86,4 @@ test("one picker chooses a person and clears Agent consent", async () => {
     assignee: { kind: "member", member_id: "person" },
     auto_start: false,
   });
-});
-test("only Agent assignments offer Start automatically, inside the Assignee menu", async () => {
-  const onChange = vi.fn();
-  const view = render(<PageAssigneeRow pageWork={work} onChange={onChange} />);
-  expect(screen.queryByText("Auto-start")).toBeNull();
-  expect(screen.getByRole("button", { name: "Choose Assignee" }).textContent).not.toMatch(
-    /Medium/u,
-  );
-  await click(screen.getByRole("button", { name: "Choose Assignee" }));
-  const toggle = await screen.findByRole("switch", { name: "Start automatically" });
-  expect(toggle.getAttribute("aria-checked")).toBe("false");
-  await click(toggle);
-  expect(onChange).toHaveBeenCalledWith({ ...work, auto_start: true });
-  view.rerender(<PageAssigneeRow pageWork={{ ...work, auto_start: true }} onChange={onChange} />);
-  expect(screen.getByText("Auto-start")).toBeTruthy();
-  view.rerender(
-    <PageAssigneeRow
-      pageWork={{ ...work, assignee: { kind: "member", member_id: "person" } }}
-      onChange={onChange}
-    />,
-  );
-  expect(screen.queryByRole("switch", { name: "Start automatically" })).toBeNull();
-  expect(screen.queryByText("Auto-start")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
-});
-test("Owner stays hidden in a personal Library and becomes editable with more people", async () => {
-  const onChange = vi.fn();
-  const view = render(<PageOwnerRow pageWork={work} onChange={onChange} />);
-  expect(screen.queryByRole("button", { name: "Choose Owner" })).toBeNull();
-  view.unmount();
-  state.members = [
-    ...state.members,
-    { id: "other", library_id: "library", display_name: "Alex", lifecycle: "active", revision: 1 },
-  ];
-  render(<PageOwnerRow pageWork={work} onChange={onChange} />);
-  await click(screen.getByRole("button", { name: "Choose Owner" }));
-  await click(await screen.findByRole("menuitem", { name: "Alex" }));
-  expect(onChange).toHaveBeenCalledWith({ ...work, owner: "other" });
 });

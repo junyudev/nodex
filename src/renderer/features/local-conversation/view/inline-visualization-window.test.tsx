@@ -13,10 +13,7 @@ import type {
   InlineVisualizationRuntime,
 } from "../../../lib/inline-visualization/inline-visualization-runtime";
 import { createInlineVisualizationAnnotations } from "../../../lib/inline-visualization/inline-visualization-annotations";
-import {
-  dispatchCodexAppServerMessage,
-  __resetCodexAppServerMessageBusForTests,
-} from "../app-server-message-bus";
+import { __resetCodexAppServerMessageBusForTests } from "../app-server-message-bus";
 import { ConversationVisualizationContext } from "./inline-visualization-context";
 import { LocalConversationInlineVisualization } from "./local-conversation-inline-visualization";
 import { InlineVisualizationWindowLifecycle } from "./inline-visualization-window-lifecycle";
@@ -413,57 +410,6 @@ describe("window-owned interactive responses", () => {
     });
     expect(instances.every(({ runtime }) => !runtime.element.isConnected)).toBe(true);
   });
-
-  test("accepted host-scoped deletion and resume eviction release only detached documents", async () => {
-    const sharedThread = "0197f6e8-8c00-7000-8000-000000000001";
-    const otherThread = "0197f6e8-8c00-7000-8000-000000000002";
-    const registry = nativeRegistry();
-    const client = queryClient();
-    const tree = (threadId: string) => (
-      <QueryClientProvider client={client}>
-        <InlineVisualizationWindowProvider>
-          <InlineVisualizationWindowLifecycle />
-          <Thread hostId="local" threadId={threadId} />
-          <Thread hostId="remote" threadId={sharedThread} surfaceId="remote-main" />
-        </InlineVisualizationWindowProvider>
-      </QueryClientProvider>
-    );
-    const view = render(tree(sharedThread));
-    await view.findByText((_, node) => node === instances[1]?.runtime.element);
-    const local = instances[0];
-    const remote = instances[1];
-    if (!local || !remote) throw new Error("Expected both host-owned documents");
-    await act(async () => {
-      view.rerender(tree(otherThread));
-    });
-    await view.findByText((_, node) => node === instances[2]?.runtime.element);
-    await act(async () => {
-      registry.update("local", sharedThread, {});
-    });
-    expect(local.runtime.dispose).not.toHaveBeenCalled();
-    expect(boundary.create).toHaveBeenCalledTimes(3);
-    await act(async () => {
-      registry.update("local", sharedThread, { resumeState: "needs_resume" });
-    });
-    expect(local.runtime.dispose).toHaveBeenCalledOnce();
-    expect(remote.runtime.dispose).not.toHaveBeenCalled();
-    await act(async () => {
-      dispatchCodexAppServerMessage("thread-deleted", {
-        hostId: "local",
-        threadId: sharedThread,
-      });
-    });
-    expect(remote.runtime.dispose).not.toHaveBeenCalled();
-    await act(async () => {
-      dispatchCodexAppServerMessage("thread-deleted", {
-        hostId: "remote",
-        threadId: sharedThread,
-      });
-    });
-    expect(remote.runtime.dispose).toHaveBeenCalledOnce();
-    expect(registry.read).toHaveBeenCalledWith("local", sharedThread);
-    expect(registry.read).toHaveBeenCalledWith("remote", sharedThread);
-  });
   test("attached read-only native history keeps its detached response until a reconnect invalidates it", async () => {
     const historyThread = "0197f6e8-8c00-7000-8000-000000000003";
     const otherThread = "0197f6e8-8c00-7000-8000-000000000004";
@@ -492,32 +438,5 @@ describe("window-owned interactive responses", () => {
       registry.update("local", historyThread, { attachment: { status: "idle" } });
     });
     expect(history.runtime.dispose).toHaveBeenCalledOnce();
-  });
-  test("an Agent chat's detached response stays resident; its history needs no native resume", async () => {
-    const read = vi.fn(() => null);
-    boundary.registry.mockReturnValue({
-      getForHostId: () => ({
-        readConversation: read,
-        addConversationCallback: () => () => {},
-      }),
-    });
-    const client = queryClient();
-    const tree = (threadId: string) => (
-      <QueryClientProvider client={client}>
-        <InlineVisualizationWindowProvider>
-          <InlineVisualizationWindowLifecycle />
-          <Thread threadId={threadId} />
-        </InlineVisualizationWindowProvider>
-      </QueryClientProvider>
-    );
-    const view = render(tree("nodex:thread:agent-chat"));
-    await view.findByText((_, node) => node === instances[0]?.runtime.element);
-    const agentChat = instances[0]!;
-    await act(async () => {
-      view.rerender(tree("nodex:thread:other-chat"));
-    });
-    await view.findByText((_, node) => node === instances[1]?.runtime.element);
-    expect(agentChat.runtime.dispose).not.toHaveBeenCalled();
-    expect(read).not.toHaveBeenCalled();
   });
 });

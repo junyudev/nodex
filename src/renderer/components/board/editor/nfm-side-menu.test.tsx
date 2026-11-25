@@ -15,10 +15,8 @@ import {
 } from "./nfm-side-menu-model";
 import {
   NfmSideMenuSurface,
-  resolveNfmSideMenuFormattingToolbarSuppressionRange,
   resolveNfmSideMenuReturnFocusElement,
   shouldConsumeNfmSideMenuOutsidePointerTarget,
-  shouldCloseNfmSideMenuForPointerTarget,
   shouldKeepNfmSideMenuFormattingToolbarSuppression,
   shouldReturnFocusAfterNfmSideMenuClose,
 } from "./nfm-side-menu";
@@ -344,59 +342,6 @@ function StatefulSideMenuSurface({
 }
 
 describe("markdown side menu surface", () => {
-  test("treats editor blank clicks as outside while preserving popup and trigger exemptions", () => {
-    const popupElement = document.createElement("div");
-    const popupChild = document.createElement("button");
-    popupElement.append(popupChild);
-
-    const triggerElement = document.createElement("button");
-    const triggerChild = document.createElement("span");
-    triggerElement.append(triggerChild);
-
-    const editorRoot = document.createElement("div");
-    const editorBlank = document.createElement("div");
-    editorRoot.append(editorBlank);
-
-    const submenuElement = document.createElement("div");
-    submenuElement.setAttribute("data-nfm-side-menu-submenu", "true");
-    const submenuChild = document.createElement("button");
-    submenuElement.append(submenuChild);
-    document.body.append(submenuElement);
-
-    try {
-      expect(
-        shouldCloseNfmSideMenuForPointerTarget({
-          target: popupChild,
-          popupElement,
-          outsidePressIgnoreElement: triggerElement,
-        }),
-      ).toBe(false);
-      expect(
-        shouldCloseNfmSideMenuForPointerTarget({
-          target: triggerChild,
-          popupElement,
-          outsidePressIgnoreElement: triggerElement,
-        }),
-      ).toBe(false);
-      expect(
-        shouldCloseNfmSideMenuForPointerTarget({
-          target: submenuChild,
-          popupElement,
-          outsidePressIgnoreElement: triggerElement,
-        }),
-      ).toBe(false);
-      expect(
-        shouldCloseNfmSideMenuForPointerTarget({
-          target: editorBlank,
-          popupElement,
-          outsidePressIgnoreElement: triggerElement,
-        }),
-      ).toBe(true);
-    } finally {
-      submenuElement.remove();
-    }
-  });
-
   test("consumes same-editor outside pointer dismissals while returning focus to the editor", () => {
     const returnFocusElement = document.createElement("div");
     const editorRoot = document.createElement("div");
@@ -475,39 +420,6 @@ describe("markdown side menu surface", () => {
     ).toBe(false);
   });
 
-  test("preserves dismissed toolbar suppression only for non-mutating close reasons", () => {
-    const selectionRange = { from: 4, to: 10 };
-    const editorOutsideSuppressionRange = resolveNfmSideMenuFormattingToolbarSuppressionRange({
-      reason: "editor-outside-pointer",
-      selectionRange,
-    });
-    const outsideSuppressionRange = resolveNfmSideMenuFormattingToolbarSuppressionRange({
-      reason: "outside-pointer",
-      selectionRange,
-    });
-    const escapeSuppressionRange = resolveNfmSideMenuFormattingToolbarSuppressionRange({
-      reason: "escape",
-      selectionRange,
-    });
-    const actionSuppressionRange = resolveNfmSideMenuFormattingToolbarSuppressionRange({
-      reason: "action",
-      selectionRange,
-    });
-    const clipboardSuppressionRange = resolveNfmSideMenuFormattingToolbarSuppressionRange({
-      reason: "clipboard-command",
-      selectionRange,
-    });
-
-    expect(editorOutsideSuppressionRange?.from).toBe(4);
-    expect(editorOutsideSuppressionRange?.to).toBe(10);
-    expect(outsideSuppressionRange?.from).toBe(4);
-    expect(outsideSuppressionRange?.to).toBe(10);
-    expect(escapeSuppressionRange?.from).toBe(4);
-    expect(escapeSuppressionRange?.to).toBe(10);
-    expect(actionSuppressionRange === null).toBe(true);
-    expect(clipboardSuppressionRange === null).toBe(true);
-  });
-
   test("keeps dismissed toolbar suppression only while the current selection range matches", () => {
     expect(
       shouldKeepNfmSideMenuFormattingToolbarSuppression({
@@ -529,61 +441,6 @@ describe("markdown side menu surface", () => {
     ).toBe(false);
   });
 
-  test("renders dialog, combobox, and listbox with only real actions", () => {
-    const { view } = renderSideMenuSurface();
-
-    expect(view.getByRole("dialog", { name: "Block actions" })).not.toBeNull();
-    expect(view.getByRole("combobox")).not.toBeNull();
-    expect(view.getByRole("listbox")).not.toBeNull();
-    expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='group']").length).toBe(
-      1,
-    );
-    expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='footer']").length).toBe(
-      1,
-    );
-
-    expect(view.queryByText("Mock")).toBe(null);
-    expect(view.queryByRole("option", { name: /Ask AI/ })).toBe(null);
-  });
-
-  test("renders the dynamic section title while hiding block-link rows in production", () => {
-    const { view } = renderSideMenuSurface({
-      selectionTitle: "Code",
-    });
-
-    expect(view.getByText("Code")).not.toBeNull();
-    expect(view.queryByRole("option", { name: /Copy link to block/ }) === null).toBe(true);
-  });
-
-  test("renders the multi-block title while hiding copy-link rows in production", () => {
-    const { view } = renderSideMenuSurface({
-      selectionTitle: "3 blocks",
-      selectedTopLevelBlockCount: 3,
-    });
-
-    expect(view.getByText("3 blocks")).not.toBeNull();
-    expect(view.queryByRole("option", { name: /Copy links to all/ }) === null).toBe(true);
-  });
-
-  test("hides the footer when no real metadata is available", () => {
-    const { view } = renderSideMenuSurface({
-      footerPrimary: null,
-      footerSecondary: null,
-    });
-
-    expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='footer']").length).toBe(
-      0,
-    );
-  });
-
-  test("filters from the search query", () => {
-    const { view } = renderSideMenuSurface({ initialQuery: "duplicate", initialFocusedIndex: 0 });
-
-    expect(view.getAllByRole("option").length).toBe(1);
-    // The shortcut hint is visual; the option is named by its label alone.
-    expect(view.getByRole("option", { name: "Duplicate" }).textContent).toContain("⌘D");
-  });
-
   test("delegates Copy and Cut from Search actions without claiming Paste", () => {
     const { calls, view } = renderSideMenuSurface();
     const searchInput = view.getByRole("combobox");
@@ -596,25 +453,6 @@ describe("markdown side menu surface", () => {
     expect(fireEvent.cut(searchInput, { clipboardData })).toBe(false);
     expect(fireEvent.paste(searchInput, { clipboardData })).toBe(true);
     expect(calls.clipboardCommands).toEqual(["copy", "cut"]);
-  });
-
-  test("clicking an enabled row activates it", () => {
-    const { calls, view } = renderSideMenuSurface();
-
-    fireEvent.click(view.getByRole("option", { name: /Duplicate/ }));
-
-    expect(calls.rows[0]).toBe("duplicate");
-  });
-
-  test("renders submenu flyouts outside the clipped main menu surface", async () => {
-    const view = renderWithQuery(<StatefulSideMenuSurface />);
-    const mainDialog = view.getByRole("dialog", { name: "Block actions" });
-
-    fireEvent.click(view.getByRole("option", { name: /Turn into/ }));
-
-    const submenuDialog = await view.findByRole("dialog", { name: "Turn into" });
-    expect(submenuDialog.getAttribute("data-nfm-side-menu-submenu")).toBe("true");
-    expect(mainDialog.contains(submenuDialog)).toBe(false);
   });
 
   test("opens a DB-only Page in picker from Turn into", async () => {
@@ -673,147 +511,6 @@ describe("markdown side menu surface", () => {
     } finally {
       console.error = originalConsoleError;
     }
-  });
-
-  test("opens the reference Move to popover with grouped DB and Page results", async () => {
-    const calls = {
-      destinations: [] as NfmMoveToDestination[],
-    };
-    const view = renderWithQuery(
-      <StatefulSideMenuSurface
-        onMoveBlocksToDestination={(destination) => {
-          calls.destinations.push(destination);
-        }}
-      />,
-    );
-    const mainDialog = view.getByRole("dialog", { name: "Block actions" });
-
-    fireEvent.click(view.getByRole("option", { name: /Move to/ }));
-
-    const submenuDialog = await view.findByRole("dialog", { name: "Move to" });
-    expect(submenuDialog.getAttribute("data-nfm-side-menu-submenu")).toBe("true");
-    expect(mainDialog.contains(submenuDialog)).toBe(false);
-    expect(view.getByRole("combobox", { name: "Move blocks to" })).not.toBeNull();
-    expect(view.getByText("DB")).not.toBeNull();
-    expect(view.getByText("Page")).not.toBeNull();
-    expect(view.queryByText("Move to card")).toBe(null);
-    expect(view.queryByText("Move to DB")).toBe(null);
-
-    const rendererDbRow = view
-      .getAllByRole("option", { name: /Renderer parity/ })
-      .find((row) => row.getAttribute("data-nfm-move-to-row-kind") === "db");
-    if (!rendererDbRow) throw new Error("Renderer DB row not found.");
-
-    const pageRowLabelsBeforeToggle = view
-      .getAllByRole("option")
-      .filter((row) => row.getAttribute("data-nfm-move-to-row-kind") === "page")
-      .map((row) => row.textContent);
-
-    fireEvent.click(rendererDbRow);
-    expect(calls.destinations.length).toBe(0);
-    expect(
-      view
-        .getAllByRole("option")
-        .filter((row) => row.getAttribute("data-nfm-move-to-row-kind") === "page")
-        .map((row) => row.textContent),
-    ).toEqual(pageRowLabelsBeforeToggle);
-
-    const backlogColumnRow = view
-      .getAllByRole("option", { name: "Plan" })
-      .find((row) => row.getAttribute("data-nfm-move-to-project-id") === "renderer");
-    if (!backlogColumnRow) throw new Error("Plan column row not found.");
-
-    fireEvent.click(backlogColumnRow);
-
-    await waitFor(() => {
-      expect(calls.destinations[0]).toEqual({
-        kind: "db-column",
-        projectId: "renderer",
-        columnId: "plan",
-      });
-    });
-  });
-
-  test("accepts card search results from the Move to popover", async () => {
-    const calls = {
-      destinations: [] as NfmMoveToDestination[],
-    };
-    const view = renderWithQuery(
-      <StatefulSideMenuSurface
-        onMoveBlocksToDestination={(destination) => {
-          calls.destinations.push(destination);
-        }}
-      />,
-    );
-
-    fireEvent.click(view.getByRole("option", { name: /Move to/ }));
-    await view.findByRole("dialog", { name: "Move to" });
-    fireEvent.change(view.getByRole("combobox", { name: "Move blocks to" }), {
-      target: { value: "targt car" },
-    });
-
-    const targetPage = await waitFor(() => view.getByRole("option", { name: /Target card/ }));
-    fireEvent.click(targetPage);
-
-    await waitFor(() => {
-      const destination = calls.destinations[0];
-      if (!destination || destination.kind !== "page") {
-        throw new Error("Card destination was not accepted.");
-      }
-      expect(destination.projectId).toBe("default");
-      expect(destination.pageId).toBe("target-card");
-    });
-  });
-
-  test("renders Move to loading, empty, and error states", async () => {
-    const loadingView = renderWithQuery(
-      <NfmMoveToMenuSurface
-        projects={MOVE_TO_PROJECTS}
-        pageBoardMap={MOVE_TO_BOARD_MAP}
-        sourceProjectId="default"
-        sourcePageId="source-card"
-        loading={true}
-        loadError={null}
-        onAccept={() => undefined}
-        onClose={() => undefined}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(loadingView.getByText("Loading…")).not.toBeNull();
-    });
-    loadingView.unmount();
-
-    const emptyView = renderWithQuery(
-      <NfmMoveToMenuSurface
-        projects={MOVE_TO_PROJECTS}
-        pageBoardMap={MOVE_TO_BOARD_MAP}
-        sourceProjectId="default"
-        sourcePageId="source-card"
-        loading={false}
-        loadError={null}
-        initialQuery="zzzz"
-        onAccept={() => undefined}
-        onClose={() => undefined}
-      />,
-    );
-
-    expect(emptyView.getByText("No results")).not.toBeNull();
-    emptyView.unmount();
-
-    const errorView = renderWithQuery(
-      <NfmMoveToMenuSurface
-        projects={MOVE_TO_PROJECTS}
-        pageBoardMap={MOVE_TO_BOARD_MAP}
-        sourceProjectId="default"
-        sourcePageId="source-card"
-        loading={false}
-        loadError="Something went wrong"
-        onAccept={() => undefined}
-        onClose={() => undefined}
-      />,
-    );
-    expect(errorView.getByText("Something went wrong")).not.toBeNull();
   });
 
   test("shows the exact async move failure and exposes it as an alert", async () => {

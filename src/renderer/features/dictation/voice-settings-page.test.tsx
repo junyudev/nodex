@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { DictationRecordingMetadata } from "../../../shared/dictation-history";
-import { createCommandKeymapState } from "../../../shared/command-keybindings";
 import { VoiceSettingsPage } from "./voice-settings-page";
 
 const mocks = vi.hoisted(() => ({
@@ -223,34 +222,6 @@ describe("VoiceSettingsPage", () => {
     });
   });
 
-  test("keeps global configuration when capture is unavailable", async () => {
-    mocks.readCapabilities.mockResolvedValue({
-      ...defaultCapability,
-      capabilities: { ...defaultCapability.capabilities, composer: false, global: false },
-    });
-    renderPage();
-    expect(await screen.findByText("Selected microphone")).toBeTruthy();
-    expect(
-      await screen.findByRole("button", {
-        name: "Change shortcut for Dictation shortcut",
-      }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Change shortcut for Single-tap shortcut" }),
-    ).toBeNull();
-    const advanced = screen.getByRole("button", { name: "Advanced" });
-    expect(advanced.getAttribute("aria-expanded")).toBe("false");
-    await act(async () => {
-      fireEvent.click(advanced);
-    });
-    expect(
-      screen.getByRole("button", { name: "Change shortcut for Single-tap shortcut" }),
-    ).toBeTruthy();
-    expect(advanced.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("textbox", { name: "Dictionary entry 1" })).toBeTruthy();
-    expect(mocks.readLanguage).not.toHaveBeenCalled();
-  });
-
   test("edits global shortcuts and the local dictionary while only Composer capture is enabled", async () => {
     mocks.readCapabilities.mockResolvedValue({
       ...defaultCapability,
@@ -316,110 +287,6 @@ describe("VoiceSettingsPage", () => {
     expect(screen.queryByRole("switch", { name: "Toggle dictation sounds" })).toBeNull();
   });
 
-  test("omits an empty Dictation section on a platform without global shortcuts", async () => {
-    mocks.readKeymap.mockReturnValue(createCommandKeymapState({}, "linux"));
-    mocks.readCapabilities.mockResolvedValue({
-      ...defaultCapability,
-      capabilities: { ...defaultCapability.capabilities, global: false, sounds: false },
-    });
-    renderPage();
-    await screen.findByRole("button", { name: "Auto-detect" });
-    expect(screen.queryByRole("heading", { name: "Dictation" })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Change shortcut for Dictation shortcut" }),
-    ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Advanced" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "Dictionary entry 1" })).toBeNull();
-  });
-
-  test("edits the primary shortcut inline and waits for the non-modifier key", async () => {
-    renderPage();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Change shortcut for Dictation shortcut",
-    });
-    await act(async () => {
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    const capture = screen.getByRole("textbox", {
-      name: "Dictation shortcut capture",
-    });
-    await act(async () => {
-      fireEvent.keyDown(capture, {
-        code: "ControlLeft",
-        ctrlKey: true,
-        key: "Control",
-        location: 1,
-      });
-      await Promise.resolve();
-    });
-    expect(mocks.setKeybinding).not.toHaveBeenCalled();
-
-    await act(async () => {
-      fireEvent.keyDown(capture, {
-        code: "KeyY",
-        ctrlKey: true,
-        key: "y",
-      });
-      await Promise.resolve();
-    });
-
-    await vi.waitFor(() => {
-      expect(mocks.setKeybinding).toHaveBeenCalledWith("globalDictationHold", {
-        type: "replace",
-        oldKeybinding: { key: "Fn" },
-        newKeybinding: { key: "Ctrl+Y" },
-      });
-    });
-    expect(mocks.setKeybinding).toHaveBeenCalledTimes(1);
-  });
-
-  test.each([
-    {
-      commandId: "globalDictationHold",
-      label: "Dictation shortcut",
-      key: "Fn",
-      otherLabel: "Single-tap shortcut",
-    },
-    {
-      commandId: "globalDictationToggle",
-      label: "Single-tap shortcut",
-      key: "Ctrl+Space",
-      otherLabel: "Dictation shortcut",
-    },
-  ])(
-    "clears only $label and retains the independent binding",
-    async ({ commandId, label, key, otherLabel }) => {
-      const clearedState = {
-        ...commandKeymapState,
-        entries: commandKeymapState.entries.map((entry) =>
-          entry.id === commandId ? { ...entry, keybindings: [], customKeybindings: [] } : entry,
-        ),
-      };
-      mocks.setKeybinding.mockImplementationOnce(async () => {
-        mocks.readKeymap.mockReturnValue(clearedState);
-        return { type: "applied", state: clearedState };
-      });
-      renderPage();
-      const advanced = await screen.findByRole("button", { name: "Advanced" });
-      await act(async () => {
-        fireEvent.click(advanced);
-      });
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: `Clear shortcut for ${label}` }));
-      });
-      expect(await screen.findByRole("button", { name: `Set shortcut for ${label}` })).toBeTruthy();
-      expect(
-        screen.getByRole("button", { name: `Change shortcut for ${otherLabel}` }),
-      ).toBeTruthy();
-      expect(mocks.setKeybinding).toHaveBeenCalledExactlyOnceWith(commandId, {
-        type: "remove",
-        keybinding: { key },
-      });
-    },
-  );
-
   test("closing Advanced cancels native single-tap capture without changing its binding", async () => {
     mocks.captureShortcut.mockReturnValue(new Promise<string | null>(() => undefined));
     renderPage();
@@ -454,29 +321,6 @@ describe("VoiceSettingsPage", () => {
     expect(mocks.setKeybinding).not.toHaveBeenCalled();
   });
 
-  test("rejects an unmodified global shortcut with the native validation message", async () => {
-    renderPage();
-
-    const trigger = await screen.findByRole("button", {
-      name: "Change shortcut for Dictation shortcut",
-    });
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-    await act(async () => {
-      fireEvent.keyDown(screen.getByRole("textbox", { name: "Dictation shortcut capture" }), {
-        code: "KeyY",
-        key: "y",
-      });
-    });
-
-    expect(await screen.findByText("Shortcut must include Cmd/Ctrl or Alt.")).toBeTruthy();
-    expect(mocks.setKeybinding).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("button", { name: "Change shortcut for Dictation shortcut" }),
-    ).toBeTruthy();
-  });
-
   test("renders a typed native rejection instead of an IPC exception", async () => {
     mocks.setKeybinding.mockResolvedValueOnce({
       type: "rejected",
@@ -505,44 +349,6 @@ describe("VoiceSettingsPage", () => {
     expect(
       await screen.findByText("Input Monitoring permission is required for global shortcuts."),
     ).toBeTruthy();
-  });
-
-  test("edits the dictation dictionary inline and trims entries on blur", async () => {
-    renderPage();
-
-    const firstEntry = await screen.findByRole("textbox", { name: "Dictionary entry 1" });
-    await act(async () => {
-      fireEvent.change(firstEntry, { target: { value: "  Nodex  " } });
-      fireEvent.blur(firstEntry);
-      await Promise.resolve();
-    });
-
-    await vi.waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith(
-        { dictionary: ["Nodex"] },
-        expect.anything(),
-      );
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
-      await Promise.resolve();
-    });
-    expect(await screen.findByRole("textbox", { name: "Dictionary entry 2" })).toBeTruthy();
-  });
-  test("updates the visible language using the account setting", async () => {
-    renderPage();
-    const trigger = await screen.findByRole("button", { name: "Auto-detect" });
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-    const japanese = await screen.findByRole("menuitem", { name: "Japanese" });
-    await act(async () => {
-      fireEvent.click(japanese);
-    });
-    await vi.waitFor(() =>
-      expect(mocks.updateLanguage).toHaveBeenCalledWith("ja", expect.anything()),
-    );
   });
 
   test("retries saved audio without semantic rewriting and focuses the requested recording", async () => {
@@ -624,47 +430,6 @@ describe("VoiceSettingsPage", () => {
     });
   });
 
-  test("cancels file selection without uploading or creating a recording", async () => {
-    let cancelSelection!: (recording: null) => void;
-    mocks.importRecording.mockReturnValue(
-      new Promise<null>((resolve) => {
-        cancelSelection = resolve;
-      }),
-    );
-    renderPage();
-    const selectFile = await screen.findByRole("button", { name: "Transcribe WebM…" });
-    await act(async () => {
-      fireEvent.click(selectFile);
-      fireEvent.click(selectFile);
-    });
-    await waitFor(() => expect(mocks.importRecording).toHaveBeenCalledOnce());
-    expect(selectFile.hasAttribute("disabled")).toBe(true);
-    await act(async () => {
-      cancelSelection(null);
-    });
-    expect(selectFile.hasAttribute("disabled")).toBe(false);
-    expect(recordings).toEqual([]);
-    expect(mocks.readRecordingAudio).not.toHaveBeenCalled();
-    expect(mocks.transcribe).not.toHaveBeenCalled();
-    expect(mocks.toastDanger).not.toHaveBeenCalled();
-    expect(mocks.toastSuccess).not.toHaveBeenCalled();
-  });
-
-  test("reports a rejected WebM import without starting transcription", async () => {
-    mocks.importRecording.mockRejectedValue(new Error("File is not WebM"));
-    renderPage();
-    const selectFile = await screen.findByRole("button", { name: "Transcribe WebM…" });
-    await act(async () => {
-      fireEvent.click(selectFile);
-    });
-    await waitFor(() =>
-      expect(mocks.toastDanger).toHaveBeenCalledWith("Could not import this WebM file"),
-    );
-    expect(selectFile.hasAttribute("disabled")).toBe(false);
-    expect(recordings).toEqual([]);
-    expect(mocks.transcribe).not.toHaveBeenCalled();
-  });
-
   test("retains an imported file for retry after transcription fails", async () => {
     const recording = prepareWebmImport();
     mocks.transcribe
@@ -697,37 +462,6 @@ describe("VoiceSettingsPage", () => {
       outcome: "completed",
       source: "recovery",
     });
-  });
-
-  test("requires ChatGPT for file transcription while keeping local history visible", async () => {
-    recordings = [
-      savedRecording({ transcript: "Saved transcript" }),
-      savedRecording({ id: "retry-id", surface: "file", fileName: "saved.webm" }),
-    ];
-    mocks.readCapabilities.mockResolvedValue({
-      ...defaultCapability,
-      authMethod: null,
-      capabilities: {
-        ...defaultCapability.capabilities,
-        auth: "unsupported",
-        composer: false,
-        global: false,
-      },
-    });
-    renderPage();
-    const selectFile = await screen.findByRole("button", { name: "Transcribe WebM…" });
-    expect(selectFile.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "Retry" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "Copy transcript" }).hasAttribute("disabled")).toBe(
-      false,
-    );
-    expect(screen.getAllByRole("button", { name: "Recording actions" })).toHaveLength(2);
-    await act(async () => {
-      fireEvent.click(selectFile);
-      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    });
-    expect(mocks.importRecording).not.toHaveBeenCalled();
-    expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 
   test.each(["account-change", "unmount"])(

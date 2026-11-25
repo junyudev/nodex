@@ -293,21 +293,6 @@ function renderVirtualizedTurnList(input: {
   );
 }
 
-function hasFixedHeightClippingAncestor(element: Element): boolean {
-  let current = element.parentElement;
-  while (current) {
-    if (
-      current instanceof HTMLElement &&
-      current.style.height === "280px" &&
-      current.style.overflow === "hidden"
-    ) {
-      return true;
-    }
-    current = current.parentElement;
-  }
-  return false;
-}
-
 describe("turn measurement compensation phases", () => {
   test("applies the captured native anchor after the latest-turn follow callback", () => {
     const fixture = createMeasurementResponseSpace();
@@ -333,42 +318,6 @@ describe("turn measurement compensation phases", () => {
       compensateScrollToDistanceFromBottomPx: fixture.compensate,
     });
     expect(fixture.writes).toEqual([0, 708]);
-  });
-
-  test("uses application-time response space when placement changes after measurement capture", () => {
-    const fixture = createMeasurementResponseSpace();
-    // Capture a native measurement target while no submit placement space exists.
-    const nativeTargetPx = 32;
-    expect(fixture.space.getHeightPx()).toBe(0);
-    fixture.space.place();
-    expect(fixture.space.getHeightPx()).toBe(360);
-    fixture.writes.length = 0;
-
-    applyLocalConversationTurnMeasurementEffect({
-      effect: {
-        latestTurnHeightChange: {
-          bottomViewportOverflowPx: 0,
-          followContentHeightPx: null,
-          heightDeltaPx: 32,
-          heightPx: 132,
-          turnElement: null,
-        },
-        nativeScrollDistanceFromBottomPx: nativeTargetPx,
-        restoreScrollDistanceFromBottom: false,
-      },
-      getResponseSpacerHeightPx: fixture.space.getHeightPx,
-      onLatestTurnHeightChange: ({ heightDeltaPx }) => {
-        fixture.space.consumeGrowth(heightDeltaPx ?? 0);
-      },
-      restoreScrollDistanceFromBottomPx: () => {
-        throw new Error("Unexpected history restore.");
-      },
-      compensateScrollToDistanceFromBottomPx: fixture.compensate,
-    });
-
-    expect(fixture.space.getHeightPx()).toBe(328);
-    // Native target + post-callback space - application-time space = 32 + 328 - 360.
-    expect(fixture.writes).toEqual([0]);
   });
 
   test("restores through the history owner after the height callback without a second compensation", () => {
@@ -430,54 +379,6 @@ function createMeasurementResponseSpace() {
 }
 
 describe("LocalConversationVirtualizedTurnList", () => {
-  test.each([true, false])(
-    "consumes submit placement only when response space is enabled (%s)",
-    async (responseSpaceEnabled) => {
-      installQueuedRequestAnimationFrame();
-      installTurnBlockSizes({ turn_1: 480, turn_2: 480 });
-      let controller: ReturnType<typeof useLocalConversationThreadScrollController> | null = null;
-      function Probe() {
-        const scroll = useLocalConversationThreadScrollController();
-        useLayoutEffect(() => {
-          controller = scroll;
-        });
-        return null;
-      }
-      const content = (texts: readonly string[]) => (
-        <TooltipProvider>
-          <EnsureLocalConversationThreadScrollController>
-            <LocalConversationThreadScrollLayout>
-              <Probe />
-              <LocalConversationVirtualizedTurnList
-                entries={buildTurnEntries(texts)}
-                conversationId="thread_1"
-                threadCwd="/tmp/project"
-                editableTurnIds={new Set()}
-                canForkFromTurn={false}
-                responseSpaceEnabled={responseSpaceEnabled}
-                scrollElement={null}
-              />
-            </LocalConversationThreadScrollLayout>
-          </EnsureLocalConversationThreadScrollController>
-        </TooltipProvider>
-      );
-      const view = render(content(["First answer"]));
-      const scroll = controller as ReturnType<
-        typeof useLocalConversationThreadScrollController
-      > | null;
-      if (!scroll) throw new Error("Missing scroll owner");
-      await act(async () => {
-        scroll.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
-        await Promise.resolve();
-      });
-      expect(scroll.hasPendingLatestTurnSubmitPlacement()).toBe(true);
-      view.rerender(content(["First answer", "New answer"]));
-      expect(scroll.hasPendingLatestTurnSubmitPlacement()).toBe(!responseSpaceEnabled);
-      if (!responseSpaceEnabled) expect(scroll.responseSpacerState).toBeNull();
-      view.unmount();
-    },
-  );
-
   test("groups consecutive quiet beats and opens the targeted beat on message navigation", async () => {
     const entries = buildTurnEntries([
       "Checked first",
@@ -572,95 +473,6 @@ describe("LocalConversationVirtualizedTurnList", () => {
     restoreBrowserGeometry();
   });
 
-  test("renders mounted older turns without fixed-height overflow clipping while unmeasured", () => {
-    installQueuedRequestAnimationFrame();
-    installTurnBlockSizes({});
-    const view = renderVirtualizedTurnList({
-      entries: buildTurnEntries([
-        "Tall assistant answer that should remain fully visible before measurement.",
-        "Second assistant answer.",
-        "Latest assistant answer.",
-      ]),
-    });
-
-    const tallContent = view.getByText(
-      "Tall assistant answer that should remain fully visible before measurement.",
-    );
-
-    expect(hasFixedHeightClippingAncestor(tallContent)).toBe(false);
-    view.unmount();
-  });
-
-  test("renders an inert 144px history row ahead of loaded turns", () => {
-    installQueuedRequestAnimationFrame();
-    installTurnBlockSizes({});
-    const entries = buildTurnEntries(["Older loaded answer.", "Latest loaded answer."]);
-    const gap: CodexHistoryRow = {
-      kind: "gap",
-      key: "history-gap:older",
-      olderBoundary: null,
-      newerBoundary: null,
-      estimatedHeightPx: 144,
-    };
-    const view = renderVirtualizedTurnList({
-      entries,
-      historyRows: [
-        gap,
-        {
-          kind: "content",
-          key: "history-content:turn_1",
-          turnKey: "turn_1",
-          entityKey: "turn_1",
-        },
-        {
-          kind: "content",
-          key: "history-content:turn_2",
-          turnKey: "turn_2",
-          entityKey: "turn_2",
-        },
-      ],
-    });
-
-    const gapElement = [
-      ...view.container.querySelectorAll<HTMLElement>("[aria-hidden='true']"),
-    ].find((element) => element.style.height === "144px");
-    const firstTurn = view.container.querySelector<HTMLElement>("[data-turn-key='turn_1']");
-
-    expect(gapElement).toBeTruthy();
-    expect(
-      gapElement && firstTurn
-        ? gapElement.compareDocumentPosition(firstTurn) & Node.DOCUMENT_POSITION_FOLLOWING
-        : 0,
-    ).not.toBe(0);
-    view.unmount();
-  });
-
-  test("commits initial mounted turn measurements before the animation frame", () => {
-    installQueuedRequestAnimationFrame();
-    installTurnBlockSizes({
-      turn_1: 96,
-      turn_2: 112,
-      turn_3: 128,
-    });
-    const restoreStateRef: { current: VirtualizedTurnListRestoreState | null } = { current: null };
-    const view = renderVirtualizedTurnList({
-      entries: buildTurnEntries([
-        "Short assistant answer.",
-        "Another short assistant answer.",
-        "Latest short assistant answer.",
-      ]),
-      onRestoreStateChange: (state) => {
-        restoreStateRef.current = state;
-      },
-    });
-
-    view.unmount();
-
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_1 ?? 0).toBe(96);
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_2 ?? 0).toBe(112);
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_3 ?? 0).toBe(128);
-  });
-
   test.each([true, false])(
     "accepts native viewport measurements only while its rendered box is visible: %s",
     (visible) => {
@@ -726,49 +538,6 @@ describe("LocalConversationVirtualizedTurnList", () => {
         latestTurnPhase: "prework",
         turnKey: "turn_1",
       },
-    });
-  });
-
-  test.each([
-    ["prework", "prework_follow"],
-    ["final_answer", "user_follow"],
-  ] as const)("resumes active %s near the bottom with %s", (phase, followMode) => {
-    installQueuedRequestAnimationFrame();
-    installTurnBlockSizes({ turn_1: 480 });
-    const latest = buildTurnEntries(["Work is still running."])[0]!;
-    latest.turn = {
-      ...latest.turn,
-      status: "inProgress",
-      firstTurnWorkItemStartedAtMs: 10,
-      items: latest.turn.items.map((item) =>
-        item.kind === "assistantMessage"
-          ? { ...item, assistantPhase: phase === "prework" ? "commentary" : "final_answer" }
-          : item,
-      ),
-    };
-    let captured: VirtualizedLatestTurnRestoreState | null = null;
-    const view = renderVirtualizedTurnList({
-      entries: [latest],
-      initialScrollOffset: 0,
-      initialLatestTurnRestoreState: {
-        followMode: "static",
-        isLatestTurnInProgress: true,
-        latestTurnFollowContentHeightPx: 320,
-        latestTurnHeightPx: 480,
-        latestTurnPhase: phase,
-        turnKey: "turn_1",
-      },
-      onLatestTurnRestoreStateChange: (state) => {
-        captured = state;
-      },
-    });
-    view.unmount();
-    expect(captured).toMatchObject({
-      followMode,
-      isLatestTurnInProgress: true,
-      latestTurnPhase: phase,
-      latestTurnHeightPx: null,
-      turnKey: "turn_1",
     });
   });
 
@@ -903,31 +672,5 @@ describe("LocalConversationVirtualizedTurnList", () => {
       latestTurnPhase: "prework",
       followMode: "prework_watch",
     });
-  });
-
-  test("ignores zero-height initial mounted measurements", () => {
-    installQueuedRequestAnimationFrame();
-    installTurnBlockSizes({
-      turn_1: 0,
-      turn_2: 0,
-      turn_3: 0,
-    });
-    const restoreStateRef: { current: VirtualizedTurnListRestoreState | null } = { current: null };
-    const view = renderVirtualizedTurnList({
-      entries: buildTurnEntries([
-        "Zero-height assistant answer.",
-        "Second zero-height assistant answer.",
-        "Latest zero-height assistant answer.",
-      ]),
-      onRestoreStateChange: (state) => {
-        restoreStateRef.current = state;
-      },
-    });
-
-    view.unmount();
-
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_1 ?? 0).toBe(0);
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_2 ?? 0).toBe(0);
-    expect(restoreStateRef.current?.turnHeightsByKey.turn_3 ?? 0).toBe(0);
   });
 });

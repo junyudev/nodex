@@ -1,0 +1,106 @@
+import { dictationTextResult } from "../../../../../../tests/fixtures/dictation-diagnostics";
+import { describe, expect, test } from "vite-plus/test";
+import {
+  buildDictationMultipartPayload,
+  encodeDictationBase64,
+  sanitizeDictationFilename,
+  transcribeDictationBlob,
+} from "./composer-dictation-transport";
+import {
+  COMPOSER_DICTATION_WAVEFORM_ADVANCE_INTERVAL_MS,
+  COMPOSER_DICTATION_WAVEFORM_SAMPLE_FLOOR,
+  appendComposerDictationWaveformLevel,
+  normalizeComposerDictationRms,
+  resolveComposerDictationWaveformGeometry,
+} from "./composer-dictation-waveform";
+
+describe("composer dictation transport", () => {
+  test("sanitizes quoted filenames", () => {
+    expect(sanitizeDictationFilename('co"dex".webm')).toBe("codex.webm");
+  });
+
+  test("builds the Codex multipart payload shape", async () => {
+    const payload = await buildDictationMultipartPayload({
+      blob: new Blob(["audio-bytes"], { type: "audio/webm" }),
+      boundary: "----codex-transcribe-test",
+      filename: "codex.webm",
+      contentType: "audio/webm",
+      language: "en",
+    });
+
+    const bodyText = new TextDecoder().decode(payload);
+    expect(
+      Boolean(
+        bodyText.includes('Content-Disposition: form-data; name="file"; filename="codex.webm"'),
+      ),
+    ).toBe(true);
+    expect(Boolean(bodyText.includes("Content-Type: audio/webm"))).toBe(true);
+    expect(Boolean(bodyText.includes('Content-Disposition: form-data; name="language"'))).toBe(
+      true,
+    );
+    expect(Boolean(bodyText.includes("audio-bytes"))).toBe(true);
+  });
+
+  test("sends a base64-wrapped multipart payload through the typed bridge", async () => {
+    let capturedInput: {
+      contentType: string;
+      base64Payload: string;
+    } | null = null;
+    const text = await transcribeDictationBlob(new Blob(["audio-bytes"], { type: "audio/webm" }), {
+      transcribe: async (input) => {
+        capturedInput = input;
+        return dictationTextResult("transcribed text");
+      },
+    });
+
+    const input = capturedInput as unknown as {
+      contentType: string;
+      base64Payload: string;
+    };
+    expect(text).toBe("transcribed text");
+    expect(input.contentType.startsWith("multipart/form-data; boundary=")).toBe(true);
+    expect(input.base64Payload.length > 0).toBe(true);
+
+    const decoded = atob(input.base64Payload);
+    expect(
+      Boolean(
+        decoded.includes('Content-Disposition: form-data; name="file"; filename="codex.webm"'),
+      ),
+    ).toBe(true);
+  });
+
+  test("encodes bytes using the same chunked base64 strategy", () => {
+    const encoded = encodeDictationBase64(new Uint8Array([99, 111, 100, 101, 120]));
+    expect(encoded).toBe("Y29kZXg=");
+  });
+});
+
+describe("composer dictation waveform", () => {
+  test("uses the reference three-pixel bars and fixed 30px/s advance", () => {
+    const geometry = resolveComposerDictationWaveformGeometry(574);
+
+    expect(geometry).toEqual({
+      barCount: 96,
+      barPitchPx: 6,
+      barWidthPx: 3,
+      historyDurationMs: 19_200,
+      scrollSpeedPxPerSecond: 30,
+    });
+    expect(COMPOSER_DICTATION_WAVEFORM_ADVANCE_INTERVAL_MS).toBe(200);
+  });
+
+  test("applies the noise gate and reference nonlinear response", () => {
+    expect(normalizeComposerDictationRms(0)).toBe(0);
+    expect(normalizeComposerDictationRms(0.006)).toBe(0);
+    expect(normalizeComposerDictationRms(0.16)).toBe(1);
+    expect(normalizeComposerDictationRms(0.05)).toBeCloseTo(0.4717, 3);
+  });
+
+  test("advances one history level at a time and evicts the oldest", () => {
+    const levels = [COMPOSER_DICTATION_WAVEFORM_SAMPLE_FLOOR, 0.2];
+
+    appendComposerDictationWaveformLevel(levels, 0.16, 2);
+
+    expect(levels).toEqual([0.2, 1]);
+  });
+});

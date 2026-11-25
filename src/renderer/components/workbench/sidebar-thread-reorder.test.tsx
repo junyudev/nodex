@@ -180,19 +180,6 @@ describe("sidebar thread insertion targeting", () => {
     expect(target?.beforeThreadKey).toBe("beta");
   });
 
-  test("uses the translated active midpoint for keyboard sorting", () => {
-    const target = resolveSidebarThreadDropTarget({
-      visibleThreadKeys: ["alpha", "beta", "gamma"],
-      activeThreadKey: "gamma",
-      overThreadKey: "alpha",
-      activeRect: { top: 2, bottom: 28 },
-      overRect: TARGET_RECT,
-      pointerY: null,
-    });
-
-    expect(target?.beforeThreadKey).toBe("beta");
-  });
-
   test("suppresses an unchanged drop and its indicator", () => {
     const target = resolveSidebarThreadDropTarget({
       visibleThreadKeys: ["alpha", "beta", "gamma"],

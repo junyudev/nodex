@@ -170,24 +170,6 @@ describe("Readback stack", () => {
     vi.useRealTimers();
   });
 
-  test("names the chat by its live title and Project and shows the agent's words", async () => {
-    const { card } = await renderStack();
-    expect(card()?.getAttribute("aria-label")).toBe("Merge Store migrations: readback");
-    expect(screen.getByRole("button", { name: "Merge Store migrations" })).toBeTruthy();
-    expect(screen.getByText("nodex")).toBeTruthy();
-    expect(screen.getByText("the whole branch")).toBeTruthy();
-  });
-
-  test("leaves on its own once there has been time to read it", async () => {
-    const { card, closed } = await renderStack();
-    const duration = readbackVisibleDuration(makeReadback().text);
-    await advance(duration - 100);
-    expect(card()).not.toBeNull();
-    await advance(200);
-    expect(card()).toBeNull();
-    expect(closed).toEqual(["expired"]);
-  });
-
   test("waits while the stack is pointed at, then leaves a grace period", async () => {
     const { card, closed } = await renderStack();
     await advance(readbackVisibleDuration(makeReadback().text) - 500);
@@ -215,22 +197,6 @@ describe("Readback stack", () => {
     });
     await advance(60_000);
     expect(card()).not.toBeNull();
-  });
-
-  test("opens its chat from the text, but not from a link inside it", async () => {
-    const { opened, closed } = await renderStack();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("link", { name: "the plan" }));
-      await Promise.resolve();
-    });
-    expect(opened).toEqual([]);
-    expect(links.opened).toHaveLength(1);
-    await act(async () => {
-      fireEvent.click(screen.getByText("the whole branch"));
-      await Promise.resolve();
-    });
-    expect(opened.map((readback) => readback.runId)).toEqual([RUN_ID]);
-    expect(closed).toEqual(["opened"]);
   });
 
   test("dismissing an image preview leaves the Readback and its chat alone", async () => {

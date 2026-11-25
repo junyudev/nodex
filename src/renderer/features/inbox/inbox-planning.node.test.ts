@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { DEFAULT_INBOX_SETTINGS, type InboxSettings } from "../../../shared/inbox";
-import { describeUsageMeter, runtimeUsageReading } from "@/lib/usage-meter";
 import { inboxAgentLine } from "./inbox-agent-model";
+import { codexProvider, inboxAgentsFixture, claudeProvider } from "./inbox-agents.test-support";
+import { resolveInboxCaptureScope } from "./inbox-capture-scope";
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import { describeUsageMeter, runtimeUsageReading } from "@/lib/usage-meter";
 import {
   describeInboxPlanning,
   inboxPlanningBudget,
@@ -10,327 +12,358 @@ import {
   inboxPlanningNextChange,
   type InboxPlanningModel,
 } from "./inbox-planning";
-import { claudeProvider, codexProvider, inboxAgentsFixture } from "./inbox-agents.test-support";
 
-type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
-type UsageWindow = NonNullable<Provider["usageLimits"]>["windows"][number];
-
-const NOW = Date.parse("2026-11-01T12:00:00.000Z");
-const HOUR = 3_600_000;
-const iso = (at: number) => new Date(at).toISOString();
-
-const session = (usedPercent: number, resetsAt = NOW + 2 * HOUR): UsageWindow => ({
-  id: "five_hour",
-  kind: "session",
-  label: "Session",
-  usedPercent,
-  resetsAt: iso(resetsAt),
-  windowDurationMins: 300,
-});
-const weekly = (id: string, usedPercent: number, resetsAt = NOW + 72 * HOUR): UsageWindow => ({
-  id,
-  kind: "weekly",
-  label: "Weekly",
-  usedPercent,
-  resetsAt: iso(resetsAt),
-  windowDurationMins: 7 * 24 * 60,
-});
-const limits = (windows: readonly UsageWindow[], checkedAt = NOW - 5 * 60_000) => ({
-  usageLimits: { checkedAt: iso(checkedAt), windows: [...windows] },
-});
-
-const model = (slug: string, name: string, isDefault = false) => ({
-  slug,
-  name,
-  isCustom: false,
-  ...(isDefault ? { isDefault } : {}),
-  capabilities: {},
-});
-
-/** GPT-6.2 Sol runs at low effort unless told otherwise. */
-const sol = {
-  ...model("gpt-6.2-sol", "GPT-6.2 Sol", true),
-  capabilities: {
-    optionDescriptors: [
-      {
-        id: "reasoningEffort",
-        label: "Effort",
-        type: "select" as const,
-        currentValue: "low",
-        options: ["low", "medium", "high"].map((id) => ({ id, label: id })),
-      },
-    ],
-  },
-};
-
-/** Codex offering GPT-6.2 Sol beside a model the guide does not cover. */
-const codex = (windows: readonly UsageWindow[] = [session(20), weekly("secondary", 29)]) => ({
-  ...codexProvider(),
-  models: [sol, model("gpt-6-astra", "GPT-6 Astra")],
-  ...limits(windows),
-});
-
-const claude = (windows: readonly UsageWindow[] = [session(10), weekly("seven_day", 38)]) => ({
-  ...claudeProvider(),
-  ...limits(windows),
-});
-
-/** OpenCode with its free models and a billed one, reporting no usage. */
-const openCode = (): Provider => ({
-  ...codexProvider(),
-  instanceId: "opencode",
-  displayName: "OpenCode",
-  driver: "opencode",
-  models: [
-    model("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
-    model("opencode/deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free"),
-    model("opencode/glm-5.3-flash-free", "GLM-5.3-Flash Free"),
-  ],
-});
-
-const catalog = (providers: readonly Provider[]) => inboxAgentsFixture({ providers });
-
-const lines = (models: readonly InboxPlanningModel[]) =>
-  models.map((entry) => ({ title: entry.title, summary: entry.summary, budget: entry.budget }));
-
-const budgetOf = (provider: Provider) =>
-  inboxPlanningBudget(describeUsageMeter(runtimeUsageReading(provider, false), NOW), NOW);
-
-const settings = (overrides: Partial<InboxSettings> = {}): InboxSettings => ({
-  ...DEFAULT_INBOX_SETTINGS,
-  ...overrides,
-});
-
-describe("what suggestions choose a new chat's model among", () => {
-  test("each guide family an Agent offers, beside that Agent's weekly budget", () => {
-    const antigravity: Provider = {
-      ...codexProvider(),
-      instanceId: "antigravity",
-      displayName: "Antigravity",
-      driver: "antigravity",
-      models: [model("gemini-4-neon", "Gemini 4 Neon", true)],
-    };
-    const models = inboxPlanningModels(
-      catalog([codex(), claude(), antigravity, openCode()]),
-      true,
-      NOW,
-    );
-    expect(lines(models)).toEqual([
-      {
-        title: "GPT-6.2 Sol",
-        summary: expect.stringMatching(/^Backend/),
-        budget: { kind: "left", percent: 71, severity: "normal", window: null, readAgo: null },
-      },
-      {
-        // A second Claude account is named, as the model menu names it.
-        title: "Claude Opus 5.5 · Work",
-        summary: expect.stringMatching(/^Frontend/),
-        budget: { kind: "left", percent: 62, severity: "normal", window: null, readAgo: null },
-      },
-      {
-        title: "Gemini 4 Neon · Antigravity",
-        summary: expect.stringMatching(/^Frontend/),
-        budget: { kind: "unknown" },
-      },
-      { title: "OpenCode", summary: null, budget: { kind: "unknown" } },
-    ]);
-    expect(models.map((entry) => entry.kind)).toEqual([
-      "codex",
-      "claudeAgent",
-      "antigravity",
-      "opencode",
-    ]);
+describe("Inbox capture scope", () => {
+  test("captures into the Project the user is in, from its Scene or one of its chats", () => {
+    expect(resolveInboxCaptureScope({ kind: "project", projectId: "p1" })).toEqual({
+      kind: "project",
+      projectId: "p1",
+    });
+    expect(
+      resolveInboxCaptureScope({ kind: "session", sessionId: "s1", projectContextId: "p1" }),
+    ).toEqual({ kind: "project", projectId: "p1" });
   });
 
-  test("without the guide, each Agent once with only its budget", () => {
-    const models = inboxPlanningModels(catalog([codex(), claude(), openCode()]), false, NOW);
-    expect(lines(models)).toEqual([
-      { title: "Codex", summary: null, budget: expect.objectContaining({ percent: 71 }) },
-      { title: "Work", summary: null, budget: expect.objectContaining({ percent: 62 }) },
-      { title: "OpenCode", summary: null, budget: { kind: "unknown" } },
-    ]);
+  test("captures into All Inbox everywhere else", () => {
+    for (const location of [
+      { kind: "session", sessionId: "s1", projectContextId: null },
+      { kind: "library" },
+      { kind: "inbox" },
+      { kind: "empty" },
+      { kind: "automations", path: "/scheduled", returnTo: { kind: "project", projectId: "p1" } },
+    ] as const) {
+      expect(resolveInboxCaptureScope(location)).toEqual({ kind: "all" });
+    }
+  });
+});
+
+describe("inbox planning", () => {
+  type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
+  type UsageWindow = NonNullable<Provider["usageLimits"]>["windows"][number];
+
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  const HOUR = 3_600_000;
+  const iso = (at: number) => new Date(at).toISOString();
+
+  const session = (usedPercent: number, resetsAt = NOW + 2 * HOUR): UsageWindow => ({
+    id: "five_hour",
+    kind: "session",
+    label: "Session",
+    usedPercent,
+    resetsAt: iso(resetsAt),
+    windowDurationMins: 300,
+  });
+  const weekly = (id: string, usedPercent: number, resetsAt = NOW + 72 * HOUR): UsageWindow => ({
+    id,
+    kind: "weekly",
+    label: "Weekly",
+    usedPercent,
+    resetsAt: iso(resetsAt),
+    windowDurationMins: 7 * 24 * 60,
+  });
+  const limits = (windows: readonly UsageWindow[], checkedAt = NOW - 5 * 60_000) => ({
+    usageLimits: { checkedAt: iso(checkedAt), windows: [...windows] },
   });
 
-  test("only families among the models a suggestion is actually offered", () => {
-    // Main offers at most twelve models per Agent, leaving Gemini outside the offered list.
-    const crowded = {
-      ...openCode(),
-      models: [
-        model("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
-        ...Array.from({ length: 11 }, (_, index) =>
-          model(`openai/gpt-6.2-sol-variant-${index}`, `GPT-6.2 Sol Variant ${index}`),
-        ),
-        model("google/gemini-4-neon", "Gemini 4 Neon"),
-        model("opencode/glm-5.3-flash-free", "GLM-5.3-Flash Free"),
+  const model = (slug: string, name: string, isDefault = false) => ({
+    slug,
+    name,
+    isCustom: false,
+    ...(isDefault ? { isDefault } : {}),
+    capabilities: {},
+  });
+
+  /** GPT-6.2 Sol runs at low effort unless told otherwise. */
+  const sol = {
+    ...model("gpt-6.2-sol", "GPT-6.2 Sol", true),
+    capabilities: {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Effort",
+          type: "select" as const,
+          currentValue: "low",
+          options: ["low", "medium", "high"].map((id) => ({ id, label: id })),
+        },
       ],
-    };
-    const titles = inboxPlanningModels(catalog([crowded]), true, NOW).map((entry) => entry.title);
-    expect(titles).toEqual(["GPT-6.2 Sol · OpenCode"]);
-  });
-
-  test("only Agents that can take a chat now", () => {
-    const disabled = { ...claude(), enabled: false };
-    const empty = { ...openCode(), models: [] };
-    const titles = inboxPlanningModels(catalog([codex(), disabled, empty]), true, NOW).map(
-      (entry) => entry.title,
-    );
-    expect(titles).toEqual(["GPT-6.2 Sol"]);
-  });
-});
-
-describe("an API key connection's budget", () => {
-  const deepseek: Provider = {
-    ...claudeProvider(),
-    instanceId: "key_deepseek_c1",
-    displayName: "DeepSeek",
-    driver: "codex",
-    models: [model("deepseek-flash", "DeepSeek V4.1 Flash", true)],
+    },
   };
-  const balance =
-    (amount: number, remainingPercent: number | null = 40) =>
-    (instanceId: string) =>
-      instanceId === "key_deepseek_c1"
-        ? {
-            ...runtimeUsageReading(deepseek, false),
-            instanceId,
-            balance: { amount, currency: "CNY", remainingPercent },
-          }
-        : null;
 
-  test("is its provider's balance, under the provider's own mark", () => {
-    const [line] = inboxPlanningModels(
-      { ...catalog([deepseek]), usageOf: balance(2.9) },
-      false,
-      NOW,
-    );
-    expect(line).toMatchObject({
-      title: "DeepSeek",
+  /** Codex offering GPT-6.2 Sol beside a model the guide does not cover. */
+  const codex = (windows: readonly UsageWindow[] = [session(20), weekly("secondary", 29)]) => ({
+    ...codexProvider(),
+    models: [sol, model("gpt-6-astra", "GPT-6 Astra")],
+    ...limits(windows),
+  });
+
+  const claude = (windows: readonly UsageWindow[] = [session(10), weekly("seven_day", 38)]) => ({
+    ...claudeProvider(),
+    ...limits(windows),
+  });
+
+  /** OpenCode with its free models and a billed one, reporting no usage. */
+  const openCode = (): Provider => ({
+    ...codexProvider(),
+    instanceId: "opencode",
+    displayName: "OpenCode",
+    driver: "opencode",
+    models: [
+      model("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
+      model("opencode/deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free"),
+      model("opencode/glm-5.3-flash-free", "GLM-5.3-Flash Free"),
+    ],
+  });
+
+  const catalog = (providers: readonly Provider[]) => inboxAgentsFixture({ providers });
+
+  const lines = (models: readonly InboxPlanningModel[]) =>
+    models.map((entry) => ({ title: entry.title, summary: entry.summary, budget: entry.budget }));
+
+  const budgetOf = (provider: Provider) =>
+    inboxPlanningBudget(describeUsageMeter(runtimeUsageReading(provider, false), NOW), NOW);
+
+  const settings = (overrides: Partial<InboxSettings> = {}): InboxSettings => ({
+    ...DEFAULT_INBOX_SETTINGS,
+    ...overrides,
+  });
+
+  describe("what suggestions choose a new chat's model among", () => {
+    test("each guide family an Agent offers, beside that Agent's weekly budget", () => {
+      const antigravity: Provider = {
+        ...codexProvider(),
+        instanceId: "antigravity",
+        displayName: "Antigravity",
+        driver: "antigravity",
+        models: [model("gemini-4-neon", "Gemini 4 Neon", true)],
+      };
+      const models = inboxPlanningModels(
+        catalog([codex(), claude(), antigravity, openCode()]),
+        true,
+        NOW,
+      );
+      expect(lines(models)).toEqual([
+        {
+          title: "GPT-6.2 Sol",
+          summary: expect.stringMatching(/^Backend/),
+          budget: { kind: "left", percent: 71, severity: "normal", window: null, readAgo: null },
+        },
+        {
+          // A second Claude account is named, as the model menu names it.
+          title: "Claude Opus 5.5 · Work",
+          summary: expect.stringMatching(/^Frontend/),
+          budget: { kind: "left", percent: 62, severity: "normal", window: null, readAgo: null },
+        },
+        {
+          title: "Gemini 4 Neon · Antigravity",
+          summary: expect.stringMatching(/^Frontend/),
+          budget: { kind: "unknown" },
+        },
+        { title: "OpenCode", summary: null, budget: { kind: "unknown" } },
+      ]);
+      expect(models.map((entry) => entry.kind)).toEqual([
+        "codex",
+        "claudeAgent",
+        "antigravity",
+        "opencode",
+      ]);
+    });
+
+    test("without the guide, each Agent once with only its budget", () => {
+      const models = inboxPlanningModels(catalog([codex(), claude(), openCode()]), false, NOW);
+      expect(lines(models)).toEqual([
+        { title: "Codex", summary: null, budget: expect.objectContaining({ percent: 71 }) },
+        { title: "Work", summary: null, budget: expect.objectContaining({ percent: 62 }) },
+        { title: "OpenCode", summary: null, budget: { kind: "unknown" } },
+      ]);
+    });
+
+    test("only families among the models a suggestion is actually offered", () => {
+      // Main offers at most twelve models per Agent, leaving Gemini outside the offered list.
+      const crowded = {
+        ...openCode(),
+        models: [
+          model("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
+          ...Array.from({ length: 11 }, (_, index) =>
+            model(`openai/gpt-6.2-sol-variant-${index}`, `GPT-6.2 Sol Variant ${index}`),
+          ),
+          model("google/gemini-4-neon", "Gemini 4 Neon"),
+          model("opencode/glm-5.3-flash-free", "GLM-5.3-Flash Free"),
+        ],
+      };
+      const titles = inboxPlanningModels(catalog([crowded]), true, NOW).map((entry) => entry.title);
+      expect(titles).toEqual(["GPT-6.2 Sol · OpenCode"]);
+    });
+
+    test("only Agents that can take a chat now", () => {
+      const disabled = { ...claude(), enabled: false };
+      const empty = { ...openCode(), models: [] };
+      const titles = inboxPlanningModels(catalog([codex(), disabled, empty]), true, NOW).map(
+        (entry) => entry.title,
+      );
+      expect(titles).toEqual(["GPT-6.2 Sol"]);
+    });
+  });
+
+  describe("an API key connection's budget", () => {
+    const deepseek: Provider = {
+      ...claudeProvider(),
       instanceId: "key_deepseek_c1",
-      budget: { kind: "balance", amount: "¥2.90", severity: "normal" },
-    });
-    expect(line?.usage?.level).toEqual({ remainingPercent: 40, severity: "normal" });
-  });
-
-  test("runs low against its last top-up and is spent at zero", () => {
-    const [low] = inboxPlanningModels(
-      { ...catalog([deepseek]), usageOf: balance(1, 8) },
-      false,
-      NOW,
-    );
-    expect(low?.budget).toMatchObject({ kind: "balance", severity: "critical" });
-    const [spent] = inboxPlanningModels(
-      { ...catalog([deepseek]), usageOf: balance(0) },
-      false,
-      NOW,
-    );
-    expect(spent?.budget).toEqual({ kind: "spent", window: null });
-  });
-
-  test("says nothing it was not told", () => {
-    const [unread] = inboxPlanningModels(catalog([deepseek]), false, NOW);
-    expect(unread?.budget).toEqual({ kind: "unknown" });
-  });
-});
-
-describe("what is left of an Agent's budget", () => {
-  test("is the weekly window, even when a session window has less", () => {
-    expect(budgetOf(codex([session(95), weekly("secondary", 40)]))).toEqual({
-      kind: "left",
-      percent: 60,
-      severity: "normal",
-      window: null,
-      readAgo: null,
-    });
-  });
-
-  test("takes the rail's warning colors as it runs low", () => {
-    expect(budgetOf(codex([weekly("secondary", 75)]))).toMatchObject({ severity: "low" });
-    expect(budgetOf(codex([weekly("secondary", 90)]))).toMatchObject({ severity: "critical" });
-    expect(budgetOf(codex([weekly("secondary", 100)]))).toEqual({ kind: "spent", window: null });
-  });
-
-  test("names a window when the Agent has no weekly one", () => {
-    const monthly: UsageWindow = {
-      id: "primary",
-      kind: "monthly",
-      label: "Monthly",
-      usedPercent: 10,
-      resetsAt: iso(NOW + 200 * HOUR),
-      windowDurationMins: 30 * 24 * 60,
+      displayName: "DeepSeek",
+      driver: "codex",
+      models: [model("deepseek-flash", "DeepSeek V4.1 Flash", true)],
     };
-    expect(budgetOf(codex([monthly]))).toMatchObject({ percent: 90, window: "Monthly" });
+    const balance =
+      (amount: number, remainingPercent: number | null = 40) =>
+      (instanceId: string) =>
+        instanceId === "key_deepseek_c1"
+          ? {
+              ...runtimeUsageReading(deepseek, false),
+              instanceId,
+              balance: { amount, currency: "CNY", remainingPercent },
+            }
+          : null;
+
+    test("is its provider's balance, under the provider's own mark", () => {
+      const [line] = inboxPlanningModels(
+        { ...catalog([deepseek]), usageOf: balance(2.9) },
+        false,
+        NOW,
+      );
+      expect(line).toMatchObject({
+        title: "DeepSeek",
+        instanceId: "key_deepseek_c1",
+        budget: { kind: "balance", amount: "¥2.90", severity: "normal" },
+      });
+      expect(line?.usage?.level).toEqual({ remainingPercent: 40, severity: "normal" });
+    });
+
+    test("runs low against its last top-up and is spent at zero", () => {
+      const [low] = inboxPlanningModels(
+        { ...catalog([deepseek]), usageOf: balance(1, 8) },
+        false,
+        NOW,
+      );
+      expect(low?.budget).toMatchObject({ kind: "balance", severity: "critical" });
+      const [spent] = inboxPlanningModels(
+        { ...catalog([deepseek]), usageOf: balance(0) },
+        false,
+        NOW,
+      );
+      expect(spent?.budget).toEqual({ kind: "spent", window: null });
+    });
+
+    test("says nothing it was not told", () => {
+      const [unread] = inboxPlanningModels(catalog([deepseek]), false, NOW);
+      expect(unread?.budget).toEqual({ kind: "unknown" });
+    });
   });
 
-  test("never claims what it cannot know", () => {
-    // The window reset after it was read, so its old share no longer describes the account.
-    expect(budgetOf(codex([weekly("secondary", 90, NOW - HOUR)]))).toEqual({ kind: "reset" });
-    expect(budgetOf(openCode())).toEqual({ kind: "unknown" });
-    // An old reading still shows, marked as old.
-    const old = { ...codex(), ...limits([weekly("secondary", 29)], NOW - 3 * HOUR) };
-    expect(budgetOf(old)).toMatchObject({ percent: 71, readAgo: "3 h ago" });
+  describe("what is left of an Agent's budget", () => {
+    test("is the weekly window, even when a session window has less", () => {
+      expect(budgetOf(codex([session(95), weekly("secondary", 40)]))).toEqual({
+        kind: "left",
+        percent: 60,
+        severity: "normal",
+        window: null,
+        readAgo: null,
+      });
+    });
+
+    test("takes the rail's warning colors as it runs low", () => {
+      expect(budgetOf(codex([weekly("secondary", 75)]))).toMatchObject({ severity: "low" });
+      expect(budgetOf(codex([weekly("secondary", 90)]))).toMatchObject({ severity: "critical" });
+      expect(budgetOf(codex([weekly("secondary", 100)]))).toEqual({ kind: "spent", window: null });
+    });
+
+    test("names a window when the Agent has no weekly one", () => {
+      const monthly: UsageWindow = {
+        id: "primary",
+        kind: "monthly",
+        label: "Monthly",
+        usedPercent: 10,
+        resetsAt: iso(NOW + 200 * HOUR),
+        windowDurationMins: 30 * 24 * 60,
+      };
+      expect(budgetOf(codex([monthly]))).toMatchObject({ percent: 90, window: "Monthly" });
+    });
+
+    test("never claims what it cannot know", () => {
+      // The window reset after it was read, so its old share no longer describes the account.
+      expect(budgetOf(codex([weekly("secondary", 90, NOW - HOUR)]))).toEqual({ kind: "reset" });
+      expect(budgetOf(openCode())).toEqual({ kind: "unknown" });
+      // An old reading still shows, marked as old.
+      const old = { ...codex(), ...limits([weekly("secondary", 29)], NOW - 3 * HOUR) };
+      expect(budgetOf(old)).toMatchObject({ percent: 71, readAgo: "3 h ago" });
+    });
+
+    test("leaves a Claude model's own week to the Agent's card", () => {
+      const fable: UsageWindow = { ...weekly("seven_day_fable", 97), label: "Weekly · Fable" };
+      expect(budgetOf(claude([weekly("seven_day", 38), fable]))).toMatchObject({ percent: 62 });
+    });
   });
 
-  test("leaves a Claude model's own week to the Agent's card", () => {
-    const fable: UsageWindow = { ...weekly("seven_day_fable", 97), label: "Weekly · Fable" };
-    expect(budgetOf(claude([weekly("seven_day", 38), fable]))).toMatchObject({ percent: 62 });
-  });
-});
-
-test("the plan next changes when the first budget resets or its reading ages", () => {
-  const planning = describeInboxPlanning(
-    catalog([
-      codex([weekly("secondary", 29, NOW + 72 * HOUR)]),
-      claude([weekly("seven_day", 38, NOW + 5 * HOUR)]),
-    ]),
-    settings(),
-    { kind: "automatic" },
-    NOW,
-  );
-  // Codex was read five minutes ago, so its reading ages out first, before any window resets.
-  expect(inboxPlanningNextChange(planning)).toBe(NOW - 5 * 60_000 + 30 * 60_000);
-  expect(
-    inboxPlanningNextChange(
-      describeInboxPlanning(catalog([codex()]), settings(), { kind: "off" }, NOW),
-    ),
-  ).toBe(null);
-});
-
-describe("how the Inbox plans", () => {
-  const agents = catalog([codex(), claude(), openCode()]);
-
-  test("names the suggestion model at the effort suggestions run it", () => {
-    const planning = describeInboxPlanning(agents, settings(), { kind: "automatic" }, NOW);
-    expect(planning.kind === "suggests" && inboxAgentLine(planning.suggestedBy)).toBe(
-      "Codex · GPT-6.2 Sol · High",
-    );
-    expect(planning).toMatchObject({ when: "automatic", models: { kind: "chosen", guide: true } });
-  });
-
-  test("keeps routing preferences as written, without surrounding space", () => {
+  test("the plan next changes when the first budget resets or its reading ages", () => {
     const planning = describeInboxPlanning(
-      agents,
-      settings({ instructions: "  Docs go to free models.\n" }),
-      { kind: "on_request" },
-      NOW,
-    );
-    expect(planning).toMatchObject({ when: "on_request", preferences: "Docs go to free models." });
-  });
-
-  test("runs every new chat on one model when suggestions only route", () => {
-    const planning = describeInboxPlanning(
-      agents,
-      settings({ suggestionsChooseModels: false }),
+      catalog([
+        codex([weekly("secondary", 29, NOW + 72 * HOUR)]),
+        claude([weekly("seven_day", 38, NOW + 5 * HOUR)]),
+      ]),
+      settings(),
       { kind: "automatic" },
       NOW,
     );
-    expect(planning.kind === "suggests" && planning.models.kind).toBe("fixed");
+    // Codex was read five minutes ago, so its reading ages out first, before any window resets.
+    expect(inboxPlanningNextChange(planning)).toBe(NOW - 5 * 60_000 + 30 * 60_000);
+    expect(
+      inboxPlanningNextChange(
+        describeInboxPlanning(catalog([codex()]), settings(), { kind: "off" }, NOW),
+      ),
+    ).toBe(null);
   });
 
-  test("says only what new chats run on when suggestions are off", () => {
-    const planning = describeInboxPlanning(agents, settings(), { kind: "off" }, NOW);
-    expect(planning.kind).toBe("off");
-    expect(planning.kind === "off" && inboxAgentLine(planning.chat)).toBe(
-      "Codex · GPT-6.2 Sol · Light",
-    );
+  describe("how the Inbox plans", () => {
+    const agents = catalog([codex(), claude(), openCode()]);
+
+    test("names the suggestion model at the effort suggestions run it", () => {
+      const planning = describeInboxPlanning(agents, settings(), { kind: "automatic" }, NOW);
+      expect(planning.kind === "suggests" && inboxAgentLine(planning.suggestedBy)).toBe(
+        "Codex · GPT-6.2 Sol · High",
+      );
+      expect(planning).toMatchObject({
+        when: "automatic",
+        models: { kind: "chosen", guide: true },
+      });
+    });
+
+    test("keeps routing preferences as written, without surrounding space", () => {
+      const planning = describeInboxPlanning(
+        agents,
+        settings({ instructions: "  Docs go to free models.\n" }),
+        { kind: "on_request" },
+        NOW,
+      );
+      expect(planning).toMatchObject({
+        when: "on_request",
+        preferences: "Docs go to free models.",
+      });
+    });
+
+    test("runs every new chat on one model when suggestions only route", () => {
+      const planning = describeInboxPlanning(
+        agents,
+        settings({ suggestionsChooseModels: false }),
+        { kind: "automatic" },
+        NOW,
+      );
+      expect(planning.kind === "suggests" && planning.models.kind).toBe("fixed");
+    });
+
+    test("says only what new chats run on when suggestions are off", () => {
+      const planning = describeInboxPlanning(agents, settings(), { kind: "off" }, NOW);
+      expect(planning.kind).toBe("off");
+      expect(planning.kind === "off" && inboxAgentLine(planning.chat)).toBe(
+        "Codex · GPT-6.2 Sol · Light",
+      );
+    });
   });
 });

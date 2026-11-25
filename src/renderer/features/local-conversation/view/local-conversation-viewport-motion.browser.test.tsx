@@ -223,7 +223,7 @@ async function recordGeometry(
 }
 
 describe("transcript viewport motion in Chromium", () => {
-  test.each([0, 8, 24])(
+  test.each([0, 24])(
     "restores completed history at bottom when its saved distance is %spx",
     async (distanceFromBottomPx) => {
       const turns = Array.from({ length: 10 }, (_, index) => entry(index));

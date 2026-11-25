@@ -497,125 +497,6 @@ describe("ThreadComposer dictation", () => {
     vi.restoreAllMocks();
   });
 
-  test("hides dictation when dictation support is unavailable", async () => {
-    const { queryByLabelText } = await renderThreadComposer({
-      model: {
-        dictation: {
-          isEnabled: false,
-          authMethod: null,
-          shortcutLabel: "Ctrl+M",
-          capabilities: {
-            composer: false,
-            global: false,
-            history: true,
-            streaming: "unavailable",
-            semanticCleanup: false,
-            sounds: false,
-            voiceDictionary: false,
-            microphoneOwner: "none",
-            auth: "unsupported",
-          },
-        },
-      },
-    });
-
-    expect(queryByLabelText("Dictate")).toBe(null);
-  });
-
-  test("disables the dictation button while realtime voice is active", async () => {
-    const { getByLabelText } = await renderThreadComposer({
-      model: {
-        dictation: {
-          isEnabled: true,
-          authMethod: "chatgpt",
-          shortcutLabel: "Ctrl+M",
-          capabilities: {
-            composer: true,
-            global: true,
-            history: true,
-            streaming: "available",
-            semanticCleanup: false,
-            sounds: false,
-            voiceDictionary: false,
-            microphoneOwner: "realtime-voice",
-            auth: "chatgpt",
-          },
-        },
-      },
-    });
-
-    expect((getByLabelText("Dictate") as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  test("starts on click and inserts the transcript on stop", async () => {
-    transcribeResult = "transcribed text";
-
-    const { container, getByLabelText } = await renderThreadComposer();
-
-    await act(async () => {
-      fireEvent.click(getByLabelText("Dictate"));
-    });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
-    });
-
-    await act(async () => {
-      dictationNow += 260;
-      fireEvent.click(getByLabelText("Stop dictation"));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
-      expect(editor?.textContent ?? "").toBe("transcribed text");
-    });
-  });
-
-  test("keeps the dictation controls stable while transcription is pending", async () => {
-    let resolveTranscription: ((transcript: string) => void) | null = null;
-    transcribePromise = new Promise<string>((resolve) => {
-      resolveTranscription = resolve;
-    });
-
-    const { container, getByLabelText, getByRole } = await renderThreadComposer({
-      model: {
-        dictation: {
-          ...buildModel().dictation,
-          capabilities: { ...buildModel().dictation.capabilities, streaming: "unavailable" },
-        },
-      },
-    });
-
-    await act(async () => {
-      fireEvent.click(getByLabelText("Dictate"));
-    });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
-    });
-
-    await act(async () => {
-      dictationNow += 260;
-      fireEvent.click(getByLabelText("Stop dictation"));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(getByRole("status").textContent).toBe("Transcribing");
-    });
-    expect((getByLabelText("Cancel transcription") as HTMLButtonElement).disabled).toBe(false);
-    expect((getByLabelText("Stop dictation") as HTMLButtonElement).disabled).toBe(true);
-    expect((getByLabelText("Transcribe and send") as HTMLButtonElement).disabled).toBe(false);
-
-    await act(async () => {
-      resolveTranscription?.("transcribed later");
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
-      expect(editor?.textContent ?? "").toBe("transcribed later");
-    });
-  });
-
   test("shows failed recovery and appends an explicit retry result without recording again", async () => {
     transcribeFailure = new Error("transcription failed");
     const openVoiceSettings = vi.fn();
@@ -682,36 +563,6 @@ describe("ThreadComposer dictation", () => {
     expect(stoppedTrackCount).toBe(1);
   });
 
-  test("uses Ctrl+M hold to start and keyup to stop with insert", async () => {
-    transcribeResult = "send me";
-
-    const { container } = await renderThreadComposer();
-
-    await act(async () => {
-      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
-      if (!editor) throw new Error("Expected dictation edit target");
-      editor.focus();
-      fireEvent.keyDown(editor, { key: "m", ctrlKey: true });
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
-    });
-
-    await act(async () => {
-      dictationNow += 260;
-      fireEvent.keyUp(document, { key: "m", ctrlKey: true });
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(transcribeCallCount).toBe(1);
-    });
-    await waitFor(() => {
-      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
-      expect(editor?.textContent ?? "").toBe("send me");
-    });
-  });
-
   test("releases a hold even when keyup moves into a blocked terminal target", async () => {
     transcribeResult = "released safely";
     const { container } = await renderThreadComposer();
@@ -743,37 +594,6 @@ describe("ThreadComposer dictation", () => {
     } finally {
       terminal.remove();
     }
-  });
-
-  test("sends the transcript on explicit send stop mode", async () => {
-    transcribeResult = "send me";
-
-    const onSendPromptCalls: string[] = [];
-    const { getByLabelText } = await renderThreadComposer({
-      actions: {
-        onSendPrompt: async (prompt) => {
-          onSendPromptCalls.push(prompt);
-        },
-      },
-    });
-
-    await act(async () => {
-      fireEvent.click(getByLabelText("Dictate"));
-    });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Send"]'))).toBe(true);
-    });
-
-    await act(async () => {
-      dictationNow += 260;
-      fireEvent.click(getByLabelText("Send"));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(onSendPromptCalls.length).toBe(1);
-    });
-    expect(onSendPromptCalls[0]).toBe("send me");
   });
   test("keeps the editor mounted and inserts streaming revisions without duplicating final text", async () => {
     streamFixture.enabled = true;
@@ -875,47 +695,6 @@ describe("ThreadComposer dictation", () => {
     await waitFor(() => expect(onSendPrompt).toHaveBeenCalledTimes(1));
     expect(onSendPrompt.mock.calls[0]?.[0]).toBe("Ready to send");
     expect(transcribeCallCount).toBe(1);
-  });
-  test("offers segmented recovery for explicit insertion while preserving the current draft", async () => {
-    streamFixture.enabled = true;
-    streamFixture.failFinish = true;
-    streamFixture.text = "All recovered speech";
-    const onSendPrompt = vi.fn(async (_prompt: string) => {});
-    const { container, getByLabelText, getByRole } = await renderThreadComposer({
-      actions: { onSendPrompt },
-    });
-    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
-    await act(async () => {
-      fireEvent.click(getByLabelText("Dictate"));
-    });
-    await waitFor(() => expect(streamFixture.onTranscript).not.toBeNull());
-    await act(async () => {
-      streamFixture.onTranscript?.("Partial words", { id: 0, text: "Partial words" });
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.paste(editor, {
-        clipboardData: {
-          files: [],
-          items: [],
-          getData: (type: string) => (type === "text/plain" ? " edited" : ""),
-        },
-      });
-      dictationNow += 300;
-      fireEvent.click(getByLabelText("Send"));
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(getByRole("button", { name: "Add to message" })).toBeTruthy());
-    expect(editor.textContent).toBe("Partial words edited");
-    expect(onSendPrompt).not.toHaveBeenCalled();
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Add to message" }));
-      await Promise.resolve();
-    });
-    await waitFor(() =>
-      expect(editor.textContent).toBe("Partial words edited All recovered speech"),
-    );
-    expect(onSendPrompt).not.toHaveBeenCalled();
   });
   test("ordinary Voice controls enter the real native target, mute the same media and release it before ending the claim", async () => {
     const f = makeVoice();

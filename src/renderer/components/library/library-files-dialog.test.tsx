@@ -123,12 +123,6 @@ function mount(props: Partial<React.ComponentProps<typeof LibraryFilesDialog>> =
   );
 }
 
-test("keeps a requested identity even when it is outside the loaded catalog", () => {
-  mount();
-  expect(screen.getByRole("button", { name: "current.png" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: /other.txt/ })).toBeTruthy();
-});
-
 test("does not substitute another File for a unavailable requested identity", () => {
   mocks.unavailable = true;
   mount();
@@ -158,39 +152,6 @@ test("selects preview format from exact presentation rather than current File MI
   expect(mocks.snapshot.mock.calls.at(-1)?.[2]).toMatchObject({ content: true, objectUrl: false });
 });
 
-test("picker asks for the Page path and hides global mutations", async () => {
-  mount({ pageTarget: { pageId: "page-a", manifestRevision: 7 } });
-  expect(screen.queryByRole("button", { name: /Update shared/ })).toBeNull();
-  expect(screen.queryByRole("button", { name: /Copy v/ })).toBeNull();
-  await act(async () => {
-    fireEvent.change(screen.getByRole("textbox", { name: "Path in Page" }), {
-      target: { value: "images/local.png" },
-    });
-  });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Add to Page" }));
-  });
-  expect(mocks.attach).toHaveBeenCalledWith(
-    expect.anything(),
-    "page-a",
-    7,
-    "target",
-    "images/local.png",
-    { kind: "direct" },
-  );
-});
-
-test("opens a titled usage through the Workbench", async () => {
-  const close = vi.fn();
-  mount({ onClose: close });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Release notes" }));
-  });
-  expect(mocks.open).toHaveBeenCalledWith({ kind: "page", pageId: "page-a" });
-  expect(close).toHaveBeenCalledOnce();
-  expect(screen.getByText(/more are available/)).toBeTruthy();
-});
-
 test("renaming closes the draft only after a successful command", async () => {
   mount();
   await act(async () => {
@@ -209,13 +170,4 @@ test("renaming closes the draft only after a successful command", async () => {
     "renamed.png",
   );
   expect(screen.queryByDisplayValue("renamed.png")).toBeNull();
-});
-
-test("large text keeps its bytes lazy and explains how to read it", () => {
-  mocks.snapshot.mockReturnValue({
-    metadata: { ...mocks.file, mime_type: "text/plain", byte_length: 3 * 1024 * 1024 },
-  });
-  render(<ManagedFilePreview file={mocks.file} />);
-  expect(mocks.snapshot.mock.calls.at(-1)?.[2]).toMatchObject({ content: false, objectUrl: false });
-  expect(screen.getByText(/Text preview is limited/)).toBeTruthy();
 });

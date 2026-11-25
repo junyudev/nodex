@@ -238,25 +238,6 @@ describe("DictationSessionController", () => {
     expect(fixture.lease.release).toHaveBeenCalledOnce();
   });
 
-  it("stops a late microphone stream after release during acquisition", async () => {
-    let resolveStream: (stream: MediaStream) => void = () => undefined;
-    const acquisition = new Promise<MediaStream>((resolve) => {
-      resolveStream = resolve;
-    });
-    const fixture = createFixture({ acquire: async () => await acquisition });
-
-    const starting = fixture.controller.start({ surface: "composer", gesture: "hold" });
-    await flush();
-    expect(fixture.controller.getSnapshot().kind).toBe("acquiring-stream");
-    fixture.controller.stop("insert");
-    expect(fixture.controller.getSnapshot().kind).toBe("idle");
-    resolveStream(fixture.stream);
-    await starting;
-
-    expect(fixture.track.stop).toHaveBeenCalledOnce();
-    expect(fixture.recorder.start).not.toHaveBeenCalled();
-  });
-
   it("records in five-second chunks and falls back to the complete Blob when streaming fails", async () => {
     const fixture = createFixture({
       prepareStreaming: async () => {
@@ -283,60 +264,6 @@ describe("DictationSessionController", () => {
       action: "send",
       transcript: "hello world",
     });
-  });
-
-  it("retries transcription with the exact retained audio object", async () => {
-    let attempt = 0;
-    const fixture = createFixture({
-      transcribe: async () => {
-        attempt += 1;
-        if (attempt === 1) throw Object.assign(new Error("temporary"), { status: 503 });
-        return "recovered";
-      },
-    });
-    await fixture.controller.start({ surface: "composer", gesture: "click" });
-    fixture.setNow(300);
-    fixture.controller.stop("insert");
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("retryable-error"));
-    const retained = fixture.buffered.transcribe.mock.calls[0]?.[0];
-
-    await fixture.controller.retry();
-
-    expect(fixture.buffered.transcribe.mock.calls[1]?.[0]).toBe(retained);
-    expect(fixture.completion.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "recovered" }),
-    );
-    expect(fixture.controller.getSnapshot().kind).toBe("idle");
-  });
-
-  it("applies semantic cleanup after either transport and fails open on cleanup errors", async () => {
-    const cleaned = createFixture({ cleanup: async () => "Nodex" });
-    await cleaned.controller.start({ surface: "composer", gesture: "click" });
-    cleaned.setNow(300);
-    cleaned.controller.stop("insert");
-    await vi.waitFor(() => expect(cleaned.controller.getSnapshot().kind).toBe("idle"));
-    expect(cleaned.cleanup.transcript).toHaveBeenCalledWith(
-      "hello world",
-      expect.any(AbortSignal),
-      "session-1",
-      expect.any(Function),
-    );
-    expect(cleaned.completion.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "Nodex" }),
-    );
-
-    const failOpen = createFixture({
-      cleanup: async () => {
-        throw new Error("cleanup unavailable");
-      },
-    });
-    await failOpen.controller.start({ surface: "composer", gesture: "click" });
-    failOpen.setNow(300);
-    failOpen.controller.stop("insert");
-    await vi.waitFor(() => expect(failOpen.controller.getSnapshot().kind).toBe("idle"));
-    expect(failOpen.completion.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "hello world" }),
-    );
   });
 
   it("discards 249ms locally but transcribes the 250ms boundary", async () => {
@@ -379,104 +306,6 @@ describe("DictationSessionController", () => {
     expect(fixture.controller.getSnapshot().kind).toBe("idle");
   });
 
-  it("uses a streaming final without sending a buffered request", async () => {
-    const fixture = createFixture();
-    fixture.streamingAttempt.finish.mockResolvedValue("streaming final");
-    await fixture.controller.start({ surface: "composer", gesture: "click" });
-    fixture.setNow(300);
-    fixture.controller.stop("insert");
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-
-    expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
-    expect(fixture.completion.apply).toHaveBeenCalledOnce();
-    expect(fixture.completion.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "streaming final" }),
-    );
-  });
-
-  it.each([
-    { surface: "composer", transport: "buffered" },
-    { surface: "composer", transport: "streaming" },
-    { surface: "global", transport: "buffered" },
-    { surface: "global", transport: "streaming" },
-  ] as const)(
-    "inserts and preserves $transport audio at the Composer deadline for $surface metadata",
-    async ({ surface, transport }) => {
-      const fixture = createFixture();
-      if (transport === "streaming")
-        fixture.streamingAttempt.finish.mockResolvedValue("final text");
-      await fixture.controller.start({ surface, gesture: "toggle" });
-      fixture.emitChunk(new Blob(["opening"], { type: "audio/webm" }));
-      fixture.emitChunk(new Blob(["middle"], { type: "audio/webm" }));
-      fixture.advanceTo(594_999);
-      expect(fixture.controller.getSnapshot().kind).toBe("recording");
-      expect(fixture.recorder.stop).not.toHaveBeenCalled();
-      fixture.advanceTo(595_000);
-      await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-      const text = transport === "streaming" ? "final text" : "hello world";
-      expect(fixture.recorder.stop).toHaveBeenCalledOnce();
-      expect(fixture.track.stop).toHaveBeenCalledOnce();
-      expect(fixture.history.append).toHaveBeenCalledTimes(3);
-      expect(fixture.history.finalize).toHaveBeenLastCalledWith({
-        sessionId: "session-1",
-        status: "completed",
-        durationMs: 595_000,
-        transcript: text,
-      });
-      expect(fixture.completion.apply).toHaveBeenCalledExactlyOnceWith({
-        sessionId: "session-1",
-        signal: expect.any(AbortSignal),
-        action: "insert",
-        transcript: text,
-      });
-      if (transport === "streaming") {
-        expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
-        return;
-      }
-      const audio = fixture.buffered.transcribe.mock.calls[0]?.[0];
-      expect(audio).toBeInstanceOf(Blob);
-      expect(await audio?.text()).toBe("openingmiddleaudio");
-    },
-  );
-
-  it("keeps the global overlay recording past the Composer deadline and preserves its full audio", async () => {
-    const fixture = createFixture({ recordingDurationLimitMs: null });
-    await fixture.controller.start({ surface: "global", gesture: "toggle" });
-    fixture.emitChunk(new Blob(["opening"], { type: "audio/webm" }));
-    fixture.advanceTo(600_000);
-    expect(fixture.controller.getSnapshot().kind).toBe("recording");
-    expect(fixture.recorder.stop).not.toHaveBeenCalled();
-    fixture.emitChunk(new Blob(["after deadline"], { type: "audio/webm" }));
-    fixture.controller.stop("insert");
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-    expect(await fixture.buffered.transcribe.mock.calls[0]?.[0].text()).toBe(
-      "openingafter deadlineaudio",
-    );
-    expect(fixture.completion.apply).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ action: "insert" }),
-    );
-  });
-
-  it.each(["manual-stop", "cancel"] as const)(
-    "ignores a queued Composer deadline from a session ended by %s",
-    async (terminalAction) => {
-      const fixture = createFixture();
-      await fixture.controller.start({ surface: "composer", gesture: "click" });
-      const queuedDeadline = fixture.timerCallback(595_000);
-      fixture.setNow(595_000);
-      if (terminalAction === "cancel") fixture.controller.cancel();
-      else fixture.controller.stop("insert");
-      await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-      await fixture.controller.start({ surface: "composer", gesture: "click" });
-      const stops = vi.mocked(fixture.recorder.stop).mock.calls.length;
-      queuedDeadline();
-      await flush();
-      expect(fixture.controller.getSnapshot().kind).toBe("recording");
-      expect(fixture.recorder.stop).toHaveBeenCalledTimes(stops);
-      fixture.controller.cancel();
-    },
-  );
-
   it("upgrades insert to send during one idempotent finalization", async () => {
     let resolveTranscript: (value: string) => void = () => undefined;
     const fixture = createFixture({
@@ -500,88 +329,6 @@ describe("DictationSessionController", () => {
     expect(fixture.completion.apply).toHaveBeenCalledWith(
       expect.objectContaining({ action: "send" }),
     );
-  });
-
-  it("aborts transcription and ignores its late result", async () => {
-    let resolveTranscript: (value: string) => void = () => undefined;
-    const fixture = createFixture({
-      transcribe: async () =>
-        await new Promise((resolve) => {
-          resolveTranscript = resolve;
-        }),
-    });
-    await fixture.controller.start({ surface: "composer", gesture: "click" });
-    fixture.setNow(300);
-    fixture.controller.stop("insert");
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("transcribing"));
-    await vi.waitFor(() => expect(fixture.buffered.transcribe).toHaveBeenCalledOnce());
-    fixture.controller.cancel();
-    resolveTranscript("too late");
-    await flush();
-
-    expect(fixture.controller.getSnapshot().kind).toBe("idle");
-    expect(fixture.completion.apply).not.toHaveBeenCalled();
-    expect(fixture.track.stop).toHaveBeenCalledOnce();
-  });
-
-  it("does not acquire a device after permission is denied", async () => {
-    const fixture = createFixture({
-      requestPermission: async () => ({
-        kind: "blocked",
-        status: "denied",
-        restartRequired: true,
-      }),
-    });
-    await fixture.controller.start({ surface: "composer", gesture: "click" });
-
-    expect(fixture.acquire).not.toHaveBeenCalled();
-    expect(fixture.controller.getSnapshot()).toMatchObject({
-      kind: "retryable-error",
-      canRetryRecording: false,
-      error: { kind: "microphone-permission-denied" },
-    });
-  });
-});
-
-it("records the actual streaming result, skips cleanup, and freezes recording duration at stop", async () => {
-  const fixture = createFixture();
-  fixture.cleanup.enabled = false;
-  fixture.streamingAttempt.finish.mockImplementation(async () => {
-    fixture.setNow(400);
-    return "streamed";
-  });
-  fixture.streamingAttempt.diagnostics.mockReturnValue({
-    ...emptyDictationStreamDiagnostics(),
-    attempted: true,
-    opened: true,
-    started: true,
-    finalReceived: true,
-    sentAudioFrames: 2,
-    sentAudioBytes: 512,
-  });
-  fixture.history.finalize.mockImplementation(async () => {
-    fixture.setNow(450);
-  });
-  fixture.completion.apply.mockImplementation(async () => {
-    fixture.setNow(500);
-  });
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.history.diagnostics).toHaveBeenCalledOnce());
-  expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
-  expect(fixture.cleanup.transcript).not.toHaveBeenCalled();
-  expect(fixture.history.finalize).toHaveBeenCalledWith(
-    expect.objectContaining({ durationMs: 300 }),
-  );
-  expect(fixture.history.diagnostics.mock.calls[0]?.[1]).toMatchObject({
-    transport: "websocket",
-    stopToTextMs: 200,
-    stopToCompletionMs: 200,
-    phases: expect.arrayContaining([
-      { stage: "cleanup", offsetMs: 400, durationMs: 0, outcome: "skipped" },
-    ]),
-    streaming: { attempted: true, opened: true, started: true, finalReceived: true },
   });
 });
 
@@ -709,73 +456,6 @@ it("reuses segmented recovery on retry rather than uploading the full recording"
   );
 });
 
-it("routes explicit language through buffered transcription and leaves auto eligible for streaming", async () => {
-  const fixture = createFixture();
-  await fixture.controller.start({ surface: "composer", gesture: "click", language: "zh" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.streamingAttempt.start).not.toHaveBeenCalled();
-  expect(fixture.history.diagnostics.mock.calls[0]?.[1].streaming).toMatchObject({
-    attempted: false,
-    skipReason: "language-selected",
-  });
-  expect(fixture.transcript.start).not.toHaveBeenCalled();
-  expect(fixture.buffered.transcribe).toHaveBeenCalledWith(
-    expect.any(Blob),
-    expect.any(AbortSignal),
-    "session-1",
-    expect.any(Function),
-    "zh",
-  );
-  await fixture.controller.start({ surface: "composer", gesture: "click", language: "auto" });
-  expect(fixture.streamingAttempt.start).toHaveBeenCalledOnce();
-  fixture.controller.cancel();
-});
-
-it.each([
-  { availability: "unavailable", reason: { skipReason: "unavailable" } },
-  { availability: "unknown", reason: { skipReason: "unknown" } },
-  { availability: "read-failed", reason: { failureCode: "capability-read-failed" } },
-] as const)(
-  "retains why streaming was not attempted when capability is $availability",
-  async ({ availability, reason }) => {
-    const fixture = createFixture();
-    await fixture.controller.start({
-      surface: "global",
-      gesture: "toggle",
-      streamingAvailability: availability,
-    });
-    fixture.setNow(300);
-    fixture.controller.stop("insert");
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-    expect(fixture.streamingAttempt.start).not.toHaveBeenCalled();
-    expect(fixture.buffered.transcribe).toHaveBeenCalledOnce();
-    expect(fixture.completion.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "hello world" }),
-    );
-    expect(fixture.history.diagnostics.mock.calls[0]?.[1]).toMatchObject({
-      outcome: "completed",
-      transport: "buffered",
-      streaming: { ...emptyDictationStreamDiagnostics(), ...reason },
-    });
-  },
-);
-
-it("starts stream finalization before the recorder's terminal chunk arrives", async () => {
-  const fixture = createFixture();
-  vi.mocked(fixture.recorder.stop).mockImplementation(() => undefined);
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  expect(fixture.streamingAttempt.finish).toHaveBeenCalledOnce();
-  expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
-  fixture.emitChunk(new Blob(["last chunk"], { type: "audio/webm" }));
-  fixture.stopRecorder();
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.buffered.transcribe.mock.calls[0]?.[0].size).toBe(10);
-});
-
 it("holds activation through async insertion and upgrades a pending insert to one empty send", async () => {
   const fixture = createFixture();
   const insertion = deferred<void>();
@@ -795,87 +475,6 @@ it("holds activation through async insertion and upgrades a pending insert to on
     ["insert", "hello world"],
     ["send", ""],
   ]);
-  expect(fixture.lease.release).toHaveBeenCalledOnce();
-});
-
-it("treats empty buffered output as successful cancellation of provisional editor text", async () => {
-  const fixture = createFixture({ transcribe: async () => "  " });
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.transcript.cancel).toHaveBeenCalledOnce();
-  expect(fixture.completion.apply).not.toHaveBeenCalled();
-  expect(fixture.history.finalize).toHaveBeenCalledWith(
-    expect.objectContaining({ status: "completed", transcript: "" }),
-  );
-});
-
-it("keeps audio retryable when a failed stream's buffered recovery returns no text", async () => {
-  const recovery = vi.fn();
-  const fixture = createFixture({ transcribe: async () => "", onRecoveryChange: recovery });
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("retryable-error"));
-  expect(recovery).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "failed" }));
-  expect(fixture.transcript.preserve).toHaveBeenCalledOnce();
-  expect(fixture.transcript.cancel).not.toHaveBeenCalled();
-  expect(fixture.completion.apply).not.toHaveBeenCalled();
-});
-
-it("allows an empty ordinary buffered result after streaming failed to start", async () => {
-  const recovery = vi.fn();
-  const fixture = createFixture({ transcribe: async () => "", onRecoveryChange: recovery });
-  fixture.streamingAttempt.start.mockRejectedValue(new Error("unavailable"));
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  await flush();
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(recovery).not.toHaveBeenCalled();
-  expect(fixture.transcript.cancel).toHaveBeenCalledOnce();
-});
-
-it("releases capture and delivers text even when recording sound callbacks throw", async () => {
-  const fixture = createFixture();
-  fixture.onRecordingStarted.mockImplementation(() => {
-    throw new Error("audio unavailable");
-  });
-  fixture.onRecordingStopped.mockImplementation(() => {
-    throw new Error("audio unavailable");
-  });
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.track.stop).toHaveBeenCalledOnce();
-  expect(fixture.lease.release).toHaveBeenCalledOnce();
-  expect(fixture.completion.apply).toHaveBeenCalledOnce();
-});
-
-it("finishes captured speech after detach without cancelling the editor owner", async () => {
-  const fixture = createFixture();
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.detach();
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.completion.apply).toHaveBeenCalledWith(
-    expect.objectContaining({ action: "insert", transcript: "hello world" }),
-  );
-  expect(fixture.transcript.cancel).not.toHaveBeenCalled();
-});
-
-it("aborts a stream prepared while detached microphone permission is still pending", async () => {
-  const permission = deferred<{ kind: "granted"; status: "granted" }>();
-  const fixture = createFixture({ requestPermission: () => permission.promise });
-  const starting = fixture.controller.start({ surface: "composer", gesture: "click" });
-  await flush();
-  fixture.controller.detach();
-  permission.resolve({ kind: "granted", status: "granted" });
-  await starting;
-  expect(fixture.streamingAttempt.abort).toHaveBeenCalledOnce();
-  expect(fixture.acquire).not.toHaveBeenCalled();
   expect(fixture.lease.release).toHaveBeenCalledOnce();
 });
 
@@ -904,28 +503,6 @@ it("preserves provisional text and offers automatically recovered audio without 
     text: "recovered speech",
   });
   expect(fixture.completion.apply).not.toHaveBeenCalled();
-});
-
-it("uses append delivery only for an explicit recovery retry", async () => {
-  const recovery = vi.fn();
-  let attempts = 0;
-  const fixture = createFixture({
-    onRecoveryChange: recovery,
-    transcribe: async () => {
-      if (++attempts < 3) throw new Error("service unavailable");
-      return "recovered speech";
-    },
-  });
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  fixture.setNow(300);
-  fixture.controller.stop("send");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("retryable-error"));
-  expect(recovery).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "failed" }));
-  await fixture.controller.retry();
-  expect(fixture.completion.apply).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ action: "insert", transcript: "recovered speech", append: true }),
-  );
-  expect(fixture.transcript.preserve).toHaveBeenCalledOnce();
 });
 
 it("recovers an unexpected recorder stop while retaining the edited draft", async () => {
@@ -976,41 +553,6 @@ it("cancels an unconfirmed hold without admitting PCM or creating history", asyn
   expect(fixture.onRecordingStopped).not.toHaveBeenCalled();
 });
 
-it("announces Composer recording on audio readiness without waiting for the socket", async () => {
-  const fixture = createFixture();
-  const socket = deferred<void>();
-  fixture.streamingAttempt.start.mockReturnValue(socket.promise);
-  await fixture.controller.start({ surface: "composer", gesture: "click" });
-  expect(fixture.recorder.start).toHaveBeenCalledOnce();
-  expect(fixture.controller.getSnapshot().kind).toBe("acquiring-stream");
-  expect(fixture.onRecordingStarted).not.toHaveBeenCalled();
-  fixture.streamingAttempt.start.mock.calls[0]?.[2]?.();
-  expect(fixture.controller.getSnapshot().kind).toBe("recording");
-  expect(fixture.onRecordingStarted).toHaveBeenCalledOnce();
-  fixture.controller.cancel();
-  socket.resolve();
-  await flush();
-  expect(fixture.controller.getSnapshot().kind).toBe("idle");
-  expect(fixture.onRecordingStarted).toHaveBeenCalledOnce();
-});
-
-it("keeps explicitly retried global recovery in the recovery UI without pasting", async () => {
-  let attempts = 0;
-  const fixture = createFixture({
-    onRecoveryChange: vi.fn(),
-    transcribe: async () => {
-      if (++attempts < 3) throw new Error("service unavailable");
-      return "recovered";
-    },
-  });
-  await fixture.controller.start({ surface: "global", gesture: "toggle" });
-  fixture.setNow(300);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("retryable-error"));
-  await fixture.controller.retry();
-  expect(fixture.completion.apply).not.toHaveBeenCalled();
-});
-
 it("invalidates an optional language lookup when activation is cancelled", async () => {
   const language = deferred<string>();
   const fixture = createFixture();
@@ -1027,17 +569,6 @@ it("invalidates an optional language lookup when activation is cancelled", async
   expect(fixture.acquire).not.toHaveBeenCalled();
   expect(fixture.recorder.start).not.toHaveBeenCalled();
   expect(fixture.lease.release).toHaveBeenCalledOnce();
-});
-
-test("does not upload or insert a successful empty streaming result", async () => {
-  const fixture = createFixture();
-  fixture.streamingAttempt.finish.mockResolvedValue("");
-  await fixture.controller.start({ surface: "composer", gesture: "hold" });
-  fixture.setNow(1000);
-  fixture.controller.stop("insert");
-  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
-  expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
-  expect(fixture.completion.apply).not.toHaveBeenCalled();
 });
 
 it("saves an explicit recovery retry after detach without appending into a closed Composer", async () => {

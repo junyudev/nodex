@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vite-plus/test";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
 import {
@@ -21,884 +21,987 @@ import {
   inboxTriageModel,
   isInboxItemHandled,
 } from "./inbox-presentation";
+import {
+  describeBackFromSnooze,
+  describeInboxSnoozeConfirmation,
+  describeInboxSnoozedOutcome,
+  formatSnoozeClock,
+  snoozedSections,
+} from "./inbox-snooze";
 
-const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
-  pageId: "page:1",
-  rowKind: "intake",
-  snooze: null,
-  turn: null,
-  basis: { pageId: "page:1", contentHash: "content:1" },
-  pageKey: "IN-1",
-  pageStatus: null,
-  title: "Message",
-  body: "Message",
-  bodyTruncated: false,
-  bodyEditable: true,
-  submittedAt: "2026-10-11T10:00:00.000Z",
-  source: { kind: "user" },
-  replyToPageId: null,
-  kind: null,
-  important: false,
-  waiting: true,
-  suggestionState: "settled",
-  suggestionError: null,
-  automationDecision: null,
-  scope: { kind: "library" },
-  location: { kind: "inbox" },
-  proposal: null,
-  revision: 1,
-  ...overrides,
-});
-
-const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
-  proposalId: "proposal:1",
-  revision: 1,
-  origin: "agent",
-  state: "open",
-  pageIds: ["page:1"],
-  basis: [{ pageId: "page:1", contentHash: "content:1" }],
-  outdated: false,
-  explicitRequest: false,
-  confirmedBy: null,
-  action: {
-    type: "new_chat",
-    additions: [],
-    projectId: "project:nodex",
-    prompt: "Research",
-    agent: null,
-  },
-  kind: "question",
-  summary: "Compare both positions",
-  rationale: null,
-  producedBy: "Codex",
-  targetProjectName: "Nodex",
-  chat: null,
-  failureMessage: null,
-  failureKind: null,
-  createdAt: "2026-10-11T10:00:01.000Z",
-  updatedAt: "2026-10-11T10:00:01.000Z",
-  ...overrides,
-});
-
-const chat = {
-  sessionId: "session:1",
-  projectId: "project:nodex",
-  projectName: "Nodex",
-  displayTitle: "Homepage positioning",
-  threadId: "thread:1",
-  executionRef: null,
-  status: { statusType: "idle" as const, activeFlags: [] },
-  unread: true,
-  archived: false,
-};
-
-describe("inboxTimestampSeparators", () => {
-  const at = (iso: string) => item({ pageId: iso, submittedAt: iso });
-  const ms = (iso: string) => Date.parse(iso);
-
-  it("marks a fresh stream with nothing and an hour-long pause with its time", () => {
-    const items = [
-      at("2026-10-11T10:00:00.000Z"),
-      at("2026-10-11T10:59:00.000Z"),
-      at("2026-10-11T12:00:00.000Z"),
-      at("2026-10-11T13:00:00.000Z"),
-    ];
-    expect(inboxTimestampSeparators(items, ms("2026-10-11T10:30:00.000Z"))).toEqual([
-      null,
-      null,
-      ms("2026-10-11T12:00:00.000Z"),
-      null,
-    ]);
+describe("inbox presentation", () => {
+  const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
+    pageId: "page:1",
+    rowKind: "intake",
+    snooze: null,
+    turn: null,
+    basis: { pageId: "page:1", contentHash: "content:1" },
+    pageKey: "IN-1",
+    pageStatus: null,
+    title: "Message",
+    body: "Message",
+    bodyTruncated: false,
+    bodyEditable: true,
+    submittedAt: "2026-10-11T10:00:00.000Z",
+    source: { kind: "user" },
+    replyToPageId: null,
+    kind: null,
+    important: false,
+    waiting: true,
+    suggestionState: "settled",
+    suggestionError: null,
+    automationDecision: null,
+    scope: { kind: "library" },
+    location: { kind: "inbox" },
+    proposal: null,
+    revision: 1,
+    ...overrides,
   });
 
-  it("dates the first message once it is over an hour old", () => {
-    const first = at("2026-10-11T10:00:00.000Z");
-    expect(inboxTimestampSeparators([first], ms("2026-10-11T11:00:00.000Z"))).toEqual([null]);
-    expect(inboxTimestampSeparators([first], ms("2026-10-11T11:00:00.001Z"))).toEqual([
-      ms("2026-10-11T10:00:00.000Z"),
-    ]);
-  });
-});
-
-const AUTOMATIC: InboxSuggestionPolicy = { kind: "automatic" };
-const ON_REQUEST: InboxSuggestionPolicy = { kind: "on_request" };
-const OFF: InboxSuggestionPolicy = { kind: "off" };
-const PAUSED: InboxSuggestionPolicy = {
-  kind: "paused",
-  pause: {
-    pace: "tight",
-    agent: "Codex",
-    window: "Weekly",
-    leftPercent: 38,
-    resetsAt: "2026-10-16T10:00:00.000Z",
-  },
-};
-
-describe("inboxPageRoutingContext", () => {
-  it("reads a message from where its Page lives now", () => {
-    const filed = (projectId: string | null) =>
-      item({
-        location: {
-          kind: "database",
-          databaseId: "db",
-          databaseName: "Tasks",
-          projectId,
-          projectName: projectId,
-        },
-      });
-    expect(inboxPageRoutingContext(filed("project:site"))).toEqual({
-      kind: "project",
-      projectId: "project:site",
-    });
-    expect(inboxPageRoutingContext(filed(null))).toEqual({ kind: "library" });
-    expect(
-      inboxPageRoutingContext(item({ scope: { kind: "project", projectId: "project:nodex" } })),
-    ).toEqual({ kind: "project", projectId: "project:nodex" });
-  });
-});
-
-describe("inboxRowProject", () => {
-  const projects = [{ id: "project:nodex" }, { id: "project:site" }];
-  const inNodex = item({ scope: { kind: "project", projectId: "project:nodex" } });
-
-  it("names a row's Project only where rows from every Project share a stream", () => {
-    expect(inboxRowProject(inNodex, { kind: "all" }, projects)).toBe(projects[0]);
-    // A Project's own Inbox holds nothing else.
-    expect(
-      inboxRowProject(inNodex, { kind: "project", projectId: "project:nodex" }, projects),
-    ).toBeNull();
-  });
-
-  it("names none for a row without a Project, or one whose Project is not listed", () => {
-    expect(inboxRowProject(item(), { kind: "all" }, projects)).toBeNull();
-    expect(inboxRowProject(inNodex, { kind: "all" }, [projects[1]!])).toBeNull();
-  });
-});
-
-describe("inboxTriageModel", () => {
-  it("shows a running suggestion in every mode that runs one", () => {
-    const pending = item({ suggestionState: "pending" });
-    expect(inboxTriageModel(pending, AUTOMATIC).kind).toBe("suggesting");
-    // The user asked for this one, so it runs while automatic advice steps back.
-    expect(inboxTriageModel(pending, ON_REQUEST).kind).toBe("suggesting");
-    expect(inboxTriageModel(pending, PAUSED).kind).toBe("suggesting");
-    expect(inboxTriageModel(pending, OFF).kind).toBe("undecided");
-  });
-
-  it("shows a message waiting for automatic advice as advised only while it will be", () => {
-    const waiting = item({ suggestionState: "waiting" });
-    expect(inboxTriageModel(waiting, AUTOMATIC).kind).toBe("suggesting");
-    expect(inboxTriageModel(waiting, ON_REQUEST).kind).toBe("undecided");
-    expect(inboxTriageModel(waiting, PAUSED).kind).toBe("undecided");
-    expect(inboxTriageModel(item({ suggestionState: "none" }), AUTOMATIC).kind).toBe("undecided");
-  });
-
-  it("asks for a decision on an open suggestion and reports failures in place", () => {
-    expect(inboxTriageModel(item({ proposal: proposal() }), AUTOMATIC)).toEqual({
-      kind: "suggestion",
-      proposal: proposal(),
-      refreshing: false,
-      refreshError: null,
-    });
-    expect(
-      inboxTriageModel(item({ suggestionState: "failed", suggestionError: "Offline" }), AUTOMATIC),
-    ).toEqual({ kind: "suggestion-failed", message: "Offline" });
-    expect(
-      inboxTriageModel(
-        item({ proposal: proposal({ state: "failed", failureMessage: "Sign in first" }) }),
-        AUTOMATIC,
-      ),
-    ).toMatchObject({ kind: "dispatch-failed", message: "Sign in first" });
-  });
-
-  it("keeps an outdated suggestion while new advice runs or after it fails", () => {
-    const outdated = proposal({ outdated: true });
-    expect(
-      inboxTriageModel(item({ proposal: outdated, suggestionState: "pending" }), ON_REQUEST),
-    ).toMatchObject({ kind: "suggestion", refreshing: true, refreshError: null });
-    expect(
-      inboxTriageModel(
-        item({ proposal: outdated, suggestionState: "failed", suggestionError: "Rate limited" }),
-        AUTOMATIC,
-      ),
-    ).toMatchObject({ kind: "suggestion", refreshing: false, refreshError: "Rate limited" });
-    // A rewrite waits for automatic advice only while suggestions run on their own.
-    expect(
-      inboxTriageModel(item({ proposal: outdated, suggestionState: "waiting" }), PAUSED),
-    ).toMatchObject({ kind: "suggestion", refreshing: false });
-  });
-});
-
-describe("describeInboxSuggestionPause", () => {
-  const now = Date.parse("2026-10-11T10:00:00.000Z");
-
-  it("says which usage ran short, what is left and when it comes back", () => {
-    expect(PAUSED.kind === "paused" && describeInboxSuggestionPause(PAUSED.pause, now)).toBe(
-      "Codex Weekly: 38% left, resets in 5 days",
-    );
-    expect(
-      describeInboxSuggestionPause(
-        {
-          pace: "spent",
-          agent: "Claude Code",
-          window: "Session",
-          leftPercent: 1,
-          resetsAt: "2026-10-11T13:00:00.000Z",
-        },
-        now,
-      ),
-    ).toBe("Claude Code Session: used up, resets in 3 h");
-    expect(
-      describeInboxSuggestionPause(
-        { pace: "spent", agent: "Codex", window: "Weekly", leftPercent: 0, resetsAt: null },
-        now,
-      ),
-    ).toBe("Codex Weekly: used up");
-  });
-});
-
-describe("isInboxItemHandled", () => {
-  it("keeps an uncertain delivery visible for checking and a reviewed new send", () => {
-    const uncertain = item({
-      proposal: proposal({
-        state: "dispatching",
-        failureKind: "unknown",
-        failureMessage: "Check the destination chat",
-      }),
-    });
-    expect(isInboxItemHandled(uncertain)).toBe(false);
-    expect(inboxTriageModel(uncertain, AUTOMATIC)).toMatchObject({
-      kind: "dispatch-failed",
-      message: "Check the destination chat",
-    });
-  });
-
-  it("matches Core: confirmed chats and filed, kept, or done messages leave the Inbox", () => {
-    const elsewhere = {
-      kind: "database",
-      databaseId: "db",
-      databaseName: "Nodex DB",
+  const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
+    proposalId: "proposal:1",
+    revision: 1,
+    origin: "agent",
+    state: "open",
+    pageIds: ["page:1"],
+    basis: [{ pageId: "page:1", contentHash: "content:1" }],
+    outdated: false,
+    explicitRequest: false,
+    confirmedBy: null,
+    action: {
+      type: "new_chat",
+      additions: [],
       projectId: "project:nodex",
-      projectName: "Nodex",
-    } as const;
-    expect(isInboxItemHandled(item({ proposal: proposal() }))).toBe(false);
-    expect(
-      isInboxItemHandled(item({ waiting: false, proposal: proposal({ state: "dispatching" }) })),
-    ).toBe(true);
-    expect(isInboxItemHandled(item({ proposal: proposal({ state: "failed" }) }))).toBe(false);
-    expect(
-      isInboxItemHandled(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
-    ).toBe(true);
-    expect(
-      isInboxItemHandled(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
-    ).toBe(true);
-    // Filing marks the message kept; moving its Page by other means does not handle it.
-    expect(
-      isInboxItemHandled(
-        item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, location: elsewhere }),
-      ),
-    ).toBe(true);
-    expect(isInboxItemHandled(item({ location: elsewhere }))).toBe(false);
+      prompt: "Research",
+      agent: null,
+    },
+    kind: "question",
+    summary: "Compare both positions",
+    rationale: null,
+    producedBy: "Codex",
+    targetProjectName: "Nodex",
+    chat: null,
+    failureMessage: null,
+    failureKind: null,
+    createdAt: "2026-10-11T10:00:01.000Z",
+    updatedAt: "2026-10-11T10:00:01.000Z",
+    ...overrides,
   });
-});
 
-describe("describeInboxOutcome", () => {
-  it("keeps triage outcomes independent of the Page location", () => {
-    for (const state of ["kept", "done"] as const) {
+  const chat = {
+    sessionId: "session:1",
+    projectId: "project:nodex",
+    projectName: "Nodex",
+    displayTitle: "Homepage positioning",
+    threadId: "thread:1",
+    executionRef: null,
+    status: { statusType: "idle" as const, activeFlags: [] },
+    unread: true,
+    archived: false,
+  };
+
+  describe("inboxTimestampSeparators", () => {
+    const at = (iso: string) => item({ pageId: iso, submittedAt: iso });
+    const ms = (iso: string) => Date.parse(iso);
+
+    it("marks a fresh stream with nothing and an hour-long pause with its time", () => {
+      const items = [
+        at("2026-10-11T10:00:00.000Z"),
+        at("2026-10-11T10:59:00.000Z"),
+        at("2026-10-11T12:00:00.000Z"),
+        at("2026-10-11T13:00:00.000Z"),
+      ];
+      expect(inboxTimestampSeparators(items, ms("2026-10-11T10:30:00.000Z"))).toEqual([
+        null,
+        null,
+        ms("2026-10-11T12:00:00.000Z"),
+        null,
+      ]);
+    });
+
+    it("dates the first message once it is over an hour old", () => {
+      const first = at("2026-10-11T10:00:00.000Z");
+      expect(inboxTimestampSeparators([first], ms("2026-10-11T11:00:00.000Z"))).toEqual([null]);
+      expect(inboxTimestampSeparators([first], ms("2026-10-11T11:00:00.001Z"))).toEqual([
+        ms("2026-10-11T10:00:00.000Z"),
+      ]);
+    });
+  });
+
+  const AUTOMATIC: InboxSuggestionPolicy = { kind: "automatic" };
+  const ON_REQUEST: InboxSuggestionPolicy = { kind: "on_request" };
+  const OFF: InboxSuggestionPolicy = { kind: "off" };
+  const PAUSED: InboxSuggestionPolicy = {
+    kind: "paused",
+    pause: {
+      pace: "tight",
+      agent: "Codex",
+      window: "Weekly",
+      leftPercent: 38,
+      resetsAt: "2026-10-16T10:00:00.000Z",
+    },
+  };
+
+  describe("inboxPageRoutingContext", () => {
+    it("reads a message from where its Page lives now", () => {
+      const filed = (projectId: string | null) =>
+        item({
+          location: {
+            kind: "database",
+            databaseId: "db",
+            databaseName: "Tasks",
+            projectId,
+            projectName: projectId,
+          },
+        });
+      expect(inboxPageRoutingContext(filed("project:site"))).toEqual({
+        kind: "project",
+        projectId: "project:site",
+      });
+      expect(inboxPageRoutingContext(filed(null))).toEqual({ kind: "library" });
+      expect(
+        inboxPageRoutingContext(item({ scope: { kind: "project", projectId: "project:nodex" } })),
+      ).toEqual({ kind: "project", projectId: "project:nodex" });
+    });
+  });
+
+  describe("inboxRowProject", () => {
+    const projects = [{ id: "project:nodex" }, { id: "project:site" }];
+    const inNodex = item({ scope: { kind: "project", projectId: "project:nodex" } });
+
+    it("names a row's Project only where rows from every Project share a stream", () => {
+      expect(inboxRowProject(inNodex, { kind: "all" }, projects)).toBe(projects[0]);
+      // A Project's own Inbox holds nothing else.
+      expect(
+        inboxRowProject(inNodex, { kind: "project", projectId: "project:nodex" }, projects),
+      ).toBeNull();
+    });
+
+    it("names none for a row without a Project, or one whose Project is not listed", () => {
+      expect(inboxRowProject(item(), { kind: "all" }, projects)).toBeNull();
+      expect(inboxRowProject(inNodex, { kind: "all" }, [projects[1]!])).toBeNull();
+    });
+  });
+
+  describe("inboxTriageModel", () => {
+    it("shows a running suggestion in every mode that runs one", () => {
+      const pending = item({ suggestionState: "pending" });
+      expect(inboxTriageModel(pending, AUTOMATIC).kind).toBe("suggesting");
+      // The user asked for this one, so it runs while automatic advice steps back.
+      expect(inboxTriageModel(pending, ON_REQUEST).kind).toBe("suggesting");
+      expect(inboxTriageModel(pending, PAUSED).kind).toBe("suggesting");
+      expect(inboxTriageModel(pending, OFF).kind).toBe("undecided");
+    });
+
+    it("shows a message waiting for automatic advice as advised only while it will be", () => {
+      const waiting = item({ suggestionState: "waiting" });
+      expect(inboxTriageModel(waiting, AUTOMATIC).kind).toBe("suggesting");
+      expect(inboxTriageModel(waiting, ON_REQUEST).kind).toBe("undecided");
+      expect(inboxTriageModel(waiting, PAUSED).kind).toBe("undecided");
+      expect(inboxTriageModel(item({ suggestionState: "none" }), AUTOMATIC).kind).toBe("undecided");
+    });
+
+    it("asks for a decision on an open suggestion and reports failures in place", () => {
+      expect(inboxTriageModel(item({ proposal: proposal() }), AUTOMATIC)).toEqual({
+        kind: "suggestion",
+        proposal: proposal(),
+        refreshing: false,
+        refreshError: null,
+      });
+      expect(
+        inboxTriageModel(
+          item({ suggestionState: "failed", suggestionError: "Offline" }),
+          AUTOMATIC,
+        ),
+      ).toEqual({ kind: "suggestion-failed", message: "Offline" });
+      expect(
+        inboxTriageModel(
+          item({ proposal: proposal({ state: "failed", failureMessage: "Sign in first" }) }),
+          AUTOMATIC,
+        ),
+      ).toMatchObject({ kind: "dispatch-failed", message: "Sign in first" });
+    });
+
+    it("keeps an outdated suggestion while new advice runs or after it fails", () => {
+      const outdated = proposal({ outdated: true });
+      expect(
+        inboxTriageModel(item({ proposal: outdated, suggestionState: "pending" }), ON_REQUEST),
+      ).toMatchObject({ kind: "suggestion", refreshing: true, refreshError: null });
+      expect(
+        inboxTriageModel(
+          item({ proposal: outdated, suggestionState: "failed", suggestionError: "Rate limited" }),
+          AUTOMATIC,
+        ),
+      ).toMatchObject({ kind: "suggestion", refreshing: false, refreshError: "Rate limited" });
+      // A rewrite waits for automatic advice only while suggestions run on their own.
+      expect(
+        inboxTriageModel(item({ proposal: outdated, suggestionState: "waiting" }), PAUSED),
+      ).toMatchObject({ kind: "suggestion", refreshing: false });
+    });
+  });
+
+  describe("describeInboxSuggestionPause", () => {
+    const now = Date.parse("2026-10-11T10:00:00.000Z");
+
+    it("says which usage ran short, what is left and when it comes back", () => {
+      expect(PAUSED.kind === "paused" && describeInboxSuggestionPause(PAUSED.pause, now)).toBe(
+        "Codex Weekly: 38% left, resets in 5 days",
+      );
+      expect(
+        describeInboxSuggestionPause(
+          {
+            pace: "spent",
+            agent: "Claude Code",
+            window: "Session",
+            leftPercent: 1,
+            resetsAt: "2026-10-11T13:00:00.000Z",
+          },
+          now,
+        ),
+      ).toBe("Claude Code Session: used up, resets in 3 h");
+      expect(
+        describeInboxSuggestionPause(
+          { pace: "spent", agent: "Codex", window: "Weekly", leftPercent: 0, resetsAt: null },
+          now,
+        ),
+      ).toBe("Codex Weekly: used up");
+    });
+  });
+
+  describe("isInboxItemHandled", () => {
+    it("keeps an uncertain delivery visible for checking and a reviewed new send", () => {
+      const uncertain = item({
+        proposal: proposal({
+          state: "dispatching",
+          failureKind: "unknown",
+          failureMessage: "Check the destination chat",
+        }),
+      });
+      expect(isInboxItemHandled(uncertain)).toBe(false);
+      expect(inboxTriageModel(uncertain, AUTOMATIC)).toMatchObject({
+        kind: "dispatch-failed",
+        message: "Check the destination chat",
+      });
+    });
+
+    it("matches Core: confirmed chats and filed, kept, or done messages leave the Inbox", () => {
+      const elsewhere = {
+        kind: "database",
+        databaseId: "db",
+        databaseName: "Nodex DB",
+        projectId: "project:nodex",
+        projectName: "Nodex",
+      } as const;
+      expect(isInboxItemHandled(item({ proposal: proposal() }))).toBe(false);
+      expect(
+        isInboxItemHandled(item({ waiting: false, proposal: proposal({ state: "dispatching" }) })),
+      ).toBe(true);
+      expect(isInboxItemHandled(item({ proposal: proposal({ state: "failed" }) }))).toBe(false);
+      expect(
+        isInboxItemHandled(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
+      ).toBe(true);
+      expect(
+        isInboxItemHandled(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
+      ).toBe(true);
+      // Filing marks the message kept; moving its Page by other means does not handle it.
+      expect(
+        isInboxItemHandled(
+          item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, location: elsewhere }),
+        ),
+      ).toBe(true);
+      expect(isInboxItemHandled(item({ location: elsewhere }))).toBe(false);
+    });
+  });
+
+  describe("describeInboxOutcome", () => {
+    it("keeps triage outcomes independent of the Page location", () => {
+      for (const state of ["kept", "done"] as const) {
+        expect(
+          describeInboxOutcome(
+            item({
+              waiting: false,
+              pageStatus: { id: state === "kept" ? "plan" : "done", label: state },
+              location: { kind: "other" },
+            }),
+          ),
+        ).toMatchObject({
+          icon: state === "kept" ? "todo" : "done",
+          canReturn: true,
+        });
+      }
+      expect(describeInboxOutcome(item({ location: { kind: "other" } }))).toMatchObject({
+        icon: "inbox",
+        canReturn: false,
+      });
+    });
+    it("keeps a newly dispatched Session navigable before its Thread exists", () => {
+      expect(
+        describeInboxOutcome(
+          item({
+            proposal: proposal({
+              state: "dispatching",
+              chat: { ...chat, threadId: null },
+            }),
+          }),
+        ).open,
+      ).toEqual({ kind: "session", sessionId: "session:1" });
+    });
+
+    it("says Nodex started work it started on the person's standing consent", () => {
+      expect(
+        describeInboxOutcome(
+          item({
+            proposal: proposal({ state: "completed", chat, confirmedBy: "nodex" }),
+          }),
+        ).label,
+      ).toBe("Nodex started “Homepage positioning”");
+      expect(
+        describeInboxOutcome(
+          item({ proposal: proposal({ state: "dispatching", confirmedBy: "nodex" }) }),
+        ).label,
+      ).toBe("Nodex is starting a chat in Nodex");
+      expect(
+        describeInboxOutcome(
+          item({
+            proposal: proposal({ state: "completed", chat, confirmedBy: "user" }),
+          }),
+        ).label,
+      ).toBe("Started “Homepage positioning”");
+    });
+
+    it("names where a handled message went and how to get back to it", () => {
+      expect(
+        describeInboxOutcome(item({ proposal: proposal({ state: "completed", chat }) })),
+      ).toEqual({
+        icon: "chat",
+        label: "Started “Homepage positioning”",
+        status: { label: "New reply", tone: "attention", inProgress: true },
+        open: { kind: "session", sessionId: "session:1" },
+        canReturn: false,
+        done: null,
+        inProgress: true,
+      });
+      expect(
+        describeInboxOutcome(
+          item({
+            proposal: proposal({
+              state: "dispatching",
+              action: { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
+              chat,
+            }),
+          }),
+        ),
+      ).toMatchObject({ icon: "pending", label: "Sending to “Homepage positioning”" });
       expect(
         describeInboxOutcome(
           item({
             waiting: false,
-            pageStatus: { id: state === "kept" ? "plan" : "done", label: state },
-            location: { kind: "other" },
+            proposal: proposal({
+              state: "completed",
+              action: { type: "move_to_project", projectId: "project:nodex" },
+            }),
+            location: {
+              kind: "database",
+              databaseId: "db",
+              databaseName: "Nodex DB",
+              projectId: "project:nodex",
+              projectName: "Nodex",
+            },
           }),
         ),
+      ).toMatchObject({ icon: "move", label: "Moved to Nodex", open: { kind: "database" } });
+      expect(
+        describeInboxOutcome(
+          item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, kind: "question" }),
+        ),
       ).toMatchObject({
-        icon: state === "kept" ? "todo" : "done",
+        label: "Added to Todo",
         canReturn: true,
       });
-    }
-    expect(describeInboxOutcome(item({ location: { kind: "other" } }))).toMatchObject({
-      icon: "inbox",
-      canReturn: false,
+      expect(
+        describeInboxOutcome(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
+      ).toMatchObject({
+        label: "Done",
+        canReturn: true,
+      });
     });
   });
-  it("keeps a newly dispatched Session navigable before its Thread exists", () => {
-    expect(
-      describeInboxOutcome(
-        item({
-          proposal: proposal({
-            state: "dispatching",
-            chat: { ...chat, threadId: null },
-          }),
-        }),
-      ).open,
-    ).toEqual({ kind: "session", sessionId: "session:1" });
-  });
 
-  it("says Nodex started work it started on the person's standing consent", () => {
-    expect(
-      describeInboxOutcome(
-        item({
-          proposal: proposal({ state: "completed", chat, confirmedBy: "nodex" }),
-        }),
-      ).label,
-    ).toBe("Nodex started “Homepage positioning”");
-    expect(
-      describeInboxOutcome(
-        item({ proposal: proposal({ state: "dispatching", confirmedBy: "nodex" }) }),
-      ).label,
-    ).toBe("Nodex is starting a chat in Nodex");
-    expect(
-      describeInboxOutcome(
-        item({
-          proposal: proposal({ state: "completed", chat, confirmedBy: "user" }),
-        }),
-      ).label,
-    ).toBe("Started “Homepage positioning”");
-  });
-
-  it("names where a handled message went and how to get back to it", () => {
-    expect(
-      describeInboxOutcome(item({ proposal: proposal({ state: "completed", chat }) })),
-    ).toEqual({
-      icon: "chat",
-      label: "Started “Homepage positioning”",
-      status: { label: "New reply", tone: "attention", inProgress: true },
-      open: { kind: "session", sessionId: "session:1" },
-      canReturn: false,
-      done: null,
-      inProgress: true,
-    });
-    expect(
-      describeInboxOutcome(
-        item({
-          proposal: proposal({
-            state: "dispatching",
-            action: { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
-            chat,
-          }),
-        }),
-      ),
-    ).toMatchObject({ icon: "pending", label: "Sending to “Homepage positioning”" });
-    expect(
-      describeInboxOutcome(
-        item({
-          waiting: false,
-          proposal: proposal({
-            state: "completed",
-            action: { type: "move_to_project", projectId: "project:nodex" },
-          }),
-          location: {
-            kind: "database",
-            databaseId: "db",
-            databaseName: "Nodex DB",
+  describe("describeInboxAction", () => {
+    it("names the exact destination and switches send to queue for a busy chat", () => {
+      expect(
+        describeInboxAction(
+          {
+            type: "new_chat",
+            additions: [],
             projectId: "project:nodex",
-            projectName: "Nodex",
+            prompt: "x",
+            agent: null,
+          },
+          {
+            targetProjectName: "Nodex",
+            chat: null,
+          },
+        ),
+      ).toEqual({ verb: "Start chat", target: "New chat in Nodex" });
+      const busy = {
+        sessionId: "session:1",
+        projectId: null,
+        projectName: null,
+        displayTitle: "Sidebar polish",
+        threadId: "thread:1",
+        executionRef: null,
+        status: { statusType: "active" as const, activeFlags: [] },
+        unread: false,
+        archived: false,
+      };
+      expect(
+        describeInboxAction(
+          { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
+          { targetProjectName: null, chat: busy },
+        ),
+      ).toEqual({ verb: "Queue", target: "Send to “Sidebar polish” after it finishes" });
+      expect(describeInboxChatStatus(busy)).toMatchObject({ label: "Working", tone: "working" });
+      expect(
+        describeInboxChatStatus({
+          ...busy,
+          status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
+        }),
+      ).toMatchObject({ label: "Needs approval", tone: "attention" });
+      expect(
+        describeInboxChatStatus({
+          ...busy,
+          status: {
+            statusType: "active",
+            activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
           },
         }),
-      ),
-    ).toMatchObject({ icon: "move", label: "Moved to Nodex", open: { kind: "database" } });
-    expect(
-      describeInboxOutcome(
-        item({ waiting: false, pageStatus: { id: "plan", label: "Todo" }, kind: "question" }),
-      ),
-    ).toMatchObject({
-      label: "Added to Todo",
-      canReturn: true,
-    });
-    expect(
-      describeInboxOutcome(item({ waiting: false, pageStatus: { id: "done", label: "Done" } })),
-    ).toMatchObject({
-      label: "Done",
-      canReturn: true,
+      ).toMatchObject({ label: "Needs approval", tone: "attention" });
     });
   });
-});
 
-describe("describeInboxAction", () => {
-  it("names the exact destination and switches send to queue for a busy chat", () => {
-    expect(
-      describeInboxAction(
-        {
-          type: "new_chat",
-          additions: [],
-          projectId: "project:nodex",
-          prompt: "x",
-          agent: null,
-        },
-        {
-          targetProjectName: "Nodex",
-          chat: null,
-        },
-      ),
-    ).toEqual({ verb: "Start chat", target: "New chat in Nodex" });
-    const busy = {
-      sessionId: "session:1",
-      projectId: null,
-      projectName: null,
-      displayTitle: "Sidebar polish",
-      threadId: "thread:1",
-      executionRef: null,
-      status: { statusType: "active" as const, activeFlags: [] },
+  describe("chat progress", () => {
+    const runtime = {
+      ...chat,
+      status: null,
       unread: false,
-      archived: false,
+      executionRef: { runtimeId: "runtime:1", threadId: "thread:1" },
     };
-    expect(
-      describeInboxAction(
-        { type: "send_to_chat", additions: [], sessionId: "session:1", prompt: "x" },
-        { targetProjectName: null, chat: busy },
-      ),
-    ).toEqual({ verb: "Queue", target: "Send to “Sidebar polish” after it finishes" });
-    expect(describeInboxChatStatus(busy)).toMatchObject({ label: "Working", tone: "working" });
-    expect(
-      describeInboxChatStatus({
-        ...busy,
-        status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
-      }),
-    ).toMatchObject({ label: "Needs approval", tone: "attention" });
-    expect(
-      describeInboxChatStatus({
-        ...busy,
-        status: {
-          statusType: "active",
-          activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
-        },
-      }),
-    ).toMatchObject({ label: "Needs approval", tone: "attention" });
+
+    it("reads a Runtime-bound chat's live activity instead of a Thread status it never has", () => {
+      expect(describeInboxChatStatus(runtime, "running")).toEqual({
+        label: "Working",
+        tone: "working",
+        inProgress: true,
+      });
+      expect(describeInboxChatStatus(runtime, "background")).toMatchObject({ label: "Working" });
+      expect(describeInboxChatStatus(runtime, "approval")).toEqual({
+        label: "Needs approval",
+        tone: "attention",
+        inProgress: true,
+      });
+      expect(describeInboxChatStatus(runtime, "waiting")).toEqual({
+        label: "Needs input",
+        tone: "attention",
+        inProgress: true,
+      });
+      // Idle, it is finished once its reply has been read.
+      expect(describeInboxChatStatus(runtime, null)).toEqual({
+        label: "Idle",
+        tone: "quiet",
+        inProgress: false,
+      });
+      expect(describeInboxChatStatus({ ...runtime, unread: true }, null)).toEqual({
+        label: "New reply",
+        tone: "attention",
+        inProgress: true,
+      });
+    });
+
+    it("keeps dispatched work in progress until the user closes it, whatever its chat does", () => {
+      const delivered = (state: "open" | "done", live: "running" | null) =>
+        describeInboxOutcome(
+          item({
+            waiting: false,
+            pageStatus: state === "done" ? { id: "done", label: "Done" } : null,
+            proposal: proposal({ state: "completed", chat: runtime }),
+          }),
+          live,
+        );
+      expect(delivered("open", "running")).toMatchObject({ inProgress: true, done: null });
+      expect(delivered("open", null)).toMatchObject({ inProgress: false, done: null });
+      expect(delivered("done", "running")).toMatchObject({
+        label: "Started “Homepage positioning”",
+        status: { label: "Done" },
+        inProgress: false,
+        done: null,
+        canReturn: false,
+      });
+      expect(
+        describeInboxOutcome(item({ proposal: proposal({ state: "dispatching", chat: null }) })),
+      ).toMatchObject({ icon: "pending", inProgress: true, done: null });
+      expect(
+        describeInboxOutcome(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
+      ).toMatchObject({
+        inProgress: false,
+        done: null,
+      });
+    });
   });
-});
 
-describe("chat progress", () => {
-  const runtime = {
-    ...chat,
-    status: null,
-    unread: false,
-    executionRef: { runtimeId: "runtime:1", threadId: "thread:1" },
-  };
-
-  it("reads a Runtime-bound chat's live activity instead of a Thread status it never has", () => {
-    expect(describeInboxChatStatus(runtime, "running")).toEqual({
-      label: "Working",
-      tone: "working",
-      inProgress: true,
-    });
-    expect(describeInboxChatStatus(runtime, "background")).toMatchObject({ label: "Working" });
-    expect(describeInboxChatStatus(runtime, "approval")).toEqual({
-      label: "Needs approval",
-      tone: "attention",
-      inProgress: true,
-    });
-    expect(describeInboxChatStatus(runtime, "waiting")).toEqual({
-      label: "Needs input",
-      tone: "attention",
-      inProgress: true,
-    });
-    // Idle, it is finished once its reply has been read.
-    expect(describeInboxChatStatus(runtime, null)).toEqual({
-      label: "Idle",
-      tone: "quiet",
-      inProgress: false,
-    });
-    expect(describeInboxChatStatus({ ...runtime, unread: true }, null)).toEqual({
-      label: "New reply",
-      tone: "attention",
-      inProgress: true,
-    });
-  });
-
-  it("keeps dispatched work in progress until the user closes it, whatever its chat does", () => {
-    const delivered = (state: "open" | "done", live: "running" | null) =>
-      describeInboxOutcome(
-        item({
-          waiting: false,
-          pageStatus: state === "done" ? { id: "done", label: "Done" } : null,
-          proposal: proposal({ state: "completed", chat: runtime }),
+  describe("describeInboxDecision", () => {
+    it("says where a message went before Core's handled message arrives", () => {
+      expect(
+        describeInboxDecision(item(), {
+          kind: "chat",
+          type: "new_chat",
+          sessionId: "session:new",
+          chatTitle: null,
+          projectName: "Nodex",
         }),
-        live,
+      ).toMatchObject({
+        icon: "pending",
+        label: "Starting a chat in Nodex",
+        open: { kind: "session", sessionId: "session:new" },
+      });
+      expect(
+        describeInboxDecision(item(), {
+          kind: "chat",
+          type: "send_to_chat",
+          sessionId: "session:1",
+          chatTitle: "Homepage positioning",
+          projectName: null,
+        }).label,
+      ).toBe("Sending to “Homepage positioning”");
+      expect(describeInboxDecision(item(), { kind: "keep" })).toMatchObject({
+        icon: "todo",
+        label: "Added to Todo",
+      });
+      expect(describeInboxDecision(item(), { kind: "save_to_notes" })).toMatchObject({
+        icon: "notes",
+        label: "Saved to Notes",
+      });
+      expect(describeInboxDecision(item(), { kind: "done" }).label).toBe("Done");
+      expect(describeInboxDecision(item(), { kind: "move", projectName: "Nodex" }).label).toBe(
+        "Moved to Nodex",
       );
-    expect(delivered("open", "running")).toMatchObject({ inProgress: true, done: null });
-    expect(delivered("open", null)).toMatchObject({ inProgress: false, done: null });
-    expect(delivered("done", "running")).toMatchObject({
-      label: "Started “Homepage positioning”",
-      status: { label: "Done" },
-      inProgress: false,
-      done: null,
-      canReturn: false,
-    });
-    expect(
-      describeInboxOutcome(item({ proposal: proposal({ state: "dispatching", chat: null }) })),
-    ).toMatchObject({ icon: "pending", inProgress: true, done: null });
-    expect(
-      describeInboxOutcome(item({ waiting: false, pageStatus: { id: "plan", label: "Todo" } })),
-    ).toMatchObject({
-      inProgress: false,
-      done: null,
-    });
-  });
-});
-
-describe("describeInboxDecision", () => {
-  it("says where a message went before Core's handled message arrives", () => {
-    expect(
-      describeInboxDecision(item(), {
-        kind: "chat",
-        type: "new_chat",
-        sessionId: "session:new",
-        chatTitle: null,
-        projectName: "Nodex",
-      }),
-    ).toMatchObject({
-      icon: "pending",
-      label: "Starting a chat in Nodex",
-      open: { kind: "session", sessionId: "session:new" },
-    });
-    expect(
-      describeInboxDecision(item(), {
-        kind: "chat",
-        type: "send_to_chat",
-        sessionId: "session:1",
-        chatTitle: "Homepage positioning",
-        projectName: null,
-      }).label,
-    ).toBe("Sending to “Homepage positioning”");
-    expect(describeInboxDecision(item(), { kind: "keep" })).toMatchObject({
-      icon: "todo",
-      label: "Added to Todo",
-    });
-    expect(describeInboxDecision(item(), { kind: "save_to_notes" })).toMatchObject({
-      icon: "notes",
-      label: "Saved to Notes",
-    });
-    expect(describeInboxDecision(item(), { kind: "done" }).label).toBe("Done");
-    expect(describeInboxDecision(item(), { kind: "move", projectName: "Nodex" }).label).toBe(
-      "Moved to Nodex",
-    );
-  });
-});
-
-describe("groupByDay", () => {
-  it("keeps the given order and labels recent days", () => {
-    const now = new Date(2026, 9, 11, 18);
-    const sections = groupByDay(
-      [
-        { id: "a", at: new Date(2026, 9, 10, 9).toISOString() },
-        { id: "b", at: new Date(2026, 9, 11, 9).toISOString() },
-        { id: "c", at: new Date(2026, 9, 11, 10).toISOString() },
-      ],
-      (entry) => entry.at,
-      now,
-    );
-    expect(sections.map((section) => section.label)).toEqual(["Yesterday", "Today"]);
-    expect(sections[1]?.items.map((entry) => entry.id)).toEqual(["b", "c"]);
-  });
-});
-
-describe("inboxBuriedImportant", () => {
-  const important = ["page:plan", "page:pricing", "page:review"].map((pageId) => ({
-    pageId,
-    title: pageId,
-    submittedAt: "2026-10-11T10:00:00.000Z",
-  }));
-
-  it("points at the longest-waiting important message out of view", () => {
-    const inView = (pageId: string) => pageId === "page:plan";
-    expect(inboxBuriedImportant(important, 5, inView)).toEqual({
-      message: important[1],
-      position: 2,
-      total: 5,
     });
   });
 
-  it("points nowhere while every important message is in view", () => {
-    expect(inboxBuriedImportant(important, 3, () => true)).toBeNull();
-    expect(inboxBuriedImportant([], 0, () => false)).toBeNull();
-  });
-});
-
-describe("inboxPageStatusMark", () => {
-  it("marks a message only once its Page has left Triage", () => {
-    expect(inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Triage" } }))).toBeNull();
-    expect(inboxPageStatusMark(item({ pageStatus: null }))).toBeNull();
-    expect(inboxPageStatusMark(item({ pageStatus: { id: "doing", label: "Doing" } }))).toEqual({
-      id: "doing",
-      label: "Doing",
-    });
-  });
-
-  it("follows the status option, not its name, so a renamed Triage stays quiet", () => {
-    expect(
-      inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Incoming" } })),
-    ).toBeNull();
-    expect(inboxPageStatusMark(item({ pageStatus: { id: "review", label: "Triage" } }))).toEqual({
-      id: "review",
-      label: "Triage",
-    });
-  });
-});
-
-describe("inboxRowOffers", () => {
-  const offers = (model: Parameters<typeof inboxRowOffers>[0], grouped = false) =>
-    inboxRowOffers(model, { suggestionsOffered: true, grouped });
-
-  it("holds a waiting message from its row, and never an answer or a handled one", () => {
-    expect(offers({ kind: "undecided" }).hold).toBe(true);
-    expect(offers({ kind: "suggesting" }).hold).toBe(true);
-    expect(offers({ kind: "decision-withdrawn" }).hold).toBe(false);
-    expect(offers({ kind: "handled" }).hold).toBe(false);
-  });
-
-  it("names what the row shows, so the menu can leave it out", () => {
-    expect(offers({ kind: "undecided" })).toMatchObject({
-      done: true,
-      handleManually: true,
-      suggest: true,
-    });
-    expect(offers({ kind: "suggesting" })).toMatchObject({
-      done: true,
-      handleManually: true,
-      suggest: false,
-    });
-    expect(offers({ kind: "suggestion-failed", message: "Timed out" })).toMatchObject({
-      done: true,
-      handleManually: true,
-      suggest: true,
-    });
-    expect(
-      inboxRowOffers({ kind: "undecided" }, { suggestionsOffered: false, grouped: false }).suggest,
-    ).toBe(false);
-  });
-
-  it("keeps Handle manually in the menu beside a suggestion, where it changes the suggestion", () => {
-    const current = { kind: "suggestion", proposal: proposal(), refreshing: false } as const;
-    expect(offers({ ...current, refreshError: null })).toMatchObject({
-      done: true,
-      handleManually: false,
-      suggest: false,
-    });
-    // An outdated or failed suggestion asks again from the row, so the menu does not.
-    expect(
-      offers({ ...current, proposal: proposal({ outdated: true }), refreshError: null }).suggest,
-    ).toBe(true);
-    expect(offers({ ...current, refreshError: "Timed out" }).suggest).toBe(true);
-    expect(
-      inboxRowOffers(
-        { ...current, proposal: proposal({ outdated: true }), refreshError: null },
-        { suggestionsOffered: false, grouped: false },
-      ).suggest,
-    ).toBe(false);
-  });
-
-  it("offers nothing beside the menu for a group member or a handled message", () => {
-    const nothing = { done: false, handleManually: false, suggest: false, hold: false };
-    expect(
-      offers(
-        { kind: "suggestion", proposal: proposal(), refreshing: false, refreshError: null },
-        true,
-      ),
-    ).toEqual(nothing);
-    expect(offers({ kind: "handled" })).toEqual(nothing);
-  });
-});
-
-describe("an automation's waiting run", () => {
-  const firingSource = {
-    kind: "automation" as const,
-    automationId: "automation:deps",
-    dispatchId: "dispatch:1",
-    projectId: "project:nodex",
-    label: "Bump dependency versions",
-  };
-  const automationDecision = {
-    automationId: "automation:deps",
-    dispatchId: "dispatch:1",
-    status: "held" as const,
-    firstScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
-    lastScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
-    missedCount: 0,
-    failureMessage: null,
-  };
-  const runTask = proposal({
-    origin: "automation",
-    action: {
-      type: "execute_decision",
-      decisionId: "dispatch:1",
-      agent: null,
-    },
-    kind: "todo",
-    summary: "Run Bump dependency versions",
-    producedBy: null,
-  });
-  const waiting = (overrides: Partial<InboxItem> = {}) =>
-    item({ source: firingSource, automationDecision, proposal: runTask, ...overrides });
-
-  it("asks to run in its Project, or in its chat for a Heartbeat", () => {
-    expect(describeInboxAction(runTask.action, { targetProjectName: "Nodex", chat: null })).toEqual(
-      { verb: "Run", target: "Run in Nodex" },
-    );
-    expect(
-      describeInboxAction(runTask.action, { targetProjectName: null, chat: null }).target,
-    ).toBe("Run without a Project");
-    expect(describeInboxAction(runTask.action, { targetProjectName: null, chat }).target).toBe(
-      "Run in “Homepage positioning”",
-    );
-  });
-
-  it("waits in the Inbox until it runs, and returns when its run fails before reaching a chat", () => {
-    expect(inboxTriageModel(waiting(), AUTOMATIC)).toMatchObject({
-      kind: "suggestion",
-      proposal: runTask,
-    });
-    const admitted = waiting({
-      waiting: false,
-      automationDecision: { ...automationDecision, status: "admitted" },
-      proposal: { ...runTask, state: "completed" },
-    });
-    expect(isInboxItemHandled(admitted)).toBe(true);
-    expect(describeInboxOutcome(admitted)).toMatchObject({
-      icon: "pending",
-      label: "Starting “Bump dependency versions”",
-      inProgress: true,
-    });
-    const failed = waiting({
-      automationDecision: {
-        ...automationDecision,
-        status: "failed",
-        failureMessage: "The Agent is off",
-      },
-      proposal: { ...runTask, state: "failed", failureKind: "rejected", failureMessage: null },
-    });
-    expect(isInboxItemHandled(failed)).toBe(false);
-    expect(inboxTriageModel(failed, AUTOMATIC)).toMatchObject({
-      kind: "dispatch-failed",
-      message: "The Agent is off",
-    });
-  });
-
-  it("follows its run's chat in History as soon as the run reaches one", () => {
-    // The automationDecision stays admitted while its run works; the chat's own status tells how it goes.
-    const ran = waiting({
-      automationDecision: { ...automationDecision, status: "admitted" },
-      proposal: { ...runTask, state: "completed", chat },
-    });
-    expect(describeInboxOutcome(ran)).toMatchObject({
-      icon: "chat",
-      label: "Ran “Bump dependency versions”",
-      open: { kind: "session", sessionId: "session:1" },
-      status: { label: "New reply" },
-      inProgress: true,
-    });
-  });
-
-  it("reads as skipped when the user marks it done instead of running it", () => {
-    const skipped = waiting({
-      waiting: false,
-      pageStatus: { id: "done", label: "Done" },
-      automationDecision: { ...automationDecision, status: "skipped" },
-    });
-    expect(describeInboxOutcome(skipped).label).toBe("Skipped");
-    expect(describeInboxDecision(waiting(), { kind: "done" }).label).toBe("Skipped");
-    expect(describeInboxDecision(waiting(), { kind: "run", taskName: "Deps" })).toMatchObject({
-      icon: "pending",
-      label: "Starting “Deps”",
-    });
-  });
-
-  it("can no longer run once its task is deleted", () => {
-    expect(
-      inboxTriageModel(
-        waiting({ automationDecision: { ...automationDecision, status: "withdrawn" } }),
-        AUTOMATIC,
-      ),
-    ).toEqual({
-      kind: "decision-withdrawn",
-    });
-  });
-
-  it("says when it fell due, how often since, and where it runs", () => {
-    const now = new Date(2026, 9, 27, 12, 0);
-    const task = {
-      kind: "cron" as const,
-      projectId: "project:nodex",
-      executionEnvironment: "worktree" as const,
-      cwds: ["/repo"],
-    };
-    expect(describeInboxAutomationDecision(automationDecision, task, now)).toMatch(
-      /^Due Yesterday, .+ · Worktree$/u,
-    );
-    expect(
-      describeInboxAutomationDecision({ ...automationDecision, missedCount: 2 }, task, now),
-    ).toMatch(/^Due 3 times since Yesterday, .+ · Worktree$/u);
-    expect(
-      describeInboxAutomationDecision(
-        automationDecision,
-        { ...task, kind: "heartbeat" as const, projectId: null },
+  describe("groupByDay", () => {
+    it("keeps the given order and labels recent days", () => {
+      const now = new Date(2026, 9, 11, 18);
+      const sections = groupByDay(
+        [
+          { id: "a", at: new Date(2026, 9, 10, 9).toISOString() },
+          { id: "b", at: new Date(2026, 9, 11, 9).toISOString() },
+          { id: "c", at: new Date(2026, 9, 11, 10).toISOString() },
+        ],
+        (entry) => entry.at,
         now,
-      ),
-    ).toMatch(/· Continues its chat$/u);
-    expect(describeInboxAutomationDecision(automationDecision, null, now)).toMatch(
-      /^Due Yesterday, /u,
-    );
-  });
-});
-
-describe("inboxRowAction", () => {
-  const opus = {
-    instanceId: "claude",
-    model: "claude-opus-5-5",
-    reasoningEffort: "high",
-    serviceTier: null,
-  };
-  const chat = {
-    type: "new_chat" as const,
-    projectId: "project:nodex",
-    prompt: "Fix the scroll jump.",
-    agent: opus,
-    additions: ["Hand the measurement work to GPT-6.1 Sol.", "Start from thread-body.tsx."],
-  };
-
-  it("is null until the row changes something", () => {
-    expect(inboxRowAction(chat, null)).toBeNull();
-    expect(inboxRowAction(chat, { proposalId: "p", dropped: [] })).toBeNull();
-    // Dropping additions means nothing to an action that has none.
-    expect(inboxRowAction({ type: "keep" }, { proposalId: "p", dropped: [0] })).toBeNull();
+      );
+      expect(sections.map((section) => section.label)).toEqual(["Yesterday", "Today"]);
+      expect(sections[1]?.items.map((entry) => entry.id)).toEqual(["b", "c"]);
+    });
   });
 
-  it("keeps only the additions the row left checked, with any model chosen there", () => {
-    expect(inboxRowAction(chat, { proposalId: "p", dropped: [0] })).toEqual({
-      ...chat,
-      additions: ["Start from thread-body.tsx."],
+  describe("inboxBuriedImportant", () => {
+    const important = ["page:plan", "page:pricing", "page:review"].map((pageId) => ({
+      pageId,
+      title: pageId,
+      submittedAt: "2026-10-11T10:00:00.000Z",
+    }));
+
+    it("points at the longest-waiting important message out of view", () => {
+      const inView = (pageId: string) => pageId === "page:plan";
+      expect(inboxBuriedImportant(important, 5, inView)).toEqual({
+        message: important[1],
+        position: 2,
+        total: 5,
+      });
     });
-    expect(inboxRowAction(chat, { proposalId: "p", agent: null, dropped: [0, 1] })).toEqual({
-      ...chat,
-      agent: null,
-      additions: [],
+
+    it("points nowhere while every important message is in view", () => {
+      expect(inboxBuriedImportant(important, 3, () => true)).toBeNull();
+      expect(inboxBuriedImportant([], 0, () => false)).toBeNull();
     });
-    const send = {
-      type: "send_to_chat" as const,
-      sessionId: "session:1",
-      prompt: "Continue.",
-      additions: ["Check the logs first."],
+  });
+
+  describe("inboxPageStatusMark", () => {
+    it("marks a message only once its Page has left Triage", () => {
+      expect(
+        inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Triage" } })),
+      ).toBeNull();
+      expect(inboxPageStatusMark(item({ pageStatus: null }))).toBeNull();
+      expect(inboxPageStatusMark(item({ pageStatus: { id: "doing", label: "Doing" } }))).toEqual({
+        id: "doing",
+        label: "Doing",
+      });
+    });
+
+    it("follows the status option, not its name, so a renamed Triage stays quiet", () => {
+      expect(
+        inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Incoming" } })),
+      ).toBeNull();
+      expect(inboxPageStatusMark(item({ pageStatus: { id: "review", label: "Triage" } }))).toEqual({
+        id: "review",
+        label: "Triage",
+      });
+    });
+  });
+
+  describe("inboxRowOffers", () => {
+    const offers = (model: Parameters<typeof inboxRowOffers>[0], grouped = false) =>
+      inboxRowOffers(model, { suggestionsOffered: true, grouped });
+
+    it("holds a waiting message from its row, and never an answer or a handled one", () => {
+      expect(offers({ kind: "undecided" }).hold).toBe(true);
+      expect(offers({ kind: "suggesting" }).hold).toBe(true);
+      expect(offers({ kind: "decision-withdrawn" }).hold).toBe(false);
+      expect(offers({ kind: "handled" }).hold).toBe(false);
+    });
+
+    it("names what the row shows, so the menu can leave it out", () => {
+      expect(offers({ kind: "undecided" })).toMatchObject({
+        done: true,
+        handleManually: true,
+        suggest: true,
+      });
+      expect(offers({ kind: "suggesting" })).toMatchObject({
+        done: true,
+        handleManually: true,
+        suggest: false,
+      });
+      expect(offers({ kind: "suggestion-failed", message: "Timed out" })).toMatchObject({
+        done: true,
+        handleManually: true,
+        suggest: true,
+      });
+      expect(
+        inboxRowOffers({ kind: "undecided" }, { suggestionsOffered: false, grouped: false })
+          .suggest,
+      ).toBe(false);
+    });
+
+    it("keeps Handle manually in the menu beside a suggestion, where it changes the suggestion", () => {
+      const current = { kind: "suggestion", proposal: proposal(), refreshing: false } as const;
+      expect(offers({ ...current, refreshError: null })).toMatchObject({
+        done: true,
+        handleManually: false,
+        suggest: false,
+      });
+      // An outdated or failed suggestion asks again from the row, so the menu does not.
+      expect(
+        offers({ ...current, proposal: proposal({ outdated: true }), refreshError: null }).suggest,
+      ).toBe(true);
+      expect(offers({ ...current, refreshError: "Timed out" }).suggest).toBe(true);
+      expect(
+        inboxRowOffers(
+          { ...current, proposal: proposal({ outdated: true }), refreshError: null },
+          { suggestionsOffered: false, grouped: false },
+        ).suggest,
+      ).toBe(false);
+    });
+
+    it("offers nothing beside the menu for a group member or a handled message", () => {
+      const nothing = { done: false, handleManually: false, suggest: false, hold: false };
+      expect(
+        offers(
+          { kind: "suggestion", proposal: proposal(), refreshing: false, refreshError: null },
+          true,
+        ),
+      ).toEqual(nothing);
+      expect(offers({ kind: "handled" })).toEqual(nothing);
+    });
+  });
+
+  describe("an automation's waiting run", () => {
+    const firingSource = {
+      kind: "automation" as const,
+      automationId: "automation:deps",
+      dispatchId: "dispatch:1",
+      projectId: "project:nodex",
+      label: "Bump dependency versions",
     };
-    expect(inboxRowAction(send, { proposalId: "p", dropped: [0] })).toEqual({
-      ...send,
-      additions: [],
+    const automationDecision = {
+      automationId: "automation:deps",
+      dispatchId: "dispatch:1",
+      status: "held" as const,
+      firstScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
+      lastScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
+      missedCount: 0,
+      failureMessage: null,
+    };
+    const runTask = proposal({
+      origin: "automation",
+      action: {
+        type: "execute_decision",
+        decisionId: "dispatch:1",
+        agent: null,
+      },
+      kind: "todo",
+      summary: "Run Bump dependency versions",
+      producedBy: null,
     });
+    const waiting = (overrides: Partial<InboxItem> = {}) =>
+      item({ source: firingSource, automationDecision, proposal: runTask, ...overrides });
+
+    it("asks to run in its Project, or in its chat for a Heartbeat", () => {
+      expect(
+        describeInboxAction(runTask.action, { targetProjectName: "Nodex", chat: null }),
+      ).toEqual({ verb: "Run", target: "Run in Nodex" });
+      expect(
+        describeInboxAction(runTask.action, { targetProjectName: null, chat: null }).target,
+      ).toBe("Run without a Project");
+      expect(describeInboxAction(runTask.action, { targetProjectName: null, chat }).target).toBe(
+        "Run in “Homepage positioning”",
+      );
+    });
+
+    it("waits in the Inbox until it runs, and returns when its run fails before reaching a chat", () => {
+      expect(inboxTriageModel(waiting(), AUTOMATIC)).toMatchObject({
+        kind: "suggestion",
+        proposal: runTask,
+      });
+      const admitted = waiting({
+        waiting: false,
+        automationDecision: { ...automationDecision, status: "admitted" },
+        proposal: { ...runTask, state: "completed" },
+      });
+      expect(isInboxItemHandled(admitted)).toBe(true);
+      expect(describeInboxOutcome(admitted)).toMatchObject({
+        icon: "pending",
+        label: "Starting “Bump dependency versions”",
+        inProgress: true,
+      });
+      const failed = waiting({
+        automationDecision: {
+          ...automationDecision,
+          status: "failed",
+          failureMessage: "The Agent is off",
+        },
+        proposal: { ...runTask, state: "failed", failureKind: "rejected", failureMessage: null },
+      });
+      expect(isInboxItemHandled(failed)).toBe(false);
+      expect(inboxTriageModel(failed, AUTOMATIC)).toMatchObject({
+        kind: "dispatch-failed",
+        message: "The Agent is off",
+      });
+    });
+
+    it("follows its run's chat in History as soon as the run reaches one", () => {
+      // The automationDecision stays admitted while its run works; the chat's own status tells how it goes.
+      const ran = waiting({
+        automationDecision: { ...automationDecision, status: "admitted" },
+        proposal: { ...runTask, state: "completed", chat },
+      });
+      expect(describeInboxOutcome(ran)).toMatchObject({
+        icon: "chat",
+        label: "Ran “Bump dependency versions”",
+        open: { kind: "session", sessionId: "session:1" },
+        status: { label: "New reply" },
+        inProgress: true,
+      });
+    });
+
+    it("reads as skipped when the user marks it done instead of running it", () => {
+      const skipped = waiting({
+        waiting: false,
+        pageStatus: { id: "done", label: "Done" },
+        automationDecision: { ...automationDecision, status: "skipped" },
+      });
+      expect(describeInboxOutcome(skipped).label).toBe("Skipped");
+      expect(describeInboxDecision(waiting(), { kind: "done" }).label).toBe("Skipped");
+      expect(describeInboxDecision(waiting(), { kind: "run", taskName: "Deps" })).toMatchObject({
+        icon: "pending",
+        label: "Starting “Deps”",
+      });
+    });
+
+    it("can no longer run once its task is deleted", () => {
+      expect(
+        inboxTriageModel(
+          waiting({ automationDecision: { ...automationDecision, status: "withdrawn" } }),
+          AUTOMATIC,
+        ),
+      ).toEqual({
+        kind: "decision-withdrawn",
+      });
+    });
+
+    it("says when it fell due, how often since, and where it runs", () => {
+      const now = new Date(2026, 9, 27, 12, 0);
+      const task = {
+        kind: "cron" as const,
+        projectId: "project:nodex",
+        executionEnvironment: "worktree" as const,
+        cwds: ["/repo"],
+      };
+      expect(describeInboxAutomationDecision(automationDecision, task, now)).toMatch(
+        /^Due Yesterday, .+ · Worktree$/u,
+      );
+      expect(
+        describeInboxAutomationDecision({ ...automationDecision, missedCount: 2 }, task, now),
+      ).toMatch(/^Due 3 times since Yesterday, .+ · Worktree$/u);
+      expect(
+        describeInboxAutomationDecision(
+          automationDecision,
+          { ...task, kind: "heartbeat" as const, projectId: null },
+          now,
+        ),
+      ).toMatch(/· Continues its chat$/u);
+      expect(describeInboxAutomationDecision(automationDecision, null, now)).toMatch(
+        /^Due Yesterday, /u,
+      );
+    });
+  });
+
+  describe("inboxRowAction", () => {
+    const opus = {
+      instanceId: "claude",
+      model: "claude-opus-5-5",
+      reasoningEffort: "high",
+      serviceTier: null,
+    };
+    const chat = {
+      type: "new_chat" as const,
+      projectId: "project:nodex",
+      prompt: "Fix the scroll jump.",
+      agent: opus,
+      additions: ["Hand the measurement work to GPT-6.1 Sol.", "Start from thread-body.tsx."],
+    };
+
+    it("is null until the row changes something", () => {
+      expect(inboxRowAction(chat, null)).toBeNull();
+      expect(inboxRowAction(chat, { proposalId: "p", dropped: [] })).toBeNull();
+      // Dropping additions means nothing to an action that has none.
+      expect(inboxRowAction({ type: "keep" }, { proposalId: "p", dropped: [0] })).toBeNull();
+    });
+
+    it("keeps only the additions the row left checked, with any model chosen there", () => {
+      expect(inboxRowAction(chat, { proposalId: "p", dropped: [0] })).toEqual({
+        ...chat,
+        additions: ["Start from thread-body.tsx."],
+      });
+      expect(inboxRowAction(chat, { proposalId: "p", agent: null, dropped: [0, 1] })).toEqual({
+        ...chat,
+        agent: null,
+        additions: [],
+      });
+      const send = {
+        type: "send_to_chat" as const,
+        sessionId: "session:1",
+        prompt: "Continue.",
+        additions: ["Check the logs first."],
+      };
+      expect(inboxRowAction(send, { proposalId: "p", dropped: [0] })).toEqual({
+        ...send,
+        additions: [],
+      });
+    });
+  });
+
+  it("admits only Page rows to the chat projection", () => {
+    const rows = [
+      item({ pageId: "intake" }),
+      item({ pageId: "problem", rowKind: "problem" }),
+      item({ pageId: "turn", rowKind: "turn" }),
+      item({
+        pageId: "answer",
+        rowKind: "answer",
+        source: { kind: "nodex", purpose: "answer", subjectSessionId: null, subjectPageId: "card" },
+      }),
+    ];
+    expect(inboxChatPageIds(rows)).toEqual(["intake", "turn", "answer", "card"]);
   });
 });
 
-it("admits only Page rows to the chat projection", () => {
-  const rows = [
-    item({ pageId: "intake" }),
-    item({ pageId: "problem", rowKind: "problem" }),
-    item({ pageId: "turn", rowKind: "turn" }),
-    item({
-      pageId: "answer",
-      rowKind: "answer",
-      source: { kind: "nodex", purpose: "answer", subjectSessionId: null, subjectPageId: "card" },
-    }),
-  ];
-  expect(inboxChatPageIds(rows)).toEqual(["intake", "turn", "answer", "card"]);
+describe("inbox snooze", () => {
+  const local = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min);
+  // Wednesday, Nov 4 2026, 2:15 PM
+  const now = local(2026, 11, 4, 14, 15);
+  const at = (date: Date) => date.toISOString();
+  const setAside = (pageId: string, snoozedUntil: Date): InboxItem =>
+    ({
+      pageId,
+      snooze: {
+        setAt: at(local(2026, 11, 3, 10)),
+        until: at(snoozedUntil),
+      },
+    }) as InboxItem;
+
+  describe("Snooze wording", () => {
+    test("names when a message comes back", () => {
+      expect(describeInboxSnoozedOutcome(at(local(2026, 11, 5, 9)), now, "en-US")).toBe(
+        "Snoozed · tomorrow at 9:00 AM",
+      );
+      expect(describeInboxSnoozedOutcome(at(local(2026, 11, 4, 17, 16)), now, "en-US")).toBe(
+        "Snoozed · today at 5:16 PM",
+      );
+    });
+
+    test("confirms one message or several", () => {
+      expect(describeInboxSnoozeConfirmation(at(local(2026, 11, 5, 9)), 1, now, "en-US")).toBe(
+        "Snoozed until tomorrow at 9:00 AM",
+      );
+      expect(describeInboxSnoozeConfirmation(at(local(2026, 11, 5, 9)), 3, now, "en-US")).toBe(
+        "Snoozed 3 messages until tomorrow at 9:00 AM",
+      );
+    });
+
+    test("a returned message says when it was set aside; one still waiting says nothing", () => {
+      const record = { setAt: at(local(2026, 11, 3, 10)), until: at(now) };
+      expect(
+        describeBackFromSnooze({ ...record, until: at(local(2026, 11, 5)) }, now, "en-US"),
+      ).toBeNull();
+      expect(describeBackFromSnooze(null, now, "en-US")).toBeNull();
+      expect(describeBackFromSnooze(record, now, "en-US")).toBe("Back from snooze · set yesterday");
+      expect(
+        describeBackFromSnooze(
+          { setAt: at(local(2026, 10, 20, 10)), until: at(now) },
+          now,
+          "en-US",
+        ),
+      ).toBe("Back from snooze · set on Oct 20");
+      expect(
+        describeBackFromSnooze({ setAt: at(local(2026, 11, 4, 9)), until: at(now) }, now, "en-US"),
+      ).toBe("Back from snooze · set earlier today");
+    });
+  });
+
+  describe("snoozedSections", () => {
+    test("groups by the day each message returns", () => {
+      const sections = snoozedSections(
+        [
+          setAside("a", local(2026, 11, 4, 17)),
+          setAside("b", local(2026, 11, 5, 9)),
+          setAside("c", local(2026, 11, 5, 15)),
+          setAside("d", local(2026, 11, 9, 9)),
+          setAside("e", local(2026, 12, 1, 9)),
+        ],
+        now,
+        "en-US",
+      );
+      expect(
+        sections.map((section) => [section.label, section.items.map((i) => i.pageId)]),
+      ).toEqual([
+        ["Today", ["a"]],
+        ["Tomorrow", ["b", "c"]],
+        ["Monday", ["d"]],
+        ["Dec 1", ["e"]],
+      ]);
+    });
+
+    test("a time already reached still reads as today until Core returns it", () => {
+      expect(snoozedSections([setAside("a", local(2026, 11, 3, 9))], now, "en-US")[0]?.label).toBe(
+        "Today",
+      );
+    });
+
+    test("a row adds only the time of day", () => {
+      expect(formatSnoozeClock(at(local(2026, 11, 5, 9)), "en-US")).toBe("9:00 AM");
+    });
+  });
 });
 
 describe("activityDecisionSessionId", () => {

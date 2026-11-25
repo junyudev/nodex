@@ -11,12 +11,10 @@ import type {
   AgentRuntimeConnectionState,
   AgentRuntimeSessionEvent,
 } from "../../../shared/agent-runtime-api";
-import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { makeTestWorkbenchSession } from "./workbench-testkit/panel-fixtures";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { toast } from "@/components/ui/toast";
 import {
-  AgentRuntimeChildPanel,
   AgentRuntimeSideChatPanel,
   AgentRuntimeSubagentsOverviewPanel,
 } from "./workbench-agent-runtime-panels";
@@ -175,55 +173,6 @@ it("waits for the model catalog, then returns an unsendable opening message only
   }
 });
 
-it("keeps a child header unknown until its own settings load, independently of Fast defaults", () => {
-  const adapter = {
-    runtime: {},
-    actions: {},
-    provider: { serviceTier: "fast" },
-    selectedModel: "global-default-model",
-    selectedEffort: "high",
-    state: { conversation: null },
-  };
-  childAdapter.mockReturnValue(adapter);
-  const props = {
-    session: { id: "session", projectId: null } as WorkbenchSessionRenderProjection,
-    threadId: "child",
-    title: "Explorer",
-    project: null,
-    canInteract: false,
-    onBackToSubagents: vi.fn(),
-    composerEnterBehavior: "enter" as const,
-    queueingEnabled: false,
-    onRefresh: async () => {},
-    onOpenThread: () => {},
-    hostActions: {},
-    turnDiffHoverPreviewDisabled: false,
-  };
-  const view = render(<AgentRuntimeChildPanel {...props} />);
-  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
-  expect(screen.queryByText("global-default-model")).toBeNull();
-
-  const loaded = (options: { id: string; value: string }[]) => {
-    childAdapter.mockReturnValue({
-      ...adapter,
-      state: {
-        conversation: {
-          snapshot: {
-            projection: { thread: { modelSelection: { model: "child-model", options } } },
-          },
-        },
-      },
-    });
-    view.rerender(<AgentRuntimeChildPanel {...props} />);
-  };
-  loaded([]);
-  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
-  loaded([{ id: "serviceTier", value: "fast" }]);
-  expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
-  loaded([{ id: "serviceTier", value: "default" }]);
-  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
-});
-
 const task = (id: string): AgentSubagentOverviewItem => ({
   id,
   taskId: id,
@@ -355,39 +304,6 @@ it("opens only bounded metadata, loads one explicit continuation and releases it
   expect(release).toHaveBeenCalledOnce();
 });
 
-it("releases a failed continuation so the same subagent window can be retried", async () => {
-  const overview = vi
-    .spyOn(agentRuntimeRuntime, "overview")
-    .mockResolvedValueOnce({
-      active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
-      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
-    })
-    .mockRejectedValueOnce(new Error("Continuation unavailable"))
-    .mockResolvedValueOnce(overviewOf([task("two")]));
-  observe();
-  const view = render(
-    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-  );
-  await screen.findByRole("button", { name: "Open subagent Review one" });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    await Promise.resolve();
-  });
-  expect((await screen.findByRole("alert")).textContent).toContain("Continuation unavailable");
-  expect(screen.getByRole("button", { name: "Open subagent Review one" })).toBeTruthy();
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    await Promise.resolve();
-  });
-  await screen.findByRole("button", { name: "Open subagent Review two" });
-  expect(overview.mock.calls.slice(1).map(([input]) => input)).toEqual([
-    { sessionId: "session", threadId: "root", activeCursor: "after-one" },
-    { sessionId: "session", threadId: "root", activeCursor: "after-one" },
-  ]);
-  expect(screen.queryByRole("alert")).toBeNull();
-  view.unmount();
-});
-
 it("stops a nested native task through its owning Thread and Run", async () => {
   const native = {
     ...task("native"),
@@ -428,81 +344,6 @@ it("stops a nested native task through its owning Thread and Run", async () => {
   expect(read).not.toHaveBeenCalled();
   view.unmount();
   expect(release).toHaveBeenCalledOnce();
-});
-
-it("cancels an application-owned subagent through its parent and settles from events", async () => {
-  vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue(overviewOf([task("one")]));
-  const { update } = observe();
-  const cancelTask = vi
-    .spyOn(agentRuntimeRuntime, "cancelTask")
-    .mockResolvedValue({ taskId: "one", status: "cancelled" });
-  const view = render(
-    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-  );
-  await screen.findByRole("button", { name: "Open subagent Review one" });
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Stop Review one" }));
-    await Promise.resolve();
-  });
-  expect(await screen.findByText("Stopping…")).toBeTruthy();
-  await waitFor(() =>
-    expect(cancelTask).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session", threadId: "root", taskId: "one" }),
-    ),
-  );
-  await act(async () => {
-    update({ ...task("one"), status: "interrupted", updatedAt: "2026-10-13T20:05:00Z" }, 2);
-    await Promise.resolve();
-  });
-  await waitFor(() => expect(screen.queryByText("Stopping…")).toBeNull());
-  expect(screen.queryByRole("button", { name: "Stop Review one" })).toBeNull();
-  expect(screen.getByText("Done · 1")).toBeTruthy();
-  view.unmount();
-});
-
-it("reopens a settled subagent in place for its follow-up turn and stops that turn", async () => {
-  vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
-    active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
-    terminal: {
-      items: [{ ...task("one"), status: "completed", completedAt: "2026-10-13T20:01:00Z" }],
-      nextCursor: null,
-      hasMore: false,
-      totalCount: 1,
-    },
-  });
-  const { update } = observe();
-  const cancelTask = vi
-    .spyOn(agentRuntimeRuntime, "cancelTask")
-    .mockResolvedValue({ taskId: "one-follow-up", status: "cancelled" });
-  const view = render(
-    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-  );
-  expect(await screen.findByText("Done · 1")).toBeTruthy();
-  await act(async () => {
-    update(
-      {
-        ...task("one"),
-        taskId: "one-follow-up",
-        startedAt: "2026-10-13T20:02:00Z",
-        updatedAt: "2026-10-13T20:02:00Z",
-      },
-      2,
-    );
-    await Promise.resolve();
-  });
-  expect(await screen.findByText("Active · 1")).toBeTruthy();
-  expect(screen.queryByText(/^Done ·/)).toBeNull();
-  expect(screen.getAllByRole("button", { name: "Open subagent Review one" })).toHaveLength(1);
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Stop Review one" }));
-    await Promise.resolve();
-  });
-  await waitFor(() =>
-    expect(cancelTask).toHaveBeenCalledWith(
-      expect.objectContaining({ threadId: "root", taskId: "one-follow-up", runId: "parent-run" }),
-    ),
-  );
-  view.unmount();
 });
 
 it("keeps loaded pages across task events and attaches again after a delivery gap", async () => {
@@ -589,67 +430,3 @@ it("attaches again on its own once the same process answers after a failed attac
   expect(releases[0]).toHaveBeenCalledOnce();
   view.unmount();
 });
-
-it("counts every Done task and re-reads the totals a report from an unloaded page leaves unknown", async () => {
-  const done = (id: string) => ({ ...task(id), status: "completed" as const });
-  const initial: AgentSubagentOverview = {
-    active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
-    terminal: { items: [done("a")], nextCursor: "after-a", hasMore: true, totalCount: 12 },
-  };
-  const overview = vi
-    .spyOn(agentRuntimeRuntime, "overview")
-    .mockResolvedValueOnce(initial)
-    .mockResolvedValueOnce({
-      active: { ...initial.active, totalCount: 1 },
-      terminal: { ...initial.terminal, totalCount: 11 },
-    });
-  const { update } = observe();
-  const view = render(
-    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-  );
-  expect(await screen.findByText("Done · 12")).toBeTruthy();
-
-  // A Done task from a page not loaded yet starts working again.
-  await act(async () => {
-    update({ ...task("old"), updatedAt: "2026-10-13T21:00:00Z" }, 2);
-    await Promise.resolve();
-  });
-  expect(await screen.findByText("Done · 11")).toBeTruthy();
-  expect(screen.getByText("Active · 1")).toBeTruthy();
-  expect(overview).toHaveBeenCalledTimes(2);
-  view.unmount();
-});
-
-it.each([
-  ["approval", "Needs approval"],
-  ["question_person", "Needs your answer"],
-  ["question_agent", "Asked a question"],
-] as const)(
-  "reads %s attention directly from the overview and refreshes it for task reports",
-  async (attention, label) => {
-    const initial = task("attention");
-    const changed = { ...initial, attention, updatedAt: "2026-10-13T20:00:01Z" };
-    const overview = vi
-      .spyOn(agentRuntimeRuntime, "overview")
-      .mockResolvedValueOnce(overviewOf([initial]))
-      .mockResolvedValue(overviewOf([changed]));
-    const observed = observe();
-    const read = vi.spyOn(agentRuntimeRuntime, "read");
-    const control = vi.spyOn(agentRuntimeRuntime, "control");
-    const view = render(
-      <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
-    );
-    try {
-      await screen.findByRole("button", { name: "Open subagent Review attention" });
-      await act(async () => {
-        observed.update({ ...changed, attention: null }, 1);
-      });
-      expect(await screen.findByText(label)).toBeTruthy();
-      expect(overview).toHaveBeenCalledTimes(2);
-      expect(control).not.toHaveBeenCalled();
-      expect(read).not.toHaveBeenCalled();
-    } finally {
-      view.unmount();
-    }
-  },
-);

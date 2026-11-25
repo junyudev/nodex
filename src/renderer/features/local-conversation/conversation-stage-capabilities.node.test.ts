@@ -1,0 +1,268 @@
+import { describe, expect, test, vi, it } from "vite-plus/test";
+import { memberEditCapabilities, REPLIED_SINCE_REASON } from "./agent-runtime-conversation-owner";
+import { supportsConversationProviderControl } from "./conversation-provider-controls";
+import type { ThreadStageActions } from "./thread-stage-types";
+import { composeNativeThreadStageActions } from "./native-thread-stage-actions";
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
+import { createRemoteCodexStageActions } from "./remote-codex-stage-actions";
+
+test("a chat on this computer edits every message its Provider can rewind to", () => {
+  expect(memberEditCapabilities(["r1", "r2"], undefined)).toEqual({
+    editableUserTurnIds: ["r1", "r2"],
+  });
+});
+
+test("a hosted chat edits only the reader's own messages no one else has replied after", () => {
+  const edits = new Map([
+    ["r1", "replied_since"],
+    ["r2", "unavailable"],
+    ["r3", "available"],
+  ] as const);
+  expect(memberEditCapabilities(["r1", "r2", "r3", "r4"], edits)).toEqual({
+    editableUserTurnIds: ["r3"],
+    userTurnEditRefusals: { r1: REPLIED_SINCE_REASON },
+  });
+});
+
+test("native controls require a positive advertised capability", () => {
+  expect(supportsConversationProviderControl({ kind: "claude" }, "steer")).toBe(false);
+  expect(
+    supportsConversationProviderControl({ kind: "claude", controls: { steer: true } }, "steer"),
+  ).toBe(true);
+  expect(
+    supportsConversationProviderControl({ kind: "acp", controls: { skills: true } }, "skills"),
+  ).toBe(true);
+  expect(
+    supportsConversationProviderControl({ kind: "claude", controls: { steer: true } }, "stopTask"),
+  ).toBe(false);
+  expect(supportsConversationProviderControl(undefined, "steer")).toBe(true);
+  expect(supportsConversationProviderControl({ kind: "claude" }, "images")).toBe(false);
+  expect(
+    supportsConversationProviderControl({ kind: "claude", controls: { images: true } }, "images"),
+  ).toBe(true);
+});
+
+test("explicit Runtime capabilities override native Codex defaults", () => {
+  expect(supportsConversationProviderControl({ kind: "codex" }, "images")).toBe(true);
+  expect(
+    supportsConversationProviderControl({ kind: "codex", controls: { images: false } }, "images"),
+  ).toBe(false);
+  expect(
+    supportsConversationProviderControl({ kind: "codex", controls: { images: true } }, "images"),
+  ).toBe(true);
+});
+
+test("native execution has no implicit Codex handlers while shared Session navigation stays available", async () => {
+  const codexExecution = vi.fn();
+  const nativePrompt = vi.fn().mockResolvedValue(undefined);
+  const archive = vi.fn();
+  const open = vi.fn();
+  const host = {
+    onArchiveThread: archive,
+    onOpenThread: open,
+    onQueueingEnabledChange: vi.fn(),
+    onCompactThread: codexExecution,
+    onRetryThreadAttachment: codexExecution,
+    onUploadFeedback: codexExecution,
+  } as unknown as ThreadStageActions;
+  const actions = composeNativeThreadStageActions(host, { onSendPrompt: nativePrompt });
+  await actions.onSendPrompt("hello");
+  expect(nativePrompt).toHaveBeenCalledWith("hello");
+  await actions.onArchiveThread?.();
+  await actions.onOpenThread("target");
+  expect(archive).toHaveBeenCalledOnce();
+  expect(open).toHaveBeenCalledWith("target");
+  for (const key of ["onCompactThread", "onRetryThreadAttachment", "onUploadFeedback"] as const)
+    expect(actions[key]).toBeUndefined();
+  expect(codexExecution).not.toHaveBeenCalled();
+});
+
+test("a native read-only surface can prepare a projectless draft without acquiring execution", async () => {
+  const prefill = vi.fn(async () => {});
+  const actions = composeNativeThreadStageActions(
+    {
+      onQueueingEnabledChange: () => {},
+      onOpenThread: () => {},
+      onStartNewChatWithPrompt: prefill,
+    },
+    {},
+  );
+  const input = { projectId: null, prompt: "", isSourceCurrent: () => true };
+  await actions.onStartNewChatWithPrompt?.(input);
+  expect(prefill).toHaveBeenCalledExactlyOnceWith(input);
+  await expect(actions.onSendPrompt("prompt")).rejects.toThrow("unavailable");
+  await expect(actions.onSendCapturedFollowUp("thread", "prompt")).rejects.toThrow("unavailable");
+});
+
+describe("remote codex stage actions", () => {
+  type RemoteActionsInput = Parameters<typeof createRemoteCodexStageActions>[0];
+
+  function sideChatFixture() {
+    const startTurn = vi.fn<RemoteActionsInput["control"]["startTurn"]>(async () => undefined);
+    const sendQueuedFollowUpNow = vi.fn<RemoteActionsInput["control"]["sendQueuedFollowUpNow"]>(
+      async () => null,
+    );
+    const readConversationTurnCount = vi.fn(() => 0);
+    const onSideChatTitle = vi.fn();
+    const actions = createRemoteCodexStageActions({
+      hostId: "ssh:owned",
+      threadId: "remote-thread",
+      projectId: "project",
+      control: { startTurn, sendQueuedFollowUpNow, readConversationTurnCount },
+      host: { onQueueingEnabledChange: vi.fn(), onOpenThread: vi.fn() },
+      onSideChatTitle,
+    } as unknown as RemoteActionsInput);
+    return {
+      actions,
+      startTurn,
+      sendQueuedFollowUpNow,
+      readConversationTurnCount,
+      onSideChatTitle,
+    };
+  }
+
+  it("keeps remote submissions and queue edits on the attached native owner", async () => {
+    const startTurn = vi.fn().mockResolvedValue(undefined);
+    const removeQueuedFollowUp = vi.fn().mockResolvedValue(undefined);
+    const editUserTurn = vi.fn().mockResolvedValue(undefined);
+    const input = {
+      hostId: "ssh:owned",
+      threadId: "remote-thread",
+      projectId: "project",
+      control: { startTurn, removeQueuedFollowUp, editUserTurn },
+      host: { onQueueingEnabledChange: vi.fn(), onOpenThread: vi.fn() },
+    } as unknown as Parameters<typeof createRemoteCodexStageActions>[0];
+    expect(() => createRemoteCodexStageActions({ ...input, hostId: "local" })).toThrow(
+      "attached remote owner",
+    );
+    const actions = createRemoteCodexStageActions(input);
+    await actions.onSendPrompt("Continue", { promptInput: { text: "Exact input" } });
+    expect(startTurn).toHaveBeenCalledWith(
+      "remote-thread",
+      "Continue",
+      { projectId: "project", promptInput: { text: "Exact input" } },
+      undefined,
+    );
+    const images = [{ source: "file-service://kept" }, { source: "nodex://assets/new.png" }];
+    await actions.onEditUserTurn({
+      threadId: "remote-thread",
+      turnId: "old-turn",
+      message: "",
+      images,
+    });
+    expect(editUserTurn).toHaveBeenCalledExactlyOnceWith("remote-thread", "old-turn", "", images);
+    await actions.onRemoveQueuedFollowUp("remote-thread", "queued-message");
+    await expect(
+      actions.onRemoveQueuedFollowUp("foreign-thread", "queued-message"),
+    ).rejects.toThrow("identity changed");
+    expect(removeQueuedFollowUp).toHaveBeenCalledExactlyOnceWith("remote-thread", "queued-message");
+  });
+
+  it("names a remote side chat only after its first send succeeds, using the submitted request", async () => {
+    const f = sideChatFixture();
+    let accept!: () => void;
+    f.startTurn.mockReturnValueOnce(new Promise<void>((resolve) => (accept = resolve)));
+    const sent = f.actions.onSendPrompt("Display text", {
+      promptInput: { text: "Context\n## My request:\n**Inspect** [this](https://example.com)" },
+    });
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+    accept();
+    await sent;
+    expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("Inspect this");
+    f.readConversationTurnCount.mockReturnValue(1);
+    await f.actions.onSendPrompt("Later request");
+    expect(f.onSideChatTitle).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a remote side title on rejection or empty text and excludes Agent configuration", async () => {
+    const f = sideChatFixture();
+    f.startTurn.mockRejectedValueOnce(new Error("Send refused"));
+    await expect(f.actions.onSendPrompt("Unsent title")).rejects.toThrow("Send refused");
+    await f.actions.onSendPrompt("<!-- invisible -->");
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+    await f.actions.onSendPrompt(':agent-config{mode="plan"}\n**Review** the request');
+    expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("Review the request");
+  });
+
+  it("names a queued first side message only when Send now confirms delivery", async () => {
+    const f = sideChatFixture();
+    await f.actions.onSendQueuedFollowUpNow("remote-thread", "queued");
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+    f.sendQueuedFollowUpNow.mockResolvedValueOnce({
+      prompt: "**First** queued request",
+      startsConversation: true,
+    });
+    await f.actions.onSendQueuedFollowUpNow("remote-thread", "queued");
+    expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("First queued request");
+    f.sendQueuedFollowUpNow.mockResolvedValueOnce({
+      prompt: "A later queued message",
+      startsConversation: false,
+    });
+    await f.actions.onSendQueuedFollowUpNow("remote-thread", "later");
+    expect(f.onSideChatTitle).toHaveBeenCalledOnce();
+    await expect(f.actions.onSendQueuedFollowUpNow("foreign-thread", "queued")).rejects.toThrow(
+      "identity changed",
+    );
+    expect(f.sendQueuedFollowUpNow).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not publish a queued title after failure or an empty accepted request", async () => {
+    const f = sideChatFixture();
+    f.sendQueuedFollowUpNow.mockRejectedValueOnce(new Error("Still pending"));
+    await expect(f.actions.onSendQueuedFollowUpNow("remote-thread", "queued")).rejects.toThrow(
+      "Still pending",
+    );
+    f.sendQueuedFollowUpNow.mockResolvedValueOnce({ prompt: " ", startsConversation: true });
+    await f.actions.onSendQueuedFollowUpNow("remote-thread", "queued");
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+  });
+
+  it("stops the named remote background terminals, or cleans them all", async () => {
+    const terminateBackgroundTerminal = vi.fn().mockResolvedValue(true);
+    const cleanBackgroundTerminals = vi.fn().mockResolvedValue(true);
+    const actions = createRemoteCodexStageActions({
+      hostId: "ssh:owned",
+      threadId: "remote-thread",
+      projectId: null,
+      control: { terminateBackgroundTerminal, cleanBackgroundTerminals },
+      host: { onQueueingEnabledChange: vi.fn(), onOpenThread: vi.fn() },
+    } as unknown as RemoteActionsInput);
+    await actions.onStopBackgroundTerminals("remote-thread", ["41", "42"]);
+    expect(terminateBackgroundTerminal.mock.calls).toEqual([
+      [{ threadId: "remote-thread", processId: "41" }],
+      [{ threadId: "remote-thread", processId: "42" }],
+    ]);
+    expect(cleanBackgroundTerminals).not.toHaveBeenCalled();
+    await actions.onStopBackgroundTerminals("remote-thread");
+    expect(cleanBackgroundTerminals).toHaveBeenCalledExactlyOnceWith("remote-thread");
+    await expect(actions.onStopBackgroundTerminals("foreign-thread")).rejects.toThrow(
+      "identity changed",
+    );
+  });
+
+  it("edits a remote queued follow-up through its host-qualified chat channel", async () => {
+    const f = sideChatFixture();
+    await f.actions.onEditQueuedFollowUp({
+      threadId: "remote-thread",
+      followUpId: "queued",
+      prompt: "Revise this",
+      promptInput: { text: "Revise this" },
+      ledgerRevision: 4,
+    });
+    const chat = { kind: "remote-thread", hostId: "ssh:owned", threadId: "remote-thread" } as const;
+    const intent = composerDraftIntents.read(chat);
+    expect(intent).toMatchObject({
+      prompt: "Revise this",
+      queuedFollowUpEdit: { followUpId: "queued", ledgerRevision: 4 },
+    });
+    await expect(
+      f.actions.onEditQueuedFollowUp({
+        threadId: "foreign-thread",
+        followUpId: "queued",
+        prompt: "Foreign",
+      }),
+    ).rejects.toThrow("Remote conversation identity changed");
+    expect(composerDraftIntents.read(chat)).toBe(intent);
+    composerDraftIntents.consume(chat, intent!.focusNonce);
+  });
+});

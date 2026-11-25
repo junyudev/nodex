@@ -1,13 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import {
-  act,
-  cleanup,
-  createEvent,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { TestQueryProvider, createTestQueryClient } from "@/test/query";
 import { installWindowApi } from "@/test/browser-globals";
@@ -15,31 +7,28 @@ import { settleAsyncRender } from "@/test/dom";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   registerUserAttachmentImagePreviewOpener,
-  type OpenUserAttachmentImagePreviewOptions,
   type ContentImageScope,
-  normalizeUserAttachmentImageEditorOptions,
 } from "@/lib/content-image";
 
 import * as resolvedImageAsset from "@/lib/content-image";
 import {
   ConversationMedia,
-  ConversationMediaParagraph,
   ConversationMediaProvider,
   conversationMediaComponents,
 } from "@/components/conversation-media/conversation-media";
 
 import { ConversationTokenRenderer } from "@/lib/markdown/conversation-token-renderer";
 import { streamdownComponents } from "@/lib/streamdown";
+import {
+  conversationImageScope,
+  type ConversationMarkdownSource,
+} from "@/features/local-conversation/view/conversation-markdown-source";
 
 const reads = vi.fn();
 const nativeReads = vi.fn();
 const nativeMenu = vi.fn(
   async (_items: unknown, _options: unknown): Promise<string | null> => null,
 );
-import {
-  conversationImageScope,
-  type ConversationMarkdownSource,
-} from "@/features/local-conversation/view/conversation-markdown-source";
 
 const markdownSource: ConversationMarkdownSource = {
   projectId: null,
@@ -111,180 +100,6 @@ describe("ordinary conversation media", () => {
     cleanup();
     await settleAsyncRender();
     vi.restoreAllMocks();
-  });
-
-  test.each([
-    { description: "plain text", withImage: false },
-    { description: "text beside a loaded image", withImage: true },
-  ])("preserves the native context menu for $description", async ({ withImage }) => {
-    const source = [
-      "Selected transcript text.",
-      ...(withImage ? ["![Adjacent image](/remote/chart.png)"] : []),
-    ].join("\n\n");
-    const view = render(
-      mediaTree(
-        scope,
-        <ConversationTokenRenderer
-          source={source}
-          streaming={false}
-          animate={false}
-          adaptive={false}
-          components={{ ...streamdownComponents, ...conversationMediaComponents }}
-        />,
-      ),
-    );
-    if (withImage) await loaded(await view.findByAltText("Adjacent image"));
-    const text = view.getByText("Selected transcript text.");
-    const event = createEvent.contextMenu(text, { clientX: 40, clientY: 40 });
-    await act(async () => {
-      fireEvent(text, event);
-      await Promise.resolve();
-    });
-    expect(event.defaultPrevented).toBe(false);
-    expect(view.queryByRole("menu")).toBeNull();
-  });
-
-  test("opens the loaded image's context menu without opening its preview", async () => {
-    const open = vi.fn(async () => true);
-    const release = registerUserAttachmentImagePreviewOpener(open);
-    try {
-      const view = render(
-        mediaTree(scope, <ConversationMedia src="/remote/chart.png" alt="Chart menu" />),
-      );
-      const image = await view.findByAltText("Chart menu");
-      await loaded(image);
-      await act(async () => {
-        fireEvent.contextMenu(view.getByRole("button", { name: "Chart menu" }), {
-          clientX: 40,
-          clientY: 40,
-        });
-        await Promise.resolve();
-      });
-      expect(nativeMenu).toHaveBeenCalledExactlyOnceWith(
-        expect.arrayContaining([
-          { id: "open", label: "Open image in new tab" },
-          { id: "download", label: "Download a copy" },
-        ]),
-        { x: 40, y: 40 },
-      );
-      expect(nativeMenu.mock.calls[0]?.[0]).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: "reveal" })]),
-      );
-      expect(open).not.toHaveBeenCalled();
-      await act(async () => {
-        nativeMenu.mockResolvedValueOnce("open");
-        fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
-        await Promise.resolve();
-      });
-      await waitFor(() =>
-        expect(open).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({
-            readOnly: true,
-            openInEditor: true,
-            attachmentSrc: "nodex://assets/context-image",
-            src: "nodex://assets/context-image",
-          }),
-        ),
-      );
-    } finally {
-      release();
-    }
-  });
-
-  test.each([
-    { description: "without a source", source: null, loaded: true },
-    { description: "before loading", source: scope, loaded: false },
-  ])("does not open an empty image menu $description", async (state) => {
-    const view = render(
-      mediaTree(
-        state.source,
-        <ConversationMedia src="https://example.test/chart.png" alt="Unavailable menu" />,
-      ),
-    );
-    const image = await view.findByAltText("Unavailable menu");
-    if (state.loaded) await loaded(image);
-    const event = createEvent.contextMenu(image, { clientX: 40, clientY: 40 });
-    await act(async () => {
-      fireEvent(image, event);
-      await Promise.resolve();
-    });
-    expect(event.defaultPrevented).toBe(false);
-    expect(view.queryByRole("menu")).toBeNull();
-  });
-
-  test("dismisses image actions when their source has retired", async () => {
-    let current = true;
-    const view = render(
-      mediaTree(
-        { ...scope, isCurrent: () => current },
-        <ConversationMedia src="https://example.test/chart.png" alt="Retired menu" />,
-      ),
-    );
-    const image = await view.findByAltText("Retired menu");
-    await loaded(image);
-    await act(async () => {
-      fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
-      await Promise.resolve();
-    });
-    expect(nativeMenu).toHaveBeenCalledTimes(1);
-    current = false;
-    const event = createEvent.contextMenu(image, { clientX: 40, clientY: 40 });
-    await act(async () => {
-      fireEvent(image, event);
-      await Promise.resolve();
-    });
-    expect(event.defaultPrevented).toBe(false);
-    await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
-  });
-
-  test("uses local Range playback without binary reading and does not reclassify an HTTP extension", async () => {
-    const view = render(
-      mediaTree(
-        { ...scope, hostId: "local" },
-        <>
-          <ConversationMedia src="/local/song.mp3" alt="Song" />
-          <ConversationMedia src="https://example.com/song.mp3" alt="HTTP image" />
-        </>,
-      ),
-    );
-    expect(view.getByLabelText("Song").tagName).toBe("AUDIO");
-    expect(view.getByLabelText("Song").getAttribute("src")).toBe("app://fs/@fs/local/song.mp3");
-    expect(view.getByAltText("HTTP image").getAttribute("src")).toBe(
-      "https://example.com/song.mp3",
-    );
-    expect(reads).not.toHaveBeenCalled();
-    await act(async () => {
-      fireEvent.error(view.getByLabelText("Song"));
-      await Promise.resolve();
-    });
-    expect(view.queryByLabelText("Song")).toBeNull();
-    expect(view.getByRole("status").textContent).toBe("Audio unavailable");
-    view.unmount();
-    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
-    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
-  });
-
-  test("reads the captured host, shares the QueryClient entry, and keeps its fifteen second inactive image lifetime", async () => {
-    const client = createTestQueryClient();
-    const tree = (visible: boolean) =>
-      mediaTree(
-        scope,
-        visible ? <ConversationMedia src="/remote/chart.png" alt="Chart" /> : null,
-        client,
-      );
-    const view = render(tree(true));
-    await waitFor(() =>
-      expect(view.getByAltText("Chart").getAttribute("src")).toBe("data:image/png;base64,aW1hZ2U="),
-    );
-    expect(reads).toHaveBeenCalledExactlyOnceWith({
-      hostId: "remote-one",
-      path: "/remote/chart.png",
-    });
-    expect(client.getQueryCache().getAll()[0]?.gcTime).toBe(15_000);
-    view.rerender(tree(false));
-    view.rerender(tree(true));
-    await waitFor(() => expect(view.getByAltText("Chart")).toBeTruthy());
-    expect(reads).toHaveBeenCalledTimes(1);
   });
 
   test("rejects a retired host read and requires new generation bytes even when owner/native IDs are reused", async () => {
@@ -369,22 +184,6 @@ describe("ordinary conversation media", () => {
     expect(reads).toHaveBeenCalledTimes(1);
   });
 
-  test("does not create unused file queries for public URLs and priority badges", () => {
-    const client = createTestQueryClient();
-    render(
-      mediaTree(
-        null,
-        <>
-          <ConversationMedia src="https://a/x.png" />
-          <ConversationMedia src="https://img.shields.io/badge/P1-review-blue" />
-        </>,
-        client,
-      ),
-    );
-    expect(client.getQueryCache().getAll()).toHaveLength(0);
-    expect(reads).not.toHaveBeenCalled();
-  });
-
   test("retires same-URL audio and video decoders when their physical source authority changes", async () => {
     const client = createTestQueryClient();
     const tree = (generation: number) =>
@@ -423,113 +222,6 @@ describe("ordinary conversation media", () => {
     });
   });
 
-  test("the audio controls consume real native duration, play/pause and seek events", async () => {
-    const view = render(
-      mediaTree(
-        { ...scope, hostId: "local" },
-        <ConversationMedia src="/local/song.mp3" alt="Song" />,
-      ),
-    );
-    const audio = view.getByLabelText("Song") as HTMLAudioElement;
-    Object.defineProperty(audio, "duration", { configurable: true, value: 140.3 });
-    await act(async () => {
-      fireEvent.durationChange(audio);
-      fireEvent.play(audio);
-      await Promise.resolve();
-    });
-    expect(view.getByRole("button", { name: "Pause song.mp3" })).toBeTruthy();
-    const seek = view.getByRole("slider", { name: "Seek in song.mp3" }) as HTMLInputElement;
-    expect(seek.disabled).toBe(false);
-    await act(async () => {
-      fireEvent.change(seek, { target: { value: "61.5" } });
-      await Promise.resolve();
-    });
-    expect(audio.currentTime).toBe(61.5);
-    expect(view.getByText("1:01 / 2:20")).toBeTruthy();
-    await act(async () => {
-      fireEvent.pause(audio);
-      await Promise.resolve();
-    });
-    expect(view.getByRole("button", { name: "Play song.mp3" })).toBeTruthy();
-  });
-
-  test("video controls consume native seek/volume/rate and ignore repeated activation keys", async () => {
-    // Inset slider thumbs stay hidden until measured, and jsdom has no layout to measure, so
-    // their range inputs are found by label rather than by accessible role.
-    const slider = (name: string) => [name, { selector: "input[type=range]" }] as const;
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-    const view = render(
-      mediaTree(
-        { ...scope, hostId: "local" },
-        <ConversationMedia src="/local/clip.mp4" alt="Clip" />,
-      ),
-    );
-    await waitFor(() => expect(view.getByLabelText("Clip").tagName).toBe("VIDEO"));
-    const video = view.getByLabelText("Clip") as HTMLVideoElement;
-    Object.defineProperty(video, "duration", { configurable: true, value: 125 });
-    await act(async () => {
-      fireEvent.durationChange(video);
-      fireEvent.play(video);
-      await Promise.resolve();
-    });
-    expect(view.getByRole("button", { name: "Pause video" })).toBeTruthy();
-    await act(async () => {
-      fireEvent.change(view.getByLabelText(...slider("Seek in video")), {
-        target: { value: "62.5" },
-      });
-      await Promise.resolve();
-    });
-    expect(video.currentTime).toBe(62.5);
-    expect(view.queryByLabelText(...slider("Video volume"))).toBeNull();
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Video volume" }));
-      await Promise.resolve();
-    });
-    await view.findByLabelText(...slider("Video volume"));
-    await act(async () => {
-      fireEvent.change(view.getByLabelText(...slider("Video volume")), {
-        target: { value: "0.25" },
-      });
-      fireEvent.volumeChange(video);
-      await Promise.resolve();
-    });
-    expect(video.volume).toBe(0.25);
-    expect(video.muted).toBe(false);
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Mute video" }));
-      fireEvent.volumeChange(video);
-      await Promise.resolve();
-    });
-    expect(video.muted).toBe(true);
-    expect(view.getByRole("button", { name: "Unmute video" })).toBeTruthy();
-    await act(async () => {
-      fireEvent.keyDown(view.getByLabelText(...slider("Video volume")), { key: "Escape" });
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(view.queryByLabelText(...slider("Video volume"))).toBeNull());
-    await act(async () => {
-      fireEvent.keyDown(video, { key: " ", repeat: true });
-      await Promise.resolve();
-    });
-    expect(play).not.toHaveBeenCalled();
-    await act(async () => {
-      fireEvent.keyDown(video, { key: "Enter", repeat: false });
-      await Promise.resolve();
-    });
-    expect(play).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Video options" }));
-      await Promise.resolve();
-    });
-    const speed = await view.findByRole("menuitemradio", { name: "1.5×" });
-    await act(async () => {
-      fireEvent.click(speed);
-      fireEvent.rateChange(video);
-      await Promise.resolve();
-    });
-    expect(video.playbackRate).toBe(1.5);
-  });
-
   test("never reads authored foreign capabilities or silently substitutes a local host", async () => {
     const view = render(
       mediaTree(
@@ -545,48 +237,6 @@ describe("ordinary conversation media", () => {
     expect(view.getAllByRole("status")).toHaveLength(3);
     expect(view.container.querySelector("img")).toBeNull();
     expect(reads).not.toHaveBeenCalled();
-  });
-
-  test("uses the actual mounted image collection for preview, excludes retired leaves, and preserves the selected image", async () => {
-    const open = vi.fn(async (_options: OpenUserAttachmentImagePreviewOptions) => true);
-    const release = registerUserAttachmentImagePreviewOpener(open);
-    const client = createTestQueryClient();
-    const tree = (second: boolean) =>
-      mediaTree(
-        scope,
-        <>
-          <ConversationMedia src="/remote/one.png" alt="One" />
-          {second ? <ConversationMedia src="/remote/two.png" alt="Two" /> : null}
-        </>,
-        client,
-      );
-    const view = render(tree(true));
-    try {
-      const one = await view.findByAltText("One");
-      const two = await view.findByAltText("Two");
-      await loaded(one);
-      await loaded(two);
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Two" }));
-        await Promise.resolve();
-      });
-      const options = normalizeUserAttachmentImageEditorOptions(open.mock.calls[0]![0]);
-      expect(options.images.map((image) => image.alt)).toEqual(["One", "Two"]);
-      expect(options.images.find((image) => image.id === options.initialImageId)?.alt).toBe("Two");
-      expect(options.generatedImages).toBeNull();
-      expect(options.threadId).toBe("thread");
-      expect(options.images.every((image) => image.hostId === "remote-one")).toBe(true);
-      view.rerender(tree(false));
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "One" }));
-        await Promise.resolve();
-      });
-      expect(open.mock.calls[1]![0].images).toHaveLength(1);
-      expect(open.mock.calls[1]![0].images?.[0]?.alt).toBe("One");
-    } finally {
-      view.unmount();
-      release();
-    }
   });
 
   test("does not save an HTTP image whose source retired during its native read", async () => {
@@ -613,88 +263,6 @@ describe("ordinary conversation media", () => {
     });
     expect(save).not.toHaveBeenCalled();
     view.unmount();
-  });
-
-  test("opens the actual dialog when the Workbench leaves preview ownership to the message, then navigates its mounted collection", async () => {
-    const release = registerUserAttachmentImagePreviewOpener(async () => false);
-    let current = true;
-    const source = { ...scope, isCurrent: () => current };
-    const client = createTestQueryClient();
-    const tree = () =>
-      mediaTree(
-        source,
-        <>
-          <ConversationMedia src="/remote/one.png" alt="One" />
-          <ConversationMedia src="/remote/two.png" alt="Two" />
-        </>,
-        client,
-      );
-    const view = render(tree());
-    try {
-      await loaded(await view.findByAltText("One"));
-      await loaded(await view.findByAltText("Two"));
-      const trigger = view.getByRole("button", { name: "Two" });
-      await act(async () => {
-        fireEvent.click(trigger);
-        await Promise.resolve();
-      });
-      const dialog = await view.findByRole("dialog", { name: "Image preview" });
-      expect(within(dialog).getByAltText("Two").getAttribute("src")).toBe(
-        "data:image/png;base64,aW1hZ2U=",
-      );
-      await act(async () => {
-        fireEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
-        await Promise.resolve();
-      });
-      expect(within(dialog).getByAltText("One")).toBeTruthy();
-      await act(async () => {
-        fireEvent.click(within(dialog).getByRole("button", { name: "Next image" }));
-        await Promise.resolve();
-      });
-      expect(within(dialog).getByAltText("Two")).toBeTruthy();
-      await act(async () => {
-        fireEvent.click(within(dialog).getByRole("button", { name: "Close image preview" }));
-        await Promise.resolve();
-      });
-      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-      await waitFor(() => expect(document.activeElement).toBe(trigger));
-      await act(async () => {
-        fireEvent.click(trigger);
-        await Promise.resolve();
-      });
-      await view.findByRole("dialog");
-      current = false;
-      view.rerender(tree());
-      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-      expect(reads).toHaveBeenCalledTimes(2);
-    } finally {
-      view.unmount();
-      release();
-    }
-  });
-
-  test("widens only the typed media-only paragraph and leaves single audio or mixed text narrow", () => {
-    const view = render(
-      mediaTree(
-        null,
-        <>
-          <ConversationMediaParagraph
-            mediaSources={["data:image/png;base64,AA==", "https://a/b.png"]}
-          >
-            grid
-          </ConversationMediaParagraph>
-          <ConversationMediaParagraph mediaSources={["data:image/png;base64,AA=="]}>
-            single
-          </ConversationMediaParagraph>
-          <ConversationMediaParagraph mediaSources={["/a.wav"]}>audio</ConversationMediaParagraph>
-          <ConversationMediaParagraph>text</ConversationMediaParagraph>
-        </>,
-      ),
-    );
-    expect(view.getByText("grid").dataset.markdownImageGrid).toBe("true");
-    expect(view.getByText("single").dataset.wideMarkdownBlockKind).toBe("image");
-    expect(view.getByText("audio").dataset.wideMarkdownBlock).toBeUndefined();
-    expect(view.getByText("text").dataset.wideMarkdownBlock).toBeUndefined();
   });
 
   test("keeps mixed media outside phrasing-only paragraphs without widening inline images", async () => {

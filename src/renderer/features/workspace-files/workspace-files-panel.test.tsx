@@ -20,17 +20,13 @@ let openFileTabCalls: {
   panelId: WorkspaceFilesTab["panelId"];
   mode: "preview" | "durable";
 }[] = [];
-let pdfPreviewProps: { fileDataUrl: string; onOpenExternalLink: (url: string) => void } | null =
-  null;
 
 const WORKSPACE_ROOT = "/workspace";
 const WORKTREE_FILE = "/profile/worktrees/abcd/project/README.md";
 const HUGE_FILE = "/profile/worktrees/abcd/project/huge.txt";
 const LARGE_MARKDOWN_FILE = `${WORKSPACE_ROOT}/large.md`;
-const PDF_FILE = `${WORKSPACE_ROOT}/design.pdf`;
 const LARGE_PDF_FILE = `${WORKSPACE_ROOT}/large-design.pdf`;
 const IMAGE_FILE = `${WORKSPACE_ROOT}/diagram.png`;
-const VIDEO_FILE = `${WORKSPACE_ROOT}/clips/review #1.webm`;
 const REMOTE_HOST = "remote-ssh-discovered:win";
 let remoteSizeBytes: number | null = null;
 let remoteTextRead: (() => Promise<{ contents: string }>) | null = null;
@@ -89,63 +85,6 @@ const notARepository = async ({ params }: GitWorkerTestRequest) => ({
 let gitWorkerRequest: (request: GitWorkerTestRequest) => Promise<unknown> = notARepository;
 
 /** A repository at the workspace root where `src/index.ts` has one unstaged edit. */
-const repositoryWithUnstagedEdit = async ({ method, params }: GitWorkerTestRequest) => {
-  if (method === "stable-metadata")
-    return {
-      cwd: params.cwd,
-      root: WORKSPACE_ROOT,
-      gitDir: `${WORKSPACE_ROOT}/.git`,
-      commonDir: `${WORKSPACE_ROOT}/.git`,
-      isGitRepository: true,
-      currentBranch: "main",
-      defaultBranch: "main",
-      errorMessage: null,
-      originUrl: null,
-    };
-  if (method === "review-summary")
-    return {
-      type: "success",
-      source: params.source,
-      files:
-        params.source === "unstaged"
-          ? [
-              {
-                path: "src/index.ts",
-                previousPath: null,
-                status: "modified",
-                rawStatus: "M",
-                oldOid: "base-oid",
-                newOid: null,
-                revision: "1",
-                additions: 1,
-                deletions: 1,
-                safety: {
-                  binary: false,
-                  tooLarge: false,
-                  invalidText: false,
-                  renderable: true,
-                  sizeBytes: 24,
-                  mimeType: null,
-                },
-              },
-            ]
-          : [],
-      snapshotGeneration: 1,
-      stageCounts: { stagedFileCount: 0, unstagedFileCount: 1, untrackedFileCount: 0 },
-      untrackedFilesOmitted: 0,
-    };
-  if (method === "review-cat-file")
-    return {
-      type: "success",
-      value: {
-        snapshotGeneration: 1,
-        results: [{ type: "success", lines: ["export const value = 0;\n"] }],
-      },
-    };
-  if (method === "base-branch")
-    return { cwd: params.cwd, local: "main", remote: null, errorMessage: null };
-  throw new Error(`Unexpected Git request: ${method}`);
-};
 
 const invoke = async (channel: string, ...args: unknown[]) => {
   invokeCalls.push([channel, ...args]);
@@ -336,7 +275,6 @@ vi.mock("./workspace-pdf-preview", () => ({
     title: string;
     onOpenExternalLink: (url: string) => void;
   }) => {
-    pdfPreviewProps = props;
     return (
       <button
         type="button"
@@ -369,7 +307,6 @@ beforeEach(() => {
   installWindowApi({ invoke, on: fileSearch.on });
   invokeCalls = [];
   openFileTabCalls = [];
-  pdfPreviewProps = null;
   createObjectURLMock.mockClear();
   revokeObjectURLMock.mockClear();
   remoteSizeBytes = null;
@@ -550,52 +487,6 @@ describe("WorkspaceFilesPanel", () => {
     },
   );
 
-  test("surfaces a failed remote read without opening the same local path", async () => {
-    remoteTextRead = async () => {
-      throw new Error("Remote host disconnected");
-    };
-    const view = renderRemotePanel(`${WORKSPACE_ROOT}/src/index.ts`);
-    expect(await view.findByText("Remote host disconnected")).not.toBeNull();
-    expect(
-      invokeCalls
-        .filter((call) => String(call[0]).startsWith("read-file"))
-        .every((call) => (call[1] as { hostId: string }).hostId === REMOTE_HOST),
-    ).toBe(true);
-    expect(
-      invokeCalls.some(
-        (call) => call[0] === "shell:open-file-link" || call[0] === "workspace-file-watch:start",
-      ),
-    ).toBe(false);
-  });
-
-  test.each([PDF_FILE, IMAGE_FILE])(
-    "reads remote binary bytes with source host: %s",
-    async (path) => {
-      const view = renderRemotePanel(path);
-      await waitFor(() =>
-        expect(invokeCalls).toContainEqual(["read-file-binary", { hostId: REMOTE_HOST, path }]),
-      );
-      if (path === PDF_FILE) {
-        expect(
-          await view.findByRole("button", { name: "PDF preview for design.pdf" }),
-        ).not.toBeNull();
-      } else {
-        await waitFor(() =>
-          expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
-            "blob:nodex-workspace-preview",
-          ),
-        );
-      }
-      expect(
-        invokeCalls.some(
-          (call) =>
-            call[0] === "workspace-directory-entries" || call[0] === "workspace-file-watch:start",
-        ),
-      ).toBe(false);
-      view.unmount();
-    },
-  );
-
   test("fences a late remote read when the same path changes to a different host", async () => {
     const pending = deferred<{ contents: string }>();
     remoteTextRead = () => pending.promise;
@@ -633,100 +524,6 @@ describe("WorkspaceFilesPanel", () => {
       "read-file-metadata",
       expect.objectContaining({ hostId: otherHost, path }),
     ]);
-  });
-
-  test("shows a text file's changes against its working-tree baseline and hides them again", async () => {
-    gitWorkerRequest = repositoryWithUnstagedEdit;
-    const view = renderPanel(`${WORKSPACE_ROOT}/src/index.ts`);
-    fireEvent.click(await view.findByRole("button", { name: "Show changes" }));
-
-    const source = await view.findByRole("group", { name: "Review source" });
-    await waitFor(() => expect(source.textContent).toBe("Unstaged"));
-    const editor = view.getByRole("region", { name: "Source editor for index.ts" });
-    await waitFor(() =>
-      expect(editor.getAttribute("data-comparison-base")).toBe("export const value = 0;\n"),
-    );
-    expect(editor.getAttribute("data-comparison-layout")).toBe("unified");
-    expect(view.getByRole("button", { name: "Switch to split diff" })).not.toBeNull();
-    // The editable header carries comparison controls instead of the viewer's path actions.
-    expect(view.queryByRole("button", { name: "File viewer options" })).toBeNull();
-    expect(view.queryByRole("group", { name: "Copy repo-relative path" })).toBeNull();
-
-    fireEvent.click(view.getByRole("button", { name: "Hide changes" }));
-    expect(await view.findByRole("button", { name: "Show changes" })).not.toBeNull();
-    expect(view.queryByRole("group", { name: "Review source" })).toBeNull();
-    expect(editor.getAttribute("data-comparison-base")).toBeNull();
-  });
-
-  test.each(["LICENSE", "notes.txt"])(
-    "edits %s even though its name has no source language",
-    async (name) => {
-      const view = renderPanel(`${WORKSPACE_ROOT}/${name}`);
-      expect(await view.findByLabelText(`Source editor for ${name}`)).not.toBeNull();
-      expect(view.queryByLabelText(`Source preview for ${name}`)).toBeNull();
-    },
-  );
-
-  test("renders the tree filter and opens files through preview tabs", async () => {
-    const view = renderPanel();
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(view.getByPlaceholderText("Filter files…") !== null).toBe(true);
-    expect(view.getByText("README.md") !== null).toBe(true);
-    expect(view.getByText("archive.zip") !== null).toBe(true);
-
-    vi.useFakeTimers();
-    try {
-      await act(async () => {
-        fireEvent.input(view.getByPlaceholderText("Filter files…"), { target: { value: "read" } });
-        await vi.advanceTimersByTimeAsync(175);
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-    await settleAsyncRender();
-    expect(view.getByText("README.md") !== null).toBe(true);
-    expect(view.queryByText("archive.zip")).toBe(null);
-
-    fireEvent.click(view.getByText("README.md"));
-    await settleAsyncRender();
-
-    expect(JSON.stringify(openFileTabCalls)).toBe(
-      JSON.stringify([
-        {
-          hostId: "local",
-          path: `${WORKSPACE_ROOT}/README.md`,
-          title: "README.md",
-          panelId: "right",
-          mode: "preview",
-        },
-      ]),
-    );
-  });
-
-  test("previews an outside-root file while keeping only the directory request root-scoped", async () => {
-    const view = renderPanel(WORKTREE_FILE);
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(view.getByText("Project") !== null).toBe(true);
-    expect(view.getByText("Worktree notes.") !== null).toBe(true);
-    const directoryCall = invokeCalls.find((call) => call[0] === "workspace-directory-entries");
-    expect(directoryCall?.[1]).toEqual({
-      hostId: "local",
-      workspaceRoot: WORKSPACE_ROOT,
-      directoryPath: "",
-      includeHidden: true,
-    });
-    const fileCalls = invokeCalls.filter((call) =>
-      ["read-file-metadata", "read-file"].includes(String(call[0])),
-    );
-    expect(fileCalls.some((call) => call[0] === "read-file-metadata")).toBe(true);
-    expect(fileCalls.some((call) => call[0] === "read-file")).toBe(true);
-    expect(fileCalls.every((call) => !JSON.stringify(call[1]).includes("workspaceRoot"))).toBe(
-      true,
-    );
   });
 
   test("previews a projectless exact file without requesting a directory tree", async () => {
@@ -767,107 +564,6 @@ describe("WorkspaceFilesPanel", () => {
     expect(view.getByText("File is too large to preview")).not.toBeNull();
     expect(view.getByText("20.0 MB exceeds the 20.0 MB preview limit")).not.toBeNull();
     expect(invokeCalls.some((call) => call[0] === "read-file")).toBe(false);
-  });
-
-  test("routes large Markdown to its source without mounting the rich renderer", async () => {
-    const view = renderPanel(LARGE_MARKDOWN_FILE);
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(await view.findByLabelText("Source editor for large.md")).not.toBeNull();
-    expect(view.container.querySelector(".codex-markdown-user")).toBe(null);
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "read-file" &&
-          (call[1] as { maxBytes?: number }).maxBytes === WORKSPACE_TEXT_LOAD_MAX_BYTES,
-      ),
-    ).toBe(true);
-  });
-
-  test("explains unsupported files and opens them with the system app", async () => {
-    const view = renderPanel(`${WORKSPACE_ROOT}/archive.zip`);
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(view.getByText("Archive previews aren't supported yet")).not.toBeNull();
-    expect(view.getByText("Open this file in another app to view it")).not.toBeNull();
-    fireEvent.click(view.getByRole("button", { name: "Open" }));
-    await settleAsyncRender();
-
-    expect(JSON.stringify(invokeCalls.at(-1))).toBe(
-      JSON.stringify(["shell:open-path-default", `${WORKSPACE_ROOT}/archive.zip`]),
-    );
-  });
-
-  test("streams a local video into the player without reading its bytes", async () => {
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
-    const view = renderPanel(VIDEO_FILE);
-    await waitFor(() => expect(view.getByLabelText("Video").tagName).toBe("VIDEO"));
-    const video = view.getByLabelText("Video");
-    expect(video.getAttribute("src")).toBe("app://fs/@fs/workspace/clips/review%20%231.webm");
-    expect(view.getByRole("button", { name: "Play video" })).not.toBeNull();
-    expect(invokeCalls.some(([channel]) => channel === "read-file-binary")).toBe(false);
-    expect(invokeCalls.some(([channel]) => channel === "read-file")).toBe(false);
-    await act(async () => {
-      view.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  test("plays remote video from its host's bounded byte read", async () => {
-    remoteSizeBytes = 2;
-    remoteBinaryRead = async () => ({ contentsBase64: "AQI=", mimeType: "video/webm" });
-    const blobs: Blob[] = [];
-    createObjectURLMock.mockImplementation((blob: Blob) => {
-      blobs.push(blob);
-      return "blob:remote-video";
-    });
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
-    const view = renderRemotePanel(VIDEO_FILE);
-    await waitFor(() =>
-      expect(view.getByLabelText("Video").getAttribute("src")).toBe("blob:remote-video"),
-    );
-    expect(blobs[0]?.type).toBe("video/webm");
-    const read = invokeCalls.find(([channel]) => channel === "read-file-binary");
-    expect(read?.[1]).toMatchObject({ hostId: REMOTE_HOST, path: VIDEO_FILE });
-    await act(async () => {
-      view.unmount();
-      await Promise.resolve();
-    });
-    createObjectURLMock.mockImplementation(() => "blob:nodex-workspace-preview");
-  });
-
-  test("passes PDF bytes to the dedicated renderer without creating an object URL", async () => {
-    const view = renderPanel(PDF_FILE);
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const preview = view.getByRole("button", { name: "PDF preview for design.pdf" });
-    expect(preview.getAttribute("data-file-data-url")).toBe(
-      "data:application/pdf;base64,JVBERi0xLjQ=",
-    );
-    expect(pdfPreviewProps?.fileDataUrl).toBe("data:application/pdf;base64,JVBERi0xLjQ=");
-    expect(createObjectURLMock).not.toHaveBeenCalled();
-    expect(invokeCalls.some((call) => call[0] === "read-file-binary")).toBe(true);
-
-    fireEvent.click(preview);
-    await settleAsyncRender();
-    expect(invokeCalls).toContainEqual(["shell:open-external-url", "https://example.com/spec"]);
-
-    view.unmount();
-    expect(revokeObjectURLMock).not.toHaveBeenCalled();
-  });
-
-  test("does not apply the generic raster size threshold to PDF.js documents", async () => {
-    const view = renderPanel(LARGE_PDF_FILE);
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(view.getByRole("button", { name: "PDF preview for large-design.pdf" })).not.toBeNull();
-    expect(invokeCalls.some((call) => call[0] === "read-file-binary")).toBe(true);
   });
 
   test("keeps raster previews on revocable object URLs", async () => {

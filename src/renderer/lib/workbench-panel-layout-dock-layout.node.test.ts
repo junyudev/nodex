@@ -1,0 +1,392 @@
+import { describe, expect, test, it } from "vite-plus/test";
+import {
+  closeDockLeaf,
+  collectDockLeafIds,
+  countDockLeaves,
+  createDefaultDockTree,
+  findDockLeaf,
+  setDockSplitRatio,
+  setLeafActiveTab,
+  splitDockLeaf,
+} from "./dock-layout";
+import { resolveWorkbenchPanelCapabilities } from "./workbench-panel-capabilities";
+import {
+  insertWorkbenchPanelLeaf,
+  makeWorkbenchPanelLayout,
+} from "../../shared/workbench-panel-layout";
+import { resolveRightNeighborPanelPlacement } from "./workbench-panel-placement";
+import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
+import {
+  createWorkbenchSceneSurface,
+  materializeInitialWorkbenchScene,
+  cloneWorkbenchSceneLayoutForNewWindow,
+} from "../../shared/workbench-scene";
+import { parseWorkbenchProjectionTabConfig } from "../../shared/schemas/project-sessions";
+import type { ProjectSessionThreadLink } from "@/lib/types";
+import {
+  isPreviewableWorkbenchTabKind,
+  makePinnedPreviewTabCreateInput,
+  makePreviewPageStageTab,
+  makePreviewWorkbenchTabProjection,
+  makePreviewWorkspaceFileTab,
+  makeWorkbenchTabProjectionDraft,
+  sameWorkbenchPreviewInstance,
+} from "./workbench-panel-preview";
+import { makeTestWorkbenchSession } from "@/components/workbench/workbench-testkit/panel-fixtures";
+
+describe("dock-layout", () => {
+  test("split leaf increases leaf count", () => {
+    const root = createDefaultDockTree();
+    const firstLeaf = collectDockLeafIds(root)[0];
+
+    const next = splitDockLeaf(root, firstLeaf, "row");
+
+    expect(countDockLeaves(root)).toBe(1);
+    expect(countDockLeaves(next)).toBe(2);
+  });
+
+  test("split is capped by max leaves", () => {
+    const root = createDefaultDockTree();
+    const firstLeaf = collectDockLeafIds(root)[0];
+    const two = splitDockLeaf(root, firstLeaf, "row", 3);
+    const leaves = collectDockLeafIds(two);
+    const three = splitDockLeaf(two, leaves[1], "column", 3);
+    const stillThree = splitDockLeaf(three, collectDockLeafIds(three)[2], "row", 3);
+
+    expect(countDockLeaves(three)).toBe(3);
+    expect(stillThree).toBe(three);
+  });
+
+  test("close leaf rebalances split tree", () => {
+    const root = createDefaultDockTree();
+    const firstLeaf = collectDockLeafIds(root)[0];
+    const split = splitDockLeaf(root, firstLeaf, "row");
+    const [left, right] = collectDockLeafIds(split);
+
+    const closed = closeDockLeaf(split, right);
+
+    expect(countDockLeaves(closed)).toBe(1);
+    expect(JSON.stringify(collectDockLeafIds(closed))).toBe(JSON.stringify([left]));
+  });
+
+  test("set active tab on leaf", () => {
+    const root = createDefaultDockTree();
+    const leafId = collectDockLeafIds(root)[0];
+
+    const next = setLeafActiveTab(root, leafId, "history");
+    const leaf = findDockLeaf(next, leafId);
+
+    expect(leaf?.activeTabId).toBe("history");
+  });
+
+  test("set split ratio clamps bounds", () => {
+    const root = createDefaultDockTree();
+    const firstLeaf = collectDockLeafIds(root)[0];
+    const split = splitDockLeaf(root, firstLeaf, "row");
+    if (split.type !== "split") throw new Error("expected split root");
+
+    const next = setDockSplitRatio(split, split.id, 0.99);
+    if (next.type !== "split") throw new Error("expected split root");
+
+    expect(next.ratio).toBe(0.85);
+  });
+});
+
+describe("resolveWorkbenchPanelCapabilities", () => {
+  it("offers only Agents in the Library Inbox's content panel", () => {
+    const owner = { kind: "inbox" } as const;
+    expect(
+      resolveWorkbenchPanelCapabilities({ owner, panelId: "right" }).availableActionKinds,
+    ).toEqual(["agents"]);
+    expect(
+      resolveWorkbenchPanelCapabilities({ owner, panelId: "bottom" }).availableActionKinds,
+    ).toEqual([]);
+  });
+});
+
+describe("resolveRightNeighborPanelPlacement", () => {
+  test("ensures a right group only for a single full-width source leaf", () => {
+    const layout = makeWorkbenchPanelLayout(["db"], "db", "source");
+
+    expect(
+      resolveRightNeighborPanelPlacement(layout, "source", {
+        fullWidth: true,
+      }),
+    ).toEqual({ kind: "ensure", sourceLeafId: "source" });
+    expect(
+      resolveRightNeighborPanelPlacement(layout, "source", {
+        fullWidth: false,
+      }),
+    ).toEqual({ kind: "fallback" });
+    expect(
+      resolveRightNeighborPanelPlacement(layout, "missing", {
+        fullWidth: true,
+      }),
+    ).toEqual({ kind: "fallback" });
+  });
+
+  test("reuses the nearest right group before considering a new split", () => {
+    const layout = insertWorkbenchPanelLeaf(makeWorkbenchPanelLayout(["db"], "db", "source"), {
+      leafId: "source",
+      newLeafId: "target",
+      newBranchId: "branch",
+      side: "right",
+    });
+
+    expect(
+      resolveRightNeighborPanelPlacement(layout, "source", {
+        fullWidth: false,
+      }),
+    ).toEqual({ kind: "existing", leafId: "target" });
+  });
+});
+
+describe("workbench panel preview", () => {
+  function thread(cwd: string): ProjectSessionThreadLink {
+    return {
+      sessionId: "session-1",
+      projectId: null,
+      threadId: "thread-1",
+      threadName: "Thread",
+      threadPreview: "Thread",
+      backendBinding: { driver: "codex", instanceId: "codex" },
+      executionHostId: "local",
+      cwd,
+      statusType: "notLoaded",
+      statusActiveFlags: [],
+      archived: false,
+      createdAt: 0,
+      updatedAt: 0,
+      linkedAt: "2026-07-28T00:00:00.000Z",
+      managedWorktreePath: null,
+      projectlessOutputDirectory: null,
+      projectlessWorkspaceBrowserRoot: null,
+    };
+  }
+
+  describe("workbench panel preview", () => {
+    test("pins and cold-restores a host-qualified remote file with a trailing filename space", () => {
+      const session = makeTestWorkbenchSession();
+      const hostId = "remote-ssh-discovered:win";
+      const preview = makePreviewWorkspaceFileTab(session, "right", {
+        hostId,
+        cwd: "C:/repo",
+        leafId: "right-leaf",
+        path: "docs/../a.ts ",
+        title: "a.ts ",
+        workspaceRoot: "C:/repo",
+        state: { pendingReveal: { line: 8 } },
+      });
+      const pinned = makePinnedPreviewTabCreateInput(session, "right", "right-leaf", preview);
+      expect(preview.id).toBe(`file:${hostId}:C:/repo/a.ts `);
+      if (pinned.kind !== "files") throw new Error("Expected Files pin");
+      const config = parseWorkbenchProjectionTabConfig("files", pinned.config);
+      expect(config).toEqual(preview.config);
+      const scene = createWorkbenchSceneSurface(
+        materializeInitialWorkbenchScene({ kind: "session", sessionId: session.id }),
+        {
+          panelId: "right",
+          surface: {
+            id: preview.id,
+            kind: "files",
+            titleSnapshot: preview.title,
+            stateKey: preview.stateKey,
+            state: preview.state,
+            config,
+          },
+        },
+      );
+      const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(scene)));
+      expect(restored.panelSurfacesById[preview.id]).toMatchObject({
+        config: { hostId, path: "C:/repo/a.ts " },
+        state: { pendingReveal: { line: 8 } },
+      });
+      const cloned = cloneWorkbenchSceneLayoutForNewWindow({
+        scenesByOwnerKey: { [`session:${session.id}`]: restored },
+      }).scenesByOwnerKey[`session:${session.id}`]!;
+      expect(WorkbenchSceneSnapshotSchema.parse(cloned).panelSurfacesById[preview.id]).toEqual(
+        restored.panelSurfacesById[preview.id],
+      );
+    });
+    test("supports Page File previews beside browser and workspace files", () => {
+      expect(isPreviewableWorkbenchTabKind("browser")).toBe(true);
+      expect(isPreviewableWorkbenchTabKind("files")).toBe(true);
+      expect(isPreviewableWorkbenchTabKind("page_file")).toBe(true);
+      expect(isPreviewableWorkbenchTabKind("terminal")).toBe(false);
+      expect(isPreviewableWorkbenchTabKind("page_stage")).toBe(false);
+    });
+
+    test("opens Terminal and Files for a chat without a Project before it starts", () => {
+      const projectless = makeTestWorkbenchSession({ projectId: null });
+      expect(makeWorkbenchTabProjectionDraft(projectless, "browser")).toMatchObject({
+        kind: "browser",
+      });
+      expect(makeWorkbenchTabProjectionDraft(projectless, "files")).toMatchObject({
+        kind: "files",
+        config: { projectId: null },
+      });
+      expect(makeWorkbenchTabProjectionDraft(projectless, "review")).toBeNull();
+      expect(makeWorkbenchTabProjectionDraft(projectless, "terminal")).toMatchObject({
+        kind: "terminal",
+      });
+
+      const attached = makeTestWorkbenchSession({
+        projectId: null,
+        thread: thread("/workspace"),
+      });
+      expect(makeWorkbenchTabProjectionDraft(attached, "terminal")).toMatchObject({
+        kind: "terminal",
+        config: {
+          terminalSessionId: expect.any(String),
+        },
+      });
+      expect(makeWorkbenchTabProjectionDraft(attached, "review")).toMatchObject({
+        kind: "review",
+        config: { projectId: null },
+      });
+      const runtime = {
+        ...makeTestWorkbenchSession({ projectId: null, thread: null }),
+        executionRef: { runtimeId: "runtime", threadId: "runtime-thread" },
+      };
+      expect(makeWorkbenchTabProjectionDraft(runtime, "review")).toMatchObject({
+        kind: "review",
+        config: { projectId: null },
+      });
+    });
+
+    test("gives each Browser runtime a distinct preview identity that survives promotion", () => {
+      const session = makeTestWorkbenchSession();
+      const draft = makeWorkbenchTabProjectionDraft(session, "browser");
+      if (!draft) throw new Error("Browser draft should be available");
+      const first = makePreviewWorkbenchTabProjection(session, "right", draft);
+      const replacement = makePreviewWorkbenchTabProjection(session, "right", draft);
+      expect(replacement.id).not.toBe(first.id);
+      expect(
+        makePinnedPreviewTabCreateInput(session, "bottom", "another-group", first).clientTabId,
+      ).toBe(first.id);
+      expect(replacement.browserTabId).not.toBe(first.browserTabId);
+    });
+
+    test("reuses canonical file identity across groups", () => {
+      const session = makeTestWorkbenchSession();
+      const first = makePreviewWorkspaceFileTab(session, "right", {
+        cwd: "/workspace",
+        leafId: "leaf-1",
+        path: "src/a.ts",
+        title: "a.ts",
+        workspaceRoot: "/workspace",
+      });
+      const differentLeaf = makePreviewWorkspaceFileTab(session, "right", {
+        cwd: "/workspace",
+        leafId: "leaf-2",
+        path: "src/a.ts",
+        title: "a.ts",
+        workspaceRoot: "/workspace",
+      });
+      expect(first.id).toBe("file:local:/workspace/src/a.ts");
+      expect(differentLeaf.id).toBe(first.id);
+      expect(
+        sameWorkbenchPreviewInstance(first, {
+          ...first,
+          stateKey: 4,
+          state: { pendingReveal: { line: 20 } },
+          panelId: "bottom",
+        }),
+      ).toBe(true);
+      expect(sameWorkbenchPreviewInstance(first, differentLeaf)).toBe(false);
+      expect(first.config.path).toBe("/workspace/src/a.ts");
+    });
+
+    test("carries a file reference reveal location into preview state", () => {
+      const session = makeTestWorkbenchSession();
+      const preview = makePreviewWorkspaceFileTab(session, "right", {
+        cwd: "/workspace",
+        leafId: "leaf-1",
+        path: "/workspace/src/a.ts",
+        title: "a.ts",
+        workspaceRoot: "/workspace",
+        state: { pendingReveal: { line: 12, column: 3, endLine: 14, endColumn: 2 } },
+      });
+
+      expect(preview.state).toEqual({
+        pendingReveal: { line: 12, column: 3, endLine: 14, endColumn: 2 },
+      });
+    });
+
+    test("creates new Page preview identity and preserves it on promotion", () => {
+      const session = makeTestWorkbenchSession();
+      const first = makePreviewPageStageTab(session, "right", {
+        projectId: "project-1",
+        pageId: "page-1",
+      });
+      const replacement = makePreviewPageStageTab(session, "right", {
+        projectId: "project-1",
+        pageId: "page-1",
+      });
+      expect(replacement.id).not.toBe(first.id);
+      expect(makePinnedPreviewTabCreateInput(session, "right", "right-leaf", first)).toMatchObject({
+        clientTabId: first.id,
+        kind: "page_stage",
+      });
+    });
+
+    test("preserves Browser runtime identity and rehomes file project config", () => {
+      const session = makeTestWorkbenchSession();
+      const browserDraft = makeWorkbenchTabProjectionDraft(session, "browser");
+      if (!browserDraft) throw new Error("Browser draft should exist");
+      const browser = makePreviewWorkbenchTabProjection(session, "right", browserDraft);
+      expect(
+        makePinnedPreviewTabCreateInput(session, "right", "right-leaf", browser),
+      ).toMatchObject({
+        browserTabId: browser.browserTabId,
+        config: {
+          browserStorageId: `browser:${browser.browserTabId}`,
+        },
+        kind: "browser",
+      });
+
+      const projectlessFile = makePreviewWorkspaceFileTab(
+        makeTestWorkbenchSession({ projectId: null }),
+        "right",
+        {
+          cwd: "/workspace",
+          leafId: "right-leaf",
+          path: "src/a.ts",
+          title: "a.ts",
+          workspaceRoot: "/workspace",
+        },
+      );
+      expect(
+        makePinnedPreviewTabCreateInput(session, "right", "right-leaf", projectlessFile),
+      ).toMatchObject({
+        clientTabId: projectlessFile.id,
+        config: { projectId: "project-1" },
+      });
+    });
+  });
+
+  test("pinning a Page File retains its exact identity and requested group position", () => {
+    const session = makeTestWorkbenchSession({ projectId: null });
+    const preview = {
+      ...makePreviewWorkbenchTabProjection(session, "bottom", {
+        kind: "page_file",
+        title: "report.html",
+        config: {
+          routingContext: { kind: "library" },
+          pageId: "page",
+          fileId: "file",
+          logicalPath: null,
+          titleSnapshot: "report.html",
+        },
+      }),
+      previewTargetIndex: 1,
+    };
+    expect(makePinnedPreviewTabCreateInput(session, "bottom", "leaf", preview)).toMatchObject({
+      kind: "page_file",
+      clientTabId: preview.id,
+      targetLeafId: "leaf",
+      targetIndex: 1,
+      config: preview.config,
+    });
+  });
+});

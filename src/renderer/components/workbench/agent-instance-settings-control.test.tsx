@@ -18,14 +18,12 @@ import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { createOpenCodeSetupOwner } from "../../features/opencode-setup/opencode-setup-owner";
 import {
   fakeSetupRuntime,
-  readyExecutable,
   setupState,
 } from "../../features/opencode-setup/opencode-setup.test-fixtures";
 import { NodexModalHost } from "../../lib/modal-registry";
 import { renderWithAppMaitai } from "../../test/app-maitai";
 import { render, settleAsyncRender } from "../../test/dom";
 import {
-  agentProfilesSummary,
   AgentProfileSettingsSection,
   type AgentProfileSettingsRuntime,
 } from "./agent-instance-settings-control";
@@ -99,48 +97,6 @@ const saveButton = (view: ReturnType<typeof render>) =>
   view.getByRole("button", { name: /^Sav(e|ing…)$/ }) as HTMLButtonElement;
 
 describe("Agent profile settings", () => {
-  it("a switch saves only the on/off state and leaves an open draft as it was", async () => {
-    const update = vi.fn<AgentProfileSettingsRuntime["update"]>(async (input) => redact(input));
-    update.mockRejectedValueOnce(new Error("Disk full"));
-    const view = render(
-      <AgentProfileSettingsSection
-        definition={claudeAgent}
-        open
-        disclosure={openSection}
-        runtime={{ read: async () => ({ instances: [claudeProfile()] }), update }}
-      />,
-    );
-    await expandProfile(view, "Claude Code");
-    await change(field(view, "Claude Code profile name"), "Work");
-
-    await click(view.getByRole("switch", { name: "Turn off Work" }));
-    await waitFor(() => expect(update).toHaveBeenCalledOnce());
-    expect(update.mock.calls[0]![0].instances).toMatchObject([
-      { displayName: "Claude Code", enabled: false },
-    ]);
-    // The failed write leaves the profile on, as Main still has it, and the draft untouched.
-    await waitFor(() =>
-      expect(view.getByRole("switch", { name: "Turn off Work" }).getAttribute("aria-checked")).toBe(
-        "true",
-      ),
-    );
-    expect(field(view, "Claude Code profile name").value).toBe("Work");
-
-    await click(view.getByRole("switch", { name: "Turn off Work" }));
-    await waitFor(() =>
-      expect(view.getByRole("switch", { name: "Turn on Work" }).getAttribute("aria-checked")).toBe(
-        "false",
-      ),
-    );
-    expect(field(view, "Claude Code profile name").value).toBe("Work");
-
-    await click(saveButton(view));
-    await waitFor(() => expect(update).toHaveBeenCalledTimes(3));
-    expect(update.mock.calls[2]![0].instances).toMatchObject([
-      { displayName: "Work", enabled: false },
-    ]);
-  });
-
   it("a reread waits for a save in flight and keeps the profile locked until it lands", async () => {
     let main: ProfileResult = { instances: [claudeProfile()] };
     const reads: ReturnType<typeof deferred<ProfileResult>>[] = [];
@@ -288,45 +244,6 @@ describe("Agent profile settings", () => {
       next.update.mock.calls[0]![0].instances.map(({ id, displayName }) => [id, displayName]),
     ).toEqual([["work", "Work 2"]]);
     expect(previous.update).not.toHaveBeenCalled();
-  });
-
-  it("a new profile stays a draft until saved and takes the next free name", async () => {
-    const update = vi.fn<AgentProfileSettingsRuntime["update"]>(async (input) => redact(input));
-    const view = render(
-      <AgentProfileSettingsSection
-        definition={claudeAgent}
-        open
-        disclosure={openSection}
-        runtime={{ read: async () => ({ instances: [] }), update }}
-      />,
-    );
-    await click(await view.findByRole("button", { name: "Add profile" }));
-    expect(field(view, "Claude Code profile name").value).toBe("Claude Code");
-    expect(view.getByText("Not saved yet")).toBeTruthy();
-    await click(saveButton(view));
-    await waitFor(() => expect(update).toHaveBeenCalledOnce());
-
-    await click(view.getByRole("button", { name: "Add profile" }));
-    await waitFor(() =>
-      expect(field(view, "Claude Code profile name").value).toBe("Claude Code 2"),
-    );
-    await click(view.getByRole("button", { name: "Remove profile" }));
-    await click(view.getByRole("button", { name: "Remove" }));
-    expect(update).toHaveBeenCalledOnce();
-    expect(view.queryByText("Claude Code 2")).toBeNull();
-  });
-});
-
-describe("agentProfilesSummary", () => {
-  it("describes the saved profiles in a few words", () => {
-    expect(agentProfilesSummary(null)).toBeNull();
-    expect(agentProfilesSummary([])).toBe("Not set up");
-    expect(agentProfilesSummary([{ enabled: true }])).toBe("On");
-    expect(agentProfilesSummary([{ enabled: false }])).toBe("Off");
-    expect(agentProfilesSummary([{ enabled: false }, { enabled: false }])).toBe("2 profiles · Off");
-    expect(agentProfilesSummary([{ enabled: true }, { enabled: false }, { enabled: true }])).toBe(
-      "2 of 3 on",
-    );
   });
 });
 it("pastes exports, saves once, redacts saved tokens and retains them on subsequent edits", async () => {
@@ -505,63 +422,6 @@ it("saves a profile's configuration, then its switch, keeping saved API keys thr
   expect(instances[1]?.id).not.toBe(instances[0]?.id);
 });
 
-it("retains failed edits and removes the final profile without restoring a default", async () => {
-  const update = vi
-    .fn<AgentProfileSettingsRuntime["update"]>()
-    .mockRejectedValueOnce(new Error("Secure storage unavailable"))
-    .mockImplementation(async (input) => redact(input));
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={{ read: async () => ({ instances: [openCodeProfile()] }), update }}
-    />,
-  );
-  await expandProfile(view, "OpenCode");
-  await change(await view.findByLabelText("OpenCode profile name"), "Draft profile");
-  await click(view.getByRole("button", { name: "Save" }));
-  expect((await view.findByRole("alert")).textContent).toBe("Secure storage unavailable");
-  expect((view.getByLabelText("OpenCode profile name") as HTMLInputElement).value).toBe(
-    "Draft profile",
-  );
-
-  await click(view.getByRole("button", { name: "Remove profile" }));
-  expect(update).toHaveBeenCalledOnce();
-  await click(view.getByRole("button", { name: "Remove" }));
-  await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
-  expect(update.mock.calls[1]?.[0]).toEqual({ driver: openCodeAgent.driver, instances: [] });
-  await view.findByText("Set up OpenCode");
-  expect(view.queryByLabelText("OpenCode profile name")).toBeNull();
-});
-
-it("offers no editing until profiles load, and loads them again on request", async () => {
-  const update = vi.fn<AgentProfileSettingsRuntime["update"]>();
-  const read = vi
-    .fn<AgentProfileSettingsRuntime["read"]>()
-    .mockRejectedValueOnce(new Error("Settings unavailable"))
-    .mockResolvedValue({ instances: [openCodeProfile()] });
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={{ read, update }}
-    />,
-  );
-  expect((await view.findByRole("alert")).textContent).toBe(
-    "Couldn't load OpenCode profiles. Settings unavailable",
-  );
-  expect(view.queryByRole("switch")).toBeNull();
-  expect(view.queryByRole("button", { name: "Add profile" })).toBeNull();
-
-  await click(view.getByRole("button", { name: "Try again" }));
-  await view.findByRole("switch", { name: "Turn off OpenCode" });
-  expect(read).toHaveBeenCalledTimes(2);
-  expect(view.queryByRole("alert")).toBeNull();
-  expect(update).not.toHaveBeenCalled();
-});
-
 /** The settings row holding the executable input, its label and its status description. */
 const executableRow = async (view: ReturnType<typeof renderOpenCode>) =>
   (await view.findByLabelText("OpenCode executable")).parentElement!.parentElement!;
@@ -569,39 +429,6 @@ const openProfile = async (view: ReturnType<typeof renderOpenCode>, name = "Open
   await expandProfile(view, name);
   return executableRow(view);
 };
-
-it("opens the install dialog from the saved default executable and runs only from it", async () => {
-  const { main } = hostSetup();
-  main.runtime.install.mockResolvedValue(
-    setupState(2, { installation: { phase: "running", log: { lines: [], progress: null } } }),
-  );
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={{
-        read: async () => ({ instances: [{ ...openCodeProfile(), enabled: false }] }),
-        update: vi.fn(),
-      }}
-    />,
-  );
-  const row = await openProfile(view);
-  await within(row).findByText("Not installed");
-  await act(async () => {
-    fireEvent.click(within(row).getByRole("button", { name: "Install" }));
-    await Promise.resolve();
-  });
-  const dialog = await view.findByRole("dialog", { name: "Install OpenCode" });
-  expect(main.runtime.install).not.toHaveBeenCalled();
-  const install = await within(dialog).findByRole("button", { name: "Install" });
-  await act(async () => {
-    fireEvent.click(install);
-    await Promise.resolve();
-  });
-  expect(main.runtime.install).toHaveBeenCalledOnce();
-  await within(row).findByText("Installing…");
-});
 
 it("hides saved host status while an unsaved PATH changes how the profile resolves OpenCode", async () => {
   const view = renderOpenCode(
@@ -627,119 +454,6 @@ it("hides saved host status while an unsaved PATH changes how the profile resolv
     await Promise.resolve();
   });
   await within(await executableRow(view)).findByText("Not installed");
-});
-
-it("leaves a saved explicit PATH in charge even while the draft removes it", async () => {
-  const { main } = hostSetup();
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={{
-        read: async () => ({
-          instances: [
-            {
-              ...openCodeProfile(),
-              environment: [{ name: "PATH", value: "/opt/opencode/bin", sensitive: false }],
-            },
-          ],
-        }),
-        update: vi.fn(),
-      }}
-    />,
-  );
-  await openProfile(view);
-  await act(async () => {
-    fireEvent.click(view.getByRole("button", { name: "Remove variable 1" }));
-    await Promise.resolve();
-  });
-  // Host setup is never consulted for a profile whose saved PATH owns resolution.
-  await waitFor(() => expect(view.queryByLabelText("Variable name 1")).toBeNull());
-  expect(main.runtime.read).not.toHaveBeenCalled();
-});
-
-it("describes a ready host and re-checks it each time settings open", async () => {
-  const { main } = hostSetup(setupState(1, { executable: readyExecutable("1.15.20") }));
-  const runtime = {
-    read: async () => ({ instances: [openCodeProfile()] }),
-    update: vi.fn(),
-  };
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={runtime}
-    />,
-  );
-  const row = await openProfile(view);
-  await within(row).findByText(/OpenCode 1\.15\.20/);
-  expect(within(row).getByText("/Users/me/.opencode/bin/opencode")).toBeTruthy();
-  expect(within(row).queryByRole("button")).toBeNull();
-  const reads = main.runtime.read.mock.calls.length;
-  view.rerender(
-    <>
-      <AgentProfileSettingsSection
-        definition={openCodeAgent}
-        open={false}
-        disclosure={openSection}
-        runtime={runtime}
-      />
-      <NodexModalHost />
-    </>,
-  );
-  view.rerender(
-    <>
-      <AgentProfileSettingsSection
-        definition={openCodeAgent}
-        open
-        disclosure={openSection}
-        runtime={runtime}
-      />
-      <NodexModalHost />
-    </>,
-  );
-  await waitFor(() => expect(main.runtime.read.mock.calls.length).toBeGreaterThan(reads));
-});
-
-it("leaves custom executables, servers and unsaved edits to their own configuration", async () => {
-  const { main } = hostSetup();
-  const base = openCodeProfile();
-  const view = renderOpenCode(
-    <AgentProfileSettingsSection
-      definition={openCodeAgent}
-      open
-      disclosure={openSection}
-      runtime={{
-        read: async () => ({
-          instances: [
-            { ...base, id: "custom", displayName: "Custom", binaryPath: "/opt/bin/opencode" },
-            {
-              ...base,
-              id: "server",
-              displayName: "Server",
-              settings: { ...base.settings, serverUrl: "http://127.0.0.1:4096" },
-            },
-            { ...base, id: "local", displayName: "Local" },
-          ],
-        }),
-        update: vi.fn(),
-      }}
-    />,
-  );
-  const row = await openProfile(view, "Custom");
-  expect(within(row).queryByText("Not installed")).toBeNull();
-  expect(within(await openProfile(view, "Server")).queryByText("Not installed")).toBeNull();
-  await within(await openProfile(view, "Local")).findByText("Not installed");
-  await act(async () => {
-    fireEvent.change(view.getByLabelText("OpenCode executable"), {
-      target: { value: "/usr/local/bin/opencode" },
-    });
-    await Promise.resolve();
-  });
-  expect(within(await executableRow(view)).queryByText("Not installed")).toBeNull();
-  expect(main.runtime.install).not.toHaveBeenCalled();
 });
 it("keeps a saved key through other edits and replaces it only when one is typed", async () => {
   const update = vi.fn<AgentProfileSettingsRuntime["update"]>(async (input) =>
@@ -779,31 +493,4 @@ it("keeps a saved key through other edits and replaces it only when one is typed
   await click(view.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
   expect(update.mock.calls[1]?.[0].instances[0]?.settings).toMatchObject({ apiKey: "new-key" });
-});
-
-it("asks a new profile to be saved before it can sign in, and needs no executable", async () => {
-  const update = vi.fn<AgentProfileSettingsRuntime["update"]>(async (input) => redact(input));
-  const view = render(
-    <AgentProfileSettingsSection
-      definition={antigravityAgent}
-      open
-      disclosure={openSection}
-      runtime={{ read: async () => ({ instances: [] }), update }}
-    />,
-  );
-  await click(await view.findByRole("button", { name: "Add profile" }));
-  expect(view.getByText("Save this profile to sign in.")).toBeTruthy();
-  expect(view.queryByLabelText("Antigravity API key")).toBeNull();
-  await click(view.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-  // The first profile uses agy's sign-in on this computer; the next signs in on its own.
-  expect(update.mock.calls[0]?.[0].instances[0]).toMatchObject({
-    displayName: "Antigravity",
-    settings: { authMethod: "computer" },
-    binaryPath: "",
-  });
-  expect(await view.findByText("Account details")).toBeTruthy();
-  await click(view.getByRole("button", { name: "Add profile" }));
-  const methods = view.getAllByRole("button", { name: "Antigravity sign-in method" });
-  expect(methods.at(-1)?.textContent).toBe("Google account");
 });

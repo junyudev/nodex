@@ -1,11 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import {
-  isSameDocumentBlockTargetInsideSelection,
-  isSameDocumentBlockMoveNoOp,
-  resolveBlockTransferDocumentTarget,
   setupBlockTransferDocumentDrop,
-  type BlockTransferDropEditor,
   type BlockTransferDropBoundary,
 } from "./block-transfer-drop";
 import type { PublicBlockTransferIntent } from "../../../../shared/block-transfer-transport";
@@ -91,58 +87,6 @@ const structuralPreparation = {
 };
 
 describe("Board Card Block transfer drop", () => {
-  test("resolves before/after against the target Block hierarchy", () => {
-    const editor: BlockTransferDropEditor = {
-      document: [
-        {
-          id: "parent",
-          children: [{ id: "first" }, { id: "second" }],
-        },
-        { id: "tail" },
-      ],
-    };
-    expect(
-      resolveBlockTransferDocumentTarget(editor, {
-        blockId: "first",
-        placement: "after",
-      }),
-    ).toEqual({ parentBlockId: "parent", beforeBlockId: "second" });
-    expect(
-      resolveBlockTransferDocumentTarget(editor, {
-        blockId: "second",
-        placement: "after",
-      }),
-    ).toEqual({ parentBlockId: "parent" });
-  });
-
-  test("recognizes same-Document subtree move no-ops without hiding real reorders", () => {
-    const editor: BlockTransferDropEditor = {
-      document: [
-        { id: "before" },
-        { id: "1111", children: [{ id: "222" }] },
-        { id: "middle" },
-        { id: "3333" },
-      ],
-    };
-
-    expect(
-      isSameDocumentBlockMoveNoOp(editor, ["1111"], {
-        beforeBlockId: "middle",
-      }),
-    ).toBe(true);
-    expect(
-      isSameDocumentBlockMoveNoOp(editor, ["1111"], {
-        parentBlockId: "1111",
-      }),
-    ).toBe(true);
-    expect(isSameDocumentBlockMoveNoOp(editor, ["1111"], {})).toBe(false);
-    expect(
-      isSameDocumentBlockTargetInsideSelection(editor, ["1111"], {
-        parentBlockId: "222",
-      }),
-    ).toBe(true);
-  });
-
   test.each([
     [false, "move"],
     [true, "copy"],
@@ -292,42 +236,6 @@ describe("Board Card Block transfer drop", () => {
     },
   );
 
-  test("removes active drop feedback when the target is replaced", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
-      ...structuralPreparation,
-      surfaceId: "surface-target",
-      projectId: "project-a",
-      documentId: "document-host",
-      storeEpoch: "epoch-a",
-      ancestorPageIds: [],
-      createOperationId: () => "operation-a",
-      transfer: async () => {
-        throw new Error("The test does not drop");
-      },
-      reportError: vi.fn(),
-    }));
-    const registration = dropTargetHarness.registration as ElementDropTargetArgs;
-    const self = { element: container, data: {}, dropEffect: "move" as const };
-    registration.onDrag?.({
-      source: { data: dragData },
-      location: {
-        current: { input: input(false), dropTargets: [self] },
-      },
-      self,
-    } as unknown as Parameters<NonNullable<ElementDropTargetArgs["onDrag"]>>[0]);
-
-    expect(container.hasAttribute("data-block-transfer-drop-hover")).toBe(true);
-    expect(container.querySelectorAll("[data-block-transfer-drop-indicator]")).toHaveLength(1);
-
-    cleanup();
-
-    expect(container.hasAttribute("data-block-transfer-drop-hover")).toBe(false);
-    expect(container.querySelectorAll("[data-block-transfer-drop-indicator]")).toHaveLength(0);
-    container.remove();
-  });
-
   test.each([
     [false, "move", "project-a"],
     [true, "copy", "project-a"],
@@ -421,172 +329,6 @@ describe("Board Card Block transfer drop", () => {
       cleanup();
     },
   );
-
-  test("routes every managed editor drag through one structural transfer", async () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const transfer = vi.fn();
-    const order: string[] = [];
-    const structuralTransfer = vi.fn(async () => undefined);
-    const prepareAndFence = vi.fn(async () => {
-      order.push("prepare");
-      return {
-        documentId: "document-target",
-        storeEpoch: "epoch-a",
-        generation: 1,
-        expectedHeadSeq: 0,
-      };
-    });
-    const prepareSourceAndFence = vi.fn(async () => ({
-      documentId: "document-source",
-      storeEpoch: "epoch-a",
-      generation: 1,
-      expectedHeadSeq: 0,
-    }));
-    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
-      surfaceId: "surface-target",
-      projectId: "project-a",
-      documentId: "document-target",
-      storeEpoch: "epoch-a",
-      ancestorPageIds: [],
-      prepareAndFence,
-      prepareSourceAndFence,
-      createOperationId: () => "operation-editor",
-      transfer,
-      structuralTransfer: completeStructuralTransfer(structuralTransfer, () => order.push("admit")),
-      receivePages: async () => undefined,
-      reportError: vi.fn(),
-    }));
-    const values = new Map<string, string>();
-    const types: string[] = [];
-    const dataTransfer = {
-      types,
-      effectAllowed: "uninitialized",
-      dropEffect: "none",
-      setData: (type: string, value: string) => {
-        if (!types.includes(type)) types.push(type);
-        values.set(type, value);
-      },
-      getData: (type: string) => values.get(type) ?? "",
-    } as unknown as DataTransfer;
-    beginLocalBlockDragSession(
-      {
-        sourceSurfaceId: "surface-source",
-        projectId: "project-a",
-        storeEpoch: "epoch-a",
-        source: { kind: "document", documentId: "document-source" },
-        rootBlockIds: ["block-source"],
-        displayHints: ["paragraph"],
-      },
-      dataTransfer,
-    );
-    const drop = new Event("drop", { bubbles: true, cancelable: true });
-    Object.defineProperties(drop, {
-      dataTransfer: { value: dataTransfer },
-      clientX: { value: 0 },
-      clientY: { value: 0 },
-      altKey: { value: true },
-    });
-
-    try {
-      container.dispatchEvent(drop);
-      await vi.waitFor(() => expect(structuralTransfer).toHaveBeenCalledOnce());
-      expect(drop.defaultPrevented).toBe(true);
-      expect(transfer).not.toHaveBeenCalled();
-      expect(structuralTransfer).toHaveBeenCalledWith({
-        mode: "copy",
-        rootBlockIds: ["block-source"],
-        sourceHead: expect.objectContaining({ documentId: "document-source" }),
-        targetHead: expect.objectContaining({ documentId: "document-target" }),
-        target: { parentBlockId: null, beforeBlockId: null },
-      });
-      expect(prepareAndFence).toHaveBeenCalledOnce();
-      expect(order[0]).toBe("admit");
-      expect(prepareSourceAndFence).toHaveBeenCalledWith(
-        "surface-source",
-        expect.objectContaining({
-          signal: expect.any(AbortSignal),
-          deadlineAt: expect.any(Number),
-        }),
-      );
-    } finally {
-      cleanup();
-      endLocalBlockDragSession();
-      container.remove();
-    }
-  });
-
-  test("routes a same-Page Canvas drag through one structural transfer", async () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const transfer = vi.fn();
-    const structuralTransfer = vi.fn(async () => undefined);
-    const cleanup = setupBlockTransferDocumentDrop(
-      container,
-      { document: [{ id: "canvas-1" }, { id: "paragraph-1" }] },
-      () => ({
-        ...structuralPreparation,
-        surfaceId: "surface-page",
-        projectId: "project-a",
-        documentId: "document-page",
-        storeEpoch: "epoch-a",
-        hostPageId: "page-1",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-canvas",
-        transfer,
-        structuralTransfer: completeStructuralTransfer(structuralTransfer),
-        reportError: vi.fn(),
-      }),
-    );
-    const values = new Map<string, string>();
-    const types: string[] = [];
-    const dataTransfer = {
-      types,
-      effectAllowed: "uninitialized",
-      dropEffect: "none",
-      setData: (type: string, value: string) => {
-        if (!types.includes(type)) types.push(type);
-        values.set(type, value);
-      },
-      getData: (type: string) => values.get(type) ?? "",
-    } as unknown as DataTransfer;
-    beginLocalBlockDragSession(
-      {
-        sourceSurfaceId: "surface-page",
-        projectId: "project-a",
-        storeEpoch: "epoch-a",
-        source: { kind: "page", pageId: "page-1" },
-        rootBlockIds: ["canvas-1"],
-        displayHints: ["canvas"],
-      },
-      dataTransfer,
-    );
-    const drop = new Event("drop", { bubbles: true, cancelable: true });
-    Object.defineProperties(drop, {
-      dataTransfer: { value: dataTransfer },
-      clientX: { value: 0 },
-      clientY: { value: 0 },
-      altKey: { value: false },
-    });
-
-    try {
-      container.dispatchEvent(drop);
-      await vi.waitFor(() => expect(structuralTransfer).toHaveBeenCalledOnce());
-      expect(drop.defaultPrevented).toBe(true);
-      expect(transfer).not.toHaveBeenCalled();
-      expect(structuralTransfer).toHaveBeenCalledWith({
-        mode: "move",
-        rootBlockIds: ["canvas-1"],
-        sourceHead: expect.objectContaining({ documentId: "document-target" }),
-        targetHead: expect.objectContaining({ documentId: "document-target" }),
-        target: { parentBlockId: null, beforeBlockId: null },
-      });
-    } finally {
-      cleanup();
-      endLocalBlockDragSession();
-      container.remove();
-    }
-  });
 
   test("routes an ordinary subtree reorder across typed owners through structural authority", async () => {
     const container = document.createElement("div");

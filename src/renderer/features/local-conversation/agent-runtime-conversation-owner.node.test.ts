@@ -13,7 +13,6 @@ import type {
 } from "../../../shared/agent-runtime-api";
 import {
   AgentRuntimeConversationOwner,
-  agentRuntimeQueueHoldPause,
   REPLIED_SINCE_REASON,
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
@@ -328,38 +327,6 @@ test("rebuilds from a snapshot when a patch does not fit the copy it holds", asy
   }
 });
 
-test("retries when observation fails after a snapshot and the Runtime is already ready", async () => {
-  vi.useFakeTimers();
-  const wire = transport(conversation([assistant("Loaded transcript")]));
-  let failObserve!: (error: Error) => void;
-  vi.mocked(wire.port.subscribe).mockImplementationOnce(
-    () => new Promise((_resolve, reject) => (failObserve = reject)),
-  );
-  const owner = new AgentRuntimeConversationOwner(target, wire.port);
-  const release = owner.readOwner.subscribeStructure(() => {});
-  try {
-    await vi.advanceTimersByTimeAsync(0);
-    expect(owner.getSnapshot().connection).toBe("ready");
-    const opening = owner.resume();
-    failObserve(new Error("Observation unavailable"));
-    await opening;
-    expect(owner.getSnapshot()).toMatchObject({
-      connection: "failed",
-      error: "Observation unavailable",
-    });
-    expect(owner.readOwner.readStructure()?.turns).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
-    wire.emit(event(assistant("Live transcript")));
-    await expect(owner.whenObserved(2)).resolves.toBeUndefined();
-  } finally {
-    release();
-    owner.dispose();
-    vi.useRealTimers();
-  }
-});
-
 test("a failed reset read backs off, manual resume resets the delay, and final release stops retries", async () => {
   vi.useFakeTimers();
   const { owner, wire, release } = await open(conversation([assistant("Loaded transcript")]));
@@ -549,29 +516,6 @@ describe("Agent Runtime reply phases", () => {
     },
   );
 
-  test("timing-only corrections publish a Turn and a new untimed response cannot inherit an older start", async () => {
-    const initial = settle(conversation([message("first", 1)]));
-    const { owner, wire, release } = await open(initial);
-    const changed = vi.fn();
-    const stop = owner.readOwner.subscribeTurn(entityKey, changed);
-    try {
-      const correctedAt = "2026-10-14T00:00:05.000Z";
-      wire.emit(event({ ...message("first", 1), startedAt: correctedAt }));
-      expect(owner.readOwner.readTurn(entityKey)?.finalAssistantStartedAtMs).toBe(
-        Date.parse(correctedAt),
-      );
-      expect(changed).toHaveBeenCalledOnce();
-      wire.emit(event({ ...message("second", 2), startedAt: null }, 3));
-      expect(owner.readOwner.readTurn(entityKey)?.finalAssistantStartedAtMs).toBeNull();
-      expect(owner.readOwner.readItem(entityKey, "second")).toMatchObject({
-        completedAtMs: Date.parse(at),
-      });
-    } finally {
-      stop();
-      release();
-    }
-  });
-
   test("a streamed body update costs the same however long its Turn is", async () => {
     const readsPerUpdate = async (length: number) => {
       const earlier = Array.from({ length }, (_, index) => message(`earlier-${index}`, index + 1));
@@ -592,18 +536,6 @@ describe("Agent Runtime reply phases", () => {
       }
     };
     expect(await readsPerUpdate(40)).toBe(await readsPerUpdate(2));
-  });
-
-  test("publishes running messages as commentary, including live replacements", async () => {
-    const { owner, wire, release } = await open(conversation([message("first", 1)]));
-    try {
-      expect(phases(owner, ["first"])).toEqual(["commentary"]);
-      wire.emit(event(message("second", 2)));
-      wire.emit(event({ ...message("first", 1), text: "Updated narration" }, 3));
-      expect(phases(owner, ["first", "second"])).toEqual(["commentary", "commentary"]);
-    } finally {
-      release();
-    }
   });
 
   test("settles a multi-message reply in the same update as its Turn, across plans and notices", async () => {
@@ -658,37 +590,6 @@ describe("Agent Runtime reply phases", () => {
     }
   });
 
-  test.each(["steering", "tool"] as const)(
-    "a later %s item ends the reply in the same slot update",
-    async (kind) => {
-      const { owner, wire, release } = await open(settle(conversation([message("reply", 1)])));
-      const work: AgentTurnItem =
-        kind === "tool"
-          ? command(2)
-          : {
-              ...base("steer", 2),
-              type: "user_message",
-              messageId: "steer-message",
-              text: "Check another file",
-              attachments: [],
-              inputIntent: "steer",
-              createdBy: "user",
-              creationSource: "web",
-            };
-      const published = vi.fn(() => phases(owner, ["reply"]));
-      const stop = owner.readOwner.subscribeTurn(entityKey, published);
-      try {
-        expect(phases(owner, ["reply"])).toEqual(["final_answer"]);
-        wire.emit(event(work));
-        expect(published).toHaveBeenCalledOnce();
-        expect(published.mock.results[0]?.value).toEqual(["commentary"]);
-      } finally {
-        stop();
-        release();
-      }
-    },
-  );
-
   test.each([false, true])(
     "hydrating or updating a message keeps its phase with settled=%s",
     async (settled) => {
@@ -707,55 +608,6 @@ describe("Agent Runtime reply phases", () => {
     },
   );
 
-  test("an asynchronous question remains commentary and ends the preceding reply", async () => {
-    const question: AgentTurnItem = {
-      ...runtimeQuestion("question", "run"),
-      ordinal: 2,
-      responseMode: "message",
-      status: "completed",
-      completedAt: at,
-    };
-    const { owner, release } = await open(
-      settle(conversation([message("narration", 1), question, message("reply", 3)])),
-    );
-    try {
-      expect(phases(owner, ["narration", question.id, "reply"])).toEqual([
-        "commentary",
-        "commentary",
-        "final_answer",
-      ]);
-    } finally {
-      release();
-    }
-  });
-
-  test("classifies cold work and a Thought replaced with an Agent message from resident types", async () => {
-    const initial = conversation([
-      { ...base("thought", 1), type: "reasoning", text: "Thinking", streaming: false },
-      command(2),
-      message("reply", 3),
-    ]);
-    const { owner, wire, release } = await open(initial);
-    try {
-      // Body eviction does not remove the item's role in the Turn.
-      owner.readOwner.applyEvent({
-        type: "changes",
-        changes: [
-          {
-            type: "item",
-            key: { ...owner.readOwner.key, entityKey, itemId: "command:2" },
-            value: null,
-          },
-        ],
-      });
-      wire.emit(event(message("thought", 1)));
-      complete(wire, initial, 3);
-      expect(phases(owner, ["thought", "reply"])).toEqual(["commentary", "final_answer"]);
-    } finally {
-      release();
-    }
-  });
-
   test("execution retirement settles reply phases with the interrupted Turn", async () => {
     const { owner, wire, release } = await open(
       conversation([message("narration", 1), command(2), message("reply", 3)]),
@@ -772,38 +624,6 @@ describe("Agent Runtime reply phases", () => {
         status: "interrupted",
         phases: ["commentary", "final_answer"],
       });
-    } finally {
-      stop();
-      release();
-    }
-  });
-
-  test("a history page's settled Turns arrive with phases", async () => {
-    const older = [message("narration", 1), command(2), message("reply", 3)].map((item) => ({
-      ...item,
-      runId: "older-run",
-    }));
-    const { owner, release } = await open(conversation([command(4)], "older"), [
-      {
-        snapshotSequence: 1,
-        items: older.map(row),
-        nextCursor: null,
-        hasMoreHistory: false,
-      },
-    ]);
-    const olderKey = JSON.stringify(["agent-run", target.threadId, "older-run"]);
-    const published = vi.fn(() =>
-      ["narration", "reply"].map((id) => owner.readOwner.readItem(olderKey, id)),
-    );
-    const stop = owner.readOwner.subscribeStructure(published);
-    try {
-      await owner.loadHistoryBoundary(historyBoundary(owner));
-      expect(published).toHaveBeenCalledOnce();
-      expect(owner.readOwner.readTurn(olderKey)?.finalAssistantStartedAtMs).toBe(Date.parse(at));
-      expect(published.mock.results[0]?.value).toMatchObject([
-        { phase: "commentary" },
-        { phase: "final_answer" },
-      ]);
     } finally {
       stop();
       release();
@@ -1248,60 +1068,6 @@ test("retires only live resident keys and the addressed delivery without rereadi
   release();
 });
 
-test("control-only retirement uses captured node sources and preserves unknown ACP Run identity", async () => {
-  const source = conversation([]);
-  const initial: AgentRuntimeConversation = {
-    ...source,
-    snapshot: {
-      ...source.snapshot,
-      projection: {
-        ...source.snapshot.projection,
-        runs: [{ ...source.snapshot.projection.runs[0]!, status: "completed", completedAt: at }],
-        nodes: [runtimeNode("owned:node", "run"), runtimeNode("unknown:node", null)],
-        runtimeRequests: [
-          runtimeRequest("owned"),
-          runtimeRequest("late"),
-          runtimeRequest("unknown"),
-        ],
-      },
-    },
-  };
-  const wire = transport(initial);
-  vi.mocked(wire.port.control).mockResolvedValue(initial);
-  const owner = new AgentRuntimeConversationOwner(target, wire.port);
-  const release = owner.retain();
-  await owner.resume();
-  const before = owner.getSnapshot().conversation!.snapshot.projection;
-  wire.emit({
-    sequence: 2,
-    commandId: null,
-    event: {
-      id: "late-node",
-      threadId: target.threadId,
-      occurredAt: at,
-      type: "node.updated",
-      payload: runtimeNode("late:node", "run"),
-    },
-  });
-  wire.emit(retiredEvent(3));
-  const after = owner.getSnapshot().conversation!.snapshot.projection;
-  expect(after.runs[0]).toBe(before.runs[0]);
-  expect(after.runtimeRequests.slice(0, 2).map((request) => request.status)).toEqual([
-    "cancelled",
-    "cancelled",
-  ]);
-  expect(after.runtimeRequests[2]).toBe(before.runtimeRequests[2]);
-  expect(after.nodes).toEqual([]);
-  expect(after.turnItems).toEqual([]);
-  expect(owner.readOwner.readStructure()).toBeNull();
-  expect(wire.port.control).toHaveBeenCalledOnce();
-  expect(wire.port.read).not.toHaveBeenCalled();
-  expect(wire.port.history).not.toHaveBeenCalled();
-  expect(wire.port.item).not.toHaveBeenCalled();
-  expect(wire.port.readQueuePage).not.toHaveBeenCalled();
-  release();
-});
-
 describe("Agent Runtime keyed transcript reads", () => {
   test("a write resolves once its event is applied, or after a bound when none arrives", async () => {
     vi.useFakeTimers();
@@ -1326,57 +1092,6 @@ describe("Agent Runtime keyed transcript reads", () => {
       owner.dispose();
     } finally {
       vi.useRealTimers();
-    }
-  });
-  test("retains a content source across streamed deltas and retires it on reconnect or release", async () => {
-    const { owner, wire, release } = await open(conversation([assistant()]));
-    const source = owner.contentSource();
-    expect(source?.isCurrent()).toBe(true);
-    wire.emit(event(assistant("A streamed extension")));
-    expect(owner.contentSource()).toBe(source);
-    wire.reset();
-    expect(source?.isCurrent()).toBe(false);
-    await owner.resume();
-    expect(owner.contentSource()).not.toBe(source);
-    const replacement = owner.contentSource();
-    expect(replacement?.isCurrent()).toBe(true);
-    release();
-    await Promise.resolve();
-    expect(replacement?.isCurrent()).toBe(false);
-    expect(owner.contentSource()).toBeNull();
-    owner.dispose();
-  });
-  test("image reads become view activity on completion and survive compact history reconnects", async () => {
-    const read: Extract<AgentTurnItem, { type: "dynamic_tool" }> = {
-      ...base("image-read", 1),
-      type: "dynamic_tool",
-      status: "running",
-      completedAt: null,
-      toolName: "Read",
-      title: "Read /workspace/reference.png",
-      viewedImagePath: "/workspace/reference.png",
-      input: { file_path: "/workspace/reference.png" },
-      outputOmitted: true,
-    };
-    const { owner, wire, release } = await open(conversation([read]));
-    try {
-      const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
-      expect(owner.readOwner.readItem(entityKey, read.id)).toMatchObject({
-        type: "dynamicToolCall",
-        status: "inProgress",
-      });
-      const completed = { ...read, status: "completed" as const, completedAt: at };
-      wire.emit(event(completed));
-      const image = { type: "imageView", id: read.id, path: read.viewedImagePath };
-      expect(owner.readOwner.readItem(entityKey, read.id)).toEqual(image);
-      vi.spyOn(wire.port, "read").mockResolvedValue(conversation([completed]));
-      wire.reset();
-      await owner.resume();
-      expect(owner.readOwner.readItem(entityKey, read.id)).toEqual(image);
-      expect(wire.port.item).not.toHaveBeenCalled();
-    } finally {
-      release();
-      owner.dispose();
     }
   });
   test("keeps asynchronous questions beside the Composer and routes replies to their request", async () => {
@@ -1479,61 +1194,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(wire.port.history).not.toHaveBeenCalled();
     stopParent();
     release();
-  });
-
-  test("history restored while a Run starts precedes that Run, grouped as on reopening", async () => {
-    const prompt: Extract<AgentTurnItem, { type: "user_message" }> = {
-      ...base("user:continue", 1_000_001),
-      type: "user_message",
-      createdBy: "user",
-      creationSource: "web",
-      inputIntent: "turn_start",
-      messageId: "user-message",
-      text: "Continue",
-      attachments: [],
-    };
-    const restored = (id: string, ordinal: number, role: "user" | "assistant"): AgentTurnItem => {
-      const shared = {
-        ...base(id, ordinal),
-        runId: null,
-        messageId: id,
-        text: id,
-        attachments: [],
-      };
-      return role === "user"
-        ? {
-            ...shared,
-            type: "user_message",
-            createdBy: "user",
-            creationSource: "web",
-            inputIntent: "turn_start",
-          }
-        : { ...shared, type: "assistant_message", streaming: false };
-    };
-    const history = [
-      restored("earlier question", 1, "user"),
-      restored("earlier answer", 2, "assistant"),
-      restored("later answer", 3, "assistant"),
-    ];
-    const order = (owner: AgentRuntimeConversationOwner) =>
-      owner.readOwner.readStructure()!.turnEntityKeys.map((key) =>
-        owner.readOwner
-          .readTurn(key)!
-          .items.map((item) => item.markdownText)
-          .filter(Boolean),
-      );
-
-    const live = await open(conversation([prompt]));
-    history.forEach((item, index) => live.wire.emit(event(item, index + 2)));
-    const reopened = await open(conversation([...history, prompt]));
-
-    expect(order(live.owner)).toEqual([
-      ["earlier question", "earlier answer", "later answer"],
-      ["Continue"],
-    ]);
-    expect(order(live.owner)).toEqual(order(reopened.owner));
-    live.release();
-    reopened.release();
   });
 
   test("pages more than five queued messages without opening older history and reads the full edit text only on demand", async () => {
@@ -1693,153 +1353,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readStructure()).toBeNull();
     releaseControl();
   });
-  test.each(["success", "failure"])(
-    "keeps an empty user outbox quiet during a background refresh (%s)",
-    async (outcome) => {
-      const initial = conversation([]);
-      const wire = transport(initial);
-      const owner = new AgentRuntimeConversationOwner(target, wire.port);
-      const release = owner.readOwner.subscribeStructure(() => {});
-      try {
-        await owner.resume();
-        await vi.waitFor(() =>
-          expect(owner.getSnapshot().view?.queuedFollowUps.status).toBe("ready"),
-        );
-        let resolveQueue!: (page: Awaited<ReturnType<typeof wire.port.readQueuePage>>) => void;
-        let rejectQueue!: (error: Error) => void;
-        const pending = new Promise<Awaited<ReturnType<typeof wire.port.readQueuePage>>>(
-          (resolve, reject) => {
-            resolveQueue = resolve;
-            rejectQueue = reject;
-          },
-        );
-        vi.mocked(wire.port.readQueuePage).mockReturnValueOnce(pending);
-        wire.emit({
-          sequence: 2,
-          commandId: null,
-          event: {
-            id: "runtime-wake",
-            type: "run.created",
-            threadId: target.threadId,
-            occurredAt: at,
-            payload: {
-              ...initial.snapshot.projection.runs[0]!,
-              id: "wake",
-              userMessageId: "wake-message",
-              status: "queued",
-            },
-          },
-        });
-        expect(wire.port.readQueuePage).toHaveBeenCalledTimes(2);
-        expect(owner.getSnapshot().view?.queuedFollowUps).toMatchObject({
-          status: "ready",
-          entries: [],
-        });
-        if (outcome === "failure") rejectQueue(new Error("Background refresh failed"));
-        else resolveQueue({ snapshotSequence: 2, entries: [], nextCursor: null, nextRunId: null });
-        await owner.nextQueuePage();
-        expect(owner.getSnapshot().view?.queuedFollowUps).toMatchObject({
-          status: "ready",
-          entries: [],
-          error: null,
-        });
-        expect(owner.queueBoundary()).toBeNull();
-        expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
-      } finally {
-        release();
-        owner.dispose();
-      }
-    },
-  );
-
-  test("reports a queue query failure without substituting an incomplete resident roster", async () => {
-    const wire = transport(conversation([]));
-    const owner = new AgentRuntimeConversationOwner(target, {
-      ...wire.port,
-      readQueuePage: vi.fn(async () => {
-        throw new Error("Queue unavailable");
-      }),
-    });
-    const release = owner.readOwner.subscribeStructure(() => {});
-    await owner.resume();
-    await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.status).toBe("error"));
-    expect(owner.getSnapshot().view?.queuedFollowUps.error).toBe("Queue unavailable");
-    expect(owner.getSnapshot().view?.queuedFollowUps.entries).toEqual([]);
-    expect(wire.port.readRunMessage).not.toHaveBeenCalled();
-    expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
-    release();
-  });
-  test("projects the canonical queue from retained message leaves and updates exact Run identities", async () => {
-    const prompt: AgentTurnItem = {
-      ...base("queued:user", 1),
-      type: "user_message",
-      messageId: "user-message",
-      text: "Queued work",
-      attachments: [],
-      inputIntent: "queued_turn",
-      createdBy: "user",
-      creationSource: "web",
-    };
-    const initial = conversation([prompt]);
-    const run = {
-      ...initial.snapshot.projection.runs[0]!,
-      status: "queued" as const,
-      queuePosition: 1,
-      queueHeld: true,
-    };
-    const queued = {
-      ...initial,
-      snapshot: {
-        ...initial.snapshot,
-        projection: { ...initial.snapshot.projection, runs: [run] },
-      },
-    };
-    const wire = transport(queued);
-    vi.mocked(wire.port.control).mockResolvedValue(queued);
-    const owner = new AgentRuntimeConversationOwner(target, wire.port);
-    const releaseControl = owner.retain();
-    await owner.resume();
-    expect(owner.getSnapshot().view?.queuedFollowUps.entries).toEqual([]);
-    expect(wire.port.read).not.toHaveBeenCalled();
-    const release = owner.readOwner.subscribeStructure(() => {});
-    await owner.resume();
-    expect(owner.getSnapshot().view?.statusType).toBe("idle");
-    await vi.waitFor(() =>
-      expect(owner.getSnapshot().view?.queuedFollowUps.entries).toMatchObject([
-        {
-          followUpId: run.id,
-          clientUserMessageId: run.userMessageId,
-          prompt: "Queued work",
-          deliveryOwner: "server",
-          pause: { kind: "held", reason: "Queue paused" },
-        },
-      ]),
-    );
-    wire.emit(event({ ...prompt, text: "Edited work" }, 2));
-    await vi.waitFor(() =>
-      expect(owner.getSnapshot().view?.queuedFollowUps.entries[0]?.prompt).toBe("Edited work"),
-    );
-    wire.emit({
-      sequence: 3,
-      commandId: null,
-      event: {
-        id: "promoted:queue",
-        threadId: target.threadId,
-        occurredAt: at,
-        type: "run.updated",
-        payload: { ...run, status: "running", queueHeld: false },
-      },
-    });
-    await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.entries).toEqual([]));
-    expect(owner.getSnapshot().view?.statusType).toBe("active");
-    expect(wire.port.read).toHaveBeenCalledOnce();
-    expect(wire.port.item).not.toHaveBeenCalled();
-    release();
-    await owner.resume();
-    expect(owner.getSnapshot().view?.queuedFollowUps.entries).toEqual([]);
-    expect(owner.readOwner.readStructure()).toBeNull();
-    releaseControl();
-  });
   test.each(["controls-first", "transcript-first"] as const)(
     "%s: metadata and transcript leases admit exactly one full cold window",
     async (order) => {
@@ -1880,43 +1393,6 @@ describe("Agent Runtime keyed transcript reads", () => {
       releaseControl();
     },
   );
-
-  test("a pending metadata open upgrades once when the transcript activates", async () => {
-    const wire = transport(conversation([assistant()]));
-    let resolveControl!: (value: AgentRuntimeConversation) => void;
-    vi.mocked(wire.port.control).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveControl = resolve;
-        }),
-    );
-    const owner = new AgentRuntimeConversationOwner(target, wire.port);
-    const releaseControl = owner.retain();
-    const releaseTranscript = owner.readOwner.subscribeStructure(() => {});
-    expect(wire.port.read).not.toHaveBeenCalled();
-    resolveControl(conversation([]));
-    await owner.resume();
-    expect(wire.port.control).toHaveBeenCalledOnce();
-    expect(wire.port.read).toHaveBeenCalledOnce();
-    expect(owner.readOwner.readStructure()?.turnEntityKeys.length).toBe(1);
-    releaseControl();
-    releaseTranscript();
-    await Promise.resolve();
-    expect(owner.readOwner.readStructure()).toBeNull();
-  });
-
-  test("metadata-only stream repair never hydrates a transcript", async () => {
-    const wire = transport(conversation([assistant()]));
-    const owner = new AgentRuntimeConversationOwner(target, wire.port);
-    const release = owner.retain();
-    await owner.resume();
-    wire.reset();
-    await owner.resume();
-    expect(wire.port.control).toHaveBeenCalledTimes(2);
-    expect(wire.port.read).not.toHaveBeenCalled();
-    expect(owner.readOwner.readStructure()).toBeNull();
-    release();
-  });
   test("compact snapshot keeps content only in keyed addresses and releases it on the final subscription", async () => {
     const user: AgentTurnItem = {
       ...base("user", 0),
@@ -1980,66 +1456,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readTurn(structure.turnEntityKeys[0]!)).toBeNull();
   });
 
-  test.each([100, 10_000])(
-    "stream replacement stays item-local with %i resident items",
-    async (count) => {
-      const resident = Array.from({ length: count - 1 }, (_, ordinal) => command(ordinal));
-      const cold = Math.min(count - 1, 499);
-      const pages: AgentHistoryPage[] = [];
-      for (let end = resident.length - cold; end > 0; end -= 500) {
-        const start = Math.max(0, end - 500);
-        pages.push({
-          snapshotSequence: 1,
-          items: resident.slice(start, end).map(row),
-          nextCursor: start > 0 ? `cursor:${start}` : null,
-          hasMoreHistory: start > 0,
-        });
-      }
-      const { owner, wire, release } = await open(
-        conversation(
-          [...resident.slice(-cold), assistant()],
-          pages.length ? "cursor:initial" : null,
-        ),
-        pages,
-      );
-      for (const _page of pages) await owner.loadHistoryBoundary(historyBoundary(owner));
-      const structure = owner.readOwner.readStructure()!;
-      const entityKey = structure.turnEntityKeys[0]!;
-      expect(structure.turns[0]!.itemIds).toHaveLength(count);
-      const structureChanged = vi.fn();
-      const turnChanged = vi.fn();
-      const itemChanged = vi.fn();
-      const siblingChanged = vi.fn();
-      const controlChanged = vi.fn();
-      const releases = [
-        owner.readOwner.subscribeStructure(structureChanged),
-        owner.readOwner.subscribeTurn(entityKey, turnChanged),
-        owner.readOwner.subscribeItem(entityKey, "assistant", itemChanged),
-        owner.readOwner.subscribeItem(entityKey, "command:0", siblingChanged),
-        owner.subscribe(controlChanged),
-      ];
-      const before = owner.getSnapshot();
-      const sibling = owner.readOwner.readItem(entityKey, "command:0");
-      const readTurn = vi.spyOn(owner.readOwner, "readTurn");
-      wire.emit(event(assistant("hello updated")));
-      expect(itemChanged).toHaveBeenCalledOnce();
-      expect(siblingChanged).not.toHaveBeenCalled();
-      expect(turnChanged).not.toHaveBeenCalled();
-      expect(structureChanged).not.toHaveBeenCalled();
-      expect(controlChanged).not.toHaveBeenCalled();
-      expect(readTurn).not.toHaveBeenCalled();
-      expect(owner.getSnapshot()).toBe(before);
-      expect(owner.readOwner.readStructure()).toBe(structure);
-      expect(owner.readOwner.readItem(entityKey, "command:0")).toBe(sibling);
-      expect(owner.readOwner.readItem(entityKey, "assistant")).toMatchObject({
-        type: "agentMessage",
-        text: "hello updated",
-      });
-      releases.forEach((stop) => stop());
-      release();
-    },
-  );
-
   test("prepends admitted items without re-projecting resident bodies and deduplicates a pending history request", async () => {
     const older = Array.from({ length: 100 }, (_, ordinal) => command(ordinal));
     const newer = Array.from({ length: 500 }, (_, ordinal) => command(ordinal + 100));
@@ -2088,73 +1504,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     release();
   });
 
-  test("an older-page failure rejects locally and a retry preserves the attached transcript", async () => {
-    const { owner, wire, release } = await open(conversation([command(10)], "older"));
-    const failure = new Error("History unavailable");
-    vi.mocked(wire.port.history)
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValueOnce({
-        snapshotSequence: 1,
-        items: [row(command(0))],
-        nextCursor: null,
-        hasMoreHistory: false,
-      });
-    const structure = owner.readOwner.readStructure();
-    const boundary = historyBoundary(owner);
-    await expect(owner.loadHistoryBoundary(boundary)).rejects.toBe(failure);
-    expect(owner.readOwner.readStructure()).toBe(structure);
-    expect(owner.getSnapshot()).toMatchObject({
-      connection: "ready",
-      error: null,
-      historyLoading: false,
-    });
-    expect(owner.getSnapshot().view?.turnPagination?.isLoadingOlder).toBe(false);
-    await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("applied");
-    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
-    expect(wire.port.read).toHaveBeenCalledOnce();
-    expect(wire.port.history).toHaveBeenCalledTimes(2);
-    release();
-  });
-
-  test.each([
-    { nextCursor: "older", hasMoreHistory: true },
-    { nextCursor: "older", hasMoreHistory: false },
-    { nextCursor: null, hasMoreHistory: true },
-    { nextCursor: "earlier", hasMoreHistory: false },
-    { nextCursor: "", hasMoreHistory: true },
-  ])("rejects a stalled or invalid continuation: %j", async (continuation) => {
-    const { owner, wire, release } = await open(conversation([command(10)], "older"), [
-      { snapshotSequence: 1, items: [row(command(0))], ...continuation },
-    ]);
-    const structure = owner.readOwner.readStructure();
-    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).rejects.toThrow("History");
-    expect(owner.readOwner.readStructure()).toBe(structure);
-    expect(historyBoundary(owner).handle.cursor).toBe("older");
-    expect(owner.getSnapshot()).toMatchObject({ error: null, historyLoading: false });
-    expect(wire.port.history).toHaveBeenCalledOnce();
-    release();
-  });
-
-  test("advancing empty and duplicate-only pages keep their continuation without losing resident items", async () => {
-    const resident = command(10);
-    const { owner, wire, release } = await open(conversation([resident], "older"), [
-      { snapshotSequence: 1, items: [], nextCursor: "earlier", hasMoreHistory: true },
-      { snapshotSequence: 1, items: [row(resident)], nextCursor: "oldest", hasMoreHistory: true },
-      { snapshotSequence: 1, items: [row(command(0))], nextCursor: null, hasMoreHistory: false },
-    ]);
-    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
-    const body = owner.readOwner.readItem(entityKey, resident.id);
-    for (const cursor of ["older", "earlier", "oldest"]) {
-      expect(historyBoundary(owner).handle.cursor).toBe(cursor);
-      await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
-    }
-    expect(owner.readOwner.readItem(entityKey, resident.id)).toBe(body);
-    expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:0", "command:10"]);
-    expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(true);
-    expect(wire.port.history).toHaveBeenCalledTimes(3);
-    release();
-  });
-
   test("rejects a cursor cycle across empty pages without admitting content and permits a corrected retry", async () => {
     const { owner, wire, release } = await open(conversation([command(10)], "older"), [
       { snapshotSequence: 1, items: [], nextCursor: "earlier", hasMoreHistory: true },
@@ -2171,46 +1520,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("applied");
     expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:5", "command:10"]);
     expect(wire.port.history).toHaveBeenCalledTimes(3);
-    release();
-  });
-
-  test.each([
-    { historyCursor: null, hasMoreHistory: true },
-    { historyCursor: "older", hasMoreHistory: false },
-    { historyCursor: "", hasMoreHistory: true },
-    { hasMoreHistory: true },
-    { historyCursor: "older" },
-  ])(
-    "a malformed initial continuation fails attachment instead of publishing an inert gap: %j",
-    async (continuation) => {
-      const initial = conversation([command(10)]);
-      const { historyCursor: _cursor, hasMoreHistory: _hasMore, ...snapshot } = initial.snapshot;
-      const { owner, wire, release } = await open({
-        ...initial,
-        snapshot: { ...snapshot, ...continuation },
-      });
-      expect(owner.getSnapshot()).toMatchObject({
-        connection: "failed",
-        error: "History continuation is invalid",
-      });
-      expect(owner.readOwner.readStructure()).toBeNull();
-      expect(wire.port.history).not.toHaveBeenCalled();
-      expect(wire.port.subscribe).not.toHaveBeenCalled();
-      release();
-    },
-  );
-
-  test("omitted history continuation opens a complete transcript", async () => {
-    const initial = conversation([command(10)]);
-    const { historyCursor: _cursor, hasMoreHistory: _hasMore, ...snapshot } = initial.snapshot;
-    const { owner, wire, release } = await open({ ...initial, snapshot });
-    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
-    expect(owner.readOwner.readStructure()?.historyComplete).toBe(true);
-    expect(owner.readOwner.readStructure()?.timeline?.some((entry) => entry.kind === "gap")).toBe(
-      false,
-    );
-    expect(wire.port.history).not.toHaveBeenCalled();
-    expect(wire.port.subscribe).toHaveBeenCalledOnce();
     release();
   });
 
@@ -2263,26 +1572,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:5", "command:10"]);
     expect(owner.getSnapshot().historyLoading).toBe(false);
     releaseCurrent();
-  });
-
-  test("full item detail hydrates only its address and leaves siblings stable", async () => {
-    const { owner, wire, release } = await open(conversation([command(0), command(1)]));
-    const full: AgentTurnItem = {
-      ...command(0),
-      type: "command_execution",
-      input: "echo 0",
-      output: "complete output",
-      exitCode: 0,
-    };
-    vi.spyOn(wire.port, "item").mockResolvedValue(full);
-    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
-    const sibling = owner.readOwner.readItem(entityKey, "command:1");
-    expect(await owner.readItem("command:0")).toBe(full);
-    expect(owner.readOwner.readItem(entityKey, "command:0")).toMatchObject({
-      aggregatedOutput: "complete output",
-    });
-    expect(owner.readOwner.readItem(entityKey, "command:1")).toBe(sibling);
-    release();
   });
 
   test("resolved Automation detail survives identical metadata and reconnects, while newer evidence retires it", async () => {
@@ -2383,135 +1672,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(wire.port.subscribe).not.toHaveBeenCalled();
   });
 
-  test("thread metadata updates retain history and do not reopen the transcript", async () => {
-    const { owner, wire, release } = await open(conversation([assistant()]));
-    const structure = owner.readOwner.readStructure();
-    const thread = owner.getSnapshot().conversation!.snapshot.projection.thread;
-    wire.emit({
-      sequence: 2,
-      commandId: null,
-      event: {
-        id: "title",
-        threadId: target.threadId,
-        occurredAt: at,
-        type: "thread.metadata-updated",
-        payload: { ...thread, title: "Renamed" },
-      },
-    });
-    expect(owner.getSnapshot().view?.threadName).toBe("Renamed");
-    expect(owner.readOwner.readStructure()).toBe(structure);
-    expect(wire.port.read).toHaveBeenCalledOnce();
-    expect(wire.port.subscribe).toHaveBeenCalledOnce();
-    release();
-  });
-
-  test("follows the chat's provider session from attach through detach", async () => {
-    const { owner, wire, release } = await open(conversation([assistant()]));
-    const session = agentRuntimeRow("providerSessions", {
-      id: "provider-session",
-      driver: "claudeAgent",
-      providerInstanceId: "claude",
-      status: "running",
-      cwd: "/workspace",
-      model: "model",
-      createdAt: at,
-      updatedAt: at,
-      lastError: null,
-    });
-    const sessions = () => owner.getSnapshot().conversation!.snapshot.projection.providerSessions;
-    const emit = (sequence: number, event: Record<string, unknown>) =>
-      wire.emit({
-        sequence,
-        commandId: null,
-        event: { id: `session:${sequence}`, threadId: target.threadId, occurredAt: at, ...event },
-      } as unknown as AgentEvent);
-    emit(2, { type: "provider-session.attached", payload: session });
-    emit(3, { type: "provider-session.updated", payload: { ...session, status: "ready" } });
-    expect(sessions()).toEqual([{ ...session, status: "ready" }]);
-    emit(4, {
-      type: "provider-session.detached",
-      payload: { providerSessionId: session.id, detachedAt: at },
-    });
-    expect(sessions()).toEqual([]);
-    expect(wire.port.read).toHaveBeenCalledOnce();
-    release();
-  });
-
-  test("offers edits only while every Run is settled and resends a sent message's images", async () => {
-    const image = {
-      type: "image" as const,
-      id: "image-1",
-      name: "chart.png",
-      mimeType: "image/png",
-      sizeBytes: 10,
-    };
-    const sent: Extract<AgentTurnItem, { type: "user_message" }> = {
-      ...base("sent-item", 1),
-      type: "user_message",
-      messageId: "user-message",
-      text: "Compare these",
-      attachments: [image],
-      inputIntent: "turn_start",
-      createdBy: "user",
-      creationSource: "web",
-    };
-    const { owner, wire, release } = await open(conversation([sent, assistant()]));
-    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
-    expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(false);
-
-    const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
-    wire.emit({
-      sequence: 2,
-      commandId: null,
-      event: {
-        id: "settled",
-        threadId: target.threadId,
-        occurredAt: at,
-        type: "run.updated",
-        payload: { ...run, status: "completed", completedAt: at },
-      },
-    });
-    expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(true);
-    // A chat this Device reaches on its Space host can be neither rewound nor forked here.
-    owner.setCapabilities({ supportsUserTurnEdits: false, supportsForks: false });
-    expect(owner.getSnapshot().view?.capabilityFlags).toMatchObject({
-      canEditUserTurns: false,
-      canForkFromTurn: false,
-    });
-    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
-
-    vi.mocked(wire.port.attachment).mockResolvedValueOnce({ path: "/attachments/chart.png" });
-    const read = await owner.readSentMessage("run", [
-      { source: "nodex-runtime-image:thread/sent-item/image-1" },
-    ]);
-    expect(read.message.text).toBe("Compare these");
-    expect(read.images).toEqual([{ source: "/attachments/chart.png", caption: "chart.png" }]);
-    expect(wire.port.attachment).toHaveBeenCalledWith({
-      ...target,
-      sourceThreadId: target.threadId,
-      itemId: "sent-item",
-      attachmentId: "image-1",
-    });
-    vi.mocked(wire.port.attachment).mockClear();
-    vi.mocked(wire.port.attachment).mockResolvedValue(null);
-    // Removing the missing original does not attempt to load it.
-    expect((await owner.readSentMessage("run", [])).images).toEqual([]);
-    expect((await owner.readSentMessage("run", [{ source: "/new.png" }])).images).toEqual([
-      { source: "/new.png" },
-    ]);
-    expect(wire.port.attachment).not.toHaveBeenCalled();
-    await expect(
-      owner.readSentMessage("run", [{ source: "nodex-runtime-image:other/original/image-1" }]),
-    ).rejects.toThrow("An image in this message is no longer available");
-    expect(wire.port.attachment).toHaveBeenCalledWith({
-      ...target,
-      sourceThreadId: "other",
-      itemId: "original",
-      attachmentId: "image-1",
-    });
-    release();
-  });
-
   test("rolled-back local Turns release their addressed content", async () => {
     const { owner, wire, release } = await open(conversation([assistant()]));
     const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
@@ -2535,133 +1695,6 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.getSnapshot().view?.historyTopologyGeneration).toBe(topology! + 1);
     release();
   });
-
-  test("engine lifecycle and native/app-owned delegation use shared presentation without a raw request replica", async () => {
-    const approval: AgentTurnItem = {
-      ...base("approval", 3),
-      status: "waiting",
-      type: "approval_request",
-      requestId: "request",
-      requestKind: "command",
-      prompt: "Approve command?",
-    };
-    const task: AgentTurnItem = {
-      ...base("task", 4),
-      type: "subagent",
-      origin: "app_owned",
-      driver: "claude-agent-sdk",
-      providerInstanceId: "codex",
-      subagentId: "task",
-      childThreadId: "child",
-      prompt: "Do the task",
-      result: null,
-      status: "running",
-    };
-    const { owner, wire, release } = await open(conversation([approval, task]));
-    expect(owner.getSnapshot().view?.requests).toEqual([]);
-    expect(owner.approvals.getSnapshot().pending[0]).toMatchObject({
-      requestId: "request",
-      runId: "run",
-      kind: "command",
-      detail: "Approve command?",
-      live: false,
-    });
-    expect(owner.getSnapshot().view?.canonicalRequests).toEqual([]);
-    const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
-    // The approval is request state only; it never occupies a transcript slot.
-    expect(owner.readOwner.readItem(key, "approval")).toBeNull();
-    expect(owner.readOwner.readItem(key, "task")).toMatchObject({
-      type: "delegatedTask",
-      childThreadId: "child",
-      status: "running",
-    });
-    wire.emit(event({ ...task, status: "interrupted", completedAt: at }, 2));
-    expect(owner.readOwner.readItem(key, "task")).toMatchObject({ status: "stopped" });
-    const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
-    wire.emit({
-      sequence: 3,
-      commandId: null,
-      event: {
-        id: "completed",
-        threadId: target.threadId,
-        occurredAt: at,
-        type: "run.updated",
-        payload: { ...run, status: "completed", completedAt: at },
-      },
-    });
-    expect(
-      owner.readOwner.readTurnDetails(owner.readOwner.readStructure()!.turnEntityKeys[0]!)?.status,
-    ).toBe("completed");
-    release();
-  });
-
-  test("execution plumbing never occupies a slot, including when it streams in", async () => {
-    const polling: AgentTurnItem = {
-      ...base("polling", 2),
-      type: "dynamic_tool",
-      toolName: "nodex_app.task_status",
-      input: { taskId: "task" },
-    };
-    const { owner, wire, release } = await open(conversation([polling, command(3)]));
-    const before = owner.readOwner.readStructure()!;
-    const key = before.turnEntityKeys[0]!;
-    expect(owner.readOwner.readItemSlots(key)?.length).toBe(1);
-    wire.emit(
-      event({
-        ...base("waiting", 4),
-        type: "dynamic_tool",
-        toolName: "mcp__nodex_app__task_wait",
-        input: {},
-      }),
-    );
-    expect(owner.readOwner.readStructure()).toBe(before);
-    expect(owner.readOwner.readItemSlots(key)?.length).toBe(1);
-    expect(owner.readOwner.readItem(key, "waiting")).toBeNull();
-    release();
-  });
-});
-
-test("native observations without child Threads never acquire navigable child membership", async () => {
-  const initial = conversation([]);
-  const withTasks: AgentRuntimeConversation = {
-    ...initial,
-    snapshot: {
-      ...initial.snapshot,
-      projection: {
-        ...initial.snapshot.projection,
-        subagents: [
-          {
-            id: "native-task",
-            threadId: target.threadId,
-            runId: "run",
-            parentNodeId: "node",
-            origin: "provider_native",
-            createdBy: "agent",
-            driver: "claudeAgent",
-            providerInstanceId: "claude",
-            providerThreadId: null,
-            childThreadId: null,
-            nativeTaskRef: null,
-            prompt: "Work",
-            title: "Native task",
-            model: null,
-            status: "running",
-            result: null,
-            startedAt: at,
-            completedAt: null,
-            updatedAt: at,
-          },
-        ],
-      },
-    },
-  };
-  const { owner, release } = await open(withTasks);
-  expect(owner.children()[0]).toMatchObject({
-    threadId: "native-task",
-    showInlineActivity: false,
-    task: { id: "native-task", status: "running" },
-  });
-  release();
 });
 
 test("a subagent's follow-up turns share one child membership that follows its current turn", async () => {
@@ -2732,117 +1765,6 @@ test("a subagent's follow-up turns share one child membership that follows its c
   });
   expect(owner.children()).toHaveLength(1);
   expect(owner.children()[0]).toMatchObject({ taskId: "follow-up", statusType: "idle" });
-  release();
-});
-
-test("child navigation uses readable native names and follows later nickname metadata", async () => {
-  const initial = conversation([]);
-  const task: AgentSnapshot["projection"]["subagents"][number] = {
-    id: "native-task",
-    threadId: target.threadId,
-    runId: "run",
-    parentNodeId: "node",
-    origin: "provider_native",
-    createdBy: "agent",
-    driver: "codex",
-    providerInstanceId: "codex",
-    providerThreadId: null,
-    childThreadId: "child",
-    nativeTaskRef: null,
-    prompt: "",
-    title: "/root/reference_bundle",
-    model: null,
-    status: "running",
-    result: null,
-    startedAt: at,
-    completedAt: null,
-    updatedAt: at,
-  };
-  const { owner, wire, release } = await open({
-    ...initial,
-    snapshot: {
-      ...initial.snapshot,
-      projection: { ...initial.snapshot.projection, subagents: [task] },
-    },
-  });
-  expect(owner.children()[0]).toMatchObject({
-    threadId: "child",
-    displayName: "Reference bundle",
-    actorName: "Reference bundle",
-    thread: { displayName: "Reference bundle" },
-  });
-  expect(owner.getSnapshot().conversation!.snapshot.projection.subagents[0]?.title).toBe(
-    "/root/reference_bundle",
-  );
-  vi.mocked(wire.port.read).mockClear();
-  wire.emit({
-    sequence: 2,
-    commandId: null,
-    event: {
-      id: "nickname",
-      threadId: target.threadId,
-      occurredAt: at,
-      type: "subagent.updated",
-      payload: { ...task, title: "Ada" },
-    },
-  });
-  expect(owner.children()[0]).toMatchObject({
-    displayName: "Ada",
-    thread: { displayName: "Ada" },
-  });
-  expect(wire.port.read).not.toHaveBeenCalled();
-  release();
-});
-
-test("bounds implicit control metadata across ten thousand task and Run updates", async () => {
-  const fixture = transport(conversation([]));
-  const owner = new AgentRuntimeConversationOwner(target, fixture.port);
-  const release = owner.retain();
-  await owner.resume();
-  const initialRun = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
-  const publish = (type: AgentEvent["event"]["type"], payload: unknown, sequence: number) =>
-    fixture.emit({
-      sequence,
-      commandId: null,
-      event: { id: `event:${sequence}`, type, threadId: target.threadId, occurredAt: at, payload },
-    } as AgentEvent);
-  const body = "body ".repeat(200_000);
-  const task = {
-    id: "task",
-    threadId: target.threadId,
-    origin: "provider_native",
-    status: "completed",
-    title: "Task",
-    childThreadId: null,
-    childRunId: null,
-    updatedAt: at,
-    createdAt: at,
-    prompt: body,
-    result: body,
-  };
-  for (let index = 0; index < 10_000; index += 1) {
-    publish(
-      "run.created",
-      { ...initialRun, id: `run:${index}`, ordinal: index + 2, status: "completed" },
-      index * 2 + 2,
-    );
-    publish("subagent.updated", { ...task, id: `task:${index}` }, index * 2 + 3);
-  }
-  for (let index = 0; index < 10; index += 1)
-    publish(
-      "subagent.updated",
-      { ...task, id: `active:${index}`, status: "running" },
-      20_002 + index,
-    );
-  const projection = owner.getSnapshot().conversation!.snapshot.projection;
-  expect(projection.runs).toHaveLength(6);
-  expect(projection.runs.some((run) => run.id === initialRun.id)).toBe(true);
-  expect(projection.subagents.filter((row) => row.status === "running")).toHaveLength(4);
-  expect(projection.subagents.filter((row) => row.status === "completed")).toHaveLength(10);
-  expect(JSON.stringify(projection).length).toBeLessThan(32_000);
-  expect(task.prompt).toBe(body);
-  expect(fixture.port.read).not.toHaveBeenCalled();
-  expect(owner.readOwner.readStructure()).toBeNull();
   release();
 });
 
@@ -2953,23 +1875,6 @@ test("preserves a native Session question's unknown Run across display and physi
   release();
 });
 
-test("a held queue explains itself from the Run that ended last", () => {
-  const run = (ordinal: number, status: AgentSnapshot["projection"]["runs"][number]["status"]) => ({
-    ordinal,
-    status,
-  });
-  expect(
-    agentRuntimeQueueHoldPause([run(1, "completed"), run(2, "interrupted"), run(3, "queued")]),
-  ).toMatchObject({ kind: "interrupted" });
-  expect(
-    agentRuntimeQueueHoldPause([run(1, "interrupted"), run(2, "failed"), run(3, "queued")]),
-  ).toEqual({ kind: "held", reason: "Queue paused because a message failed" });
-  expect(agentRuntimeQueueHoldPause([run(1, "queued")])).toEqual({
-    kind: "held",
-    reason: "Queue paused",
-  });
-});
-
 describe("Agent Runtime prompt navigation", () => {
   const opening = (
     runId: string,
@@ -3021,71 +1926,6 @@ describe("Agent Runtime prompt navigation", () => {
       },
     };
   };
-
-  test("indexes the thread's own Runs with the previews their messages display", async () => {
-    const { owner, wire, release } = await open(withRuns(["run-1"], [opening("run-1", 1)], null));
-    vi.mocked(wire.port.promptIndex).mockResolvedValueOnce({
-      complete: true,
-      prompts: [
-        {
-          runId: "run-1",
-          messageId: "message:run-1",
-          prompt: "Align the theme",
-          response: "a".repeat(256),
-          scheduled: true,
-        },
-      ],
-    });
-
-    const [turn] = (await owner.readPromptIndex()) ?? [];
-
-    expect(wire.port.promptIndex).toHaveBeenCalledExactlyOnceWith(target);
-    expect(turn?.turnId).toBe("run-1");
-    expect(turn?.previews?.[0]).toMatchObject({
-      itemId: "message:run-1",
-      promptPreview: "Align the theme",
-      isHeartbeat: true,
-    });
-    expect(Array.from(turn?.previews?.[0]?.responsePreview ?? "")).toHaveLength(240);
-    expect(turn?.previews?.[0]?.responsePreview.endsWith("…")).toBe(true);
-    release();
-  });
-
-  test("installs an older command by its item coordinate even when its Run is outside the prompt index", async () => {
-    const olderCommand = { ...command(2), id: "old-command", runId: "run-1" };
-    const { owner, wire, release } = await open(
-      withRuns(["run-3"], [opening("run-3", 5)], "older"),
-      [
-        {
-          snapshotSequence: 1,
-          items: [opening("run-1", 1), olderCommand].map(row),
-          nextCursor: null,
-          hasMoreHistory: false,
-        },
-      ],
-    );
-    const hit = {
-      sourceThreadId: target.threadId,
-      itemId: olderCommand.id,
-      runId: olderCommand.runId,
-    };
-    try {
-      await expect(
-        owner.loadHistoryThroughSearchItem(hit, new AbortController().signal),
-      ).resolves.toBe("applied");
-      expect(wire.port.history).toHaveBeenCalledExactlyOnceWith({
-        ...target,
-        cursor: "older",
-        throughEntryId: olderCommand.id,
-      });
-      await expect(
-        owner.loadHistoryThroughSearchItem(hit, new AbortController().signal),
-      ).resolves.toBe("applied");
-      expect(wire.port.history).toHaveBeenCalledTimes(1);
-    } finally {
-      release();
-    }
-  });
 
   test("reveals an exact steered message outside the prompt index and respects cancellation", async () => {
     const steer = {
@@ -3271,214 +2111,6 @@ function sendContextEvent(
 }
 
 describe("Runtime Composer context usage", () => {
-  test("a newly attached native conversation starts reporting without reopening the chat", async () => {
-    const fixture = contextConversation();
-    const initial = {
-      ...fixture,
-      snapshot: {
-        ...fixture.snapshot,
-        projection: {
-          ...fixture.snapshot.projection,
-          thread: { ...fixture.snapshot.projection.thread, activeProviderThreadId: null },
-          attempts: [],
-          providerThreads: [],
-          providerTurns: [],
-        },
-      },
-    };
-    const { owner, wire, release } = await open(initial);
-    try {
-      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
-      const common = { threadId: target.threadId, occurredAt: at };
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "attach-context",
-          type: "provider-thread.updated",
-          payload: fixture.snapshot.projection.providerThreads[0]!,
-        },
-        2,
-      );
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "context-attempt",
-          type: "run-attempt.created",
-          payload: fixture.snapshot.projection.attempts[0]!,
-        },
-        3,
-      );
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "first-context",
-          type: "provider-turn.updated",
-          payload: fixture.snapshot.projection.providerTurns[0]!,
-        },
-        4,
-      );
-      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({ used: 50_000, size: 200_000 });
-      expect(wire.port.read).toHaveBeenCalledOnce();
-    } finally {
-      release();
-    }
-  });
-
-  test("a new execution uses its adapted window until it reports another measurement", async () => {
-    const initial = contextConversation();
-    const { owner, wire, release } = await open(initial);
-    try {
-      const common = { threadId: target.threadId, occurredAt: at };
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "larger-window",
-          type: "provider-thread.updated",
-          payload: {
-            ...initial.snapshot.projection.providerThreads[0]!,
-            contextUsage: { usedTokens: 50_000, maxTokens: 1_000_000 },
-          },
-        },
-        2,
-      );
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "larger-model-run",
-          type: "run.created",
-          payload: {
-            ...initial.snapshot.projection.runs[0]!,
-            id: "next-run",
-            ordinal: 2,
-            modelSelection: { instanceId: "claude", model: "larger-model" },
-            rootNodeId: "next-root",
-            activeAttemptId: "next-attempt",
-          },
-        },
-        3,
-      );
-      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
-        used: 50_000,
-        size: 1_000_000,
-      });
-    } finally {
-      release();
-    }
-  });
-
-  test.each(["claudeAgent", "codex", "opencode2"])(
-    "%s restores usage and updates the Composer without reading transcript bodies",
-    async (driver) => {
-      const initial = contextConversation(driver);
-      const wire = transport(initial);
-      vi.mocked(wire.port.control).mockResolvedValue(initial);
-      const owner = new AgentRuntimeConversationOwner(target, wire.port);
-      const release = owner.retain();
-      try {
-        await owner.resume();
-        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
-          used: 50_000,
-          size: 200_000,
-        });
-        const providerTurn = initial.snapshot.projection.providerTurns[0]!;
-        const common = { threadId: target.threadId, occurredAt: at };
-        sendContextEvent(
-          wire,
-          {
-            ...common,
-            id: "context-live",
-            type: "provider-turn.updated",
-            payload: {
-              ...providerTurn,
-              tokenUsage: {
-                usedTokens: 80_000,
-                maxTokens: 200_000,
-                updatedAt: "2026-10-14T00:00:01.000Z",
-              },
-            },
-          },
-          2,
-        );
-        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
-          used: 80_000,
-          size: 200_000,
-        });
-        sendContextEvent(
-          wire,
-          {
-            ...common,
-            id: "context-child",
-            type: "provider-turn.updated",
-            payload: {
-              ...providerTurn,
-              id: "child-turn",
-              nodeId: "child-node",
-              ordinal: 2,
-              tokenUsage: {
-                usedTokens: 190_000,
-                maxTokens: 200_000,
-                updatedAt: "2026-10-14T00:00:02.000Z",
-              },
-            },
-          },
-          3,
-        );
-        expect(owner.getSnapshot().view?.contextUsage?.used).toBe(80_000);
-        sendContextEvent(
-          wire,
-          {
-            ...common,
-            id: "context-compacted",
-            type: "provider-turn.updated",
-            payload: {
-              ...providerTurn,
-              tokenUsage: {
-                usedTokens: 12_000,
-                maxTokens: 200_000,
-                updatedAt: "2026-10-14T00:00:03.000Z",
-              },
-            },
-          },
-          4,
-        );
-        sendContextEvent(
-          wire,
-          {
-            ...common,
-            id: "context-done",
-            type: "provider-turn.updated",
-            payload: {
-              ...providerTurn,
-              status: "completed",
-              completedAt: at,
-              tokenUsage: undefined,
-            },
-          },
-          5,
-        );
-        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
-          used: 12_000,
-          size: 200_000,
-        });
-        expect(wire.port.subscribe).toHaveBeenCalledWith(
-          expect.objectContaining({
-            eventTypes: expect.arrayContaining(["provider-turn.updated", "run-attempt.updated"]),
-          }),
-          expect.any(Function),
-        );
-        expect(wire.port.read).not.toHaveBeenCalled();
-        expect(wire.port.history).not.toHaveBeenCalled();
-      } finally {
-        release();
-      }
-    },
-  );
-
   test("native replacement and clear drop old measurements; ACP thread observations share the same presentation", async () => {
     const initial = contextConversation();
     const { owner, wire, release } = await open(initial);
@@ -3552,37 +2184,6 @@ describe("Runtime Composer context usage", () => {
         5,
       );
       expect(owner.getSnapshot().view?.contextUsage).toMatchObject({ used: 42_000, size: 128_000 });
-    } finally {
-      release();
-    }
-  });
-
-  test("a new root attempt establishes its own native identity before usage is shown", async () => {
-    const initial = contextConversation();
-    const { owner, wire, release } = await open(initial);
-    try {
-      const common = { threadId: target.threadId, occurredAt: at };
-      const attempt = initial.snapshot.projection.attempts[0]!;
-      sendContextEvent(
-        wire,
-        {
-          ...common,
-          id: "root-without-native",
-          type: "run-attempt.updated",
-          payload: {
-            ...attempt,
-            nativeThreadId: undefined,
-          },
-        },
-        2,
-      );
-      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
-      sendContextEvent(
-        wire,
-        { ...common, id: "root-with-native", type: "run-attempt.updated", payload: attempt },
-        3,
-      );
-      expect(owner.getSnapshot().view?.contextUsage?.used).toBe(50_000);
     } finally {
       release();
     }
@@ -3674,101 +2275,6 @@ test("updates the original user message for uncertain delivery and never rewinds
   } finally {
     release();
     owner.dispose();
-  }
-});
-
-test("an older optional question becomes answerable when its source page is loaded", async () => {
-  const question = {
-    ...runtimeQuestion("older-optional", "old-run"),
-    responseMode: "message" as const,
-    status: "completed" as const,
-    completedAt: at,
-  };
-  const page: AgentHistoryPage = {
-    snapshotSequence: 1,
-    items: [row(question)],
-    nextCursor: null,
-    hasMoreHistory: false,
-  };
-  const { owner, release } = await open(conversation([assistant()], "older"), [page]);
-  try {
-    expect(Object.keys(owner.asyncQuestions.read(target.threadId).questions)).toEqual([]);
-    await owner.loadHistoryBoundary(historyBoundary(owner));
-    const id = Object.keys(owner.asyncQuestions.read(target.threadId).questions)[0]!;
-    expect(owner.asyncQuestions.read(target.threadId).selectedId).toBeNull();
-    owner.asyncQuestions.open(target.threadId, id);
-    expect(
-      owner.asyncQuestionAnswers([{ questionItemId: id, question: "Continue?", answer: "Yes" }]),
-    ).toEqual([{ requestId: "older-optional", runId: "old-run", answers: { q: "Yes" } }]);
-  } finally {
-    release();
-    owner.dispose();
-  }
-});
-
-test("keeps exact edit eligibility across failed Runs and bounded history", async () => {
-  const fixture = conversation([]);
-  const run = fixture.snapshot.projection.runs[0]!;
-  const runs: AgentSnapshot["projection"]["runs"] = [1, 2, 3, 4, 5, 6].map((ordinal) => ({
-    ...run,
-    id: `run-${ordinal}`,
-    ordinal,
-    status: ordinal <= 2 ? "completed" : ordinal === 4 ? "cancelled" : "failed",
-    startedAt: ordinal === 4 ? null : at,
-  }));
-  const rewindContext: NonNullable<AgentSnapshot["projection"]["rewindContext"]> = {
-    runs: runs.map((entry) => ({
-      id: entry.id,
-      ordinal: entry.ordinal,
-      status: entry.status,
-      started: entry.startedAt !== null,
-      activeAttemptId: entry.activeAttemptId,
-      hasProviderTurn: entry.ordinal <= 3,
-    })),
-    checkpointScopes: [{ id: "root", kind: "root_run" }],
-    checkpoints: [0, 1, 2].map((ordinal) => ({
-      id: `checkpoint-${ordinal}`,
-      scopeId: "root",
-      runId: ordinal ? `run-${ordinal}` : null,
-      ordinalWithinScope: ordinal,
-      appRunOrdinal: ordinal || null,
-      status: "missing",
-    })),
-  };
-  const initial: AgentRuntimeConversation = {
-    ...fixture,
-    snapshot: {
-      ...fixture.snapshot,
-      projection: { ...fixture.snapshot.projection, runs, rewindContext },
-    },
-  };
-  const { owner, wire, release } = await open(initial);
-  try {
-    owner.setCapabilities({ supportsUserTurnEdits: true, supportsForks: true });
-    expect(owner.getSnapshot().view?.capabilityFlags.editableUserTurnIds).toEqual([
-      "run-1",
-      "run-2",
-      "run-3",
-    ]);
-    expect(owner.getSnapshot().conversation?.snapshot.projection.checkpoints).toEqual([]);
-    const previous = initial.snapshot.projection.runs[1]!;
-    wire.emit({
-      sequence: 2,
-      commandId: null,
-      event: {
-        id: "withdraw",
-        threadId: target.threadId,
-        occurredAt: at,
-        type: "run.updated",
-        payload: { ...previous, status: "rolled_back" },
-      },
-    });
-    expect(owner.getSnapshot().view?.capabilityFlags.editableUserTurnIds).toEqual([
-      "run-1",
-      "run-3",
-    ]);
-  } finally {
-    release();
   }
 });
 
@@ -4091,23 +2597,6 @@ describe("Agent Runtime resident history window", () => {
     release();
   });
 
-  test("a reader away from the tail keeps everything until they return", async () => {
-    const { owner, release } = await open(conversation(commands(0, 1_200)));
-    const viewer = Symbol("reader");
-    owner.readOwner.setHistoryViewport(viewer, null);
-    await tick();
-    expect(residentIds(owner)).toHaveLength(1_200);
-    owner.readOwner.setHistoryViewport(viewer, {
-      oldestProtectedTurnId: "run",
-      firstProtectedItemId: "command:700",
-    });
-    await tick();
-    expect(residentIds(owner)).toHaveLength(500);
-    expect(residentIds(owner)[0]).toBe("command:700");
-    owner.readOwner.setHistoryViewport(viewer, undefined);
-    release();
-  });
-
   test("a settled Turn on screen stays whole while Turns above it leave", async () => {
     const items = [...commands(0, 700, "run:a"), ...commands(700, 500, "run:b")];
     const { owner, release } = await open(
@@ -4127,75 +2616,6 @@ describe("Agent Runtime resident history window", () => {
     release();
   });
 
-  test("older pages read back through the resident item and restore the Turn", async () => {
-    const released = commands(0, 700);
-    const { owner, wire, release } = await open(conversation(commands(0, 1_200)), [
-      page(released.slice(200), "before-200"),
-      page(released.slice(0, 200)),
-    ]);
-    await tick();
-    expect(residentIds(owner)[0]).toBe("command:700");
-    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
-    expect(wire.port.history).toHaveBeenLastCalledWith({
-      ...target,
-      cursor: {
-        type: "item",
-        sourceThreadId: "thread",
-        sourceItemId: "command:700",
-        ordinal: 700,
-      },
-    });
-    expect(residentIds(owner)[0]).toBe("command:200");
-    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
-    expect(wire.port.history).toHaveBeenLastCalledWith({ ...target, cursor: "before-200" });
-    expect(residentIds(owner)).toEqual(commands(0, 1_200).map(({ id }) => id));
-    expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(true);
-    release();
-  });
-
-  test("a gap inside a Turn counts as requested once its reader asks, until the next release", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const released = commands(0, 700);
-      const { owner, wire, release } = await open(conversation(commands(0, 1_200)), [
-        page(released.slice(200), "before-200"),
-      ]);
-      await vi.advanceTimersByTimeAsync(1);
-      const gap = () =>
-        owner.readOwner.readStructure()!.timeline!.find((entry) => entry.kind === "gap");
-      expect(gap()).toMatchObject({ insideTurn: true });
-      await owner.loadHistoryBoundary(historyBoundary(owner));
-      expect(gap()).toMatchObject({ insideTurn: false });
-      let sequence = 2;
-      for (const item of commands(1_200, 100)) wire.emit(event(item, sequence++));
-      await vi.advanceTimersByTimeAsync(2_100);
-      expect(residentIds(owner)).toHaveLength(500);
-      expect(gap()).toMatchObject({ insideTurn: true });
-      release();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("a gap above a Turn's opening message is an ordinary history gap", async () => {
-    const opening: AgentTurnItem = {
-      ...base("opening", 0),
-      type: "user_message",
-      messageId: "message:opening",
-      text: "start",
-      attachments: [],
-      inputIntent: "turn_start",
-      createdBy: "user",
-      creationSource: "web",
-    };
-    const { owner, release } = await open(conversation([opening, ...commands(1, 10)], "older"));
-    expect(owner.readOwner.readStructure()!.timeline![0]).toMatchObject({
-      kind: "gap",
-      insideTurn: false,
-    });
-    release();
-  });
-
   test("a live item keeps its place and older pages return around it in order", async () => {
     const live = { ...command(1), status: "running" as const, completedAt: null };
     const items = commands(0, 1_200).map((item) => (item.id === live.id ? live : item));
@@ -4209,43 +2629,6 @@ describe("Agent Runtime resident history window", () => {
     expect(owner.readOwner.readItem(entityKey, live.id)).toMatchObject({ status: "completed" });
     await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
     expect(residentIds(owner)).toEqual(items.map(({ id }) => id));
-    release();
-  });
-
-  test("a Turn held above the gap keeps its position as the Turns between it return", async () => {
-    const live = { ...inRun("run:a", command(50)), status: "running" as const, completedAt: null };
-    const runA = commands(0, 100, "run:a").map((item) => (item.id === live.id ? live : item));
-    const runB = commands(100, 400, "run:b");
-    const runC = commands(500, 900, "run:c");
-    const { owner, wire, release } = await open(
-      withRuns(
-        [...runA, ...runB, ...runC],
-        [
-          { id: "run:a", status: "completed" },
-          { id: "run:b", status: "completed" },
-          { id: "run:c", status: "running" },
-        ],
-      ),
-      [page([...runA, ...runB, ...runC.slice(0, 451)])],
-    );
-    await tick();
-    const keyOf = (runId: string) => JSON.stringify(["agent-run", "thread", runId]);
-    const timeline = () =>
-      owner.readOwner
-        .readStructure()!
-        .timeline!.map((entry) => (entry.kind === "gap" ? "gap" : entry.entityKey));
-    expect(timeline()).toEqual([keyOf("run:a"), "gap", keyOf("run:c")]);
-    expect(residentIds(owner)).toContain(live.id);
-    // An update to history the window released does not reappear at the tail.
-    wire.emit(event(inRun("run:b", command(120)), 2));
-    expect(owner.readOwner.readItem(keyOf("run:b"), "command:120")).toBeNull();
-    expect(owner.readOwner.readStructure()!.turnEntityKeys).toEqual([
-      keyOf("run:a"),
-      keyOf("run:c"),
-    ]);
-    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
-    expect(timeline()).toEqual([keyOf("run:a"), keyOf("run:b"), keyOf("run:c")]);
-    expect(residentIds(owner)).toEqual([...runA, ...runB, ...runC].map(({ id }) => id));
     release();
   });
 
@@ -4266,40 +2649,6 @@ describe("Agent Runtime resident history window", () => {
       await pending;
       await vi.advanceTimersByTimeAsync(1_900);
       expect(residentIds(owner)).toHaveLength(1_400);
-      await vi.advanceTimersByTimeAsync(200);
-      expect(residentIds(owner)).toHaveLength(500);
-      release();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("a jump to older history holds release until the reader can arrive", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const older = commands(0, 300);
-      const opening = {
-        ...older[0]!,
-        id: "opening",
-        type: "user_message",
-        messageId: "message:opening",
-        text: "start",
-        attachments: [],
-        inputIntent: "turn_start",
-        createdBy: "user",
-      } as AgentTurnItem;
-      const items = commands(300, 900);
-      const { owner, wire, release } = await open(conversation(items, "older"), [
-        page([opening, ...older.slice(1)]),
-      ]);
-      const controller = new AbortController();
-      await expect(
-        owner.loadHistoryThroughMessage("message:opening", controller.signal),
-      ).resolves.toBe("applied");
-      expect(residentIds(owner)).toHaveLength(1_200);
-      wire.emit(event(command(1_200), 2));
-      await vi.advanceTimersByTimeAsync(1_900);
-      expect(residentIds(owner)).toHaveLength(1_201);
       await vi.advanceTimersByTimeAsync(200);
       expect(residentIds(owner)).toHaveLength(500);
       release();

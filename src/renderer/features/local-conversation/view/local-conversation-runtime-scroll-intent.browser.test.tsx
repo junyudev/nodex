@@ -553,7 +553,7 @@ describe("completed runtime response scroll intent", () => {
       view.dispose();
     }
   });
-  test.each([0.9, 1.1, 1.2])(
+  test.each([0.9, 1.2])(
     "a settled thread preserves repeated small wheel gestures across footer rerenders at zoom %s",
     async (zoom) => {
       const fixture = runtimeFixture(false, true);

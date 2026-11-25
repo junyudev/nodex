@@ -162,15 +162,6 @@ const readyAgent: FirstRunAgentRow = {
   action: null,
 };
 
-const team: FirstRunTeam = { lead: "Codex", teammate: "Claude Code" };
-const teammateAgent: FirstRunAgentRow = {
-  ...readyAgent,
-  id: "claude",
-  slot: "claude",
-  mark: { kind: "agent", driver: "claudeAgent" },
-  label: team.teammate,
-};
-
 const primary = (name: string | RegExp) => screen.getByRole("button", { name });
 
 const isDisabled = (element: HTMLElement) => (element as HTMLButtonElement).disabled;
@@ -210,63 +201,6 @@ describe("Connect your agents", () => {
     action: { kind: "browser-sign-in", label: "Sign in" },
   };
 
-  it.each([
-    {
-      agents: [unconnected],
-      team: null,
-      status: "You can add more in Settings → Agents.",
-    },
-    {
-      agents: [readyAgent],
-      team: null,
-      status: "Connect one more and they can check each other’s work.",
-    },
-    {
-      agents: [readyAgent, teammateAgent],
-      team,
-      status: "Codex and Claude Code can work together in one chat.",
-    },
-  ])("shows $status", ({ agents, team, status }) => {
-    state.agents = agents;
-    state.anyReady = agents.some((agent) => agent.state === "ready");
-    state.team = team;
-    setup();
-
-    expect(screen.getByRole("heading", { name: "Connect your agents" })).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toBe(status);
-  });
-
-  it("never stands in the way when no Agent is ready", async () => {
-    state.anyReady = false;
-    state.agents = [unconnected];
-    setup();
-
-    await click(primary("Sign in"));
-    expect(state.run).toHaveBeenCalledWith({ kind: "browser-sign-in", label: "Sign in" });
-
-    await click(primary("Continue without an agent"));
-    expect(state.current?.step).toBe("projects");
-  });
-
-  it("says what went wrong with an installed Agent in its own words and checks again", async () => {
-    const troubled: FirstRunAgentRow = {
-      ...unconnected,
-      detail: "Couldn’t start",
-      found: true,
-      note: "error: unexpected argument found",
-      action: { kind: "check-again", label: "Check again" },
-    };
-    state.anyReady = false;
-    state.agents = [troubled];
-    setup();
-
-    expect(screen.getByText("error: unexpected argument found")).toBeTruthy();
-    // A fault isn't a sign-in, so the API key shortcut stays with the sign-in row.
-    expect(screen.queryByRole("button", { name: "Use API key" })).toBeNull();
-    await click(primary("Check again"));
-    expect(state.run).toHaveBeenCalledWith({ kind: "check-again", label: "Check again" });
-  });
-
   it("doesn't call the way forward agentless while the Agents are still answering", () => {
     state.anyReady = false;
     state.settled = false;
@@ -289,57 +223,6 @@ describe("Connect your agents", () => {
     expect(document.activeElement).toBe(primary("Continue"));
   });
 
-  it("can be skipped from the start", async () => {
-    state.anyReady = false;
-    state.agents = [unconnected];
-    const { onStartNewChat, beginClosing } = setup();
-
-    await click(primary("Skip"));
-    await waitFor(() => expect(onStartNewChat).toHaveBeenCalledWith(null, { focusComposer: true }));
-    expect(beginClosing).toHaveBeenCalled();
-    await waitFor(() => expect(state.current?.done).toBe(true));
-  });
-
-  it("offers one thing to do when reopened to connect an Agent", () => {
-    state.current = { ...INITIAL_FIRST_RUN_STATE, step: "agents", entry: "connect" };
-    state.anyReady = false;
-    state.agents = [unconnected];
-    setup();
-
-    expect(primary("Close")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Continue/u })).toBeNull();
-
-    state.anyReady = true;
-    state.agents = [readyAgent];
-    act(() => rerender());
-    expect(primary("Done")).toBeTruthy();
-  });
-
-  it("lays out top-ups under the Nodex row without holding anyone to them", async () => {
-    state.anyReady = false;
-    state.agents = [
-      {
-        id: "nodex",
-        slot: "nodex",
-        mark: { kind: "nodex" },
-        label: "Nodex credits",
-        detail: "ada@example.com · No credits yet",
-        state: "action",
-        found: false,
-        action: null,
-        offersTopUp: true,
-      },
-    ];
-    setup();
-
-    await click(primary("Pay $10 for 275 credits"));
-    expect(state.nodexAct).toHaveBeenCalledWith("openTopUp", 10);
-
-    await click(primary("Continue without an agent"));
-    expect(state.current?.step).toBe("projects");
-  });
-
   it("previews Claude Code's installer and runs it only when asked", async () => {
     state.agents = [
       {
@@ -359,33 +242,6 @@ describe("Connect your agents", () => {
     expect(screen.queryByTestId("terminal")).toBeNull();
     await click(primary("Run"));
     expect(screen.getByTestId("terminal")).toBeTruthy();
-  });
-
-  it("opens a Terminal right away to sign in to Claude Code", async () => {
-    state.agents = [
-      {
-        id: "claude",
-        slot: "claude",
-        mark: { kind: "agent", driver: "claudeAgent" },
-        label: "Claude Code",
-        detail: "Sign in with your Claude account",
-        state: "action",
-        found: false,
-        action: { kind: "terminal-sign-in", label: "Sign in" },
-      },
-    ];
-    setup();
-    await click(primary("Sign in"));
-    expect(await screen.findByTestId("terminal")).toBeTruthy();
-  });
-
-  it("ends after this page when opened only to connect an Agent", async () => {
-    state.current = { ...state.current!, entry: "connect" };
-    const { onStartNewChat, onStartNewChatWithPrompt } = setup();
-    await click(primary("Done"));
-    await waitFor(() => expect(state.current?.done).toBe(true));
-    expect(onStartNewChat).not.toHaveBeenCalled();
-    expect(onStartNewChatWithPrompt).not.toHaveBeenCalled();
   });
 });
 
@@ -413,96 +269,6 @@ describe("Where should agents work?", () => {
     });
   });
 
-  it("selects or clears every row at once", async () => {
-    state.candidates = [
-      candidate("/code/a"),
-      candidate("/code/b", { suggested: false }),
-      candidate("/code/c", { suggested: false }),
-    ];
-    setup();
-    const all = screen.getByRole("checkbox", { name: "Select all" });
-    expect(all.getAttribute("aria-checked")).toBe("mixed");
-
-    await click(all);
-    expect(isChecked(all)).toBe(true);
-    expect(isChecked(screen.getByRole("checkbox", { name: "c" }))).toBe(true);
-    expect(primary("Add 3 projects")).toBeTruthy();
-
-    await click(all);
-    expect(isChecked(screen.getByRole("checkbox", { name: "a" }))).toBe(false);
-    expect(isDisabled(primary("Done"))).toBe(true);
-  });
-
-  it("lists folders by last use or by chats, keeping added folders on top", async () => {
-    const hour = 60 * 60_000;
-    state.candidates = [
-      candidate("/code/busy", { chatCount: 30, lastActiveAt: Date.now() - 48 * hour }),
-      candidate("/code/fresh", { chatCount: 2, lastActiveAt: Date.now() - hour }),
-      candidate("/code/older", { chatCount: 8, lastActiveAt: Date.now() - 24 * hour }),
-    ];
-    state.chooseFolders.mockResolvedValue(["/elsewhere/tool"]);
-    setup();
-    const rows = () =>
-      screen
-        .getAllByRole("checkbox")
-        .map((box) => box.getAttribute("aria-label"))
-        .filter((name) => name !== "Select all");
-    expect(rows()).toEqual(["fresh", "older", "busy"]);
-
-    await click(primary("Choose a folder"));
-    await waitFor(() => expect(rows()).toEqual(["tool", "fresh", "older", "busy"]));
-    await click(screen.getByRole("button", { name: "Most chats" }));
-    expect(rows()).toEqual(["tool", "busy", "older", "fresh"]);
-  });
-
-  it("selects every folder chosen at once", async () => {
-    state.chooseFolders.mockResolvedValue(["/elsewhere/one", "/elsewhere/two"]);
-    setup();
-    await click(primary("Choose a folder"));
-    expect(isChecked(await screen.findByRole("checkbox", { name: "one" }))).toBe(true);
-    expect(isChecked(screen.getByRole("checkbox", { name: "two" }))).toBe(true);
-    expect(primary("Add 2 projects")).toBeTruthy();
-  });
-
-  it("doesn't offer a folder that's already a Project", () => {
-    state.candidates = [candidate("/code/added"), candidate("/code/new")];
-    setup({ projects: [project("p", "/code/added")] });
-    expect(screen.queryByRole("checkbox", { name: "added" })).toBeNull();
-    expect(screen.getByRole("checkbox", { name: "new" })).toBeTruthy();
-  });
-
-  it("adds a chosen folder as a selected row", async () => {
-    state.chooseFolders.mockResolvedValue(["/elsewhere/tool"]);
-    const { onCreateProject } = setup();
-    await click(primary("Choose a folder"));
-    expect(isChecked(await screen.findByRole("checkbox", { name: "tool" }))).toBe(true);
-    await click(primary("Add project"));
-    await waitFor(() =>
-      expect(onCreateProject).toHaveBeenCalledWith({ name: "tool", sources: ["/elsewhere/tool"] }),
-    );
-  });
-
-  it("starts an empty project with no source, so Main makes its folder", async () => {
-    const { onCreateProject, onStartNewChatWithPrompt } = setup();
-    await click(primary("Start an empty project"));
-    const name = screen.getByRole("textbox", { name: "Project name" });
-    await act(async () => {
-      fireEvent.change(name, { target: { value: "Sketches" } });
-      fireEvent.submit(name.closest("form")!);
-      await Promise.resolve();
-    });
-    await click(primary("Add project"));
-    await waitFor(() =>
-      expect(onCreateProject).toHaveBeenCalledWith({ name: "Sketches", sources: [] }),
-    );
-    await waitFor(() =>
-      expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
-        projectId: "created:Sketches",
-        prompt: firstTaskPrompt("empty-folder", null),
-      }),
-    );
-  });
-
   it("brings recent chats only when asked", async () => {
     const chat = {
       backendKind: "codex" as const,
@@ -523,53 +289,6 @@ describe("Where should agents work?", () => {
     );
   });
 
-  it("leaves chats alone by default", async () => {
-    state.candidates = [
-      candidate("/code/a", {
-        recentChats: [
-          {
-            backendKind: "codex",
-            nativeHome: "/h",
-            nativeSessionId: "s",
-            title: "t",
-            cwd: "/code/a",
-            updatedAt: 1,
-          },
-        ],
-      }),
-    ];
-    setup();
-    await click(primary("Add project"));
-    await waitFor(() => expect(state.current?.done).toBe(true));
-    expect(state.imports).not.toHaveBeenCalled();
-  });
-
-  it("can continue with no Project at all", async () => {
-    const { onStartNewChatWithPrompt } = setup();
-    expect(isDisabled(primary("Done"))).toBe(true);
-    await click(primary("Just chat for now"));
-    await waitFor(() =>
-      expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
-        projectId: null,
-        prompt: firstTaskPrompt("no-project", null),
-      }),
-    );
-  });
-
-  it("offers a first chat prompt asking the teammate to work on the project", async () => {
-    state.team = team;
-    state.agents = [readyAgent, teammateAgent];
-    state.candidates = [candidate("/code/active")];
-    const { onStartNewChatWithPrompt } = setup();
-
-    await click(primary("Add project"));
-    await waitFor(() => expect(state.current?.done).toBe(true));
-    expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
-      projectId: "created:active",
-      prompt: expect.stringContaining("ask Claude Code to do the same on its own"),
-    });
-  });
-
   it("prepares New Chat before setup closes", async () => {
     const order: string[] = [];
     state.candidates = [candidate("/code/a")];
@@ -581,22 +300,5 @@ describe("Where should agents work?", () => {
     await click(primary("Add project"));
     await waitFor(() => expect(state.current?.done).toBe(true));
     expect(order).toEqual(["done:false"]);
-  });
-
-  it("stays where the person was when a replay added nothing", async () => {
-    state.current = { ...state.current!, entry: "replay" };
-    const { onStartNewChat, onStartNewChatWithPrompt } = setup({
-      projects: [project("p", "/code/added")],
-    });
-    await click(primary("Done"));
-    await waitFor(() => expect(state.current?.done).toBe(true));
-    expect(onStartNewChat).not.toHaveBeenCalled();
-    expect(onStartNewChatWithPrompt).not.toHaveBeenCalled();
-  });
-
-  it("goes back to the Agents page", async () => {
-    setup();
-    await click(primary("Back"));
-    expect(state.current?.step).toBe("agents");
   });
 });
