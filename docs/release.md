@@ -600,6 +600,25 @@ Apple signing, updater, Agent runtime, Browser runtime, or provenance changes.
    phrase in product words, about 36 characters and never more than 48, with no
    Markdown and no closing period.
 
+4. Once the stable release is published, create a **Todo** card titled
+   `<version> 更新帖` on the growth Project's board in Nodex. Add the release
+   headline, the two or three changes worth showing, and links to the release and
+   the changelog page. An Agent in the growth Project prepares the post with a
+   screenshot or short clip for each change. The person publishes it.
+
+   ```bash
+   nodex --project growth page create \
+     --parent data_source:5f3bedb5-099b-7cfd-8ebc-f30f5e7bb153 \
+     --title 'v0.5.13 更新帖' --set Status=plan --file - <<'EOF'
+   Snooze, settle and organize chats
+
+   - Snooze a chat until you're ready to return to it.
+   - Settle finished chats to clear them from the sidebar.
+
+   [Release](https://github.com/junyudev/nodex/releases/tag/v0.5.13) · [Changelog](https://nodex.jyu.app/changelog/)
+   EOF
+   ```
+
 ### Promotion path
 
 The Release Module validates the immutable Nightly prerelease, protected-main
