@@ -171,12 +171,10 @@ export const CODEX_SIDEBAR_THREAD_ROW_CLASS =
   "group relative h-token-nav-row cursor-interaction rounded-lg py-row-y text-sm hover:bg-token-list-hover-background focus-visible:outline-offset-[-2px]";
 export const CODEX_SIDEBAR_THREAD_ACTION_RAIL_CLASS =
   "pointer-events-none absolute right-0 top-0 z-10 mr-0.5 flex h-full w-[52px] items-center justify-end gap-2 pr-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [&:has(:focus-visible)]:opacity-100";
-export const CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS =
-  "!h-5 !w-5 !p-0 opacity-50 hover:opacity-100 focus-visible:opacity-100 [&>svg]:!h-4 [&>svg]:!w-4 pointer-events-auto";
+const CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS =
+  "no-drag pointer-events-auto flex size-5 shrink-0 cursor-interaction items-center justify-center rounded-md leading-none text-token-foreground/70 enabled:hover:text-token-foreground focus-visible:text-token-foreground disabled:cursor-not-allowed disabled:opacity-40 [&>svg]:!h-4 [&>svg]:!w-4";
 export const CODEX_SIDEBAR_ROW_LABEL_CLASS =
   "flex min-w-0 flex-1 cursor-interaction items-center whitespace-nowrap rounded-md py-1 pl-1 pr-0 text-left text-base text-token-foreground";
-const CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS =
-  "pointer-events-auto flex h-5 w-5 items-center justify-center leading-none text-token-foreground/70 hover:text-token-foreground [&>svg]:!h-4 [&>svg]:!w-4";
 const THREAD_HOVER_CARD_PROJECT_FALLBACK = {
   id: "workbench.codexSidebar.hoverCardChat",
   defaultMessage: "Chat",
@@ -2363,7 +2361,7 @@ function CodexSidebarThreadRowView({
                 <button
                   type="button"
                   aria-label={pinButtonLabel}
-                  className={CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS}
+                  className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                   data-state={contextMenuOpen ? "open" : "closed"}
                   data-app-action-sidebar-thread-resting-pin=""
                   data-app-action-sidebar-thread-pin-session=""
@@ -2453,7 +2451,7 @@ function CodexSidebarThreadRowView({
                   type="button"
                   aria-label={pinButtonLabel}
                   className={cn(
-                    CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS,
+                    CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS,
                     !item.pinned &&
                       "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100",
                   )}
@@ -2486,10 +2484,7 @@ function CodexSidebarThreadRowView({
                       id: "workbench.codexSidebar.snoozeChat",
                       defaultMessage: "Snooze",
                     })}
-                    className={cn(
-                      CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
-                      CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS,
-                    )}
+                    className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                     data-app-action-sidebar-thread-snooze=""
                     onPointerDown={stopCodexSidebarRowActionPropagation}
                     onMouseDown={stopCodexSidebarRowActionPropagation}
@@ -2507,10 +2502,7 @@ function CodexSidebarThreadRowView({
                 aria-label={settleActionLabel(intl, settled, Boolean(onAccept))}
                 // A chat stopped on its person cannot be settled until they answer it.
                 disabled={!settled && needsAttention}
-                className={cn(
-                  CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
-                  CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS,
-                )}
+                className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                 data-app-action-sidebar-thread-settled={String(settled)}
                 onPointerDown={stopCodexSidebarRowActionPropagation}
                 onMouseDown={stopCodexSidebarRowActionPropagation}
@@ -2533,10 +2525,7 @@ function CodexSidebarThreadRowView({
                   defaultMessage: "Archive chat",
                 })}
                 disabled={archiveDisabled}
-                className={cn(
-                  CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
-                  CODEX_SIDEBAR_THREAD_ARCHIVE_BUTTON_CLASS,
-                )}
+                className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
                 data-app-action-sidebar-thread-archive=""
                 onPointerDown={stopCodexSidebarRowActionPropagation}
                 onMouseDown={stopCodexSidebarRowActionPropagation}
