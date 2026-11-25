@@ -93,7 +93,7 @@ pub(super) fn read_session_sidebar_placements(
     }
     let encoded = serde_json::to_string(session_ids)
         .map_err(|_| invalid("Session Sidebar placement identities could not be encoded"))?;
-    connection
+    let rows = connection
         .prepare(
             "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
              SELECT session.id, session.project_id, EXISTS(SELECT 1 FROM member_session_unread attention WHERE attention.session_id=session.id AND attention.member_id=?3), \
@@ -109,7 +109,13 @@ pub(super) fn read_session_sidebar_placements(
                    JOIN workspace_sidebar_sections section \
                      ON section.library_id = item.library_id AND section.section_id = item.section_id \
                    WHERE item.library_id = ?1 AND item.project_id = session.project_id \
-                     AND section.kind = 'custom' AND section.lifecycle = 'active')) END \
+                     AND section.kind = 'custom' AND section.lifecycle = 'active')) END, \
+               EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) \
+                 OR EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id), \
+               EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id=session.id), \
+               (SELECT active.page_id FROM page_active_chats active \
+                 JOIN blocks block ON block.id=active.page_id AND block.library_id=?1 AND block.lifecycle='active' \
+                 WHERE active.session_id=session.id ORDER BY active.set_at DESC, active.page_id LIMIT 1) \
              FROM requested JOIN project_sessions session ON session.id = requested.session_id \
              LEFT JOIN projects project ON project.id = session.project_id \
              WHERE session.archived = 0 AND (session.project_id IS NULL OR project.library_id = ?1) \
@@ -122,10 +128,23 @@ pub(super) fn read_session_sidebar_placements(
                 unread: row.get(2)?,
                 snoozed_until: row.get(3)?,
                 section_id: row.get(4)?,
+                hidden: row.get(5)?,
+                managed: row.get(6)?,
+                active_page_id: row.get(7)?,
+                active_page_key: None,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(Into::into)
+        ?;
+    rows.into_iter()
+        .map(|mut row| {
+            if let Some(page_id) = &row.active_page_id {
+                row.active_page_key =
+                    crate::database::current_page_key_for_page(connection, library_id, page_id)?;
+            }
+            Ok(row)
+        })
+        .collect()
 }
 
 pub(super) fn read_section_window(
@@ -1714,6 +1733,14 @@ mod tests {
                 side_chat_source_session_id: Some("session:inherited".into()),
             },
         );
+        apply(
+            module,
+            "managed",
+            ProjectWorkspaceIntent::SetSessionManaged {
+                session_id: "session:override".into(),
+                managed: true,
+            },
+        );
         let observe = || {
             let ProjectWorkspaceReadValue::SessionSidebarPlacements { placements, .. } = read(
                 module,
@@ -1734,6 +1761,22 @@ mod tests {
             ) else {
                 panic!("Session Sidebar placements")
             };
+            assert_eq!(
+                placements
+                    .iter()
+                    .filter(|p| p.hidden)
+                    .map(|p| p.session_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["session:side"],
+            );
+            assert_eq!(
+                placements
+                    .iter()
+                    .filter(|p| p.managed)
+                    .map(|p| p.session_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["session:override"],
+            );
             placements
                 .into_iter()
                 .map(|p| (p.session_id, p.project_id, p.section_id, p.unread))

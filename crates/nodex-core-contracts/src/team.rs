@@ -69,6 +69,7 @@ pub struct SpaceIdentity {
 #[serde(rename_all = "snake_case")]
 pub enum HostOperation {
     Activity,
+    AgentsMap,
     Connection,
     Providers,
     SessionRead,

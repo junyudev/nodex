@@ -518,6 +518,11 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeAgentsMapChanges(callback) {
+      return bridge.on("agent-runtime:agents-map:changed", (revision) => {
+        if (typeof revision === "number") callback(revision);
+      });
+    },
     subscribeAgentRuntimeActivityChanges(callback) {
       return bridge.on("agent-runtime:activity-changed", (...args: unknown[]) => {
         const payload = args[0] as

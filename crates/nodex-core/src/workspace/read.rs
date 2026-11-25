@@ -725,6 +725,20 @@ pub(super) fn read(
                 &runtime_thread_id,
             )?,
         }),
+        ProjectWorkspaceRead::AgentRuntimeSessionIdsByExecution {
+            runtime_id,
+            runtime_thread_ids,
+        } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeSessionIdsByExecution {
+                session_ids: super::agent_runtime_binding::read_session_ids_by_execution(
+                    connection,
+                    context,
+                    library_id,
+                    &runtime_id,
+                    &runtime_thread_ids,
+                )?,
+            },
+        ),
         ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread { runtime_thread_id } => {
             Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
                 binding: super::agent_runtime_binding::read_binding_by_thread(

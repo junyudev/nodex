@@ -24,6 +24,7 @@ import { hostRepositories } from "../main/platform/node/HostRepositories";
 import { HostWorkspace } from "./HostWorkspace";
 import { AgentRuntimeApplication } from "../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSessionActivity } from "../main/agent-runtime/AgentRuntimeSessionActivity";
+import { AgentsMap } from "../main/agent-runtime/AgentsMap";
 import { ChatSearch, live as chatSearch } from "../main/chat-search/ChatSearch";
 import { live as backendRegistry } from "../main/agent-backend/AgentBackendRegistry";
 import { live as imageFitting } from "../main/platform/node/HostImageFitting";
@@ -77,6 +78,7 @@ export class HeadlessHost extends Context.Service<
     readonly attachments: ChatAttachments["Service"];
     readonly inbox: InboxApplication["Service"];
     readonly activity: AgentRuntimeSessionActivity["Service"];
+    readonly agentsMap: AgentsMap["Service"];
     readonly phone: MobileRpc["Service"];
     readonly settings: ApplicationSettings["Service"];
     readonly chats: ChatSearch["Service"];
@@ -279,6 +281,7 @@ export const live = (input: {
         attachments: yield* ChatAttachments,
         inbox: yield* InboxApplication,
         activity: yield* AgentRuntimeSessionActivity,
+        agentsMap: yield* AgentsMap,
         phone: yield* MobileRpc,
         settings: yield* ApplicationSettings,
         chats: yield* ChatSearch,

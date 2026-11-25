@@ -51,10 +51,17 @@ test.each([
   expect(
     projectWorkspaceSessionSidebarPlacementFromCore({
       session_id: "session:live",
+      hidden: false,
+      managed: true,
+      active_page_id: "page:work",
+      active_page_key: "WORK-1",
       ...placement,
     }),
   ).toEqual({
     sessionId: "session:live",
+    hidden: false,
+    managed: true,
+    activePage: { id: "page:work", key: "WORK-1" },
     projectId: placement.project_id,
     sectionId: placement.section_id,
     unread: placement.unread,

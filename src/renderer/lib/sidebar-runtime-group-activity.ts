@@ -18,7 +18,7 @@ export interface SidebarRuntimeGroupActivities {
 /** Join from the bounded live set, independently of which sidebar rows are loaded. */
 export function buildSidebarRuntimeGroupActivities(
   placements: readonly SessionSidebarPlacement[],
-  activities: ReadonlyMap<string, { readonly status: SessionLiveIndicator }>,
+  activities: ReadonlyMap<string, { readonly status: SessionLiveIndicator | "queued" }>,
 ): SidebarRuntimeGroupActivities {
   const projects = new Map<string, SidebarRuntimeGroupActivity>();
   const sections = new Map<string, SidebarRuntimeGroupActivity>();
@@ -40,7 +40,7 @@ export function buildSidebarRuntimeGroupActivities(
   };
   for (const placement of placements) {
     const status = activities.get(placement.sessionId)?.status;
-    if (!status || seen.has(placement.sessionId)) continue;
+    if (!status || status === "queued" || seen.has(placement.sessionId)) continue;
     seen.add(placement.sessionId);
     add(
       projects,

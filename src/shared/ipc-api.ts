@@ -27,6 +27,7 @@ import type { NativeResourceData, NativeResourceReadInput } from "./native-resou
 import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
 import type { AgentAccountIpcApi } from "./agent-accounts-api";
 import type { AcpIpcApi } from "./acp-api";
+import type { AgentsMapReadInput, AgentsMapSnapshot } from "./agents-map";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { RendererFrameHealth } from "./diagnostics/frame-health";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
@@ -735,6 +736,10 @@ export interface IpcApi
     McpAppDataIpcApi,
     SpaceConnectionIpcApi,
     SpaceAdministrationIpcApi {
+  "agent-runtime:agents-map:read": {
+    args: [input: AgentsMapReadInput];
+    result: AgentsMapSnapshot;
+  };
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;
@@ -3279,6 +3284,7 @@ export interface IpcEvents {
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "dictation:open-recording": { readonly recordingId: string };
   "agent-runtime:session-event": import("./agent-runtime-api").AgentRuntimeSessionEvent;
+  "agent-runtime:agents-map:changed": number;
   "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
   "agent-runtime:providers:changed": void;
   "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;

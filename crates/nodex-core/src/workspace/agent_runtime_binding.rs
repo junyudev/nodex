@@ -401,6 +401,43 @@ pub(super) fn read_binding_by_execution(
     read_binding(connection, context, library_id, &session_id)
 }
 
+pub(super) fn read_session_ids_by_execution(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    runtime_id: &str,
+    runtime_thread_ids: &[String],
+) -> Result<std::collections::BTreeMap<String, String>, StoreError> {
+    require_binding_reader(context)?;
+    validate_id("runtime_id", runtime_id)?;
+    if runtime_thread_ids.len() > 100 {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidInput,
+            "Session binding request exceeds its 100-root bound",
+            false,
+        ));
+    }
+    for id in runtime_thread_ids {
+        validate_id("runtime_thread_id", id)?;
+    }
+    let requested = serde_json::to_string(runtime_thread_ids).expect("Thread ID serialization");
+    connection
+        .prepare(
+            "SELECT binding.runtime_thread_id, binding.session_id
+             FROM json_each(?3) AS requested
+             CROSS JOIN project_session_execution_bindings binding
+               ON binding.runtime_id = ?2 AND binding.runtime_thread_id = requested.value
+             JOIN project_sessions session ON session.id = binding.session_id
+             LEFT JOIN projects project ON project.id = session.project_id
+             WHERE session.project_id IS NULL OR project.library_id = ?1",
+        )?
+        .query_map(params![library_id, runtime_id, requested], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(Into::into)
+}
+
 /// A chat reference names only the execution root Thread; another engine may reuse that
 /// identity, so an ambiguous Thread resolves to no Session.
 pub(super) fn read_binding_by_thread(
@@ -1051,6 +1088,19 @@ mod tests {
                 panic!("indexed execution binding")
             };
             assert_eq!(binding.session_id, expected_session);
+            let ProjectWorkspaceReadValue::AgentRuntimeSessionIdsByExecution { session_ids } = read(
+                &workspace.module,
+                ProjectWorkspaceRead::AgentRuntimeSessionIdsByExecution {
+                    runtime_id: runtime.into(),
+                    runtime_thread_ids: vec!["thread:session:first".into(), "thread:absent".into()],
+                },
+            ) else {
+                panic!("batched execution binding")
+            };
+            assert_eq!(
+                session_ids,
+                [("thread:session:first".into(), expected_session.into())].into()
+            );
         }
         // A chat reference carries only the Thread; two engines sharing it name no single chat.
         let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding { binding: shared } = read(

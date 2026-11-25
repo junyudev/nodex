@@ -322,6 +322,11 @@ pub enum ProjectWorkspaceRead {
         runtime_id: String,
         runtime_thread_id: String,
     },
+    /// Resolves at most 100 root execution identities in the current Library.
+    AgentRuntimeSessionIdsByExecution {
+        runtime_id: String,
+        runtime_thread_ids: Vec<String>,
+    },
     /// Resolves a chat reference, which names only the execution root Thread, to its Session.
     /// Absent unless exactly one Session is bound to that Thread.
     AgentRuntimeSessionBindingByThread {
@@ -650,6 +655,9 @@ pub enum ProjectWorkspaceReadValue {
     AgentRuntimeSessionBinding {
         binding: Option<ProjectWorkspaceAgentRuntimeSessionBinding>,
     },
+    AgentRuntimeSessionIdsByExecution {
+        session_ids: std::collections::BTreeMap<String, String>,
+    },
     AgentRuntimeSessionBindingWindow {
         bindings: CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>,
     },
@@ -906,6 +914,10 @@ pub struct ProjectWorkspaceSidebarSectionSummary {
 /// Durable placement for joining bounded live activity without loading Session rows.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceSessionSidebarPlacement {
+    pub hidden: bool,
+    pub managed: bool,
+    pub active_page_id: Option<String>,
+    pub active_page_key: Option<String>,
     pub session_id: String,
     pub project_id: Option<String>,
     pub section_id: Option<String>,

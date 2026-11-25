@@ -102,6 +102,7 @@ type QueryEndpointPolicy =
   | "acp:sessions:prepareImport"
   | "acp:modelProviders:list"
   | "agent-runtime:models:running-credit"
+  | "agent-runtime:agents-map:read"
   | "agent-runtime:activity:read"
   | "work:host-status"
   | "agent-runtime:connection:read"

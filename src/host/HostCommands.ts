@@ -1,4 +1,5 @@
 import { CoreRequestClass } from "../main/core-runtime/CoreRequestClass";
+import { AgentsMapReadInputSchema } from "../shared/schemas/agents-map";
 import { InboxSkillAvailabilityInputSchema } from "../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import { z } from "zod";
@@ -52,8 +53,18 @@ export const executeHostCommand = (
       case "inbox_settings":
         z.strictObject({}).parse(input);
         return (yield* host.settings.snapshot()).inbox;
-      case "activity":
-        return yield* host.activity.read;
+      case "activity": {
+        const snapshot = yield* host.activity.read;
+        // Map details cross the Member-scoped Agents read, after placement is authorized.
+        return {
+          ...snapshot,
+          items: snapshot.items.map(
+            ({ questionPrompt: _question, agentSelection: _selection, ...item }) => item,
+          ),
+        };
+      }
+      case "agents_map":
+        return yield* host.agentsMap.read(AgentsMapReadInputSchema.parse(input));
       case "connection":
         return yield* host.activity.connection;
       case "providers":

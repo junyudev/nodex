@@ -87,6 +87,8 @@ import {
   AgentRuntimeSupervisor,
   make as makeSupervisor,
 } from "../main/agent-runtime/AgentRuntimeSupervisor";
+import { AgentsMap, make as makeAgentsMap } from "../main/agent-runtime/AgentsMap";
+import { projectWorkspaceSessionSidebarPlacementFromCore } from "../main/core-client/project-workspace-adapter";
 import * as SessionActivity from "../main/agent-runtime/AgentRuntimeSessionActivity";
 import { AgentRuntimeSessionActivity } from "../main/agent-runtime/AgentRuntimeSessionActivity";
 import {
@@ -310,6 +312,9 @@ const supervisor = Layer.effectContext(
     const appToolCatalog = yield* HostAppToolCatalog;
     const hostPolicy = Option.getOrUndefined(yield* Effect.serviceOption(HostAgentPolicy));
     const fs = yield* FileSystem.FileSystem;
+    const runtimeExists = fs.exists(
+      join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite"),
+    );
     const database = yield* DatabaseNotifierRuntime;
     const ready = yield* Deferred.make<AgentRuntimeSupervisor["Service"]>();
     const toolsReady = yield* Deferred.make<AgentRuntimeHostToolExecutor>();
@@ -536,7 +541,7 @@ const supervisor = Layer.effectContext(
       // Product writers span Core admission through execution acknowledgement; hold the process.
       writing: (operation) =>
         Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.writing(operation))),
-      runtimeExists: fs.exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite")),
+      runtimeExists,
       subscribeExecutionChanges: executionChanges,
     });
     const execute: AgentRuntimeHostToolExecutor = (caller, name, input) =>
@@ -1086,7 +1091,26 @@ const supervisor = Layer.effectContext(
       ),
       Effect.forkScoped,
     );
+    const agentsMap = yield* makeAgentsMap({
+      activity: activity.readAll,
+      connect: Effect.gen(function* () {
+        const current = yield* runtime.currentConnection;
+        if (current) return current;
+        return (yield* runtimeExists) ? yield* runtime.get() : null;
+      }),
+      resolveSessions: yield* SessionActivity.coreSessionResolver,
+      placements: (ids) =>
+        modules.workspace.read({ kind: "session_sidebar_placements", session_ids: ids }).pipe(
+          Effect.map((snapshot) => {
+            if (snapshot.value.kind !== "session_sidebar_placements")
+              throw new Error("Core did not return Session placements.");
+            return snapshot.value.placements.map(projectWorkspaceSessionSidebarPlacementFromCore);
+          }),
+        ),
+      changes: [activity.executionChanges, database.workInvalidations, database.inboxInvalidations],
+    });
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
+      Context.add(AgentsMap, agentsMap),
       Context.add(AgentRuntimeSessionActivity, {
         read: activity.read,
         activityChanges: activity.activityChanges,

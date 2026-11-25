@@ -164,6 +164,36 @@ it.live("reports an empty complete snapshot without any execution process", () =
   }).pipe(Effect.scoped),
 );
 
+it.live("keeps a queued chat's start across live states and resets it after idle", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture({ "thread:a": "session:a" });
+    const runtime = yield* fakeRuntime("1");
+    const start = "2026-10-15T09:00:00.000Z";
+    const nextStart = "2026-10-15T10:00:00.000Z";
+    runtime.roots.set(
+      "thread:a",
+      root("thread:a", "queued", {
+        activeRunId: null,
+        startedAt: start,
+        queuePosition: 1,
+      }),
+    );
+    yield* f.attach(runtime.connection);
+    yield* f.until(() => f.changes.length === 1);
+    assert.equal((yield* f.activity.read).items[0]?.startedAt, start);
+    for (const [index, state] of (["running", "waiting", "background"] as const).entries()) {
+      yield* runtime.commit("thread:a", root("thread:a", state, { startedAt: nextStart }));
+      yield* f.until(() => f.changes.length === index + 2);
+      assert.equal((yield* f.activity.read).items[0]?.startedAt, start);
+    }
+    yield* runtime.commit("thread:a", null);
+    yield* f.until(() => f.changes.length === 5);
+    yield* runtime.commit("thread:a", root("thread:a", "running", { startedAt: nextStart }));
+    yield* f.until(() => f.changes.length === 6);
+    assert.equal((yield* f.activity.read).items[0]?.startedAt, nextStart);
+  }).pipe(Effect.scoped),
+);
+
 it.live("follows running, waiting, background and idle with ordered Session changes", () =>
   Effect.gen(function* () {
     const f = yield* fixture({ "thread:a": "session:a" });
