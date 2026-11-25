@@ -343,7 +343,7 @@ fn managed_own_pr_replaces_the_previous_follow_and_routes_milestones_without_a_w
         current_thread(&w),
         vec![
             pr_event("opened", SourceActorClass::Person),
-            pr_event("check", SourceActorClass::Ci),
+            pr_event("ci_finished", SourceActorClass::Ci),
         ],
     );
     assert_eq!(stage(&w), "review");

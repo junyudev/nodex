@@ -23,4 +23,3 @@ CREATE TRIGGER turn_page_pull_requests_delete AFTER DELETE ON page_pull_requests
 BEGIN
   INSERT INTO page_turn_dirty VALUES (OLD.page_id) ON CONFLICT DO NOTHING;
 END;
-PRAGMA user_version=218;

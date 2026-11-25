@@ -4419,8 +4419,13 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 
 #[cfg(test)]
 fn rewind_automation_trigger_to_v217(connection: &Connection) -> Result<(), StoreError> {
-    let revision: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if revision == 219 {
+    // v219 lets a Page hold a PR without a Workspace.
+    let nullable_workspace: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('page_pull_requests') WHERE name='workspace_id' AND \"notnull\"=0)",
+        [],
+        |row| row.get(0),
+    )?;
+    if nullable_workspace {
         connection.execute_batch(include_str!("../../tests/fixtures/rewind-v219-to-v218.sql"))?;
     }
     let present: bool = connection.query_row(
