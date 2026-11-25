@@ -135,16 +135,19 @@ or test. Application installs use the shared Vite+ dependency cache.
 - `none`: no application test suite is selected.
 - `related`: source ownership selects suites related to safe, repository-relative
   changed paths. Renderer work normally selects `unit`, `renderer`, and `browser`;
-  Main/Core/Shared paths select their runtime consumers.
+  Main/Core/Shared paths select their runtime consumers. A nightly suite runs
+  when its file, same-named source, or same-named default test changes in the
+  same directory.
 - `full`: dependency, configuration, deleted-path, unknown, and explicit-full
-  changes run every selected suite. Deleted paths fail closed because they
-  cannot participate in Vitest's import graph.
+  changes run every selected suite's default tier. Deleted source paths fail
+  closed because they cannot participate in Vitest's import graph.
 
 Pre-merge and Main CI use the classifier to choose suites, then validate every
-file in each selected suite through the test result cache. A file with missing,
-changed, or unobservable inputs executes. Browser shards execute only their
-assigned files and cache per shard. Nightly and release certification execute
-their complete default and `nightly` tiers independently.
+default file and each related nightly file in the selected suites through the
+test result cache. A file with missing, changed, or unobservable inputs
+executes. Browser shards execute their assigned files and cache per shard.
+Nightly CI and release certification run the complete default and `nightly`
+tiers independently, including cross-cutting nightly matrices.
 
 Linux CI splits browser into three dedicated shards and splits unit, renderer,
 Core-client, and Agent Runtime into two shards each by repository-relative file
@@ -213,11 +216,10 @@ dependency, or workflow edit with its owning documentation therefore receives
 the same plan as the executable edit alone; docs-only and landing-plus-docs
 remain explicit narrow plans.
 
-Changed test files use the repository filename convention to select exactly one
-owning suite. Explicit `nightly` (`*.nightly.*`) and `stress` (`*.stress.*`)
-files remain Nightly-owned. Vitest configuration, TypeScript project
-configuration, lockfiles, CI orchestration, and deleted files promote selection
-to `full`.
+A test file's repository naming convention determines its owning suite. The
+`stress` tier (`*.stress.*`) runs in Nightly CI and release certification.
+Vitest configuration, TypeScript project configuration, lockfiles, CI
+orchestration, and deleted source files promote selection to `full`.
 
 ## Static jobs
 

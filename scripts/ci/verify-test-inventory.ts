@@ -172,7 +172,7 @@ export async function verifyRepositoryTestInventory(
     const tierSuites = tier === "live" ? LIVE_TEST_SUITES : APP_TEST_SUITES;
     for (const suite of tierSuites) {
       if (signal.aborted) throw new Error("Test inventory cancelled.");
-      const suiteFiles = await discoverSuite(suite, [], false, {
+      const suiteFiles = await discoverSuite(suite, [], "run", {
         cwd: root,
         env: { ...process.env, NODEX_TEST_TIER: tier, NODEX_TEST_TIMINGS: "" },
         signal,

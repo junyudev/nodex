@@ -66,7 +66,7 @@ function parseSegment(value: string, rawPlan: unknown) {
     shard >= count
   )
     throw new Error("Invalid application test shard: " + value);
-  return { suite, shard, count };
+  return { suite, shard, count, plan };
 }
 
 // Job metadata and cache service credentials must not reach Vitest. The engine
@@ -125,7 +125,7 @@ async function runSegment(
   prepareCache: boolean,
   signal: AbortSignal,
 ) {
-  const { suite, shard, count } = parseSegment(segment, plan);
+  const { suite, shard, count, plan: gatePlan } = parseSegment(segment, plan);
   const host = await linuxRunnerIdentity();
   const directory = cacheDirectory(
     root,
@@ -158,7 +158,15 @@ async function runSegment(
     repositoryRoot: root,
     env: linuxTestEnvironment(process.env),
     signal,
-    linuxCI: { host, directory, select: (file) => fileShard(file, count) === shard },
+    linuxCI: {
+      host,
+      directory,
+      select: (file) => fileShard(file, count) === shard,
+      relatedPaths:
+        gatePlan.testMode === "related"
+          ? gatePlan.relatedPaths.map((file) => "./" + file)
+          : undefined,
+    },
     onReport: (current) => {
       report.current = current;
     },
@@ -195,7 +203,7 @@ const main = async (signal: AbortSignal): Promise<number> => {
   const command = commandForAppTestSuite(suite, plan);
   const result = spawnSync(command[0], command.slice(1), {
     cwd: root,
-    env: process.env,
+    env: { ...process.env, NODEX_TEST_TIER: "default" },
     stdio: "inherit",
   });
   if (result.error) throw result.error;

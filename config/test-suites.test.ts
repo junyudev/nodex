@@ -61,11 +61,7 @@ describe("application test ownership", () => {
     ["packages/landing/src/behavior.nightly.jsdom.test.ts", "renderer", "nightly"],
     ["src/renderer/behavior.nightly.integration.ts", "integration", "nightly"],
     ["src/renderer/behavior.nightly.browser.test.tsx", "browser", "nightly"],
-    [
-      "packages/agent-runtime/vendor/shared/src/behavior.nightly.integration.test.ts",
-      "agent-runtime",
-      "nightly",
-    ],
+    ["src/host/behavior.nightly.integration.ts", "integration", "nightly"],
     [YJS_YRS_TEST, "core-client", "default"],
   ])("assigns %s to one runtime and tier", (file, suite, tier) => {
     expect(ownersOfTest(file)).toEqual([{ suite, tier }]);

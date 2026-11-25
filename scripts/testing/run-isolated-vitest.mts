@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createVitest, parseCLI, startVitest } from "vite-plus/test/node";
 import { prioritizeTests, runSelectedTestFiles } from "./cache-test-order.ts";
+import { resolveRelatedPaths } from "./runtime.ts";
 
 const [directory, ...args] = process.argv.slice(2);
 if (!directory) throw new Error("Expected an isolated Vitest directory.");
@@ -13,6 +14,7 @@ const { filter, options } = parseCLI(["vitest", ...args]);
 // The ordinary fallback can overlap recorded batches, other fallbacks and discovery.
 const settings = {
   ...options,
+  related: resolveRelatedPaths(options.related),
   fsModuleCachePath: path.join(directory, "transforms"),
   ...(priority.length ? { sequence: { sequencer: prioritizeTests(process.cwd(), priority) } } : {}),
 };

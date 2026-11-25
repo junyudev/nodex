@@ -1,5 +1,9 @@
 import path from "node:path";
-import { VITEST_TEST_TIERS, type VitestTestTier } from "./vitest-test-tier.ts";
+import {
+  VITEST_TEST_TIERS,
+  type VitestTestScope,
+  type VitestTestTier,
+} from "./vitest-test-tier.ts";
 
 export const APP_TEST_SUITES = [
   "unit",
@@ -245,15 +249,18 @@ export function parseTestSuite(value: string): SuiteId {
   throw new Error("Unknown application test suite: " + JSON.stringify(value) + ".");
 }
 
-export function filesForSuite(suite: SuiteId, tier: VitestTestTier = "default") {
+export function filesForSuite(suite: SuiteId, scope: VitestTestScope = "default") {
   const definition = suites[suite];
+  const includesDefault = scope === "default" || scope === "related";
+  const include = includesDefault ? definition.include : (definition[scope] ?? []);
   return {
-    include: [...(tier === "default" ? definition.include : (definition[tier] ?? []))],
+    include: [...include, ...(scope === "related" ? definition.nightly : [])],
     exclude: [
       ...definition.exclude,
-      ...(tier === "default" ? ["**/*.nightly.*", "**/*.stress.*", "**/*.live.*"] : []),
+      ...(scope === "default" ? ["**/*.nightly.*"] : []),
+      ...(includesDefault ? ["**/*.stress.*", "**/*.live.*"] : []),
     ],
-    isStress: tier === "stress",
+    isStress: scope === "stress",
   };
 }
 
@@ -320,7 +327,7 @@ export const maintainedThirdPartyTests: readonly string[] = blocknoteTests;
 /** The real-history pressure gate uses the same locked macOS package as Nodex. */
 export function requiresAgentRuntime(
   suite: SuiteId,
-  tier: VitestTestTier,
+  tier: VitestTestScope,
   files?: readonly string[],
 ): boolean {
   return suite === "main" && tier === "stress" && (!files || files.includes(CODEX_SCALE_TEST));

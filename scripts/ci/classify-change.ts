@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findCheckoutFocusedTests } from "../testing/focused-tests.ts";
 
 import {
   APP_TEST_SUITES,
@@ -497,6 +498,7 @@ type ClassificationOptions = {
   readonly draft?: boolean;
   readonly full?: boolean;
   readonly forceFullTests?: boolean;
+  readonly repositoryRoot?: string;
 };
 
 const classifyOtherPaths = (
@@ -594,13 +596,25 @@ export function classifyChangedPaths(
 ): CiGatePlan {
   const paths = [...new Set(changedPaths.map(normalizePath))];
   const ordinaryPaths = paths.filter((path) => !isNightlyTestPath(path));
-  const hasNightlyTests = ordinaryPaths.length < paths.length;
+  const nightlyPaths = paths.filter(isNightlyTestPath);
+  const hasNightlyTests = nightlyPaths.length > 0;
   const full = options.full === true || paths.length === 0;
   const plan =
     hasNightlyTests && ordinaryPaths.length === 0 && !full
       ? createPlan({})
       : classifyNormalizedPaths(ordinaryPaths, options);
   const docsOnly = plan.docsOnly && !hasNightlyTests;
+  const siblingTests =
+    options.repositoryRoot && !options.draft && plan.testMode !== "full"
+      ? Object.values(findCheckoutFocusedTests(options.repositoryRoot, ordinaryPaths, true)).flat()
+      : [];
+  const nightlySuites = new Set(
+    [...nightlyPaths, ...siblingTests].flatMap((path) => {
+      const owner = ownerOfTest(path);
+      return owner?.tier === "nightly" ? [owner.suite] : [];
+    }),
+  );
+  const includeNightly = plan.testMode !== "full" && nightlySuites.size > 0;
   const groups = new Set(plan.staticGroups);
   if (hasNightlyTests) {
     groups.add("types");
@@ -624,6 +638,21 @@ export function classifyChangedPaths(
   }
   return createPlan({
     ...plan,
+    ...(includeNightly
+      ? {
+          appTestSuites: APP_TEST_SUITES.filter(
+            (suite) => plan.appTestSuites.includes(suite) || nightlySuites.has(suite),
+          ),
+          relatedPaths: [
+            ...(plan.testMode === "related"
+              ? plan.relatedPaths
+              : ordinaryPaths.filter((path) => !isDocumentationPath(path))),
+            ...nightlyPaths,
+          ],
+          landingOnly: plan.landingOnly && nightlyPaths.every(isLandingPath),
+          testMode: "related",
+        }
+      : {}),
     docsOnly,
     staticGroups,
     windowsChecks: options.full === true || ordinaryPaths.some(isWindowsCheckPath),
@@ -681,6 +710,7 @@ const main = (): void => {
       !isDocumentationPath(path) && !isNightlyTestPath(path) && !existsSync(resolve(cwd, path)),
   );
   const document = buildChangeClassificationDocument(paths, {
+    repositoryRoot: cwd,
     draft,
     forceFullTests,
     full,
