@@ -1,4 +1,7 @@
-import type { OrchestrationV2ProviderFailure } from "@nodex/runtime-contracts";
+import {
+  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
+  type OrchestrationV2ProviderFailure,
+} from "@nodex/runtime-contracts";
 
 /**
  * What a failed reply ran into, derived once from the failure's structured evidence.
@@ -18,6 +21,8 @@ export type ProviderFailureCause =
   | "authentication"
   | "context_budget"
   | "model_not_applied"
+  /** The working directory must exist before the original message can be sent. */
+  | "workspace_missing"
   /** The provider rejected this request; sending it again cannot help. */
   | "refused"
   /** The provider cannot reopen the captured conversation. */
@@ -123,6 +128,7 @@ export function providerFailureHttpStatus(failure: ProviderFailureEvidence): num
  */
 export function providerFailureCause(failure: ProviderFailureEvidence): ProviderFailureCause {
   const code = failure.code;
+  if (code === ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE) return "workspace_missing";
   if (code === NODEX_FAILURE_CODES.modelNotApplied) return "model_not_applied";
   if (failure.contextBudget !== undefined || (code !== null && CONTEXT_BUDGET_CODES.has(code)))
     return "context_budget";

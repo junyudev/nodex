@@ -45,6 +45,7 @@ describe("providerFailureCause", () => {
     ["Claude turn limit", { code: "error_max_turns" }, "refused"],
     ["unconfirmed history delivery", { code: "context_handoff_delivery_uncertain" }, "refused"],
     ["unreopenable conversation", { code: "native_session_unrecoverable" }, "unrecoverable"],
+    ["missing working directory", { code: "workspace_missing" }, "workspace_missing"],
     ["no evidence", {}, "unknown"],
     ["other without disconnect evidence", { code: "other", message: "Something broke." }, "unknown"],
     ["unnamed code", { code: "future_provider_error" }, "unknown"],

@@ -1,3 +1,4 @@
+import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import { RuntimeModelPolicy } from "../nodex/ModelPolicy.ts";
 import {
   readRunRecoveryContext,
@@ -11,6 +12,7 @@ import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 import {
   CommandId,
   ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
+  ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderThread,
@@ -687,23 +689,30 @@ export const layer: Layer.Layer<
               if (current?.activeAttemptId !== attempt.id || current.status !== "starting") return;
               const now = yield* DateTime.now;
               const signal = `${failed.signal}:${attempt.id}`;
+              const workspaceMissing = failed.error instanceof ProviderWorkspaceMissingError;
               const nonRetryable = permanentNativeRecoveryFailure(failed.error);
               const unrecoverableNativeSession =
                 providerThread.nativeThreadRef !== null && nonRetryable;
               const nestedCause = "cause" in failed.error ? failed.error.cause : undefined;
+              const detail =
+                nestedCause instanceof Error
+                  ? nestedCause.message
+                  : typeof nestedCause === "string"
+                    ? nestedCause
+                    : failed.error.message;
               const failure = makeProviderFailure({
                 cause: failed.error,
-                message: unrecoverableNativeSession
-                  ? "The Agent couldn't reopen this conversation"
-                  : nestedCause instanceof Error
-                    ? nestedCause.message
-                    : typeof nestedCause === "string"
-                      ? nestedCause
-                      : failed.error.message,
-                ...(nonRetryable ? { retryable: false } : {}),
-                ...(unrecoverableNativeSession
-                  ? { code: ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE }
-                  : {}),
+                message: workspaceMissing
+                  ? failed.title
+                  : unrecoverableNativeSession
+                    ? "The Agent couldn't reopen this conversation"
+                    : detail,
+                code: workspaceMissing
+                  ? ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE
+                  : unrecoverableNativeSession
+                    ? ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE
+                    : undefined,
+                retryable: workspaceMissing ? true : nonRetryable ? false : undefined,
                 class: "provider_error",
               });
               yield* settleFailedRunAttempt({
@@ -746,6 +755,14 @@ export const layer: Layer.Layer<
         },
       );
       if (sessionResult._tag === "Failure") {
+        if (sessionResult.failure instanceof ProviderWorkspaceMissingError) {
+          yield* settleStartFailure({
+            signal: "workspace-missing",
+            title: "This chat’s working directory no longer exists",
+            error: sessionResult.failure,
+          });
+          return;
+        }
         if (input.willRetry === true && !permanentNativeRecoveryFailure(sessionResult.failure))
           return yield* sessionResult.failure;
         yield* settleStartFailure({

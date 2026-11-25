@@ -660,6 +660,8 @@ export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
 
 /** Failure code on the error item a failed workspace preparation leaves. */
 export const ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE = "workspace_preparation_failed";
+/** Failure code when a Run could not send its message because the working directory was missing. */
+export const ORCHESTRATION_V2_WORKSPACE_MISSING_FAILURE_CODE = "workspace_missing";
 
 export const OrchestrationV2NativeInput = Schema.Struct({
   runtimeGeneration: TrimmedNonEmptyString,
@@ -3608,6 +3610,12 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
+  }),
+  /** Requeues the latest unstarted Run waiting for the working directory, if it is ready. */
+  Schema.Struct({
+    type: Schema.Literal("run.workspace-missing.retry"),
+    commandId: CommandId,
+    threadId: ThreadId,
   }),
   /** Stops provider-owned background work without interrupting the foreground Run. */
   Schema.Struct({
