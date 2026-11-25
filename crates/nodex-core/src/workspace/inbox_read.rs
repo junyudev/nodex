@@ -1399,7 +1399,7 @@ pub(super) fn dispatch_context_for_inputs(
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN projects project ON project.id = session.project_id \
-             WHERE NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND session.archived = 0 AND COALESCE(thread.archived, 0) = 0 \
+             WHERE NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) AND NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND session.archived = 0 AND COALESCE(thread.archived, 0) = 0 \
                AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) \
                AND (session.project_id IS NULL OR (project.library_id = ?1 \
                  AND project.lifecycle = 'active')) \
@@ -1722,7 +1722,7 @@ pub(super) fn read_chat_targets(
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
-               AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+               AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
                AND session.archived = 0 \
                AND (session.project_id IS NULL OR (project.library_id = ?1 AND project.lifecycle = 'active')) \
                AND (?2 IS NULL OR session.project_id = ?2) \

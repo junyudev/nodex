@@ -1,6 +1,5 @@
 use super::test_support::*;
 use nodex_core_contracts::{CoreErrorCode, library::AgentWorkSelection, workspace::*};
-use rusqlite::params;
 const PAGE: &str = "019d0000-0000-7000-8000-000000000081";
 fn setup() -> TestWorkspace {
     let w = seeded_workspace();
@@ -36,8 +35,8 @@ fn start(launch: &str, again: bool) -> ProjectWorkspaceIntent {
         expected_turn_episode: None,
     }
 }
-fn counts(w: &TestWorkspace) -> (i64, i64, i64, i64, i64, String) {
-    w.kernel.readers().read_default(|c| Ok(c.query_row("SELECT (SELECT count(*) FROM project_sessions WHERE id LIKE 'session:%'),(SELECT count(*) FROM project_session_pages WHERE page_id=?1),(SELECT count(*) FROM coordinator_managed_sessions),(SELECT count(*) FROM coordinator_work_events WHERE kind='started'),(SELECT count(*) FROM page_work_launches),(SELECT json_extract(value.value_json,'$') FROM data_source_property_values value JOIN data_source_page_memberships member ON member.id=value.membership_id WHERE member.page_block_id=?1 AND value.property_id='status')",[PAGE],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?)).unwrap()
+fn counts(w: &TestWorkspace) -> (i64, i64, i64, i64, String) {
+    w.kernel.readers().read_default(|c| Ok(c.query_row("SELECT (SELECT count(*) FROM project_sessions WHERE id LIKE 'session:%'),(SELECT count(*) FROM project_session_pages WHERE page_id=?1),(SELECT count(*) FROM managed_chats),(SELECT count(*) FROM page_work_launches),(SELECT json_extract(value.value_json,'$') FROM data_source_property_values value JOIN data_source_page_memberships member ON member.id=value.membership_id WHERE member.page_block_id=?1 AND value.property_id='status')",[PAGE],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?)).unwrap()
 }
 #[test]
 fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
@@ -61,7 +60,7 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
         .module
         .apply(&context(), request("start", start("launch", false)))
         .unwrap();
-    assert_eq!(counts(&w), (1, 1, 1, 1, 1, "doing".into()));
+    assert_eq!(counts(&w), (1, 1, 1, 1, "doing".into()));
     let replay = w
         .module
         .apply(&context(), request("start", start("launch", false)))
@@ -69,7 +68,7 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
     assert!(replay.committed.receipt.mutation.duplicate);
     assert_eq!(replay.committed.commit_seq, first.committed.commit_seq);
     apply(&w.module, "start:same-launch", start("launch", false));
-    assert_eq!(counts(&w), (1, 1, 1, 1, 1, "doing".into()));
+    assert_eq!(counts(&w), (1, 1, 1, 1, "doing".into()));
     let error = w
         .module
         .apply(&context(), request("start:other", start("other", false)))
@@ -77,7 +76,7 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
     assert_eq!(error.code, CoreErrorCode::Conflict);
     assert!(error.message.contains("again"));
     apply(&w.module, "start:again", start("other", true));
-    assert_eq!(counts(&w), (2, 2, 2, 2, 2, "doing".into()));
+    assert_eq!(counts(&w), (2, 2, 2, 2, "doing".into()));
     let ProjectWorkspaceReadValue::PageWorkOutbox { launches } = read(
         &w.module,
         ProjectWorkspaceRead::PageWorkOutbox { limit: 10 },
@@ -87,8 +86,6 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
     assert_eq!(launches.len(), 2);
     assert_eq!(launches[0].brief, "Work brief");
     assert_eq!(launches[0].selection.model, "gpt-6.1-sol");
-    let event=w.kernel.readers().read_default(|c| Ok(c.query_row("SELECT dedupe_key FROM coordinator_work_events WHERE page_id=?1 AND session_id='session:launch'",params![PAGE],|r|r.get::<_,String>(0))?)).unwrap();
-    assert_eq!(event, format!("started:{PAGE}:launch"));
     apply(
         &w.module,
         "settle",
@@ -99,7 +96,7 @@ fn page_work_start_is_atomic_replayed_and_again_is_explicit() {
         },
     );
     apply(&w.module, "start:after-settlement", start("launch", false));
-    assert_eq!(counts(&w), (2, 2, 2, 2, 2, "doing".into()));
+    assert_eq!(counts(&w), (2, 2, 2, 2, "doing".into()));
     assert_eq!(
         activity_rows(&w.module)
             .iter()
@@ -310,7 +307,7 @@ fn page_work_readiness_waits_for_acceptance_and_ignores_later_reports() {
         "prerequisite:session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             session_id: "prerequisite:chat".into(),
             project_id: Some("project:work".into()),
             title: "Prerequisite".into(),
@@ -616,7 +613,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
             "chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 side_chat_source_session_id: None,
                 project_id: Some("project:work".into()),
                 session_id: "chat".into(),
@@ -643,14 +640,7 @@ fn managed_chat_owner_uses_its_active_work_page_without_following_related_links(
                 },
             },
         );
-        apply(
-            &w.module,
-            "manage",
-            ProjectWorkspaceIntent::SetSessionManaged {
-                session_id: "chat".into(),
-                managed: true,
-            },
-        );
+        crate::workspace::test_support::mark_managed(&w, "chat");
         let mut actor = context();
         actor.agent_attribution = Some(nodex_core_contracts::BoundAgentAttribution {
             run_id: None,

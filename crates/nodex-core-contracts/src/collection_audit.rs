@@ -53,12 +53,10 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::CurrentTurnNotifications
         | ProjectWorkspaceRead::PageWorkOutbox { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ChatMessageInbound { .. }
-        | ProjectWorkspaceRead::ReadCoordinator
-        | ProjectWorkspaceRead::ReadManagedSession { .. }
-        | ProjectWorkspaceRead::ReadEventBatch { .. } => ReadBudgetPolicy::Identity,
-        ProjectWorkspaceRead::ReadManagedSessions { .. }
-        | ProjectWorkspaceRead::ReadPendingWorkEvents { .. }
-        | ProjectWorkspaceRead::ReadOpenEventBatches { .. } => ReadBudgetPolicy::BoundedBatch,
+        | ProjectWorkspaceRead::DecisionRun { .. }
+        | ProjectWorkspaceRead::DecisionRunReservations
+        | ProjectWorkspaceRead::RetiredDecisionRuns { .. }
+        | ProjectWorkspaceRead::ManagedChat { .. } => ReadBudgetPolicy::Identity,
         // Atomic queue updates operate on one complete application-owned message document.
         ProjectWorkspaceRead::QueuedMessageState | ProjectWorkspaceRead::InboxMessage { .. } => {
             ReadBudgetPolicy::LargeObject

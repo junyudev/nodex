@@ -1431,14 +1431,14 @@ export interface components {
             readonly revision: number;
         };
         readonly AutomationAssessmentCommand: {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly generation: number;
             /** @enum {string} */
             readonly kind: "begin";
             readonly request_id: string;
         } | {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly generation: number;
             /** @enum {string} */
@@ -1507,7 +1507,7 @@ export interface components {
         };
         readonly AutomationAssessmentRequest: {
             readonly automations: readonly components["schemas"]["Automation"][];
-            readonly coordinator_session_id?: string | null;
+            readonly decision_session_id?: string | null;
             /** Format: int64 */
             readonly generation: number;
             /** Format: int64 */
@@ -2979,53 +2979,6 @@ export interface components {
             readonly kind: "project";
             readonly projectId: string;
         };
-        readonly CoordinatorEventBatch: {
-            readonly accepted_at?: string | null;
-            readonly batch_id: string;
-            readonly body: string;
-            readonly coordinator_session_id: string;
-            readonly created_at: string;
-            readonly fingerprint: string;
-            readonly invalidated_at?: string | null;
-            readonly message_id: string;
-        };
-        readonly CoordinatorManagedSession: {
-            readonly active_page_ids: readonly string[];
-            readonly latest_report_at?: string | null;
-            readonly observed_json?: unknown;
-            /** Format: int64 */
-            readonly observed_revision: number;
-            readonly session_id: string;
-            readonly since: string;
-        };
-        readonly CoordinatorObservationInput: {
-            /** Format: int64 */
-            readonly expected_revision: number;
-            readonly observed_json: unknown;
-            readonly resolved_request_ids: readonly string[];
-            readonly session_id: string;
-        };
-        readonly CoordinatorWorkEvent: {
-            readonly created_at: string;
-            readonly dedupe_key: string;
-            readonly event_id: string;
-            readonly kind: components["schemas"]["CoordinatorWorkEventKind"];
-            readonly page_id?: string | null;
-            readonly page_key?: string | null;
-            readonly page_title?: string | null;
-            readonly payload: unknown;
-            readonly session_id?: string | null;
-            readonly session_title?: string | null;
-        };
-        readonly CoordinatorWorkEventInput: {
-            readonly dedupe_key: string;
-            readonly kind: components["schemas"]["CoordinatorWorkEventKind"];
-            readonly page_id?: string | null;
-            readonly payload: unknown;
-            readonly session_id?: string | null;
-        };
-        /** @enum {string} */
-        readonly CoordinatorWorkEventKind: "report" | "attention" | "turn_ended" | "failed" | "stalled" | "ready_to_start" | "started";
         readonly CoreArtifactIdentity: {
             readonly build_id: string;
             readonly sha256: string;
@@ -5335,7 +5288,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "agents_map" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "agents_map" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_reply_previews" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "sessions_set_settled" | "work_start" | "workspace_refresh" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -5405,16 +5358,9 @@ export interface components {
             /** @enum {string} */
             readonly type: "answer";
         };
-        /** @description An admitted delivery whose result no longer belongs to an open request. */
-        readonly InboxRoutingCancellation: {
-            readonly coordinator_session_id: string;
-            /** Format: int64 */
-            readonly generation: number;
-            readonly request_id: string;
-        };
         /** @description Handover and the carrying Run start survive restarts. */
         readonly InboxRoutingDelivery: {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly handed_over_at_ms: number;
             readonly last_refusal?: string | null;
@@ -5462,7 +5408,6 @@ export interface components {
         readonly InboxTurn: {
             readonly active_chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
             readonly delivery_error?: string | null;
-            readonly note_id?: string | null;
             readonly options: readonly string[];
             readonly pull_request_url?: string | null;
             readonly turn: components["schemas"]["PageTurn"];
@@ -7922,6 +7867,10 @@ export interface components {
         };
         /** @enum {string} */
         readonly MaintenanceTask: "integrity_check" | "foreign_key_check" | "document_revision_finalize" | "document_compaction" | "history_retention" | "block_retention" | "operational_journal";
+        readonly ManagedChat: {
+            readonly session_id: string;
+            readonly since: string;
+        };
         /** @enum {string} */
         readonly ManagedThreadFollowRole: "own_pr" | "context";
         /** @description A person in the Library. Removing a Member retains references and identity. */
@@ -8537,13 +8486,11 @@ export interface components {
                 readonly kind: "resume_work";
                 readonly scope: components["schemas"]["ExecutionHoldScope"];
             } | {
-                readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "record_session_execution";
                 readonly observation: components["schemas"]["SessionExecutionObservation"];
-                readonly resolved_request_ids: readonly string[];
                 readonly session_id: string;
             } | {
                 readonly base_commit_oid: string;
@@ -8615,19 +8562,6 @@ export interface components {
                 readonly launch_id: string;
                 readonly rejection?: string | null;
             } | {
-                /** @enum {string} */
-                readonly kind: "bind_coordinator";
-                readonly session_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "unbind_coordinator";
-                readonly session_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "set_session_managed";
-                readonly managed: boolean;
-                readonly session_id: string;
-            } | {
                 readonly expected_turn_episode?: string | null;
                 /** @enum {string} */
                 readonly kind: "accept_page_work";
@@ -8638,29 +8572,6 @@ export interface components {
                 readonly outcome: components["schemas"]["WorkReportOutcome"];
                 readonly page_id?: string | null;
                 readonly summary: string;
-            } | {
-                readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
-                /** @enum {string} */
-                readonly kind: "record_work_events";
-                readonly observed: readonly components["schemas"]["CoordinatorObservationInput"][];
-            } | {
-                readonly batch_id: string;
-                readonly body: string;
-                readonly coordinator_session_id: string;
-                readonly event_ids: readonly string[];
-                readonly fingerprint: string;
-                /** @enum {string} */
-                readonly kind: "create_event_batch";
-                readonly message_id: string;
-            } | {
-                readonly batch_id: string;
-                /** @enum {string} */
-                readonly kind: "discard_event_batch";
-            } | {
-                readonly accepted_at: string;
-                readonly batch_id: string;
-                /** @enum {string} */
-                readonly kind: "settle_event_batch";
             } | {
                 readonly document_id: string;
                 readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
@@ -8825,8 +8736,7 @@ export interface components {
                 readonly title: string;
             } | {
                 readonly agent_selection?: components["schemas"]["AgentWorkSelection"] | null;
-                /** @description Host-only role binding, atomic with Session/execution admission. */
-                readonly coordinator?: boolean;
+                readonly decision_run?: components["schemas"]["NodexDecisionRunInput"] | null;
                 /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
@@ -8838,6 +8748,10 @@ export interface components {
                 readonly session_id: string;
                 readonly side_chat_source_session_id?: string | null;
                 readonly title: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "acknowledge_decision_run_stopped";
+                readonly session_id: string;
             } | {
                 readonly expected_native_host_id: string;
                 readonly expected_native_thread_id: string;
@@ -9088,19 +9002,14 @@ export interface components {
                 readonly session_id: string;
             } | {
                 readonly body: string;
-                readonly event_ids: readonly string[];
-                /** @enum {string} */
-                readonly kind: "write_turn_note";
-                readonly note_id: string;
-                readonly notify: boolean;
-                readonly page_id: string;
-            } | {
-                readonly body: string;
                 readonly document_id: string;
+                /** Format: int64 */
+                readonly generation: number;
                 /** @enum {string} */
                 readonly kind: "answer_inbox_question";
                 readonly page_id: string;
                 readonly question_page_id: string;
+                readonly request_id: string;
             } | {
                 readonly body: string;
                 readonly dispatch?: components["schemas"]["InboxReplyDispatch"] | null;
@@ -9141,7 +9050,7 @@ export interface components {
                 readonly page_id: string;
                 readonly reason: string;
             } | {
-                readonly coordinator_session_id: string;
+                readonly decision_session_id: string;
                 /** Format: int64 */
                 readonly generation: number;
                 /** @enum {string} */
@@ -9149,7 +9058,7 @@ export interface components {
                 readonly request_id: string;
                 readonly skill_offers?: readonly components["schemas"]["InboxSkillOffer"][];
             } | {
-                readonly coordinator_session_id: string;
+                readonly decision_session_id: string;
                 /** Format: int64 */
                 readonly generation: number;
                 /** @enum {string} */
@@ -9157,7 +9066,7 @@ export interface components {
                 readonly reason: string;
                 readonly request_id: string;
             } | {
-                readonly coordinator_session_id: string;
+                readonly decision_session_id: string;
                 /** Format: int64 */
                 readonly generation: number;
                 /** @enum {string} */
@@ -9183,17 +9092,6 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "delete_inbox_messages";
                 readonly page_ids: readonly string[];
-            } | {
-                readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
-                readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
-                readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
-                /** @enum {string} */
-                readonly kind: "propose_inbox_dispatch";
-                readonly page_ids: readonly string[];
-                readonly produced_by?: string | null;
-                readonly proposal_id: string;
-                readonly rationale?: string | null;
-                readonly summary: string;
             } | {
                 readonly action?: components["schemas"]["ProjectWorkspaceInboxDispatchAction"] | null;
                 readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
@@ -9281,6 +9179,8 @@ export interface components {
                 readonly page_id: string;
             } | {
                 readonly automatic_dispatch?: boolean;
+                /** @description Required for a successful settlement. Host failures may have no decision run. */
+                readonly decision_session_id?: string | null;
                 readonly error?: string | null;
                 /** Format: int64 */
                 readonly generation: number;
@@ -10345,31 +10245,19 @@ export interface components {
                 readonly limit: number;
             } | {
                 /** @enum {string} */
-                readonly kind: "read_coordinator";
+                readonly kind: "decision_run";
+                readonly session_id: string;
             } | {
                 /** @enum {string} */
-                readonly kind: "read_managed_session";
-                readonly session_id: string;
+                readonly kind: "decision_run_reservations";
             } | {
                 readonly after_session_id?: string | null;
                 /** @enum {string} */
-                readonly kind: "read_managed_sessions";
-                /** Format: int32 */
-                readonly limit: number;
+                readonly kind: "retired_decision_runs";
             } | {
                 /** @enum {string} */
-                readonly kind: "read_pending_work_events";
-                /** Format: int32 */
-                readonly limit: number;
-            } | {
-                readonly batch_id: string;
-                /** @enum {string} */
-                readonly kind: "read_event_batch";
-            } | {
-                /** @enum {string} */
-                readonly kind: "read_open_event_batches";
-                /** Format: int32 */
-                readonly limit: number;
+                readonly kind: "managed_chat";
+                readonly session_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "next_session_snooze";
@@ -10754,6 +10642,22 @@ export interface components {
                 readonly tasks: readonly components["schemas"]["MaintenanceTask"][];
             };
         };
+        readonly NodexDecisionRun: {
+            readonly created_at: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly kind: components["schemas"]["NodexDecisionRunKind"];
+            readonly request_id: string;
+            readonly session_id: string;
+        };
+        readonly NodexDecisionRunInput: {
+            /** Format: int64 */
+            readonly generation: number;
+            readonly kind: components["schemas"]["NodexDecisionRunKind"];
+            readonly request_id: string;
+        };
+        /** @enum {string} */
+        readonly NodexDecisionRunKind: "routing" | "assessment";
         /**
          * @description Why Nodex is speaking; independent of a message's user-editable kind.
          * @enum {string}
@@ -11992,13 +11896,11 @@ export interface components {
             readonly kind: "resume_work";
             readonly scope: components["schemas"]["ExecutionHoldScope"];
         } | {
-            readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "record_session_execution";
             readonly observation: components["schemas"]["SessionExecutionObservation"];
-            readonly resolved_request_ids: readonly string[];
             readonly session_id: string;
         } | {
             readonly base_commit_oid: string;
@@ -12070,19 +11972,6 @@ export interface components {
             readonly launch_id: string;
             readonly rejection?: string | null;
         } | {
-            /** @enum {string} */
-            readonly kind: "bind_coordinator";
-            readonly session_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "unbind_coordinator";
-            readonly session_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "set_session_managed";
-            readonly managed: boolean;
-            readonly session_id: string;
-        } | {
             readonly expected_turn_episode?: string | null;
             /** @enum {string} */
             readonly kind: "accept_page_work";
@@ -12093,29 +11982,6 @@ export interface components {
             readonly outcome: components["schemas"]["WorkReportOutcome"];
             readonly page_id?: string | null;
             readonly summary: string;
-        } | {
-            readonly events: readonly components["schemas"]["CoordinatorWorkEventInput"][];
-            /** @enum {string} */
-            readonly kind: "record_work_events";
-            readonly observed: readonly components["schemas"]["CoordinatorObservationInput"][];
-        } | {
-            readonly batch_id: string;
-            readonly body: string;
-            readonly coordinator_session_id: string;
-            readonly event_ids: readonly string[];
-            readonly fingerprint: string;
-            /** @enum {string} */
-            readonly kind: "create_event_batch";
-            readonly message_id: string;
-        } | {
-            readonly batch_id: string;
-            /** @enum {string} */
-            readonly kind: "discard_event_batch";
-        } | {
-            readonly accepted_at: string;
-            readonly batch_id: string;
-            /** @enum {string} */
-            readonly kind: "settle_event_batch";
         } | {
             readonly document_id: string;
             readonly for: components["schemas"]["ProjectWorkspacePageCreationTarget"];
@@ -12280,8 +12146,7 @@ export interface components {
             readonly title: string;
         } | {
             readonly agent_selection?: components["schemas"]["AgentWorkSelection"] | null;
-            /** @description Host-only role binding, atomic with Session/execution admission. */
-            readonly coordinator?: boolean;
+            readonly decision_run?: components["schemas"]["NodexDecisionRunInput"] | null;
             /** @description Explicit Page hand-offs: link atomically and advance Triage/Plan to in progress. */
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
@@ -12293,6 +12158,10 @@ export interface components {
             readonly session_id: string;
             readonly side_chat_source_session_id?: string | null;
             readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "acknowledge_decision_run_stopped";
+            readonly session_id: string;
         } | {
             readonly expected_native_host_id: string;
             readonly expected_native_thread_id: string;
@@ -12543,19 +12412,14 @@ export interface components {
             readonly session_id: string;
         } | {
             readonly body: string;
-            readonly event_ids: readonly string[];
-            /** @enum {string} */
-            readonly kind: "write_turn_note";
-            readonly note_id: string;
-            readonly notify: boolean;
-            readonly page_id: string;
-        } | {
-            readonly body: string;
             readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
             /** @enum {string} */
             readonly kind: "answer_inbox_question";
             readonly page_id: string;
             readonly question_page_id: string;
+            readonly request_id: string;
         } | {
             readonly body: string;
             readonly dispatch?: components["schemas"]["InboxReplyDispatch"] | null;
@@ -12596,7 +12460,7 @@ export interface components {
             readonly page_id: string;
             readonly reason: string;
         } | {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly generation: number;
             /** @enum {string} */
@@ -12604,7 +12468,7 @@ export interface components {
             readonly request_id: string;
             readonly skill_offers?: readonly components["schemas"]["InboxSkillOffer"][];
         } | {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly generation: number;
             /** @enum {string} */
@@ -12612,7 +12476,7 @@ export interface components {
             readonly reason: string;
             readonly request_id: string;
         } | {
-            readonly coordinator_session_id: string;
+            readonly decision_session_id: string;
             /** Format: int64 */
             readonly generation: number;
             /** @enum {string} */
@@ -12638,17 +12502,6 @@ export interface components {
             /** @enum {string} */
             readonly kind: "delete_inbox_messages";
             readonly page_ids: readonly string[];
-        } | {
-            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
-            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
-            readonly entry_kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
-            /** @enum {string} */
-            readonly kind: "propose_inbox_dispatch";
-            readonly page_ids: readonly string[];
-            readonly produced_by?: string | null;
-            readonly proposal_id: string;
-            readonly rationale?: string | null;
-            readonly summary: string;
         } | {
             readonly action?: components["schemas"]["ProjectWorkspaceInboxDispatchAction"] | null;
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
@@ -12736,6 +12589,8 @@ export interface components {
             readonly page_id: string;
         } | {
             readonly automatic_dispatch?: boolean;
+            /** @description Required for a successful settlement. Host failures may have no decision run. */
+            readonly decision_session_id?: string | null;
             readonly error?: string | null;
             /** Format: int64 */
             readonly generation: number;
@@ -13074,6 +12929,7 @@ export interface components {
              */
             readonly can_stop: boolean;
             readonly created_at: string;
+            readonly decision_run_kind?: components["schemas"]["NodexDecisionRunKind"] | null;
             readonly display_title: string;
             readonly execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
             readonly folder?: components["schemas"]["ChatFolder"] | null;
@@ -14933,29 +14789,25 @@ export interface components {
                     readonly kind: "page_work_outbox";
                     readonly launches: readonly components["schemas"]["PageWorkLaunch"][];
                 } | {
+                    readonly decision_run?: components["schemas"]["NodexDecisionRun"] | null;
                     /** @enum {string} */
-                    readonly kind: "read_coordinator";
-                    readonly session_id?: string | null;
+                    readonly kind: "decision_run";
+                    readonly pending?: boolean;
+                } | {
+                    /** Format: int32 */
+                    readonly assessment: number;
+                    /** @enum {string} */
+                    readonly kind: "decision_run_reservations";
+                    /** Format: int32 */
+                    readonly routing: number;
                 } | {
                     /** @enum {string} */
-                    readonly kind: "read_managed_session";
-                    readonly managed?: components["schemas"]["CoordinatorManagedSession"] | null;
+                    readonly kind: "retired_decision_runs";
+                    readonly runs: readonly components["schemas"]["NodexDecisionRun"][];
                 } | {
                     /** @enum {string} */
-                    readonly kind: "read_managed_sessions";
-                    readonly sessions: readonly components["schemas"]["CoordinatorManagedSession"][];
-                } | {
-                    readonly events: readonly components["schemas"]["CoordinatorWorkEvent"][];
-                    /** @enum {string} */
-                    readonly kind: "read_pending_work_events";
-                } | {
-                    readonly batch?: components["schemas"]["CoordinatorEventBatch"] | null;
-                    /** @enum {string} */
-                    readonly kind: "read_event_batch";
-                } | {
-                    readonly batches: readonly components["schemas"]["CoordinatorEventBatch"][];
-                    /** @enum {string} */
-                    readonly kind: "read_open_event_batches";
+                    readonly kind: "managed_chat";
+                    readonly managed?: components["schemas"]["ManagedChat"] | null;
                 } | {
                     readonly delivery?: components["schemas"]["ProjectWorkspaceSessionSnoozeDelivery"] | null;
                     /** @enum {string} */
@@ -15210,7 +15062,6 @@ export interface components {
                     readonly kind: "inbox_suggestion_requests";
                     readonly requests: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionRequest"][];
                 } | {
-                    readonly cancelled_deliveries: readonly components["schemas"]["InboxRoutingCancellation"][];
                     /** @enum {string} */
                     readonly kind: "inbox_pending_suggestion_request_ids";
                     readonly request_ids: readonly string[];
@@ -15355,6 +15206,8 @@ export interface components {
             readonly agent?: components["schemas"]["AgentWorkSelection"] | null;
             readonly earlierRunStart?: components["schemas"]["SessionExecutionRunStart"] | null;
             readonly failureReason?: string | null;
+            /** @description Excerpt of the last reply for the observed Run, bounded to 400 characters. */
+            readonly lastReplyExcerpt?: string | null;
             readonly pendingRequestIds: readonly string[];
             readonly pendingRequests: readonly components["schemas"]["SessionExecutionRequest"][];
             readonly personStopped: boolean;
@@ -15370,7 +15223,7 @@ export interface components {
             readonly terminalStatus?: components["schemas"]["SessionExecutionTerminalStatus"] | null;
         };
         readonly SessionExecutionObserver: {
-            readonly managed?: components["schemas"]["CoordinatorManagedSession"] | null;
+            readonly managed: boolean;
             readonly observation?: components["schemas"]["SessionExecutionObservation"] | null;
             /** Format: int64 */
             readonly revision: number;
@@ -15952,7 +15805,7 @@ export interface components {
             readonly kind: "none";
         };
         /** @enum {string} */
-        readonly TurnReason: "triage" | "delivery_recovery" | "paused" | "working" | "queued" | "question" | "approval" | "blocked" | "failed" | "stalled" | "review" | "ready_to_start" | "starting" | "waiting_on_prerequisite";
+        readonly TurnReason: "triage" | "delivery_recovery" | "paused" | "working" | "queued" | "question" | "approval" | "blocked" | "failed" | "stalled" | "review" | "reply" | "ready_to_start" | "starting" | "waiting_on_prerequisite";
         readonly VersionRange: {
             /** Format: int32 */
             readonly max: number;

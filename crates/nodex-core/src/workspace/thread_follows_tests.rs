@@ -25,7 +25,7 @@ pub(super) fn card(w: &TestWorkspace, page: &str, session: &str, active: bool) {
         &format!("session-{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: session.into(),
             project_id: Some("project:work".into()),
@@ -36,14 +36,7 @@ pub(super) fn card(w: &TestWorkspace, page: &str, session: &str, active: bool) {
             launch_request_id: format!("launch:{session}"),
         },
     );
-    apply(
-        &w.module,
-        &format!("managed-{session}"),
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: session.into(),
-            managed: true,
-        },
-    );
+    crate::workspace::test_support::mark_managed(w, session);
 }
 fn agent(session: &str, intent: ProjectWorkspaceIntent) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::AgentCommand {
@@ -817,7 +810,7 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
         "bind-intake-runtime",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: "intake-chat".into(),
             project_id: None,
@@ -828,14 +821,7 @@ fn intake_deduplicates_discovery_and_dispatch_follows_its_origin_without_automat
             launch_request_id: "intake-launch".into(),
         },
     );
-    apply(
-        &w.module,
-        "manage-intake",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "intake-chat".into(),
-            managed: true,
-        },
-    );
+    crate::workspace::test_support::mark_managed(&w, "intake-chat");
     batch(
         &w,
         "new-message",
@@ -1180,15 +1166,19 @@ fn external_intake_refuses_explicit_request_even_when_start_my_requests_is_enabl
         summary: "Investigate request".into(),
         rationale: None,
     };
-    let settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
-        automatic_dispatch: true,
-        request_id: "request".into(),
-        generation: pending.generation,
-        titles: vec![],
-        suggestions: vec![suggestion],
-        produced_by: Some("Nodex".into()),
-        error: None,
-    };
+    let settlement = crate::workspace::inbox_tests::with_routing_delivery(
+        &w.module,
+        ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
+            automatic_dispatch: true,
+            request_id: "request".into(),
+            generation: pending.generation,
+            titles: vec![],
+            suggestions: vec![suggestion],
+            produced_by: Some("Nodex".into()),
+            error: None,
+        },
+    );
     let error = w
         .module
         .apply(&context(), request("settle-explicit", settlement.clone()))

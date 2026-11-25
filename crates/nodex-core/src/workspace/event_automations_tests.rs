@@ -379,26 +379,35 @@ fn pending(w: &TestWorkspace) -> Vec<AutomationAssessmentRequest> {
     };
     requests
 }
-fn coordinator(w: &TestWorkspace) {
+fn assessment_session(r: &AutomationAssessmentRequest) -> String {
+    format!("assessment:{}:{}", r.request_id, r.generation)
+}
+fn launch_assessment(w: &TestWorkspace, r: &AutomationAssessmentRequest) {
+    let session = assessment_session(r);
     apply(
         &w.module,
-        "coordinator",
+        &format!("launch:{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: true,
-            session_id: "nodex".into(),
+            decision_run: Some(NodexDecisionRunInput {
+                kind: NodexDecisionRunKind::Assessment,
+                request_id: r.request_id.clone(),
+                generation: r.generation,
+            }),
+            session_id: session.clone(),
             project_id: None,
             title: "Nodex".into(),
             initial_page_ids: vec![],
             runtime_id: "runtime".into(),
-            runtime_thread_id: "thread:nodex".into(),
-            launch_request_id: "launch:nodex".into(),
+            runtime_thread_id: format!("thread:{session}"),
+            launch_request_id: format!("launch:{session}"),
             side_chat_source_session_id: None,
         },
     );
 }
 fn begin(w: &TestWorkspace, r: &AutomationAssessmentRequest) {
-    coordinator(w);
+    launch_assessment(w, r);
+    let session = assessment_session(r);
     apply(
         &w.module,
         &format!("begin-{}-{}", r.request_id, r.generation),
@@ -406,7 +415,7 @@ fn begin(w: &TestWorkspace, r: &AutomationAssessmentRequest) {
             command: AutomationAssessmentCommand::Begin {
                 request_id: r.request_id.clone(),
                 generation: r.generation,
-                coordinator_session_id: "nodex".into(),
+                decision_session_id: session.clone(),
             },
         },
     );
@@ -421,7 +430,7 @@ fn begin(w: &TestWorkspace, r: &AutomationAssessmentRequest) {
             command: AutomationAssessmentCommand::StartRun {
                 request_id: r.request_id.clone(),
                 generation: r.generation,
-                coordinator_session_id: "nodex".into(),
+                decision_session_id: session.clone(),
                 started_at_ms: at,
             },
         },
@@ -461,18 +470,19 @@ fn submit(r: &AutomationAssessmentRequest, matched: bool) -> ProjectWorkspaceInt
     } else {
         vec![]
     };
+    let session = assessment_session(r);
     ProjectWorkspaceIntent::AgentCommand {
         provenance: Box::new(AgentTurnProvenance {
             profile_id: "profile-1".into(),
             authority: ProjectWorkspaceTurnAuthority {
-                thread_id: "thread:nodex".into(),
-                root_thread_id: "thread:nodex".into(),
+                thread_id: format!("thread:{session}"),
+                root_thread_id: format!("thread:{session}"),
                 turn_id: "run:nodex".into(),
                 actor_project_id: None,
                 library_id: "library-1".into(),
                 store_epoch: "epoch-1".into(),
                 runtime: Some(ProjectWorkspaceAgentRuntimeAuthority {
-                    session_id: "nodex".into(),
+                    session_id: session.clone(),
                     runtime_id: "runtime".into(),
                     turn_kind: ProjectWorkspaceAgentRuntimeTurnKind::Run,
                 }),
@@ -710,7 +720,7 @@ fn a_changed_automation_requeues_the_same_trigger_with_a_new_generation_and_poli
     assert_eq!(current.generation, old.generation + 1);
     assert_eq!(current.trigger_ids, old.trigger_ids);
     assert_ne!(current.policy_hash, old.policy_hash);
-    assert!(current.coordinator_session_id.is_none());
+    assert!(current.decision_session_id.is_none());
     assert!(
         w.module
             .apply(&context(), request("stale-answer", submit(&old, true)))
@@ -915,7 +925,7 @@ fn updates_queued_during_auto_assessment_reach_the_new_origin_follow() {
 }
 
 #[test]
-fn coordinator_reads_bounded_evidence_with_original_lengths_and_exact_automation_policy() {
+fn assessment_reads_bounded_evidence_with_original_lengths_and_exact_automation_policy() {
     let w = setup();
     automation(&w, "automation", AutomationMode::DryRun);
     let mut batch = ingest(&w, 0, "lease");
@@ -1121,7 +1131,7 @@ fn follow_updates_wait_for_automation_launch_admission_and_cannot_wake_a_rejecte
             "prepare-runtime",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 session_id: launch.session_id.clone(),
                 project_id: Some(launch.project_id.clone()),
                 title: "Investigate CI failure".into(),
@@ -1311,4 +1321,77 @@ fn equivalent_text_with_different_runbooks_requires_separate_owner_review() {
         assert_eq!(c.query_row("SELECT count(DISTINCT page_id) FROM automation_decisions WHERE mode='ask_first' AND status='held'",[],|r|r.get::<_,i64>(0))?,2);
         Ok(())
     }).unwrap();
+}
+
+#[test]
+fn an_assessment_run_can_only_read_and_submit_its_own_request() {
+    let w = setup();
+    automation(&w, "automation", AutomationMode::DryRun);
+    event(&w, 1);
+    let r = pending(&w).remove(0);
+    begin(&w, &r);
+    let mut elsewhere = r.clone();
+    elsewhere.request_id = "unassigned-request".into();
+    launch_assessment(&w, &elsewhere);
+    let ProjectWorkspaceIntent::AgentCommand {
+        provenance: wrong, ..
+    } = submit(&elsewhere, false)
+    else {
+        unreachable!()
+    };
+    let valid = submit(&r, false);
+    let ProjectWorkspaceIntent::AgentCommand {
+        provenance: right,
+        intent,
+    } = &valid
+    else {
+        unreachable!()
+    };
+    let evidence = |provenance| ProjectWorkspaceRead::AutomationAssessments {
+        read: AutomationAssessmentRead::Resource {
+            request_id: r.request_id.clone(),
+            generation: r.generation,
+            resource: AutomationAssessmentResource::Triggers,
+            cursor: None,
+            provenance,
+        },
+    };
+    let read = |provenance| {
+        w.module.read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: evidence(provenance),
+            },
+        )
+    };
+    assert_eq!(
+        read(wrong.clone()).unwrap_err().code,
+        CoreErrorCode::Unauthorized
+    );
+    read(right.clone()).unwrap();
+    let error = w
+        .module
+        .apply(
+            &context(),
+            request(
+                "submit-elsewhere",
+                ProjectWorkspaceIntent::AgentCommand {
+                    provenance: wrong,
+                    intent: intent.clone(),
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Unauthorized);
+    apply(&w.module, "submit-own", valid);
+    let recorded = crate::workspace::test_support::activity_rows(&w.module);
+    let assessment = recorded
+        .iter()
+        .find(|row| row.evidence["fact_kind"] == "assessment")
+        .unwrap();
+    assert_eq!(
+        assessment.evidence["decision_session_id"],
+        assessment_session(&r)
+    );
 }

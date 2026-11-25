@@ -4,15 +4,8 @@ use nodex_core_contracts::inbox::{
 };
 
 fn managed(w: &TestWorkspace, id: &str) {
-    runtime_session(&w.module, id, None, false);
-    apply_host(
-        &w.module,
-        &format!("managed:{id}"),
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: id.into(),
-            managed: true,
-        },
-    );
+    runtime_session(&w.module, id, None);
+    crate::workspace::test_support::mark_managed(w, id);
 }
 fn bind_message(w: &TestWorkspace, session: &str, id: &str, text: &str, count: u32) {
     apply_host(
@@ -251,6 +244,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
             &w.module,
             "no-new-consent",
             ProjectWorkspaceIntent::SettleInboxSuggestion {
+                decision_session_id: None,
                 automatic_dispatch: true,
                 request_id: request.request_id.clone(),
                 generation: request.generation,
@@ -300,6 +294,7 @@ fn handback_preserves_original_page_images_without_granting_new_consent() {
         &w.module,
         "resend-returned",
         ProjectWorkspaceIntent::SettleInboxSuggestion {
+            decision_session_id: None,
             automatic_dispatch: true,
             request_id: request.request_id,
             generation: request.generation,
@@ -356,7 +351,7 @@ fn an_answered_question_and_an_unmanaged_caller_cannot_be_handed_back() {
         ),
         CoreErrorCode::Conflict
     );
-    runtime_session(&w.module, "unmanaged", None, false);
+    runtime_session(&w.module, "unmanaged", None);
     bind_message(&w, "unmanaged", "unmanaged-message", "A message", 0);
     assert_eq!(
         apply_host_error(

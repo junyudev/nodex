@@ -135,8 +135,8 @@ fn rows(connection: &Connection, query: &str) -> Vec<Vec<rusqlite::types::Value>
 
 /// Compare all durable tables, including FTS backing tables, execution receipts,
 /// immutable history, File bindings, recovery packages, indexes and timestamps.
-/// Later upgrades change Session ordering and add Coordinator state; their migration tests cover it.
-const STRUCTURAL_UPGRADES_AFTER_SERIALIZER: &str = "'project_sessions','workspace_sidebar_lanes','workspace_sidebar_positions','coordinator','coordinator_managed_sessions','coordinator_work_events','coordinator_event_batches','inbox_routing_deliveries'";
+/// Later upgrades change Session ordering and work state; their migration tests cover those tables.
+const STRUCTURAL_UPGRADES_AFTER_SERIALIZER: &str = "'project_sessions','workspace_sidebar_lanes','workspace_sidebar_positions','managed_chats','nodex_decision_runs','coordinator','coordinator_managed_sessions','coordinator_work_events','coordinator_event_batches','inbox_routing_deliveries'";
 
 /// Tables, and planner statistics for them, that the serializer upgrade must leave intact.
 fn unaffected(connection: &Connection) -> BTreeMap<String, Vec<Vec<rusqlite::types::Value>>> {

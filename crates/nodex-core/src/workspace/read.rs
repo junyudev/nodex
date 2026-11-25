@@ -39,6 +39,7 @@ struct SessionRow {
     activity_at: i64,
     pinned: i64,
     managed: bool,
+    decision_run_kind: Option<nodex_core_contracts::workspace::NodexDecisionRunKind>,
     pinned_order: Option<i64>,
     archived: i64,
     archived_at: Option<String>,
@@ -134,37 +135,36 @@ pub(super) fn read(
                 launches: super::page_work::outbox(connection, limit)?,
             })
         }
-        ProjectWorkspaceRead::ReadCoordinator => Ok(ProjectWorkspaceReadValue::ReadCoordinator {
-            session_id: super::coordinator::binding(connection)?,
-        }),
-        ProjectWorkspaceRead::ReadManagedSessions {
-            after_session_id,
-            limit,
-        } => Ok(ProjectWorkspaceReadValue::ReadManagedSessions {
-            sessions: super::coordinator::managed_sessions(
-                connection,
-                after_session_id.as_deref(),
-                limit,
-            )?,
-        }),
-        ProjectWorkspaceRead::ReadManagedSession { session_id } => {
-            Ok(ProjectWorkspaceReadValue::ReadManagedSession {
-                managed: super::coordinator::managed(connection, &session_id)?,
+        ProjectWorkspaceRead::DecisionRun { session_id } => {
+            let decision_run = super::decision_run::read(connection, &session_id)?;
+            let pending = decision_run.is_some()
+                && super::decision_run::pending(connection, library_id, &session_id)?;
+            Ok(ProjectWorkspaceReadValue::DecisionRun {
+                decision_run,
+                pending,
             })
         }
-        ProjectWorkspaceRead::ReadPendingWorkEvents { limit } => {
-            Ok(ProjectWorkspaceReadValue::ReadPendingWorkEvents {
-                events: super::coordinator::pending(connection, library_id, limit)?,
+        ProjectWorkspaceRead::DecisionRunReservations => {
+            super::inbox::require_host(context)?;
+            let (routing, assessment) = super::decision_run::reservations(connection, library_id)?;
+            Ok(ProjectWorkspaceReadValue::DecisionRunReservations {
+                routing,
+                assessment,
             })
         }
-        ProjectWorkspaceRead::ReadEventBatch { batch_id } => {
-            Ok(ProjectWorkspaceReadValue::ReadEventBatch {
-                batch: super::coordinator::event_batch(connection, &batch_id)?,
+        ProjectWorkspaceRead::RetiredDecisionRuns { after_session_id } => {
+            super::inbox::require_host(context)?;
+            Ok(ProjectWorkspaceReadValue::RetiredDecisionRuns {
+                runs: super::decision_run::retired(
+                    connection,
+                    library_id,
+                    after_session_id.as_deref(),
+                )?,
             })
         }
-        ProjectWorkspaceRead::ReadOpenEventBatches { limit } => {
-            Ok(ProjectWorkspaceReadValue::ReadOpenEventBatches {
-                batches: super::coordinator::open_batches(connection, limit)?,
+        ProjectWorkspaceRead::ManagedChat { session_id } => {
+            Ok(ProjectWorkspaceReadValue::ManagedChat {
+                managed: super::work_facts::managed_chat(connection, &session_id)?,
             })
         }
         ProjectWorkspaceRead::NextSessionSnooze => {
@@ -236,18 +236,13 @@ pub(super) fn read(
             })
         }
         ProjectWorkspaceRead::InboxPendingSuggestionRequestIds { request_ids } => {
-            let (request_ids, cancelled_deliveries) = super::inbox::read_pending_request_ids(
+            let request_ids = super::inbox::read_pending_request_ids(
                 connection,
                 context,
                 library_id,
                 &request_ids,
             )?;
-            Ok(
-                ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds {
-                    request_ids,
-                    cancelled_deliveries,
-                },
-            )
+            Ok(ProjectWorkspaceReadValue::InboxPendingSuggestionRequestIds { request_ids })
         }
         ProjectWorkspaceRead::ChatMessageInbound { session_id, run_id } => {
             super::inbox::require_host(context)?;
@@ -1114,9 +1109,10 @@ fn read_session(
                thread.thread_id, thread.thread_name, \
                thread.thread_preview, session.created_at, session.updated_at, \
                execution.runtime_id, execution.runtime_thread_id, {}, \
-               EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id), \
-               {}, {}, {}, {}, {}, {}, {}, {} \
+               EXISTS(SELECT 1 FROM managed_chats managed WHERE managed.session_id = session.id), \
+               {}, {}, {}, {}, {}, {}, {}, {}, decision.kind AS decision_run_kind \
              FROM project_sessions session \
+             LEFT JOIN nodex_decision_runs decision ON decision.session_id = session.id \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN project_session_execution_bindings execution ON execution.session_id = session.id \
@@ -1157,6 +1153,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         activity_at: row.get(3)?,
         pinned: row.get(4)?,
         managed: row.get(17)?,
+        decision_run_kind: super::decision_run::read_kind(row, "decision_run_kind")?,
         pinned_order: row.get(5)?,
         archived: row.get(6)?,
         archived_at: row.get(7)?,
@@ -1211,9 +1208,10 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         page_turn: row.page_turn,
         settled_at: row.settled_at,
         attention_at: row.attention_at,
-        can_manage: row.can_manage,
-        can_stop: row.can_stop,
+        can_manage: row.decision_run_kind.is_none() && row.can_manage,
+        can_stop: row.decision_run_kind.is_none() && row.can_stop,
         thread_id: row.thread_id,
+        decision_run_kind: row.decision_run_kind,
         execution_ref: row.execution_ref,
         folder: row.folder,
         created_at: row.created_at,

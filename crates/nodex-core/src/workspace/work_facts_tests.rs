@@ -5,7 +5,7 @@ use nodex_core_contracts::{CoreErrorCode, agent::AgentTurnProvenance, workspace:
 fn launch(id: &str) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::CreateAgentRuntimeSession {
         agent_selection: None,
-        coordinator: false,
+        decision_run: None,
         session_id: id.into(),
         project_id: None,
         title: id.into(),
@@ -15,34 +15,6 @@ fn launch(id: &str) -> ProjectWorkspaceIntent {
         launch_request_id: format!("launch:{id}"),
         side_chat_source_session_id: None,
     }
-}
-fn coordinator(w: &TestWorkspace) {
-    apply(&w.module, "launch:nodex", launch("nodex"));
-    apply(
-        &w.module,
-        "bind",
-        ProjectWorkspaceIntent::BindCoordinator {
-            session_id: "nodex".into(),
-        },
-    );
-}
-fn event(key: &str) -> CoordinatorWorkEventInput {
-    CoordinatorWorkEventInput {
-        kind: CoordinatorWorkEventKind::Attention,
-        session_id: Some("work".into()),
-        page_id: None,
-        payload: serde_json::json!({"question":"Proceed?"}),
-        dedupe_key: key.into(),
-    }
-}
-fn pending(w: &TestWorkspace) -> Vec<CoordinatorWorkEvent> {
-    let ProjectWorkspaceReadValue::ReadPendingWorkEvents { events } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadPendingWorkEvents { limit: 20 },
-    ) else {
-        panic!("events")
-    };
-    events
 }
 fn report(page: Option<&str>, summary: &str) -> ProjectWorkspaceIntent {
     ProjectWorkspaceIntent::AgentCommand {
@@ -70,235 +42,22 @@ fn report(page: Option<&str>, summary: &str) -> ProjectWorkspaceIntent {
     }
 }
 
-#[test]
-fn coordinator_managed_state_projects_to_sessions_and_invalidates_on_each_toggle() {
-    let w = seeded_workspace();
-    coordinator(&w);
-    apply(&w.module, "work", launch("work"));
-    apply(&w.module, "other", launch("other"));
-
-    let session = || {
-        let ProjectWorkspaceReadValue::Session { session } = read(
-            &w.module,
-            ProjectWorkspaceRead::Session {
-                session_id: "work".into(),
-            },
-        ) else {
-            panic!("Session response")
-        };
-        session
+fn decision_launch() -> ProjectWorkspaceIntent {
+    let mut intent = launch("nodex");
+    let ProjectWorkspaceIntent::CreateAgentRuntimeSession { decision_run, .. } = &mut intent else {
+        unreachable!();
     };
-    let tasks = || {
-        let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
-            &w.module,
-            ProjectWorkspaceRead::TaskWindow {
-                project_id: None,
-                whole_library: false,
-                include_archived: None,
-                placement_scope: ProjectWorkspaceTaskPlacementScope::All,
-                lifecycle: Default::default(),
-                order: ProjectWorkspaceTaskOrder::Activity,
-                query: None,
-                window: CollectionWindowRequest::default(),
-            },
-        ) else {
-            panic!("Task window response")
-        };
-        tasks
-    };
-    assert!(!session().managed);
-    assert!(tasks().items.iter().all(|task| !task.session.managed));
-
-    for (operation, managed) in [("manage", true), ("take-back", false)] {
-        let result = w
-            .module
-            .apply(
-                &context(),
-                request(
-                    operation,
-                    ProjectWorkspaceIntent::SetSessionManaged {
-                        session_id: "work".into(),
-                        managed,
-                    },
-                ),
-            )
-            .unwrap();
-        let nodex_core_contracts::CoreModuleEventPayload::ProjectWorkspace(event) =
-            result.event.expect("Workspace invalidation").payload
-        else {
-            panic!("Workspace event")
-        };
-        assert_eq!(event.session_detail_ids, vec!["work"]);
-        assert_eq!(
-            event.session_summary_scopes,
-            vec![ProjectSessionInvalidationScope::All]
-        );
-        assert_eq!(session().managed, managed);
-        let tasks = tasks();
-        assert_eq!(tasks.items.len(), 2);
-        assert_eq!(
-            tasks
-                .items
-                .iter()
-                .find(|task| task.session.id == "work")
-                .unwrap()
-                .session
-                .managed,
-            managed
-        );
-        assert!(
-            !tasks
-                .items
-                .iter()
-                .find(|task| task.session.id == "other")
-                .unwrap()
-                .session
-                .managed
-        );
-    }
+    *decision_run = Some(NodexDecisionRunInput {
+        kind: NodexDecisionRunKind::Routing,
+        request_id: "request".into(),
+        generation: 1,
+    });
+    intent
 }
 
-#[test]
-fn coordinator_report_is_authorized_atomic_replayed_and_keeps_an_ordinary_links_status() {
-    let w = seeded_workspace();
-    coordinator(&w);
-    apply(&w.module, "work", launch("work"));
-    create_project(&w.module, "project:work:create", "project:work");
-    apply(
-        &w.module,
-        "create-work-page",
-        ProjectWorkspaceIntent::CreatePageFor {
-            target: ProjectWorkspacePageCreationTarget::Project {
-                project_id: "project:work".into(),
-            },
-            page_id: "019d0000-0000-7000-8000-000000000091".into(),
-            document_id: "019d0000-0000-7000-8000-000000000092".into(),
-            title: "Work".into(),
-        },
-    );
-    assert!(
-        w.module
-            .apply(&context(), request("unlinked", report(None, "Done")))
-            .is_err()
-    );
-    assert!(pending(&w).is_empty());
-    apply(
-        &w.module,
-        "link",
-        ProjectWorkspaceIntent::MutateSession {
-            session_id: "work".into(),
-            intent: ProjectSessionIntent::LinkPage {
-                page_id: "019d0000-0000-7000-8000-000000000091".into(),
-            },
-        },
-    );
-    apply(
-        &w.module,
-        "manage",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "work".into(),
-            managed: true,
-        },
-    );
-    let status = || {
-        w.kernel.readers().read_default(|c| {
-        Ok(c.query_row("SELECT value.value_json,value.revision FROM data_source_page_memberships membership JOIN data_source_property_values value ON value.membership_id=membership.id AND value.property_id='status' WHERE membership.page_block_id='019d0000-0000-7000-8000-000000000091' AND membership.removed_at IS NULL",[],|r| Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?)))?)
-    }).unwrap()
-    };
-    let previous_status = status();
-    let result = w
-        .module
-        .apply(
-            &context(),
-            request("report", report(None, "Fixed with evidence.")),
-        )
-        .unwrap();
-    assert!(result.event.is_some());
-    assert_eq!(status(), previous_status);
-    apply(&w.module, "report", report(None, "Fixed with evidence."));
-    let events = pending(&w);
-    assert_eq!(events.len(), 1);
-    assert_eq!(
-        events[0].dedupe_key,
-        "report:work:019d0000-0000-7000-8000-000000000091:1"
-    );
-    let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
-        &w.module,
-        ProjectWorkspaceRead::PageChatActivitySummaries {
-            page_ids: vec!["019d0000-0000-7000-8000-000000000091".into()],
-        },
-    ) else {
-        panic!("activity")
-    };
-    let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadManagedSession {
-            session_id: "work".into(),
-        },
-    ) else {
-        panic!("managed");
-    };
-    assert_eq!(
-        managed.unwrap().latest_report_at.as_deref(),
-        Some(
-            summaries[0]
-                .work
-                .latest_report
-                .as_ref()
-                .unwrap()
-                .at
-                .as_str()
-        )
-    );
-    assert_eq!(summaries[0].work.managed_session_count, 1);
-    assert_eq!(
-        summaries[0].work.latest_report.as_ref().unwrap().revision,
-        1
-    );
-    let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
-        &w.module,
-        ProjectWorkspaceRead::PageChatWindow {
-            page_id: "019d0000-0000-7000-8000-000000000091".into(),
-            include_archived: None,
-            window: CollectionWindowRequest {
-                first: Some(10),
-                after: None,
-            },
-        },
-    ) else {
-        panic!("chats")
-    };
-    assert_eq!(
-        chats.items[0].report.as_ref().unwrap().summary,
-        "Fixed with evidence."
-    );
-    // Force event insertion to fail at the storage boundary: the link report must roll back too.
-    w.kernel.writer().call(|c| { c.execute_batch("CREATE TEMP TRIGGER reject_work_event BEFORE INSERT ON coordinator_work_events BEGIN SELECT RAISE(ABORT,'event unavailable'); END;")?; Ok(()) }).unwrap();
-    assert!(
-        w.module
-            .apply(
-                &context(),
-                request("report:failure", report(None, "Second attempt"))
-            )
-            .is_err()
-    );
-    let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
-        &w.module,
-        ProjectWorkspaceRead::PageChatActivitySummaries {
-            page_ids: vec!["019d0000-0000-7000-8000-000000000091".into()],
-        },
-    ) else {
-        panic!("activity")
-    };
-    assert_eq!(
-        summaries[0].work.latest_report.as_ref().unwrap().revision,
-        1
-    );
-}
 #[test]
 fn a_chat_on_several_pages_reports_by_the_page_key_from_its_brief() {
     let w = seeded_workspace();
-    coordinator(&w);
     apply(&w.module, "work", launch("work"));
     create_project(&w.module, "project:work:create", "project:work");
     let pages = [
@@ -375,165 +134,43 @@ fn a_chat_on_several_pages_reports_by_the_page_key_from_its_brief() {
 }
 
 #[test]
-fn coordinator_observation_and_event_dedupe_are_one_fenced_transaction() {
+fn decision_run_is_absent_from_discovery_routing_and_page_chats() {
     let w = seeded_workspace();
     apply(&w.module, "work", launch("work"));
-    apply(
-        &w.module,
-        "manage",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "work".into(),
-            managed: true,
-        },
-    );
-    let observation = |revision| CoordinatorObservationInput {
-        resolved_request_ids: vec![],
-        session_id: "work".into(),
-        expected_revision: revision,
-        observed_json: serde_json::json!({"state":"waiting"}),
-    };
-    apply(
-        &w.module,
-        "observe",
-        ProjectWorkspaceIntent::RecordWorkEvents {
-            events: vec![event("attention:1"), event("attention:1")],
-            observed: vec![observation(0)],
-        },
-    );
-    assert_eq!(pending(&w).len(), 1);
-    let error = w
-        .module
-        .apply(
-            &context(),
-            request(
-                "stale",
-                ProjectWorkspaceIntent::RecordWorkEvents {
-                    events: vec![event("attention:2")],
-                    observed: vec![observation(0)],
-                },
-            ),
-        )
-        .unwrap_err();
-    assert_eq!(error.code, CoreErrorCode::RevisionConflict);
-    assert_eq!(pending(&w).len(), 1);
-    let ProjectWorkspaceReadValue::ReadManagedSession {
-        managed: Some(managed),
-    } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadManagedSession {
-            session_id: "work".into(),
-        },
-    )
-    else {
-        panic!("managed")
-    };
-    assert_eq!(managed.observed_revision, 1);
-}
-#[test]
-fn coordinator_batch_fencing_keeps_membership_and_body_immutable() {
-    let w = seeded_workspace();
-    coordinator(&w);
-    apply(
-        &w.module,
-        "events",
-        ProjectWorkspaceIntent::RecordWorkEvents {
-            events: vec![event("one"), event("two")],
-            observed: vec![],
-        },
-    );
-    let events = pending(&w);
-    let batch = |id: &str, ids: Vec<String>| ProjectWorkspaceIntent::CreateEventBatch {
-        batch_id: id.into(),
-        coordinator_session_id: "nodex".into(),
-        event_ids: ids,
-        message_id: format!("message:{id}"),
-        body: "Work updates".into(),
-        fingerprint: "f".repeat(64),
-    };
-    apply(
-        &w.module,
-        "batch:1",
-        batch("one", vec![events[0].event_id.clone()]),
-    );
-    assert!(
-        w.module
-            .apply(
-                &context(),
-                request(
-                    "batch:2",
-                    batch("two", events.iter().map(|e| e.event_id.clone()).collect())
-                )
-            )
-            .is_err()
-    );
-    assert_eq!(pending(&w).len(), 1);
-    let ProjectWorkspaceReadValue::ReadOpenEventBatches { batches } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadOpenEventBatches { limit: 100 },
-    ) else {
-        panic!("batches")
-    };
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].body, "Work updates");
-    apply(
-        &w.module,
-        "settle",
-        ProjectWorkspaceIntent::SettleEventBatch {
-            batch_id: "one".into(),
-            accepted_at: NOW.into(),
-        },
-    );
-    let ProjectWorkspaceReadValue::ReadOpenEventBatches { batches } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadOpenEventBatches { limit: 100 },
-    ) else {
-        panic!("batches")
-    };
-    assert!(batches.is_empty());
-    assert!(
-        w.module
-            .apply(
-                &context(),
-                request(
-                    "manage:self",
-                    ProjectWorkspaceIntent::SetSessionManaged {
-                        session_id: "nodex".into(),
-                        managed: true
-                    }
-                )
-            )
-            .is_err()
-    );
-}
-#[test]
-fn coordinator_is_absent_from_discovery_routing_and_page_chats() {
-    let w = seeded_workspace();
-    coordinator(&w);
-    apply(&w.module, "work", launch("work"));
+    apply(&w.module, "decision", decision_launch());
     let window = CollectionWindowRequest {
         first: Some(100),
         after: None,
     };
-    let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
-        &w.module,
-        ProjectWorkspaceRead::SessionWindow {
-            provenance: None,
-            archived: false,
-            order: None,
-            projectless_only: None,
-            exclude_drafts: None,
-            project_id: None,
-            query: None,
-            native_only: None,
-            execution_refs: None,
-            session_ids: None,
-            window: window.clone(),
-        },
-    ) else {
-        panic!("sessions")
+    let chat_list = |archived, query| {
+        let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
+            &w.module,
+            ProjectWorkspaceRead::SessionWindow {
+                provenance: None,
+                archived,
+                order: None,
+                projectless_only: None,
+                exclude_drafts: None,
+                project_id: None,
+                query,
+                native_only: None,
+                execution_refs: None,
+                session_ids: None,
+                window: window.clone(),
+            },
+        ) else {
+            panic!("sessions")
+        };
+        sessions.items
     };
-    assert!(sessions.items.iter().any(|x| x.task.session.id == "work"));
-    assert!(!sessions.items.iter().any(|x| x.task.session.id == "nodex"));
+    let sessions = chat_list(false, None);
+    assert!(sessions.iter().any(|x| x.task.session.id == "work"));
+    assert!(!sessions.iter().any(|x| x.task.session.id == "nodex"));
+    assert!(
+        chat_list(false, Some("nodex".into()))
+            .iter()
+            .all(|row| row.task.session.id != "nodex")
+    );
     let ProjectWorkspaceReadValue::InboxChatTargets { window: targets } = read(
         &w.module,
         ProjectWorkspaceRead::InboxChatTargets {
@@ -550,65 +187,111 @@ fn coordinator_is_absent_from_discovery_routing_and_page_chats() {
         "019d0000-0000-7000-8000-000000000091",
         "project:default",
     );
-    apply(
-        &w.module,
-        "link:nodex",
-        ProjectWorkspaceIntent::MutateSession {
-            session_id: "nodex".into(),
-            intent: ProjectSessionIntent::LinkPage {
-                page_id: "019d0000-0000-7000-8000-000000000091".into(),
-            },
-        },
+    assert_eq!(
+        w.module
+            .apply(
+                &context(),
+                request(
+                    "link:nodex",
+                    ProjectWorkspaceIntent::MutateSession {
+                        session_id: "nodex".into(),
+                        intent: ProjectSessionIntent::LinkPage {
+                            page_id: "019d0000-0000-7000-8000-000000000091".into(),
+                        },
+                    },
+                )
+            )
+            .unwrap_err()
+            .code,
+        CoreErrorCode::InvalidInput
     );
+    let ProjectWorkspaceReadValue::SessionExecutionObserver { observer } = read(
+        &w.module,
+        ProjectWorkspaceRead::SessionExecutionObserver {
+            session_id: "nodex".into(),
+        },
+    ) else {
+        panic!("observer")
+    };
+    assert!(observer.is_none());
+    let ProjectWorkspaceReadValue::SessionExecutionObservers { observers } = read(
+        &w.module,
+        ProjectWorkspaceRead::SessionExecutionObservers {
+            after_session_id: None,
+            limit: 100,
+        },
+    ) else {
+        panic!("observers")
+    };
+    assert!(observers.iter().any(|row| row.session_id == "work"));
+    assert!(observers.iter().all(|row| row.session_id != "nodex"));
     let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
         &w.module,
         ProjectWorkspaceRead::PageChatWindow {
             page_id: "019d0000-0000-7000-8000-000000000091".into(),
             include_archived: Some(true),
-            window,
+            window: window.clone(),
         },
     ) else {
         panic!("chats")
     };
     assert!(chats.items.is_empty());
-}
-
-#[test]
-fn coordinator_role_is_bound_atomically_with_its_runtime_session() {
-    let w = seeded_workspace();
-    let mut intent = launch("nodex");
-    let ProjectWorkspaceIntent::CreateAgentRuntimeSession { coordinator, .. } = &mut intent else {
-        unreachable!()
+    let ProjectWorkspaceReadValue::SessionDetail { session, .. } = read(
+        &w.module,
+        ProjectWorkspaceRead::SessionDetail {
+            session_id: "nodex".into(),
+        },
+    ) else {
+        panic!("decision Session")
     };
-    *coordinator = true;
-    apply(&w.module, "launch:coordinator", intent);
-    let ProjectWorkspaceReadValue::ReadCoordinator { session_id } =
-        read(&w.module, ProjectWorkspaceRead::ReadCoordinator)
-    else {
-        panic!("binding")
-    };
-    assert_eq!(session_id.as_deref(), Some("nodex"));
-    assert!(
-        w.module
+    assert_eq!(
+        session.decision_run_kind,
+        Some(NodexDecisionRunKind::Routing)
+    );
+    assert!(!session.can_manage && !session.can_stop);
+    for (op, intent) in [
+        (
+            "archive-decision",
+            ProjectSessionIntent::SetArchived { archived: true },
+        ),
+        (
+            "unarchive-decision",
+            ProjectSessionIntent::SetArchived { archived: false },
+        ),
+        (
+            "rename-decision",
+            ProjectSessionIntent::Rename {
+                title: "Rename".into(),
+            },
+        ),
+    ] {
+        let error = w
+            .module
             .apply(
                 &context(),
                 request(
-                    "manage:coordinator",
-                    ProjectWorkspaceIntent::SetSessionManaged {
+                    op,
+                    ProjectWorkspaceIntent::MutateSession {
                         session_id: "nodex".into(),
-                        managed: true
-                    }
-                )
+                        intent,
+                    },
+                ),
             )
-            .is_err()
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::Unauthorized);
+    }
+    assert!(
+        chat_list(true, None)
+            .iter()
+            .all(|row| row.task.session.id != "nodex")
     );
 }
 
 #[test]
-fn coordinator_sidebar_sections_and_pins_do_not_reveal_its_session() {
+fn decision_run_sidebar_sections_and_pins_do_not_reveal_its_session() {
     let w = seeded_workspace();
-    coordinator(&w);
     apply(&w.module, "work", launch("work"));
+    apply(&w.module, "decision", decision_launch());
     let window = CollectionWindowRequest {
         first: Some(100),
         after: None,
@@ -650,14 +333,20 @@ fn coordinator_sidebar_sections_and_pins_do_not_reveal_its_session() {
         panic!("section items")
     };
     assert!(items.items.is_empty());
-    apply(
-        &w.module,
-        "pin:nodex",
-        ProjectWorkspaceIntent::MutateSession {
-            session_id: "nodex".into(),
-            intent: ProjectSessionIntent::SetPinned { pinned: true },
-        },
-    );
+    let error = w
+        .module
+        .apply(
+            &context(),
+            request(
+                "pin:nodex",
+                ProjectWorkspaceIntent::MutateSession {
+                    session_id: "nodex".into(),
+                    intent: ProjectSessionIntent::SetPinned { pinned: true },
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Unauthorized);
     let ProjectWorkspaceReadValue::SidebarOverview { pinned_tasks } = read(
         &w.module,
         ProjectWorkspaceRead::SidebarOverview {
@@ -668,127 +357,6 @@ fn coordinator_sidebar_sections_and_pins_do_not_reveal_its_session() {
         panic!("pins")
     };
     assert!(pinned_tasks.items.is_empty());
-}
-
-#[test]
-fn managed_chat_sweep_is_bounded_and_reaches_live_sessions_in_identity_order() {
-    let w = seeded_workspace();
-    for id in ["z", "a", "m"] {
-        apply(&w.module, &format!("launch:{id}"), launch(id));
-        apply(
-            &w.module,
-            &format!("manage:{id}"),
-            ProjectWorkspaceIntent::SetSessionManaged {
-                session_id: id.into(),
-                managed: true,
-            },
-        );
-    }
-    apply(
-        &w.module,
-        "archive:m",
-        ProjectWorkspaceIntent::MutateSession {
-            session_id: "m".into(),
-            intent: ProjectSessionIntent::SetArchived { archived: true },
-        },
-    );
-    let ProjectWorkspaceReadValue::ReadManagedSessions { sessions } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadManagedSessions {
-            after_session_id: None,
-            limit: 1,
-        },
-    ) else {
-        panic!("managed page");
-    };
-    assert_eq!(
-        sessions
-            .iter()
-            .map(|s| s.session_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["a"]
-    );
-    let ProjectWorkspaceReadValue::ReadManagedSessions { sessions } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadManagedSessions {
-            after_session_id: Some("a".into()),
-            limit: 2,
-        },
-    ) else {
-        panic!("managed page");
-    };
-    assert_eq!(
-        sessions
-            .iter()
-            .map(|s| s.session_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["z"]
-    );
-    assert!(
-        w.module
-            .read(
-                &context(),
-                nodex_core_contracts::ModuleReadRequest {
-                    contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: ProjectWorkspaceRead::ReadManagedSessions {
-                        after_session_id: None,
-                        limit: 101
-                    }
-                }
-            )
-            .is_err()
-    );
-}
-
-#[test]
-fn coordinator_duplicate_capture_does_not_wake_event_consumers() {
-    let w = seeded_workspace();
-    let intent = ProjectWorkspaceIntent::RecordWorkEvents {
-        events: vec![event("same")],
-        observed: vec![],
-    };
-    apply(&w.module, "capture:one", intent.clone());
-    let result = w
-        .module
-        .apply(&context(), request("capture:duplicate", intent))
-        .unwrap();
-    assert!(result.event.is_none());
-    assert_eq!(pending(&w).len(), 1);
-}
-
-#[test]
-fn coordinator_composite_work_keys_fit_full_page_identities_and_stay_bounded() {
-    let w = seeded_workspace();
-    let key = format!(
-        "ready_to_start:{}:{}:{}",
-        "p".repeat(512),
-        "p".repeat(512),
-        "e".repeat(64)
-    );
-    apply(
-        &w.module,
-        "long-key",
-        ProjectWorkspaceIntent::RecordWorkEvents {
-            events: vec![event(&key)],
-            observed: vec![],
-        },
-    );
-    assert_eq!(pending(&w)[0].dedupe_key, key);
-    let rejected = w
-        .module
-        .apply(
-            &context(),
-            request(
-                "oversized-key",
-                ProjectWorkspaceIntent::RecordWorkEvents {
-                    events: vec![event(&"k".repeat(2049))],
-                    observed: vec![],
-                },
-            ),
-        )
-        .unwrap_err();
-    assert_eq!(rejected.code, CoreErrorCode::InvalidInput);
-    assert_eq!(pending(&w).len(), 1);
 }
 
 const STAGE_PAGE: &str = "019d0000-0000-7000-8000-000000000091";
@@ -818,14 +386,7 @@ fn stage_fixture() -> TestWorkspace {
             },
         },
     );
-    apply(
-        &w.module,
-        "manage",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "work".into(),
-            managed: true,
-        },
-    );
+    crate::workspace::test_support::mark_managed(&w, "work");
     w
 }
 fn stage(w: &TestWorkspace) -> String {
@@ -903,15 +464,22 @@ fn outcome_report(outcome: WorkReportOutcome) -> ProjectWorkspaceIntent {
         }),
     }
 }
+fn report_outcome(w: &TestWorkspace) -> Option<String> {
+    w.kernel
+        .readers()
+        .read_default(|c| {
+            Ok(c.query_row(
+        "SELECT report_outcome FROM project_session_pages WHERE session_id='work' AND page_id=?1",
+        [STAGE_PAGE], |row| row.get(0),
+    )?)
+        })
+        .unwrap()
+}
 fn report_moved(w: &TestWorkspace) -> bool {
-    pending(w)
-        .iter()
-        .rev()
-        .find(|e| e.kind == CoordinatorWorkEventKind::Report)
-        .unwrap()
-        .payload["status_moved"]
-        .as_bool()
-        .unwrap()
+    w.kernel.readers().read_default(|c| Ok(c.query_row(
+        "SELECT report_status_moved FROM project_session_pages WHERE session_id='work' AND page_id=?1",
+        [STAGE_PAGE], |row| row.get(0),
+    )?)).unwrap()
 }
 #[test]
 fn report_facts_follow_only_their_predecessors_and_keep_every_skipped_fact() {
@@ -1083,15 +651,6 @@ fn an_old_chat_reports_evidence_without_moving_the_new_attempt() {
     );
     assert_eq!(stage(&w), "doing");
     assert!(!report_moved(&w));
-    let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read(
-        &w.module,
-        ProjectWorkspaceRead::ReadManagedSession {
-            session_id: "work".into(),
-        },
-    ) else {
-        panic!()
-    };
-    assert!(managed.unwrap().active_page_ids.is_empty());
 }
 #[test]
 fn a_person_or_their_agent_accepts_reviewed_work_and_only_a_person_advances_the_fence() {
@@ -1276,7 +835,7 @@ fn only_the_root_agent_reports_work_even_on_a_native_connection() {
         assert_eq!(error.code, CoreErrorCode::Unauthorized);
         assert!(error.message.contains("Agent that delegated your task"));
         assert_eq!(stage(&w), "doing");
-        assert!(pending(&w).is_empty());
+        assert_eq!(report_outcome(&w), None);
 
         let mut root = report(None, "Finished the Page's work.");
         let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut root else {
@@ -1285,7 +844,7 @@ fn only_the_root_agent_reports_work_even_on_a_native_connection() {
         provenance.authority.runtime.as_mut().unwrap().turn_kind = kind;
         apply(&w.module, "root:report", root);
         assert_eq!(stage(&w), "review");
-        assert_eq!(pending(&w).len(), 1);
+        assert_eq!(report_outcome(&w).as_deref(), Some("ready"));
     }
 }
 
@@ -1327,8 +886,6 @@ fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
                 session_id: "work".into(),
                 expected_revision: revision,
                 observation,
-                events: vec![],
-                resolved_request_ids: vec![],
             };
             apply(&w.module, &format!("capture:{revision}"), intent.clone());
             apply(&w.module, &format!("capture:{revision}"), intent);
@@ -1438,23 +995,7 @@ fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
         let reopened = matches!(guard, "none" | "unstarted-head");
         assert_eq!(stage(&w), if reopened { "doing" } else { "review" });
         assert_eq!(turn().reason, (!reopened).then_some(Review), "{guard}");
-        let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read(
-            &w.module,
-            ProjectWorkspaceRead::ReadManagedSession {
-                session_id: "work".into(),
-            },
-        ) else {
-            panic!("Managed Session")
-        };
-        assert_eq!(
-            managed.unwrap().latest_report_at.is_some(),
-            guard == "older-chat"
-        );
-        assert_eq!(
-            pending(&w).len(),
-            1,
-            "the original report event remains evidence"
-        );
+        assert_eq!(report_outcome(&w).is_some(), guard == "older-chat");
         w.kernel
             .readers()
             .read_default(|connection| {
@@ -1462,4 +1003,128 @@ fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
             })
             .expect("a superseded report retains a valid Store for restart");
     }
+}
+
+#[test]
+fn decision_runs_require_host_authority_and_fresh_projectless_sessions() {
+    use nodex_core_contracts::AdapterKind;
+    let w = seeded_workspace();
+    let person = nodex_core_contracts::BoundModuleContext {
+        adapter: AdapterKind::NativeCli,
+        ..context()
+    };
+    let error = w
+        .module
+        .apply(&person, request("person-launch", decision_launch()))
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Unauthorized);
+    let mut scoped = decision_launch();
+    let ProjectWorkspaceIntent::CreateAgentRuntimeSession { project_id, .. } = &mut scoped else {
+        unreachable!()
+    };
+    *project_id = Some("project:default".into());
+    let error = w
+        .module
+        .apply(&context(), request("scoped-launch", scoped))
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::InvalidInput);
+
+    apply(&w.module, "launch-decision", decision_launch());
+    let ProjectWorkspaceReadValue::DecisionRun {
+        decision_run: Some(run),
+        ..
+    } = read(
+        &w.module,
+        ProjectWorkspaceRead::DecisionRun {
+            session_id: "nodex".into(),
+        },
+    )
+    else {
+        panic!("decision run")
+    };
+    assert_eq!(
+        (run.kind, run.request_id.as_str(), run.generation),
+        (NodexDecisionRunKind::Routing, "request", 1)
+    );
+    let mut replay = decision_launch();
+    let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+        session_id,
+        runtime_thread_id,
+        launch_request_id,
+        ..
+    } = &mut replay
+    else {
+        unreachable!()
+    };
+    *session_id = "another-session".into();
+    *runtime_thread_id = "another-thread".into();
+    *launch_request_id = "another-launch".into();
+    let result = w
+        .module
+        .apply(&context(), request("replay-decision", replay))
+        .unwrap();
+    assert_eq!(result.committed.value.affected_session_ids, ["nodex"]);
+    let ProjectWorkspaceReadValue::DecisionRun { decision_run, .. } = read(
+        &w.module,
+        ProjectWorkspaceRead::DecisionRun {
+            session_id: "another-session".into(),
+        },
+    ) else {
+        panic!("decision run")
+    };
+    assert!(decision_run.is_none());
+
+    let mut changed = decision_launch();
+    let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+        decision_run: Some(input),
+        ..
+    } = &mut changed
+    else {
+        unreachable!()
+    };
+    input.generation = 2;
+    let error = w
+        .module
+        .apply(&context(), request("rebind-decision", changed))
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Conflict);
+}
+
+#[test]
+fn blocked_and_review_turns_notify_without_additional_input() {
+    let w = stage_fixture();
+    let check = |reason| {
+        let ProjectWorkspaceReadValue::PageTurn { turn, .. } = read(
+            &w.module,
+            ProjectWorkspaceRead::PageTurn {
+                page_id: STAGE_PAGE.into(),
+            },
+        ) else {
+            panic!("Turn")
+        };
+        assert_eq!(turn.reason, Some(reason));
+        let ProjectWorkspaceReadValue::InboxTurnNotifications { intents } =
+            read(&w.module, ProjectWorkspaceRead::InboxTurnNotifications)
+        else {
+            panic!("Turn notifications")
+        };
+        assert_eq!(intents.len(), 1);
+        assert_eq!(intents[0].episode, turn.episode);
+    };
+    apply(
+        &w.module,
+        "blocked",
+        outcome_report(WorkReportOutcome::Blocked),
+    );
+    check(TurnReason::Blocked);
+    apply(&w.module, "ready", outcome_report(WorkReportOutcome::Ready));
+    apply(&w.module, "quiet", ProjectWorkspaceIntent::RecordSessionExecution {
+        session_id: "work".into(), expected_revision: 0,
+        observation: serde_json::from_value(serde_json::json!({
+            "state":"idle","runId":"run:work","runStartedAt":0,"pendingRequestIds":[],
+            "pendingRequests":[],"queue":null,"terminalStatus":"completed","personStopped":false,
+            "stalled":false,"progressFingerprint":null,"progressSince":0
+        })).unwrap(),
+    });
+    check(TurnReason::Review);
 }

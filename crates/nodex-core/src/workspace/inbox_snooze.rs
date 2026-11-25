@@ -155,7 +155,7 @@ pub(in crate::workspace) fn link_chat_turns(
     Ok(())
 }
 
-pub(in crate::workspace) fn retire_episodes(
+pub(crate) fn retire_episodes(
     connection: &Connection,
     page_ids: &[String],
 ) -> Result<(), StoreError> {

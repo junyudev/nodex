@@ -31,6 +31,7 @@ pub(super) fn turn_reply(
         turn.reason,
         Some(
             nodex_core_contracts::workspace::TurnReason::Question
+                | nodex_core_contracts::workspace::TurnReason::Reply
                 | nodex_core_contracts::workspace::TurnReason::Review
                 | nodex_core_contracts::workspace::TurnReason::Blocked
                 | nodex_core_contracts::workspace::TurnReason::Failed

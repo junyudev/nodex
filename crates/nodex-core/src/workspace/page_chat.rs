@@ -79,6 +79,9 @@ pub(crate) fn link_pages(
     page_ids: &[String],
     linked_at: &str,
 ) -> Result<(), StoreError> {
+    if !page_ids.is_empty() && super::decision_run::read(connection, session_id)?.is_some() {
+        return Err(invalid("Decision runs cannot link work Pages"));
+    }
     for page_id in page_ids {
         connection.execute(
             "INSERT OR IGNORE INTO project_session_pages(session_id, page_id, linked_at) \
@@ -96,6 +99,9 @@ pub(super) fn set_active_chats(
     pages: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
+    if !pages.is_empty() && super::decision_run::read(connection, session)?.is_some() {
+        return Err(invalid("Decision runs cannot work on Pages"));
+    }
     for page in pages {
         // An ordinary link starts its first work attempt here. Re-selecting an existing
         // attempt must retain its original fence against old Runs reporting later.
@@ -515,7 +521,7 @@ pub(super) fn read_page_chat_activity_summaries(
          JOIN pages page ON page.block_id = requested.page_id AND page.library_id = ?1 \
          LEFT JOIN project_session_pages relation ON relation.page_id = page.block_id \
          LEFT JOIN project_sessions session \
-           ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
+           ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=session.id) \
            AND (session.project_id IS NULL OR EXISTS ( \
              SELECT 1 FROM projects owner \
              WHERE owner.id = session.project_id AND owner.library_id = ?1 \
@@ -558,7 +564,7 @@ pub(super) fn read_page_chat_activity_summaries(
             )| {
                 Ok(ProjectWorkspacePageChatActivitySummary {
                     runtime_session_ids: runtime_sessions.remove(&page_id).unwrap_or_default(),
-                    work: super::coordinator::work_descriptor(connection, &page_id)?,
+                    work: super::work_facts::work_descriptor(connection, &page_id)?,
                     page_id,
                     related_count: bounded_count(related_count)?,
                     working_count: bounded_count(working_count)?,
@@ -601,7 +607,7 @@ fn read_runtime_session_ids(
            FROM requested \
            JOIN project_session_pages relation ON relation.page_id = requested.page_id \
            JOIN project_sessions session \
-             ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
+             ON session.id = relation.session_id AND session.archived = 0 AND NOT EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=session.id) \
              AND (session.project_id IS NULL OR EXISTS ( \
                SELECT 1 FROM projects owner \
                WHERE owner.id = session.project_id AND owner.library_id = ?1 \
@@ -717,7 +723,7 @@ pub(super) fn read_page_chat_window(
            LEFT JOIN codex_threads thread ON thread.thread_id = session_thread.thread_id \
            LEFT JOIN project_session_execution_bindings binding \
              ON binding.session_id = session.id \
-           WHERE relation.page_id = ?1 AND NOT EXISTS(SELECT 1 FROM coordinator WHERE coordinator.session_id=session.id) \
+           WHERE relation.page_id = ?1 AND NOT EXISTS(SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id=session.id) \
              AND (session.project_id IS NULL OR project.library_id = ?2) \
              AND (?3 = 1 OR session.archived = 0) \
          ) chat \
@@ -1321,7 +1327,7 @@ mod tests {
             "launch-runtime-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 side_chat_source_session_id: None,
                 session_id: "session:runtime".to_owned(),
                 project_id: Some("project:default".to_owned()),

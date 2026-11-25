@@ -40,6 +40,18 @@ pub(super) fn mutate_session(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     let authority = require_session(connection, library_id, session_id)?;
+    if matches!(
+        intent,
+        ProjectSessionIntent::Rename { .. }
+            | ProjectSessionIntent::SetArchived { .. }
+            | ProjectSessionIntent::SetPinned { .. }
+            | ProjectSessionIntent::SetFallbackTitle { .. }
+            | ProjectSessionIntent::RecordUserMessage { .. }
+            | ProjectSessionIntent::LinkThread { .. }
+            | ProjectSessionIntent::UnlinkThread { .. }
+    ) {
+        super::decision_run::require_chat(connection, session_id)?;
+    }
     // A chat's title and lifecycle are shared by every Member; Core decides who may change them.
     if matches!(
         intent,
@@ -536,6 +548,7 @@ pub(super) fn set_sessions_settled(
     for id in session_ids {
         validate_id("session_id", id)?;
         let authority = require_session(connection, library_id, id)?;
+        super::decision_run::require_chat(connection, id)?;
         let changed = if settled {
             !authority.archived && member_attention::settle_chat(connection, &member, id, at_ms)?
         } else {

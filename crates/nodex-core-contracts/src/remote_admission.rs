@@ -182,9 +182,8 @@ pub fn authorize(
                 | "page_turn"
                 | "page_turns"
                 | "page_work_launch"
-                | "read_coordinator"
-                | "read_managed_session"
-                | "read_managed_sessions"
+                | "decision_run"
+                | "managed_chat"
                 | "project_bootstrap"
                 | "project_window"
                 | "project"
@@ -231,21 +230,16 @@ pub fn authorize(
         "workspace_apply"
             if matches!(
                 kind,
-                "write_turn_note"
-                    | "answer_inbox_question"
-                    | "hand_back_message"
-                    | "bind_chat_inbound"
+                "answer_inbox_question" | "hand_back_message" | "bind_chat_inbound"
             ) =>
         {
             false
         }
-        "workspace_apply" if kind == "source" => {
-            encoded
-                .get("command")
-                .and_then(|c| c.get("kind"))
-                .and_then(|k| k.as_str())
-                == Some("retry_problem")
-        }
+        "workspace_apply" if kind == "source" => encoded
+            .get("command")
+            .and_then(|c| c.get("kind"))
+            .and_then(|k| k.as_str())
+            .is_some_and(|command| matches!(command, "retry_problem" | "reply_to_origin")),
         "workspace_apply" if kind == "claim_inbox_snooze_notification" => {
             encoded.get("for_push").and_then(|value| value.as_bool()) == Some(false)
         }
@@ -255,9 +249,9 @@ pub fn authorize(
             .is_none_or(|v| v == "user"),
         // Core ingress additionally requires the exact live Host launch proof: a phone's new chat,
         // or a Member's fork or side chat through the Space host.
-        "workspace_apply" if kind == "create_agent_runtime_session" => {
-            encoded.get("coordinator").and_then(|v| v.as_bool()) != Some(true)
-        }
+        "workspace_apply" if kind == "create_agent_runtime_session" => encoded
+            .get("decision_run")
+            .is_none_or(|value| value.is_null()),
         // Only the Member's own side chat, through its exact live Host delete call.
         "workspace_apply" if kind == "delete_session" => true,
         // Accepted messages additionally require their exact live execution-owner delivery proof;
@@ -469,18 +463,18 @@ mod inbox_tests {
         }
     }
     #[test]
-    fn person_launch_and_review_cannot_claim_coordinator_authority() {
+    fn person_launch_and_review_cannot_claim_decision_authority() {
         for role in [MemberRole::Member, MemberRole::Owner] {
             let context = remote(role);
             for command in [
-                json!({"kind":"create_agent_runtime_session","coordinator":false}),
+                json!({"kind":"create_agent_runtime_session"}),
                 json!({"kind":"create_agent_runtime_session","side_chat_source_session_id":"other-chat"}),
                 json!({"kind":"confirm_inbox_dispatch","confirmed_by":"user"}),
             ] {
                 assert!(authorize(&context, "workspace_apply", &command).is_ok());
             }
             for command in [
-                json!({"kind":"create_agent_runtime_session","coordinator":true}),
+                json!({"kind":"create_agent_runtime_session","decision_run":{"kind":"routing","request_id":"request","generation":1}}),
                 json!({"kind":"confirm_inbox_dispatch","confirmed_by":"nodex"}),
             ] {
                 assert_eq!(
@@ -547,7 +541,6 @@ mod inbox_tests {
                 "hand_back_message",
                 "record_chat_delivery",
                 "bind_chat_inbound",
-                "write_turn_note",
                 "answer_inbox_question",
                 "settle_page_work_launch",
                 "agent_command",
@@ -585,7 +578,7 @@ mod inbox_tests {
         }
     }
     #[test]
-    fn remote_activity_and_problem_fixes_do_not_grant_sender_authority() {
+    fn remote_people_can_reply_to_origin_and_only_hosts_can_deliver() {
         for role in [MemberRole::Member, MemberRole::Owner] {
             let context = remote(role);
             assert!(
@@ -596,16 +589,17 @@ mod inbox_tests {
                 )
                 .is_ok()
             );
-            assert!(
-                authorize(
-                    &context,
-                    "workspace_apply",
-                    &json!({"kind":"source","command":{"kind":"retry_problem"}})
-                )
-                .is_ok()
-            );
+            for kind in ["retry_problem", "reply_to_origin"] {
+                assert!(
+                    authorize(
+                        &context,
+                        "workspace_apply",
+                        &json!({"kind":"source","command":{"kind":kind}})
+                    )
+                    .is_ok()
+                );
+            }
             for kind in [
-                "reply_to_origin",
                 "claim_channel_send",
                 "settle_channel_send",
                 "record_thread_delivery_failure",

@@ -133,7 +133,7 @@ mod tests {
             &format!("create:{id}"),
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 session_id: id.into(),
                 project_id: Some("project:default".into()),
                 title: format!("Title {id}"),

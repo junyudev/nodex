@@ -4262,7 +4262,7 @@ CREATE TABLE inbox_suggestion_request_pages (
 CREATE TABLE inbox_routing_deliveries (
   request_id TEXT PRIMARY KEY REFERENCES inbox_suggestion_requests(request_id) ON DELETE CASCADE,
   generation INTEGER NOT NULL CHECK(generation>=1),
-  coordinator_session_id TEXT NOT NULL,
+  decision_session_id TEXT NOT NULL,
   handed_over_at_ms INTEGER NOT NULL CHECK(handed_over_at_ms>=0)
 , run_started_at_ms INTEGER
   CHECK (run_started_at_ms IS NULL OR run_started_at_ms >= 0), last_refusal TEXT
@@ -4280,38 +4280,20 @@ CREATE TABLE project_session_user_message_receipts (
   message_id TEXT NOT NULL,
   PRIMARY KEY (session_id, message_id)
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE coordinator (
-  id INTEGER PRIMARY KEY CHECK(id = 1),
-  session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
-  created_at TEXT NOT NULL
-) STRICT;
-CREATE TABLE coordinator_managed_sessions (
+CREATE TABLE nodex_decision_runs (
   session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
-  since TEXT NOT NULL,
-  observed_json TEXT CHECK(observed_json IS NULL OR json_valid(observed_json)),
-  observed_revision INTEGER NOT NULL DEFAULT 0 CHECK(observed_revision >= 0)
-) STRICT;
-CREATE TABLE coordinator_event_batches (
-  batch_id TEXT PRIMARY KEY,
-  coordinator_session_id TEXT NOT NULL,
-  message_id TEXT NOT NULL UNIQUE,
-  body TEXT NOT NULL,
-  fingerprint TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('routing','assessment')),
+  request_id TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK(generation>=1),
   created_at TEXT NOT NULL,
-  accepted_at TEXT
-, invalidated_at TEXT, discarded_at TEXT) STRICT;
-CREATE TABLE coordinator_work_events (
-  event_id TEXT PRIMARY KEY,
-  dedupe_key TEXT NOT NULL UNIQUE,
-  kind TEXT NOT NULL CHECK(kind IN ('report','attention','turn_ended','failed','stalled','ready_to_start','started')),
-  session_id TEXT,
-  page_id TEXT,
-  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
-  created_at TEXT NOT NULL,
-  batch_id TEXT REFERENCES coordinator_event_batches(batch_id)
-, resolved_at TEXT) STRICT;
-CREATE INDEX idx_coordinator_pending_events ON coordinator_work_events(created_at,event_id) WHERE batch_id IS NULL AND resolved_at IS NULL;
-CREATE INDEX idx_coordinator_open_batches ON coordinator_event_batches(created_at,batch_id) WHERE accepted_at IS NULL;
+  execution_stopped INTEGER NOT NULL DEFAULT 0 CHECK(execution_stopped IN (0,1)),
+  UNIQUE(kind, request_id, generation)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX idx_decision_runs_unstopped ON nodex_decision_runs(session_id) WHERE execution_stopped=0;
+CREATE TABLE managed_chats (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
+  since TEXT NOT NULL
+) WITHOUT ROWID, STRICT;
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
     draft_id TEXT NOT NULL,
@@ -5250,34 +5232,14 @@ BEGIN DELETE FROM remote_operation_members WHERE module_name=OLD.module_name AND
 CREATE TRIGGER remote_detached_receipt_collect AFTER DELETE ON detached_module_receipts
 WHEN NOT EXISTS(SELECT 1 FROM core_module_receipts WHERE module_name=OLD.module_name AND operation_id=OLD.operation_id)
 BEGIN DELETE FROM remote_operation_members WHERE module_name=OLD.module_name AND operation_id=OLD.operation_id; END;
-CREATE TABLE page_turn_notes (
-  note_id TEXT PRIMARY KEY,
-  page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
-  member_id TEXT NOT NULL REFERENCES members(id),
-  episode TEXT NOT NULL,
-  coordinator_session_id TEXT NOT NULL,
-  body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 2000),
-  notify INTEGER NOT NULL CHECK(notify IN (0,1)),
-  created_seq INTEGER NOT NULL,
-  created_at TEXT NOT NULL
-, actor_json TEXT CHECK(actor_json IS NULL OR json_valid(actor_json))) WITHOUT ROWID, STRICT;
-CREATE INDEX idx_page_turn_notes_episode ON page_turn_notes(page_id,episode,created_seq,note_id);
-CREATE TABLE page_turn_note_events (
-  page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
-  episode TEXT NOT NULL,
-  event_id TEXT NOT NULL REFERENCES coordinator_work_events(event_id),
-  note_id TEXT NOT NULL REFERENCES page_turn_notes(note_id) ON DELETE CASCADE,
-  PRIMARY KEY(page_id,episode,event_id)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE inbox_answers (
   page_id TEXT PRIMARY KEY REFERENCES pages(block_id) ON DELETE CASCADE,
   question_page_id TEXT NOT NULL UNIQUE REFERENCES pages(block_id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   scope_project_id TEXT REFERENCES projects(id),
-  coordinator_session_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   handled_at TEXT
-, member_id TEXT REFERENCES members(id)) WITHOUT ROWID, STRICT;
+, member_id TEXT REFERENCES members(id), decision_session_id TEXT REFERENCES nodex_decision_runs(session_id) ON DELETE SET NULL) WITHOUT ROWID, STRICT;
 CREATE TABLE page_turn_replies (
   proposal_id TEXT PRIMARY KEY REFERENCES inbox_proposals(proposal_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
@@ -5465,7 +5427,7 @@ CREATE TABLE automation_decisions (
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 , waiting_in_inbox INTEGER NOT NULL DEFAULT 0
-  CHECK (waiting_in_inbox IN (0,1) AND (waiting_in_inbox=0 OR status IN ('held','failed'))), assessment_json TEXT CHECK(assessment_json IS NULL OR json_valid(assessment_json)), actor_json TEXT CHECK(actor_json IS NULL OR json_valid(actor_json))) WITHOUT ROWID, STRICT;
+  CHECK (waiting_in_inbox IN (0,1) AND (waiting_in_inbox=0 OR status IN ('held','failed'))), assessment_json TEXT CHECK(assessment_json IS NULL OR json_valid(assessment_json)), actor_json TEXT CHECK(actor_json IS NULL OR json_valid(actor_json)), decision_session_id TEXT REFERENCES nodex_decision_runs(session_id) ON DELETE SET NULL) WITHOUT ROWID, STRICT;
 CREATE TABLE automation_clock_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   jitter_salt TEXT NOT NULL,
@@ -5538,7 +5500,7 @@ CREATE TABLE "inbox_proposals" (
   failure_message TEXT CHECK (failure_message IS NULL OR length(failure_message) BETWEEN 1 AND 2000),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  failure_kind TEXT CHECK (failure_kind IN ('rejected','unavailable','unknown')), explicit_request INTEGER NOT NULL DEFAULT 0 CHECK (explicit_request IN (0,1) AND (origin='agent' OR explicit_request=0)), confirmed_by TEXT CHECK (confirmed_by IS NULL OR (confirmed_by IN ('user','nodex') AND confirmed_at IS NOT NULL)), auto_confirm_pending INTEGER NOT NULL DEFAULT 0 CHECK(auto_confirm_pending IN (0,1)), actor_json TEXT CHECK(actor_json IS NULL OR json_valid(actor_json)), confirmed_actor_json TEXT CHECK(confirmed_actor_json IS NULL OR json_valid(confirmed_actor_json)),
+  failure_kind TEXT CHECK (failure_kind IN ('rejected','unavailable','unknown')), explicit_request INTEGER NOT NULL DEFAULT 0 CHECK (explicit_request IN (0,1) AND (origin='agent' OR explicit_request=0)), confirmed_by TEXT CHECK (confirmed_by IS NULL OR (confirmed_by IN ('user','nodex') AND confirmed_at IS NOT NULL)), auto_confirm_pending INTEGER NOT NULL DEFAULT 0 CHECK(auto_confirm_pending IN (0,1)), actor_json TEXT CHECK(actor_json IS NULL OR json_valid(actor_json)), confirmed_actor_json TEXT CHECK(confirmed_actor_json IS NULL OR json_valid(confirmed_actor_json)), decision_session_id TEXT REFERENCES nodex_decision_runs(session_id) ON DELETE SET NULL,
   CHECK (state <> 'dispatching' OR (dispatch_session_id IS NOT NULL AND confirmed_at IS NOT NULL)),
   CHECK (state <> 'failed' OR failure_message IS NOT NULL)
 ) WITHOUT ROWID, STRICT;
@@ -5676,7 +5638,7 @@ JOIN activity_page_scopes scope ON scope.page_id=page.block_id
 LEFT JOIN projects project ON project.id=scope.project_id
 WHERE json_extract(episode.signature,'$[0].kind')='member'
   AND (scope.project_id IS NULL OR project.lifecycle='active')
-  AND (json_extract(episode.signature,'$[1]') IN ('question','approval','review','blocked','failed','stalled')
+  AND (json_extract(episode.signature,'$[1]') IN ('question','approval','review','blocked','failed','stalled','reply')
        OR (json_extract(episode.signature,'$[1]')='ready_to_start' AND EXISTS(
          SELECT 1 FROM data_source_page_memberships membership JOIN data_source_relation_edges edge ON edge.source_membership_id=membership.id AND edge.property_id='blocked_by'
          WHERE membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND membership.removed_at IS NULL)))
@@ -5720,13 +5682,12 @@ CREATE TABLE automation_assessment_requests (
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','settled','failed','followed')),
  policy_hash TEXT NOT NULL,
  automations_json TEXT NOT NULL CHECK(json_valid(automations_json)),
- coordinator_session_id TEXT REFERENCES project_sessions(id),
  handed_over_at_ms INTEGER,
  run_started_at_ms INTEGER,
  failure TEXT,
  created_at_ms INTEGER NOT NULL,
  updated_at_ms INTEGER NOT NULL
-) WITHOUT ROWID, STRICT;
+, decision_session_id TEXT REFERENCES nodex_decision_runs(session_id) ON DELETE SET NULL) WITHOUT ROWID, STRICT;
 CREATE UNIQUE INDEX idx_automation_assessment_unsettled ON automation_assessment_requests(thread_id) WHERE state='pending';
 CREATE TABLE automation_assessment_triggers (
  trigger_id TEXT PRIMARY KEY REFERENCES source_triggers(id),
@@ -5747,15 +5708,15 @@ SELECT 'message:'||d.id AS id,d.library_id,d.page_id,d.project_id,d.at,
  d.actor_json AS actor_json,
  CASE d.disposition WHEN 'chat' THEN 'Sent message to chat' WHEN 'filed' THEN 'Filed message' WHEN 'kept' THEN 'Kept message' WHEN 'done' THEN 'Marked message done' ELSE 'Returned message to Inbox' END AS description,
  p.rationale AS reason,CASE d.disposition WHEN 'chat' THEN COALESCE(p.dispatch_session_id,json_extract(p.action_json,'$.session_id')) END AS session_id,NULL AS url,
- json_object('disposition',d.disposition,'proposal_id',d.proposal_id,'confirmed_by',p.confirmed_by,
-   'answered',json(CASE WHEN d.disposition='done' AND EXISTS(SELECT 1 FROM inbox_answers answer
-     WHERE answer.question_page_id=d.page_id AND answer.created_at=d.at) THEN 'true' ELSE 'false' END),
+ json_object('disposition',d.disposition,'proposal_id',d.proposal_id,'confirmed_by',p.confirmed_by,'decision_session_id',COALESCE(p.decision_session_id,answer.decision_session_id),
+   'answered',json(CASE WHEN d.disposition='done' AND answer.page_id IS NOT NULL THEN 'true' ELSE 'false' END),
    'action',json_object('type',json_extract(p.action_json,'$.type'),'session_id',json_extract(p.action_json,'$.session_id'),
      'project_id',json_extract(p.action_json,'$.project_id'),'decision_id',json_extract(p.action_json,'$.decision_id'),
      'steps',json_array_length(p.action_json,'$.steps'))) AS evidence_json,'messages' AS category
 FROM intake_dispositions d JOIN inbox_entries entry ON entry.page_id=d.page_id
 JOIN blocks block ON block.id=d.page_id AND block.lifecycle='active'
 LEFT JOIN inbox_proposals p ON p.proposal_id=d.proposal_id
+LEFT JOIN inbox_answers answer ON answer.question_page_id=d.page_id AND answer.created_at=d.at
 UNION ALL
 SELECT 'launch:'||l.launch_id,s.library_id,l.page_id,l.project_id,l.created_at,l.actor_json,
  CASE l.automatic WHEN 1 THEN 'Automatically started work' ELSE 'Started work' END,l.rejection,l.session_id,NULL,json_object('launch_id',l.launch_id,'accepted_at',l.accepted_at,'automatic',json(CASE l.automatic WHEN 1 THEN 'true' ELSE 'false' END)),'decisions'
@@ -5781,9 +5742,6 @@ UNION ALL
 SELECT 'channel:'||o.id,o.library_id,o.page_id,s.project_id,strftime('%Y-%m-%dT%H:%M:%fZ',o.updated_at_ms/1000.0,'unixepoch'),o.actor_json,
  CASE o.state WHEN 'sent' THEN 'Replied to origin on GitHub' WHEN 'dropped' THEN 'GitHub reply could not be sent' WHEN 'failed' THEN 'GitHub reply needs retry' ELSE 'Queued reply to origin' END,o.terminal_reason,NULL,COALESCE(o.remote_url,json_extract(o.thread_json,'$.url')),json_object('outbox_id',o.id,'state',o.state,'body',o.body,'comment_id',o.remote_comment_id,'thread',json(o.thread_json)),'all'
 FROM channel_outbox o JOIN activity_page_scopes s ON s.page_id=o.page_id
-UNION ALL
-SELECT 'note:'||n.note_id,s.library_id,n.page_id,s.project_id,n.created_at,n.actor_json,'Added Turn note',n.body,n.coordinator_session_id,NULL,json_object('note_id',n.note_id,'episode',n.episode),'all'
-FROM page_turn_notes n JOIN activity_page_scopes s ON s.page_id=n.page_id
 UNION ALL
 SELECT 'handback:'||h.receipt_id||':'||link.page_id,d.library_id,link.page_id,s.project_id,h.created_at,h.actor_json,'Returned message to Inbox',h.reason,d.session_id,NULL,json_object('receipt_id',h.receipt_id,'delivery_id',h.delivery_id),'decisions'
 FROM chat_message_handbacks h JOIN chat_message_deliveries d ON d.delivery_id=h.delivery_id JOIN chat_message_handback_pages link ON link.receipt_id=h.receipt_id JOIN activity_page_scopes s ON s.page_id=link.page_id
@@ -5819,7 +5777,7 @@ UNION ALL
 SELECT 'assessment:'||d.dispatch_id,m.library_id,d.page_id,r.scope_project_id,
  strftime('%Y-%m-%dT%H:%M:%fZ',d.created_at_ms/1000.0,'unixepoch'),
  d.actor_json,'Automation assessment',d.reason,NULL,NULL,
- json_set(d.assessment_json,'$.fact_kind','assessment','$.automation_id',d.automation_id,'$.decision_id',d.dispatch_id,'$.mode',d.mode,'$.status',d.status),'decisions'
+ json_set(d.assessment_json,'$.fact_kind','assessment','$.decision_session_id',d.decision_session_id,'$.automation_id',d.automation_id,'$.decision_id',d.dispatch_id,'$.mode',d.mode,'$.status',d.status),'decisions'
 FROM automation_decisions d JOIN automations r ON r.automation_id=d.automation_id JOIN members m ON m.id=r.owner_member_id WHERE d.assessment_json IS NOT NULL;
 CREATE TABLE mutation_actors (
   module_name TEXT NOT NULL,
@@ -5936,11 +5894,6 @@ CREATE TRIGGER inbox_proposals_capture_actor AFTER INSERT ON inbox_proposals
 BEGIN
  UPDATE inbox_proposals SET actor_json=COALESCE((SELECT actor_json FROM local_commits WHERE finalized=0 ORDER BY commit_seq DESC LIMIT 1),CASE WHEN NEW.origin='automation' THEN json_object('type','service','kind','automations') END) WHERE proposal_id=NEW.proposal_id;
  SELECT CASE WHEN (SELECT actor_json FROM inbox_proposals WHERE proposal_id=NEW.proposal_id) IS NULL THEN RAISE(ABORT,'Activity facts require an admitted mutation actor') END;
-END;
-CREATE TRIGGER page_turn_notes_capture_actor AFTER INSERT ON page_turn_notes
-BEGIN
- UPDATE page_turn_notes SET actor_json=(SELECT actor_json FROM local_commits WHERE finalized=0 ORDER BY commit_seq DESC LIMIT 1) WHERE note_id=NEW.note_id;
- SELECT CASE WHEN (SELECT actor_json FROM page_turn_notes WHERE note_id=NEW.note_id) IS NULL THEN RAISE(ABORT,'Activity facts require an admitted mutation actor') END;
 END;
 CREATE TRIGGER chat_message_handbacks_capture_actor AFTER INSERT ON chat_message_handbacks
 BEGIN
@@ -6117,4 +6070,4 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
 END;
 CREATE INDEX idx_document_materializations_exact_head
   ON document_materializations(document_id, generation, projected_seq, schema_version);
-PRAGMA user_version=219;
+PRAGMA user_version=220;

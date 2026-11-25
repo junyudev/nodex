@@ -9,14 +9,15 @@ mod chat_folder;
 mod chat_stewardship;
 mod child_thread_window;
 mod codex_thread_navigation;
-mod coordinator;
-#[cfg(test)]
-mod coordinator_tests;
+mod decision_run;
 mod execution;
 pub(crate) mod execution_holds;
 #[cfg(test)]
 mod execution_holds_tests;
 mod host_chat;
+mod work_facts;
+#[cfg(test)]
+mod work_facts_tests;
 pub use host_chat::HostChatAction;
 mod host_response;
 pub(crate) mod inbox;

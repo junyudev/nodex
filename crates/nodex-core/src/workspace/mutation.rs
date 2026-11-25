@@ -254,7 +254,8 @@ pub(super) fn apply(
                 ));
             }
             validate_id("operation_id", &request.operation_id)?;
-            if let ProjectWorkspaceIntent::Source { command } = &request.intent {
+            if let ProjectWorkspaceIntent::Source { command } = &request.intent
+                && !matches!(command, nodex_core_contracts::sources::SourceCommand::ReplyToOrigin { .. }) {
                 super::sources::authorize(transaction, &context, &library_id, command)?;
             }
             super::automation_assessment::authorize(transaction, &library_id, &context, &request.intent)?;
@@ -347,14 +348,14 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::AutomationAssessment { command } => super::automation_assessment::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, command),
                 ProjectWorkspaceIntent::Source { command } => super::sources::apply(transaction, &context, &library_id, super::sources::SourceReceiptIdentity { epoch: &store_epoch, operation: &request.operation_id, hash: &request_hash }, command, agent_provenance),
                 intent @ (ProjectWorkspaceIntent::ClaimPageWorkspace { .. } | ProjectWorkspaceIntent::BindPageWorkspace { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceReady { .. } | ProjectWorkspaceIntent::RecordPageWorkspaceFailed { .. } | ProjectWorkspaceIntent::RequestPageWorkspaceCleanup { .. } | ProjectWorkspaceIntent::MarkPageWorkspaceRemoved { .. } | ProjectWorkspaceIntent::UpsertPagePullRequest { .. }) => super::page_workspace::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, intent),
-                ProjectWorkspaceIntent::BindCoordinator { .. } | ProjectWorkspaceIntent::UnbindCoordinator { .. } | ProjectWorkspaceIntent::SetSessionManaged { .. } | ProjectWorkspaceIntent::AcceptPageWork { .. } | ProjectWorkspaceIntent::ReportPageWork { .. } | ProjectWorkspaceIntent::RecordWorkEvents { .. } | ProjectWorkspaceIntent::RecordSessionExecution { .. } | ProjectWorkspaceIntent::CreateEventBatch { .. } | ProjectWorkspaceIntent::SettleEventBatch { .. } | ProjectWorkspaceIntent::DiscardEventBatch { .. } => super::coordinator::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, admitted_intent, agent_provenance),
+                ProjectWorkspaceIntent::AcceptPageWork { .. } | ProjectWorkspaceIntent::ReportPageWork { .. } | ProjectWorkspaceIntent::RecordSessionExecution { .. } => super::work_facts::apply(transaction, &context, &library_id, &store_epoch, &request.operation_id, &request_hash, admitted_intent, agent_provenance),
                 ProjectWorkspaceIntent::CreatePageFor { target, page_id, document_id, title } => {
                     super::page_create::create_page_for(
                         transaction, &context, &library_id, &store_epoch,
                         &request.operation_id, &request_hash, target, page_id, document_id, title,
                     )
                 }
-                intent @ (ProjectWorkspaceIntent::WriteTurnNote { .. } | ProjectWorkspaceIntent::AnswerInboxQuestion { .. } | ProjectWorkspaceIntent::ReplyToPageTurn { .. } | ProjectWorkspaceIntent::ClaimTurnNotification { .. }) => super::inbox::nodex::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
+                intent @ (ProjectWorkspaceIntent::AnswerInboxQuestion { .. } | ProjectWorkspaceIntent::ReplyToPageTurn { .. } | ProjectWorkspaceIntent::ClaimTurnNotification { .. }) => super::inbox::nodex::apply(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, agent_provenance, intent),
                 ProjectWorkspaceIntent::SendInboxMessage {
                     reply_to_page_id,
                     expected_store_epoch,
@@ -387,33 +388,6 @@ pub(super) fn apply(
                         reply_to_page_id.as_deref(),
                     )
                 },
-                ProjectWorkspaceIntent::ProposeInboxDispatch {
-                    proposal_id,
-                    page_ids,
-                    basis,
-                    action,
-                    entry_kind,
-                    summary,
-                    rationale,
-                    produced_by,
-                } => super::inbox::propose(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    super::inbox::ProposalInput {
-                        proposal_id,
-                        page_ids,
-                        basis,
-                        action,
-                        entry_kind: *entry_kind,
-                        summary,
-                        rationale: rationale.as_deref(),
-                        produced_by: produced_by.as_deref(),
-                    },
-                ),
                 ProjectWorkspaceIntent::StopInboxSuggestion { page_id } => super::inbox::stop_suggestion(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id,
                     &request_hash, page_id,
@@ -844,7 +818,7 @@ pub(super) fn apply(
                     None,
                 ),
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-                    coordinator,
+                    decision_run,
                     session_id,
                     project_id,
                     title,
@@ -872,7 +846,10 @@ pub(super) fn apply(
                     "create_agent_runtime_session",
                     None,
                     side_chat_source_session_id.as_deref(),
-                    *coordinator,
+                    decision_run.as_ref(),
+                ),
+                ProjectWorkspaceIntent::AcknowledgeDecisionRunStopped { session_id } => super::decision_run::acknowledge_stopped(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, session_id,
                 ),
                 ProjectWorkspaceIntent::AdoptNativeSessionExecution {
                     session_id,project_id,expected_native_thread_id,expected_native_host_id,

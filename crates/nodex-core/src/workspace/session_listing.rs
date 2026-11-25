@@ -14,13 +14,11 @@ use nodex_core_contracts::workspace::{
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params_from_iter};
 
-/// The chat list's members in one archive lane: a Session that is neither a side chat nor the
-/// Coordinator, whose Thread, if any, is a root, in no Project or one of this Library's Projects
-/// that the lane shows. Binds `?1` to the Library and `?2` to the lane, over `session`, its
-/// `thread` and its `project`.
+/// Root work chats within one archive lane. Binds `?1` to the Library and `?2` to the
+/// lane, over `session`, its `thread` and its `project`.
 const CHAT_LIST_LANE: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
      WHERE side.session_id = session.id) \
-   AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+   AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
    AND session.archived = ?2 \
    AND (session.project_id IS NULL OR (project.library_id = ?1 \
      AND (?2 = 1 OR project.lifecycle <> 'archived'))) \
@@ -330,7 +328,7 @@ mod tests {
             ("side-chat", None),
             ("child", None),
             ("archived-project", Some("project:archived")),
-            ("coordinator", None),
+            ("decision-run", None),
             ("another-member", None),
         ]
         .into_iter()
@@ -381,8 +379,8 @@ mod tests {
                     [],
                 )?;
                 connection.execute(
-                    "INSERT INTO coordinator(id, session_id, created_at) \
-                     VALUES (1, 'session:coordinator', ?1)",
+                    "INSERT INTO nodex_decision_runs(session_id,kind,request_id,generation,created_at) \
+                     VALUES ('session:decision-run','routing','request',1,?1)",
                     [crate::workspace::test_support::NOW],
                 )?;
                 connection.execute(
@@ -817,7 +815,7 @@ mod tests {
             "runtime",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 agent_selection: None,
-                coordinator: false,
+                decision_run: None,
                 side_chat_source_session_id: None,
                 session_id: "session:runtime".into(),
                 project_id: Some("project:default".into()),

@@ -286,11 +286,11 @@ pub(super) fn managed_page(
         .runtime
         .as_ref()
         .ok_or_else(|| invalid("Following requires a managed chat"))?;
-    let bound:Option<String>=c.query_row("SELECT a.page_id FROM session_workspaces binding JOIN page_workspaces w USING(workspace_id) JOIN page_active_chats a ON a.page_id=w.page_id AND a.session_id=binding.session_id JOIN blocks b ON b.id=a.page_id AND b.lifecycle='active' JOIN coordinator_managed_sessions m ON m.session_id=a.session_id WHERE binding.session_id=?1 AND b.library_id=?2",params![runtime.session_id,library],|r|r.get(0)).optional()?;
+    let bound:Option<String>=c.query_row("SELECT a.page_id FROM session_workspaces binding JOIN page_workspaces w USING(workspace_id) JOIN page_active_chats a ON a.page_id=w.page_id AND a.session_id=binding.session_id JOIN blocks b ON b.id=a.page_id AND b.lifecycle='active' JOIN managed_chats m ON m.session_id=a.session_id WHERE binding.session_id=?1 AND b.library_id=?2",params![runtime.session_id,library],|r|r.get(0)).optional()?;
     if let Some(page) = bound {
         return Ok(page);
     }
-    let pages=c.prepare("SELECT a.page_id FROM page_active_chats a JOIN blocks b ON b.id=a.page_id JOIN coordinator_managed_sessions m ON m.session_id=a.session_id WHERE a.session_id=?1 AND b.library_id=?2 AND b.lifecycle='active' ORDER BY a.page_id LIMIT 2")?.query_map(params![runtime.session_id,library],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let pages=c.prepare("SELECT a.page_id FROM page_active_chats a JOIN blocks b ON b.id=a.page_id JOIN managed_chats m ON m.session_id=a.session_id WHERE a.session_id=?1 AND b.library_id=?2 AND b.lifecycle='active' ORDER BY a.page_id LIMIT 2")?.query_map(params![runtime.session_id,library],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
     if pages.len() != 1 {
         return Err(invalid(
             "Following requires exactly one active work Page in this managed chat",

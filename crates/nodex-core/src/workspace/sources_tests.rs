@@ -249,7 +249,7 @@ fn agent_chat(w: &TestWorkspace, session: &str, member: &str) {
         &format!("chat-{session}"),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: session.into(),
             project_id: None,

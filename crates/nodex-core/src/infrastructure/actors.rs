@@ -168,10 +168,10 @@ pub(crate) fn is_personal(c: &Connection, library: &str) -> Result<bool, StoreEr
     )?)
 }
 
-/// Whether a Session is the Space's Coordinator, which people know as Nodex.
-pub(crate) fn is_coordinator(c: &Connection, session: &str) -> Result<bool, StoreError> {
+/// Whether a Session is a Nodex decision run.
+pub(crate) fn is_decision_run(c: &Connection, session: &str) -> Result<bool, StoreError> {
     Ok(c.query_row(
-        "SELECT EXISTS(SELECT 1 FROM coordinator WHERE session_id=?1)",
+        "SELECT EXISTS(SELECT 1 FROM nodex_decision_runs WHERE session_id=?1)",
         [session],
         |r| r.get(0),
     )?)
@@ -227,15 +227,19 @@ pub(crate) fn workspace(
     use nodex_core_contracts::sources::SourceCommand as S;
     use nodex_core_contracts::workspace::ProjectWorkspaceIntent as W;
     if let W::AgentCommand { provenance, intent } = intent {
-        let target=match intent.as_ref() {
-            W::WriteTurnNote {page_id,..}=>c.query_row("SELECT json_extract(signature,'$[0].member_id') FROM page_turn_episodes WHERE page_id=?1",[page_id],|r|r.get::<_,Option<String>>(0)).optional()?.flatten().map(|member|(member,None)),
-            W::AnswerInboxQuestion {question_page_id,..}=>c.query_row("SELECT author_member_id FROM inbox_entries WHERE page_id=?1",[question_page_id],|r|r.get::<_,Option<String>>(0)).optional()?.flatten().map(|member|(member,None)),
-            // Nodex starting a Page set to Start automatically acts on that Member's standing
-            // consent; any other start acts for the Member whose request it is handling.
-            W::StartPageWork { page_id, .. } if is_coordinator(c, &turn_session(c, provenance)?)? => {
-                work_grant(c, page_id)?.map(|grant| (grant.clone(), Some(grant)))
-            }
-            _=>None,
+        let target = match intent.as_ref() {
+            W::AnswerInboxQuestion {
+                question_page_id, ..
+            } => c
+                .query_row(
+                    "SELECT author_member_id FROM inbox_entries WHERE page_id=?1",
+                    [question_page_id],
+                    |r| r.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten()
+                .map(|member| (member, None)),
+            _ => None,
         };
         if let Some((member, authorizing_member_id)) = target {
             if !crate::library::members::is_active(c, &context.library_id.0, &member)? {
@@ -255,7 +259,7 @@ pub(crate) fn workspace(
     }
     let context = bind(c, context)?;
     if let W::CreateAgentRuntimeSession {
-        coordinator: true,
+        decision_run: Some(_),
         session_id,
         ..
     } = intent
@@ -340,10 +344,7 @@ pub(crate) fn workspace(
         {
             Some(ServiceKind::AgentRuntime)
         }
-        W::BindCoordinator { .. }
-        | W::UnbindCoordinator { .. }
-        | W::RecordSessionExecution { .. }
-        | W::RecordWorkEvents { .. }
+        W::RecordSessionExecution { .. }
         | W::RecordSessionActivity { .. }
         | W::SettlePageWorkLaunch { .. }
         | W::RecordChatDelivery { .. }
@@ -356,6 +357,7 @@ pub(crate) fn workspace(
         | W::BufferSubagentStatusEvidence { .. }
         | W::AdmitTurnAuthority { .. }
         | W::AcknowledgeAgentRuntimeExecutionCleanup { .. }
+        | W::AcknowledgeDecisionRunStopped { .. }
         | W::UpsertBackgroundProcess { .. }
         | W::BindThreadBackendSession { .. }
         | W::ClearThreadBackendSession { .. } => Some(ServiceKind::AgentRuntime),
@@ -367,10 +369,7 @@ pub(crate) fn workspace(
         | W::BeginInboxDispatch { .. }
         | W::CompleteInboxDispatch { .. }
         | W::FailInboxDispatch { .. }
-        | W::RecordInboxSuggestionFailure { .. }
-        | W::CreateEventBatch { .. }
-        | W::DiscardEventBatch { .. }
-        | W::SettleEventBatch { .. } => Some(ServiceKind::InboxRouting),
+        | W::RecordInboxSuggestionFailure { .. } => Some(ServiceKind::InboxRouting),
         W::ClaimTurnNotification { .. } | W::ClaimInboxSnoozeNotification { .. } => {
             Some(ServiceKind::Notifications)
         }
@@ -475,7 +474,7 @@ pub(crate) fn label(c: &Connection, actor: &Actor, viewer: &str) -> Result<Strin
             run_id,
             on_behalf_of,
         } => {
-            if is_coordinator(c, session_id)? {
+            if is_decision_run(c, session_id)? {
                 return Ok(format!("Nodex on behalf of {}", member(on_behalf_of)?));
             }
             let recorded:Option<String>=c.query_row("SELECT label FROM agent_actor_labels WHERE session_id=?1 AND run_key IN (?2,'') ORDER BY run_key=?2 DESC LIMIT 1",params![session_id,run_id.as_deref().unwrap_or_default()],|r|r.get(0)).optional()?;

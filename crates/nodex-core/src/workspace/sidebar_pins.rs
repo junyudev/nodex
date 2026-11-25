@@ -381,7 +381,7 @@ mod tests {
                 runtime_thread_id: "root-a-thread".into(),
                 launch_request_id: "launch-root-a".into(),
                 side_chat_source_session_id: None,
-                coordinator: false,
+                decision_run: None,
             },
         );
         create_draft(&workspace, "root-b", None);

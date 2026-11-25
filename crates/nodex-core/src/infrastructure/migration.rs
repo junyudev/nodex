@@ -511,6 +511,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 219,
         apply: migrate_v218_to_v219,
     },
+    MigrationStep {
+        from_revision: 219,
+        to_revision: 220,
+        apply: migrate_v219_to_v220,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2869,6 +2874,41 @@ fn migrate_v218_to_v219(
     Ok(())
 }
 
+fn migrate_v219_to_v220(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v219_to_v220.sql"))?;
+    connection.execute(
+        "INSERT INTO page_turn_dirty(page_id)
+         SELECT page_id FROM page_active_chats UNION SELECT page_id FROM page_turn_episodes WHERE true
+         ON CONFLICT DO NOTHING",
+        [],
+    )?;
+    let now = connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |row| {
+        row.get::<_, String>(0)
+    })?;
+    let turns = crate::workspace::page_turn::initialize(connection, "migration:v220", &now)?;
+    crate::workspace::inbox::snooze::retire_episodes(connection, &turns.affected)?;
+    connection.execute(
+        "DELETE FROM page_turn_notification_intents WHERE EXISTS (
+           SELECT 1 FROM page_turn_episodes episode
+           WHERE episode.page_id=page_turn_notification_intents.page_id
+             AND episode.episode=page_turn_notification_intents.episode
+             AND json_extract(episode.signature,'$[1]')='stalled'
+         )",
+        [],
+    )?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"nodex_decision_runs":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4418,7 +4458,31 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+fn rewind_decision_runs_to_v219(connection: &Connection) -> Result<(), StoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='nodex_decision_runs')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !present {
+        return Ok(());
+    }
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let legacy: bool =
+        connection.pragma_query_value(None, "legacy_alter_table", |row| row.get(0))?;
+    connection.pragma_update(None, "foreign_keys", false)?;
+    connection.pragma_update(None, "legacy_alter_table", true)?;
+    let result =
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v220-to-v219.sql"));
+    connection.pragma_update(None, "legacy_alter_table", legacy)?;
+    connection.pragma_update(None, "foreign_keys", foreign_keys)?;
+    Ok(result?)
+}
+
+#[cfg(test)]
 fn rewind_automation_trigger_to_v217(connection: &Connection) -> Result<(), StoreError> {
+    rewind_decision_runs_to_v219(connection)?;
     // v219 lets a Page hold a PR without a Workspace.
     let nullable_workspace: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM pragma_table_info('page_pull_requests') WHERE name='workspace_id' AND \"notnull\"=0)",
@@ -9403,6 +9467,111 @@ mod tests {
     }
 
     #[test]
+    fn decision_run_migration_retires_old_delivery_and_keeps_managed_work() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        install_current_schema(&mut connection).unwrap();
+        rewind_decision_runs_to_v219(&connection).unwrap();
+        validate_schema_identity(&connection, 219).unwrap();
+        connection.pragma_update(None, "user_version", 219).unwrap();
+        connection.execute_batch(
+            "INSERT INTO profiles VALUES('profile','today','today');
+             INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES('library','profile','today','today');
+             INSERT INTO project_sessions(id,no_thread_fallback_title,created_at,updated_at,activity_at)
+             VALUES ('work','Work','today','today',0),('old-nodex','Nodex','today','today',0),('side','Side chat','today','today',0);
+             INSERT INTO project_session_side_chats VALUES ('side','old-nodex');
+             INSERT INTO project_session_execution_bindings(session_id,runtime_id,runtime_thread_id,launch_request_id,bound_at)
+             VALUES ('old-nodex','runtime','old-thread','old-launch','today'),
+                    ('side','runtime','side-thread','side-launch','today');
+             INSERT INTO coordinator VALUES (1,'old-nodex','today');
+             INSERT INTO session_execution_observations VALUES('old-nodex',1,'{}','today');
+             INSERT INTO coordinator_managed_sessions(session_id,since,observed_json,observed_revision)
+             VALUES ('work','start','{}',3);
+             INSERT INTO coordinator_event_batches(batch_id,coordinator_session_id,message_id,body,fingerprint,created_at)
+             VALUES ('batch','old-nodex','message','Updates',printf('%064d',0),'today');
+             INSERT INTO coordinator_work_events(event_id,dedupe_key,kind,session_id,payload_json,created_at,batch_id)
+             VALUES ('event','report:work','report','work','{}','today','batch');
+             INSERT INTO inbox_suggestion_requests(request_id,library_id,mode,state,basis_json,created_at,updated_at)
+             VALUES ('route','library','grouped','pending','[]','today','today');
+             INSERT INTO inbox_routing_deliveries(request_id,generation,coordinator_session_id,handed_over_at_ms)
+             VALUES ('route',1,'old-nodex',1);
+             INSERT INTO external_threads(id,library_id,provider,host,repository_id,number,thread_json)
+             VALUES ('thread','library','github','github.com','123',1,'{}');
+             INSERT INTO automation_assessment_requests(request_id,library_id,thread_id,policy_hash,automations_json,
+                 coordinator_session_id,handed_over_at_ms,run_started_at_ms,created_at_ms,updated_at_ms)
+             VALUES ('assessment','library','thread','hash','[]','old-nodex',1,1,1,1);",
+        ).unwrap();
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v219_to_v220(
+                transaction,
+                &MigrationContext {
+                    source_revision: 219,
+                    target_revision: 220,
+                    backup_name: "v219.db".into(),
+                    source_schema_fingerprint: published_format(219)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(220)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 220)
+        })
+        .unwrap();
+
+        let count = |query| {
+            connection
+                .query_row(query, [], |row| row.get::<_, i64>(0))
+                .unwrap()
+        };
+        assert_eq!(count("SELECT count(*) FROM pragma_foreign_key_check"), 0);
+        assert_eq!(
+            count("SELECT count(*) FROM project_sessions WHERE id='old-nodex'"),
+            0
+        );
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM nodex_agent_runtime_execution_cleanups WHERE runtime_thread_id='old-thread'"
+            ),
+            1
+        );
+        assert_eq!(
+            count("SELECT count(*) FROM managed_chats WHERE session_id='work' AND since='start'"),
+            1
+        );
+        assert_eq!(
+            count("SELECT count(*) FROM project_session_side_chats WHERE session_id='side'"),
+            0
+        );
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM project_session_execution_bindings WHERE session_id='side' AND runtime_thread_id='side-thread'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM nodex_agent_runtime_execution_cleanups WHERE session_id='side'"
+            ),
+            0
+        );
+        assert_eq!(count("SELECT count(*) FROM inbox_routing_deliveries"), 0);
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM inbox_suggestion_requests WHERE request_id='route' AND state='pending'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                "SELECT count(*) FROM automation_assessment_requests WHERE request_id='assessment' AND state='pending' AND decision_session_id IS NULL AND run_started_at_ms IS NULL"
+            ),
+            1
+        );
+    }
+
+    #[test]
     fn automation_trigger_migration_preserves_clock_schedules_and_rewrites_saved_actions() {
         use nodex_core_contracts::automation::Automation;
 
@@ -9851,14 +10020,12 @@ mod tests {
     // Historical fixtures temporarily borrow only the current Inbox, report and
     // Workspace participants used by their operations, then restore the predecessor.
     // Runtime writers never support an older physical schema.
-    const HISTORICAL_WORK_PARTICIPANTS: [&str; 11] = [
+    const HISTORICAL_WORK_PARTICIPANTS: [&str; 9] = [
         "page_workspaces",
         "session_workspaces",
         "page_pull_requests",
-        "coordinator",
-        "coordinator_managed_sessions",
-        "coordinator_event_batches",
-        "coordinator_work_events",
+        "nodex_decision_runs",
+        "managed_chats",
         "execution_holds",
         "session_execution_observations",
         "page_turn_episodes",
@@ -10174,13 +10341,33 @@ mod tests {
             .expect("Page layout hides empty Properties");
     }
 
+    fn seed_historical_inbox_advice(
+        kernel: &crate::infrastructure::store::SqliteStoreKernel,
+        library: &str,
+        page: &str,
+        proposal_id: &str,
+        basis: nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis,
+    ) {
+        let (library, page, proposal_id) =
+            (library.to_owned(), page.to_owned(), proposal_id.to_owned());
+        kernel.writer().call(move |connection| {
+            let now = "2026-11-01T00:00:00.000Z";
+            connection.execute(
+                "INSERT INTO inbox_proposals(proposal_id,library_id,origin,state,revision,action_json,summary,basis_json,created_at,updated_at)
+                 VALUES(?1,?2,'agent','open',1,json_object('type','keep'),'Keep this note',?3,?4,?4)",
+                params![proposal_id,library,serde_json::to_string(&[basis]).unwrap(),now],
+            )?;
+            connection.execute("INSERT INTO inbox_proposal_pages VALUES(?1,?2,0)",params![proposal_id,page])?;
+            connection.execute("UPDATE inbox_entries SET current_proposal_id=?2,suggestion_state='settled' WHERE page_id=?1", params![page,proposal_id])?;
+            Ok::<_, StoreError>(())
+        }).unwrap();
+    }
+
     #[test]
     fn inbox_migration_requeues_abstentions_without_executing_them() {
         use crate::infrastructure::store::SqliteStoreKernel;
         use crate::workspace::ProjectWorkspaceModule;
-        use nodex_core_contracts::inbox::{
-            ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxSuggestionMode,
-        };
+        use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
         use nodex_core_contracts::workspace::{
             ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         };
@@ -10274,18 +10461,12 @@ mod tests {
             panic!("pending Inbox entries");
         };
         for entry in &entries {
-            apply(
-                &format!("propose:{}", entry.page_id),
-                ProjectWorkspaceIntent::ProposeInboxDispatch {
-                    proposal_id: format!("proposal:{}", entry.page_id),
-                    page_ids: vec![entry.page_id.clone()],
-                    basis: vec![entry.basis.clone()],
-                    action: ProjectWorkspaceInboxDispatchAction::Keep,
-                    entry_kind: None,
-                    summary: "Keep this note".into(),
-                    rationale: None,
-                    produced_by: None,
-                },
+            seed_historical_inbox_advice(
+                &predecessor,
+                &library_id,
+                &entry.page_id,
+                &format!("proposal:{}", entry.page_id),
+                entry.basis.clone(),
             );
         }
         let open = entries
@@ -10517,9 +10698,7 @@ mod tests {
     fn run_inbox_content_fingerprint_migration(erased_firing: bool) {
         use crate::infrastructure::store::SqliteStoreKernel;
         use crate::workspace::ProjectWorkspaceModule;
-        use nodex_core_contracts::inbox::{
-            ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxSuggestionMode,
-        };
+        use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
         use nodex_core_contracts::workspace::{
             ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         };
@@ -10552,7 +10731,7 @@ mod tests {
             principal: None,
             agent_attribution: None,
             profile_id: ProfileId(profile_id),
-            library_id: LibraryId(library_id),
+            library_id: LibraryId(library_id.clone()),
             project_id: None,
             connection_id: "migration-inbox-content".into(),
             adapter: AdapterKind::ElectronHost,
@@ -10614,18 +10793,12 @@ mod tests {
                 .clone()
         };
         for id in ["advice", "request"] {
-            apply(
-                &format!("propose:{id}"),
-                ProjectWorkspaceIntent::ProposeInboxDispatch {
-                    proposal_id: format!("proposal:{id}"),
-                    page_ids: vec![format!("page:{id}")],
-                    basis: vec![basis(id)],
-                    action: ProjectWorkspaceInboxDispatchAction::Keep,
-                    entry_kind: None,
-                    summary: "Keep this note".into(),
-                    rationale: None,
-                    produced_by: None,
-                },
+            seed_historical_inbox_advice(
+                &kernel,
+                &library_id,
+                &format!("page:{id}"),
+                &format!("proposal:{id}"),
+                basis(id),
             );
         }
         apply(

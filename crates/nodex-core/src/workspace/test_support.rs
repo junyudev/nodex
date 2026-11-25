@@ -359,3 +359,13 @@ pub(super) fn local_member(w: &TestWorkspace) -> String {
         })
         .unwrap()
 }
+
+pub(super) fn mark_managed(w: &TestWorkspace, session_id: &str) {
+    let session_id = session_id.to_owned();
+    w.kernel
+        .writer()
+        .call(move |connection| {
+            super::work_facts::mark_chat_managed(connection, &session_id, "2026-11-03T00:00:00Z")
+        })
+        .unwrap();
+}

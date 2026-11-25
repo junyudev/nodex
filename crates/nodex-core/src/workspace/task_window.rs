@@ -21,10 +21,10 @@ use crate::infrastructure::cursor::{
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-/// A chat that lists as a task of its own: not a side chat, not the coordinator's chat and not a
-/// child Thread's Session. Expects a `session` row and its left-joined linked `thread`.
+/// Whether a root chat lists as a task of its own. Expects a `session` row and its
+/// left-joined linked `thread`.
 pub(super) const LISTED_CHAT_SQL: &str = "NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
-     AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+     AND NOT EXISTS (SELECT 1 FROM nodex_decision_runs decision WHERE decision.session_id = session.id) \
      AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)";
 
 /// The chat `session` lists in the Library `library` (an SQL expression): it is outside every
@@ -69,7 +69,7 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              thread.updated_at, thread.recency_at, thread.linked_at, \
              (SELECT execution.runtime_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), \
              (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), {snoozed_until}, \
-             EXISTS(SELECT 1 FROM coordinator_managed_sessions managed WHERE managed.session_id = session.id) AS managed, \
+             EXISTS(SELECT 1 FROM managed_chats managed WHERE managed.session_id = session.id) AS managed, \
              {settled_at} AS settled_at, {attention_at} AS attention_at";
 
 /// Task columns as one reader sees them: their own attention and whether they may manage the chat
@@ -535,6 +535,7 @@ pub(super) fn task_summary_from_row(
     );
     let task = ProjectWorkspaceTaskSummary {
         session: ProjectWorkspaceSessionSummary {
+            decision_run_kind: None,
             id: row.get(offset)?,
             project_id: row.get(offset + 1)?,
             no_thread_fallback_title: fallback_title,

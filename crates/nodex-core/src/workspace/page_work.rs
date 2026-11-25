@@ -307,33 +307,14 @@ pub(super) fn prepare_start(
         requesting_member,
         now,
     )?;
-    super::coordinator::set_managed(connection, session_id, true, now)?;
-    let retired = super::inbox::nodex::retire_page_start(connection, library, page_id, now)?;
-    let inbox_changed = !retired.is_empty();
+    super::work_facts::mark_chat_managed(connection, session_id, now)?;
     connection.execute("INSERT INTO page_work_launches(launch_id,page_id,project_id,session_id,message_id,selection_json,brief,again,created_at,status_fence,actor_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT status_person_revision FROM pages WHERE block_id=?2),?10)", params![launch_id,page_id,work.project_id,session_id,message_id,serde_json::to_string(&selection).map_err(|_|invalid("Invalid Agent selection"))?,brief,again,now,crate::infrastructure::actors::encode(&context.actor)?])?;
     connection.execute(
         "UPDATE page_work_launches SET automatic=?2 WHERE launch_id=?1",
         params![launch_id, expected_readiness_epoch.is_some()],
     )?;
-    super::coordinator::insert_event(
-        connection,
-        operation,
-        0,
-        &CoordinatorWorkEventInput {
-            kind: CoordinatorWorkEventKind::Started,
-            session_id: Some(session_id.clone()),
-            page_id: Some(page_id.clone()),
-            payload: serde_json::json!({"launch_id":launch_id}),
-            dedupe_key: format!("started:{page_id}:{launch_id}"),
-        },
-        now,
-    )?;
     let effects = super::mutation::WorkspaceMutationEffects {
-        operation_kind: if inbox_changed {
-            "inbox_start_page_work"
-        } else {
-            "start_page_work"
-        },
+        operation_kind: "start_page_work",
         project_catalog_change: None,
         change_project_id: Some(work.project_id.clone()),
         project_ids: vec![work.project_id.clone()],
@@ -341,8 +322,8 @@ pub(super) fn prepare_start(
         thread_ids: vec![],
         session_summary_scopes: vec![project_session_scope(Some(&work.project_id))],
         session_detail_ids: vec![session_id.clone()],
-        block_ids: retired.iter().cloned().chain([page_id.clone()]).collect(),
-        page_ids: retired.into_iter().chain([page_id.clone()]).collect(),
+        block_ids: vec![page_id.clone()],
+        page_ids: vec![page_id.clone()],
         document_ids: vec![],
         database_ids: vec![],
         data_source_ids: vec![],

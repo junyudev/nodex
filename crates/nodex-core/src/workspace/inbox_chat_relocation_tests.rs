@@ -187,7 +187,7 @@ fn prepare(w: &TestWorkspace, page: &str) {
         "previous-chat",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             agent_selection: None,
-            coordinator: false,
+            decision_run: None,
             side_chat_source_session_id: None,
             session_id: "chat".into(),
             project_id: Some("project:work".into()),
@@ -198,14 +198,7 @@ fn prepare(w: &TestWorkspace, page: &str) {
             launch_request_id: "launch:chat".into(),
         },
     );
-    apply(
-        &w.module,
-        "managed",
-        ProjectWorkspaceIntent::SetSessionManaged {
-            session_id: "chat".into(),
-            managed: true,
-        },
-    );
+    crate::workspace::test_support::mark_managed(w, "chat");
     context_follow(w, "chat", "context-follow");
     apply(
         &w.module,
@@ -471,7 +464,7 @@ fn dispatch_assigns_only_empty_user_and_github_pages_to_the_receiving_agent() {
                         &w.module,
                         "receiver",
                         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-                            coordinator: false,
+                            decision_run: None,
                             side_chat_source_session_id: None,
                             session_id: "chat".into(),
                             project_id: Some("project:work".into()),
@@ -547,18 +540,18 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
         board(&w);
         apply(
             &w.module,
-            "coordinator",
+            "dispatching-agent",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-                coordinator: true,
+                decision_run: None,
                 side_chat_source_session_id: None,
-                session_id: "dispatching-coordinator".into(),
+                session_id: "dispatching-agent".into(),
                 project_id: None,
-                title: "Dispatching Coordinator".into(),
+                title: "Dispatching Agent".into(),
                 initial_page_ids: vec![],
                 agent_selection: None,
-                runtime_id: "runtime:coordinator".into(),
-                runtime_thread_id: "thread:coordinator".into(),
-                launch_request_id: "launch:coordinator".into(),
+                runtime_id: "runtime:dispatching-agent".into(),
+                runtime_thread_id: "thread:dispatching-agent".into(),
+                launch_request_id: "launch:dispatching-agent".into(),
             },
         );
         if existing {
@@ -566,7 +559,7 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
                 &w.module,
                 "receiver",
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-                    coordinator: false,
+                    decision_run: None,
                     side_chat_source_session_id: None,
                     session_id: "chat".into(),
                     project_id: Some("project:work".into()),
@@ -585,15 +578,15 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
         }
         let caller = BoundModuleContext {
             agent_attribution: (!host_turn).then(|| BoundAgentAttribution {
-                session_id: "dispatching-coordinator".into(),
+                session_id: "dispatching-agent".into(),
                 run_id: None,
                 driver: "codex".into(),
             }),
             ..context()
         };
         let expected = Actor::Agent {
-            session_id: "dispatching-coordinator".into(),
-            run_id: host_turn.then(|| "run:coordinator".into()),
+            session_id: "dispatching-agent".into(),
+            run_id: host_turn.then(|| "run:dispatching-agent".into()),
             on_behalf_of: crate::library::LibraryMembership::new(&w.kernel, "library-1".into())
                 .require_owner()
                 .unwrap(),
@@ -604,15 +597,15 @@ fn assignment_history_names_the_dispatching_agent_and_keeps_the_receiving_agent_
                 provenance: Box::new(AgentTurnProvenance {
                     profile_id: "profile-1".into(),
                     authority: ProjectWorkspaceTurnAuthority {
-                        thread_id: "thread:coordinator".into(),
-                        root_thread_id: "thread:coordinator".into(),
-                        turn_id: "run:coordinator".into(),
+                        thread_id: "thread:dispatching-agent".into(),
+                        root_thread_id: "thread:dispatching-agent".into(),
+                        turn_id: "run:dispatching-agent".into(),
                         actor_project_id: None,
                         library_id: "library-1".into(),
                         store_epoch: "epoch-1".into(),
                         runtime: Some(ProjectWorkspaceAgentRuntimeAuthority {
-                            session_id: "dispatching-coordinator".into(),
-                            runtime_id: "runtime:coordinator".into(),
+                            session_id: "dispatching-agent".into(),
+                            runtime_id: "runtime:dispatching-agent".into(),
                             turn_kind: ProjectWorkspaceAgentRuntimeTurnKind::Run,
                         }),
                     },

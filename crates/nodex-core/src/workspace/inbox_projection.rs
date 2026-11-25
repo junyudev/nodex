@@ -97,7 +97,6 @@ pub(super) fn item(
         } else {
             vec![]
         };
-        let note:Option<(String,String)>=connection.query_row("SELECT note_id,body FROM page_turn_notes WHERE page_id=?1 AND episode=?2 ORDER BY created_seq DESC,note_id DESC LIMIT 1",params![page,turn.episode],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
         let report_outcome = match turn.reason {
             Some(nodex_core_contracts::workspace::TurnReason::Review) => Some("ready"),
             Some(nodex_core_contracts::workspace::TurnReason::Blocked) => Some("blocked"),
@@ -112,12 +111,19 @@ pub(super) fn item(
         } else {
             vec![]
         };
-        body = note
-            .as_ref()
-            .map(|(_, body)| body.clone())
-            .or_else(|| question.and_then(|q| q.question.clone()))
+        let observation_body = observation.as_ref().and_then(|observation| {
+            if turn.reason == Some(nodex_core_contracts::workspace::TurnReason::Reply) {
+                return observation
+                    .last_reply_excerpt
+                    .as_deref()
+                    .filter(|text| !text.trim().is_empty());
+            }
+            observation.failure_reason.as_deref()
+        });
+        body = question
+            .and_then(|request| request.question.clone())
             .or(report)
-            .or_else(|| observation.as_ref().and_then(|o| o.failure_reason.clone()))
+            .or_else(|| observation_body.map(str::to_owned))
             .unwrap_or_else(|| match turn.reason {
                 Some(nodex_core_contracts::workspace::TurnReason::ReadyToStart) => {
                     format!("Finished: {}", prerequisites.join(", "))
@@ -133,6 +139,9 @@ pub(super) fn item(
                 }
                 Some(nodex_core_contracts::workspace::TurnReason::Stalled) => {
                     "The chat has stopped making progress.".into()
+                }
+                Some(nodex_core_contracts::workspace::TurnReason::Reply) => {
+                    "The chat is waiting for your reply.".into()
                 }
                 _ => "Work is ready to review.".into(),
             });
@@ -150,7 +159,6 @@ pub(super) fn item(
         });
         Some(InboxTurn {
             turn,
-            note_id: note.map(|(id, _)| id),
             active_chat: chat,
             options,
             pull_request_url: url,

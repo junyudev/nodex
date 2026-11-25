@@ -466,7 +466,7 @@ mod tests {
             module,
             "execution",
             Intent::CreateAgentRuntimeSession {
-                coordinator: false,
+                decision_run: None,
                 session_id: "draft".into(),
                 project_id: None,
                 title: "Chat".into(),

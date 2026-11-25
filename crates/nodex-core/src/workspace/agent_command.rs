@@ -74,6 +74,9 @@ pub(super) fn admit<'a>(
             confirmed_by: nodex_core_contracts::inbox::InboxConfirmedBy::Nodex,
             ..
         } | ProjectWorkspaceIntent::BeginInboxRouting { .. }
+            | ProjectWorkspaceIntent::SettleInboxSuggestion { .. }
+            | ProjectWorkspaceIntent::RecordInboxRoutingRefusal { .. }
+            | ProjectWorkspaceIntent::StartInboxRoutingRun { .. }
     ) {
         return Err(denied(
             "Automatic Inbox dispatch and routing belong to the Desktop Host",
@@ -119,12 +122,11 @@ pub(super) fn admit<'a>(
     if matches!(
         intent.as_ref(),
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-            agent_selection: None,
-            coordinator: true,
+            decision_run: Some(_),
             ..
-        }
+        } | ProjectWorkspaceIntent::AcknowledgeDecisionRunStopped { .. }
     ) {
-        return Err(denied("Only the Desktop Host can create the Coordinator"));
+        return Err(denied("Decision run lifecycle belongs to the Desktop Host"));
     }
     if matches!(
         intent.as_ref(),
