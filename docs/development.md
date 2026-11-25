@@ -1049,6 +1049,14 @@ holds the computer, for example `[machine-budget] semantic check is waiting 40s 
 and never counts against a test timeout; let it wait, in the background if the command is long,
 instead of cancelling and retrying. A semantic gate answered from its cache claims nothing.
 
+A queue can also hold a check far longer than the check itself takes, while every claim ahead
+runs. After about 15 minutes the waiting line says so: a broad check such as `check:changed`
+need not wait. Push the branch as a pull request so CI runs the broad checks, run locally only
+the focused tests the change needs, and stop the queued broad run, which frees its place for the
+next checkout rather than retrying. Merge once `required` passes, unless the task says not to
+merge yet. CI cannot stand in for Electron E2E, visual review in a development instance, or a
+local run whose output the task itself needs; those keep their place in line.
+
 The state lives in the primary checkout's `cache.local/machine-budget/`. CI does not use it.
 `NODEX_MACHINE_BUDGET=off` opts one command out; `NODEX_MACHINE_BUDGET=<cores>` and
 `NODEX_MACHINE_BUDGET_MEMORY_GB=<GiB>` change the capacity that command assumes. To put another

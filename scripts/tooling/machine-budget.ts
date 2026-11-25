@@ -43,6 +43,11 @@ export type BudgetQueueEvent = { readonly id: string; readonly label: string } &
 
 const POLL_INTERVAL_MS = 500;
 const STATUS_REPEAT_MS = 60_000;
+/**
+ * A wait this long is a sign the queue will not clear soon, so the status line stops reassuring
+ * and points a broad check at CI instead.
+ */
+const LONG_WAIT_MS = 15 * 60_000;
 /** The critical section is a few synchronous file operations; an older lock was abandoned. */
 const STALE_LOCK_MS = 10_000;
 
@@ -91,6 +96,8 @@ export interface BudgetContext {
   readonly pid?: number;
   readonly isAlive?: (pid: number) => boolean;
   readonly pollIntervalMs?: number;
+  /** How long a claim waits before its status line suggests CI for a broad check. */
+  readonly longWaitMs?: number;
 }
 
 const inactiveLease = (env: Readonly<Record<string, string>> = {}): BudgetLease => ({
@@ -428,14 +435,20 @@ export async function acquireMachineBudget(
       if (queue) {
         const now = Date.now();
         const status = describeQueue(queue, own, capacity, memoryPressure, now);
-        if (status.state !== reportedState || now - reportedAt >= STATUS_REPEAT_MS) {
-          reportedState = status.state;
+        const long = now - startedAt >= (context.longWaitMs ?? LONG_WAIT_MS);
+        // Crossing into a long wait is news of its own, so it is reported at once.
+        const state = long ? `${status.state}:long` : status.state;
+        if (state !== reportedState || now - reportedAt >= STATUS_REPEAT_MS) {
+          reportedState = state;
           reportedAt = now;
           log(
             `[machine-budget] ${own.label} is waiting ${formatDuration(now - startedAt)} for ` +
               `${Math.min(own.weight, capacity.cores)} cores and ` +
               `${Math.min(own.memoryGiB ?? 0, capacity.memoryGiB)} GiB: ${status.line}. ` +
-              "Queueing is expected; it does not count against test timeouts.",
+              (long
+                ? "A broad check need not wait here: push a pull request and let CI run it; " +
+                  "see docs/development.md#sharing-the-computer-between-checkouts."
+                : "Queueing is expected; it does not count against test timeouts."),
           );
         }
       }
