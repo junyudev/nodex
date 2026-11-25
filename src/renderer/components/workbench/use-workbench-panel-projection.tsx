@@ -94,6 +94,8 @@ import { SideChatSurfacePanel } from "./workbench-side-chat-surface";
 import { toast } from "@/components/ui/toast";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { AgentsTabIcon } from "@/features/agents/agents-surface";
+import { WorkbenchAgentsSurface } from "./workbench-agents-surface";
 import { SideChatTabIcon } from "./side-chat-tab-icon";
 import type { SideChatPanelTab } from "@/lib/workbench-panel-tab-model";
 
@@ -207,6 +209,7 @@ interface WorkbenchPanelProjectionInput {
   };
   readonly onTogglePageStageHistoryModal: SurfaceProps["onTogglePageStageHistoryModal"];
   readonly onUpdateSessionViewTab: SurfaceProps["onUpdateTab"];
+  readonly onOpenAgentsChat: (sessionId: string) => void;
 }
 
 const sideChatDeleteMessages = defineMessages({
@@ -289,6 +292,7 @@ export function useWorkbenchPanelProjection({
   automation,
   onTogglePageStageHistoryModal,
   onUpdateSessionViewTab,
+  onOpenAgentsChat,
 }: WorkbenchPanelProjectionInput) {
   const intl = useIntl();
   const { closeEphemeralPanelTab, closeTab, updateActivePanel, pinPreviewTab } = lifecycle;
@@ -457,6 +461,8 @@ export function useWorkbenchPanelProjection({
                           : (filesIcon ?? getTabIcon(tab.kind)),
         iconElement: isSideChatPanelTab(tab) ? (
           <SideChatTabIcon sessionId={null} />
+        ) : !transientPanelTab && tab.kind === "agents" ? (
+          <AgentsTabIcon scope={tab.config} className="icon-xs" />
         ) : !transientPanelTab && tab.kind === "side_chat" ? (
           <SideChatTabIcon sessionId={tab.config.sessionId} />
         ) : !transientPanelTab && tab.kind === "plugin_app" ? (
@@ -808,6 +814,20 @@ export function useWorkbenchPanelProjection({
                   />
                 )}
               </ReviewRouteOpenAdapter>
+            );
+          }
+          if (tab.kind === "agents") {
+            return (
+              <WorkbenchAgentsSurface
+                scope={tab.config}
+                active={
+                  panelContext.active &&
+                  (tab.panelId === "right" ? model.sidePanelOpen : model.bottomPanelOpen)
+                }
+                onScopeChange={(config) => onUpdateSessionViewTab(tab.id, { config })}
+                onOpenChat={({ sessionId }) => onOpenAgentsChat(sessionId)}
+                onOpenThread={openAttachedThreadSession}
+              />
             );
           }
           if (tab.kind === "side_chat") {

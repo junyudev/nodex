@@ -1,3 +1,4 @@
+import type { AgentsMapScope } from "./agents-map";
 import { pluginAppBindingKey, type PluginAppBinding } from "./agent-plugins/app-entrypoints";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "./browser-url";
@@ -188,7 +189,8 @@ export type WorkbenchSurfaceKind =
   | "files"
   | "plugin_app"
   | "image_editor"
-  | "side_chat";
+  | "side_chat"
+  | "agents";
 
 export interface WorkbenchConversationSurfaceConfig {
   readonly sessionId: string;
@@ -291,6 +293,7 @@ export interface WorkbenchSurfaceConfigByKind {
   readonly plugin_app: Exclude<PluginAppBinding, { kind: "global" }>;
   readonly image_editor: WorkbenchImageEditorSurfaceConfig;
   readonly side_chat: WorkbenchSideChatSurfaceConfig;
+  readonly agents: AgentsMapScope;
 }
 
 type WorkbenchSurfaceVariant = {
@@ -586,7 +589,9 @@ function enforceProjectSceneInvariants(scene: WorkbenchSceneSnapshot): Workbench
 /** The Library Inbox's Scene: Library content beside its Inbox, with no execution composer. */
 function enforceInboxSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
   return {
-    ...enforceInboxHomeInvariants(scene, isLibrarySceneSurfaceAllowed),
+    ...enforceInboxHomeInvariants(scene, (surface) =>
+      isWorkbenchScenePanelSurfaceAllowed(scene.owner, surface),
+    ),
     composerOverlay: { visible: false },
     agentDock: null,
   };
@@ -639,6 +644,14 @@ export function enforceWorkbenchSessionReviewEligibility(
   return { ...eligibleScene, touchedAt: scene.touchedAt };
 }
 
+/** Inbox Scenes keep Agents in the content stack. Sessions also offer the bottom panel. */
+export function isWorkbenchAgentsPanelAllowed(
+  owner: WorkbenchSceneOwner,
+  panelId: WorkbenchPanelId,
+) {
+  return owner.kind !== "library" && (panelId === "right" || owner.kind === "session");
+}
+
 /** Library Scenes present Library content and explicitly addressed host files without a Project. */
 export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
   if (surface.kind === "skill") return true;
@@ -675,6 +688,7 @@ export function isWorkbenchScenePanelSurfaceAllowed(
   owner: WorkbenchSceneOwner,
   surface: WorkbenchSurfaceDescriptor,
 ): boolean {
+  if (surface.kind === "agents") return owner.kind !== "library";
   if (owner.kind === "project")
     return (
       isProjectScenePanelSurfaceAllowed(surface) &&
@@ -1178,6 +1192,11 @@ export function createWorkbenchSceneSurface(
   input: WorkbenchSceneSurfaceCreateInput,
 ): WorkbenchSceneSnapshot {
   if (!isWorkbenchScenePanelSurfaceAllowed(scene.owner, input.surface)) return scene;
+  if (input.surface.kind === "agents") {
+    if (!isWorkbenchAgentsPanelAllowed(scene.owner, input.panelId)) return scene;
+    if (Object.values(scene.panelSurfacesById).some((surface) => surface.kind === "agents"))
+      return scene;
+  }
   if (input.surface.id === scene.primary?.id || scene.panelSurfacesById[input.surface.id]) {
     return scene;
   }
@@ -1315,6 +1334,11 @@ export function moveWorkbenchSceneSurface(
   input: WorkbenchSceneSurfaceMoveInput,
 ): WorkbenchSceneSnapshot {
   if (input.surfaceId === scene.primary?.id) return scene;
+  if (
+    scene.panelSurfacesById[input.surfaceId]?.kind === "agents" &&
+    !isWorkbenchAgentsPanelAllowed(scene.owner, input.targetPanelId)
+  )
+    return scene;
   const identityFactory = input.identityFactory ?? defaultIdentityFactory();
   return fromLegacyPanelView(
     scene,
@@ -1492,6 +1516,8 @@ export function getWorkbenchSurfaceReuseKey(
       return `canvas:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.canvasBlockId}`;
     case "review":
       return "review";
+    case "agents":
+      return "agents";
     case "files":
       return workbenchFilesResourceKey(surface.config);
     case "plugin_app":

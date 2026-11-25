@@ -86,7 +86,7 @@ export const make = Effect.gen(function* () {
         title: surface.titleSnapshot.slice(0, 300),
       };
     }
-    if (surface.kind === "files" || surface.kind === "review") {
+    if (surface.kind === "files" || surface.kind === "review" || surface.kind === "agents") {
       return {
         ...base,
         status: "available",

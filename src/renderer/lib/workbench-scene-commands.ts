@@ -30,6 +30,7 @@ import {
   createWorkbenchSceneSurface,
   getWorkbenchSurfaceReuseKey,
   isWorkbenchScenePanelSurfaceAllowed,
+  isWorkbenchAgentsPanelAllowed,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
   maximizeWorkbenchSceneLeaf,
@@ -185,8 +186,10 @@ function requireMovable(tab: WorkbenchCommandTab) {
 }
 
 /** Moves and splits follow the same placement the tab strip offers as drag targets. */
-function requirePlacement(tab: WorkbenchCommandTab, panelId: PanelId) {
+function requirePlacement(owner: WorkbenchSceneOwner, tab: WorkbenchCommandTab, panelId: PanelId) {
   requireMovable(tab);
+  if (tab.surface?.kind === "agents" && !isWorkbenchAgentsPanelAllowed(owner, panelId))
+    reject("invalid_placement");
   if (tab.auxiliary && !getPanelTabPlacement(tab.auxiliary).includes(panelId))
     reject("invalid_placement");
 }
@@ -226,6 +229,13 @@ function selectTab(
     (tab.observed.preview && !tab.auxiliary)
   )
     return ephemeral;
+  if (tab.surface?.kind === "agents") {
+    const nextOverrides = removeKeys(ephemeral.panelCollapsedOverrides, [
+      panelSlot(sceneOwner, panelId),
+    ]);
+    if (nextOverrides !== ephemeral.panelCollapsedOverrides)
+      ephemeral = { ...ephemeral, panelCollapsedOverrides: nextOverrides };
+  }
   const fields = auxiliaryFields.find(([field]) =>
     ephemeral[field][sceneOwner.sessionId]?.some((candidate) => candidate.id === tabId),
   );
@@ -480,7 +490,10 @@ export function prepareWorkbenchSceneCommand(
       surface = { ...surface, config: canonicalWorkbenchFilesConfig(surface.config) };
     if (!WorkbenchSurfaceDescriptorSchema.safeParse(surface).success)
       return reject("invalid_command");
-    if (!isWorkbenchScenePanelSurfaceAllowed(sceneOwner, surface))
+    if (
+      !isWorkbenchScenePanelSurfaceAllowed(sceneOwner, surface) ||
+      (surface.kind === "agents" && !isWorkbenchAgentsPanelAllowed(sceneOwner, command.panelId))
+    )
       return reject("invalid_placement");
     const reuseKey = getWorkbenchSurfaceReuseKey(surface);
     const canReuse = (tab: WorkbenchRendererObservation["tabs"][number]) =>
@@ -607,6 +620,9 @@ export function prepareWorkbenchSceneCommand(
       tab.observed.persisted ? tabId : undefined,
     );
     scene = patchWorkbenchScenePanel(scene, tab.observed.panelId, { collapsed: false });
+    const maximizedLeafId = scene.panels[tab.observed.panelId].layout.maximizedLeafId;
+    if (tab.surface?.kind === "agents" && maximizedLeafId && maximizedLeafId !== groupId)
+      scene = maximizeWorkbenchSceneLeaf(scene, { panelId: tab.observed.panelId, leafId: null });
   } else if (command.kind === "close_tab") {
     const tab = resolveTab(state, scene, command.tabId);
     requireMovable(tab);
@@ -659,7 +675,7 @@ export function prepareWorkbenchSceneCommand(
       scene = mergeWorkbenchSceneLeaf(scene, { panelId: tab.observed.panelId!, leafId: groupId! });
   } else if (command.kind === "move_tab") {
     const tab = resolveTab(state, scene, command.tabId);
-    requirePlacement(tab, command.panelId);
+    requirePlacement(sceneOwner, tab, command.panelId);
     let group = requireGroup(observation, command.panelId, command.groupId);
     if (command.splitSide) {
       groupId = insertGroupBeside(command.panelId, group, command.splitSide, tab);
@@ -697,7 +713,7 @@ export function prepareWorkbenchSceneCommand(
   } else if (command.kind === "split_group") {
     const group = requireGroup(observation, command.panelId, command.groupId);
     const tab = command.tabId ? resolveTab(state, scene, command.tabId) : null;
-    if (tab) requirePlacement(tab, command.panelId);
+    if (tab) requirePlacement(sceneOwner, tab, command.panelId);
     if (tab && !group.tabIds.includes(tab.observed.tabId)) return reject("invalid_placement");
     groupId = insertGroupBeside(command.panelId, group, command.side, tab);
     tabId = tab?.observed.tabId ?? null;

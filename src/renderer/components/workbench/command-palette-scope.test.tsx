@@ -80,6 +80,7 @@ const commandHandlers: CommandPaletteShellCommandHandlers = {
   toggleGitBlame: ignore,
   openBrowserTab: ignore,
   openReviewTab: ignore,
+  openAgentsTab: ignore,
   toggleTerminal: ignore,
   openDbViewTab: ignore,
   openSideChat: ignore,
@@ -108,6 +109,7 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
   hasAttachedThread: true,
   canExportConversationMarkdown: true,
   panelActionAvailability: {
+    agents: false,
     db_view: true,
     page_stage: true,
     canvas_stage: true,

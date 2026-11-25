@@ -315,6 +315,12 @@ import { SpaceHome } from "./space-home";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
+import {
+  OpenAgentsTabContext,
+  openOrFocusAgentsTab,
+  type OpenOrFocusAgentsTab,
+} from "@/lib/workbench-agents-tab";
+import { WorkbenchAgentsSurface } from "./workbench-agents-surface";
 import { WorkbenchCommandPaletteHost } from "./workbench-command-palette-host";
 import { ProductAnalyticsNotice } from "../product-analytics-notice";
 import { recordFeatureUsed, recordPresentedSurfaces } from "@/lib/product-analytics";
@@ -2722,6 +2728,26 @@ export function WorkbenchRuntime({
     }
     return await updateActiveWorkbenchPanel(panelId, { collapsed });
   };
+  const agentsTabScene =
+    workbenchWindow.location.kind === "project" || workbenchWindow.location.kind === "inbox"
+      ? activeOwnedScene
+      : workbenchWindow.location.kind === "session" ||
+          (workbenchWindow.location.kind === "automations" &&
+            resolveAutomationsRouteState(workbenchWindow.location.path).runSessionId ===
+              activeSession?.id)
+        ? activeSessionScene
+        : null;
+  const openAgentsTab: OpenOrFocusAgentsTab = async (options) => {
+    if (!agentsTabScene) return false;
+    return await openOrFocusAgentsTab(
+      sceneNavigator,
+      agentsTabScene,
+      activeSession?.projectId ?? null,
+      options,
+    );
+  };
+  const showAgentsTab = () => void openAgentsTab();
+
   const presentProjectSceneSurface = useCallback(
     async (
       projectId: string,
@@ -3407,6 +3433,33 @@ export function WorkbenchRuntime({
     },
     [openAttachedThreadSessionById, setSettingsPath],
   );
+  const openAgentsChat = (sessionId: string, dockProjectId: string | null = null) => {
+    const open = async () => {
+      if (dockProjectId && !isRemoteSpace()) {
+        const chat = await sessionCatalog.prefetch(sessionId);
+        const location = workbenchWindow.owner.read().windowState.location;
+        if (location.kind !== "project" || location.projectId !== dockProjectId) return;
+        if (chat?.projectId === dockProjectId && !chat.archived) {
+          updateProjectAgentDock(dockProjectId, (dock) => ({
+            ...dock,
+            binding: { kind: "session", sessionId },
+          }));
+          return;
+        }
+      }
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      await sessionCommands.openProjectSessionById(sessionId);
+    };
+    void open().catch(() => {
+      toast.danger(
+        intl.formatMessage({
+          id: "workbench.workbenchRuntime.agentsChatUnavailable",
+          defaultMessage: "Couldn’t open chat",
+        }),
+      );
+    });
+  };
   const panelCommands = useWorkbenchPanelCommandRouter({
     activeSession,
     activePanelOwnerKey,
@@ -3429,6 +3482,7 @@ export function WorkbenchRuntime({
       );
     },
     commandKeymapState,
+    openAgentsTab,
     openNewPage: async (placement) =>
       activeSession
         ? await openNewPage({ kind: "session", sessionId: activeSession.id }, placement)
@@ -3643,6 +3697,7 @@ export function WorkbenchRuntime({
       },
       onTogglePageStageHistoryModal: togglePageStageHistoryModal,
       onUpdateSessionViewTab: updateSessionViewTab,
+      onOpenAgentsChat: openAgentsChat,
     });
   const mountedBrowserTabIds = useMemo(
     () =>
@@ -3968,30 +4023,24 @@ export function WorkbenchRuntime({
   );
   const { createManualTab: createSessionManualTab } = sessionCommands;
   const { openPanelDestinationFromPicker } = panelCommands;
-  const runNewTabAction = useCallback(
-    async (
-      action: PanelNewTabActionKind,
-      { owner, panelId, leafId, isCurrent }: WorkbenchNewTabPlacement,
-    ) => {
-      if (action === "new_page") {
-        return await openNewPage(owner, { panelId, leafId, isCurrent });
-      }
-      if (owner.kind === "project") {
-        return await openProjectScenePanelAction(owner.projectId, action, { panelId, leafId });
-      }
-      if (owner.kind !== "session" || activeSession?.id !== owner.sessionId) return false;
-      // Review is a singleton: an open Review is revealed instead of duplicated.
-      if (action === "review") return await createSessionManualTab("review", panelId, leafId);
-      return await dispatchPanelAction(action, { panelId, leafId });
-    },
-    [
-      activeSession?.id,
-      createSessionManualTab,
-      dispatchPanelAction,
-      openNewPage,
-      openProjectScenePanelAction,
-    ],
-  );
+  const runNewTabAction = async (
+    action: PanelNewTabActionKind,
+    { owner, panelId, leafId, isCurrent }: WorkbenchNewTabPlacement,
+  ) => {
+    if (action === "agents") {
+      return await openAgentsTab({ panelId, leafId, isCurrent });
+    }
+    if (action === "new_page") {
+      return await openNewPage(owner, { panelId, leafId, isCurrent });
+    }
+    if (owner.kind === "project") {
+      return await openProjectScenePanelAction(owner.projectId, action, { panelId, leafId });
+    }
+    if (owner.kind !== "session" || activeSession?.id !== owner.sessionId) return false;
+    // Review is a singleton: an open Review is revealed instead of duplicated.
+    if (action === "review") return await createSessionManualTab("review", panelId, leafId);
+    return await dispatchPanelAction(action, { panelId, leafId });
+  };
   const openNewTabDestination = useCallback(
     async (destination: PanelDestination, { owner, panelId, leafId }: WorkbenchNewTabPlacement) => {
       if (owner.kind === "project") {
@@ -4803,6 +4852,7 @@ export function WorkbenchRuntime({
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
       openInbox={captureInbox}
+      openAgentsTab={agentsTabScene ? showAgentsTab : null}
       newPage={newPageOwner ? () => void openNewPage(newPageOwner, { panelId: "right" }) : null}
       openAutomations={openAutomations}
       openLibraryFiles={() => {
@@ -4822,6 +4872,21 @@ export function WorkbenchRuntime({
   const activeSessionProject = activeRenderSession?.projectId
     ? (projects.find((project) => project.id === activeRenderSession.projectId) ?? activeProject)
     : null;
+  const renderOwnedSceneAgentsSurface = (
+    owner: WorkbenchSceneOwner,
+    surface: Extract<WorkbenchSurfaceDescriptor, { kind: "agents" }>,
+    active: boolean,
+  ) => (
+    <WorkbenchAgentsSurface
+      scope={surface.config}
+      active={active && sidePanelOpen}
+      onScopeChange={(config) => updateSceneSurfacePresentation(owner, surface.id, { config })}
+      onOpenChat={({ sessionId }) =>
+        openAgentsChat(sessionId, owner.kind === "project" ? owner.projectId : null)
+      }
+      onOpenThread={openAttachedThreadSession}
+    />
+  );
   const renderOwnedSceneFileSurface = (
     surface: Extract<WorkbenchSurfaceDescriptor, { kind: "files" }>,
     context: { readonly active: boolean; readonly panelId: PanelId },
@@ -4972,6 +5037,8 @@ export function WorkbenchRuntime({
           onClose={closeSurface}
         />
       );
+    if (surface.kind === "agents")
+      return renderOwnedSceneAgentsSurface(activeProjectScene.owner, surface, context.active);
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
     if (surface.kind === "inbox") {
       const projectId = inboxScopeProjectId(surface.config.scope);
@@ -4985,6 +5052,7 @@ export function WorkbenchRuntime({
           projects={projects}
           focusComposerToken={inboxFocusToken}
           onOpenSession={sessionCommands.openProjectSessionById}
+          onOpenAgents={showAgentsTab}
           onShowPagesInChat={sessionCommands.showPagesInChat}
           onOpenAutomation={
             isRemoteSpace()
@@ -5385,6 +5453,8 @@ export function WorkbenchRuntime({
       );
     if (surface.kind === "page_file") return renderOwnedScenePageFileSurface(surface, context);
     if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
+    if (surface.kind === "agents")
+      return renderOwnedSceneAgentsSurface(librarySceneOwner, surface, context.active);
 
     if (surface.kind === "inbox") {
       return (
@@ -5395,6 +5465,7 @@ export function WorkbenchRuntime({
           projects={projects}
           focusComposerToken={inboxFocusToken}
           onOpenSession={sessionCommands.openProjectSessionById}
+          onOpenAgents={showAgentsTab}
           onOpenProject={openProjectInbox}
           onShowPagesInChat={sessionCommands.showPagesInChat}
           onOpenAutomation={
@@ -5574,6 +5645,10 @@ export function WorkbenchRuntime({
             });
           },
           onOpenAction: (panelId, leafId, action) => {
+            if (action === "agents") {
+              void openAgentsTab({ panelId, leafId });
+              return;
+            }
             void openProjectScenePanelAction(activeProject.id, action, { panelId, leafId });
           },
           onOpenDestination: async (panelId, leafId, destination) => {
@@ -5605,6 +5680,11 @@ export function WorkbenchRuntime({
           renderSurface: renderLibrarySceneSurface,
           renderNewTab: (panelId, leafId) => (
             <PagesTabPicker
+              onOpenAgents={
+                libraryScenePresentation.scene.owner.kind === "inbox" && panelId === "right"
+                  ? showAgentsTab
+                  : undefined
+              }
               onOpenTarget={(target, titleSnapshot, reveal) => {
                 void presentLibraryTarget(target, {
                   owner: libraryScenePresentation.scene.owner,
@@ -6580,7 +6660,9 @@ export function WorkbenchRuntime({
                   }),
               }}
             >
-              <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+              <OpenAgentsTabContext value={agentsTabScene ? openAgentsTab : null}>
+                <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+              </OpenAgentsTabContext>
             </SkillNavigationContext>
             {/* Its grace period counts from when it can be seen, which setup would prevent. */}
             {firstRun.undecided || firstRun.workbenchInert ? null : (

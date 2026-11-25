@@ -1,5 +1,4 @@
 import { getIntl, FormattedMessage } from "@/lib/i18n";
-import { useRunStopCapabilities } from "@/lib/use-chat-capabilities";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { ConnectedThreadStage, type ThreadStageActions } from "@/features/local-conversation";
@@ -11,7 +10,7 @@ import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
 import type { Project, ProjectSession, CodexComposerIntent } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { toast } from "@/components/ui/toast";
@@ -28,18 +27,12 @@ import {
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
   applyAgentRuntimeOverviewReport,
-  findAgentRuntimeOverviewSubagent,
   reconcileAgentRuntimeOverview,
   type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
-import {
-  agentRuntimeDelegatedTasks,
-  isAgentRuntimeTaskStopping,
-  requestAgentRuntimeTaskStop,
-} from "@/features/local-conversation/agent-runtime-delegated-tasks";
+import { useAgentRuntimeSubagentStop } from "@/features/local-conversation/use-agent-runtime-subagent-stop";
 import { useAgentRuntimeConnectionState } from "@/lib/agent-runtime-session-activity";
-import type { CodexSubagentOverviewRow } from "../../../shared/types";
 import {
   SubagentsPanelDetailHeader,
   SubagentsPanelOverviewContent,
@@ -353,10 +346,11 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const refreshDelegation = useEffectEvent(
     () => void queryClient.invalidateQueries(subagentDelegationQueryOptions(input.sessionId)),
   );
-  // Each subagent answers for the Run that owns its current turn, as Core admits its stop.
-  const canStopRun = useRunStopCapabilities(
-    input.sessionId,
-    state.source?.active.items.map((subagent) => subagent.runId) ?? [],
+  const subagentStop = useAgentRuntimeSubagentStop(input.sessionId, state.source, (cause) =>
+    setState((current) => ({
+      ...current,
+      error: cause instanceof Error ? cause.message : String(cause),
+    })),
   );
   const [attachment, setAttachment] = useState(0);
   const isCurrentAttachment = useEffectEvent(
@@ -366,10 +360,6 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const reports = useRef(0);
   const connection = useAgentRuntimeConnectionState();
   const readyGeneration = connection.status === "ready" ? connection.generation : null;
-  const stopping = useSyncExternalStore(
-    agentRuntimeDelegatedTasks.subscribe,
-    agentRuntimeDelegatedTasks.readStopping,
-  );
   const retryFailedAttachment = useEffectEvent(() => {
     if (state.error === null) return;
     setState((current) => ({ ...current, error: null }));
@@ -489,11 +479,6 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       window.clearTimeout(timer);
     };
   }, [input.sessionId, input.threadId, state.recount]);
-  // A settled turn ends its Stop request.
-  useEffect(() => {
-    for (const subagent of state.source?.terminal.items ?? [])
-      agentRuntimeDelegatedTasks.settle(input.sessionId, subagent.taskId);
-  }, [input.sessionId, state.source]);
   const loadMore = async (section: "active" | "done") => {
     const key = section === "active" ? "active" : "terminal";
     const cursor = state.source?.[key].nextCursor;
@@ -570,10 +555,6 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       )
     );
   const source = state.source;
-  const liveSubagent = (row: CodexSubagentOverviewRow) => {
-    const subagent = findAgentRuntimeOverviewSubagent(source, row);
-    return subagent && source.active.items.includes(subagent) ? subagent : undefined;
-  };
   return (
     <div className="flex h-full min-h-0 flex-col">
       {error}
@@ -581,36 +562,14 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
         <SubagentsPanelOverviewContent
           rootThreadId={input.threadId}
           delegation={<SubagentDelegationConversationControl sessionId={input.sessionId} />}
-          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, canStopRun)}
+          overview={projectAgentRuntimeSubagentOverview(
+            input.threadId,
+            source,
+            subagentStop.canStopRun,
+          )}
           onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
-          // Stop addresses the subagent's current turn, which stops the subagent.
-          isStopping={(row) => {
-            const subagent = liveSubagent(row);
-            return (
-              subagent !== undefined &&
-              isAgentRuntimeTaskStopping(stopping, input.sessionId, subagent.taskId)
-            );
-          }}
-          // A row offers Stop only where its own `canStop` says this reader may.
-          onStop={(row) => {
-            const subagent = liveSubagent(row);
-            if (!subagent) return;
-            void requestAgentRuntimeTaskStop(
-              input.sessionId,
-              {
-                taskId: subagent.taskId,
-                parentThreadId: subagent.threadId,
-                ownerRunId: subagent.runId,
-                childThreadId: subagent.childThreadId,
-              },
-              agentRuntimeRuntime,
-            ).catch((cause: unknown) =>
-              setState((current) => ({
-                ...current,
-                error: cause instanceof Error ? cause.message : String(cause),
-              })),
-            );
-          }}
+          isStopping={subagentStop.isStopping}
+          onStop={subagentStop.stop}
           onLoadMore={(section) => void loadMore(section)}
         />
       </div>

@@ -156,6 +156,28 @@ describe("projectDelegationMap", () => {
     expect(long.beside.height).toBe(long.columnHeight);
   });
 
+  test("keeps the lead at the top of its column when maps are stacked", () => {
+    const rows = Array.from({ length: 4 }, (_, index) => row(`t-${index}`, { startedAtMs: index }));
+    const map = projectDelegationMap({
+      rootThreadId: "root",
+      rows,
+      moreAbove: false,
+      leadPlacement: "top",
+    });
+    expect(map.beside.leadTop).toBe(0);
+    expect(map.beside.columnTop).toBe(0);
+    expect(map.beside.leadCenterY).toBe(GEOMETRY.leadHeight / 2);
+    expect(map.beside.height).toBe(map.columnHeight);
+
+    const alone = projectDelegationMap({
+      rootThreadId: "root",
+      rows: [],
+      moreAbove: false,
+      leadPlacement: "top",
+    });
+    expect(alone.beside.height).toBe(GEOMETRY.leadHeight);
+  });
+
   test("leaves room above the first card for the subagents not shown yet", () => {
     const map = project([row("a")], true);
     expect(map.nodes[0]!.top).toBe(GEOMETRY.moreHeight + GEOMETRY.gap);

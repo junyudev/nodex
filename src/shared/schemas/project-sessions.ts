@@ -36,6 +36,7 @@ import {
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
 import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
+import { WorkbenchAgentsSurfaceConfigSchema } from "./workbench-agents";
 import {
   CodexCollaborationModeKindSchema,
   CodexThreadActiveFlagSchema,
@@ -122,6 +123,8 @@ export function parseWorkbenchProjectionTabConfig<Kind extends WorkbenchTabKind>
   else if (kind === "plugin_app") parsed = WorkbenchPanelPluginAppBindingSchema.parse(config);
   else if (kind === "image_editor") {
     parsed = WorkbenchImageEditorSurfaceConfigSchema.parse(config);
+  } else if (kind === "agents") {
+    parsed = WorkbenchAgentsSurfaceConfigSchema.parse(config);
   } else if (kind === "side_chat") {
     parsed = WorkbenchSideChatSurfaceConfigSchema.parse(config);
   } else {

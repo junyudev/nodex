@@ -4,6 +4,12 @@ import {
   createDefaultWorkbenchLayoutSnapshot,
   createDefaultWorkbenchLayoutSnapshotV3,
 } from "../workbench-layout";
+import { moveWorkbenchPanelTab } from "../workbench-panel-layout";
+import {
+  makeWorkbenchSceneKey,
+  materializeInitialWorkbenchScene,
+  type WorkbenchSceneOwner,
+} from "../workbench-scene";
 import {
   LegacyWindowSessionCatalogV1Schema,
   LegacyWindowSessionCatalogV2Schema,
@@ -27,7 +33,90 @@ function record(
   };
 }
 
+function agentsCatalog(
+  owner: WorkbenchSceneOwner,
+  panelId: "right" | "bottom",
+  surfaces: readonly { id: string; kind: string; config: unknown }[],
+) {
+  const session = record();
+  const scene = materializeInitialWorkbenchScene(owner);
+  const panel = scene.panels[panelId];
+  const panelLayout = surfaces.reduce(
+    (layout, tab) => moveWorkbenchPanelTab(layout, { tabId: tab.id }),
+    panel.layout,
+  );
+  return {
+    version: 3,
+    lastActiveSessionId: session.id,
+    sessions: [
+      {
+        ...session,
+        layout: {
+          ...session.layout,
+          scenesByOwnerKey: {
+            [makeWorkbenchSceneKey(owner)]: {
+              ...scene,
+              panels: { ...scene.panels, [panelId]: { ...panel, layout: panelLayout } },
+              panelSurfacesById: Object.fromEntries(
+                surfaces.map((tab) => [
+                  tab.id,
+                  { titleSnapshot: "Agents", stateKey: 0, state: null, ...tab },
+                ]),
+              ),
+            },
+          },
+        },
+      },
+    ],
+  };
+}
+
+const agentsTab = { id: "agents-tab", kind: "agents", config: { projectId: null } };
+
 describe("WindowSession schemas", () => {
+  test.each([
+    { owner: { kind: "inbox" }, panelId: "right", projectId: null },
+    { owner: { kind: "project", projectId: "alpha" }, panelId: "right", projectId: "beta" },
+    { owner: { kind: "session", sessionId: "chat" }, panelId: "right", projectId: "alpha" },
+    { owner: { kind: "session", sessionId: "chat" }, panelId: "bottom", projectId: null },
+  ] as const)(
+    "restores Agents in the $owner.kind $panelId panel",
+    ({ owner, panelId, projectId }) => {
+      const tab = { ...agentsTab, config: { projectId } };
+      const parsed = WindowSessionCatalogSchema.parse(agentsCatalog(owner, panelId, [tab]));
+      expect(
+        parsed.sessions[0]?.layout.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]
+          ?.panelSurfacesById[tab.id],
+      ).toMatchObject(tab);
+    },
+  );
+
+  test.each([
+    {},
+    { projectId: 1 },
+    { projectId: "" },
+    { projectId: " " },
+    {
+      projectId: null,
+      legacyScope: "all",
+    },
+  ])("rejects an invalid Agents config %j", (config) => {
+    const catalog = agentsCatalog({ kind: "inbox" }, "right", [{ ...agentsTab, config }]);
+    expect(WindowSessionCatalogSchema.safeParse(catalog).success).toBe(false);
+  });
+
+  test("rejects a misspelled surface kind, a duplicate, and disallowed Agents placement", () => {
+    const project = { kind: "project", projectId: "alpha" } as const;
+    for (const catalog of [
+      agentsCatalog({ kind: "inbox" }, "right", [{ ...agentsTab, kind: "agent" }]),
+      agentsCatalog(project, "right", [agentsTab, { ...agentsTab, id: "duplicate" }]),
+      agentsCatalog(project, "bottom", [agentsTab]),
+      agentsCatalog({ kind: "library" }, "right", [agentsTab]),
+    ]) {
+      expect(WindowSessionCatalogSchema.safeParse(catalog).success).toBe(false);
+    }
+  });
+
   test("accepts only HTTP and HTTPS URLs for a new Browser window", () => {
     for (const browserUrl of ["https://example.com/path?q=1", "http://localhost:3000/"]) {
       expect(WindowSessionNewWindowRequestSchema.parse({ browserUrl })).toEqual({ browserUrl });

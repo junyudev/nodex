@@ -165,6 +165,7 @@ function makeCommandContext(
     hasAttachedThread: true,
     canExportConversationMarkdown: true,
     panelActionAvailability: {
+      agents: false,
       db_view: true,
       page_stage: true,
       canvas_stage: true,
@@ -321,6 +322,7 @@ describe("buildCommandPaletteCommands", () => {
         hasActiveSession: false,
         hasAttachedThread: false,
         panelActionAvailability: {
+          agents: false,
           db_view: false,
           page_stage: false,
           canvas_stage: false,
@@ -371,6 +373,7 @@ describe("buildCommandPaletteCommands", () => {
     const commands = buildCommandPaletteCommands(
       makeCommandContext({
         panelActionAvailability: {
+          agents: false,
           db_view: false,
           page_stage: false,
           canvas_stage: false,

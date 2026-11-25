@@ -1,3 +1,4 @@
+import type { AgentsMapScope } from "./agents-map";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type {
   WorkbenchPageFileSurfaceConfig,
@@ -71,7 +72,8 @@ export type WorkbenchSessionViewTabKind =
   | "review"
   | "files"
   | "image_editor"
-  | "side_chat";
+  | "side_chat"
+  | "agents";
 
 export interface WorkbenchDbViewTabConfig {
   projectId: string;
@@ -126,6 +128,7 @@ export interface WorkbenchSessionViewTabConfigByKind {
   files: WorkbenchFilesTabConfig;
   image_editor: WorkbenchImageEditorSurfaceConfig;
   side_chat: WorkbenchSideChatSurfaceConfig;
+  agents: AgentsMapScope;
 }
 
 type WorkbenchSessionViewTabVariant = {

@@ -91,6 +91,7 @@ export type CommandPaletteShellCommandId =
   | "toggleGitBlame"
   | "openBrowserTab"
   | "openReviewTab"
+  | "openAgentsTab"
   | "toggleTerminal"
   | typeof OPEN_DB_VIEW_TAB_COMMAND_ID
   | "openSideChat"
@@ -164,6 +165,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "toggleGitBlame" ||
     id === "openBrowserTab" ||
     id === "openReviewTab" ||
+    id === "openAgentsTab" ||
     id === "toggleTerminal" ||
     id === OPEN_DB_VIEW_TAB_COMMAND_ID ||
     id === "openSideChat" ||
@@ -782,6 +784,24 @@ export function buildCommandPaletteCommands(
         disabled: !context.panelActionAvailability.browser,
       },
     ),
+    ...(context.panelActionAvailability.agents
+      ? [
+          command(
+            "openAgentsTab",
+            "Panels",
+            {
+              id: "lib.commandPaletteCommands.agents.title",
+              defaultMessage: "Open Agents tab",
+            },
+            {
+              id: "lib.commandPaletteCommands.agents.description",
+              defaultMessage: "See live Agent work and subagents",
+            },
+            ["agents", "subagents", "delegation", "panel", "tab"],
+            890,
+          ),
+        ]
+      : []),
     command(
       "openReviewTab",
       "Panels",

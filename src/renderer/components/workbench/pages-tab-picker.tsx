@@ -2,6 +2,7 @@ import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   CanvasIcon,
+  DelegationMapIcon,
   BoardIcon,
   PageIcon,
   SearchIcon,
@@ -14,6 +15,7 @@ import {
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
+import { AGENTS_TAB_TITLE } from "@/lib/workbench-panel-actions";
 import { cn } from "@/lib/utils";
 import {
   boundSpaceContentQuery,
@@ -40,6 +42,7 @@ const pickerRowClassName = cn(
 
 export function PagesTabPicker({
   onOpenTarget,
+  onOpenAgents,
   triggerButton,
   dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
   defaultOpen = false,
@@ -49,6 +52,7 @@ export function PagesTabPicker({
     title?: string,
     reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
   ) => void;
+  readonly onOpenAgents?: () => void;
   readonly triggerButton?: ReactElement;
   readonly dataSource?: SpaceContentDataSource;
   readonly defaultOpen?: boolean;
@@ -268,6 +272,19 @@ export function PagesTabPicker({
           ) : null}
         </div>
         <div className="border-t border-token-border p-1">
+          {onOpenAgents ? (
+            <button
+              type="button"
+              className={pickerRowClassName}
+              onClick={() => {
+                setOpen(false);
+                onOpenAgents();
+              }}
+            >
+              <DelegationMapIcon />
+              {intl.formatMessage(AGENTS_TAB_TITLE)}
+            </button>
+          ) : null}
           <button
             type="button"
             className={pickerRowClassName}

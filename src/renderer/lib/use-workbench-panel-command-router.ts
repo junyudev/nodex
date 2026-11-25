@@ -119,6 +119,7 @@ interface WorkbenchPanelCommandRouterInput {
     titleSnapshot?: string,
     options?: OpenPageStageOptions,
   ) => void;
+  readonly openAgentsTab: import("./workbench-agents-tab").OpenOrFocusAgentsTab;
   readonly commandKeymapState?: CommandKeymapState | null;
   /** Creates a Space Page and opens it in the panel group. */
   readonly openNewPage: (placement: {
@@ -182,6 +183,7 @@ export function useWorkbenchPanelCommandRouter({
   openLibraryPage,
   commandKeymapState,
   openNewPage,
+  openAgentsTab,
   focusedPanelGroupRef,
   panelTabShortcutStateRef,
 }: WorkbenchPanelCommandRouterInput) {
@@ -545,6 +547,7 @@ export function useWorkbenchPanelCommandRouter({
       const panelId = options.panelId ?? action?.defaultPanelId ?? "right";
       if (!resolveActivePanelCapabilities(panelId).actions[kind].available) return false;
 
+      if (kind === "agents") return await openAgentsTab({ panelId, leafId: options.leafId });
       if (kind === "side_chat") {
         await openSideChat({ targetPanelId: panelId, targetLeafId: options.leafId });
         return true;
@@ -581,6 +584,7 @@ export function useWorkbenchPanelCommandRouter({
       focusOrCreateProjectDbViewTab,
       focusOrCreateSessionTerminalTab,
       openCanvasStage,
+      openAgentsTab,
       openNewPage,
       openSideChat,
       resolveActivePanelCapabilities,

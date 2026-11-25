@@ -174,6 +174,7 @@ export function makePreviewWorkbenchTabProjection(
     case "plugin_app":
     case "side_chat":
     case "skill":
+    case "agents":
       throw new Error(`A ${draft.kind} opens as a durable tab, never as a preview`);
   }
 }
@@ -253,6 +254,7 @@ export function makePinnedPreviewTabCreateInput(
     case "plugin_app":
     case "side_chat":
     case "skill":
+    case "agents":
       throw new Error(`A ${previewTab.kind} opens as a durable tab, never as a preview`);
   }
 }

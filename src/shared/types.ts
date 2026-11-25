@@ -1,3 +1,4 @@
+import type { AgentsMapScope } from "./agents-map";
 import type { WorkbenchSkillSurfaceConfig } from "./schemas/workbench-skill";
 import type { PageTurn } from "./page-turn";
 import type { PageAssignee, PageWork, WorkSummary } from "./work-graph";
@@ -771,10 +772,12 @@ export type WorkbenchTabKind =
   | "files"
   | "plugin_app"
   | "image_editor"
-  | "side_chat";
+  | "side_chat"
+  | "agents";
 
 export const PROJECT_SESSION_SINGLETON_TAB_KINDS = [
   "review",
+  "agents",
 ] as const satisfies readonly WorkbenchTabKind[];
 
 export type WorkbenchProjectionDbViewTabConfig = WorkbenchDbViewSurfaceConfig;
@@ -942,6 +945,7 @@ export interface WorkbenchProjectionTabConfigByKind {
   >;
   image_editor: WorkbenchImageEditorSurfaceConfig;
   side_chat: WorkbenchSideChatSurfaceConfig;
+  agents: AgentsMapScope;
 }
 
 export type WorkbenchProjectionTabConfig = WorkbenchProjectionTabConfigByKind[WorkbenchTabKind];

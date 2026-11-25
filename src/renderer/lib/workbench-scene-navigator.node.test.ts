@@ -11,6 +11,7 @@ import {
 } from "./maitai/maitai-store";
 import { getWorkbenchWindowOwner } from "./workbench-window-owner";
 import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
+import { openOrFocusAgentsTab } from "./workbench-agents-tab";
 import { createWorkbenchSceneSurfacePresenter } from "./workbench-scene-surface-presenter";
 import {
   listWorkbenchScenePreviewEntries,
@@ -24,6 +25,9 @@ import {
   listWorkbenchPanelLeaves,
 } from "../../shared/workbench-panel-layout";
 import {
+  insertWorkbenchSceneLeaf,
+  patchWorkbenchScenePanel,
+  updateWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
 } from "../../shared/workbench-scene";
@@ -148,6 +152,97 @@ function createHarness(
 }
 
 describe("WorkbenchSceneNavigator", () => {
+  test.each([
+    { owner: { kind: "inbox" }, projectId: null, existingSplit: true },
+    { owner: { kind: "project", projectId: "alpha" }, projectId: "alpha", existingSplit: false },
+  ] as const)(
+    "opens one Agents tab beside the $owner.kind Home",
+    async ({ owner, projectId, existingSplit }) => {
+      const harness = createHarness();
+      const key = makeWorkbenchSceneKey(owner);
+      const initial = materializeInitialWorkbenchScene(owner);
+      const home = initial.primary!;
+      const homeLeafId = initial.panels.right.layout.activeLeafId;
+      const neighbor = existingSplit
+        ? insertWorkbenchSceneLeaf(initial, { panelId: "right", leafId: homeLeafId, side: "right" })
+        : null;
+      harness.windowOwner.setScene(owner, () => neighbor?.scene ?? initial);
+
+      expect(await openOrFocusAgentsTab(harness.navigator, initial, null)).toBe(true);
+
+      const opened = harness.scenes[key]!;
+      const tabs = Object.values(opened.panelSurfacesById);
+      expect(tabs).toHaveLength(1);
+      const agents = tabs[0]!;
+      expect(agents).toMatchObject({ kind: "agents", config: { projectId } });
+      const layout = opened.panels.right.layout;
+      const agentsLeaf = findWorkbenchPanelLeafForTab(layout, agents.id);
+      expect(findNearestWorkbenchPanelLeafToRight(layout, homeLeafId)).toBe(agentsLeaf?.id);
+      if (neighbor) expect(agentsLeaf?.id).toBe(neighbor.leafId);
+      expect(agentsLeaf?.activeTabId).toBe(agents.id);
+      expect(findWorkbenchPanelLeafForTab(layout, home.id)?.activeTabId).toBe(home.id);
+
+      harness.windowOwner.setScene(owner, (scene) =>
+        updateWorkbenchSceneSurface(scene!, agents.id, { config: { projectId: "saved" } }),
+      );
+      const other = await harness.navigator.presentPanelSurface({
+        owner,
+        request: {
+          kind: "page_stage",
+          config: { routingContext: { kind: "library" }, pageId: "page-1" },
+        },
+        target: { panelId: "right", leafId: agentsLeaf!.id },
+        mode: "durable",
+        navigation: "background",
+      });
+      expect(other.status).toBe("presented");
+      expect(
+        await openOrFocusAgentsTab(harness.navigator, opened, null, {
+          scope: { projectId: "requested" },
+        }),
+      ).toBe(true);
+
+      const focused = harness.scenes[key]!;
+      expect(
+        Object.values(focused.panelSurfacesById).filter((tab) => tab.kind === "agents"),
+      ).toEqual([{ ...agents, config: { projectId: "saved" } }]);
+      expect(
+        findWorkbenchPanelLeafForTab(focused.panels.right.layout, agents.id)?.activeTabId,
+      ).toBe(agents.id);
+      expect(listWorkbenchPanelLeaves(focused.panels.right.layout)).toHaveLength(2);
+    },
+  );
+
+  test.each([
+    { projectId: "alpha", panelId: "right", options: undefined, expectedScope: "alpha" },
+    { projectId: null, panelId: "right", options: undefined, expectedScope: null },
+    {
+      projectId: "alpha",
+      panelId: "bottom",
+      options: { panelId: "bottom", scope: { projectId: null } },
+      expectedScope: null,
+    },
+  ] as const)(
+    "opens the Session $panelId panel with scope $expectedScope",
+    async ({ projectId, panelId, options, expectedScope }) => {
+      const harness = createHarness();
+      const owner = { kind: "session", sessionId: "chat" } as const;
+      const scene = patchWorkbenchScenePanel(materializeInitialWorkbenchScene(owner), panelId, {
+        collapsed: true,
+      });
+      harness.windowOwner.setScene(owner, () => scene);
+      expect(await openOrFocusAgentsTab(harness.navigator, scene, projectId, options)).toBe(true);
+      const opened = harness.scenes[makeWorkbenchSceneKey(owner)]!;
+      const panel = opened.panels[panelId];
+      expect(panel.collapsed).toBe(false);
+      const tabId = listWorkbenchPanelLeaves(panel.layout)[0]?.activeTabId;
+      expect(opened.panelSurfacesById[tabId!]).toMatchObject({
+        kind: "agents",
+        config: { projectId: expectedScope },
+      });
+    },
+  );
+
   test.each([
     { owner: { kind: "library" }, routingContext: { kind: "library" }, mode: "preview" },
     {

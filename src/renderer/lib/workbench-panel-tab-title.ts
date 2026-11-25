@@ -9,7 +9,7 @@ import type { WorkbenchSurfaceReference } from "../../shared/nodex-app-tools/wor
 import { presentPageTitle } from "./page-title-projection-store";
 import { presentSessionTitle } from "./session-title-presentation";
 import type { WorkbenchTabProjection } from "./types";
-import { PANEL_TOOL_TITLE_MESSAGES } from "./workbench-panel-actions";
+import { AGENTS_TAB_TITLE, PANEL_TOOL_TITLE_MESSAGES } from "./workbench-panel-actions";
 
 const messages = defineMessages({
   inbox: { id: "lib.workbenchSceneTabPresentation.inbox", defaultMessage: "Inbox" },
@@ -65,6 +65,8 @@ export function presentWorkbenchPanelTabTitle(
         : intl.formatMessage(PANEL_TOOL_TITLE_MESSAGES.terminal);
     case "files":
       return tab.config.path ? snapshot : intl.formatMessage(PANEL_TOOL_TITLE_MESSAGES.files);
+    case "agents":
+      return intl.formatMessage(AGENTS_TAB_TITLE);
     case "review":
       return intl.formatMessage(PANEL_TOOL_TITLE_MESSAGES.review);
     case "db_view":

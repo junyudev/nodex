@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
+import { useOpenOrFocusAgentsTab } from "@/lib/workbench-agents-tab";
 import {
   CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
   CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
@@ -580,6 +581,7 @@ export function SubagentsPanelOverviewContent({
 }) {
   const intl = useIntl();
   const { view, setView } = useSubagentsOverviewView();
+  const openAgentsTab = useOpenOrFocusAgentsTab();
   const hasLiveRows = overview.active.rows.some(
     (row) => row.status === "active" || row.status === "waiting",
   );
@@ -669,7 +671,24 @@ export function SubagentsPanelOverviewContent({
         {hasSubagents || delegation ? (
           <div className="mb-3 flex min-h-6 items-center justify-between gap-3 px-2">
             {delegation ?? <span />}
-            {hasSubagents ? <SubagentsOverviewViewToggle view={view} onChange={setView} /> : null}
+            {hasSubagents ? (
+              <span className="flex shrink-0 items-center gap-2">
+                {openAgentsTab ? (
+                  // Steps out from this chat's tree to every chat's, beside the conversation.
+                  <button
+                    type="button"
+                    className="cursor-interaction rounded-md px-1 text-xs text-token-text-tertiary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
+                    onClick={() => void openAgentsTab()}
+                  >
+                    {intl.formatMessage({
+                      id: "conversation.subagentsPanel.allAgents",
+                      defaultMessage: "All agents",
+                    })}
+                  </button>
+                ) : null}
+                <SubagentsOverviewViewToggle view={view} onChange={setView} />
+              </span>
+            ) : null}
           </div>
         ) : null}
         {showMap ? (

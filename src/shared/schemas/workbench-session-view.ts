@@ -19,6 +19,7 @@ import {
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
 import { WorkbenchSideChatSurfaceConfigSchema } from "./workbench-side-chat";
+import { WorkbenchAgentsSurfaceConfigSchema } from "./workbench-agents";
 import { BrowserSidebarDeviceToolbarStateSchema } from "../browser/browser-schemas";
 import { primaryCanvasBlockId } from "../block-documents/canvas-document-identity";
 
@@ -250,6 +251,11 @@ export const WorkbenchSessionViewTabSchema = z
       ...tabBaseSchema,
       kind: z.literal("side_chat"),
       config: WorkbenchSideChatSurfaceConfigSchema,
+    }),
+    z.strictObject({
+      ...tabBaseSchema,
+      kind: z.literal("agents"),
+      config: WorkbenchAgentsSurfaceConfigSchema,
     }),
   ])
   .superRefine((tab, context) => {

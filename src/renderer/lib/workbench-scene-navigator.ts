@@ -1,3 +1,5 @@
+import type { AgentsMapScope } from "../../shared/agents-map";
+import { AGENTS_TAB_TITLE } from "./workbench-panel-actions";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { getIntl } from "@/lib/i18n";
 import type { PluginAppBinding } from "../../shared/agent-plugins/app-entrypoints";
@@ -89,6 +91,7 @@ export type WorkbenchSurfaceOpenRequest =
       };
       readonly titleSnapshot?: string;
     }
+  | { readonly kind: "agents"; readonly config: AgentsMapScope }
   | {
       readonly kind: "review";
       readonly config: WorkbenchReviewSurfaceConfig;
@@ -377,6 +380,13 @@ function makeSurfaceDescriptor(
         },
       };
     }
+    case "agents":
+      return {
+        ...common,
+        kind: request.kind,
+        titleSnapshot: getIntl().formatMessage(AGENTS_TAB_TITLE),
+        config: request.config,
+      };
     case "review":
       return {
         ...common,
@@ -657,6 +667,7 @@ function validateSceneSurfaceRequest(
     return null;
 
   if (input.request.kind === "skill") return null;
+  if (input.request.kind === "agents" && input.owner.kind === "inbox") return null;
 
   const requestAllowed =
     input.request.kind === "page_stage" ||
@@ -718,7 +729,8 @@ export function createWorkbenchSceneNavigator(
       input.mode === "preview" &&
       !(input.request.kind === "page_stage" && input.request.reveal) &&
       input.request.kind !== "skill" &&
-      input.request.kind !== "plugin_app"
+      input.request.kind !== "plugin_app" &&
+      input.request.kind !== "agents"
     ) {
       return presentPreviewSurface(port, input, candidate);
     }
