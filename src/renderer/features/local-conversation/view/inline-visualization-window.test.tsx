@@ -1,6 +1,7 @@
 import { act, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { createTestNodexReferenceRouter } from "@/test/nodex-reference-router";
 import type {
   CodexConversationResumeState,
   CodexEvent,
@@ -179,6 +180,34 @@ function nativeRegistry(defaultResumeState: CodexConversationResumeState = "resu
 }
 
 describe("window-owned interactive responses", () => {
+  test("a retained frame opens a reference from its conversation's current source", async () => {
+    const client = queryClient();
+    const router = createTestNodexReferenceRouter();
+    const tree = (sessionId: string) => (
+      <QueryClientProvider client={client}>
+        <InlineVisualizationWindowProvider>
+          {router.wrap(<Thread threadId="thread-a" />, { surface: "conversation", sessionId })}
+        </InlineVisualizationWindowProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree("session-a"));
+    await view.findByText((_, node) => node === instances[0]?.runtime.element);
+    const { input } = instances[0]!;
+    await act(async () => {
+      view.rerender(tree("session-b"));
+    });
+    expect(instances).toHaveLength(1);
+    const open = input.readOpenNodexReference?.();
+    expect(open).toBeDefined();
+    const destination = { kind: "page", pageId: "page-1" } as const;
+    await open?.(destination);
+    expect(router.open).toHaveBeenCalledExactlyOnceWith(destination, {
+      source: { surface: "conversation", sessionId: "session-b" },
+      gesture: { kind: "menu", action: "open" },
+      isCurrent: expect.any(Function),
+    });
+  });
+
   test("window close cancels preparation that has not reached its background admission", async () => {
     vi.useFakeTimers({
       toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],

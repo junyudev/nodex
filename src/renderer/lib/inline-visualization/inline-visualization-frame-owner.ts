@@ -10,6 +10,7 @@ import type {
   InlineVisualizationFollowUpHandler,
 } from "./inline-visualization-follow-up-context";
 import { moveNativeSubtree } from "../move-native-subtree";
+import type { OpenGuestNodexReference } from "../nodex-reference-router";
 import { createInlineVisualizationStandby } from "./inline-visualization-standby";
 
 export interface InlineVisualizationFrameIdentity {
@@ -40,6 +41,7 @@ export interface InlineVisualizationFrameInput {
   readonly attempt: number;
   readonly canExpand: boolean;
   readonly retry: () => void;
+  readonly openNodexReference?: OpenGuestNodexReference;
   readonly followUp: InlineVisualizationFollowUpHandler | null;
   readonly submitAnnotations: InlineVisualizationAnnotationSubmitHandler | null;
 }
@@ -362,6 +364,18 @@ export function createInlineVisualizationFrameOwner(
       }
     },
     retry: (id: string) => requireBinding(id).input.retry(),
+    // Retained frames live outside the conversation's React tree; their anchor supplies the opener.
+    readOpenNodexReference: (id: string): OpenGuestNodexReference | undefined => {
+      const frame = frames.get(id);
+      const binding = frame?.binding;
+      const open = binding?.input.openNodexReference;
+      if (!frame || !binding || !open) return undefined;
+      return (destination, isCurrent) =>
+        open(
+          destination,
+          () => isCurrent?.() !== false && frame.binding === binding && active(frame),
+        );
+    },
     followUp: (id: string, message: Parameters<InlineVisualizationFollowUpHandler>[0]) => {
       const send = requireBinding(id).input.followUp;
       if (!send) throw new Error("The conversation is unavailable");

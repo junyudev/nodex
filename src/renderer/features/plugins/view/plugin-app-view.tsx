@@ -14,6 +14,7 @@ import { pluginAppBindingKey } from "../../../../shared/agent-plugins/app-entryp
 import { useEffect, useRef, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { McpAppRuntime } from "@/lib/mcp-app/mcp-app-runtime";
+import { useGuestNodexReferenceOpener } from "@/lib/nodex-reference-router";
 import { pluginAppAdapter } from "@/lib/plugin-app-adapter";
 import { rendererSpaceId } from "@/lib/renderer-space";
 import type { PluginAppBinding } from "../../../../shared/agent-plugins/app-entrypoints";
@@ -111,6 +112,9 @@ function PluginAppAttempt({
 }: AppProps & { readonly onRetry: () => void }) {
   const intl = useIntl();
   const host = useRef<HTMLDivElement>(null);
+  const openNodexReference = useGuestNodexReferenceOpener(
+    binding.kind === "thread" ? binding.sessionId : undefined,
+  );
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "failed">("loading");
 
   useEffect(() => {
@@ -137,6 +141,7 @@ function PluginAppAttempt({
           resource: launch.resource,
           toolInput: launch.toolInput,
           toolResult: launch.toolResult,
+          openNodexReference,
           sendFollowUpMessage: conversation
             ? async (message) => {
                 await pluginAppAdapter.request(launch.viewId, "ui/message", undefined);
@@ -205,7 +210,7 @@ function PluginAppAttempt({
       retired = true;
       release();
     };
-  }, [binding, conversation, unavailable]);
+  }, [binding, conversation, unavailable, openNodexReference]);
 
   return (
     <div className="relative h-full min-h-0 min-w-0 flex-1">

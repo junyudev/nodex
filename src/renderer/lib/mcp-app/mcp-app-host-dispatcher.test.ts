@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { McpAppScopeSnapshot } from "../../../shared/mcp-app/mcp-app-scope";
 import { McpAppHostDispatcher } from "./mcp-app-host-dispatcher";
 
@@ -10,6 +10,9 @@ vi.mock("../renderer-command", () => ({
   invokePlainCommand: navigation.authorize,
   invokeRendererQuery: vi.fn(),
 }));
+beforeEach(() => {
+  navigation.authorize.mockClear();
+});
 
 function scope(toolName: string): McpAppScopeSnapshot {
   return {
@@ -61,10 +64,12 @@ test.each([
   "routes %s app navigation with firstParty=%s and mode=%s",
   async (displayMode, isFirstParty, openMode, openTarget) => {
     const openLink = vi.fn(async () => true);
+    const openNodexReference = vi.fn(async () => true);
     const dispatcher = new McpAppHostDispatcher({
       scope: scope("calendar"),
       hostId: "ssh:work",
       openLink,
+      openNodexReference,
       getDisplayMode: () => displayMode,
       isFirstParty,
     });
@@ -78,24 +83,57 @@ test.each([
       source: "manual",
       ...(openTarget ? { openTarget } : {}),
     });
+    expect(navigation.authorize).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ channel: "mcp-app:open-external" }),
+      "https://example.com/",
+    );
+    expect(openNodexReference).not.toHaveBeenCalled();
   },
 );
-test.each(["http://localhost:3000", "file:///tmp/a.html", "javascript:alert(1)"])(
+test.each(["http://localhost:3000", "file:///tmp/a.html", "javascript:alert(1)", "nodex://pages/"])(
   "rejects unsupported guest link %s before routing",
   async (href) => {
     const openLink = vi.fn(async () => true);
-    const dispatcher = new McpAppHostDispatcher({ scope: scope("calendar"), openLink });
+    const openNodexReference = vi.fn(async () => true);
+    const dispatcher = new McpAppHostDispatcher({ openLink, openNodexReference });
     await expect(dispatcher.handlers().openExternal({ href })).rejects.toMatchObject({
       code: -32_602,
     });
     expect(openLink).not.toHaveBeenCalled();
+    expect(openNodexReference).not.toHaveBeenCalled();
+    expect(navigation.authorize).not.toHaveBeenCalled();
   },
 );
-test("Nodex resource links keep app navigation after Main validation", async () => {
+test("Nodex resource links open in the Workbench even from a modal popup request", async () => {
+  let current = true;
+  const isCurrent = () => current;
+  const openLink = vi.fn(async () => true);
+  const openNodexReference = vi.fn(async () => true);
+  const dispatcher = new McpAppHostDispatcher({
+    openLink,
+    openNodexReference,
+    isCurrent,
+    getDisplayMode: () => "modal",
+    isFirstParty: true,
+  });
+  const request = { href: "nodex://pages/page-1", openMode: "popup" };
+  await dispatcher.handlers().openExternal(request);
+  current = false;
+  await expect(dispatcher.handlers().openExternal(request)).rejects.toMatchObject({
+    code: -32_000,
+  });
+  expect(openNodexReference).toHaveBeenCalledExactlyOnceWith(
+    { kind: "page", pageId: "page-1" },
+    isCurrent,
+  );
+  expect(navigation.authorize).not.toHaveBeenCalled();
+  expect(openLink).not.toHaveBeenCalled();
+});
+test("Nodex resource links use Main navigation when there is no Workbench opener", async () => {
   const openLink = vi.fn(async () => true);
   const dispatcher = new McpAppHostDispatcher({ scope: scope("calendar"), openLink });
   await dispatcher.handlers().openExternal({ href: "nodex://sessions/session-1" });
-  expect(navigation.authorize).toHaveBeenCalledWith(
+  expect(navigation.authorize).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ channel: "mcp-app:open-external" }),
     "nodex://sessions/session-1",
   );

@@ -35,6 +35,7 @@ const presentationInput = Schema.Struct({
 const externalInput = Schema.Struct({
   ...guestIdentity,
   href: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8_192)),
+  openNodexInRenderer: Schema.optionalKey(Schema.Boolean),
 });
 const positiveDimension = Schema.Number.check(
   Schema.makeFilter((value) => Number.isFinite(value) && value > 0),
@@ -152,7 +153,7 @@ export const live: Layer.Layer<
             });
             if (!sandboxes.consumeUserGesture(event.sender, input.sandboxId, input.initId))
               return false;
-            if (href.startsWith("nodex:"))
+            if (href.startsWith("nodex:") && !input.openNodexInRenderer)
               yield* Effect.tryPromise({
                 try: () => shell.openExternal(href),
                 catch: (cause) =>

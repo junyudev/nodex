@@ -14,6 +14,7 @@ import {
 import type { ProtocolListMcpServerStatusResponse } from "../../../shared/types";
 import { invokeRendererQuery as invoke } from "../renderer-command";
 import { McpAppHostDispatcher, McpAppRpcError } from "./mcp-app-host-dispatcher";
+import type { OpenGuestNodexReference } from "../nodex-reference-router";
 import { readMcpAppHostStyleVariables } from "./mcp-app-host-styles";
 import type { McpAppFollowUpHandler } from "./mcp-app-follow-up-context";
 import { connectMcpAppSandbox, type ConnectedMcpAppSandbox } from "./mcp-app-port-rpc";
@@ -25,6 +26,7 @@ interface McpAppRuntimeBase {
   isFirstParty?: boolean;
   hostId?: string;
   openLink?: (request: LinkOpenRequest) => Promise<boolean>;
+  openNodexReference?: OpenGuestNodexReference;
   capabilityId: string;
   resource: McpRenderableResource;
   sendFollowUpMessage?: McpAppFollowUpHandler;
@@ -302,6 +304,7 @@ export class McpAppRuntime {
       if (this.#abortController.signal.aborted) return;
       this.webview.setAttribute("partition", identity.partition);
       this.element.append(this.webview);
+      const readOpenNodexReference = () => this.#config.openNodexReference;
       const dispatcher = new McpAppHostDispatcher({
         ...(config.pluginApp
           ? { requestPluginApp: config.pluginApp.request }
@@ -324,6 +327,9 @@ export class McpAppRuntime {
             }),
         hostId: this.#config.hostId,
         openLink: (request) => (this.#config.openLink ?? openLink)(request),
+        get openNodexReference() {
+          return readOpenNodexReference();
+        },
         getDisplayMode: () => (this.#displayMode === "fullscreen" ? "modal" : this.#displayMode),
         isFirstParty: this.#config.isFirstParty === true,
         isCurrent: () => !this.#abortController.signal.aborted && this.element.isConnected,

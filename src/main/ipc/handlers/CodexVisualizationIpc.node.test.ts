@@ -201,6 +201,7 @@ it.effect("rejects invalid URLs and sandbox identities before consuming a gestur
         { sandboxId, href: "https://user:secret@example.com" },
         { sandboxId, href: "http://example.com" },
         { sandboxId: "arbitrary", href: "https://example.com" },
+        { sandboxId, href: "nodex://views/", openNodexInRenderer: true },
       ])
         assert.isTrue((yield* Effect.result(handler(event(), input)))._tag === "Failure");
       assert.deepEqual(gestures, []);
@@ -303,7 +304,27 @@ it.effect("validates a resumable guest presentation before dispatching to its ow
   ),
 );
 
-it.effect("Nodex resource navigation requires the same single-use guest gesture", () =>
+it.effect("authorizes Nodex references in the Workbench with a single-use guest gesture", () =>
+  setup(({ handlers, grant }) =>
+    Effect.gen(function* () {
+      openExternal.mockClear();
+      const input = {
+        sandboxId,
+        initId: "document-one",
+        href: "nodex://sessions/session-1",
+        openNodexInRenderer: true,
+      };
+      const handler = handlers.get("codex:visualization:open-external")!;
+      assert.strictEqual(yield* handler(event(), input), false);
+      grant();
+      assert.strictEqual(yield* handler(event(), input), true);
+      assert.strictEqual(yield* handler(event(), input), false);
+      assert.deepEqual(openExternal.mock.calls, []);
+    }),
+  ),
+);
+
+it.effect("can hand a Nodex destination to the OS when there is no Workbench opener", () =>
   setup(({ handlers, grant }) =>
     Effect.gen(function* () {
       openExternal.mockClear();

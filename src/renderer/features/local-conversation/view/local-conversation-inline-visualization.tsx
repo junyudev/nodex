@@ -1,5 +1,6 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
+import { useGuestNodexReferenceOpener } from "@/lib/nodex-reference-router";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../../../shared/space-connection";
 import { useContext, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -126,6 +127,7 @@ function LoadedVisualization({
     placeholderData: () => owner.readPlaceholder(identity),
   });
   const followUp = useInlineVisualizationFollowUpHandler();
+  const openNodexReference = useGuestNodexReferenceOpener();
   const submitAnnotations = useInlineVisualizationAnnotationSubmitHandler();
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const binding = useRef<InlineVisualizationFrameBinding | null>(null);
@@ -149,6 +151,7 @@ function LoadedVisualization({
             void query.refetch();
           },
           followUp,
+          openNodexReference,
           submitAnnotations,
         }
       : null;

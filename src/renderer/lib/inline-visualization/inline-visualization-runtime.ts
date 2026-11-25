@@ -2,6 +2,8 @@ import { observeCodexDocumentAppearance } from "../codex-theme-variant";
 import { parseMcpAppLinkRequest } from "../../../shared/mcp-app/mcp-app-navigation";
 import { openLink } from "../link-opening";
 import type { LinkOpenRequest } from "../../../shared/link-opening";
+import { parseNodexDestination } from "../../../shared/nodex-reference";
+import type { OpenGuestNodexReference } from "../nodex-reference-router";
 import { deriveMcpAppSandboxIdentity } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
 import type { InlineVisualizationPreparedLease } from "./inline-visualization-prepared";
 import {
@@ -243,6 +245,7 @@ export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
   readonly hostId?: string;
   readonly openLink?: (request: LinkOpenRequest) => Promise<boolean>;
+  readonly readOpenNodexReference?: () => OpenGuestNodexReference | undefined;
   readonly html: string;
   readonly mountTarget?: HTMLElement;
   readonly claimStandby?: (locale: string) => InlineVisualizationPreparedLease | null;
@@ -603,12 +606,22 @@ export function createInlineVisualizationRuntime(input: {
           openExternal: async (href) => {
             if (input.allowInteractions === false) throw new Error("Interactions are disabled");
             if (!active) throw new Error("The interactive response is inactive");
+            const actionSignal = actionController.signal;
+            const isCurrent = () => !signal.aborted && !actionSignal.aborted && active;
+            const destination = parseNodexDestination(href);
+            const openNodexReference = destination ? input.readOpenNodexReference?.() : undefined;
             const allowed = await invokePlainCommand(openExternalCommand, {
               sandboxId: identity.sandboxId,
               initId: connected?.initId,
               href,
+              ...(openNodexReference ? { openNodexInRenderer: true } : {}),
             });
-            if (!allowed || signal.aborted || !active || href.startsWith("nodex:")) return;
+            if (!allowed || !isCurrent()) return;
+            if (destination && openNodexReference) {
+              await openNodexReference(destination, isCurrent);
+              return;
+            }
+            if (href.startsWith("nodex:")) return;
             const url = new URL(href);
             url.searchParams.delete("utm_source");
             await (input.openLink ?? openLink)({
