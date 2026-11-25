@@ -1,1 +1,0 @@
-A subagent's result arrives once its work is done. A follow-up that delegated more work no longer reports back before that work finishes, a result no longer waits for a follow-up queued behind it, and a subagent woken by its own subagents' results reports the answer it gave after reading them.

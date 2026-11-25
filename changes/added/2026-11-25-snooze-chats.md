@@ -1,1 +1,0 @@
-Snooze a chat from the clock on its row or `⌥⌘Z`, until a preset time or one you pick. A snooze can hold a question or an approval until later, and its Inbox item returns at the same time; a new request brings the chat back sooner, and a chat whose snooze ends says **Back from snooze**.

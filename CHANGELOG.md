@@ -2,6 +2,44 @@
 
 The notes of every Nodex release, newest first. Changes that have not been released yet are files in [`changes/`](changes/).
 
+## [0.5.13] - 2026-11-25
+
+Snooze, settle and organize chats
+
+### Added
+
+- See what is left on an API key. DeepSeek and Kimi connections show their prepaid balance, such as `¥2.90 left`, and a MiniMax plan key shows its five-hour and weekly windows: beside the connection in **Settings > Agents > API keys**, on a meter of its own at the foot of the rail, and in the Inbox's plan. The meter measures a balance against your last top-up and turns amber and then red as it runs low; turn it off in **Settings > Appearance > Usage meters**.
+- See what's new in Nodex without leaving the app. **Feedback & community** in the account menu now opens on the three newest releases, each with its headline and date, and a filled dot marks the ones released since you last looked. Choose one to read its release notes in place, or open the full changelog on the website.
+- Arrange the sidebar by attention. Turn on the toggle beside Search (`⌥⌘U`) to list **Pinned** chats, then **Active** chats waiting on you, **Working** chats whose Agents are busy and **Snoozed** chats, and **View options** beside the first list chooses which lists show and whether they cover every Project or just one. Each row names its Project and previews what came back, and a chat whose Page waits on you says so first, such as **Ready for your review**. Rows hold still while you point at the sidebar, `⌥⌘↑` and `⌥⌘↓` move between chats, and `⌥⌘A` jumps to the next one that needs you.
+- Settle a chat when you’re finished with it. The check on its row, its menu or `⌥⌘E` moves it to the Settled shelf and opens the next chat, and Undo puts it back. **Settle read chats** clears the rest of the read ones at once. A settled chat reopens when you write to it or its Agent needs you; chats also settle after the idle days you choose and when their Page’s work is Done, and on a chat waiting for your review the check reads **Accept and settle**.
+- Snooze a chat from the clock on its row or `⌥⌘Z`, until a preset time or one you pick. A snooze can hold a question or an approval until later, and its Inbox item returns at the same time; a new request brings the chat back sooner, and a chat whose snooze ends says **Back from snooze**.
+
+### Changed
+
+- API keys now run on Nodex's built-in Codex. Codex talks to the provider's OpenAI Responses API and knows each model's context window and reasoning levels, such as DeepSeek's Low, High and Max, and connecting a key no longer downloads Claude Code. Choose **Runs on: Claude Code** when connecting to keep using Claude Code, or for an endpoint that only serves the Anthropic Messages API; keys you already connected keep running on Claude Code with their chats.
+- Nodex's model guide now covers GPT-6.2 Sol, Claude Opus 5.5 and Gemini 4 Neon, each judged on its own. Inbox suggestions send backend and systems work to GPT-6.2 Sol and can give UI work to Gemini 4 Neon when the Claude budget runs low. GPT-6.1 models and OpenCode's free models no longer carry a guide note, so the Inbox's plan no longer marks free models `Free`.
+- Automations that react to GitHub events no longer take a schedule. Each Automation now has one `trigger`: a clock with an RRULE and timezone, or GitHub events, which has no RRULE, timezone or next run. Agents and `nodex automations create|update` put the schedule or event filter under `trigger`, and the old top-level `rrule`, `timezone` and `source_condition` fields are refused instead of silently replaced.
+- File search finds files from loose abbreviations. Type the letters of a name in order, like `fileindxmod` for `file-index-module.ts`, or several words such as `palette test`, and the matches come up with the matched letters highlighted. A file named exactly what you typed comes first. `'` matches exact text, `^` and `$` anchor to the start or end of the path, and `!` leaves matches out. Search on this computer and on remote computers now ranks the same way.
+- **Remind me** on chats and **Later** in the Inbox are now one **Snooze**. **Wake** ends a chat’s snooze early, the Inbox’s **Snoozed** view lists items by when they’ll return, and pinning a chat lives in its menu.
+
+### Fixed
+
+- Antigravity and other ACP chats that can resume now pick up your installed plugins on a later reply if they opened before Nodex finished reading them.
+- An API key connection's chats, assignments, Inbox lines and usage show the provider's own mark instead of Claude Code's.
+- Chats started with Claude Code get generated titles again. Nodex titles them with Claude Code's own settings for reaching the model, such as a proxy in its `env`, so a Claude Code that connects through one no longer leaves new chats named after the first 120 characters of their prompt. If the chat's Agent still cannot write a title, another available Agent writes it.
+- Titles and Git drafts written with a Codex that uses its own model provider now go to that provider. They used to ignore the provider, endpoint and sign-in settings in Codex's `config.toml` and fall back to OpenAI.
+- File search no longer shows matches and then replaces them with "File search is unavailable". Matches stay put, and when a folder can't be searched completely, a line below the results says why: the folder is too large, no longer exists, or Nodex isn't allowed to read it. If search itself stops, select **Couldn’t search files** to try again. A linked folder that points back inside the same folder is now searched only at its real location, so files your ignore rules hide no longer flood the results through the link.
+- A subagent that received a follow-up now appears once in the Subagents tab. Before, each follow-up added another row, the map kept showing the finished first turn while the follow-up was still running, and counts such as "4/5 back" counted turns instead of subagents. The subagent's row and card now show the turn it is working on and keep their place, and Stop stops that turn. The chat's Subagents summary and the Composer's agent mentions list it once too.
+- A subagent's result arrives once its work is done. A follow-up that delegated more work no longer reports back before that work finishes, a result no longer waits for a follow-up queued behind it, and a subagent woken by its own subagents' results reports the answer it gave after reading them.
+- Stopping a subagent now stops all of it. Its running turn ends, follow-ups waiting behind it never run, and none of them reports back to the Agent that delegated it, while turns that already finished keep their results. A follow-up held after you stop a subagent's own chat no longer keeps the parent chat looking busy, and a message steered into a turn that was just starting no longer reports a separate, cancelled task.
+- Agent replies keep showing completed paragraphs when the Agent pauses mid-response.
+- Sessions an Agent starts in a new worktree on a named branch now start instead of failing with `Worktree worker host message violates protocol version 9`. Saying whether a missing branch should be created or reported no longer breaks workspace preparation.
+- Pausing or resuming an Automation that reacts to GitHub events keeps it reacting to GitHub events. It used to lose its event filter and turn into a daily schedule.
+- Menus, pickers and previews no longer act on what sits behind them. Dragging inside a List row's Priority or Status picker no longer moves the Page, Undo pressed in a Page's Linked chats no longer reverses a Database edit, closing a Readback's image preview no longer opens its chat, and right-clicking in the Page link picker no longer opens the editor's menu.
+- Pinned chats reorder when you drag them, in **Pinned** and in each Project's pinned group. Chats running on Claude Code or another ACP Agent, and drafts, used to ignore the drag or snap back; now every pinned chat keeps the place you drop it in, and pins in other lists stay put.
+- On Windows, Nodex finds Claude Code conversations in your Windows user profile even when your shell sets a different home directory. Import and Insights also recognize Claude configuration paths written with Windows home-relative separators.
+- Local plugin servers that need the Windows system directory can now start in Nodex, so their tools and plugin apps are available.
+
 ## [0.5.12] - 2026-11-24
 
 Plugin tools for Claude Code and ACP

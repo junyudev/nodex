@@ -1,1 +1,0 @@
-Sessions an Agent starts in a new worktree on a named branch now start instead of failing with `Worktree worker host message violates protocol version 9`. Saying whether a missing branch should be created or reported no longer breaks workspace preparation.

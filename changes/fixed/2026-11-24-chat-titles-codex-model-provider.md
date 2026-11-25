@@ -1,1 +1,0 @@
-Titles and Git drafts written with a Codex that uses its own model provider now go to that provider. They used to ignore the provider, endpoint and sign-in settings in Codex's `config.toml` and fall back to OpenAI.

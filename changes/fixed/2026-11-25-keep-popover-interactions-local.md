@@ -1,1 +1,0 @@
-Menus, pickers and previews no longer act on what sits behind them. Dragging inside a List row's Priority or Status picker no longer moves the Page, Undo pressed in a Page's Linked chats no longer reverses a Database edit, closing a Readback's image preview no longer opens its chat, and right-clicking in the Page link picker no longer opens the editor's menu.
