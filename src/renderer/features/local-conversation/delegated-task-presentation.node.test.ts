@@ -4,6 +4,8 @@ import {
   delegatedTaskRecoveryLabel,
   resolveDelegatedTaskRowStatus,
 } from "./delegated-task-presentation";
+import type { CodexConversationChildMembership } from "../../../shared/types";
+import { projectNativeTaskRows } from "./native-task-presentation";
 
 describe("delegated task status sentences", () => {
   test("distinguishes live, stopped, cancelled, failed and completed groups", () => {
@@ -61,5 +63,49 @@ describe("delegated task status sentences", () => {
         0,
       ),
     ).toBe("Reconnecting · Retrying in 20s · Attempt 2");
+  });
+});
+
+describe("native task presentation", () => {
+  const child: CodexConversationChildMembership = {
+    threadId: "durable-child",
+    parentThreadId: "parent",
+    role: "backgroundChild",
+    displayName: "Review",
+    statusType: "active",
+  };
+
+  describe("task summary identity", () => {
+    test("preserves a child's identity when its name and status change", () => {
+      const initial = projectNativeTaskRows([child], () => null)[0];
+      const completed = projectNativeTaskRows(
+        [{ ...child, displayName: "Final review", statusType: "idle" }],
+        () => null,
+      )[0];
+      expect(initial?.identityThreadId).toBe("durable-child");
+      expect(completed).toMatchObject({
+        identityThreadId: initial?.identityThreadId,
+        displayName: "Final review",
+        status: "done",
+      });
+    });
+
+    test("does not use a task observation key as a child avatar identity", () => {
+      const [observed] = projectNativeTaskRows(
+        [
+          {
+            ...child,
+            threadId: "observation-key",
+            task: { id: "task", bornTurnSequence: null, description: "Review", status: "running" },
+          },
+        ],
+        () => null,
+      );
+      expect(observed).toMatchObject({
+        conversationId: "observation-key",
+        identityThreadId: null,
+        canInteract: false,
+      });
+    });
   });
 });

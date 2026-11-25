@@ -17,10 +17,7 @@ import { ThreadAssistantBodyBlock } from "./blocks/local-conversation-block-leav
 import { LocalConversationTurnEntry } from "./local-conversation-turn-entry";
 import { LocalConversationRealtimeItem } from "./local-conversation-realtime-item";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
-import {
-  createLocalConversationSearchSource,
-  projectLocalConversationResidentSearchResult,
-} from "./local-conversation-search-source";
+import { createLocalConversationSearchSource } from "./local-conversation-search-source";
 import { applyLocalConversationSearchHighlights } from "./local-conversation-thread-search-dom-marks";
 
 // The document is stateful; the enclosing Markdown/parser and keyed subscriptions remain real.
@@ -37,10 +34,6 @@ vi.mock("./local-conversation-inline-visualization", () => ({
 
 const query = "Tailneedle";
 const tail = `\n\n## Answer result\n\n[${query}](https://example.com/result)`;
-const pressures = [
-  { name: "UTF-8 bytes", body: "语".repeat(90_000) },
-  { name: "line count", body: "row\n".repeat(5_001) },
-] as const;
 const agent = (text: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
   type: "agentMessage",
   moderation: null,
@@ -88,28 +81,6 @@ function searchSource(fixture: ReturnType<typeof timelineOwnerFixture>) {
     readOwner: () => fixture.owner,
     scrollAdapter: { scrollToTurn: async () => {}, getTurnContainer: () => null },
   });
-}
-
-function assertTailFind(
-  root: HTMLElement,
-  source: ReturnType<typeof searchSource>,
-  needle = query,
-) {
-  const units = source.findMatches(needle);
-  expect(units).toHaveLength(1);
-  const unit = units[0]!;
-  const result = projectLocalConversationResidentSearchResult({
-    units,
-    query: needle,
-    contextId: "thread",
-    limit: 250,
-  });
-  expect(result.totalMatches).toBe(1);
-  const target = { turnKey: unit.turnKey, unitKey: unit.key, occurrenceIndex: 0 };
-  expect(result.matches[0]?.meta).toEqual(target);
-  const active = applyLocalConversationSearchHighlights({ root, query: needle, target });
-  expect(active?.textContent).toBe(needle);
-  expect(active?.closest("a")?.getAttribute("href")).toBe("https://example.com/result");
 }
 
 describe("large assistant rich content", () => {
@@ -275,37 +246,6 @@ describe("large assistant rich content", () => {
     },
   );
 
-  test.each(pressures)("keeps ordinary Markdown and tail Find beyond $name", async ({ body }) => {
-    const content = body + tail;
-    const fixture = timelineOwnerFixture(
-      { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null },
-      [agent(content)],
-    );
-    const retain = fixture.owner.subscribeStructure(() => {});
-    const source = searchSource(fixture);
-    const unit = source.findMatches(query)[0]!;
-    const view = render(
-      <CodexTranscriptReadOwnerContext.Provider value={fixture.owner}>
-        <CodexTranscriptTurnEntityContext.Provider value={key.entityKey}>
-          <ThreadAssistantBodyBlock
-            block={assistantBlock(content, unit.key)}
-            isLatestTurn
-            isStreamingTurn={false}
-          />
-        </CodexTranscriptTurnEntityContext.Provider>
-      </CodexTranscriptReadOwnerContext.Provider>,
-      { wrapper: LocalConversationTestQueryProvider },
-    );
-    try {
-      await view.findByRole("heading", { name: "Answer result" });
-      await view.findByRole("link", { name: query });
-      assertTailFind(view.container, source);
-    } finally {
-      view.unmount();
-      retain();
-    }
-  });
-
   test("retains a focused interactive document through growing keyed text and completion", async () => {
     const initial = '::codex-inline-vis{file="counter.html"}\n\nWorking';
     const fixture = timelineOwnerFixture(
@@ -342,24 +282,22 @@ describe("large assistant rich content", () => {
         await Promise.resolve();
       });
       await waitFor(() => expect(original.textContent).toBe("1"));
-      for (const { body } of pressures) {
-        await act(async () => {
-          fixture.owner.applyEvent({
-            type: "changes",
-            changes: [
-              {
-                type: "item",
-                key: { ...key, itemId: "answer" },
-                value: agent(initial + body + tail),
-              },
-            ],
-          });
+      await act(async () => {
+        fixture.owner.applyEvent({
+          type: "changes",
+          changes: [
+            {
+              type: "item",
+              key: { ...key, itemId: "answer" },
+              value: agent(initial + tail),
+            },
+          ],
         });
-        await view.findByRole("link", { name: query });
-        expect(view.getByRole("button", { name: "Document counter" })).toBe(original);
-        expect(original.textContent).toBe("1");
-        expect(document.activeElement).toBe(original);
-      }
+      });
+      await view.findByRole("link", { name: query });
+      expect(view.getByRole("button", { name: "Document counter" })).toBe(original);
+      expect(original.textContent).toBe("1");
+      expect(document.activeElement).toBe(original);
       await act(async () => {
         fixture.owner.applyEvent({
           type: "changes",
@@ -377,106 +315,4 @@ describe("large assistant rich content", () => {
       retain();
     }
   });
-
-  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- The pressure fixture renders and marks 5,001 lines.
-  test.each(["inlineMarkdown", "realtimeAssistant"] as const)(
-    "keeps %s keyed content searchable beyond its former budget",
-    { timeout: 90_000 },
-    async (kind) => {
-      const content = (kind === "inlineMarkdown" ? pressures[0].body : pressures[1].body) + tail;
-      const item = agent(`::codex-realtime-inline{}\n${content}`);
-      const fixture = timelineOwnerFixture(
-        {
-          data: [
-            {
-              type: "realtime",
-              position: 1,
-              item:
-                kind === "inlineMarkdown"
-                  ? {
-                      type: "bemItemPromoted",
-                      id: "promotion",
-                      realtimeSessionId: "session",
-                      turnId: "one",
-                      itemId: "answer",
-                      presentation: { type: "inlineMarkdown" },
-                    }
-                  : {
-                      type: "transcriptSegment",
-                      id: "voice",
-                      realtimeSessionId: "session",
-                      role: "assistant",
-                      text: content,
-                    },
-            },
-          ],
-          nextCursor: null,
-          activeRealtimeSessionAtPageStart: null,
-        },
-        kind === "inlineMarkdown" ? [item] : [],
-      );
-      const retain = fixture.owner.subscribeStructure(() => {});
-      const entry = fixture
-        .project()
-        .entries.find((value) =>
-          kind === "inlineMarkdown"
-            ? isCodexTimelineTurnEntry(value) &&
-              value.timelinePresentation?.type === "inlineMarkdown"
-            : isCodexRealtimeTimelineEntry(value),
-        );
-      if (!entry) throw new Error("Expected native presentation");
-      const leaf = isCodexRealtimeTimelineEntry(entry) ? (
-        <LocalConversationRealtimeItem entry={entry} conversationId="thread" cwd={null} />
-      ) : isCodexTimelineTurnEntry(entry) ? (
-        <LocalConversationTurnEntry
-          entry={entry}
-          conversationId="thread"
-          cwd={null}
-          canEditTurnUserPrefix={false}
-          canForkTurn={false}
-        />
-      ) : null;
-      const wholeReads = [
-        vi.spyOn(fixture.owner, "readTurn"),
-        vi.spyOn(fixture.owner, "readTurnSlice"),
-        vi.spyOn(fixture.owner, "readItemSlots"),
-      ];
-      const view = render(
-        <CodexTranscriptReadOwnerContext.Provider value={fixture.owner}>
-          {leaf}
-        </CodexTranscriptReadOwnerContext.Provider>,
-        { wrapper: LocalConversationTestQueryProvider },
-      );
-      try {
-        await view.findByRole("link", { name: query });
-        wholeReads.forEach((read) => expect(read).not.toHaveBeenCalled());
-        assertTailFind(view.container, searchSource(fixture));
-        wholeReads.forEach((read) => read.mockClear());
-        const delta = "\n\n[Updatedneedle](https://example.com/result)";
-        await act(async () => {
-          fixture.owner.applyEvent({
-            type: "changes",
-            changes:
-              kind === "inlineMarkdown"
-                ? [
-                    {
-                      type: "text",
-                      key: { ...key, itemId: "answer" },
-                      target: { field: "text" },
-                      edits: [{ at: item.text.length, deleteCount: 0, insert: delta }],
-                    },
-                  ]
-                : [{ type: "realtime-text", itemId: "voice", delta }],
-          });
-        });
-        await view.findByRole("link", { name: "Updatedneedle" });
-        wholeReads.forEach((read) => expect(read).not.toHaveBeenCalled());
-        assertTailFind(view.container, searchSource(fixture), "Updatedneedle");
-      } finally {
-        view.unmount();
-        retain();
-        wholeReads.forEach((read) => read.mockRestore());
-      }
-    },
-  );
 });

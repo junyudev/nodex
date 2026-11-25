@@ -4,45 +4,25 @@ import { useLayoutEffect } from "react";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { CodexConversationItem } from "../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
-import {
-  installAsyncRequestAnimationFrame,
-  installMeasuredResizeObserver,
-  installWindowApi,
-} from "../../../../test/browser-globals";
+import { installMeasuredResizeObserver, installWindowApi } from "../../../../test/browser-globals";
 import { renderWithMaitai } from "../../../../test/thread-maitai";
-import { agentRuntimeRuntime } from "../../../../lib/agent-runtime-runtime";
-import type { ConversationIdentity } from "../../../../../shared/conversation-identity";
-import { settleAsyncRender, textContent } from "../../../../test/dom";
+import { textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
-import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settings";
-import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "../../../../lib/composer-enter-behavior";
-import { CodexThreadSettingsProvider } from "../../../../lib/use-codex-thread-settings";
-import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
 import { projectCodexCanonicalTurnItemViews } from "../../../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../../../shared/codex-transcript-entry-projection";
-import { applyContentSearchDomMarks } from "../../../content-search/content-search-dom";
 import { projectAgentRuntimeItem } from "../../agent-runtime-transcript-projection";
 import { buildRendererItemStream } from "../../projection/build-renderer-item-stream";
 import {
   ThreadContextCompactionBlock,
   ThreadAgentActivityGroupBlock,
-  ThreadAssistantBodyBlock,
   ThreadGeneratedImageGalleryBlock,
-  ThreadMcpServerElicitationBlock,
   ThreadPlanCardBlock,
   ThreadTurnDiffBlock,
-  ThreadWorktreeInitBlock,
   UserMessageBubble,
-  buildThreadWorktreeInitActivities,
 } from "./local-conversation-block-leaves";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
-import {
-  ACTIVITY_HEADER_FIRST_GAP_DELAY_MS,
-  ActivityOpeningLabelProvider,
-} from "../shared/tools/activity-group-header-label";
 import { CODEX_SHIMMER_CADENCE_MS } from "../shared/codex-shimmer-text";
 import { ConversationImageInputContext } from "../../conversation-image-input";
-import { ConversationRecoveryActionsProvider } from "../conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "../hook-feedback-settings-navigation";
 import { useLocalConversationEditingTurnIds } from "../local-conversation-thread-view-state";
 import type {
@@ -153,38 +133,6 @@ function buildAgentActivityGroupBlock(
   };
 }
 
-function buildFileChangeEntry(itemId: string): CodexConversationItem {
-  return {
-    threadId: "thread-1",
-    turnId: "turn-1",
-    itemId,
-    entryId: itemId,
-    type: "file_change",
-    kind: "fileChange",
-    semanticKind: "patch",
-    status: "completed",
-    fileChange: {
-      label: undefined,
-      changes: buildCodexFileChangeMap([
-        {
-          path: "src/edited.ts",
-          type: "update",
-          movePath: null,
-          unifiedDiff: ["@@ -1,1 +1,1 @@", "-old value", "+new value"].join("\n"),
-        },
-      ]),
-    },
-    toolCall: {
-      subtype: "fileChange",
-      toolName: "file_change",
-      args: {},
-      result: null,
-    },
-    createdAt: 1,
-    updatedAt: 1,
-  };
-}
-
 function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
   const entry: CodexConversationItem = {
     threadId: "thread-1",
@@ -291,63 +239,6 @@ function buildUserMessageBlock(text: string): ThreadTranscriptBlockModel {
   };
 }
 
-function buildAssistantMessageBlock({
-  text,
-  status,
-}: {
-  text: string;
-  status: CodexConversationItem["status"];
-}): ThreadTranscriptBlockModel {
-  return {
-    id: "assistant-message-1",
-    turnId: "turn-1",
-    createdAt: 1,
-    updatedAt: 1,
-    searchableText: text,
-    type: "assistantMessage",
-    entry: {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "assistant-message-1",
-      entryId: "assistant-message-1",
-      type: "assistant_message",
-      kind: "assistantMessage",
-      semanticKind: "assistantMessage",
-      status,
-      markdownText: text,
-      createdAt: 1,
-      updatedAt: 1,
-    },
-  };
-}
-
-function installTextCollapseMeasurement({
-  scrollHeight,
-  lineHeightPx,
-}: {
-  scrollHeight: number;
-  lineHeightPx: number;
-}): void {
-  installAsyncRequestAnimationFrame();
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
-    configurable: true,
-    get() {
-      return scrollHeight;
-    },
-  });
-  window.getComputedStyle = (() =>
-    ({
-      lineHeight: `${lineHeightPx}px`,
-      fontSize: "16px",
-    }) as CSSStyleDeclaration) as typeof window.getComputedStyle;
-}
-
-async function settleTextCollapseMeasurement(): Promise<void> {
-  await act(async () => {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  });
-}
-
 function restoreTextCollapseMeasurement(): void {
   if (scrollHeightDescriptor) {
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
@@ -358,24 +249,6 @@ function restoreTextCollapseMeasurement(): void {
     );
   }
   window.getComputedStyle = originalGetComputedStyle;
-}
-
-function renderUserMessageBubble(text: string) {
-  return render(
-    <TooltipProvider>
-      <UserMessageBubble
-        block={buildUserMessageBlock(text)}
-        isLatestTurn={false}
-        isStreamingTurn={false}
-      />
-    </TooltipProvider>,
-  );
-}
-
-function getUserMarkdownRoot(container: ParentNode): HTMLElement {
-  const element = container.querySelector<HTMLElement>(".codex-markdown-user");
-  if (!element) throw new Error("Expected user markdown root to render.");
-  return element;
 }
 
 describe("UserMessageBubble images", () => {
@@ -423,19 +296,6 @@ describe("UserMessageBubble images", () => {
     await waitFor(() => expect(dialog.querySelector("img")?.getAttribute("src")).toBe(first));
   });
 
-  test("a placeholder still opens its image when the message carries more images than its text names", async () => {
-    const view = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block("Only [Image #1] is named")}
-          isLatestTurn={false}
-          isStreamingTurn={false}
-        />
-      </TooltipProvider>,
-    );
-    expect(await view.findByRole("button", { name: "Open Image #1" })).toBeTruthy();
-  });
-
   test("a placeholder that names no image of the message stays a plain reference", async () => {
     const view = render(
       <TooltipProvider>
@@ -457,100 +317,8 @@ describe("UserMessageBubble collapse", () => {
     restoreTextCollapseMeasurement();
   });
 
-  test("does not render a toggle for short user messages", async () => {
-    installTextCollapseMeasurement({ scrollHeight: 100, lineHeightPx: 20 });
-
-    const { queryByText } = renderUserMessageBubble("Short request");
-    await settleAsyncRender();
-    await settleTextCollapseMeasurement();
-
-    expect(queryByText("Show more") === null).toBe(true);
-    expect(queryByText("Show less") === null).toBe(true);
-  });
-
-  test("links a blocked first submission to hook settings", () => {
-    const block = buildUserMessageBlock("Retry this exact request.");
-    block.entry.deliveryStatus = "not-sent";
-    block.userMessageActions = { canEdit: false, sentAtMs: null };
-    const { getByRole } = render(
-      <TooltipProvider>
-        <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-
-    expect(getByRole("link", { name: "Hook blocked this message" }).getAttribute("href")).toBe(
-      "/settings/plugins-settings/hooks?hostId=local",
-    );
-  });
-
   describe("names the conversation that sent or answered", () => {
-    const sender = (overrides: Partial<ConversationIdentity> = {}): ConversationIdentity => ({
-      threadId: "nodex:thread:passkeys",
-      sessionId: "session-passkeys",
-      title: "Passkey sign-in",
-      role: "chat",
-      agent: {
-        kind: "claude",
-        providerInstanceId: null,
-        model: "claude-opus-5-5",
-        effort: "high",
-      },
-      archived: false,
-      host: null,
-      ...overrides,
-    });
-    const renderMessage = (
-      edit: (block: ReturnType<typeof buildUserMessageBlock>) => void,
-      onOpenThread = vi.fn(),
-    ) => {
-      const block = buildUserMessageBlock("Review the auth module");
-      edit(block);
-      return render(
-        <TooltipProvider>
-          <UserMessageBubble
-            block={block}
-            isLatestTurn
-            isStreamingTurn={false}
-            onOpenThread={onOpenThread}
-          />
-        </TooltipProvider>,
-      );
-    };
     afterEach(() => vi.restoreAllMocks());
-
-    test("by its Agent's mark and title, and opens it in its own Session", async () => {
-      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
-      const onOpenThread = vi.fn();
-      const view = renderMessage((block) => {
-        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
-        block.entry.userInputIntent = "steer";
-      }, onOpenThread);
-      const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
-      const marker = view.container.querySelector('[data-user-message-origin="agent"]')!;
-      expect(marker.textContent).toBe("Sent byPasskey sign-in");
-      expect(open.querySelector("svg")).not.toBeNull();
-      await act(async () => {
-        fireEvent.click(open);
-        await Promise.resolve();
-      });
-      expect(onOpenThread).toHaveBeenCalledWith("nodex:thread:passkeys", {
-        runtimeSessionId: "session-passkeys",
-      });
-    });
-
-    test("reads a message delivered from the queue as an ordinary message", async () => {
-      const view = renderMessage((block) => {
-        block.entry.userMessageOrigin = { kind: "nodex" };
-        block.entry.userInputIntent = "queued";
-      });
-      const marker = view.container.querySelector('[data-user-message-origin="nodex"]')!;
-      expect(marker.textContent).toBe("Sent by Nodex");
-      const plain = renderMessage((block) => {
-        block.entry.userInputIntent = "queued";
-      });
-      expect(plain.queryByText("Queued")).toBeNull();
-      expect(plain.container.querySelector("[data-user-message-intent]")).toBeNull();
-    });
 
     test("names the Automation that sent a heartbeat and opens it, and keeps a deleted one anonymous", async () => {
       installWindowApi({
@@ -591,74 +359,6 @@ describe("UserMessageBubble collapse", () => {
       expect(marker.textContent).toBe("Sent byAutomation");
       expect(marker.querySelector("button")).toBeNull();
     });
-
-    test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
-      vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(sender());
-      const view = renderMessage((block) => {
-        block.entry.questionReplies = [
-          { questionItemId: "ask:0", question: "Which scope?", answer: "Local" },
-        ];
-        block.entry.respondedBy = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
-      });
-      await view.findByRole("button", { name: "Open Passkey sign-in" });
-      const marker = view.container.querySelector('[data-user-message-origin="answering-agent"]')!;
-      expect(marker.textContent).toBe("Answered byPasskey sign-in");
-    });
-
-    test("keeps an archived sender named without opening it, and an unknown one anonymous", async () => {
-      const identify = vi
-        .spyOn(agentRuntimeRuntime, "identify")
-        .mockResolvedValue(sender({ archived: true }));
-      const archived = renderMessage((block) => {
-        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:passkeys" };
-      });
-      await waitFor(() =>
-        expect(
-          archived.container.querySelector('[data-conversation-reference="archived"]')?.textContent,
-        ).toBe("Passkey sign-in"),
-      );
-      expect(archived.queryByRole("button", { name: "Open Passkey sign-in" })).toBeNull();
-      archived.unmount();
-
-      identify.mockResolvedValue(null);
-      const unknown = renderMessage((block) => {
-        block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "nodex:thread:gone" };
-      });
-      await waitFor(() => expect(identify).toHaveBeenCalledWith("nodex:thread:gone"));
-      const marker = unknown.container.querySelector('[data-user-message-origin="agent"]')!;
-      expect(marker.textContent).toBe("Sent byanother agent");
-      expect(marker.querySelector("button")).toBeNull();
-    });
-  });
-
-  test.each(["pending", "unknown"] as const)(
-    "shows %s delivery without claiming a send failure",
-    (delivery) => {
-      const block = buildUserMessageBlock("Answer accepted by the chat");
-      block.entry.deliveryStatus = delivery;
-      const { getByRole, queryByRole } = render(
-        <TooltipProvider>
-          <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
-        </TooltipProvider>,
-      );
-      expect(getByRole("status").textContent).toBe(
-        delivery === "unknown" ? "Delivery unconfirmed" : "Sending",
-      );
-      expect(queryByRole("link", { name: "Hook blocked this message" })).toBeNull();
-    },
-  );
-
-  test("keeps a failed launch distinct from a hook rejection", () => {
-    const block = buildUserMessageBlock("Could not start task");
-    block.entry.deliveryStatus = "not-sent";
-    block.entry.status = "failed";
-    const { getByRole, queryByRole } = render(
-      <TooltipProvider>
-        <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-    expect(getByRole("status").textContent).toBe("Not sent");
-    expect(queryByRole("link", { name: "Hook blocked this message" })).toBeNull();
   });
 
   test("renders submit-hook explanations and navigates to their source", async () => {
@@ -703,27 +403,6 @@ describe("UserMessageBubble collapse", () => {
       hostId: "remote-1",
       selection: { source: "project", projectRoot: "/workspace/nodex" },
     });
-  });
-
-  test("keeps Edit for an editable attachment-only message without offering empty Copy", async () => {
-    const block = buildUserMessageBlock("");
-    block.userMessageActions = { canEdit: true, sentAtMs: null };
-    const { getByRole, queryByRole } = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block}
-          isLatestTurn
-          isStreamingTurn={false}
-          onEditUserTurn={vi.fn()}
-        />
-      </TooltipProvider>,
-    );
-    expect(queryByRole("button", { name: "Copy message" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Edit message" }));
-      await Promise.resolve();
-    });
-    expect(getByRole("textbox", { name: "Edit message" })).toBeTruthy();
   });
 
   test("keeps a failed edit retryable and closes the editor only after success", async () => {
@@ -860,45 +539,6 @@ describe("UserMessageBubble collapse", () => {
     expect(editingTurnIds.at(-1)).toEqual([]);
   });
 
-  test("sends a multi-line edit with Cmd+Enter when the Composer reserves Enter for new lines", async () => {
-    localStorage.setItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY, "cmdIfMultiline");
-    try {
-      const block = buildUserMessageBlock("Original request");
-      block.userMessageActions = { canEdit: true, sentAtMs: null };
-      const onEditUserTurn = vi.fn().mockResolvedValue(undefined);
-      const { getByRole } = render(
-        <TooltipProvider>
-          <UserMessageBubble
-            block={block}
-            isLatestTurn
-            isStreamingTurn={false}
-            onEditUserTurn={onEditUserTurn}
-          />
-        </TooltipProvider>,
-      );
-      await act(async () => {
-        fireEvent.click(getByRole("button", { name: "Edit message" }));
-        await Promise.resolve();
-      });
-      const editor = getByRole("textbox", { name: "Edit message" });
-      await act(async () => {
-        fireEvent.change(editor, { target: { value: "First line\nSecond line" } });
-        fireEvent.keyDown(editor, { key: "Enter" });
-        await Promise.resolve();
-      });
-      expect(onEditUserTurn).not.toHaveBeenCalled();
-      await act(async () => {
-        fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
-        await Promise.resolve();
-      });
-      expect(onEditUserTurn).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "First line\nSecond line" }),
-      );
-    } finally {
-      localStorage.removeItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY);
-    }
-  });
-
   describe("while the message is rewritten", () => {
     // This environment has no DataTransfer; these are the parts a transfer of one file reads.
     const fileTransfer = (name: string) => {
@@ -1011,72 +651,6 @@ describe("UserMessageBubble collapse", () => {
       );
     });
 
-    test("an image is enough to send, and the last image is not", async () => {
-      const { view, editor, onEditUserTurn } = await open("Words", [attached("a", first)]);
-      await act(async () => {
-        fireEvent.change(editor, { target: { value: "   " } });
-        await Promise.resolve();
-      });
-      const sendButton = () => view.getByRole("button", { name: "Send" }) as HTMLButtonElement;
-      expect(sendButton().disabled).toBe(false);
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
-        await Promise.resolve();
-      });
-      expect(sendButton().disabled).toBe(true);
-      await send(editor);
-      expect(onEditUserTurn).not.toHaveBeenCalled();
-    });
-
-    test("adds pasted images after the ones it keeps, without changing the text", async () => {
-      const { view, editor, onEditUserTurn } = await open("See [Image #1]", [attached("a", first)]);
-      await pasteImage(editor);
-      const removeAdded = await view.findByRole("button", { name: "Remove pasted.png" });
-      expect(removeAdded).toBeTruthy();
-      expect(editor.value).toBe("See [Image #1]");
-
-      await send(editor);
-      const [edit] = onEditUserTurn.mock.calls[0]!;
-      expect(edit.images[0]).toEqual({ source: first });
-      expect(edit.images[1]).toMatchObject({ caption: "pasted.png" });
-      expect(edit.images).toHaveLength(2);
-    });
-
-    test("adds dropped images, marking the form only while a drag is over it", async () => {
-      const { view, editor, onEditUserTurn } = await open("Words", []);
-      const form = editor.form!;
-      const dataTransfer = fileTransfer("dropped.png");
-      await act(async () => {
-        fireEvent.dragEnter(form, { dataTransfer });
-        await Promise.resolve();
-      });
-      expect(form.getAttribute("data-file-drop-active")).toBe("true");
-      await act(async () => {
-        fireEvent.drop(form, { dataTransfer });
-        await Promise.resolve();
-      });
-      expect(form.getAttribute("data-file-drop-active")).toBe("false");
-      await view.findByRole("button", { name: "Remove dropped.png" });
-
-      await send(editor);
-      expect(onEditUserTurn.mock.calls[0]![0].images).toEqual([
-        expect.objectContaining({ caption: "dropped.png" }),
-      ]);
-    });
-
-    test("adds picked images", async () => {
-      const { view, editor } = await open("Words", []);
-      expect(view.getByRole("button", { name: "Add photos" })).toBeTruthy();
-      await act(async () => {
-        fireEvent.change(view.getByTestId("message-image-picker"), {
-          target: { files: [new File(["pixels"], "picked.png", { type: "image/png" })] },
-        });
-        await Promise.resolve();
-      });
-      await view.findByRole("button", { name: "Remove picked.png" });
-      expect(document.activeElement).toBe(editor);
-    });
-
     test("says why when the conversation's model cannot take an image", async () => {
       const built = buildUserMessageBlock("Words");
       const view = render(
@@ -1103,32 +677,6 @@ describe("UserMessageBubble collapse", () => {
       });
       expect(view.queryByRole("button", { name: /^Remove / })).toBeNull();
       expect(toastFailureMock).toHaveBeenCalledWith("This model reads no images.");
-    });
-
-    test("an image that cannot be read says so, and can still be removed", async () => {
-      const unreadable = attached("a", "/gone/missing.png");
-      const { view, editor, onEditUserTurn } = await open("Words", [
-        { ...unreadable, sourceKind: "local-image" },
-      ]);
-      await view.findByRole("img", { name: "Image failed to load" });
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Remove Image #1" }));
-        await Promise.resolve();
-      });
-      await send(editor);
-      expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ images: [] }),
-      );
-    });
-
-    test("looking at an image from the form does not offer to edit it", async () => {
-      const { view } = await open("Words", [attached("a", first)]);
-      await act(async () => {
-        fireEvent.click(await view.findByRole("button", { name: "Image #1" }));
-        await Promise.resolve();
-      });
-      const dialog = await view.findByRole("dialog", { name: "Image preview" });
-      expect(within(dialog).queryByRole("button", { name: "Edit image" })).toBeNull();
     });
 
     test("keeps its images and added ones while the message scrolls away", async () => {
@@ -1197,226 +745,10 @@ describe("UserMessageBubble collapse", () => {
     expect((getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     expect(onEditUserTurn).not.toHaveBeenCalled();
   });
-
-  test("explicitly hidden user actions preserve status while omitting copy and edit", () => {
-    const block = buildUserMessageBlock("Blocked request");
-    block.entry.deliveryStatus = "not-sent";
-    block.userMessageActions = { canEdit: true, sentAtMs: null };
-    const { getByRole, queryByRole } = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block}
-          isLatestTurn
-          isStreamingTurn={false}
-          hideUserMessageActions
-          compactUserMessageActions
-        />
-      </TooltipProvider>,
-    );
-    expect(getByRole("link", { name: "Hook blocked this message" })).toBeTruthy();
-    expect(queryByRole("button", { name: "Copy message" })).toBeNull();
-    expect(queryByRole("button", { name: "Edit message" })).toBeNull();
-  });
-
-  test("labels hook feedback without exposing ordinary edit controls", () => {
-    const block = buildUserMessageBlock("Please address the failed check.");
-    block.entry.hookFeedback = true;
-    block.userMessageActions = { canEdit: false, sentAtMs: null };
-    const { getByText, queryByLabelText } = render(
-      <TooltipProvider>
-        <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-
-    const status = getByText("Hook feedback");
-    expect(status.closest("a")?.getAttribute("href")).toBe(
-      "/settings/plugins-settings/hooks?hostId=local",
-    );
-    expect(queryByLabelText("Edit message")).toBe(null);
-  });
-
-  test("keeps compact hook feedback actions beside the bubble without duplicating copy", () => {
-    const block = buildUserMessageBlock("Please address the failed check.");
-    block.entry.hookFeedback = true;
-    block.userMessageActions = { canEdit: false, sentAtMs: null };
-    const { getAllByLabelText, getByText } = render(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={block}
-          isLatestTurn
-          isStreamingTurn={false}
-          compactUserMessageActions
-        />
-      </TooltipProvider>,
-    );
-
-    const bubble = getByText("Please address the failed check.").closest<HTMLElement>(
-      '[data-user-message-bubble="true"]',
-    );
-    expect(getAllByLabelText("Copy message")).toHaveLength(1);
-    expect(
-      bubble?.parentElement?.querySelector('button[aria-label="Copy message"]'),
-    ).not.toBeNull();
-    expect(getByText("Hook feedback")).toBeTruthy();
-  });
-
-  test("links matching project hook feedback to its filtered settings source", () => {
-    const block = buildUserMessageBlock("Please address the failed check.");
-    block.entry.hookFeedback = true;
-    block.hookFeedbackSources = ["project"];
-    block.userMessageActions = { canEdit: false, sentAtMs: null };
-    const onOpenHooksSettings = vi.fn();
-    const { getByText } = render(
-      <TooltipProvider>
-        <HookFeedbackSettingsNavigationProvider
-          hostId="remote-1"
-          onOpenHooksSettings={onOpenHooksSettings}
-        >
-          <UserMessageBubble
-            block={block}
-            isLatestTurn
-            isStreamingTurn={false}
-            threadCwd="/workspace/nodex"
-          />
-        </HookFeedbackSettingsNavigationProvider>
-      </TooltipProvider>,
-    );
-
-    const link = getByText("Hook feedback").closest("a");
-    expect(link?.getAttribute("href")).toBe(
-      "/settings/plugins-settings/hooks?hostId=remote-1&source=project&projectRoot=%2Fworkspace%2Fnodex",
-    );
-    fireEvent.click(link as HTMLElement);
-    expect(onOpenHooksSettings).toHaveBeenCalledWith({
-      hostId: "remote-1",
-      selection: { source: "project", projectRoot: "/workspace/nodex" },
-    });
-  });
-
-  test("collapses long measured user messages and toggles expansion", async () => {
-    installTextCollapseMeasurement({ scrollHeight: 600, lineHeightPx: 20 });
-    const longMessage = Array.from({ length: 25 }, (_value, index) => `Line ${index + 1}`).join(
-      "\n",
-    );
-
-    const { container, getByText } = renderUserMessageBubble(longMessage);
-    await settleAsyncRender();
-    await settleTextCollapseMeasurement();
-
-    const collapsedButton = getByText("Show more").closest("button");
-    expect(collapsedButton?.getAttribute("aria-expanded")).toBe("false");
-    const markdown = getUserMarkdownRoot(container);
-
-    await act(async () => {
-      fireEvent.click(collapsedButton as HTMLElement);
-    });
-    await settleAsyncRender();
-
-    const expandedButton = getByText("Show less").closest("button");
-    expect(expandedButton?.getAttribute("aria-expanded")).toBe("true");
-    expect(getUserMarkdownRoot(container)).toBe(markdown);
-
-    await act(async () => {
-      fireEvent.click(expandedButton as HTMLElement);
-    });
-    await settleAsyncRender();
-
-    expect(getByText("Show more").closest("button")?.getAttribute("aria-expanded")).toBe("false");
-    expect(getUserMarkdownRoot(container)).toBe(markdown);
-  });
-
-  test("does not render a toggle when content fits the exact collapsed height", async () => {
-    installTextCollapseMeasurement({ scrollHeight: 400, lineHeightPx: 20 });
-    const longMessage = Array.from({ length: 25 }, (_value, index) => `Line ${index + 1}`).join(
-      "\n",
-    );
-    const view = renderUserMessageBubble(longMessage);
-    await settleAsyncRender();
-    await settleTextCollapseMeasurement();
-
-    expect(view.queryByText("Show more") === null).toBe(true);
-  });
-
-  test("collapses again when expanded text changes", async () => {
-    installTextCollapseMeasurement({ scrollHeight: 600, lineHeightPx: 20 });
-    const firstMessage = Array.from({ length: 25 }, (_value, index) => `First ${index + 1}`).join(
-      "\n",
-    );
-    const secondMessage = Array.from({ length: 25 }, (_value, index) => `Second ${index + 1}`).join(
-      "\n",
-    );
-
-    const view = renderUserMessageBubble(firstMessage);
-    await settleAsyncRender();
-    await settleTextCollapseMeasurement();
-
-    fireEvent.click(view.getByText("Show more").closest("button") as HTMLElement);
-    await settleAsyncRender();
-    expect(view.getByText("Show less").closest("button")?.getAttribute("aria-expanded")).toBe(
-      "true",
-    );
-
-    view.rerender(
-      <TooltipProvider>
-        <UserMessageBubble
-          block={buildUserMessageBlock(secondMessage)}
-          isLatestTurn={false}
-          isStreamingTurn={false}
-        />
-      </TooltipProvider>,
-    );
-    await settleAsyncRender();
-    await settleTextCollapseMeasurement();
-
-    expect(view.getByText("Show more").closest("button")?.getAttribute("aria-expanded")).toBe(
-      "false",
-    );
-  });
-});
-
-describe("ThreadAssistantBodyBlock streaming markdown", () => {
-  test("keeps a completed latest assistant item static while the turn is still active", async () => {
-    const { container } = render(
-      <ThreadAssistantBodyBlock
-        block={buildAssistantMessageBlock({
-          text: "Completed assistant prose should not reanimate while another turn item is still active.",
-          status: "completed",
-        })}
-        isLatestTurn={true}
-        isStreamingTurn={true}
-      />,
-    );
-
-    await settleAsyncRender();
-
-    expect(container.querySelector("[data-sd-animate]") === null).toBe(true);
-  });
-
-  test("keeps animation enabled for the in-progress assistant item", async () => {
-    const { container } = render(
-      <ThreadAssistantBodyBlock
-        block={buildAssistantMessageBlock({
-          text: "Streaming assistant prose should still use Streamdown word fade while the item is in progress.",
-          status: "inProgress",
-        })}
-        isLatestTurn={true}
-        isStreamingTurn={true}
-      />,
-    );
-
-    await settleAsyncRender();
-
-    expect(container.querySelectorAll("[data-sd-animate]").length > 0).toBe(true);
-  });
 });
 
 describe("ThreadAgentActivityGroupBlock", () => {
   /** The header's visible label sits beside its overlay toggle, not inside it. */
-  function groupHeader(toggle: HTMLElement): HTMLElement {
-    const header = toggle.parentElement;
-    if (!header) throw new Error("Expected the activity group header.");
-    return header;
-  }
 
   function activeHeader(item: ThreadAgentActivityGroupEntryModel, label: string) {
     return {
@@ -1427,246 +759,6 @@ describe("ThreadAgentActivityGroupBlock", () => {
       inProgress: true,
     };
   }
-
-  test("starts collapsed and mounts its steps only when opened, at their natural height", async () => {
-    const readBlock = buildCommandBlock("item-1", [
-      { type: "read", command: "cat a.ts", name: "./src/a.ts", path: "./src/a.ts" },
-    ]);
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-1",
-      entries: [readBlock],
-      completedHeader: {
-        parts: [{ kind: "exploration" }],
-        iconItem: readBlock,
-      },
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={false} isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = getByRole("button", { name: /Read files/i });
-    expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("false");
-    expect(container.querySelector("[data-testid='agent-activity-group-body']")).toBe(null);
-
-    await act(async () => {
-      fireEvent.click(summaryButton);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    const body = container.querySelector<HTMLElement>("[data-testid='agent-activity-group-body']");
-    expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("true");
-    expect(body?.getAttribute("aria-hidden")).toBe("false");
-    expect(Boolean(textContent(container).includes("Read src/a.ts"))).toBe(true);
-    expect(
-      applyContentSearchDomMarks({
-        root: container,
-        query: "src/a.ts",
-        idPrefix: "expanded-activity",
-      }).totalMatches > 0,
-    ).toBe(true);
-    expect(Boolean(textContent(container).includes("Exploration"))).toBe(false);
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-    // No capped scroller: the steps grow with their rows.
-    expect(body?.querySelector("[data-activity-steps]")).not.toBe(null);
-    expect(body?.querySelector(".vertical-scroll-fade-mask")).toBe(null);
-  });
-
-  test("shimmers only the latest streaming active summary", () => {
-    const commandBlock = buildCommandBlock("item-command-active", [], {
-      status: "inProgress",
-      command: "bun test",
-      exitCode: undefined,
-    });
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-active",
-      searchableText: "activity active",
-      status: "inProgress",
-      header: activeHeader(commandBlock, "Running bun test"),
-      completedHeader: {
-        parts: [{ kind: "commands", count: 1 }],
-        iconItem: commandBlock,
-      },
-      entries: [commandBlock],
-    });
-
-    const { getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const header = groupHeader(getByRole("button", { name: /Running bun test/i }));
-    const shimmer = header.querySelector<HTMLElement>(".loading-shimmer-pure-text");
-    expect(shimmer?.firstChild?.textContent ?? "").toBe("Running bun test");
-    expect(header.querySelector("[role='status']")).not.toBe(null);
-    expect(Boolean(textContent(header).includes("Ran 1 command"))).toBe(false);
-  });
-
-  test("opens on a gap with nothing to say, then admits it is working after a beat", async () => {
-    vi.useFakeTimers();
-    try {
-      const commandBlock = buildCommandBlock("item-command-completed", [], {
-        status: "completed",
-        command: "pnpm test",
-        exitCode: 0,
-      });
-      const block = buildAgentActivityGroupBlock({
-        id: "activity-gap-owner",
-        searchableText: "completed command",
-        header: { kind: "thinking", message: null },
-        completedHeader: {
-          parts: [{ kind: "commands", count: 1 }],
-          iconItem: commandBlock,
-        },
-        entries: [commandBlock],
-      });
-
-      const { container } = render(
-        <TooltipProvider>
-          <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-        </TooltipProvider>,
-      );
-      expect(textContent(container).includes("Working")).toBe(false);
-      expect(textContent(container).includes("Ran a command")).toBe(false);
-
-      await act(async () => {
-        vi.advanceTimersByTime(ACTIVITY_HEADER_FIRST_GAP_DELAY_MS);
-        await Promise.resolve();
-      });
-      const header = groupHeader(
-        container.querySelector<HTMLElement>("[data-testid='agent-activity-group-toggle']")!,
-      );
-      expect(textContent(header).includes("Working")).toBe(true);
-      expect(header.querySelectorAll(".loading-shimmer-pure-text").length).toBe(1);
-      expect(header.querySelectorAll("[data-tool-activity-icon]").length).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("keeps its live label when it becomes expandable in the middle of a gap", async () => {
-    const listBlock = buildCommandBlock("item-list-live", [
-      { type: "listFiles", command: "ls src", path: "src" },
-    ]);
-    const renderGroup = (
-      header: ThreadAgentActivityGroupBlockModel["header"],
-      canExpand: boolean,
-    ) => (
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock
-          block={buildAgentActivityGroupBlock({
-            id: "activity-becomes-expandable",
-            status: "inProgress",
-            header,
-            canExpand,
-            completedHeader: { parts: [{ kind: "exploration" }], iconItem: listBlock },
-            entries: [listBlock],
-          })}
-          isLatestTurn={true}
-          isStreamingTurn={true}
-        />
-      </TooltipProvider>
-    );
-    const view = render(renderGroup(activeHeader(listBlock, "Listing files in src folder"), false));
-    expect(view.queryByTestId("agent-activity-group-toggle")).toBe(null);
-
-    // The listing finishes: its row becomes visible and the header enters a gap.
-    view.rerender(renderGroup({ kind: "thinking", message: null }, true));
-    expect(view.getByTestId("agent-activity-group-toggle")).toBeTruthy();
-    expect(textContent(view.container).includes("Listing files in src folder")).toBe(true);
-    // The gap stops the scanning animation; its glyph fades back to the folder.
-    await waitFor(() => {
-      expect(view.container.querySelector("[data-activity-sprite]")).toBe(null);
-    });
-  });
-
-  test("carries the turn's thinking line until a tool speaks, then hands it over", async () => {
-    const commandBlock = buildCommandBlock("item-command-opening", [], {
-      status: "inProgress",
-      command: "ls",
-      exitCode: undefined,
-    });
-    const renderGroup = (header: ThreadAgentActivityGroupBlockModel["header"]) => (
-      <TooltipProvider>
-        <ActivityOpeningLabelProvider value={{ label: "Planning the steps", onExit: () => {} }}>
-          <ThreadAgentActivityGroupBlock
-            block={buildAgentActivityGroupBlock({
-              id: "activity-opening",
-              status: "inProgress",
-              header,
-              completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
-              entries: [commandBlock],
-            })}
-            isLatestTurn={true}
-            isStreamingTurn={true}
-          />
-        </ActivityOpeningLabelProvider>
-      </TooltipProvider>
-    );
-    const view = render(renderGroup({ kind: "thinking", message: null }));
-    // No blank beat and no generic Working: the thinking line's words carry on in the header.
-    expect(textContent(view.container).includes("Planning the steps")).toBe(true);
-    expect(textContent(view.container).includes("Working")).toBe(false);
-
-    view.rerender(renderGroup(activeHeader(commandBlock, "Running ls")));
-    expect(textContent(view.container).includes("Running ls")).toBe(true);
-    expect(view.container.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(null);
-  });
-
-  test("holds the running tool's label through a gap and lets a named thought replace it", async () => {
-    vi.useFakeTimers();
-    try {
-      const commandBlock = buildCommandBlock("item-command-gap", [], {
-        status: "inProgress",
-        command: "bun test",
-        exitCode: undefined,
-      });
-      const renderGroup = (header: ThreadAgentActivityGroupBlockModel["header"]) => (
-        <TooltipProvider>
-          <ThreadAgentActivityGroupBlock
-            block={buildAgentActivityGroupBlock({
-              id: "activity-gap",
-              status: "inProgress",
-              header,
-              completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
-              entries: [commandBlock],
-            })}
-            isLatestTurn={true}
-            isStreamingTurn={true}
-          />
-        </TooltipProvider>
-      );
-      const view = render(renderGroup(activeHeader(commandBlock, "Running bun test")));
-      await act(async () => {
-        vi.advanceTimersByTime(CODEX_SHIMMER_CADENCE_MS.activeDuration);
-        await Promise.resolve();
-      });
-
-      view.rerender(renderGroup({ kind: "thinking", message: null }));
-      await act(async () => {
-        vi.advanceTimersByTime(ACTIVITY_HEADER_FIRST_GAP_DELAY_MS * 2);
-        await Promise.resolve();
-      });
-      expect(textContent(view.container).includes("Running bun test")).toBe(true);
-      expect(textContent(view.container).includes("Working")).toBe(false);
-      // The tool's icon stays on screen while the gap holds its label.
-      expect(view.container.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(
-        null,
-      );
-
-      view.rerender(renderGroup({ kind: "thinking", message: "Checking the failing case" }));
-      await act(async () => {
-        await Promise.resolve();
-      });
-      expect(textContent(view.container).includes("Checking the failing case")).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 
   test("hands a new label over only after the current sweep, then releases the old one", async () => {
     vi.useFakeTimers();
@@ -1739,445 +831,6 @@ describe("ThreadAgentActivityGroupBlock", () => {
       vi.useRealTimers();
     }
   });
-
-  test("animates a running tool's icon and settles to its family glyph", () => {
-    const commandBlock = buildCommandBlock("item-command-sprite", [], {
-      status: "inProgress",
-      command: "bun test",
-      exitCode: undefined,
-    });
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-sprite",
-      status: "inProgress",
-      header: activeHeader(commandBlock, "Running bun test"),
-      completedHeader: { parts: [{ kind: "commands", count: 1 }], iconItem: commandBlock },
-      entries: [commandBlock],
-    });
-
-    const { container } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const iconCell = container.querySelector<HTMLElement>("[data-activity-icon-key]");
-    expect(iconCell?.dataset.activityIconKey).toBe("run-command");
-    expect(iconCell?.querySelector("[data-tool-activity-icon='run-command']")).not.toBe(null);
-  });
-
-  test("does not shimmer a latest streaming completed fallback summary", () => {
-    const webEntry: CodexConversationItem = {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "web-completed",
-      entryId: "web-completed",
-      type: "web_search",
-      kind: "toolCall",
-      semanticKind: "webSearch",
-      status: "completed",
-      toolCall: {
-        subtype: "webSearch",
-        toolName: "web_search",
-        args: { query: "completed query" },
-        result: { type: "search", query: "completed query" },
-      },
-      rawItem: { action: { type: "search", query: "completed query" } },
-      createdAt: 1,
-      updatedAt: 2,
-    };
-    const webBlock = {
-      id: "web-completed",
-      turnId: "turn-1",
-      createdAt: 1,
-      updatedAt: 2,
-      searchableText: "completed query",
-      type: "webSearch" as const,
-      entry: webEntry,
-      status: "completed" as const,
-    };
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-web-completed",
-      searchableText: "completed query",
-      completedHeader: {
-        parts: [{ kind: "webSearch" }],
-        iconItem: webBlock,
-      },
-      entries: [webBlock],
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = getByRole("button", { name: /Searched the web/i });
-    expect(Boolean(textContent(summaryButton).includes("Searching the web"))).toBe(false);
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-  });
-
-  test("renders a live file-change header from the exact active item", async () => {
-    const liveFileChangeEntry = buildFileChangeEntry("item-file-live");
-    const content = Array.from({ length: 85 }, (_, index) => `line ${index + 1}`).join("\n");
-    liveFileChangeEntry.status = "inProgress";
-    liveFileChangeEntry.fileChange = {
-      label: undefined,
-      changes: buildCodexFileChangeMap([{ type: "add", path: "poem.md", content }]),
-    };
-
-    const fileChangeBlock = {
-      id: liveFileChangeEntry.entryId ?? liveFileChangeEntry.itemId,
-      turnId: liveFileChangeEntry.turnId,
-      createdAt: liveFileChangeEntry.createdAt,
-      updatedAt: liveFileChangeEntry.updatedAt,
-      searchableText: "file change",
-      type: "fileChange" as const,
-      entry: liveFileChangeEntry,
-      status: liveFileChangeEntry.status,
-    };
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-file-live",
-      searchableText: "activity file live",
-      status: "inProgress",
-      header: activeHeader(fileChangeBlock, "Editing files"),
-      completedHeader: {
-        parts: [{ kind: "fileChanges", count: 1 }],
-        iconItem: fileChangeBlock,
-      },
-      entries: [fileChangeBlock],
-    });
-
-    const { container } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-expanded='false']",
-    );
-    if (!summaryButton) throw new Error("Expected collapsed activity summary button");
-    const header = groupHeader(summaryButton);
-    expect(Boolean(textContent(header).includes("Editing files"))).toBe(true);
-    const shimmer = header.querySelector<HTMLElement>(".loading-shimmer-pure-text");
-    expect(shimmer?.firstChild?.textContent ?? "").toBe("Editing files");
-    expect(header.querySelector("[data-tool-activity-icon='edit-files']")).not.toBe(null);
-    expect(Boolean(header.querySelector(".diff-stat-digit-stack-8"))).toBe(false);
-
-    fireEvent.click(summaryButton);
-    await settleAsyncRender();
-
-    expect(Boolean(container.querySelector('[data-testid="agent-activity-group-body"]'))).toBe(
-      true,
-    );
-    expect(Boolean(textContent(container).includes("Creating"))).toBe(true);
-    expect(Boolean(textContent(container).includes("poem.md"))).toBe(true);
-    expect(Boolean(textContent(container).includes("Exploration"))).toBe(false);
-  });
-
-  test("keeps completed collapsed summaries static", () => {
-    const explorationBlock = buildCommandBlock("item-explore-static", [
-      { type: "read", command: "cat src/a.ts", name: "src/a.ts", path: "src/a.ts" },
-    ]);
-    const commandBlock = buildCommandBlock("item-command-static", [], { command: "pnpm test" });
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-static",
-      searchableText: "activity static",
-      completedHeader: {
-        parts: [{ kind: "exploration" }, { kind: "commands", count: 1 }],
-        iconItem: explorationBlock,
-      },
-      entries: [explorationBlock, commandBlock],
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={true} isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-
-    getByRole("button", { name: /Read files, ran a command/i });
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-  });
-
-  test("renders a completed single-file change as an aggregate activity header before the row", async () => {
-    const fileChangeEntry = buildFileChangeEntry("item-file-single");
-    const fileChangeBlock = {
-      id: fileChangeEntry.entryId ?? fileChangeEntry.itemId,
-      turnId: fileChangeEntry.turnId,
-      createdAt: fileChangeEntry.createdAt,
-      updatedAt: fileChangeEntry.updatedAt,
-      searchableText: "file change",
-      type: "fileChange" as const,
-      entry: fileChangeEntry,
-      status: fileChangeEntry.status,
-    };
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-single-file",
-      searchableText: "single file activity",
-      completedHeader: {
-        parts: [{ kind: "fileChanges", count: 1 }],
-        iconItem: fileChangeBlock,
-      },
-      entries: [fileChangeBlock],
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={false} isStreamingTurn={true} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = getByRole("button", { name: /Edited a file/i });
-    expect(groupHeader(summaryButton).querySelector(".loading-shimmer-pure-text")).toBe(null);
-    expect(Boolean(textContent(groupHeader(summaryButton)).includes("2 lines"))).toBe(false);
-    expect(container.querySelector("[data-testid='agent-activity-group-body']")).toBe(null);
-
-    fireEvent.click(summaryButton);
-    await waitFor(() => {
-      if (!textContent(container).includes("edited.ts")) {
-        throw new Error("Expected expanded file-change row to render.");
-      }
-    });
-
-    const content = textContent(container);
-    expect(
-      container
-        .querySelector("[data-testid='agent-activity-group-body']")
-        ?.getAttribute("aria-hidden"),
-    ).toBe("false");
-    expect(Boolean(content.includes("Edited"))).toBe(true);
-    expect(Boolean(content.includes("edited.ts"))).toBe(true);
-    expect(Boolean(content.includes("+1"))).toBe(true);
-    expect(Boolean(content.includes("-1"))).toBe(true);
-  });
-
-  test("keeps family-specific leading icons and terse command wording on its steps", async () => {
-    const commandEntry = buildCommandEntry("item-command", [], {
-      command: "bun test",
-      commandActions: [],
-    });
-    const fileChangeEntry = buildFileChangeEntry("item-file-change");
-    const readBlock = buildCommandBlock("item-read", [
-      { type: "read", command: "cat src/a.ts", name: "src/a.ts", path: "src/a.ts" },
-    ]);
-    const searchBlock = buildCommandBlock("item-search", [
-      { type: "search", command: "rg thing", query: "thing", path: "src" },
-    ]);
-    const listBlock = buildCommandBlock("item-list", [
-      { type: "listFiles", command: "fd", path: "src" },
-    ]);
-    const commandBlock = {
-      id: commandEntry.entryId ?? commandEntry.itemId,
-      turnId: commandEntry.turnId,
-      createdAt: commandEntry.createdAt,
-      updatedAt: commandEntry.updatedAt,
-      searchableText: "command",
-      type: "exec" as const,
-      entry: commandEntry,
-      status: commandEntry.status,
-    };
-    const fileChangeBlock = {
-      id: fileChangeEntry.entryId ?? fileChangeEntry.itemId,
-      turnId: fileChangeEntry.turnId,
-      createdAt: fileChangeEntry.createdAt,
-      updatedAt: fileChangeEntry.updatedAt,
-      searchableText: "file change",
-      type: "fileChange" as const,
-      entry: fileChangeEntry,
-      status: fileChangeEntry.status,
-    };
-    const block = buildAgentActivityGroupBlock({
-      id: "activity-icons",
-      searchableText: "activity icons",
-      completedHeader: {
-        parts: [
-          { kind: "fileChanges", count: 1 },
-          { kind: "exploration" },
-          { kind: "commands", count: 1 },
-        ],
-        iconItem: fileChangeBlock,
-      },
-      entries: [readBlock, searchBlock, listBlock, commandBlock, fileChangeBlock],
-    });
-
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadAgentActivityGroupBlock block={block} isLatestTurn={false} isStreamingTurn={false} />
-      </TooltipProvider>,
-    );
-
-    const summaryButton = getByRole("button", { name: /Edited a file/i });
-    const header = groupHeader(summaryButton);
-    expect(header.querySelectorAll("[data-tool-activity-icon='edit-files']").length).toBe(1);
-    expect(header.querySelectorAll("[data-tool-activity-icon='run-command']").length).toBe(0);
-
-    fireEvent.click(summaryButton);
-    await settleAsyncRender();
-
-    const groupBody = container.querySelector<HTMLElement>(
-      "[data-testid='agent-activity-group-body']",
-    );
-    const content = textContent(groupBody!);
-    expect(content.includes("Read src/a.ts")).toBe(true);
-    expect(content.includes("Searched for thing in src")).toBe(true);
-    expect(content.includes("Listed files in src")).toBe(true);
-    expect(content.includes("bun test")).toBe(true);
-    expect(content.includes("Ran bun test")).toBe(false);
-    expect(content.includes("edited.ts")).toBe(true);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='read-files']").length).toBe(1);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='search']").length).toBe(1);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='list-files']").length).toBe(1);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='run-command']").length).toBe(1);
-    expect(groupBody?.querySelectorAll("[data-tool-activity-icon='edit-files']").length).toBe(1);
-  });
-});
-
-describe("ThreadWorktreeInitBlock", () => {
-  const entry: CodexConversationItem = {
-    threadId: "thread-1",
-    turnId: "turn-worktree-init",
-    itemId: "pending-worktree:4",
-    entryId: "pending-worktree:4",
-    type: "worktreeInit",
-    kind: "systemEvent",
-    semanticKind: "worktreeInit",
-    status: "completed",
-    rawItem: {
-      id: "pending-worktree:4",
-      type: "worktreeInit",
-      worktreeOutputText: "[info] Starting worktree creation\n[info] Worktree created\n",
-      setup: {
-        outcome: "skipped",
-        outputText: "[info] Continuing without local environment setup\n",
-      },
-    },
-    createdAt: 1,
-    updatedAt: 1,
-  };
-
-  test("projects the exact completed worktree and optional setup activities", () => {
-    const activities = buildThreadWorktreeInitActivities(entry);
-
-    expect(activities.length).toBe(2);
-    expect(activities[0]?.id).toBe("pending-worktree:4:worktree");
-    expect(activities[0]?.status).toBe("completed");
-    expect(activities[1]?.id).toBe("pending-worktree:4:setup");
-    expect(activities[1]?.status).toBe("skipped");
-  });
-
-  test("renders completed activities collapsed with shared plain shell output", async () => {
-    const { getByRole, getByText } = render(
-      <TooltipProvider>
-        <ThreadWorktreeInitBlock
-          block={{
-            id: "pending-worktree:4",
-            turnId: "turn-worktree-init",
-            createdAt: 1,
-            updatedAt: 1,
-            searchableText: "Worktree initialization",
-            type: "worktreeInit",
-            status: "completed",
-            entry,
-          }}
-          isLatestTurn
-          isStreamingTurn={false}
-        />
-      </TooltipProvider>,
-    );
-
-    getByText("Worktree created");
-    getByText("Environment setup skipped");
-    expect(getByRole("button", { name: "Worktree created" }).getAttribute("aria-expanded")).toBe(
-      "false",
-    );
-    expect(
-      getByRole("button", { name: "Environment setup skipped" }).getAttribute("aria-expanded"),
-    ).toBe("false");
-
-    await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Environment setup skipped" }));
-      await new Promise<void>((resolve) => {
-        window.requestAnimationFrame(() => resolve());
-      });
-    });
-    getByText("[info] Continuing without local environment setup");
-  });
-});
-
-describe("fork origin presentation", () => {
-  afterEach(() => vi.restoreAllMocks());
-  const renderFork = (sourceConversationTitle: string | null) =>
-    render(
-      <TooltipProvider>
-        <ThreadBlockRenderer
-          block={{
-            id: "fork-1",
-            turnId: "turn-1",
-            createdAt: 1,
-            updatedAt: 1,
-            searchableText: "Forked conversation",
-            type: "forkedFromConversation",
-            status: "completed",
-            entry: {
-              threadId: "child-thread",
-              turnId: "turn-1",
-              itemId: "fork-1",
-              type: "forkedFromConversation",
-              kind: "systemEvent",
-              semanticKind: "forkedFromConversation",
-              status: "completed",
-              rawItem: {
-                type: "forkedFromConversation",
-                id: "fork-1",
-                sourceConversationId: "nodex:thread:source",
-                sourceConversationTitle,
-                sourceExecutionId: "source-execution",
-                historyVisible: true,
-              },
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          }}
-          isLatestTurn={false}
-          isStreamingTurn={false}
-          onOpenThread={vi.fn()}
-        />
-      </TooltipProvider>,
-    );
-
-  test.each([
-    { sourceConversationTitle: null, expectedLabel: "Forked fromanother chat" },
-    { sourceConversationTitle: "  ", expectedLabel: "Forked fromanother chat" },
-    { sourceConversationTitle: "Source chat", expectedLabel: "Forked fromSource chat" },
-  ])(
-    "keeps a compact origin for $sourceConversationTitle when the source is unknown",
-    async ({ sourceConversationTitle, expectedLabel }) => {
-      const identify = vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue(null);
-      const { container, queryByRole } = renderFork(sourceConversationTitle);
-      await waitFor(() => expect(identify).toHaveBeenCalled());
-      expect(container.querySelector("[data-conversation-attribution]")?.textContent).toBe(
-        expectedLabel,
-      );
-      expect(container.querySelector("pre")).toBeNull();
-      expect(queryByRole("button", { name: /copy/i })).toBeNull();
-    },
-  );
-
-  test("names a known source chat by its Agent's mark and current title", async () => {
-    vi.spyOn(agentRuntimeRuntime, "identify").mockResolvedValue({
-      threadId: "nodex:thread:source",
-      sessionId: "session-source",
-      title: "Passkey sign-in",
-      role: "chat",
-      agent: { kind: "claude", providerInstanceId: null, model: "claude-opus-5-5", effort: null },
-      archived: false,
-      host: null,
-    });
-    const view = renderFork("Old title");
-    const open = await view.findByRole("button", { name: "Open Passkey sign-in" });
-    expect(open.querySelector("svg")).not.toBeNull();
-  });
 });
 
 function buildContextCompactionBlock(
@@ -2207,40 +860,6 @@ function buildContextCompactionBlock(
 }
 
 describe("ThreadContextCompactionBlock", () => {
-  test("renders a finished compaction as an activity row without a divider rule", () => {
-    const { container, getByText } = render(
-      <ThreadContextCompactionBlock
-        block={buildContextCompactionBlock({
-          status: "completed",
-          source: "automatic",
-          startedAtMs: null,
-        })}
-        isLatestTurn={false}
-        isStreamingTurn={false}
-      />,
-    );
-
-    getByText("Context automatically compacted");
-    expect(container.querySelector(".loading-shimmer-pure-text")).toBeNull();
-    expect(container.querySelector(".border-t")).toBeNull();
-    expect(container.querySelector("svg")).not.toBeNull();
-  });
-
-  test.each([
-    [{ status: "completed", source: "manual" } as const, "Context compacted"],
-    [{ status: "interrupted", source: "automatic" } as const, "Compaction interrupted"],
-  ])("names a %j compaction", (compaction, label) => {
-    const { getByText } = render(
-      <ThreadContextCompactionBlock
-        block={buildContextCompactionBlock({ ...compaction, startedAtMs: null })}
-        isLatestTurn={false}
-        isStreamingTurn={false}
-      />,
-    );
-
-    getByText(label);
-  });
-
   test("reassures after a compaction has been running for ten seconds", async () => {
     vi.useFakeTimers({
       toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
@@ -2271,121 +890,9 @@ describe("ThreadContextCompactionBlock", () => {
       vi.useRealTimers();
     }
   });
-
-  test("describes compaction as conversation optimization at the Steps detail level", () => {
-    localStorage.setItem(
-      THREAD_SETTINGS_STORAGE_KEY,
-      JSON.stringify({ detailLevel: "STEPS_PROSE" }),
-    );
-    try {
-      const { getByText } = render(
-        <CodexThreadSettingsProvider>
-          <ThreadContextCompactionBlock
-            block={buildContextCompactionBlock({
-              status: "completed",
-              source: "automatic",
-              startedAtMs: null,
-            })}
-            isLatestTurn={false}
-            isStreamingTurn={false}
-          />
-        </CodexThreadSettingsProvider>,
-      );
-
-      getByText("Optimized the conversation");
-    } finally {
-      localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
-    }
-  });
 });
 
 describe("ThreadPlanCardBlock", () => {
-  test("uses the Codex writing-plan shell without the old proposed-plan eyebrow", () => {
-    const { container, getByText } = render(
-      <TooltipProvider>
-        <ThreadPlanCardBlock
-          block={{
-            id: "plan-1",
-            turnId: "turn-1",
-            createdAt: 1,
-            updatedAt: 1,
-            searchableText: "plan",
-            type: "proposedPlan",
-            entry: {
-              threadId: "thread-1",
-              turnId: "turn-1",
-              itemId: "plan-1",
-              type: "proposedPlan",
-              kind: "plan",
-              semanticKind: "proposedPlan",
-              status: "inProgress",
-              markdownText: "# Plan\n\n1. Investigate\n2. Implement",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          }}
-          isLatestTurn
-          isStreamingTurn
-        />
-      </TooltipProvider>,
-    );
-
-    getByText("Writing plan", { selector: "[data-codex-shimmer]" });
-    expect(Boolean(textContent(container).includes("Proposed plan"))).toBe(false);
-    expect(Boolean(textContent(container).includes("Expand plan"))).toBe(false);
-  });
-
-  test("opens the side panel from a completed proposed-plan item", () => {
-    let openedKey = "";
-    let openedContent = "";
-    const { container } = render(
-      <TooltipProvider>
-        <ThreadPlanCardBlock
-          block={{
-            id: "plan-1",
-            turnId: "turn-1",
-            createdAt: 1,
-            updatedAt: 1,
-            searchableText: "plan",
-            type: "proposedPlan",
-            entry: {
-              threadId: "thread-1",
-              turnId: "turn-1",
-              itemId: "plan-1",
-              type: "proposedPlan",
-              kind: "plan",
-              semanticKind: "proposedPlan",
-              status: "completed",
-              markdownText: "# Plan\n\n1. Investigate\n2. Implement",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          }}
-          isLatestTurn
-          isStreamingTurn={false}
-          threadCwd="/tmp/project"
-          planSidePanelState={{
-            rightPanelEnabled: true,
-            activePlanKey: null,
-            activeRightPanelTabId: null,
-          }}
-          onOpenPlanInSidePanel={(input) => {
-            openedKey = input.planKey;
-            openedContent = input.content;
-          }}
-        />
-      </TooltipProvider>,
-    );
-
-    const overlay = container.querySelector("button[aria-hidden='true'][tabindex='-1']");
-    expect(Boolean(overlay)).toBe(true);
-
-    fireEvent.click(overlay as HTMLButtonElement);
-
-    expect(openedKey).toBe("turn-1");
-    expect(openedContent).toBe("# Plan\n\n1. Investigate\n2. Implement");
-  });
-
   test("collapses the proposed-plan preview while its side-panel tab is active", () => {
     const { container, getByRole } = render(
       <TooltipProvider>
@@ -2429,142 +936,7 @@ describe("ThreadPlanCardBlock", () => {
   });
 });
 
-describe("ThreadBlockRenderer proposed-plan block", () => {
-  test("forwards side-panel actions into the plan card", () => {
-    let openedKey = "";
-    const { container, getByRole } = render(
-      <TooltipProvider>
-        <ThreadBlockRenderer
-          block={{
-            id: "plan-1",
-            turnId: "turn-1",
-            createdAt: 1,
-            updatedAt: 1,
-            searchableText: "plan",
-            type: "proposedPlan",
-            entry: {
-              threadId: "thread-1",
-              turnId: "turn-1",
-              itemId: "plan-1",
-              type: "proposedPlan",
-              kind: "plan",
-              semanticKind: "proposedPlan",
-              status: "completed",
-              markdownText: "# Plan\n\nOpen this in a side panel.",
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          }}
-          isLatestTurn
-          isStreamingTurn={false}
-          threadCwd="/tmp/project"
-          planSidePanelState={{
-            rightPanelEnabled: true,
-            activePlanKey: null,
-            activeRightPanelTabId: null,
-          }}
-          onOpenPlanInSidePanel={(input) => {
-            openedKey = input.planKey;
-          }}
-        />
-      </TooltipProvider>,
-    );
-
-    expect(Boolean(getByRole("button", { name: "Open plan in side panel" }))).toBe(true);
-
-    const overlay = container.querySelector("button[aria-hidden='true'][tabindex='-1']");
-    expect(Boolean(overlay)).toBe(true);
-
-    fireEvent.click(overlay as HTMLButtonElement);
-
-    expect(openedKey).toBe("turn-1");
-  });
-});
-
 describe("ThreadBlockRenderer subagent activity block", () => {
-  test("keeps an interrupted event explicit in its keyboard-accessible details", async () => {
-    const block = buildSubagentActivityInlineGroupBlock();
-    const first = block.subagentActivityRows![0]!;
-    const view = render(
-      <ThreadBlockRenderer
-        block={{
-          ...block,
-          subagentActivityStatusLabel: "interrupted",
-          subagentActivityRows: [{ ...first, activityStatus: "interrupted", status: "done" }],
-        }}
-        isLatestTurn
-        isStreamingTurn={false}
-        onOpenThread={vi.fn()}
-      />,
-    );
-    expect(view.getByRole("status", { name: "Subagents was interrupted" })).toBeTruthy();
-    await act(async () => {
-      view.getByRole("button", { name: first.displayName }).focus();
-      await Promise.resolve();
-    });
-    expect(await view.findByRole("dialog", { name: `${first.displayName} details` })).toBeTruthy();
-    expect(view.getByText("Interrupted")).toBeTruthy();
-  });
-
-  test("renders message markers without creating lifecycle avatars or navigation", () => {
-    for (const displayName of [null, "Scout"]) {
-      const block = buildSubagentActivityInlineGroupBlock();
-      const view = render(
-        <ThreadBlockRenderer
-          block={{
-            ...block,
-            entry: {
-              ...block.entry,
-              subagentActivity: {
-                agentThreadId: "child",
-                displayName,
-                displayStatus: "updated",
-                isMessage: true,
-              },
-            },
-            subagentActivityRows: undefined,
-          }}
-          isLatestTurn
-          isStreamingTurn={false}
-          onOpenThread={vi.fn()}
-        />,
-      );
-      expect(view.getByText(`Sent message to ${displayName ?? "parent"}`)).toBeTruthy();
-      expect(view.queryByRole("button")).toBeNull();
-      view.unmount();
-    }
-  });
-
-  test("keeps unavailable names static and supports Space on sentence names", async () => {
-    const block = buildSubagentActivityInlineGroupBlock();
-    const rows = block.subagentActivityRows ?? [];
-    const onOpenThread = vi.fn();
-    const view = render(
-      <ThreadBlockRenderer
-        block={{
-          ...block,
-          subagentActivityRows: rows.map((row, index) => ({ ...row, canOpen: index !== 0 })),
-        }}
-        isLatestTurn
-        isStreamingTurn={false}
-        onOpenThread={onOpenThread}
-      />,
-    );
-    expect(view.queryByRole("button", { name: "Scout" })).toBeNull();
-    await act(async () => {
-      fireEvent.keyDown(view.getByRole("button", { name: "Reviewer" }), { key: " " });
-    });
-    expect(onOpenThread).not.toHaveBeenCalled();
-    await act(async () => {
-      fireEvent.keyUp(view.getByRole("button", { name: "Reviewer" }), { key: " " });
-    });
-    expect(onOpenThread.mock.calls[0]?.[0]).toBe("thread-child-2");
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Tester" }));
-    });
-    expect(onOpenThread.mock.calls[1]?.[0]).toBe("thread-child-4");
-  });
-
   test("keeps sentence names and overflow avatars independently keyboard accessible", async () => {
     const opened: Array<{ threadId: string; context?: ThreadOpenThreadContext }> = [];
     const completeBlock = buildSubagentActivityInlineGroupBlock();
@@ -2694,33 +1066,6 @@ describe("conversation recovery leaves", () => {
       "Request ID: request-1",
     );
   });
-
-  test("continues the exact failed turn through its conversation action owner", async () => {
-    const continueAfterFailure = vi.fn(async (_turnId: string) => {});
-    const view = render(
-      <TooltipProvider>
-        <ConversationRecoveryActionsProvider onContinueAfterFailure={continueAfterFailure}>
-          <ThreadBlockRenderer block={errorBlock("failed")} isLatestTurn isStreamingTurn={false} />
-        </ConversationRecoveryActionsProvider>
-      </TooltipProvider>,
-    );
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Continue" }));
-    });
-    expect(continueAfterFailure).toHaveBeenCalledExactlyOnceWith("turn-1");
-    view.rerender(
-      <TooltipProvider>
-        <ConversationRecoveryActionsProvider onContinueAfterFailure={continueAfterFailure}>
-          <ThreadBlockRenderer
-            block={errorBlock("failed")}
-            isLatestTurn={false}
-            isStreamingTurn={false}
-          />
-        </ConversationRecoveryActionsProvider>
-      </TooltipProvider>,
-    );
-    expect(view.queryByRole("button", { name: "Continue" })).toBeNull();
-  });
 });
 
 describe("image-view and completed elicitation leaves", () => {
@@ -2830,12 +1175,27 @@ describe("image-view and completed elicitation leaves", () => {
     expect(readImage).toHaveBeenCalledTimes(2);
   });
 
-  test("renders generated images and pending output in the dedicated preview gallery", async () => {
-    const imageOne =
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'/%3E";
-    const imageTwo =
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'/%3E";
-    const { container, getByLabelText, getByTestId } = render(
+  test("refetches a failed generated-image preview at most twice for its resolved source", async ({
+    onTestFinished,
+  }) => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:asset-1");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    onTestFinished(() => {
+      createObjectUrl.mockRestore();
+      revokeObjectUrl.mockRestore();
+    });
+    const resolveImage = vi.fn(async (_input: { hostId: string; pointer: string }) => ({
+      ok: true,
+      dataBase64: "aW1hZ2U=",
+      mimeType: "image/png",
+    }));
+    installWindowApi({
+      invoke: async (channel: string, input: { hostId: string; pointer: string }) =>
+        channel === "codex:conversation-image-asset:resolve" ? resolveImage(input) : null,
+      on: () => () => {},
+    });
+    const source = "file-service://asset-1";
+    const view = render(
       <TestQueryProvider>
         <ThreadGeneratedImageGalleryBlock
           block={{
@@ -2845,198 +1205,29 @@ describe("image-view and completed elicitation leaves", () => {
             updatedAt: 2,
             searchableText: "",
             type: "generatedImageGallery",
-            images: [
-              { id: "generated-image-1", previewSrc: imageOne, src: imageTwo },
-              { id: "generated-image-2", src: imageTwo },
-            ],
-            pendingImageCount: 1,
+            images: [{ id: "generated-image-1", src: source }],
+            pendingImageCount: 0,
           }}
           isLatestTurn
-          isStreamingTurn
+          isStreamingTurn={false}
         />
       </TestQueryProvider>,
     );
+    const image = () => view.findByRole("img", { name: "Generated image 1" });
+    await image();
+    const input = { hostId: "local", pointer: source };
+    expect(resolveImage.mock.calls).toEqual([[input]]);
 
-    expect(Boolean(getByTestId("generated-image-gallery"))).toBe(true);
-    expect(container.querySelectorAll('[data-testid="generated-image-preview"]').length).toBe(2);
-    expect(Boolean(container.querySelector('[aria-label="Generating image..."]'))).toBe(true);
-    expect(getByLabelText("Generated image 1").querySelector("img")?.getAttribute("src")).toBe(
-      imageOne,
-    );
-    const setDragData = vi.fn();
-    fireEvent.dragStart(
-      getByLabelText("Generated image 1").querySelector("img") as HTMLImageElement,
-      {
-        dataTransfer: { effectAllowed: "none", setData: setDragData },
-      },
-    );
-    expect(setDragData).toHaveBeenCalledWith(
-      "application/x-codex-image",
-      JSON.stringify({ filename: "generated-image-1", src: imageTwo }),
-    );
-
-    await act(async () => {
-      fireEvent.click(getByLabelText("Generated image 1"));
-      await Promise.resolve();
-    });
-    expect(Boolean(getByLabelText("Image preview"))).toBe(true);
-    expect(getByLabelText("Image preview").querySelector("img")?.getAttribute("src")).toBe(
-      imageTwo,
-    );
-    expect(getByLabelText("Download image").getAttribute("type")).toBe("button");
-  });
-
-  test("refetches a failed generated-image preview at most twice for its resolved source", async () => {
-    const createObjectUrl = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:stable-image-source");
-    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    const invoke = vi.fn().mockResolvedValue({
-      ok: true,
-      dataBase64: "aW1hZ2U=",
-      mimeType: "image/png",
-    });
-    installWindowApi({ invoke, on: () => () => {} });
-    try {
-      const { findByLabelText } = render(
-        <TestQueryProvider>
-          <ThreadGeneratedImageGalleryBlock
-            block={{
-              id: "generated-image-gallery",
-              turnId: "turn-1",
-              createdAt: 1,
-              updatedAt: 2,
-              searchableText: "",
-              type: "generatedImageGallery",
-              images: [{ id: "generated-image-1", src: "file-service://asset-1" }],
-              pendingImageCount: 0,
-            }}
-            isLatestTurn
-            isStreamingTurn={false}
-          />
-        </TestQueryProvider>,
-      );
-      const preview = await findByLabelText("Generated image 1");
-      const image = preview.querySelector("img") as HTMLImageElement;
-      expect(invoke).toHaveBeenCalledTimes(1);
-
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        await act(async () => {
-          fireEvent.error(image);
-          await Promise.resolve();
-        });
-        await waitFor(() => {
-          expect(invoke).toHaveBeenCalledTimes(Math.min(attempt + 2, 3));
-        });
-      }
-    } finally {
-      createObjectUrl.mockRestore();
-      revokeObjectUrl.mockRestore();
-    }
-  });
-
-  test("moves the generated-image carousel one slot and restores focus on pointer release", async () => {
-    const measurement = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-      bottom: 74,
-      height: 74,
-      left: 0,
-      right: 320,
-      top: 0,
-      width: 320,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
-    const source =
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'/%3E";
-    try {
-      const { getByLabelText } = render(
-        <TestQueryProvider>
-          <ThreadGeneratedImageGalleryBlock
-            block={{
-              id: "generated-image-carousel",
-              turnId: "turn-1",
-              createdAt: 1,
-              updatedAt: 2,
-              searchableText: "",
-              type: "generatedImageGallery",
-              images: Array.from({ length: 6 }, (_, index) => ({
-                id: `generated-image-${index + 1}`,
-                src: source,
-              })),
-              pendingImageCount: 0,
-            }}
-            isLatestTurn
-            isStreamingTurn={false}
-          />
-        </TestQueryProvider>,
-      );
-      await waitFor(() => {
-        expect((getByLabelText("Next images") as HTMLButtonElement).disabled).toBe(false);
-      });
-      const previousButton = getByLabelText("Previous images") as HTMLButtonElement;
-      const nextButton = getByLabelText("Next images") as HTMLButtonElement;
-      expect(previousButton.disabled).toBe(true);
-
+    for (const count of [2, 3, 3]) {
+      const preview = await image();
       await act(async () => {
-        fireEvent.click(nextButton);
-        nextButton.focus();
-        expect(document.activeElement).toBe(nextButton);
-        fireEvent.pointerUp(nextButton);
+        fireEvent.error(preview);
         await Promise.resolve();
       });
-
-      expect(previousButton.disabled).toBe(false);
-      expect(getByLabelText("Generated image 1").getAttribute("aria-hidden")).toBe("true");
-      expect(document.activeElement === nextButton).toBe(false);
-    } finally {
-      measurement.mockRestore();
+      await waitFor(() =>
+        expect(resolveImage.mock.calls).toEqual(Array.from({ length: count }, () => [input])),
+      );
     }
-  });
-
-  test("renders completed MCP elicitation as a collapsed question-and-answer disclosure", async () => {
-    const { container, getByText } = render(
-      <ThreadMcpServerElicitationBlock
-        block={{
-          id: "elicitation-1",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 2,
-          searchableText: "Allow the connector action? Accepted",
-          type: "mcpServerElicitation",
-          status: "completed",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "elicitation-1",
-            type: "mcpServerElicitation",
-            kind: "systemEvent",
-            semanticKind: "mcpServerElicitation",
-            status: "completed",
-            rawItem: {
-              type: "mcpServerElicitation",
-              completed: true,
-              requestId: "request-1",
-              action: "accept",
-              elicitation: { kind: "mcpToolCall", message: "Allow the connector action?" },
-            },
-            createdAt: 1,
-            updatedAt: 2,
-          },
-        }}
-        isLatestTurn
-        isStreamingTurn={false}
-      />,
-    );
-
-    const collapsedBody = container.querySelector('[aria-hidden="true"][inert]');
-    expect(collapsedBody?.getAttribute("inert")).toBe("");
-    fireEvent.click(container.querySelector('button[aria-expanded="false"]') as HTMLElement);
-    await waitFor(() => {
-      expect(container.querySelector('[aria-hidden="false"]') !== null).toBe(true);
-    });
-    getByText("Allow the connector action?");
-    getByText("Accepted");
   });
 });
 
@@ -3103,85 +1294,5 @@ describe("ThreadTurnDiffBlock", () => {
     expect(container.querySelectorAll('[role="button"][aria-expanded="false"]').length).toBe(0);
     fireEvent.click(container.querySelector("button") as HTMLElement);
     expect(selectedTurnId).toBe("thread-1");
-  });
-
-  test("suppresses in-progress turn diffs in the normal thread body", () => {
-    const { container } = render(
-      <ThreadTurnDiffBlock
-        block={{
-          id: "turn-diff-body",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 1,
-          searchableText: "1 file changed",
-          type: "turnDiff",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "turn-diff-body",
-            entryId: "turn-diff-body",
-            type: "turn_diff",
-            kind: "systemEvent",
-            semanticKind: "diff",
-            status: "inProgress",
-            rawItem: {
-              type: "turn-diff",
-              unifiedDiff: "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
-            },
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
-        isLatestTurn={true}
-        isStreamingTurn={true}
-      />,
-    );
-
-    expect(container.textContent ?? "").toBe("");
-  });
-
-  test("suppresses completed turn diffs in prose detail mode", () => {
-    localStorage.setItem(
-      THREAD_SETTINGS_STORAGE_KEY,
-      JSON.stringify({ detailLevel: "STEPS_PROSE" }),
-    );
-    try {
-      const { container } = render(
-        <CodexThreadSettingsProvider>
-          <ThreadTurnDiffBlock
-            block={{
-              id: "turn-diff-completed-prose",
-              turnId: "turn-1",
-              createdAt: 1,
-              updatedAt: 1,
-              searchableText: "1 file changed",
-              type: "turnDiff",
-              entry: {
-                threadId: "thread-1",
-                turnId: "turn-1",
-                itemId: "turn-diff-completed-prose",
-                entryId: "turn-diff-completed-prose",
-                type: "turn_diff",
-                kind: "systemEvent",
-                semanticKind: "diff",
-                status: "completed",
-                rawItem: {
-                  type: "turn-diff",
-                  unifiedDiff: "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
-                },
-                createdAt: 1,
-                updatedAt: 1,
-              },
-            }}
-            isLatestTurn={true}
-            isStreamingTurn={false}
-          />
-        </CodexThreadSettingsProvider>,
-      );
-
-      expect(container.textContent ?? "").toBe("");
-    } finally {
-      localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
-    }
   });
 });

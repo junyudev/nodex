@@ -1,0 +1,216 @@
+import { describe, expect, test } from "vite-plus/test";
+import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
+import type { BoardSummary, DatabasePageSummary, WorkflowStatus } from "@/lib/types";
+import {
+  resolveBoardKeyboardActionPageIds,
+  resolveBoardKeyboardNavigation,
+} from "./board-keyboard-navigation";
+import {
+  emptyCardSelection,
+  normalizeCardSelection,
+  resolveDragGroup,
+  resolveSelectedCardEntries,
+  toggleCardSelection,
+} from "./card-selection";
+
+describe("board keyboard navigation", () => {
+  const card = (id: string, status: WorkflowStatus): DatabasePageSummary => ({
+    id,
+    pageKey: null,
+    title: id,
+    richTitle: plainTextToPortableRichText(id),
+    archived: false,
+    descriptionPreview: "",
+    descriptionLength: 0,
+    hasDescription: false,
+    status,
+    priority: undefined,
+    estimate: undefined,
+    tags: [],
+    assignee: undefined,
+    dueDate: undefined,
+    scheduledStart: undefined,
+    scheduledEnd: undefined,
+    order: 0,
+    revision: 0,
+    created: new Date(0),
+  });
+
+  const board: BoardSummary = {
+    columns: [
+      { id: "triage", name: "Triage", cards: [card("a", "triage"), card("b", "triage")] },
+      { id: "plan", name: "Plan", cards: [] },
+      { id: "doing", name: "Doing", cards: [card("c", "doing")] },
+    ],
+  };
+
+  describe("Board keyboard navigation", () => {
+    test("uses column-major order for J/K navigation", () => {
+      expect(resolveBoardKeyboardNavigation(board, "b", "next")?.pageId).toBe("c");
+      expect(resolveBoardKeyboardNavigation(board, "c", "previous")?.pageId).toBe("b");
+    });
+
+    test("preserves the nearest row while crossing empty columns", () => {
+      expect(resolveBoardKeyboardNavigation(board, "b", "right")?.pageId).toBe("c");
+      expect(resolveBoardKeyboardNavigation(board, "c", "left")?.pageId).toBe("a");
+    });
+
+    test("starts from the first visible Page when no Page is highlighted", () => {
+      expect(resolveBoardKeyboardNavigation(board, null, "next")?.pageId).toBe("a");
+    });
+
+    test("resolves selected actions in visible Board order", () => {
+      expect(resolveBoardKeyboardActionPageIds(board, "c", new Set(["c", "a"]))).toEqual([
+        "a",
+        "c",
+      ]);
+      expect(resolveBoardKeyboardActionPageIds(board, "b", new Set(["a", "c"]))).toEqual(["b"]);
+    });
+  });
+});
+
+describe("card selection", () => {
+  const board: BoardSummary = {
+    columns: [
+      {
+        id: "doing",
+        name: "Doing",
+        cards: [
+          {
+            id: "a",
+            pageKey: null,
+            status: "doing",
+            archived: false,
+            title: "A",
+            richTitle: plainTextToPortableRichText("A"),
+            descriptionPreview: "",
+            descriptionLength: 0,
+            hasDescription: false,
+            priority: "p2-medium",
+            tags: [],
+            created: new Date("2026-02-28T00:00:00.000Z"),
+            order: 0,
+          },
+          {
+            id: "b",
+            pageKey: null,
+            status: "doing",
+            archived: false,
+            title: "B",
+            richTitle: plainTextToPortableRichText("B"),
+            descriptionPreview: "",
+            descriptionLength: 0,
+            hasDescription: false,
+            priority: "p2-medium",
+            tags: [],
+            created: new Date("2026-02-28T00:00:00.000Z"),
+            order: 1,
+          },
+        ],
+      },
+      {
+        id: "review",
+        name: "Review",
+        cards: [
+          {
+            id: "c",
+            pageKey: null,
+            status: "review",
+            archived: false,
+            title: "C",
+            richTitle: plainTextToPortableRichText("C"),
+            descriptionPreview: "",
+            descriptionLength: 0,
+            hasDescription: false,
+            priority: "p2-medium",
+            tags: [],
+            created: new Date("2026-02-28T00:00:00.000Z"),
+            order: 0,
+          },
+          {
+            id: "d",
+            pageKey: null,
+            status: "review",
+            archived: false,
+            title: "D",
+            richTitle: plainTextToPortableRichText("D"),
+            descriptionPreview: "",
+            descriptionLength: 0,
+            hasDescription: false,
+            priority: "p2-medium",
+            tags: [],
+            created: new Date("2026-02-28T00:00:00.000Z"),
+            order: 1,
+          },
+        ],
+      },
+    ],
+  };
+
+  function ids(selection: CardSelectionStateLike): string[] {
+    return Array.from(selection.pageIds);
+  }
+
+  type CardSelectionStateLike = ReturnType<typeof emptyCardSelection>;
+
+  describe("card selection", () => {
+    test("initial shift-toggle selects only the clicked card", () => {
+      const selected = toggleCardSelection(emptyCardSelection(), "b");
+
+      expect(ids(selected).join(",")).toBe("b");
+    });
+
+    test("shift-toggle can add cards across columns", () => {
+      const once = toggleCardSelection(emptyCardSelection(), "a");
+      const twice = toggleCardSelection(once, "c");
+
+      expect(ids(twice).join(",")).toBe("a,c");
+    });
+
+    test("normalize drops removed cards regardless of source column", () => {
+      const selection = {
+        pageIds: new Set(["b", "missing", "d"]),
+      };
+
+      const normalized = normalizeCardSelection(selection, board);
+
+      expect(ids(normalized).join(",")).toBe("b,d");
+    });
+
+    test("resolveSelectedCardEntries preserves board-visible order across columns", () => {
+      const selection = {
+        pageIds: new Set(["d", "a", "c"]),
+      };
+
+      const selected = resolveSelectedCardEntries(board, selection);
+
+      expect(selected.map((entry) => entry.card.id).join(",")).toBe("a,c,d");
+    });
+
+    test("resolveDragGroup uses the full selection when the active card is selected", () => {
+      const selection = {
+        pageIds: new Set(["d", "a", "c"]),
+      };
+
+      const dragGroup = resolveDragGroup(board, selection, {
+        card: board.columns[1]!.cards[0]!,
+        columnId: "review",
+      });
+
+      expect(dragGroup.map((entry) => entry.card.id).join(",")).toBe("a,c,d");
+    });
+
+    test("resolveDragGroup falls back to the active card when it is not in the selection", () => {
+      const selection = {
+        pageIds: new Set(["a", "c"]),
+      };
+
+      const dragGroup = resolveDragGroup(board, selection, {
+        card: board.columns[1]!.cards[1]!,
+        columnId: "review",
+      });
+
+      expect(dragGroup.map((entry) => entry.card.id).join(",")).toBe("d");
+    });
+  });
+});

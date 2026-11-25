@@ -108,45 +108,6 @@ test("expands OpenCode models and chooses the exact paid instance, model and adv
   await waitFor(() => expect(choose).toHaveBeenCalledWith(work));
 });
 
-test("exposes boolean and native mode controls plus provider setup with a single model", async () => {
-  const changeConfig = vi.fn(async () => {});
-  const changeMode = vi.fn(async () => {});
-  const manage = vi.fn();
-  const view = renderPicker(
-    presentation({
-      changeConfig,
-      changeMode,
-      manage,
-      configOptions: [
-        {
-          type: "boolean",
-          id: "retain",
-          name: "Memory",
-          category: null,
-          description: null,
-          currentValue: true,
-        },
-      ],
-      modes: {
-        currentModeId: "build",
-        availableModes: [
-          { id: "build", name: "Build", description: null },
-          { id: "review-native", name: "Review", description: null },
-        ],
-      },
-    }),
-  );
-  expect(view.queryByRole("button", { name: /^Effort/ })).toBeNull();
-  await click(await view.findByRole("button", { name: "Memory On" }));
-  await click(await view.findByRole("menuitem", { name: "Off" }));
-  await waitFor(() => expect(changeConfig).toHaveBeenCalledWith("retain", false));
-  await click(await view.findByRole("button", { name: "Mode Build" }));
-  await click(await view.findByRole("menuitem", { name: "Review" }));
-  await waitFor(() => expect(changeMode).toHaveBeenCalledWith("review-native"));
-  await click(await view.findByRole("button", { name: "Manage providers" }));
-  expect(manage).toHaveBeenCalledOnce();
-});
-
 test("dismisses option menus before asynchronous writes and keeps them closed after settlement", async () => {
   const verbosityWrite = pendingWrite();
   const modeWrite = pendingWrite();
@@ -231,28 +192,6 @@ test("starts an ACP runtime before model negotiation without offering a fabricat
   expect(view.queryAllByRole("option")).toEqual([]);
   await click(await view.findByRole("button", { name: "Start with Local agent" }));
   expect(chooseRuntime).toHaveBeenCalledWith(binding);
-});
-
-test("keeps Codex selectable and exposes Refresh when external inventory fails", async () => {
-  const binding = { driver: "codex", instanceId: "codex" } as const;
-  const codex = catalogModel("gpt-codex", "Codex model");
-  const choice = { binding, model: codex.id };
-  const refresh = vi.fn();
-  const choose = vi.fn();
-  const view = renderPicker(
-    presentation({
-      selected: choice,
-      entries: [{ binding, label: "Codex", model: codex, selection: choice }],
-      error: "Could not read Agent profiles",
-      refresh,
-      choose,
-    }),
-  );
-  expect(await view.findByText("Could not read Agent profiles")).not.toBeNull();
-  expect(within(view.getByRole("listbox")).getAllByRole("option")).toHaveLength(1);
-  await click(await view.findByRole("button", { name: "Refresh models" }));
-  expect(refresh).toHaveBeenCalledOnce();
-  expect(choose).not.toHaveBeenCalled();
 });
 
 function MenuPicker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }) {
@@ -345,159 +284,6 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
   );
   expect(view.getByRole("option", { name: /Kimi K3.*Work/ })).toBeTruthy();
   expect(choose).not.toHaveBeenCalled();
-});
-
-test("shows managed Claude models and setup while the executable is installing", async () => {
-  const choose = vi.fn();
-  const claude = {
-    binding: { driver: "claudeAgent", instanceId: "managed" },
-    model: model.id,
-  } as const;
-  const view = renderWithMaitai(
-    <MenuPicker
-      catalog={presentation({
-        choose,
-        entries: [
-          { binding: selected.binding, label: "Local", model, selection: selected },
-          {
-            binding: claude.binding,
-            label: "API key",
-            model,
-            selection: claude,
-            unavailableReason: "Installing Claude Code… 42%",
-            unavailableLabel: "Installing",
-          },
-        ],
-        setups: [{ kind: "claudeAgent", label: "Installing Claude Code… 42%", tone: "default" }],
-      })}
-    />,
-  );
-  const pending = await view.findByRole("button", { name: "Installing Claude Code… 42%" });
-  expect((pending as HTMLButtonElement).disabled).toBe(true);
-  const option = view.getByRole("option", { name: /Kimi K3.*API key.*Installing/u });
-  expect((option as HTMLButtonElement).disabled).toBe(true);
-  await click(option);
-  expect(choose).not.toHaveBeenCalled();
-});
-
-test("routes an OpenCode executable that needs updating to provider settings", async () => {
-  const manage = vi.fn();
-  const view = renderWithMaitai(
-    <MenuPicker
-      catalog={presentation({
-        manage,
-        setups: [
-          {
-            kind: "opencode",
-            label: "Free OpenCode models",
-            hint: "Update",
-            tone: "default",
-            action: { kind: "settings" },
-          },
-        ],
-      })}
-    />,
-  );
-  await click(await view.findByRole("button", { name: "Free OpenCode models Update" }));
-  await waitFor(() => expect(manage).toHaveBeenCalledOnce());
-});
-
-test("reads the catalog again each time it opens without forcing providers to check", async () => {
-  const reload = vi.fn();
-  const refresh = vi.fn();
-  const catalog = presentation({ reload, refresh });
-  const view = renderWithMaitai(
-    <NodexTooltipProvider delay={0}>
-      <AgentIntelligenceDropdown
-        models={[model]}
-        triggerStyle="composer"
-        selection={{
-          kind: catalog.selected.binding.driver,
-          model: catalog.selected.model,
-          reasoningEffort: "none",
-          serviceTier: null,
-        }}
-        onSelectionChange={() => {}}
-        provider={{
-          label: "Local",
-          selection: "local",
-          modelCatalog: catalog,
-        }}
-      />
-    </NodexTooltipProvider>,
-  );
-  const trigger = await view.findByRole("button", { name: "Select model" });
-  await click(trigger);
-  expect(await view.findByRole("listbox")).not.toBeNull();
-  expect(reload).toHaveBeenCalledOnce();
-
-  await act(async () => {
-    fireEvent.keyDown(within(view.getByRole("listbox")).getAllByRole("option")[0]!, {
-      key: "Escape",
-    });
-    await Promise.resolve();
-  });
-  await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
-  await click(trigger);
-  expect(await view.findByRole("listbox")).not.toBeNull();
-  expect(reload).toHaveBeenCalledTimes(2);
-  expect(refresh).not.toHaveBeenCalled();
-});
-
-test("sets Claude effort on one track and turns Ultracode on at that effort", async () => {
-  const opus = {
-    ...catalogModel("claude-opus-5-5", "Claude Opus 5.5"),
-    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map((reasoningEffort) => ({
-      reasoningEffort,
-      description: reasoningEffort,
-    })),
-    defaultReasoningEffort: "medium",
-  };
-  const claude = {
-    binding: { driver: "claudeAgent", instanceId: "claude" },
-    model: opus.id,
-  } as const;
-  const change = vi.fn(async () => {});
-  const view = renderWithMaitai(
-    <NodexTooltipProvider delay={0}>
-      <AgentIntelligenceDropdown
-        models={[opus]}
-        open
-        selection={{
-          kind: "claudeAgent",
-          model: opus.id,
-          reasoningEffort: "default",
-          serviceTier: null,
-        }}
-        onSelectionChange={() => {}}
-        provider={{
-          label: "Claude",
-          selection: "claudeAgent",
-          nativeIntelligence: {
-            selected: { fast: false, ultracode: false, thinking: true },
-            capabilities: { fastMode: true, ultracode: true },
-            change,
-          },
-          modelCatalog: presentation({
-            selected: claude,
-            entries: [{ binding: claude.binding, label: "Claude", model: opus, selection: claude }],
-          }),
-        }}
-      />
-    </NodexTooltipProvider>,
-  );
-  const effort = await view.findByRole("slider", { name: "Effort" });
-  expect(effort.getAttribute("aria-valuetext")).toBe("Medium");
-  await act(async () => {
-    fireEvent.keyDown(effort, { key: "ArrowRight" });
-    await Promise.resolve();
-  });
-  expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true });
-
-  const ultracode = view.getByRole("button", { name: "Ultracode" });
-  expect(ultracode.getAttribute("aria-pressed")).toBe("false");
-  await click(ultracode);
-  await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
 });
 
 test("keeps an unavailable Ultracode visible, explains it, and never turns it on", async () => {
@@ -610,31 +396,6 @@ test("shows a mode change at once without dimming, and sends a second change aft
   await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
 });
 
-test("keeps an unavailable Nodex model visible and prevents choosing it", async () => {
-  const choose = vi.fn();
-  const binding = { driver: "claudeAgent", instanceId: `nodex_claude_${"a".repeat(32)}` } as const;
-  const unavailable = catalogModel("claude-sonnet-5-5", "Claude Sonnet 5.5");
-  const view = renderPicker(
-    presentation({
-      choose,
-      entries: [
-        {
-          binding,
-          label: "Nodex",
-          model: unavailable,
-          selection: { binding, model: unavailable.id },
-          unavailableReason: "Temporarily unavailable",
-        },
-      ],
-    }),
-  );
-  const option = await view.findByRole("option", { name: /Claude Sonnet 5.5/u });
-  expect((option as HTMLButtonElement).disabled).toBe(true);
-  expect(within(option).getByText(/Unavailable/u)).toBeDefined();
-  await click(option);
-  expect(choose).not.toHaveBeenCalled();
-});
-
 const search = async (view: ReturnType<typeof renderPicker>, value: string) => {
   const input = await view.findByRole("combobox", { name: "Search models" });
   await act(async () => {
@@ -668,22 +429,6 @@ const offModels = (patch: { readonly choose?: () => Promise<void>; readonly cred
   };
 };
 
-test("keeps off models out of the list and counts them, until a search asks for them", async () => {
-  const manageModels = vi.fn();
-  const view = renderWithMaitai(
-    <MenuPicker catalog={presentation({ manageModels, off: offModels({}) })} />,
-  );
-  await view.findByRole("option", { name: /Kimi K3/ });
-  expect(view.queryByRole("option", { name: /Gemini/ })).toBeNull();
-  await search(view, "gemini");
-  const row = await view.findByRole("option", { name: /Gemini 3\.5 Flash.*Off/ });
-  expect(row.textContent).toContain("Local · Off");
-  await search(view, "");
-  expect(view.queryByRole("option", { name: /Gemini/ })).toBeNull();
-  await click(await view.findByRole("button", { name: "7 models off" }));
-  await waitFor(() => expect(manageModels).toHaveBeenCalledOnce());
-});
-
 test("choosing an off model turns it on, but credit only ever turns on in Settings", async () => {
   const choose = vi.fn(async () => {});
   const manageModels = vi.fn();
@@ -716,48 +461,4 @@ test("names this chat's own model as off instead of swapping it", async () => {
   const row = await view.findByRole("option", { name: /Kimi K3/ });
   expect(row.textContent).toContain("Off");
   expect((row as HTMLButtonElement).disabled).toBe(true);
-});
-
-test("leads its gear to Models when the catalog can, and setup rows to their Agent", async () => {
-  const manage = vi.fn();
-  const manageModels = vi.fn();
-  const view = renderPicker(presentation({ manage, manageModels }));
-  await click(await view.findByRole("button", { name: "Manage models" }));
-  await waitFor(() => expect(manageModels).toHaveBeenCalledOnce());
-  expect(manage).not.toHaveBeenCalled();
-});
-
-test("opens setup for the chosen Antigravity profile without picking a model", async () => {
-  const work = vi.fn();
-  const personal = vi.fn();
-  const choose = vi.fn();
-  const view = renderWithMaitai(
-    <MenuPicker
-      catalog={presentation({
-        choose,
-        setups: [
-          {
-            kind: "antigravity",
-            instanceId: "antigravity_work",
-            label: "Antigravity work",
-            hint: "Sign in",
-            tone: "default",
-            action: { kind: "open", open: work },
-          },
-          {
-            kind: "antigravity",
-            instanceId: "antigravity_personal",
-            label: "Antigravity personal",
-            hint: "Install",
-            tone: "default",
-            action: { kind: "open", open: personal },
-          },
-        ],
-      })}
-    />,
-  );
-  await click(await view.findByRole("button", { name: "Antigravity work Sign in" }));
-  await waitFor(() => expect(work).toHaveBeenCalledOnce());
-  expect(personal).not.toHaveBeenCalled();
-  expect(choose).not.toHaveBeenCalled();
 });

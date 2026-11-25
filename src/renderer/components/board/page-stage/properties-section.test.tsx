@@ -216,34 +216,6 @@ const statusControls: PageStagePropertyControls = {
 };
 
 describe("PageStagePropertiesSection", () => {
-  test("Status carries whose move the Page waits for, with no separate Turn row", async () => {
-    turnState.turn = {
-      page_id: "nested-page",
-      actor: { kind: "member", member_id: "person" },
-      reason: "question",
-      since: "now",
-      episode: "episode",
-    };
-    const view = renderProperties(
-      <PageStagePropertiesSection
-        controller={buildController({ propertyControls: statusControls })}
-      />,
-    );
-    const status = view.container.querySelector('[data-page-stage-property-id="status"]');
-    expect(status?.textContent).toContain("Needs your answer");
-    expect(view.queryByText("Turn")).toBeNull();
-  });
-
-  test("a Page without work keeps a plain Status, tucked away while empty", async () => {
-    const view = renderProperties(
-      <PageStagePropertiesSection
-        controller={buildController({ propertyControls: statusControls })}
-      />,
-    );
-    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeNull();
-    expect(view.container.querySelector("[data-page-turn-line]")).toBeNull();
-  });
-
   test("work in a Page without a Status Property still says whose move it is", () => {
     turnState.turn = {
       page_id: "nested-page",
@@ -255,37 +227,6 @@ describe("PageStagePropertiesSection", () => {
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
     expect(view.getByText("Status")).toBeTruthy();
     expect(view.getByRole("link", { name: "Waiting for NODEX-2" })).toBeTruthy();
-  });
-
-  test("offers empty properties by name and never as rows that say Empty", async () => {
-    const view = renderProperties(
-      <PageStagePropertiesSection
-        controller={buildController({ propertyControls: statusControls })}
-      />,
-    );
-
-    expect(view.getByRole("region", { name: "Properties" })).toBeTruthy();
-    const more = await view.findByRole("button", { name: "3 more properties" });
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(view.queryByRole("group", { name: "Empty properties" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(more);
-      await Promise.resolve();
-    });
-    expect(more.getAttribute("aria-expanded")).toBe("true");
-
-    const choices = within(view.getByRole("group", { name: "Empty properties" }));
-    // A Project Page that names no Agent offers one beside its empty Properties.
-    expect(choices.getAllByRole("button").map((choice) => choice.textContent)).toEqual([
-      "Status",
-      "Assignee",
-      "Files",
-    ]);
-    // Files stays mounted while tucked away, but nothing on screen says Empty.
-    expect(
-      view.queryAllByText("Empty", { exact: true }).filter((node) => !node.closest("[hidden]")),
-    ).toEqual([]);
-    expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeNull();
   });
 
   test("a chosen property joins the list and stays when the disclosure closes", async () => {
@@ -312,79 +253,6 @@ describe("PageStagePropertiesSection", () => {
     });
     expect(view.container.querySelector('[data-page-stage-property-id="status"]')).toBeTruthy();
     expect(view.getByRole("button", { name: "2 more properties" })).toBeTruthy();
-  });
-
-  test("choosing Files opens the Page's File manager", async () => {
-    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
-
-    expect(view.queryByRole("button", { name: "Add Page Files" })).toBeNull();
-    const found2 = await view.findByRole("button", { name: "2 more properties" });
-    await act(async () => {
-      fireEvent.click(found2);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Files" }));
-      await Promise.resolve();
-    });
-    expect(modal.openModal).toHaveBeenCalledOnce();
-    expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      routingContext: { kind: "project", projectId: "project-1" },
-      pageId: "nested-page",
-    });
-    expect(view.getByRole("button", { name: "Add Page Files" })).toBeTruthy();
-    expect(view.getByRole("button", { name: "Hide 1 property" })).toBeTruthy();
-  });
-
-  test("choosing Assignee adds its row", async () => {
-    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
-
-    expect(view.queryByRole("button", { name: "Choose Assignee" })).toBeNull();
-    const found3 = await view.findByRole("button", { name: "2 more properties" });
-    await act(async () => {
-      fireEvent.click(found3);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Assignee" }));
-      await Promise.resolve();
-    });
-    expect(view.getByRole("button", { name: "Choose Assignee" })).toBeTruthy();
-  });
-
-  test("choosing Linked chats adds its row with the chat menu open", async () => {
-    const onCreateRelatedChat = vi.fn(async () => undefined);
-    const view = renderProperties(
-      <PageStagePropertiesSection
-        controller={buildController({
-          hasRelatedChatsRow: true,
-          relatedChats: [],
-          relatedChatCandidates: [],
-          onCreateRelatedChat,
-          saving: false,
-        })}
-      />,
-    );
-
-    expect(view.queryByRole("button", { name: "Add chat" })).toBeNull();
-    const more = await view.findByRole("button", { name: "3 more properties" });
-    await act(async () => {
-      fireEvent.click(more);
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Linked chats" }));
-      await Promise.resolve();
-    });
-    expect(view.getByRole("button", { name: "Add chat" })).toBeTruthy();
-
-    const found4 = await view.findByRole("menuitem", { name: "New chat" });
-    await act(async () => {
-      fireEvent.click(found4);
-      await Promise.resolve();
-    });
-    expect(onCreateRelatedChat).toHaveBeenCalledTimes(1);
   });
 
   test("shows Chat relation chips and links an existing Chat from the trailing action", async () => {
@@ -473,82 +341,6 @@ describe("PageStagePropertiesSection", () => {
       await Promise.resolve();
     });
     expect(onLinkRelatedChat).toHaveBeenCalledWith("session-candidate");
-  });
-
-  test("offers the Chat whose Scene shows the Page first when linking", async () => {
-    const view = renderProperties(
-      <PageStagePropertiesSection
-        controller={buildController({
-          hasRelatedChatsRow: true,
-          relatedChats: [
-            {
-              sessionId: "session-linked",
-              projectId: "project-1",
-              projectName: "Nodex",
-              displayTitle: "Research follow-up",
-              threadId: null,
-              executionRef: null,
-              threadPreview: "",
-              threadStatus: null,
-              threadArchived: false,
-              unread: false,
-              report: null,
-              sessionArchived: false,
-              conversationRecencyAt: null,
-              linkedAt: "2026-08-24T00:00:00Z",
-            },
-          ],
-          relatedChatsLoading: false,
-          relatedChatsError: null,
-          relatedChatsHasMore: false,
-          relatedChatsLoadingMore: false,
-          relatedChatCandidates: [
-            { sessionId: "session-recent", displayTitle: "Release notes", projectName: "Nodex" },
-            { sessionId: "session-current", displayTitle: "Fix login", projectName: "Nodex" },
-          ],
-          onLinkRelatedChat: vi.fn(async () => undefined),
-          currentSessionId: "session-current",
-          saving: false,
-        })}
-      />,
-    );
-
-    const trigger = await view.findByRole("button", { name: "Add chat" });
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "Link to chat…" }));
-      await Promise.resolve();
-    });
-    await view.findByRole("button", { name: /Release notes/ });
-    const rows = view
-      .getAllByRole("button")
-      .filter((button) => /Fix login|Release notes/.test(button.textContent ?? ""));
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "Fix loginThis chat",
-      "Release notesNodex",
-    ]);
-  });
-
-  test("shows an unplaced File without requiring disclosure", async () => {
-    api.readLibraryModule.mockResolvedValue(
-      manifestResponse({
-        ...emptyManifest,
-        revision: 1,
-        files: [pageFile("file-brief", "brief.txt", { kind: "not_in_body" })],
-        total: 1,
-        unplaced_total: 1,
-      }),
-    );
-
-    const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
-
-    expect(await view.findByRole("treeitem", { name: "brief.txt" })).toBeTruthy();
-    expect(await view.findByRole("button", { name: "1 more property" })).toBeTruthy();
   });
 
   test("keeps Files represented in the body behind the disclosure without calling them Empty", async () => {

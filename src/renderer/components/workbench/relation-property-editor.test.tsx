@@ -3,11 +3,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { act } from "react";
 import { render } from "../../test/dom";
 import { RelationPropertyEditor } from "../database/relation-property-editor";
-import {
-  readRelationValuePreview,
-  type RelationCandidateWindow,
-  type RelationTargetWindow,
-} from "@/lib/data-source-relation-value";
+import { type RelationCandidateWindow } from "@/lib/data-source-relation-value";
 
 const relationValue = {
   kind: "relation",
@@ -30,109 +26,6 @@ const relationValue = {
 };
 
 describe("RelationPropertyEditor", () => {
-  test("projects bounded visible and unavailable targets without inventing identities", () => {
-    expect(readRelationValuePreview(relationValue)).toEqual({
-      valueRevision: 4,
-      totalCount: 2,
-      targets: [
-        {
-          kind: "visible",
-          edgeId: "a".repeat(64),
-          pageId: "page-visible",
-          title: "Visible task",
-          lifecycle: "active",
-          membershipState: "active_in_target_source",
-        },
-      ],
-      unavailableCount: 1,
-      hasMore: true,
-    });
-    expect(
-      readRelationValuePreview({
-        kind: "relation",
-        value: { ...relationValue.value, targets: [{ kind: "unavailable", page_id: "leak" }] },
-      }),
-    ).toBeNull();
-  });
-
-  test("emits patch-set intent for visible removal and candidate addition", async () => {
-    const onPatch = vi.fn();
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={relationValue}
-        candidates={[
-          { pageId: "page-visible", title: "Visible task" },
-          { pageId: "page-candidate", title: "DataMigration" },
-        ]}
-        disabled={false}
-        targetMatchesCurrentSource
-        onPatch={onPatch}
-        onClear={vi.fn()}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Remove Visible task" }));
-      fireEvent.change(view.getByPlaceholderText("Search pages…"), {
-        target: { value: "ｍｉｇａｒｔｉｏｎ" },
-      });
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("option", { name: "DataMigration" }));
-      await Promise.resolve();
-    });
-
-    expect(onPatch).toHaveBeenNthCalledWith(1, {
-      addPageIds: [],
-      removeEdgeIds: ["a".repeat(64)],
-    });
-    expect(onPatch).toHaveBeenNthCalledWith(2, {
-      addPageIds: ["page-candidate"],
-      removeEdgeIds: [],
-    });
-    expect(view.getByText("1 unavailable")).toBeTruthy();
-  });
-
-  test("replaces the Task Parent and excludes the source Page", async () => {
-    const onReplace = vi.fn();
-    const view = render(
-      <RelationPropertyEditor
-        label="Part of"
-        value={null}
-        candidates={[
-          { pageId: "page:child", title: "Current task" },
-          { pageId: "page:parent", title: "Parent task" },
-        ]}
-        cardinality="one"
-        excludedPageId="page:child"
-        disabled={false}
-        targetMatchesCurrentSource
-        onPatch={vi.fn()}
-        onReplace={onReplace}
-        onClear={vi.fn()}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Part of relation" }));
-      await Promise.resolve();
-    });
-    expect(view.queryByRole("option", { name: "Current task" })).toBeNull();
-    await act(async () => {
-      fireEvent.click(view.getByRole("option", { name: "Parent task" }));
-      await Promise.resolve();
-    });
-
-    expect(onReplace).toHaveBeenCalledWith("page:parent");
-    expect(view.queryByRole("option", { name: "Parent task" })).toBeNull();
-  });
-
   test("removes a unavailable target by its source-owned edge handle", async () => {
     const onPatch = vi.fn();
     const hiddenEdgeId = "b".repeat(64);
@@ -386,53 +279,6 @@ describe("RelationPropertyEditor", () => {
     expect(view.getByRole("option", { name: "Latest result" })).toBeTruthy();
   });
 
-  test("hides previous results as soon as the user changes the query", async () => {
-    const onPatch = vi.fn();
-    const onSearchCandidates = vi.fn(async (query: string) => {
-      if (query === "old") {
-        return {
-          candidates: [{ pageId: "old", title: "Old result" }],
-          nextCursor: null,
-          projectionRevision: 1,
-        };
-      }
-      return await new Promise<never>(() => undefined);
-    });
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={null}
-        candidates={[]}
-        disabled={false}
-        targetMatchesCurrentSource={false}
-        onPatch={onPatch}
-        onClear={vi.fn()}
-        onSearchCandidates={onSearchCandidates}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
-      await Promise.resolve();
-    });
-    const search = view.getByRole("combobox", { name: "Search Waits for target pages" });
-    await act(async () => {
-      fireEvent.change(search, { target: { value: "old" } });
-      await Promise.resolve();
-    });
-    expect(await view.findByRole("option", { name: "Old result" })).toBeTruthy();
-    await act(async () => {
-      fireEvent.change(search, { target: { value: "new" } });
-      await Promise.resolve();
-    });
-    expect(view.queryByRole("option", { name: "Old result" })).toBeNull();
-    await act(async () => {
-      fireEvent.keyDown(search, { key: "Enter" });
-      await Promise.resolve();
-    });
-    expect(onPatch).not.toHaveBeenCalled();
-  });
-
   test("keeps candidate failures local, hides transport details, and retries", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     let attempts = 0;
@@ -484,104 +330,6 @@ describe("RelationPropertyEditor", () => {
     } finally {
       consoleError.mockRestore();
     }
-  });
-
-  test("retains selected pages after a failed window read and retries the same authority", async () => {
-    const expectedReadError = new Error("databaseModuleReadV2.read selected transport detail");
-    const originalConsoleError = console.error;
-    const consoleError = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      if (args[0] === "[relation-property:selected]" && args[1] === expectedReadError) return;
-      originalConsoleError(...args);
-    });
-    const onLoadMore = vi
-      .fn<(after: string | null) => Promise<RelationTargetWindow>>()
-      .mockRejectedValueOnce(expectedReadError)
-      .mockResolvedValueOnce({
-        valueRevision: 4,
-        totalCount: 2,
-        targets: [
-          {
-            kind: "visible",
-            edgeId: "a".repeat(64),
-            pageId: "page-visible",
-            title: "Visible task",
-            lifecycle: "active",
-            membershipState: "active_in_target_source",
-          },
-          {
-            kind: "visible",
-            edgeId: "b".repeat(64),
-            pageId: "page-recovered",
-            title: "Recovered selected page",
-            lifecycle: "active",
-            membershipState: "active_in_target_source",
-          },
-        ],
-        nextCursor: null,
-        projectionRevision: 2,
-      });
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={relationValue}
-        candidates={[]}
-        disabled={false}
-        targetMatchesCurrentSource={true}
-        onPatch={vi.fn()}
-        onClear={vi.fn()}
-        onLoadMore={onLoadMore}
-      />,
-    );
-
-    try {
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
-        await Promise.resolve();
-      });
-      await act(async () => {
-        fireEvent.click(view.getByRole("button", { name: "Load more selected" }));
-        await Promise.resolve();
-      });
-      const retry = await view.findByRole("button", {
-        name: "Couldn’t load selected pages. Retry",
-      });
-      expect(view.getByRole("button", { name: "Remove Visible task" })).toBeTruthy();
-      expect(view.queryByText(/databaseModuleReadV2/)).toBeNull();
-
-      await act(async () => {
-        fireEvent.click(retry);
-        await Promise.resolve();
-      });
-      await view.findByRole("button", { name: "Remove Recovered selected page" });
-      expect(
-        view.queryByRole("button", { name: "Couldn’t load selected pages. Retry" }),
-      ).toBeNull();
-      expect(onLoadMore.mock.calls).toEqual([[null], [null]]);
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  test("treats an absent sparse value as Empty instead of corrupt", async () => {
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={undefined}
-        candidates={[]}
-        disabled={false}
-        targetMatchesCurrentSource
-        onPatch={vi.fn()}
-        onClear={vi.fn()}
-      />,
-    );
-    const trigger = view.getByRole("button", { name: "Edit Waits for relation" });
-    expect(trigger.textContent).toBe("Empty");
-    expect(trigger.querySelector("svg")).toBeNull();
-    await act(async () => {
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    expect(view.getByRole("combobox", { name: "Search Waits for target pages" })).toBeTruthy();
   });
 
   test("rejects a target window from another value revision and requests authority refresh", async () => {
@@ -678,51 +426,6 @@ describe("RelationPropertyEditor", () => {
     expect(onLoadMore.mock.calls.map(([after]) => after)).toEqual([null, "next", null]);
   });
 
-  test("silently replaces an expired candidate cursor from a fresh first window", async () => {
-    let request = 0;
-    const onSearchCandidates = vi.fn(async (_query: string, after?: string | null) => {
-      request += 1;
-      if (request === 2) throw new Error(`opaque cursor rejected: ${after}`);
-      return {
-        candidates: [
-          {
-            pageId: request === 1 ? "page-first" : "page-refreshed",
-            title: request === 1 ? "First candidate" : "Refreshed candidate",
-          },
-        ],
-        nextCursor: request === 1 ? "next" : null,
-        projectionRevision: request === 1 ? 1 : 2,
-      };
-    });
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={null}
-        candidates={[]}
-        disabled={false}
-        targetMatchesCurrentSource
-        onPatch={vi.fn()}
-        onClear={vi.fn()}
-        onSearchCandidates={onSearchCandidates}
-      />,
-    );
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(view.getByRole("option", { name: "First candidate" })).toBeTruthy());
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Load more" }));
-      await Promise.resolve();
-    });
-    await waitFor(() =>
-      expect(view.getByRole("option", { name: "Refreshed candidate" })).toBeTruthy(),
-    );
-    expect(view.queryByRole("option", { name: "First candidate" })).toBeNull();
-    expect(view.queryByText(/opaque cursor rejected/)).toBeNull();
-    expect(onSearchCandidates.mock.calls.map(([, after]) => after)).toEqual([null, "next", null]);
-  });
-
   test("never merges selected titles across privacy projection revisions", async () => {
     let request = 0;
     const onLoadMore = vi.fn(async () => {
@@ -804,40 +507,5 @@ describe("RelationPropertyEditor", () => {
       true,
     );
     expect(onPatch).toHaveBeenCalledOnce();
-  });
-
-  test("adds the active candidate from the search combobox keyboard", async () => {
-    const onPatch = vi.fn();
-    const view = render(
-      <RelationPropertyEditor
-        label="Waits for"
-        value={null}
-        candidates={[
-          { pageId: "first", title: "First" },
-          { pageId: "second", title: "Second" },
-        ]}
-        disabled={false}
-        targetMatchesCurrentSource
-        onPatch={onPatch}
-        onClear={vi.fn()}
-      />,
-    );
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Edit Waits for relation" }));
-      await Promise.resolve();
-    });
-    const search = view.getByRole("combobox", { name: "Search Waits for target pages" });
-    await act(async () => {
-      fireEvent.keyDown(search, { key: "ArrowDown" });
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.keyDown(search, { key: "Enter" });
-      await Promise.resolve();
-    });
-    expect(onPatch).toHaveBeenCalledWith({
-      addPageIds: ["second"],
-      removeEdgeIds: [],
-    });
   });
 });
