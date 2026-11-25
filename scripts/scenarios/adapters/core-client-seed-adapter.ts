@@ -1,3 +1,5 @@
+import type { ProjectWorkspace } from "../../../src/main/project-application/ProjectWorkspace";
+import { seedDecisionRun } from "../seed/decision-run";
 import { agentAttributionLabel } from "../../../src/shared/agents/registry";
 import { assessSeededAutomationCheck } from "../seed/automation-event";
 import { createHash } from "node:crypto";
@@ -64,11 +66,7 @@ import {
   type InboxScope,
   type InboxWindow,
 } from "../../../src/shared/inbox";
-import {
-  handledMessagesOf,
-  type ScenarioInboxDispatchSeed,
-  type ScenarioInboxProposalSeed,
-} from "../contracts";
+import { handledMessagesOf, type ScenarioInboxDispatchSeed } from "../contracts";
 import { parsePageWork } from "../../../src/shared/work-graph";
 import type { ProjectWorkspaceApplyInput } from "../../../src/main/core-client/types";
 import { inboxDispatchActionToCore } from "../../../src/main/core-client/inbox-adapter";
@@ -92,6 +90,43 @@ export const profileHasWork = async (runtime: RustDataAuthorityRuntime): Promise
   (await runScenarioProjectWorkspace(runtime, (workspace) => workspace.readProjectBootstrap))
     .status === "ready";
 
+const linkScenarioThread = Effect.fnUntraced(function* (
+  workspace: ProjectWorkspace["Service"],
+  sessionId: string,
+  projectId: string | null,
+  thread: NonNullable<ScenarioRelatedChatSeed["thread"]>,
+) {
+  const observedAt = Date.now();
+  yield* workspace.upsertThread(thread.threadId, {
+    projectId: projectId,
+    threadSource: "user",
+    threadName: thread.threadName,
+    threadPreview: thread.threadPreview,
+    backendBinding: { driver: "codex", instanceId: "codex" },
+    status: {
+      statusType: thread.statusType,
+      activeFlags: [...thread.statusActiveFlags],
+    },
+    createdAt: observedAt,
+    updatedAt: observedAt,
+    recencyAt: observedAt,
+  });
+  yield* workspace.upsertProjectSessionThreadLink({
+    sessionId: sessionId,
+    projectId: projectId,
+    threadId: thread.threadId,
+    threadSource: "user",
+    threadName: thread.threadName,
+    threadPreview: thread.threadPreview,
+    backendBinding: { driver: "codex", instanceId: "codex" },
+    statusType: thread.statusType,
+    statusActiveFlags: [...thread.statusActiveFlags],
+    createdAt: observedAt,
+    updatedAt: observedAt,
+    recencyAt: observedAt,
+  });
+});
+
 export class CoreClientSeedAdapter implements ScenarioSeedPort {
   readonly #runtime: RustDataAuthorityRuntime;
   readonly #libraryIdsByProject = new Map<string, string>();
@@ -100,27 +135,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     this.#runtime = runtime;
   }
 
-  async assessAutomationCheck(coordinatorSessionId: string, sequence: number) {
-    await assessSeededAutomationCheck(this.#runtime.rootClient, coordinatorSessionId, sequence);
-  }
-
-  async createCoordinatorSession(): Promise<string> {
-    const sessionId = createUuidV7();
-    await this.#runtime.rootClient.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "create_agent_runtime_session",
-        coordinator: true,
-        session_id: sessionId,
-        project_id: null,
-        title: "Nodex",
-        initial_page_ids: [],
-        runtime_id: "scenario:coordinator",
-        runtime_thread_id: createUuidV7(),
-        launch_request_id: createUuidV7(),
-      },
-    });
-    return sessionId;
+  async assessAutomationCheck(sequence: number) {
+    return assessSeededAutomationCheck(this.#runtime.rootClient, sequence);
   }
 
   async setPageWork(...[projectId, pageId, work]: Parameters<ScenarioSeedPort["setPageWork"]>) {
@@ -164,8 +180,6 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         session_id: sessionId,
         expected_revision: snapshot.value.observer?.revision ?? 0,
         observation,
-        events: [],
-        resolved_request_ids: [],
       },
     });
   }
@@ -177,15 +191,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     if (snapshot.value.kind !== "page_turn") throw new Error("Missing Page Turn");
     return snapshot.value.turn;
   }
-  async setSessionManaged(sessionId: string, managed: boolean) {
-    await this.#runtime.rootClient.workspaceApply({
-      operationId: createUuidV7(),
-      intent: { kind: "set_session_managed", session_id: sessionId, managed },
-    });
-  }
-
   async reportPageWork(input: Parameters<ScenarioSeedPort["reportPageWork"]>[0]) {
-    await this.setSessionManaged(input.sessionId, true);
     const runId = createUuidV7();
     const runStartedAt = Date.now();
     await this.#agentCommand(
@@ -217,9 +223,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   async handBackChatMessage(input: Parameters<ScenarioSeedPort["handBackChatMessage"]>[0]) {
     const client = this.#runtime.rootClient;
     const sessionId = createUuidV7(),
-      deliveryId = createUuidV7(),
-      runId = createUuidV7(),
-      pageId = createUuidV7();
+      runId = createUuidV7();
+    const { pageId } = await this.sendInboxMessage(input.body);
     await client.workspaceApply({
       operationId: createUuidV7(),
       intent: {
@@ -233,7 +238,29 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         launch_request_id: createUuidV7(),
       },
     });
-    await this.setSessionManaged(sessionId, true);
+    const captured = await client.workspaceRead({ kind: "inbox_entry", page_id: pageId });
+    if (captured.value.kind !== "inbox_entry" || !captured.value.item)
+      throw new Error("Missing handback message");
+    const proposalId = createUuidV7();
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "dispatch_inbox_entries",
+        proposal_id: proposalId,
+        page_ids: [pageId],
+        basis: [captured.value.item.basis],
+        expected_store_epoch: captured.store_epoch,
+        action: inboxDispatchActionToCore({
+          type: "send_to_chat",
+          sessionId,
+          prompt: input.body,
+          additions: [],
+        }),
+      },
+    });
+    const work = await runScenarioInbox(this.#runtime, (inbox) => inbox.outbox(16));
+    const deliveryId = work.find((delivery) => delivery.proposal_id === proposalId)?.message_id;
+    if (!deliveryId) throw new Error("Missing handback delivery");
     const bodyHash = createHash("sha256").update(input.body).digest("hex");
     await client.workspaceApply({
       operationId: createUuidV7(),
@@ -264,9 +291,8 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       {
         kind: "hand_back_message",
         reason: input.reason,
-        page_id: pageId,
+        page_id: createUuidV7(),
         document_id: createUuidV7(),
-        message: { text: input.body, files: [] },
       },
       runId,
     );
@@ -274,8 +300,38 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async createWorkChat(input: Parameters<ScenarioSeedPort["createWorkChat"]>[0]) {
+    const client = this.#runtime.rootClient;
     const sessionId = createUuidV7();
-    await this.#runtime.rootClient.workspaceApply({
+    const launchId = createUuidV7();
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "start_page_work",
+        launch_id: launchId,
+        message_id: createUuidV7(),
+        session_id: sessionId,
+        page_id: input.pageId,
+        brief: input.title,
+        again: false,
+        selection: input.selection,
+      },
+    });
+    await client.workspaceApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "settle_page_work_launch",
+        launch_id: launchId,
+        accepted_at: new Date().toISOString(),
+      },
+    });
+    const thread = input.thread;
+    if (thread) {
+      await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+        linkScenarioThread(workspace, sessionId, input.projectId, thread),
+      );
+      return { sessionId, threadId: thread.threadId };
+    }
+    await client.workspaceApply({
       operationId: createUuidV7(),
       intent: {
         kind: "create_agent_runtime_session",
@@ -285,10 +341,9 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         initial_page_ids: [input.pageId],
         runtime_id: "scenario:work",
         runtime_thread_id: createUuidV7(),
-        launch_request_id: createUuidV7(),
+        launch_request_id: launchId,
       },
     });
-    // An Agent chat has no native thread of its own.
     return { sessionId, threadId: null };
   }
 
@@ -406,59 +461,6 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       )
     ).rows;
   }
-  async writeTurnNote(input: Parameters<ScenarioSeedPort["writeTurnNote"]>[0]) {
-    const client = this.#runtime.rootClient;
-    const dedupe = createUuidV7();
-    await client.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "record_work_events",
-        observed: [],
-        events: [
-          {
-            kind: "attention",
-            session_id: input.sessionId ?? null,
-            page_id: input.pageId,
-            payload: {},
-            dedupe_key: dedupe,
-          },
-        ],
-      },
-    });
-    const pending = await client.workspaceRead({ kind: "read_pending_work_events", limit: 100 });
-    if (pending.value.kind !== "read_pending_work_events") throw new Error("Expected Work updates");
-    const event = pending.value.events.find((e) => e.dedupe_key === dedupe);
-    if (!event) throw new Error("Missing note event");
-    const batch = createUuidV7();
-    await client.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "create_event_batch",
-        batch_id: batch,
-        coordinator_session_id: input.coordinatorSessionId,
-        event_ids: [event.event_id],
-        message_id: createUuidV7(),
-        body: "Scenario Work updates",
-        fingerprint: "a".repeat(64),
-      },
-    });
-    await client.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "settle_event_batch",
-        batch_id: batch,
-        accepted_at: new Date().toISOString(),
-      },
-    });
-    await this.#agentCommand(input.coordinatorSessionId, {
-      kind: "write_turn_note",
-      note_id: createUuidV7(),
-      page_id: input.pageId,
-      event_ids: [event.event_id],
-      body: input.body,
-      notify: input.notify,
-    });
-  }
   async answerInboxQuestion(input: Parameters<ScenarioSeedPort["answerInboxQuestion"]>[0]) {
     const pageId = createUuidV7();
     await this.#runtime.rootClient.workspaceApply({
@@ -469,8 +471,14 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         entry_kind: "question",
       },
     });
-    await this.#agentCommand(input.coordinatorSessionId, {
+    const request = await this.#beginRouting(
+      [input.questionPageId],
+      "Nodex · Routing an Inbox question",
+    );
+    await this.#agentCommand(request.sessionId, {
       kind: "answer_inbox_question",
+      request_id: request.requestId,
+      generation: request.generation,
       question_page_id: input.questionPageId,
       page_id: pageId,
       document_id: createUuidV7(),
@@ -479,28 +487,40 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     return { pageId };
   }
 
-  async settleCoordinatorSuggestion(
-    input: Parameters<ScenarioSeedPort["settleCoordinatorSuggestion"]>[0],
-  ) {
-    return await runScenarioInbox(
-      this.#runtime,
-      Effect.fn("Scenario.settleCoordinatorSuggestion")(function* (inbox) {
-        const context = yield* inbox.dispatchContext(input.pageIds);
+  async #beginRouting(pageIds: readonly string[], title: string) {
+    const client = this.#runtime.rootClient;
+    return runScenarioInbox(this.#runtime, function (inbox) {
+      return Effect.gen(function* () {
+        const context = yield* inbox.dispatchContext(pageIds);
+        const requestId = createUuidV7();
         yield* inbox.requestSuggestion({
-          requestId: createUuidV7(),
-          pageIds: input.pageIds,
+          requestId,
+          pageIds,
           mode: "auto",
           basis: context.entries.map((entry) => inboxPageBasisFromCore(entry.basis)),
         });
-        const request = (yield* inbox.suggestionRequests(100)).find((request) =>
-          input.pageIds.every((id) => request.page_ids.includes(id)),
-        );
+        const request = yield* inbox.suggestionRequest(requestId);
         if (!request) throw new Error("Scenario routing request was not admitted");
-        yield* inbox.beginRouting(request, input.coordinatorSessionId);
+        const generation = request.generation;
+        const sessionId = yield* Effect.promise(() =>
+          seedDecisionRun(client, { kind: "routing", request_id: requestId, generation }, title),
+        );
+        yield* inbox.beginRouting(request, sessionId);
+        return { requestId, generation, sessionId };
+      });
+    });
+  }
+
+  async settleRoutingSuggestion(input: Parameters<ScenarioSeedPort["settleRoutingSuggestion"]>[0]) {
+    const request = await this.#beginRouting(input.pageIds, `Nodex · Routing ${input.summary}`);
+    return runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.settleRoutingSuggestion")(function* (inbox) {
         const proposalId = createUuidV7();
         yield* inbox.settleSuggestion({
-          request_id: request.request_id,
+          request_id: request.requestId,
           generation: request.generation,
+          decision_session_id: request.sessionId,
           titles: [],
           produced_by: "Nodex",
           error: null,
@@ -1013,35 +1033,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           });
         }
         if (!input.thread) return { sessionId: session.id, threadId: null };
-        const observedAt = Date.now();
-        yield* workspace.upsertThread(input.thread.threadId, {
-          projectId: input.projectId,
-          threadSource: "user",
-          threadName: input.thread.threadName,
-          threadPreview: input.thread.threadPreview,
-          backendBinding: { driver: "codex", instanceId: "codex" },
-          status: {
-            statusType: input.thread.statusType,
-            activeFlags: [...input.thread.statusActiveFlags],
-          },
-          createdAt: observedAt,
-          updatedAt: observedAt,
-          recencyAt: observedAt,
-        });
-        yield* workspace.upsertProjectSessionThreadLink({
-          sessionId: session.id,
-          projectId: input.projectId,
-          threadId: input.thread.threadId,
-          threadSource: "user",
-          threadName: input.thread.threadName,
-          threadPreview: input.thread.threadPreview,
-          backendBinding: { driver: "codex", instanceId: "codex" },
-          statusType: input.thread.statusType,
-          statusActiveFlags: [...input.thread.statusActiveFlags],
-          createdAt: observedAt,
-          updatedAt: observedAt,
-          recencyAt: observedAt,
-        });
+        yield* linkScenarioThread(workspace, session.id, input.projectId, input.thread);
         if (input.thread.unread) {
           yield* workspace.markProjectSessionUnread({
             operationId: createBoundedOperationId("scenario.session.mark-unread"),
@@ -1142,25 +1134,6 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   async prepareInboxSuggestions(automatic: boolean): Promise<void> {
     await runScenarioInbox(this.#runtime, (inbox) => inbox.prepareSuggestions(8, automatic));
-  }
-
-  async proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void> {
-    await runScenarioInbox(
-      this.#runtime,
-      Effect.fn("CoreClientSeedAdapter.proposeInboxDispatch")(function* (inbox) {
-        const context = yield* inbox.dispatchContext(input.pageIds);
-        yield* inbox.propose({
-          proposalId: createUuidV7(),
-          pageIds: input.pageIds,
-          basis: context.entries.map((entry) => entry.basis),
-          action: input.action,
-          kind: input.kind,
-          summary: input.summary,
-          rationale: input.rationale,
-          producedBy: "Scenario",
-        });
-      }),
-    );
   }
 
   async dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void> {

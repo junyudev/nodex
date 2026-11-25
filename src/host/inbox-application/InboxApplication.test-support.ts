@@ -1,3 +1,10 @@
+import {
+  inboxDispatchActionToCore,
+  inboxPageBasisFromCore,
+} from "../../main/core-client/inbox-adapter";
+import { seedDecisionRun } from "../../../scripts/scenarios/seed/decision-run";
+import type { InboxDispatchAction, InboxEntryKind } from "../../shared/inbox";
+import type { components } from "@nodex/core-protocol";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import {
@@ -143,22 +150,65 @@ export const inboxOverRealCore = (
     };
   });
 
-export const bindTestCoordinator = (client: CoreScenarioContext["client"]) =>
-  Effect.promise(async () => {
-    const sessionId = createUuidV7();
-    await client.workspaceApply({
-      operationId: createBoundedOperationId("test.coordinator"),
-      intent: {
-        kind: "create_agent_runtime_session",
-        coordinator: true,
-        session_id: sessionId,
-        project_id: null,
-        title: "Nodex",
-        initial_page_ids: [],
-        runtime_id: "test-runtime",
-        runtime_thread_id: `thread:${sessionId}`,
-        launch_request_id: `launch:${sessionId}`,
-      },
-    });
+/** Binds a test routing request to a fresh decision run, as the Host does before delivery. */
+export const bindTestRouting = (
+  { inbox, client }: { inbox: InboxApplication["Service"]; client: ScenarioClient },
+  request: Effect.Success<ReturnType<InboxApplication["Service"]["suggestionRequests"]>>[number],
+) =>
+  Effect.gen(function* () {
+    const sessionId = yield* Effect.promise(() =>
+      seedDecisionRun(
+        client,
+        { kind: "routing", request_id: request.request_id, generation: request.generation },
+        "Nodex · Routing test messages",
+      ),
+    );
+    yield* inbox.beginRouting(request, sessionId);
     return sessionId;
+  });
+
+/** Seed advice through the same request and decision bindings as the Host. */
+export const settleTestRouting = (
+  { inbox, client }: { inbox: InboxApplication["Service"]; client: ScenarioClient },
+  input: {
+    readonly proposalId: string;
+    readonly pageIds: readonly string[];
+    readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+    readonly action: InboxDispatchAction;
+    readonly kind: InboxEntryKind | null;
+    readonly summary: string;
+    readonly rationale: string | null;
+    readonly producedBy: string;
+  },
+) =>
+  Effect.gen(function* () {
+    const requestId = createUuidV7();
+    yield* inbox.requestSuggestion({
+      requestId,
+      pageIds: input.pageIds,
+      mode: "auto",
+      basis: input.basis.map(inboxPageBasisFromCore),
+    });
+    const request = yield* inbox.suggestionRequest(requestId);
+    if (!request) return yield* Effect.die("Missing test routing request");
+    const { generation } = request;
+    const sessionId = yield* bindTestRouting({ inbox, client }, request);
+    yield* inbox.settleSuggestion({
+      request_id: requestId,
+      generation,
+      decision_session_id: sessionId,
+      titles: [],
+      suggestions: [
+        {
+          proposal_id: input.proposalId,
+          page_ids: input.pageIds,
+          action: inboxDispatchActionToCore(input.action),
+          entry_kind: input.kind,
+          summary: input.summary,
+          rationale: input.rationale,
+          explicit_request: false,
+        },
+      ],
+      produced_by: input.producedBy,
+    });
   });

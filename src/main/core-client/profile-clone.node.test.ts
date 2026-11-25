@@ -310,7 +310,6 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         title: "Continued chat",
         initial_page_ids: [],
       });
-      await seed.setSessionManaged(sessionId, true);
       await workspace({
         kind: "set_queued_message_state",
         state: {
@@ -388,8 +387,7 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
           },
         },
       });
-      const coordinatorId = manifest.entityIdsByKey!.eventCoordinator!;
-      await prepareSeededAutomationCheck(client, coordinatorId, 2);
+      await prepareSeededAutomationCheck(client, 2);
       const sourcesRead = {
         kind: "sources",
         read: { kind: "sources", limit: 8 },
@@ -461,31 +459,6 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
         brief: "Synthetic Page work",
         again: false,
         selection: { instanceId: "codex", model: "synthetic", effort: null },
-      });
-      await workspace({
-        kind: "record_work_events",
-        observed: [],
-        events: [
-          {
-            kind: "report",
-            page_id: pageId,
-            session_id: sessionId,
-            dedupe_key: "clone:report",
-            payload: { outcome: "ready" },
-          },
-        ],
-      });
-      const events = await client.workspaceRead({ kind: "read_pending_work_events", limit: 20 });
-      if (events.value.kind !== "read_pending_work_events" || events.value.events.length === 0)
-        throw new Error("Missing queued Coordinator events");
-      await workspace({
-        kind: "create_event_batch",
-        batch_id: createUuidV7(),
-        coordinator_session_id: coordinatorId,
-        event_ids: events.value.events.map((event) => event.event_id),
-        message_id: createUuidV7(),
-        body: "Synthetic Coordinator batch",
-        fingerprint: "0".repeat(64),
       });
       await workspace({
         kind: "mutate_session",
@@ -619,14 +592,8 @@ test("starts a clone with copied standing grants paused and dispatch queues sett
             target: { kind: "page", page_id: pageId },
           }),
         ).toMatchObject({ holds: [{ scope: { kind: "page", page_id: pageId } }] });
-        expect(await read({ kind: "read_managed_sessions", limit: 8 })).toMatchObject({
-          sessions: [],
-        });
-        expect(await read({ kind: "read_open_event_batches", limit: 8 })).toMatchObject({
-          batches: [],
-        });
-        expect(await read({ kind: "read_pending_work_events", limit: 8 })).toMatchObject({
-          events: [],
+        expect(await read({ kind: "managed_chat", session_id: inboxSession })).toMatchObject({
+          managed: null,
         });
         expect(await read({ kind: "next_session_snooze" })).toMatchObject({
           next_wake_at: null,

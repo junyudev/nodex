@@ -241,8 +241,6 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
             progressFingerprint: kind,
             progressSince: 0,
           },
-          events: [],
-          resolved_request_ids: [],
         },
       });
       return id;
@@ -282,53 +280,21 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
       { agentAttribution: queuedAttribution },
     );
     const producerOperation = await observe(0, "question");
-    const coordinatorSessionId = createUuidV7();
-    const coordinatorOperation = operation();
+    const decisionSessionId = createUuidV7();
+    const decisionOperation = operation();
     await host.workspaceApply({
-      operationId: coordinatorOperation,
+      operationId: decisionOperation,
       intent: {
         kind: "create_agent_runtime_session",
-        coordinator: true,
-        session_id: coordinatorSessionId,
+        decision_run: { kind: "routing", request_id: createUuidV7(), generation: 1 },
+        session_id: decisionSessionId,
         project_id: null,
-        title: "Nodex",
+        title: "Nodex · Routing",
         initial_page_ids: [],
         runtime_id: "runtime:host-members",
-        runtime_thread_id: "thread:coordinator",
-        launch_request_id: "launch:coordinator",
+        runtime_thread_id: "thread:decision",
+        launch_request_id: "launch:decision",
       },
-    });
-    const coordinatorRunId = createUuidV7();
-    await host.recordAgentRun({
-      session_id: coordinatorSessionId,
-      run_id: coordinatorRunId,
-      driver: "codex",
-      label: "Codex",
-    });
-    const coordinatorAttribution = await host.issueAgentAttribution({
-      session_id: coordinatorSessionId,
-      run_id: coordinatorRunId,
-      driver: "codex",
-      label: "Codex",
-    });
-    const coordinatorAgentOperation = operation();
-    await host.libraryApply(
-      {
-        operationId: coordinatorAgentOperation,
-        intent: {
-          kind: "create_page",
-          page_id: createUuidV7(),
-          document_id: createUuidV7(),
-          title: "Nodex bootstrap result",
-          parent: { kind: "library", before: null },
-        },
-      },
-      { agentAttribution: coordinatorAttribution },
-    );
-    const coordinatorRetireOperation = operation();
-    await host.workspaceApply({
-      operationId: coordinatorRetireOperation,
-      intent: { kind: "unbind_coordinator", session_id: coordinatorSessionId },
     });
     // Storage inspection proves canonical LocalCommit evidence; no fixture writes bypass Core.
     const database = new DatabaseSync(join(scenario.profile.nodexHome, "nodex.db"), {
@@ -361,28 +327,18 @@ test("HTTPS host calls retain each Member's Actor, attention and right to answer
         on_behalf_of: bob.identity.member_id,
       });
       expect(actor(producerOperation)).toEqual({ type: "service", kind: "agent_runtime" });
-      expect(actor(coordinatorOperation)).toEqual({ type: "service", kind: "agent_runtime" });
-      const coordinatorGrant = database
+      expect(actor(decisionOperation)).toEqual({ type: "service", kind: "agent_runtime" });
+      const decisionGrant = database
         .prepare(
           "SELECT commit_row.authorizing_member_id, request.member_id FROM local_commits commit_row JOIN session_requesting_members request ON request.session_id=? AND request.message_id='session:created' WHERE commit_row.operation_id=?",
         )
-        .get(coordinatorSessionId, coordinatorOperation) as {
+        .get(decisionSessionId, decisionOperation) as {
         authorizing_member_id: string;
         member_id: string;
       };
-      expect(coordinatorGrant.authorizing_member_id).toBe(coordinatorGrant.member_id);
-      expect(coordinatorGrant.member_id).not.toBe(alice.identity.member_id);
-      expect(coordinatorGrant.member_id).not.toBe(bob.identity.member_id);
-      expect(actor(coordinatorAgentOperation)).toEqual({
-        type: "agent",
-        session_id: coordinatorSessionId,
-        run_id: coordinatorRunId,
-        on_behalf_of: coordinatorGrant.member_id,
-      });
-      expect(actor(coordinatorRetireOperation)).toEqual({
-        type: "service",
-        kind: "agent_runtime",
-      });
+      expect(decisionGrant.authorizing_member_id).toBe(decisionGrant.member_id);
+      expect(decisionGrant.member_id).not.toBe(alice.identity.member_id);
+      expect(decisionGrant.member_id).not.toBe(bob.identity.member_id);
     } finally {
       database.close();
     }

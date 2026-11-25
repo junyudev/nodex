@@ -1,7 +1,6 @@
 import { ChatSearch } from "../chat-search/ChatSearch";
 import { LibraryModule } from "../library-application/LibraryModule";
 import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
-import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
 import { NodexEntryNotifications } from "../../host/NotificationIntents";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -106,9 +105,6 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
     .pipe(
       Effect.provideService(SessionWaiter, {} as never),
       Effect.provideService(AgentRuntimeApplication, {} as never),
-      Effect.provideService(CoordinatorSession, {
-        isCoordinator: () => Effect.succeed(false),
-      } as never),
       Effect.provideService(InboxApplication, {} as never),
       Effect.provideService(NodexEntryNotifications, {} as never),
       Effect.provideService(ApplicationSettings, {} as never),

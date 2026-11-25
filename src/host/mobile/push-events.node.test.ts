@@ -163,11 +163,14 @@ const harness = Effect.fn("harness")(function* (options: {
                 ? { kind: "current_turn_notifications", turns: [...(options.turns?.() ?? [])] }
                 : input.kind === "inbox_snooze_notifications"
                   ? { kind: input.kind, intents: options.snoozes ?? [] }
-                  : input.kind === "read_coordinator"
-                    ? { kind: "read_coordinator", session_id: null }
-                    : input.kind === "read_managed_session"
+                  : input.kind === "decision_run"
+                    ? {
+                        kind: "decision_run",
+                        decision_run: input.session_id === "decision" ? {} : null,
+                      }
+                    : input.kind === "managed_chat"
                       ? {
-                          kind: "read_managed_session",
+                          kind: "managed_chat",
                           managed: (options.managed ?? []).includes(input.session_id ?? ""),
                         }
                       : {
@@ -297,9 +300,11 @@ it.effect("tells phones only what the desktop would consider worth telling", () 
         },
       }),
     );
-    // A chat Nodex manages speaks through its posts, for its results and its questions alike.
+    // Managed chat attention comes from Page Turns, and decision runs stay quiet.
     yield* h.publish(finished("g"));
     yield* h.publish(asked("h"));
+    yield* h.publish(finished("decision"));
+    yield* h.publish(asked("decision"));
     expect(yield* Queue.size(h.received)).toBe(0);
   }),
 );
@@ -542,6 +547,22 @@ it.effect(
       yield* h.inboxChanged;
       expect(yield* Queue.size(h.received)).toBe(0);
     }),
+);
+
+it.effect("delivers the Core reply, blocked and failed Turn intents with their evidence", () =>
+  Effect.gen(function* () {
+    let turns: Turn[] = [];
+    const h = yield* harness({ attendance: Effect.succeed("away"), turns: () => turns });
+    turns = [
+      turn("reply", "alice", { reason: "reply", body: "Should I publish the release notes?" }),
+      turn("blocked", "alice", { reason: "blocked", body: "The credentials expired." }),
+      turn("failed", "alice", { reason: "failed", body: "The deployment did not finish." }),
+    ];
+    yield* h.inboxChanged;
+    expect((yield* Queue.takeAll(h.received)).map(({ message }) => message.body)).toEqual(
+      turns.map(({ body }) => body),
+    );
+  }),
 );
 
 it.effect(

@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { turnSpeaksThroughNodex } from "../../host/coordinator/notification-session";
+import { chatNotificationRole } from "../../host/work-observation/notification-session";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
@@ -95,12 +95,14 @@ export const live: Layer.Layer<
           const snapshot = yield* applicationSettings.snapshot();
           currentSettings = snapshot.notifications;
           const notification = event.value;
+          const role = yield* chatNotificationRole(core, notification);
+          if (role === "decision") return;
           if (notification.type !== "turn-completed") {
-            if (yield* turnSpeaksThroughNodex(core, notification)) return;
+            if (role === "managed") return;
             handle(notification);
             return;
           }
-          handle(notification, { managed: yield* turnSpeaksThroughNodex(core, notification) });
+          handle(notification, { managed: role === "managed" });
         }).pipe(
           Effect.catch((cause) =>
             Effect.sync(() => logger.warn("Could not resolve notification policy", { cause })),

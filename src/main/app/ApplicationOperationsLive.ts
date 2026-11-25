@@ -99,5 +99,5 @@ export const live = Layer.mergeAll(
   ),
 );
 
-/** Tools activate after the Inbox and Coordinator application Interfaces exist. */
+/** Tools activate after the Inbox and work application Interfaces exist. */
 export const tools = appToolInterpreterLive;

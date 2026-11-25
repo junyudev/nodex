@@ -1,5 +1,5 @@
 import { automationEventsScenario } from "./scenarios/automation-events";
-import { nodexCoordinatorScenario } from "./scenarios/nodex-coordinator";
+import { nodexCoordinationScenario } from "./scenarios/nodex-coordination";
 import {
   structuralInteractionsScenario,
   structuralInteractionsPressureScenario,
@@ -34,7 +34,7 @@ import { windowTitlesScenario } from "./scenarios/window-titles";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
   [automationEventsScenario.id, automationEventsScenario],
-  [nodexCoordinatorScenario.id, nodexCoordinatorScenario],
+  [nodexCoordinationScenario.id, nodexCoordinationScenario],
   [structuralInteractionsScenario.id, structuralInteractionsScenario],
   [structuralInteractionsPressureScenario.id, structuralInteractionsPressureScenario],
   [landingShowcaseScenario.id, landingShowcaseScenario],

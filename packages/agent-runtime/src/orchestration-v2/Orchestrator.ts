@@ -11098,7 +11098,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       };
     });
 
-  const cancelPendingApprovals = Effect.fn("orchestrationV2.cancelPendingApprovals")(function* (
+  const cancelPendingRequests = Effect.fn("orchestrationV2.cancelPendingRequests")(function* (
     command: Extract<
       OrchestrationV2ServerCommand,
       { readonly type: "run.interrupt" | "thread.stop" }
@@ -11107,9 +11107,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
     runId?: RunId,
   ) {
+    const retiring = command.type === "thread.stop" && command.retire === true;
     const records = yield* projectionStore
       .getThreadRecords(command.threadId, ["runtimeRequests", "nodes", "turnItems"], {
-        turnItemTypes: ["approval_request"],
+        turnItemTypes: retiring ? ["approval_request", "user_input_request"] : ["approval_request"],
         turnItemStatuses: ["pending", "running", "waiting"],
       })
       .pipe(mapDispatchError(command));
@@ -11118,7 +11119,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const emitEvent = emit(events, command);
     const releaseSessions = new Set<ProviderSessionId>();
     for (const request of records.runtimeRequests) {
-      if (request.status !== "pending" || !Schema.is(ProviderRequestKind)(request.kind)) continue;
+      if (request.status !== "pending") continue;
+      if (
+        !Schema.is(ProviderRequestKind)(request.kind) &&
+        !(retiring && request.kind === "user_input")
+      )
+        continue;
       if (
         planned.some(
           (event) =>
@@ -11151,14 +11157,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           payload: { ...node, status: "cancelled", completedAt: now },
         });
       for (const item of records.turnItems) {
-        if (item.type !== "approval_request" || item.requestId !== request.id) continue;
+        if (
+          (item.type !== "approval_request" && item.type !== "user_input_request") ||
+          item.requestId !== request.id
+        )
+          continue;
         yield* emitEvent({
           type: "turn-item.updated",
           threadId: command.threadId,
           nodeId: request.nodeId,
           occurredAt: now,
           payload: {
-            ...withoutAutoDeclineDeadline(item),
+            ...(item.type === "approval_request" ? withoutAutoDeclineDeadline(item) : item),
             status: "cancelled",
             completedAt: now,
             updatedAt: now,
@@ -11589,7 +11599,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...otherProviderInterrupts,
       ]);
       return undefined;
-    }).pipe(Effect.tap(() => cancelPendingApprovals(command, events, effects, command.runId)));
+    }).pipe(Effect.tap(() => cancelPendingRequests(command, events, effects, command.runId)));
 
   const planDelegatedConversationStop = Effect.fnUntraced(function* (
     command: Extract<OrchestrationV2ServerCommand, { readonly type: "thread.stop" }>,
@@ -11713,7 +11723,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ),
         );
       if (projection.thread.deletedAt !== null) return undefined;
-      const cancelQueue = yield* planDelegatedConversationStop(command, events, projection);
+      const cancelDelegatedQueue = yield* planDelegatedConversationStop(
+        command,
+        events,
+        projection,
+      );
+      const cancelQueue = command.retire
+        ? Effect.forEach(
+            projection.runs.filter((run) => run.status === "queued"),
+            (run) =>
+              dispatchQueuedRunCancel(
+                {
+                  type: "queued-run.cancel-internal",
+                  commandId: command.commandId,
+                  threadId: command.threadId,
+                  runId: run.id,
+                },
+                events,
+              ),
+            { discard: true },
+          )
+        : cancelDelegatedQueue;
       // Queued messages never started and cannot own background work.
       const latestRun = projection.runs.findLast((run) => run.status !== "queued");
       const target =
@@ -11765,7 +11795,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const executed = latestExecutedRun(projection.runs);
       const reached = new Map<RunId, OrchestrationV2Run>();
       if (target !== undefined) reached.set(target.id, target);
-      if (executed !== null && !hasLiveRun({ runs: [executed] }))
+      if (!command.retire && executed !== null && !hasLiveRun({ runs: [executed] }))
         reached.set(executed.id, executed);
       for (const run of reached.values()) {
         yield* markStoppedRun({ command, events, thread: projection.thread, run, now });
@@ -11773,7 +11803,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* holdStoppedThread({ command, events, projection, cohortRunIds: [], now });
       yield* cancelQueue;
       return undefined;
-    }).pipe(Effect.tap(() => cancelPendingApprovals(command, events, effects)));
+    }).pipe(Effect.tap(() => cancelPendingRequests(command, events, effects)));
 
   const dispatchCheckpointRollback = (
     command: Extract<OrchestrationV2Command, { readonly type: "checkpoint.rollback" }>,

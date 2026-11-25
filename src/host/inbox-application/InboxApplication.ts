@@ -10,7 +10,6 @@ import { ActivityWindowInputSchema, RetryProblemInputSchema } from "../../shared
 import { effectiveHolds, scopeHeld, spaceHeld } from "../work-application/execution-holds";
 import { inboxRoutingDeadline, inboxRoutingIdentity } from "./inbox-suggestions";
 import { decideInboxReply, inboxReplyDestination, type ReplyDispatch } from "./inbox-replies";
-import type { components } from "@nodex/core-protocol";
 import * as Context from "effect/Context";
 import { HostInvocation } from "../HostInvocation";
 import * as Effect from "effect/Effect";
@@ -31,10 +30,8 @@ import type {
   InboxSuggestionStopInput,
   InboxUndoInput,
   InboxCounts,
-  InboxDispatchAction,
   InboxDispatchInput,
   InboxEditInput,
-  InboxEntryKind,
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
@@ -115,17 +112,6 @@ export class InboxApplicationError extends Schema.TaggedError<InboxApplicationEr
 ) {}
 
 export { InboxRuntimeError } from "./InboxRuntimeError";
-
-export interface InboxSuggestionProposal {
-  readonly proposalId: string;
-  readonly pageIds: readonly string[];
-  readonly basis: readonly CoreInboxPageBasis[];
-  readonly action: InboxDispatchAction;
-  readonly kind: InboxEntryKind | null;
-  readonly summary: string;
-  readonly rationale: string | null;
-  readonly producedBy: string | null;
-}
 
 export interface InboxEntryName {
   readonly basis: CoreInboxPageBasis;
@@ -212,9 +198,6 @@ export class InboxApplication extends Context.Service<
     readonly pendingSuggestionRequestIds: (
       requestIds: readonly string[],
     ) => InboxEffect<readonly string[]>;
-    readonly cancelledRoutingDeliveries: (
-      requestIds: readonly string[],
-    ) => InboxEffect<readonly components["schemas"]["InboxRoutingCancellation"][]>;
     readonly prepareSuggestions: (limit: number, automatic: boolean) => InboxEffect<void>;
     readonly suggestionRequests: (
       limit: number,
@@ -224,7 +207,7 @@ export class InboxApplication extends Context.Service<
     ) => InboxEffect<CoreInboxSuggestionRequest | null>;
     readonly beginRouting: (
       request: CoreInboxSuggestionRequest,
-      coordinatorSessionId: string,
+      decisionSessionId: string,
       skillOffers?: readonly InboxSkillOffer[],
     ) => InboxEffect<void>;
     readonly recordRoutingRefusal: (
@@ -247,7 +230,6 @@ export class InboxApplication extends Context.Service<
       limit: number,
     ) => InboxEffect<readonly CoreInboxSuggestionInput[]>;
     readonly dispatchContext: (pageIds: readonly string[]) => InboxEffect<CoreInboxDispatchContext>;
-    readonly propose: (proposal: InboxSuggestionProposal) => InboxEffect<void>;
     /**
      * Names a still-provisional message whose content matches what the Agent read.
      * Returns its unchanged content basis, or null when the content or provisional title changed.
@@ -940,7 +922,7 @@ export const make = Effect.gen(function* () {
     );
   const beginRouting = (
     request: CoreInboxSuggestionRequest,
-    coordinatorSessionId: string,
+    decisionSessionId: string,
     skillOffers: readonly InboxSkillOffer[] = [],
   ) =>
     apply(
@@ -950,7 +932,7 @@ export const make = Effect.gen(function* () {
         skill_offers: [...skillOffers],
         request_id: request.request_id,
         generation: request.generation,
-        coordinator_session_id: coordinatorSessionId,
+        decision_session_id: decisionSessionId,
       },
       `inbox.routing:${request.request_id}:${request.generation}`,
     ).pipe(Effect.asVoid);
@@ -962,7 +944,7 @@ export const make = Effect.gen(function* () {
       kind: "start_inbox_routing_run",
       request_id: request.request_id,
       generation: request.generation,
-      coordinator_session_id: request.delivery!.coordinator_session_id,
+      decision_session_id: request.delivery!.decision_session_id,
       run_started_at_ms: startedAt,
     });
     const current = yield* suggestionRequest(request.request_id);
@@ -980,11 +962,11 @@ export const make = Effect.gen(function* () {
       );
     const outcome = yield* runtime
       .runOutcome({
-        sessionId: delivery.coordinator_session_id,
+        sessionId: delivery.decision_session_id,
         messageId: inboxRoutingIdentity(request).messageId,
         carryingRun: true,
       })
-      .pipe(Effect.result);
+      .pipe(Effect.timeout("5 seconds"), Effect.result);
     const run = outcome._tag === "Success" ? outcome.success : null;
     if (delivery.run_started_at_ms == null && run?.startedAt) {
       const startedAt = Date.parse(run.startedAt);
@@ -1005,11 +987,11 @@ export const make = Effect.gen(function* () {
     if (run?.status !== "completed") return status;
     const followup = yield* runtime
       .runOutcome({
-        sessionId: delivery.coordinator_session_id,
+        sessionId: delivery.decision_session_id,
         messageId: inboxRoutingIdentity(request, true).messageId,
         carryingRun: true,
       })
-      .pipe(Effect.result);
+      .pipe(Effect.timeout("5 seconds"), Effect.result);
     const next = followup._tag === "Success" ? followup.success : null;
     if (next?.status === "failed")
       return { ...status, failureMessage: next.failureMessage ?? "The suggestion failed" };
@@ -1026,7 +1008,7 @@ export const make = Effect.gen(function* () {
       kind: "record_inbox_routing_refusal",
       request_id: request.request_id,
       generation: request.generation,
-      coordinator_session_id: request.delivery!.coordinator_session_id,
+      decision_session_id: request.delivery!.decision_session_id,
       reason: reason.slice(0, 2048),
     }).pipe(Effect.asVoid);
 
@@ -1205,19 +1187,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const propose = (proposal: InboxSuggestionProposal) =>
-    apply("propose", {
-      kind: "propose_inbox_dispatch",
-      proposal_id: proposal.proposalId,
-      page_ids: [...proposal.pageIds],
-      basis: [...proposal.basis],
-      action: inboxDispatchActionToCore(proposal.action),
-      entry_kind: proposal.kind,
-      summary: proposal.summary,
-      rationale: proposal.rationale,
-      produced_by: proposal.producedBy,
-    }).pipe(Effect.asVoid);
-
   const nameEntry = Effect.fn("InboxApplication.nameEntry")(function* (input: InboxEntryName) {
     const { basis } = input;
     const snapshot = yield* core.library
@@ -1394,8 +1363,6 @@ export const make = Effect.gen(function* () {
     requestSuggestion,
     stopSuggestion,
     pendingSuggestionRequestIds,
-    cancelledRoutingDeliveries: (requestIds) =>
-      suggestionLifetimes(requestIds).pipe(Effect.map((result) => result.cancelled_deliveries)),
     prepareSuggestions,
     suggestionRequests,
     entry,
@@ -1410,7 +1377,6 @@ export const make = Effect.gen(function* () {
     delete: deleteMessages,
     pendingSuggestions,
     dispatchContext,
-    propose,
     nameEntry,
     recordSuggestionFailure,
     outbox,

@@ -58,7 +58,6 @@ import { headless as desktopTools } from "./HostDesktopTools";
 import { headless as notificationPresentation } from "./NotificationIntents";
 import { HostAppToolCatalog, HostToolExecutor } from "./HostToolExecutor";
 import { make as makeAppTools, hostAppToolCatalog } from "./HostApplicationTools";
-import { CoordinatorSession } from "./coordinator/CoordinatorSession";
 import { WorkApplication } from "./work-application/WorkApplication";
 import { MemberMessages } from "./MemberMessages";
 import { ChatAttachments } from "./ChatAttachments";
@@ -71,7 +70,6 @@ import {
 export class HeadlessHost extends Context.Service<
   HeadlessHost,
   {
-    readonly coordinator: CoordinatorSession["Service"];
     readonly work: WorkApplication["Service"];
     readonly sessions: AgentRuntimeApplication["Service"];
     readonly messages: MemberMessages["Service"];
@@ -274,7 +272,6 @@ export const live = (input: {
       yield* kernel.synchronize;
       yield* kernel.activate;
       return {
-        coordinator: yield* CoordinatorSession,
         work: yield* WorkApplication,
         sessions: yield* AgentRuntimeApplication,
         messages: yield* MemberMessages,

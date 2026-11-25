@@ -35,7 +35,7 @@ import { make as makeDependencyTools } from "./WorkspaceDependencyAppTools";
 import { make as makePluginTools } from "./PluginAppTools";
 import { make as makeWorkspaceTools } from "./WorkspaceAppTools";
 import { make as makeSessionTools } from "./SessionAppTools";
-import { make as makeCoordinatorTools } from "./CoordinatorAppTools";
+import { make as makeDecisionTools } from "./DecisionRunAppTools";
 import { make as makeWorkTools } from "./WorkAppTools";
 import { make as makeInboxTools } from "./InboxAppTools";
 
@@ -66,7 +66,7 @@ export const make = Effect.gen(function* () {
   const workTools = yield* makeWorkTools;
   const followThread = yield* makeFollowThread;
   const messageHandback = yield* makeMessageHandback;
-  const coordinatorTools = yield* makeCoordinatorTools;
+  const decisionTools = yield* makeDecisionTools;
   const sessionCommands = yield* makeSessionCommands;
   const sessionHandoffTools = yield* makeSessionHandoffTools;
   const handoffStatusTools = yield* makeHandoffStatusTools;
@@ -109,7 +109,6 @@ export const make = Effect.gen(function* () {
       input.name !== "inbox_suggest" &&
       input.name !== "automation_assessment_read" &&
       input.name !== "automation_assessment_submit" &&
-      input.name !== "write_turn_note" &&
       input.name !== "reply_to_origin" &&
       input.name !== "answer_inbox_question" &&
       input.name !== "start_work" &&
@@ -147,14 +146,17 @@ export const make = Effect.gen(function* () {
       input.name === "automation_assessment_read" ||
       input.name === "automation_assessment_submit" ||
       input.name === "inbox_suggest" ||
-      input.name === "reply_to_origin" ||
-      input.name === "write_turn_note" ||
       input.name === "answer_inbox_question"
     )
-      return yield* coordinatorTools(input);
+      return yield* decisionTools(input);
     if (input.name === "follow_thread") return yield* followThread(input);
     if (input.name === "hand_back_message") return yield* messageHandback(input);
-    if (input.name === "report_work" || input.name === "start_work") return yield* workTools(input);
+    if (
+      input.name === "report_work" ||
+      input.name === "start_work" ||
+      input.name === "reply_to_origin"
+    )
+      return yield* workTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);
     if (
       input.name === "create_session" ||

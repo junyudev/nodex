@@ -6,7 +6,6 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
-import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../../main/logging/logger";
 import { WorkApplication } from "./WorkApplication";
@@ -26,50 +25,24 @@ export const make = Effect.gen(function* () {
       if (ready.value.kind !== "ready_work") return;
       afterPageId = ready.value.pages.length === 100 ? ready.value.pages.at(-1)!.page_id : null;
       for (const page of ready.value.pages) {
+        if (!page.page_work.auto_start) continue;
         if ((yield* effectiveHolds(core, { kind: "page", page_id: page.page_id })).length) continue;
         const epoch = createHash("sha256")
           .update(JSON.stringify([page.page_id, page.readiness_epoch]))
           .digest("hex");
-        const task = page.page_work.auto_start
-          ? work
-              .startWork({
-                pageId: page.page_id,
-                launchId: `work:${epoch}`,
-                readinessEpoch: page.readiness_epoch,
-              })
-              .pipe(Effect.asVoid)
-          : core.workspace
-              .apply(
-                {
-                  operationId: createOperationId("work.ready"),
-                  intent: {
-                    kind: "record_work_events",
-                    observed: [],
-                    events: [
-                      {
-                        kind: "ready_to_start",
-                        page_id: page.page_id,
-                        session_id: null,
-                        dedupe_key: `ready_to_start:${page.page_id}:${page.readiness_epoch}`,
-                        payload: {
-                          prerequisites: page.prerequisites,
-                          readiness_epoch: page.readiness_epoch,
-                        },
-                      },
-                    ],
-                  },
-                },
-                undefined,
-                null,
-              )
-              .pipe(Effect.asVoid);
-        yield* task.pipe(
-          Effect.catchCause(() =>
-            Effect.sync(() =>
-              logger.warn("Page work awaits a later readiness pass", { pageId: page.page_id }),
+        yield* work
+          .startWork({
+            pageId: page.page_id,
+            launchId: `work:${epoch}`,
+            readinessEpoch: page.readiness_epoch,
+          })
+          .pipe(
+            Effect.catchCause(() =>
+              Effect.sync(() =>
+                logger.warn("Page work awaits a later readiness pass", { pageId: page.page_id }),
+              ),
             ),
-          ),
-        );
+          );
       }
     }).pipe(Effect.catchCause(() => Effect.sync(() => logger.warn("Work readiness pass failed")))),
   );

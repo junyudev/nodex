@@ -287,9 +287,6 @@ export const live = Layer.effectDiscard(
       searchMessages: (input) => callHost<ChatMessageSearchResult>("chat_search_messages", input),
     });
     yield* registerFindRequests(ipc, find, () => Effect.void);
-    yield* ipc.handlePlainCommand("inbox:open-nodex", () =>
-      call<"inbox:open-nodex">("coordinator_open", {}),
-    );
     yield* ipc.handleQuery("inbox:reply-destination", (_, pageId, body) =>
       call<"inbox:reply-destination">("inbox_reply_destination", { pageId, body }),
     );

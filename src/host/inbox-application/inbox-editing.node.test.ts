@@ -1,7 +1,11 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import {
+  captureInbox,
+  inboxOverRealCore,
+  settleTestRouting,
+} from "./InboxApplication.test-support";
 import { inboxPageBasisFromCore } from "../../main/core-client/inbox-adapter";
 
 const LIBRARY = { kind: "library" } as const;
@@ -17,16 +21,19 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
         "Homepage feels like a dev tool.\nMaybe it should read like an assistant?";
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
-      yield* inbox.propose({
-        proposalId: createUuidV7(),
-        pageIds: [pageId],
-        basis: [entry.basis],
-        action: { type: "keep" },
-        kind: "question",
-        summary: "Keep this question for later.",
-        rationale: null,
-        producedBy: "Test",
-      });
+      yield* settleTestRouting(
+        { inbox, client },
+        {
+          proposalId: createUuidV7(),
+          pageIds: [pageId],
+          basis: [entry.basis],
+          action: { type: "keep" },
+          kind: "question",
+          summary: "Keep this question for later.",
+          rationale: null,
+          producedBy: "Test",
+        },
+      );
 
       const rewritten = "The homepage should read like a personal assistant.\nKeep the docs link.";
       // The Page keeps the written lines as one paragraph with a line break.

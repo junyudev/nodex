@@ -220,8 +220,6 @@ test("Bob's phone retains only Bob's Turns while the team host runs with Alice's
                 progressFingerprint: "question",
                 progressSince: 0,
               },
-              events: [],
-              resolved_request_ids: [],
             },
           });
           break;

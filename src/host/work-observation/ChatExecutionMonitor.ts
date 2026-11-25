@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -13,10 +14,7 @@ import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifie
 import { getLogger } from "../../main/logging/logger";
 import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
 import { ManagedChatFacts, live as factsLive } from "./ManagedChatFacts";
-import {
-  diffManagedChatObservation,
-  parseManagedChatObservation,
-} from "./managed-chat-observation";
+import { observeManagedChat } from "./managed-chat-observation";
 
 type Observer = components["schemas"]["SessionExecutionObserver"];
 const BATCH_SIZE = 50;
@@ -25,43 +23,28 @@ export const make = Effect.gen(function* () {
   const facts = yield* ManagedChatFacts;
   const lane = yield* Semaphore.make(1);
   const observed = new Map<string, string>();
-  const logger = getLogger({ component: "coordinator-monitor" });
-  const capture = Effect.fn("CoordinatorMonitor.capture")(function* (observer: Observer) {
-    const current = yield* facts.read(observer.session_id);
-    const now = yield* Clock.currentTimeMillis;
-    const eventPrevious = parseManagedChatObservation(observer.managed?.observed_json);
-    const previous = parseManagedChatObservation(observer.observation);
-    const result = diffManagedChatObservation({
-      sessionId: observer.session_id,
-      previous: previous ?? eventPrevious,
-      eventPrevious: observer.managed ? eventPrevious : undefined,
+  const logger = getLogger({ component: "chat-execution-monitor" });
+  const capture = Effect.fn("ChatExecutionMonitor.capture")(function* (observer: Observer) {
+    const current = yield* facts.read(observer.session_id, observer.managed);
+    const previous = observer.observation ?? null;
+    const observation = observeManagedChat({
+      previous,
       facts: current,
-      now,
+      now: yield* Clock.currentTimeMillis,
       restartStallClock: observed.get(observer.session_id) !== observer.since,
-      latestReportAt: observer.managed?.latest_report_at
-        ? Date.parse(observer.managed?.latest_report_at)
-        : null,
     });
-    if (
-      JSON.stringify(result.observed) === JSON.stringify(previous) &&
-      (!observer.managed ||
-        current.state === "unavailable" ||
-        JSON.stringify(result.observed) === JSON.stringify(eventPrevious)) &&
-      result.events.length === 0
-    ) {
+    if (isDeepStrictEqual(observation, previous)) {
       observed.set(observer.session_id, observer.since);
       return;
     }
     yield* core.workspace.apply(
       {
-        operationId: `coordinator:observe:${createUuidV7()}`,
+        operationId: `chat-execution:observe:${createUuidV7()}`,
         intent: {
           kind: "record_session_execution",
           session_id: observer.session_id,
           expected_revision: observer.revision,
-          observation: result.observed,
-          events: observer.managed ? result.events : [],
-          resolved_request_ids: observer.managed ? result.resolvedRequestIds : [],
+          observation,
         },
       },
       undefined,
@@ -102,7 +85,7 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.sync(() => logger.warn("Chat execution sweep awaits retry"))),
     ),
   );
-  const wake = Effect.fn("CoordinatorMonitor.wake")(function* (sessionId: string) {
+  const wake = Effect.fn("ChatExecutionMonitor.wake")(function* (sessionId: string) {
     yield* lane.withPermits(1)(
       Effect.gen(function* () {
         const snapshot = yield* core.workspace.read(

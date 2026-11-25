@@ -9,6 +9,7 @@ import { createOperationId } from "../../main/core-runtime/operation-identity";
 type Request = components["schemas"]["AutomationAssessmentRequest"];
 type Read = components["schemas"]["AutomationAssessmentRead"];
 type Command = components["schemas"]["AutomationAssessmentCommand"];
+const HANDOVER_CAP_MS = 5 * 60_000;
 export const assessmentIdentity = (
   request: Pick<Request, "request_id" | "generation">,
   followup = false,
@@ -64,30 +65,41 @@ export const makeAssessmentDelivery = Effect.gen(function* () {
       Effect.map((v) => (v.kind === "request" ? v.request : null)),
     );
   const status = Effect.fn("AutomationAssessmentDelivery.status")(function* (r: Request) {
-    const sessionId = r.coordinator_session_id;
+    const sessionId = r.decision_session_id;
     if (!sessionId) return { deadline: Infinity, followup: false, failure: null as string | null };
-    const run = yield* runtime.runOutcome({
-      sessionId,
-      messageId: assessmentIdentity(r).messageId,
-      carryingRun: true,
-    });
+    const outcome = yield* runtime
+      .runOutcome({
+        sessionId,
+        messageId: assessmentIdentity(r).messageId,
+        carryingRun: true,
+      })
+      .pipe(Effect.timeout("5 seconds"), Effect.result);
+    const run = outcome._tag === "Success" ? outcome.success : null;
+    const handoverDeadline = (r.handed_over_at_ms ?? 0) + HANDOVER_CAP_MS;
     let started = r.run_started_at_ms;
     if (started == null && run?.startedAt) {
       const at = Date.parse(run.startedAt);
-      if (Number.isFinite(at)) {
+      if (Number.isFinite(at) && at < handoverDeadline) {
         yield* apply({
           kind: "start_run",
           request_id: r.request_id,
           generation: r.generation,
-          coordinator_session_id: sessionId,
+          decision_session_id: sessionId,
           started_at_ms: at,
         });
         started = (yield* request(r.request_id))?.run_started_at_ms ?? at;
       }
     }
-    const deadline = started == null ? Infinity : started + 120_000;
+    const deadline = started == null ? handoverDeadline : started + 120_000;
     if ((yield* Clock.currentTimeMillis) >= deadline)
-      return { deadline, followup: false, failure: "The automation assessment timed out" };
+      return {
+        deadline,
+        followup: false,
+        failure:
+          started == null
+            ? "The automation assessment could not start"
+            : "The automation assessment timed out",
+      };
     if (run?.status === "failed" || run?.status === "cancelled")
       return {
         deadline,

@@ -19,9 +19,11 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { effectiveHolds } from "../../host/work-application/execution-holds";
 import {
-  COORDINATOR_INSTRUCTIONS,
-  MANAGED_SESSION_INSTRUCTIONS,
-} from "../../host/coordinator/coordinator-instructions";
+  decisionRunAllowsTool,
+  decisionRunInstructions,
+} from "../../host/nodex-decisions/decision-run-instructions";
+import { readDecisionRun } from "../../host/nodex-decisions/decision-run-role";
+import { MANAGED_SESSION_INSTRUCTIONS } from "../../host/work-observation/managed-chat-instructions";
 import { isDeepStrictEqual } from "node:util";
 import type {
   AgentHostRequest,
@@ -228,11 +230,11 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     if (proof.runId === null || proof.threadId !== proof.rootThreadId) return;
     if (!managedKnown) {
       const managed = yield* core.workspace.read(
-        { kind: "read_managed_session", session_id: sessionId },
+        { kind: "managed_chat", session_id: sessionId },
         undefined,
         null,
       );
-      if (managed.value.kind !== "read_managed_session" || !managed.value.managed) return;
+      if (managed.value.kind !== "managed_chat" || !managed.value.managed) return;
     }
     const message = yield* connection.request("thread.run-message", {
       threadId: proof.threadId,
@@ -315,7 +317,9 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             .resolve(project.value.project.sources)
             .pipe(Effect.catch(() => unavailable("workspace")))
         : [];
-    if (presentation) yield* presentation.observe(proof);
+    const decision =
+      context.actorProjectId === null ? yield* readDecisionRun(core, sessionId) : null;
+    if (!decision && presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     // Record the verified opening input before the provider can act or request approval.
     const driver = driverOf(proof.providerInstanceId);
@@ -333,6 +337,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       driver,
       label: agentAttributionLabel(driver),
     });
+    if (decision) return { instructions: decisionRunInstructions[decision.kind], sourceRoots: [] };
     const nativeId =
       identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
     const taskId = nativeId ?? shellTaskId(proof.threadId);
@@ -383,18 +388,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     const cliShell = cli?.routed ? nodexCliShellBinding(config, taskId) : undefined;
     let role: string | null = null;
     if (proof.threadId === proof.rootThreadId) {
-      const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
-      const managed = yield* core.workspace.read(
-        { kind: "read_managed_session", session_id: sessionId },
-        undefined,
-        null,
-      );
-      if (
-        coordinator.value.kind === "read_coordinator" &&
-        coordinator.value.session_id === sessionId
-      )
-        role = COORDINATOR_INSTRUCTIONS;
-      if (managed.value.kind === "read_managed_session" && managed.value.managed) {
+      const managed = yield* core.workspace.read({ kind: "managed_chat", session_id: sessionId });
+      if (managed.value.kind === "managed_chat" && managed.value.managed) {
         role = MANAGED_SESSION_INSTRUCTIONS;
         yield* bindInbound(proof, sessionId, true);
       }
@@ -575,6 +570,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
           (proof.status !== "starting" && proof.status !== "running" && proof.status !== "waiting")
         )
           return yield* unavailable("turn.native");
+        if (context.actorProjectId === null && (yield* readDecisionRun(core, sessionId))) return {};
         const taskId = proof.rootThreadId;
         if (request.phase === "activity") {
           const activity = parseDesktopToolActivity(request.activity);
@@ -623,6 +619,17 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ]));
       const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
       const { proof, sessionId, context } = yield* capture;
+      const decision =
+        context.actorProjectId === null ? yield* readDecisionRun(core, sessionId) : null;
+      if (
+        decision &&
+        (proof.threadId !== proof.rootThreadId ||
+          !decisionRunAllowsTool(decision.kind, request.tool))
+      )
+        return {
+          isError: true,
+          content: [{ type: "text", text: "This tool is unavailable for this decision run." }],
+        };
       if (request.tool === "hand_back_message") yield* bindInbound(proof, sessionId);
       const backend = driverOf(proof.providerInstanceId);
       if (

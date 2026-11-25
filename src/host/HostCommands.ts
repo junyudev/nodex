@@ -46,9 +46,6 @@ export const executeHostCommand = (
     const { operation, input } = invocation.call;
     const { sessions, work, inbox } = host;
     switch (operation) {
-      case "coordinator_open":
-        z.strictObject({}).parse(input);
-        return yield* host.coordinator.ensure();
       // What the host's Inbox runs on; a Member's own consent to start their requests is Core's.
       case "inbox_settings":
         z.strictObject({}).parse(input);

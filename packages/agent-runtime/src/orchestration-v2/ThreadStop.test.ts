@@ -12,6 +12,7 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RuntimeRequestId,
   ThreadId,
   TurnItemId,
 } from "@nodex/runtime-contracts";
@@ -1029,6 +1030,55 @@ it.effect("a delegated task that cannot be stopped fails the walk after its sibl
     assert.isTrue(Exit.isFailure(walked));
     assert.deepEqual((yield* threadState(childThreadId)).runs, ["interrupted"]);
   }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "retiring a thread withdraws pending questions and cancels queued work without deleting it",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = ThreadId.make("thread:retired-decision");
+      yield* createWatchingThread(threadId, 13);
+      yield* send(threadId, "first", "start_immediately");
+      yield* send(threadId, "follow-up", "queue_after_active");
+      const requestId = RuntimeRequestId.make("request:decision-question");
+      const now = yield* DateTime.now;
+      yield* projections.apply({
+        id: EventId.make("event:decision-question"),
+        type: "runtime-request.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId: NodeId.make("node:decision-question"),
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "pending",
+          responseCapability: { type: "message" },
+          createdAt: now,
+          resolvedAt: null,
+        },
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make("stop-retired-decision"),
+        threadId,
+        retire: true,
+      });
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNull(after.thread.deletedAt);
+      assert.isTrue(after.messages.some((message) => message.text === "first"));
+      assert.deepEqual(
+        after.runs.map((run) => run.status),
+        ["interrupted", "cancelled"],
+      );
+      assert.equal(
+        (yield* projections.getRuntimeRequest(threadId, requestId))?.status,
+        "cancelled",
+      );
+    }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect("thread.stop on a finished thread refuses a late agent watch", () =>

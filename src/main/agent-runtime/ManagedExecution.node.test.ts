@@ -22,7 +22,7 @@ import {
   withCoreScenario,
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
-import { NODEX_COORDINATOR_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordinator";
+import { NODEX_COORDINATION_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordination";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -32,8 +32,8 @@ import { make as makeApplication, AgentRuntimeApplication } from "./AgentRuntime
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { make as makeFacts } from "../../host/coordinator/ManagedChatFacts";
-import { diffManagedChatObservation } from "../../host/coordinator/managed-chat-observation";
+import { make as makeFacts } from "../../host/work-observation/ManagedChatFacts";
+import { observeManagedChat } from "../../host/work-observation/managed-chat-observation";
 
 // Fresh Runtime startup has a 45s bound before the independently bounded workflows begin.
 const RUNTIME_SCENARIO_TIMEOUT_MS = 120_000;
@@ -146,6 +146,22 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
         auto_start: false,
       }),
     );
+    const launchId = createUuidV7();
+    yield* Effect.promise(() =>
+      scenario.client.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "start_page_work",
+          launch_id: launchId,
+          page_id: pageId,
+          session_id: sessionId,
+          message_id: createUuidV7(),
+          brief: name,
+          again: false,
+          selection: { instanceId, model: "gpt-5.4", effort: null },
+        },
+      }),
+    );
     yield* Effect.promise(() =>
       scenario.client.workspaceApply({
         operationId: createUuidV7(),
@@ -155,23 +171,12 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
           project_id: projectId,
           runtime_id: runtime.identity.runtimeId,
           runtime_thread_id: threadId,
-          launch_request_id: `launch:${sessionId}`,
+          launch_request_id: launchId,
           title: name,
           initial_page_ids: [pageId],
         },
       }),
     );
-    yield* Effect.promise(() =>
-      scenario.client.workspaceApply({
-        operationId: createUuidV7(),
-        intent: {
-          kind: "mutate_session",
-          session_id: sessionId,
-          intent: { kind: "hand_off_page", page_id: pageId },
-        },
-      }),
-    );
-    yield* Effect.promise(() => scenario.seed.setSessionManaged(sessionId, true));
     sessions.set(sessionId, threadId);
     yield* runtime.request("command.dispatch", {
       command: {
@@ -245,7 +250,7 @@ const acquireScenario = Effect.acquireRelease(
       release = resolve;
     });
     const completed = withCoreScenario(
-      { scenarioId: NODEX_COORDINATOR_SCENARIO_ID },
+      { scenarioId: NODEX_COORDINATION_SCENARIO_ID },
       async (scenario) => {
         resume(Effect.succeed({ scenario, release, completed }));
         await released;
@@ -287,13 +292,11 @@ it.live(
         const fourth = yield* f.start("Delta", "codex-delta");
         for (const [index, chat] of [first, second, third, fourth].entries()) {
           const facts = yield* f.facts.read(chat.sessionId);
-          const observed = diffManagedChatObservation({
-            sessionId: chat.sessionId,
+          const observed = observeManagedChat({
             previous: null,
             facts,
             now: 0,
-            latestReportAt: null,
-          }).observed;
+          });
           yield* Effect.promise(() =>
             scenario.seed.recordSessionExecution(chat.sessionId, observed),
           );

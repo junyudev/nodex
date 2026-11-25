@@ -162,12 +162,7 @@
       }
     ]
   },
-  "write_turn_note": {
-    "pageId": "value",
-    "eventIds": ["value"],
-    "body": "value",
-    "notify": false
-  },
+
   "answer_inbox_question": {
     "questionPageId": "value",
     "body": "value"

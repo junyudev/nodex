@@ -15,10 +15,9 @@ import {
 } from "../main/host-runtime/StoreAdministrationSchedulerRuntime";
 import * as GitHubPlatform from "../main/platform/node/GitHubSourcePlatform";
 import * as Automation from "./automation-application/AutomationExecution";
-import * as Coordinator from "./coordinator/CoordinatorSession";
-import * as CoordinatorDelivery from "./coordinator/CoordinatorDeliveryRuntime";
-import * as CoordinatorMonitor from "./coordinator/CoordinatorMonitor";
-import * as Assessments from "./coordinator/AutomationAssessmentRuntime";
+import * as Decisions from "./nodex-decisions/DecisionRuns";
+import * as ChatExecution from "./work-observation/ChatExecutionMonitor";
+import * as Assessments from "./nodex-decisions/AutomationAssessmentRuntime";
 import * as Inbox from "./inbox-application/InboxApplication";
 import * as InboxDispatcher from "./inbox-application/InboxDispatcher";
 import * as InboxDispatch from "./inbox-application/InboxDispatchRuntime";
@@ -80,12 +79,12 @@ const inbox = Inbox.live.pipe(Layer.provideMerge(administrationLayer));
 const automation = Automation.live.pipe(Layer.provideMerge(inbox));
 const clock = clockAutomations().pipe(Layer.provideMerge(automation));
 const schedules = maintenance({}).pipe(Layer.provideMerge(clock));
-const coordinator = Layer.merge(Coordinator.live, notificationIntents).pipe(
+const decisions = Layer.merge(Decisions.live, notificationIntents).pipe(
   Layer.provideMerge(schedules),
 );
 export const applications = Layer.mergeAll(GitHubSource.live, GitHubChannel.live).pipe(
   Layer.provide(GitHubPlatform.live),
-  Layer.provideMerge(coordinator),
+  Layer.provideMerge(decisions),
 );
 
 const workers = Layer.mergeAll(
@@ -93,9 +92,9 @@ const workers = Layer.mergeAll(
   ChannelSender.live,
   InboxDispatcher.live,
   Assessments.live,
+  Decisions.retirement,
   InboxDispatch.live,
-  CoordinatorDelivery.live,
-  CoordinatorMonitor.live,
+  ChatExecution.live,
   WorkScheduler.live,
   Holds.live,
   WorkDispatch.live,

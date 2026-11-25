@@ -43,41 +43,32 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async assessAutomationCheck(): Promise<never> {
     throw new Error("Automation events are outside this fixture");
   }
-  async createCoordinatorSession(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
-  }
   async recordSessionExecution(): Promise<never> {
     throw new Error("Execution observations are seeded through Core");
   }
   async readPageTurn(): Promise<never> {
     throw new Error("Turn inspection requires Core");
   }
-  async setSessionManaged(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
-  }
   async setPageWork(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   async reportPageWork(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   async createWorkChat(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   async pauseWork(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   async recordPageWorkspace(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   async recordSourceProblem(): Promise<never> {
     throw new Error("Source problems are seeded through Core");
   }
   async readActivity(): Promise<never> {
     throw new Error("Activity inspection requires Core");
-  }
-  async writeTurnNote(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
   }
   async handBackChatMessage(): Promise<never> {
     throw new Error("Handback seeding requires Core");
@@ -86,14 +77,14 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Not supported");
   }
 
-  async settleCoordinatorSuggestion(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+  async settleRoutingSuggestion(): Promise<never> {
+    throw new Error("Nodex work is not part of this scenario");
   }
   async setInboxRoutingConsent(): Promise<never> {
     throw new Error("This scenario does not use Inbox consent");
   }
   async confirmInboxRequestByNodex(): Promise<never> {
-    throw new Error("Coordinator work is not part of this scenario");
+    throw new Error("Nodex work is not part of this scenario");
   }
   readonly pages: ScenarioPageSeed[] = [];
   readonly replacements: ScenarioDocumentReplacement[] = [];
@@ -383,10 +374,6 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async prepareInboxSuggestions(): Promise<never> {
     throw new Error("Not used by this scenario");
-  }
-
-  async proposeInboxDispatch(): Promise<never> {
-    throw new Error("Inbox seeding is not part of this scenario");
   }
 
   async dispatchInboxEntries(): Promise<never> {

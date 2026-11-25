@@ -153,12 +153,14 @@ export interface ScenarioRelatedChatSeed {
   };
 }
 
-export interface ScenarioInboxProposalSeed {
+export interface ScenarioRoutingSuggestionSeed {
   readonly pageIds: readonly string[];
   readonly action: InboxDispatchAction;
   readonly kind: InboxEntryKind | null;
   readonly summary: string;
   readonly rationale: string | null;
+  readonly explicitRequest?: boolean;
+  readonly automaticDispatch?: boolean;
 }
 
 export interface ScenarioInboxDispatchSeed {
@@ -172,18 +174,6 @@ export interface ScenarioRelatedChatSeedResult {
   readonly threadId: string | null;
 }
 
-export interface ScenarioTurnNoteSeed {
-  readonly coordinatorSessionId: string;
-  readonly pageId: string;
-  readonly sessionId?: string;
-  readonly body: string;
-  readonly notify: boolean;
-}
-export interface ScenarioCoordinatorSuggestionSeed extends ScenarioInboxProposalSeed {
-  readonly coordinatorSessionId: string;
-  readonly explicitRequest?: boolean;
-  readonly automaticDispatch?: boolean;
-}
 export interface ScenarioRecoveryDraftSeed {
   readonly projectId: string;
   readonly documentId: string;
@@ -204,7 +194,7 @@ export interface ScenarioPageWorkspaceSeed {
 }
 
 export interface ScenarioSeedPort {
-  assessAutomationCheck(coordinatorSessionId: string, sequence: number): Promise<void>;
+  assessAutomationCheck(sequence: number): Promise<string>;
   recordSourceProblem(): Promise<string>;
   /** Holds Agent work for a scope as a person's Pause does. Core seeding only. */
   pauseWork(
@@ -218,7 +208,9 @@ export interface ScenarioSeedPort {
     readonly projectId: string;
     readonly pageId: string;
     readonly title: string;
-  }): Promise<{ readonly sessionId: string; readonly threadId: null }>;
+    readonly selection: AgentSelection;
+    readonly thread?: ScenarioRelatedChatSeed["thread"];
+  }): Promise<ScenarioRelatedChatSeedResult>;
   /**
    * Records the checkout Host allocation would have prepared for a Page's chat, and optionally
    * the pull request GitHub would report for its branch. Core seeding only; nothing is checked out.
@@ -231,9 +223,6 @@ export interface ScenarioSeedPort {
     observation: import("@nodex/core-protocol").components["schemas"]["SessionExecutionObservation"],
   ): Promise<void>;
   readPageTurn(pageId: string): Promise<import("../../src/shared/page-turn").PageTurn>;
-  /** Host admission binds Nodex without starting an execution process. Core seeding only. */
-  createCoordinatorSession(): Promise<string>;
-  setSessionManaged(sessionId: string, managed: boolean): Promise<void>;
   setPageWork(projectId: string, pageId: string, work: Omit<PageWork, "owner">): Promise<void>;
   /** Uses a persisted Agent execution identity; never writes report columns directly. */
   reportPageWork(input: {
@@ -242,18 +231,16 @@ export interface ScenarioSeedPort {
     readonly outcome: "ready" | "blocked" | "failed" | "dropped";
     readonly summary: string;
   }): Promise<void>;
-  writeTurnNote(input: ScenarioTurnNoteSeed): Promise<void>;
   handBackChatMessage(input: {
     readonly body: string;
     readonly reason: string;
   }): Promise<{ readonly pageId: string; readonly sessionId: string }>;
   answerInboxQuestion(input: {
-    readonly coordinatorSessionId: string;
     readonly questionPageId: string;
     readonly body: string;
   }): Promise<{ readonly pageId: string }>;
   /** Begins Host routing and settles the same request as inbox_suggest. */
-  settleCoordinatorSuggestion(input: ScenarioCoordinatorSuggestionSeed): Promise<string>;
+  settleRoutingSuggestion(input: ScenarioRoutingSuggestionSeed): Promise<string>;
   setInboxRoutingConsent(startMyRequests: boolean): Promise<void>;
   confirmInboxRequestByNodex(proposalId: string, selection: AgentSelection): Promise<void>;
   createProject(input: ProjectCreateInput): Promise<Project>;
@@ -312,8 +299,6 @@ export interface ScenarioSeedPort {
   sendInboxMessage(text: string, scope?: InboxScope): Promise<{ readonly pageId: string }>;
   /** Admits or clears sends waiting for automatic advice, without starting Agents. */
   prepareInboxSuggestions(automatic: boolean): Promise<void>;
-  /** Records an Agent-shaped suggestion for current message content. Core seeding only. */
-  proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
   dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void>;
   keepInboxEntries(pageIds: readonly string[]): Promise<void>;
   setInboxSnooze(pageIds: readonly string[], until: string): Promise<void>;

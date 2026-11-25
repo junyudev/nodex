@@ -3,16 +3,17 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import { seedCoordinatorNativeExecution } from "../../scripts/scenarios/runtime/coordinator-native-seed";
+import { seedCoordinationNativeExecution } from "../../scripts/scenarios/runtime/coordination-native-seed";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { invokeIpc } from "./support/editor-scenario";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import {
-  NODEX_COORDINATOR_SCENARIO_ID,
-  requireNodexCoordinatorFacts,
-} from "../../scripts/scenarios/scenarios/nodex-coordinator";
+  NODEX_COORDINATION_SCENARIO_ID,
+  requireNodexCoordinationFacts,
+} from "../../scripts/scenarios/scenarios/nodex-coordination";
 
 test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo) => {
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- One disposable Electron Profile exercises the linked Inbox, Activity, and Board flows.
   test.setTimeout(180_000);
   const runtimeRoot = testInfo.outputPath("native-peer");
   await mkdir(runtimeRoot, { recursive: true });
@@ -23,8 +24,8 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
   );
   await withElectronScenario(
     {
-      label: "nodex-coordinator",
-      scenarioId: NODEX_COORDINATOR_SCENARIO_ID,
+      label: "nodex-coordination",
+      scenarioId: NODEX_COORDINATION_SCENARIO_ID,
       seedThrough: "core",
       cwd: runtimeRoot,
       prepareAgentRuntime: false,
@@ -43,9 +44,15 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       },
     },
     async ({ page, manifest, facts }) => {
-      if (!manifest) throw new Error("Missing Coordinator manifest");
+      if (!manifest) throw new Error("Missing coordination manifest");
       page.setDefaultTimeout(15_000);
-      const observed = requireNodexCoordinatorFacts(facts);
+      const openNodexProject = () =>
+        page
+          .locator(
+            `[data-app-action-sidebar-project-id="${manifest.projectId}"] [data-app-action-sidebar-select-project]`,
+          )
+          .click();
+      const observed = requireNodexCoordinationFacts(facts);
       expect(observed.planSteps).toHaveLength(3);
       await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
       const providers = await invokeIpc(page, "agent-runtime:providers:read", { refresh: true });
@@ -107,7 +114,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await expect(
         page.getByRole("button", { name: "Pause all Agent work", exact: true }),
       ).toBeVisible();
-      await seedCoordinatorNativeExecution(runtimeRoot, manifest);
+      await seedCoordinationNativeExecution(runtimeRoot, manifest);
       await invokeIpc(page, "codex:account:read");
       const opened = await invokeIpc(page, "project-sessions:record-opened", {
         operationId: createBoundedOperationId("e2e.observe-working-chat"),
@@ -135,6 +142,10 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
         message("failed").getByText("Failed · needs you", { exact: true }),
       ).toBeVisible();
       await expect(message("answer")).toBeVisible();
+      await expect(message("reply")).toContainText("Needs your reply");
+      await expect(message("reply")).toContainText(
+        "Should I publish them with the release or now?",
+      );
       await expect
         .poll(async () => {
           const rows = await page
@@ -177,45 +188,6 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await expect(
         activity.getByRole("img", { name: "by Nodex", exact: true }).first().locator("svg"),
       ).toHaveAttribute("data-nodex-logo-mark", "monochrome");
-      await expect(
-        activity.getByRole("button", { name: "NODEX-3", exact: true }).first(),
-      ).toBeVisible();
-      const tabs = page.getByRole("tablist", { name: "Inbox view" });
-      const iconGeometry = async (name: RegExp) =>
-        tabs
-          .getByRole("tab", { name })
-          .locator("svg")
-          .evaluate((svg) => svg.innerHTML);
-      expect(await iconGeometry(/^Activity$/u)).not.toBe(await iconGeometry(/^Inbox/u));
-      // Collapsed facts occupy one line, and every actor shares the tertiary time tone.
-      expect(
-        await activity.locator("button[aria-expanded=false]").evaluateAll((rows) =>
-          rows.every((row) => {
-            const style = getComputedStyle(row);
-            return (
-              row.getBoundingClientRect().height <=
-              parseFloat(style.lineHeight) +
-                parseFloat(style.paddingTop) +
-                parseFloat(style.paddingBottom) +
-                1
-            );
-          }),
-        ),
-      ).toBe(true);
-      expect(
-        await activity.evaluate((root) => {
-          const tone = getComputedStyle(root.querySelector("time")!).color;
-          const glyphs = [...root.querySelectorAll('[role="img"] svg')].map((svg) =>
-            getComputedStyle(svg),
-          );
-          return (
-            glyphs.length > 0 &&
-            new Set(glyphs.map((style) => `${style.width}/${style.height}/${style.color}`)).size ===
-              1 &&
-            glyphs.every((style) => style.width === style.height && style.color === tone)
-          );
-        }),
-      ).toBe(true);
       await screenshot("13-activity-all");
       // A handled message is one line, which opens to its words and the way to its chat.
       await page.getByRole("button", { name: "Messages", exact: true }).click();
@@ -223,6 +195,9 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await expect(started).toContainText(/Sent “.+” to a new chat on your request/u);
       await started.locator("button[aria-expanded]").click();
       await expect(started.getByRole("button", { name: "Open chat", exact: true })).toBeVisible();
+      await expect(
+        started.getByRole("button", { name: "How Nodex decided", exact: true }),
+      ).toBeVisible();
       await screenshot("02-activity-messages");
       await page
         .getByRole("tablist", { name: "Inbox view" })
@@ -247,10 +222,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await page.getByRole("textbox", { name: "Message your Inbox" }).press("Escape");
       await expect(page.getByTestId("inbox-composer-reply")).toHaveCount(0);
 
-      await page
-        .locator('[data-app-action-sidebar-project-label="Nodex"]')
-        .getByRole("button", { name: "Open Nodex", exact: true })
-        .click();
+      await openNodexProject();
       await openProjectBoard(page);
       const card = (key: string) =>
         page.locator('[data-board-uuid-v7="' + manifest.pageIdsByKey[key] + '"]:visible');
@@ -292,10 +264,7 @@ test("shows Nodex's Inbox, managed work and the work graph", async ({}, testInfo
       await message("ready").getByRole("button", { name: "Accept", exact: true }).click();
       await expect(message("ready")).toHaveCount(0);
       await screenshot("09-accepted-work");
-      await page
-        .locator('[data-app-action-sidebar-project-label="Nodex"]')
-        .getByRole("button", { name: "Open Nodex", exact: true })
-        .click();
+      await openNodexProject();
       await openProjectBoard(page);
       await expect(
         page

@@ -62,7 +62,7 @@ const materialize = async (
   const current = await port.sendInboxMessage(
     "Compare three onboarding flows and recommend a shorter path to the first useful result.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [current.pageId],
     action: inboxNewChatAction(project.id, "Compare onboarding flows and propose one improvement."),
     kind: "todo",
@@ -73,7 +73,7 @@ const materialize = async (
   const outdated = await port.sendInboxMessage(
     "Review the homepage copy and suggest a clearer opening paragraph.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [outdated.pageId],
     action: inboxNewChatAction(
       project.id,
@@ -99,7 +99,7 @@ const materialize = async (
   const keyboard = await port.sendInboxMessage(
     "Keyboard focus should return to the same sidebar item after I close a linked chat.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [navigation.pageId, keyboard.pageId],
     action: inboxNewChatAction(
       project.id,

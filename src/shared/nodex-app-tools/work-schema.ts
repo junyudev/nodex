@@ -70,3 +70,15 @@ export const followThreadTool: Tool = {
   inputSchema: toolInputSchema(followThreadSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };
+
+export const replyToOriginSchema = z.strictObject({
+  pageId: z.string().regex(/\S/, "Page is required").min(1).max(512),
+  body: z.string().regex(/\S/, "Reply is empty").min(1).max(16384),
+});
+export const replyToOriginTool: Tool = {
+  name: "reply_to_origin",
+  description:
+    "From the root Agent of the Page’s active chat, send at most 100 words to this Page's original GitHub request. Use once to acknowledge that work started, or once when its result is ready or merged. Never send routine progress or repeat the same acknowledgement/result. The origin address is fixed by the Page; identical body retries in the same Turn episode reuse the outbox item.",
+  inputSchema: toolInputSchema(replyToOriginSchema),
+  annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+};

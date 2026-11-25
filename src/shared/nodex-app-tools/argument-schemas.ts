@@ -1,5 +1,4 @@
-import { replyToOriginSchema } from "./coordinator-schema";
-import { followThreadSchema } from "./work-schema";
+import { followThreadSchema, replyToOriginSchema } from "./work-schema";
 import { sessionControlSchemas } from "./session-control-schemas";
 import { sessionQuestionSchema } from "./session-question-schema";
 import { z } from "zod";
@@ -9,11 +8,10 @@ import { automationSchema } from "./automation-schema";
 import { sendToInboxSchema } from "./inbox-schema";
 import {
   InboxSuggestionOutput,
-  writeTurnNoteSchema,
   answerInboxQuestionSchema,
   automationAssessmentReadSchema,
   automationAssessmentSubmitSchema,
-} from "./coordinator-schema";
+} from "./decision-run-schemas";
 import { reportWorkSchema, startWorkSchema, handBackMessageSchema } from "./work-schema";
 import { uninstallPluginSchema } from "./plugin-schema";
 import { describeContentSchemaInput, sqlQuerySchema } from "./query-schemas";
@@ -50,7 +48,6 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   inbox_suggest: InboxSuggestionOutput,
   automation_assessment_read: automationAssessmentReadSchema,
   automation_assessment_submit: automationAssessmentSubmitSchema,
-  write_turn_note: writeTurnNoteSchema,
   answer_inbox_question: answerInboxQuestionSchema,
   follow_thread: followThreadSchema,
   reply_to_origin: replyToOriginSchema,

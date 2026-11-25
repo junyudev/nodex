@@ -3940,6 +3940,7 @@ const OrchestrationV2InternalCommand = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     reason: Schema.optional(Schema.String),
+    retire: Schema.optional(Schema.Boolean),
     delegatedConversation: Schema.optional(Schema.Struct({
       parentThreadId: ThreadId,
       ownerRunId: Schema.optional(RunId),

@@ -803,6 +803,7 @@ export interface AgentRuntimeOperations
       readonly threadId: string;
       readonly commandId: string;
       readonly reason?: string;
+      readonly retire?: boolean;
       readonly modeLimit?: AgentDispatchModeLimit;
     };
     readonly output: { readonly stopped: boolean };

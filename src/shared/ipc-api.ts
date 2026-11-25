@@ -418,7 +418,6 @@ import type {
   ProjectSession,
   ProjectSessionSettledResult,
   SessionFolder,
-  SessionManagedState,
   ProjectSessionForkInput,
   ProjectSessionForkResult,
   ProjectSessionSummaryWindow,
@@ -487,7 +486,6 @@ import type {
   ProjectSessionSettledCommandInput,
   ProjectSessionsSettleIdleCommandInput,
   ProjectSessionSnoozeCommandInput,
-  ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   SidebarSectionCreateCommandInput,
@@ -1107,8 +1105,6 @@ export interface IpcApi
     result: import("./inbox").InboxReplyDestination;
   };
   "inbox:entry": { args: [pageId: string]; result: import("./inbox").InboxItem | null };
-  "inbox:open-nodex": { args: []; result: string };
-  "inbox:reset-nodex": { args: []; result: void };
   "work:holds": { args: []; result: readonly import("./work-application").ExecutionHold[] };
   "work:effective-hold": {
     args: [target: import("./work-application").ExecutionHoldTarget];
@@ -1365,17 +1361,9 @@ export interface IpcApi
     args: [command: ProjectSessionOpenedCommandInput];
     result: CoreLocalCommitResult<void>;
   };
-  "project-sessions:managed": {
-    args: [sessionId: string];
-    result: SessionManagedState;
-  };
   "project-sessions:start": {
     args: [sessionId: string];
     result: import("./types").ProjectSessionStart | null;
-  };
-  "project-sessions:set-managed": {
-    args: [command: ProjectSessionManagedCommandInput];
-    result: CoreLocalCommitResult<SessionManagedState>;
   };
   "project-sessions:set-snooze": {
     args: [command: ProjectSessionSnoozeCommandInput];

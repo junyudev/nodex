@@ -231,6 +231,7 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       commandId: CommandId,
       reason: Schema.optional(Schema.String),
+      retire: Schema.optional(Schema.Boolean),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
     }),
   ),

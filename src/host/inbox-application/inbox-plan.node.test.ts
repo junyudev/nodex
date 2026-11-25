@@ -5,7 +5,11 @@ import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { WorkApplication, make as makeWork } from "../work-application/WorkApplication";
 import { make as makeScheduler } from "../work-application/WorkScheduler";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import {
+  captureInbox,
+  inboxOverRealCore,
+  settleTestRouting,
+} from "./InboxApplication.test-support";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { inboxPageBasisToCore } from "../../main/core-client/inbox-adapter";
 import { DEFAULT_INBOX_SETTINGS } from "../../shared/inbox";
@@ -83,16 +87,19 @@ it.effect(
           ],
         };
         const proposalId = "test-plan-proposal";
-        yield* inbox.propose({
-          proposalId,
-          pageIds: [item.pageId],
-          basis: [inboxPageBasisToCore(item.basis)],
-          action,
-          kind: "todo",
-          summary: "Prepare and implement",
-          rationale: null,
-          producedBy: "Nodex",
-        });
+        yield* settleTestRouting(
+          { inbox, client },
+          {
+            proposalId,
+            pageIds: [item.pageId],
+            basis: [inboxPageBasisToCore(item.basis)],
+            action,
+            kind: "todo",
+            summary: "Prepare and implement",
+            rationale: null,
+            producedBy: "Nodex",
+          },
+        );
         yield* inbox.autoConfirm;
         const pending = yield* inbox.window({ scope, filter: "inbox" });
         assert.equal(pending.items[0]?.proposal?.state, "open");

@@ -70,7 +70,6 @@ it.effect("answers the active chat's exact pending question without creating int
           operationId: createUuidV7(),
           intent: {
             kind: "create_agent_runtime_session",
-            coordinator: false,
             session_id: chat,
             project_id: f.projectId,
             title: "Current work",
@@ -106,8 +105,6 @@ it.effect("answers the active chat's exact pending question without creating int
               progressFingerprint: "question",
               progressSince: 0,
             },
-            events: [],
-            resolved_request_ids: [],
           },
         });
       });

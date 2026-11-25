@@ -14,7 +14,7 @@ const request: Request = {
   policy_hash: "a".repeat(64),
   automations: [],
   trigger_ids: ["trigger"],
-  coordinator_session_id: "nodex",
+  decision_session_id: "nodex",
   handed_over_at_ms: 0,
   run_started_at_ms: null,
 };
@@ -65,18 +65,29 @@ it.effect("starts the durable deadline with the carrying Run and retains it afte
   Effect.gen(function* () {
     const f = fixture();
     const first = yield* f.owner;
-    yield* TestClock.adjust("10 minutes");
-    assert.equal((yield* first.status(request)).deadline, Infinity);
-    f.setRun({ status: "running", startedAt: new Date(600_000).toISOString() });
-    assert.equal((yield* first.status(request)).deadline, 720_000);
+    yield* TestClock.adjust("4 minutes");
+    assert.equal((yield* first.status(request)).deadline, 300_000);
+    f.setRun({ status: "running", startedAt: new Date(240_000).toISOString() });
+    assert.equal((yield* first.status(request)).deadline, 360_000);
     const reopened = yield* f.owner;
     yield* TestClock.adjust("1 minute");
     assert.isNull((yield* reopened.status(f.current())).failure);
-    assert.deepEqual(f.starts, [600_000]);
+    assert.deepEqual(f.starts, [240_000]);
     yield* TestClock.adjust("1 minute");
     assert.equal(
       (yield* reopened.status(f.current())).failure,
       "The automation assessment timed out",
+    );
+  }),
+);
+it.effect("expires an assessment reservation whose execution owner never starts it", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    yield* TestClock.adjust("5 minutes");
+    const reopened = yield* f.owner;
+    assert.equal(
+      (yield* reopened.status(request)).failure,
+      "The automation assessment could not start",
     );
   }),
 );
@@ -101,48 +112,64 @@ it.effect("allows one unanswered-turn follow-up and stops after the follow-up en
   }),
 );
 
-it.effect("reconciles a lost Host-input reply after reopening without sending it twice", () =>
+it.effect("opens one assessment and recovers admission before following up in the same run", () =>
   Effect.gen(function* () {
     const { make } = yield* Effect.promise(() => import("./AutomationAssessmentRuntime"));
-    const { CoordinatorSession } = yield* Effect.promise(() => import("./CoordinatorSession"));
+    const { DecisionRuns } = yield* Effect.promise(() => import("./DecisionRuns"));
     const { ApplicationSettings } = yield* Effect.promise(
       () => import("../../main/settings/ApplicationSettings"),
     );
     const { DEFAULT_INBOX_SETTINGS } = yield* Effect.promise(() => import("../../shared/inbox"));
     const admissions = new Set<string>();
-    let isCurrent = true;
+    const completed = new Set<string>();
     const failures: string[] = [];
-    const sends: { origin: string; mode: string; message: { messageId: string; text: string } }[] =
-      [];
+    let current: Request = { ...request, decision_session_id: null };
+    let opened = 0;
+    let held = false;
+    const sends: {
+      sessionId: string;
+      origin: string;
+      mode: string;
+      message: { messageId: string; text: string };
+    }[] = [];
     const core = {
       workspace: {
         read: (read: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
           Effect.sync(() => ({
             value:
               read.kind === "execution_holds"
-                ? { kind: "execution_holds", holds: [], next_key: null }
+                ? {
+                    kind: "execution_holds",
+                    holds: held ? [{ scope: { kind: "space" } }] : [],
+                    next_key: null,
+                  }
                 : {
                     kind: "automation_assessments",
                     value:
                       read.kind === "automation_assessments" && read.read.kind === "pending"
-                        ? { kind: "pending", requests: [request] }
-                        : { kind: "request", request },
+                        ? { kind: "pending", requests: [current] }
+                        : { kind: "request", request: current },
                   },
           })),
         apply: ({ intent }: { intent: { command: { kind: string; reason: string } } }) =>
           Effect.sync(() => {
-            assert.equal(intent.command.kind, "fail");
-            failures.push(intent.command.reason);
+            if (intent.command.kind === "begin")
+              current = { ...current, decision_session_id: request.decision_session_id };
+            else if (intent.command.kind === "fail") failures.push(intent.command.reason);
             return {};
           }),
       },
     };
     const owner = make.pipe(
       Effect.provideService(CoreModules, core as never),
-      Effect.provideService(CoordinatorSession, {
-        ensure: () => Effect.succeed("nodex"),
-        isCoordinator: () => Effect.succeed(isCurrent),
-      } as never),
+      Effect.provideService(DecisionRuns, {
+        hasCapacity: () => Effect.succeed(true),
+        routingTitle: () => Effect.die("Unexpected routing pickup"),
+        begin: (_decision, _title, deliver) =>
+          Effect.sync(() => {
+            opened++;
+          }).pipe(Effect.andThen(deliver(request.decision_session_id!)), Effect.as(true)),
+      }),
       Effect.provideService(ApplicationSettings, {
         snapshot: () =>
           Effect.succeed({
@@ -158,7 +185,8 @@ it.effect("reconciles a lost Host-input reply after reopening without sending it
           }),
       } as never),
       Effect.provideService(AgentRuntimeApplication, {
-        runOutcome: () => Effect.succeed(null),
+        runOutcome: ({ messageId }: { messageId: string }) =>
+          Effect.sync(() => (completed.has(messageId) ? { status: "completed" } : null)),
         messageAdmission: ({ messageId }: { messageId: string }) =>
           Effect.succeed(
             admissions.has(messageId) ? { status: "accepted", threadId: "thread:nodex" } : null,
@@ -202,8 +230,20 @@ it.effect("reconciles a lost Host-input reply after reopening without sending it
     assert.equal(sends[0]?.origin, "host");
     assert.equal(sends[0]?.mode, "queue");
     assert.equal(sends[0]?.message.messageId, assessmentIdentity(request).messageId);
-    isCurrent = false;
+    assert.equal(opened, 1);
+    completed.add(assessmentIdentity(request).messageId);
+    held = true;
     yield* (yield* owner).tick;
-    assert.deepEqual(failures, ["The Coordinator changed before completing this assessment"]);
+    assert.lengthOf(sends, 1);
+    held = false;
+    yield* (yield* owner).tick;
+    assert.lengthOf(sends, 2);
+    assert.equal(sends[0]?.sessionId, sends[1]?.sessionId);
+    completed.add(assessmentIdentity(request, true).messageId);
+    yield* (yield* owner).tick;
+    assert.lengthOf(sends, 2);
+    assert.deepEqual(failures, [
+      "Nodex ended its follow-up without submitting this automation assessment",
+    ]);
   }),
 );

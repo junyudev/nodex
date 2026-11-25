@@ -362,13 +362,7 @@ test("a joined desktop starts host work, answers its question and accepts it acr
           window.api.on("inbox-changed", (event) => target.hostInboxEvents!.push(event));
         });
         await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
-        await expect(page.getByRole("button", { name: "Open Nodex", exact: true })).toBeEnabled({
-          timeout: 20_000,
-        });
-        await page.getByRole("button", { name: "Open Nodex", exact: true }).click();
-        await expect(
-          page.getByText("Nodex is monitoring the team Space.", { exact: true }),
-        ).toBeVisible({ timeout: 20_000 });
+        await expect(page.locator('[data-inbox-scope="library"]:visible')).toBeVisible();
         await page.getByRole("button", { name: "Open Host Project", exact: true }).click();
         await openProjectBoard(page);
         const card = page.locator(`[data-board-uuid-v7="${created.page_id}"]:visible`);
@@ -842,9 +836,9 @@ test("a joined desktop starts host work, answers its question and accepts it acr
         await page.getByRole("button", { name: "Send prompt" }).click();
         const bubbles = page.locator("[data-user-message-bubble='true']");
         await expect(bubbles.filter({ hasText: opening })).toBeVisible({ timeout: 30_000 });
-        await expect(
-          page.getByText("Nodex is monitoring the team Space.", { exact: true }),
-        ).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByText("The hosted chat is ready.", { exact: true })).toBeVisible({
+          timeout: 30_000,
+        });
         // Core records the Member who started it as the chat's owner.
         let startedChat: string | undefined;
         await expect

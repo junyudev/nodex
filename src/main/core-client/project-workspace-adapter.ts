@@ -794,6 +794,7 @@ export const projectWorkspaceSessionFromCore = (
   thread: ProjectSessionThreadLink | null,
 ): ProjectSession => ({
   ...fromCoreSessionSummary(session, null),
+  decisionRun: session.decision_run_kind ? { kind: session.decision_run_kind } : null,
   thread,
 });
 

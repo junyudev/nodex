@@ -1,3 +1,4 @@
+import { seedDecisionRun } from "./decision-run";
 import type { CoreClient } from "../../../src/main/core-client/core-client";
 import type { components } from "@nodex/core-protocol";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
@@ -6,7 +7,6 @@ type Model = components["schemas"];
 /** A current-schema check failure crosses the same atomic Source ingestion boundary as polling. */
 export async function prepareSeededAutomationCheck(
   client: Pick<CoreClient, "workspaceRead" | "workspaceApply" | "handshake">,
-  coordinatorSessionId: string,
   sequence: number,
 ) {
   const sourceId = "github:automation-events";
@@ -111,8 +111,17 @@ export async function prepareSeededAutomationCheck(
   });
   if (pending.value.kind !== "automation_assessments" || pending.value.value.kind !== "pending")
     throw new Error("Missing assessment queue");
-  let request = pending.value.value.requests.find((r) => r.thread_id === thread.id);
+  const request = pending.value.value.requests.find((r) => r.thread_id === thread.id);
   if (!request) throw new Error("Check failure did not request an Automation assessment");
+  const sessionId = await seedDecisionRun(
+    client,
+    {
+      kind: "assessment",
+      request_id: request.request_id,
+      generation: request.generation,
+    },
+    `Nodex · Assessing ${thread.repository} #${thread.number}`,
+  );
   const command = (command: Model["AutomationAssessmentCommand"]) =>
     client.workspaceApply({
       operationId: createUuidV7(),
@@ -122,23 +131,24 @@ export async function prepareSeededAutomationCheck(
     kind: "begin",
     request_id: request.request_id,
     generation: request.generation,
-    coordinator_session_id: coordinatorSessionId,
+    decision_session_id: sessionId,
   });
   await command({
     kind: "start_run",
     request_id: request.request_id,
     generation: request.generation,
-    coordinator_session_id: coordinatorSessionId,
+    decision_session_id: sessionId,
     started_at_ms: Date.now(),
   });
   const binding = await client.workspaceRead({
     kind: "agent_runtime_session_binding",
-    session_id: coordinatorSessionId,
+    session_id: sessionId,
   });
   if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
-    throw new Error("Missing Coordinator binding");
+    throw new Error("Missing assessment decision run binding");
   const b = binding.value.binding;
   return {
+    sessionId,
     provenance: {
       profile_id: client.handshake.generation.profile_id,
       authority: {
@@ -148,7 +158,7 @@ export async function prepareSeededAutomationCheck(
         actor_project_id: null,
         library_id: client.handshake.library_id,
         store_epoch: client.handshake.store_epoch,
-        runtime: { session_id: coordinatorSessionId, runtime_id: b.runtime_id, turn_kind: "run" },
+        runtime: { session_id: sessionId, runtime_id: b.runtime_id, turn_kind: "run" },
       },
     } satisfies Model["AgentTurnProvenance"],
     command: {
@@ -181,14 +191,9 @@ export async function prepareSeededAutomationCheck(
 
 export async function assessSeededAutomationCheck(
   client: Pick<CoreClient, "workspaceRead" | "workspaceApply" | "handshake">,
-  coordinatorSessionId: string,
   sequence: number,
 ) {
-  const { provenance, command } = await prepareSeededAutomationCheck(
-    client,
-    coordinatorSessionId,
-    sequence,
-  );
+  const { sessionId, provenance, command } = await prepareSeededAutomationCheck(client, sequence);
   await client.workspaceApply({
     operationId: createUuidV7(),
     intent: {
@@ -197,4 +202,5 @@ export async function assessSeededAutomationCheck(
       intent: { kind: "automation_assessment", command },
     },
   });
+  return sessionId;
 }

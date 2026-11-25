@@ -87,8 +87,6 @@ export interface AgentRuntimeLaunch {
   readonly sender?: { readonly threadId: string; readonly runId?: string | null };
   /** Scheduled launches retain automatic provenance independently of Agent tool authority. */
   readonly messageOrigin?: "automation" | "host";
-  /** Desktop-only launch role, bound before the first provider turn. */
-  readonly coordinator?: boolean;
 }
 
 /**
@@ -97,7 +95,6 @@ export interface AgentRuntimeLaunch {
  */
 export type AgentRuntimeHostLaunchField =
   | "automationExecution"
-  | "coordinator"
   | "messageFingerprint"
   | "messageOrigin"
   | "modeLimit"

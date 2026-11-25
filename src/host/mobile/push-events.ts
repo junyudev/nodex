@@ -15,10 +15,7 @@ import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeAp
 import { CodexApplicationEventHub } from "../../main/codex-application/CodexApplicationEventHub";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
-import {
-  sessionSpeaksThroughNodex,
-  turnSpeaksThroughNodex,
-} from "../coordinator/notification-session";
+import { chatNotificationRole, isManagedChat } from "../work-observation/notification-session";
 import { claimInboxSnoozeNotification, type InboxSnoozeNotification } from "../NotificationIntents";
 import { UserPresence, anyReturned, reportedAttendanceSince } from "../UserPresence";
 import type { PushMessage, PushRecipient, PushTargets } from "./push-delivery";
@@ -78,12 +75,12 @@ const turnBody = (turn: CurrentTurn) => {
       return "Approval requested";
     case "review":
       return "Ready for your review";
+    case "reply":
+      return "Needs your reply";
     case "blocked":
       return "Blocked";
     case "failed":
       return "Failed";
-    case "stalled":
-      return "Stalled";
     default:
       return "It's your move";
   }
@@ -227,7 +224,9 @@ export const makeMobilePushEvents = Effect.gen(function* () {
           const sessionId = conversation.runtimeSessionId;
           // A side chat's reply stays beside its source chat, which a phone does not show.
           if (!sessionId || conversation.sideConversationParentNavigationPath) return;
-          const kind = pushKind(occurrence, yield* turnSpeaksThroughNodex(core, occurrence));
+          const role = yield* chatNotificationRole(core, occurrence);
+          if (role === "decision") return;
+          const kind = pushKind(occurrence, role === "managed");
           if (!kind) return;
           const recipients = yield* targets.recipients(sessionId, pushAudience(occurrence));
           const memberId = recipients[0]?.memberId;
@@ -254,16 +253,16 @@ export const makeMobilePushEvents = Effect.gen(function* () {
 
         /**
          * A Page Turn is its Member's move. It waits on the chat it came from, if any, beside that
-         * chat's own occurrences, so one moment is told once; a question or approval from a chat
-         * Nodex does not manage is told as that chat's own request.
+         * chat's own occurrences, so one moment is told once.
          */
         const tellTurn = Effect.fnUntraced(function* (turn: CurrentTurn) {
           const since = yield* Clock.currentTimeMillis;
           const sessionId = turn.session_id ?? null;
+          // Unmanaged chats already tell their own questions and approvals.
           if (
             sessionId &&
             (turn.reason === "question" || turn.reason === "approval") &&
-            !(yield* sessionSpeaksThroughNodex(core, sessionId))
+            !(yield* isManagedChat(core, sessionId))
           )
             return;
           const recipients = yield* targets.recipients(sessionId, {

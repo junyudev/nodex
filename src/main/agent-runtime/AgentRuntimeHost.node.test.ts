@@ -49,10 +49,8 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
   type AgentInstructionsSettings,
 } from "../../shared/agent-instructions-settings";
-import {
-  COORDINATOR_INSTRUCTIONS,
-  MANAGED_SESSION_INSTRUCTIONS,
-} from "../../host/coordinator/coordinator-instructions";
+import { decisionRunInstructions } from "../../host/nodex-decisions/decision-run-instructions";
+import { MANAGED_SESSION_INSTRUCTIONS } from "../../host/work-observation/managed-chat-instructions";
 
 const frame = {
   runtimeId: "runtime",
@@ -137,7 +135,7 @@ const makeFixture = Effect.fnUntraced(function* ({
   let authorizeGrant: Effect.Effect<ScopedAgentAdmission> | undefined;
   let caller: AppToolCaller | undefined;
   let bound = true;
-  let coordinatorId: string | null = null;
+  let decisionKind: "routing" | "assessment" | null = null;
   let managed = false;
   let boundProjectId: string | null = "current-project";
   const projectSources = new Map<string, readonly string[]>([
@@ -194,9 +192,21 @@ const makeFixture = Effect.fnUntraced(function* ({
       coreReads.push(input);
       if (input.kind === "effective_execution_hold")
         return { value: { kind: input.kind, holds: held ? [{ kind: "session" }] : [] } };
-      if (input.kind === "read_coordinator")
-        return { value: { kind: input.kind, session_id: coordinatorId } };
-      if (input.kind === "read_managed_session")
+      if (input.kind === "decision_run")
+        return {
+          value: {
+            kind: input.kind,
+            decision_run: decisionKind
+              ? {
+                  session_id: input.session_id,
+                  kind: decisionKind,
+                  request_id: "decision-request",
+                  generation: 1,
+                }
+              : null,
+          },
+        };
+      if (input.kind === "managed_chat")
         return {
           value: { kind: input.kind, managed: managed ? { session_id: "session" } : null },
         };
@@ -360,8 +370,8 @@ const makeFixture = Effect.fnUntraced(function* ({
     setProjectSources: (projectId: string, roots: readonly string[]) => {
       projectSources.set(projectId, roots);
     },
-    setCoordinator: (id: string | null) => {
-      coordinatorId = id;
+    setDecisionKind: (kind: typeof decisionKind) => {
+      decisionKind = kind;
     },
     setManaged: (value: boolean) => {
       managed = value;
@@ -810,17 +820,21 @@ it.effect("standing work instructions follow only the root Agent's verified role
       f
         .execute(prepareTurn(identity))
         .pipe(Effect.map((response) => (response as { instructions: string }).instructions));
-    assert.notInclude(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(root), decisionRunInstructions.routing);
     assert.notInclude(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
-    f.setCoordinator("another-session");
     f.setManaged(true);
     assert.include(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
     assert.notInclude(yield* prepare(turn()), MANAGED_SESSION_INSTRUCTIONS);
-    assert.notInclude(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(root), decisionRunInstructions.routing);
     f.setManaged(false);
-    f.setCoordinator("session");
-    assert.include(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
-    assert.notInclude(yield* prepare(turn()), COORDINATOR_INSTRUCTIONS);
+    f.moveToProject(null);
+    f.setDecisionKind("routing");
+    assert.include(yield* prepare(root), decisionRunInstructions.routing);
+    f.setDecisionKind("assessment");
+    const assessment = yield* prepare(root);
+    assert.include(assessment, decisionRunInstructions.assessment);
+    assert.notInclude(assessment, decisionRunInstructions.routing);
+    assert.notInclude(assessment, MANAGED_SESSION_INSTRUCTIONS);
     assert.notInclude(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
   }).pipe(Effect.scoped),
 );

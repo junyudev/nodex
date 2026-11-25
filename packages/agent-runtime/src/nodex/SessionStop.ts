@@ -12,6 +12,7 @@ export const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly commandId: CommandId;
     readonly reason?: string | undefined;
+    readonly retire?: boolean | undefined;
     readonly modeLimit?: DispatchModes | undefined;
   }) {
     const shell = yield* orchestrator.getThreadShell(input.threadId);
@@ -22,6 +23,7 @@ export const make = Effect.gen(function* () {
         threadId: input.threadId,
         commandId: input.commandId,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
+        ...(input.retire ? { retire: true } : {}),
       })
       .pipe(Effect.provideService(DispatchModeLimit, input.modeLimit));
     yield* threads
