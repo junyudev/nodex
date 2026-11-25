@@ -29,7 +29,10 @@ import {
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
 } from "../../shared/schemas/project-sessions";
-import { ProjectSessionSummaryLanesInputSchema } from "../../shared/schemas/session-order";
+import {
+  ProjectSessionSummaryLanesInputSchema,
+  ProjectSessionSummaryWindowInputSchema,
+} from "../../shared/schemas/session-order";
 import type {
   CodexBackgroundProcessRecord,
   Project,
@@ -804,6 +807,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       placement_scope: input?.placementScope ?? "all",
       lifecycle: input?.lifecycle ?? "all",
       order: input?.order ?? "activity",
+      ...(input?.query ? { query: input.query } : {}),
       window: { after: input?.after ?? null, first: input?.first },
     });
     /** One read spans a single scope, so its lanes agree on whether it is the whole Library. */
@@ -823,6 +827,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       tasks: Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "task_window" }>["tasks"],
     ): ProjectSessionSummaryWindow => ({
       items: tasks.items.map(projectWorkspaceTaskFromCore),
+      totalCount: tasks.total_count,
       nextCursor: tasks.next_cursor ?? null,
       hasMore: tasks.next_cursor !== null && tasks.next_cursor !== undefined,
       projectionRevision: tasks.authority.projection_revision,
@@ -831,11 +836,14 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     const listProjectSessionSummaryWindow = Effect.fn(
       "ProjectWorkspace.listProjectSessionSummaryWindow",
     )(function* (projectId: string | null, input?: ProjectSessionSummaryWindowInput) {
+      const parsed = yield* evaluate("session.window", () =>
+        ProjectSessionSummaryWindowInputSchema.parse(input ?? {}),
+      );
       const snapshot = yield* read("session.window", {
         kind: "task_window",
         project_id: projectId,
-        whole_library: yield* wholeLibrary(projectId, [input]),
-        ...taskLane(input),
+        whole_library: yield* wholeLibrary(projectId, [parsed]),
+        ...taskLane(parsed),
       });
       return yield* evaluate("session.window", () =>
         summaryWindowFromCore(expectVariant(snapshot, "task_window").tasks),
@@ -868,15 +876,9 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         include_archived: includeArchived,
         pinned_window: { after: input?.after ?? null, first: input?.first ?? 100 },
       });
-      return yield* evaluate("sidebar.overview", () => {
-        const tasks = expectVariant(snapshot, "sidebar_overview").pinned_tasks;
-        return {
-          items: tasks.items.map(projectWorkspaceTaskFromCore),
-          nextCursor: tasks.next_cursor ?? null,
-          hasMore: tasks.next_cursor !== null && tasks.next_cursor !== undefined,
-          projectionRevision: tasks.authority.projection_revision,
-        } satisfies ProjectSessionSummaryWindow;
-      });
+      return yield* evaluate("sidebar.overview", () =>
+        summaryWindowFromCore(expectVariant(snapshot, "sidebar_overview").pinned_tasks),
+      );
     });
 
     const listBuiltinSidebarOrder = Effect.fn("ProjectWorkspace.listBuiltinSidebarOrder")(

@@ -3454,6 +3454,7 @@ export function renderWorkbench({
       const hasMore = nextOffset < summaries.length;
       return {
         items,
+        totalCount: summaries.length,
         nextCursor: hasMore ? `test-window:${nextOffset}` : null,
         hasMore,
         projectionRevision: workspaceCommitSeq,

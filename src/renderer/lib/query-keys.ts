@@ -1,3 +1,4 @@
+import { normalizeProjectSessionSummaryQuery } from "./project-session-summary-window";
 import { spaceQueryKey } from "./renderer-space";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { AgentRuntimeAttachmentReference } from "../../shared/agent-runtime-attachments";
@@ -197,8 +198,16 @@ export const queryKeys = {
       projectId: string | null,
       order: NonNullable<ProjectSessionSummaryWindowInput["order"]>,
       lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>,
+      query?: string | null,
     ) =>
-      spaceQueryKey(["projectSessions", "librarySummaries", projectId, order, lifecycle] as const),
+      spaceQueryKey([
+        "projectSessions",
+        "librarySummaries",
+        projectId,
+        order,
+        normalizeProjectSessionSummaryQuery(query) ?? null,
+        lifecycle,
+      ] as const),
     detail: (sessionId: string) => spaceQueryKey(["projectSessions", "detail", sessionId] as const),
     start: (sessionId: string) => spaceQueryKey(["projectSessions", "start", sessionId] as const),
     sideChats: (sourceSessionId: string) =>

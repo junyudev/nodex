@@ -911,6 +911,7 @@ mod tests {
                 placement_scope: Default::default(),
                 lifecycle: Default::default(),
                 order: Default::default(),
+                query: None,
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     first: Some(10),
                     after: None,

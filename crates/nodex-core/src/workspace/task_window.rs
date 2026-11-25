@@ -1,17 +1,21 @@
 use nodex_core_contracts::collection::{
-    CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
+    CollectionWindowAuthority, CollectionWindowRequest, MAX_COLLECTION_WINDOW_JSON_BYTES,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, MAX_PROJECT_WORKSPACE_TASK_LANES,
     ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskLane,
     ProjectWorkspaceTaskLifecycle, ProjectWorkspaceTaskOrder, ProjectWorkspaceTaskPlacementScope,
-    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceTaskWindow,
+    ProjectWorkspaceThreadStatus,
 };
+use rusqlite::functions::FunctionFlags;
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
 
 use crate::domain::agent_backend::binding_from_storage;
-use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
+use crate::infrastructure::collection_window::{
+    WindowCandidate, assemble_with_budget, normalize_request,
+};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
 };
@@ -99,6 +103,7 @@ pub(super) fn summary_columns(member_parameter: usize) -> String {
 
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
+const COUNT_FIELD_JSON_BYTES: usize = ",\"total_count\":4294967295".len();
 
 /// Which chats one task list shows, and in what order.
 #[derive(Clone, Copy)]
@@ -110,6 +115,7 @@ pub(super) struct TaskListing<'a> {
     pub(super) placement_scope: ProjectWorkspaceTaskPlacementScope,
     pub(super) lifecycle: ProjectWorkspaceTaskLifecycle,
     pub(super) order: ProjectWorkspaceTaskOrder,
+    pub(super) query: Option<&'a str>,
 }
 
 pub(super) fn read_task_window(
@@ -119,7 +125,7 @@ pub(super) fn read_task_window(
     commit_head: i64,
     listing: TaskListing<'_>,
     request: &CollectionWindowRequest,
-) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
+) -> Result<ProjectWorkspaceTaskWindow, StoreError> {
     read_task_window_in_scope(
         connection,
         library_id,
@@ -140,7 +146,7 @@ pub(super) fn read_task_lanes(
     project_id: Option<&str>,
     whole_library: bool,
     lanes: &[ProjectWorkspaceTaskLane],
-) -> Result<Vec<CollectionWindow<ProjectWorkspaceTaskSummary>>, StoreError> {
+) -> Result<Vec<ProjectWorkspaceTaskWindow>, StoreError> {
     if lanes.is_empty() || lanes.len() > MAX_PROJECT_WORKSPACE_TASK_LANES {
         return Err(invalid(&format!(
             "A task lane read asks for 1 to {MAX_PROJECT_WORKSPACE_TASK_LANES} lanes"
@@ -161,6 +167,7 @@ pub(super) fn read_task_lanes(
                     placement_scope: lane.placement_scope,
                     lifecycle: lane.lifecycle,
                     order: lane.order,
+                    query: lane.query.as_deref(),
                 },
                 &lane.window,
             )
@@ -175,7 +182,7 @@ pub(super) fn read_pinned_task_window(
     commit_head: i64,
     include_archived: bool,
     request: &CollectionWindowRequest,
-) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
+) -> Result<ProjectWorkspaceTaskWindow, StoreError> {
     read_task_window_in_scope(
         connection,
         library_id,
@@ -188,6 +195,7 @@ pub(super) fn read_pinned_task_window(
             placement_scope: ProjectWorkspaceTaskPlacementScope::All,
             lifecycle: ProjectWorkspaceTaskLifecycle::All,
             order: ProjectWorkspaceTaskOrder::Activity,
+            query: None,
         },
         true,
         request,
@@ -202,7 +210,7 @@ fn read_task_window_in_scope(
     listing: TaskListing<'_>,
     pinned_only: bool,
     request: &CollectionWindowRequest,
-) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
+) -> Result<ProjectWorkspaceTaskWindow, StoreError> {
     let TaskListing {
         project_id,
         whole_library,
@@ -210,6 +218,7 @@ fn read_task_window_in_scope(
         placement_scope,
         lifecycle,
         order,
+        query,
     } = listing;
     if whole_library && project_id.is_some() {
         return Err(invalid("A whole-Library task list names no Project"));
@@ -231,10 +240,15 @@ fn read_task_window_in_scope(
             return Err(not_found("Project task lane is unavailable"));
         }
     }
+    let query = query.map(str::trim).filter(|query| !query.is_empty());
+    if query.is_some_and(|query| query.chars().count() > 200) {
+        return Err(invalid("Task listing query exceeds 200 characters"));
+    }
+    let query = query.map(caseless::default_case_fold_str);
     let normalized = normalize_request(request)?;
     // Pins and settlement order each Member's lanes, so a cursor belongs to its reader.
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v8",
+        "workspace_task_window_v9",
         member,
         project_id,
         whole_library,
@@ -243,6 +257,7 @@ fn read_task_window_in_scope(
         placement_scope,
         lifecycle,
         order,
+        &query,
     ))?;
     let subject = CollectionCursorSubject {
         kind: if pinned_only {
@@ -276,33 +291,25 @@ fn read_task_window_in_scope(
         SqlValue::Text(library_id.to_owned()),
         SqlValue::Integer(i64::from(include_archived)),
     ];
-    let cursor_predicate = coordinate
-        .map(|(pin_bucket, lane_order, stable_id)| {
-            parameters.extend([
-                SqlValue::Integer(pin_bucket),
-                SqlValue::Integer(lane_order),
-                SqlValue::Text(stable_id),
-            ]);
-            "WHERE pin_bucket > ?4 \
-               OR (pin_bucket = ?4 AND lane_order > ?5) \
-               OR (pin_bucket = ?4 AND lane_order = ?5 AND session_id > ?6)"
-        })
-        .unwrap_or_default();
-    parameters.push(SqlValue::Integer(
-        i64::try_from(normalized.first + 1)
-            .map_err(|_| invalid("Workspace task window size is invalid"))?,
-    ));
-    let limit_parameter = parameters.len();
+    parameters.push(SqlValue::Text(member.to_owned()));
+    let member_parameter = "?4";
+    let search_predicate = if let Some(query) = query {
+        register_task_search(connection)?;
+        parameters.push(SqlValue::Text(query));
+        format!(
+            "AND task_matches_query(thread.thread_name, substr(thread.thread_preview, 1, {MAX_PREVIEW_UTF16}), session.no_thread_fallback_title, ?5)"
+        )
+    } else {
+        String::new()
+    };
     let placement_predicate = match placement_scope {
         ProjectWorkspaceTaskPlacementScope::All => String::new(),
         ProjectWorkspaceTaskPlacementScope::Builtin => {
             format!("AND NOT {}", placed_in_custom_section_sql("?2"))
         }
     };
-    parameters.push(SqlValue::Text(member.to_owned()));
-    let member_parameter = format!("?{}", parameters.len());
-    let pinned = super::member_attention::pinned_sql("session.id", &member_parameter);
-    let settled_at = super::member_attention::settled_at_sql("session.id", &member_parameter);
+    let pinned = super::member_attention::pinned_sql("session.id", member_parameter);
+    let settled_at = super::member_attention::settled_at_sql("session.id", member_parameter);
     let scope_predicate = if pinned_only {
         pinned.clone()
     } else if whole_library {
@@ -320,7 +327,7 @@ fn read_task_window_in_scope(
         "(session.is_default_draft = 0 OR {} IS {member_parameter})",
         super::chat_stewardship::opener_sql("session.id")
     );
-    let pinned_order = super::member_attention::pinned_order_sql("session.id", &member_parameter);
+    let pinned_order = super::member_attention::pinned_order_sql("session.id", member_parameter);
     let pinned_first = format!("CASE WHEN {pinned} THEN 0 ELSE 1 END");
     let by_pin_then = |rest: &str| {
         format!(
@@ -345,20 +352,49 @@ fn read_task_window_in_scope(
         // Pinned chats are never settled, so a settled list has no pin bucket.
         ProjectWorkspaceTaskOrder::Settlement => ("0".to_owned(), format!("-{settled_at}")),
     };
-    let task_columns = summary_columns(parameters.len());
     let library_predicate = listed_in_library_sql("?2");
+    let listing_sql = format!(
+        "FROM project_sessions session \
+         LEFT JOIN project_session_threads link ON link.session_id = session.id \
+         LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+         WHERE {LISTED_CHAT_SQL} AND {scope_predicate} AND {library_predicate} \
+           AND (?3 = 1 OR session.archived = 0) AND {own_draft} \
+           {lifecycle_predicate} {placement_predicate} {search_predicate}"
+    );
+    let total_count = connection.query_row(
+        &format!("SELECT count(*) {listing_sql}"),
+        params_from_iter(&parameters),
+        |row| row.get(0),
+    )?;
+    let cursor_predicate = if let Some((pin_bucket, lane_order, stable_id)) = coordinate {
+        let bucket = parameters.len() + 1;
+        let order = bucket + 1;
+        let id = order + 1;
+        parameters.extend([
+            SqlValue::Integer(pin_bucket),
+            SqlValue::Integer(lane_order),
+            SqlValue::Text(stable_id),
+        ]);
+        format!(
+            "WHERE pin_bucket > ?{bucket} \
+               OR (pin_bucket = ?{bucket} AND lane_order > ?{order}) \
+               OR (pin_bucket = ?{bucket} AND lane_order = ?{order} AND session_id > ?{id})"
+        )
+    } else {
+        String::new()
+    };
+    parameters.push(SqlValue::Integer(
+        i64::try_from(normalized.first + 1)
+            .map_err(|_| invalid("Workspace task window size is invalid"))?,
+    ));
+    let limit_parameter = parameters.len();
+    let task_columns = summary_columns(4);
     let page_turn =
-        super::page_turn::chat_turn_column("window_rows.session_id", "?2", &member_parameter);
+        super::page_turn::chat_turn_column("window_rows.session_id", "?2", member_parameter);
     let sql = format!(
         "WITH task_rows AS (\
            SELECT {task_columns}, {bucket} AS pin_bucket, {lane_order} AS lane_order \
-           FROM project_sessions session \
-           LEFT JOIN project_session_threads link ON link.session_id = session.id \
-           LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-           WHERE {LISTED_CHAT_SQL} AND {scope_predicate} AND {library_predicate} \
-             AND (?3 = 1 OR session.archived = 0) \
-             AND {own_draft} \
-             {lifecycle_predicate} {placement_predicate}\
+           {listing_sql}\
          ), window_rows AS MATERIALIZED (\
            SELECT * FROM task_rows {cursor_predicate} \
            ORDER BY pin_bucket, lane_order, session_id LIMIT ?{limit_parameter}\
@@ -381,12 +417,13 @@ fn read_task_window_in_scope(
             },
             item: task,
         });
-    assemble(
+    let window = assemble_with_budget(
         candidates,
         normalized.first,
         CollectionWindowAuthority {
             projection_revision: commit_head,
         },
+        MAX_COLLECTION_WINDOW_JSON_BYTES - COUNT_FIELD_JSON_BYTES,
         |coordinate| {
             cursor::mint(
                 connection,
@@ -394,6 +431,38 @@ fn read_task_window_in_scope(
                 CursorDirection::Forward,
                 coordinate.clone(),
             )
+        },
+    )?;
+    Ok(ProjectWorkspaceTaskWindow {
+        items: window.items,
+        next_cursor: window.next_cursor,
+        authority: window.authority,
+        total_count,
+    })
+}
+
+/// Match the same title and bounded preview the task summary reports, with literal Unicode
+/// substring matching. SQLite's lower() only folds ASCII.
+fn register_task_search(connection: &Connection) -> rusqlite::Result<()> {
+    connection.create_scalar_function(
+        "task_matches_query",
+        4,
+        FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_DIRECTONLY,
+        |context| {
+            let name: Option<String> = context.get(0)?;
+            let preview: Option<String> = context.get(1)?;
+            let fallback: String = context.get(2)?;
+            let query: String = context.get(3)?;
+            let preview = preview.as_deref().map(bounded_preview);
+            let title = super::read::project_session_display_title(
+                name.as_deref(),
+                preview.as_deref(),
+                &fallback,
+            );
+            Ok(caseless::default_case_fold_str(&title).contains(&query)
+                || preview.is_some_and(|preview| {
+                    caseless::default_case_fold_str(&preview).contains(&query)
+                }))
         },
     )
 }
@@ -547,9 +616,7 @@ fn not_found(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-    use nodex_core_contracts::collection::{
-        CollectionWindowRequest, MAX_COLLECTION_WINDOW_JSON_BYTES,
-    };
+    use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
         ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead,
         ProjectWorkspaceReadValue, ProjectWorkspaceSidebarSectionItemRef,
@@ -567,7 +634,7 @@ mod tests {
         project_id: Option<&str>,
         after: Option<String>,
         first: u32,
-    ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
+    ) -> ProjectWorkspaceTaskWindow {
         task_window_with_placement(
             workspace,
             project_id,
@@ -582,7 +649,7 @@ mod tests {
         project_id: Option<&str>,
         after: Option<String>,
         first: u32,
-    ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
+    ) -> ProjectWorkspaceTaskWindow {
         let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
@@ -592,6 +659,7 @@ mod tests {
                 placement_scope: ProjectWorkspaceTaskPlacementScope::All,
                 lifecycle: Default::default(),
                 order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Manual,
+                query: None,
                 window: CollectionWindowRequest {
                     after,
                     first: Some(first),
@@ -609,7 +677,7 @@ mod tests {
         after: Option<String>,
         first: u32,
         placement_scope: ProjectWorkspaceTaskPlacementScope,
-    ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
+    ) -> ProjectWorkspaceTaskWindow {
         let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
@@ -619,6 +687,7 @@ mod tests {
                 placement_scope,
                 lifecycle: Default::default(),
                 order: Default::default(),
+                query: None,
                 window: CollectionWindowRequest {
                     after,
                     first: Some(first),
@@ -734,6 +803,7 @@ mod tests {
             placement_scope,
             lifecycle: Default::default(),
             order: Default::default(),
+            query: None,
             window: CollectionWindowRequest {
                 after: None,
                 first: Some(50),
@@ -752,7 +822,7 @@ mod tests {
         ) else {
             panic!("task lanes read");
         };
-        let ids = |window: &CollectionWindow<ProjectWorkspaceTaskSummary>| {
+        let ids = |window: &ProjectWorkspaceTaskWindow| {
             window
                 .items
                 .iter()
@@ -805,6 +875,7 @@ mod tests {
                                 placement_scope,
                                 lifecycle: Default::default(),
                                 order: Default::default(),
+                                query: None,
                                 window: CollectionWindowRequest {
                                     after,
                                     first: Some(1)

@@ -570,6 +570,7 @@ pub(super) fn read(
             placement_scope,
             lifecycle,
             order,
+            query,
             window,
         } => Ok(ProjectWorkspaceReadValue::TaskWindow {
             tasks: super::task_window::read_task_window(
@@ -584,6 +585,7 @@ pub(super) fn read(
                     placement_scope,
                     lifecycle,
                     order,
+                    query: query.as_deref(),
                 },
                 &window,
             )?,
@@ -1506,6 +1508,7 @@ mod tests {
                 placement_scope: Default::default(),
                 lifecycle: Default::default(),
                 order: Default::default(),
+                query: None,
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),
@@ -1540,6 +1543,7 @@ mod tests {
                 placement_scope: Default::default(),
                 lifecycle: Default::default(),
                 order: Default::default(),
+                query: None,
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),

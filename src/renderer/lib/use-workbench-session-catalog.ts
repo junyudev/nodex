@@ -2,9 +2,9 @@ import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { getIntl } from "@/lib/i18n";
 import type { ChatSearchReveal } from "./chat-search-reveal";
 import { runWithCleanup } from "./run-with-cleanup";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dispatchWorkbenchCodexNavigation } from "../features/local-conversation/use-workbench-codex-navigation";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Project,
   ProjectSession,
@@ -29,12 +29,16 @@ import {
   getCachedProjectSessionDetail,
   prefetchProjectSessionDetail,
   readCurrentProjectSessionDetail,
-  preferNewestProjectSessionSummaryWindow,
   projectSessionToSummary,
-  readProjectSessionSummaryWindowThrough,
   seedProjectSessionDetail,
   setProjectSessionSummaries,
 } from "./project-session-query-cache";
+import {
+  loadNextProjectSessionSummaryWindow,
+  normalizeProjectSessionSummaryQuery,
+  preferNewestProjectSessionSummaryWindow,
+  readProjectSessionSummaryWindowThrough,
+} from "./project-session-summary-window";
 import {
   librarySessionSummariesQueryOptions,
   projectSessionDetailQueryOptions,
@@ -105,6 +109,7 @@ export interface WorkbenchSessionCollection {
   readonly presentations: readonly WorkbenchSessionPresentation[];
   readonly projections: readonly WorkbenchSessionRenderProjection[];
   readonly projectionRevision: number | null;
+  readonly totalCount: number | null;
   readonly state: WorkbenchSessionCollectionState;
   readonly hasMore: boolean;
 }
@@ -214,6 +219,7 @@ function buildSessionCollection(
       presentations,
       projections,
       projectionRevision: null,
+      totalCount: null,
       state: { kind: "idle" },
       hasMore: false,
     };
@@ -224,6 +230,7 @@ function buildSessionCollection(
       presentations,
       projections,
       projectionRevision: query.data.projectionRevision,
+      totalCount: query.data.totalCount,
       state: {
         kind: "ready",
         refreshing: query.isFetching,
@@ -238,6 +245,7 @@ function buildSessionCollection(
       presentations,
       projections,
       projectionRevision: null,
+      totalCount: null,
       state: {
         kind: "error",
         message: sessionCollectionErrorMessage(query.error),
@@ -250,6 +258,7 @@ function buildSessionCollection(
     presentations,
     projections,
     projectionRevision: null,
+    totalCount: null,
     state: { kind: "loading" },
     hasMore: false,
   };
@@ -345,22 +354,6 @@ export function useWorkbenchSessionCollections({
     () => buildCollection(summaryState.queriesByScope[PROJECTLESS_SCOPE_KEY]),
     [buildCollection, summaryState.queriesByScope],
   );
-  const refresh = useCallback(
-    async (projectId: string | null): Promise<readonly WorkbenchSessionPresentation[]> => {
-      const result = await listWorkbenchSessions(projectId, {
-        first: 50,
-        placementScope,
-        order,
-        lifecycle,
-      });
-      const installed = queryClient.setQueryData<ProjectSessionSummaryWindow>(
-        queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle),
-        (current) => preferNewestProjectSessionSummaryWindow(current, result),
-      );
-      return (installed ?? result).items.map(presentSummary);
-    },
-    [lifecycle, order, placementScope, presentSummary, queryClient],
-  );
   const refreshThrough = useCallback(
     async (
       projectId: string | null,
@@ -372,9 +365,9 @@ export function useWorkbenchSessionCollections({
         order,
         lifecycle,
       );
-      const previous = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
       const canonical = await readProjectSessionSummaryWindowThrough({
-        previousItemCount: previous?.items.length ?? 0,
+        previousItemCount: () =>
+          queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey)?.items.length ?? 0,
         projectionRevision,
         read: async (after, first) =>
           await listWorkbenchSessions(projectId, {
@@ -391,6 +384,13 @@ export function useWorkbenchSessionCollections({
       return installed ?? canonical;
     },
     [lifecycle, order, placementScope, queryClient],
+  );
+  const refresh = useCallback(
+    async (projectId: string | null): Promise<readonly WorkbenchSessionPresentation[]> => {
+      const window = await refreshThrough(projectId, 0);
+      return window.items.map(presentSummary);
+    },
+    [presentSummary, refreshThrough],
   );
   const retryCollection = useCallback(
     async (projectId: string | null): Promise<void> => {
@@ -413,36 +413,12 @@ export function useWorkbenchSessionCollections({
         order,
         lifecycle,
       );
-      const current = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
-      if (!current?.nextCursor) return;
-
       loadInFlightRef.current.add(key);
       await runWithCleanup(
-        async () => {
-          const next = await listWorkbenchSessions(projectId, {
-            after: current.nextCursor,
-            first: 50,
-            placementScope,
-            order,
-            lifecycle,
-          });
-          queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
-            if (!latest || latest.nextCursor !== current.nextCursor) {
-              return latest;
-            }
-            if (
-              latest.projectionRevision !== current.projectionRevision ||
-              next.projectionRevision !== current.projectionRevision
-            ) {
-              return latest;
-            }
-            const knownIds = new Set(latest.items.map((item) => item.id));
-            return {
-              ...next,
-              items: [...latest.items, ...next.items.filter((item) => !knownIds.has(item.id))],
-            };
-          });
-        },
+        () =>
+          loadNextProjectSessionSummaryWindow(queryClient, queryKey, (after, first) =>
+            listWorkbenchSessions(projectId, { after, first, placementScope, order, lifecycle }),
+          ),
         {
           cleanup: () => {
             loadInFlightRef.current.delete(key);
@@ -465,6 +441,8 @@ export function useWorkbenchSessionCollections({
 
 export interface WorkbenchLibrarySessionLane {
   readonly collection: WorkbenchSessionCollection;
+  readonly loadingMore: boolean;
+  readonly loadMoreFailed: boolean;
   readonly loadMore: () => Promise<void>;
   readonly retry: () => Promise<void>;
 }
@@ -473,6 +451,7 @@ const IDLE_LIBRARY_SESSION_COLLECTION: WorkbenchSessionCollection = {
   presentations: [],
   projections: [],
   projectionRevision: null,
+  totalCount: null,
   state: { kind: "idle" },
   hasMore: false,
 };
@@ -487,19 +466,44 @@ export function useWorkbenchLibrarySessionLane({
   lifecycle,
   enabled,
   resolveScene,
+  query: queryText,
 }: {
   projectId: string | null;
   order: NonNullable<ProjectSessionSummaryWindowInput["order"]>;
   lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>;
   enabled: boolean;
   resolveScene: WorkbenchSessionCatalog["resolveScene"];
+  query?: string | null;
 }): WorkbenchLibrarySessionLane {
   const queryClient = useQueryClient();
+  const search = normalizeProjectSessionSummaryQuery(queryText);
+  const options = useMemo(
+    () => librarySessionSummariesQueryOptions(projectId, order, lifecycle, search),
+    [projectId, order, lifecycle, search],
+  );
+  // A searchable lane keeps its last rows while the next search or scope reads.
   const query = useQuery({
-    ...librarySessionSummariesQueryOptions(projectId, order, lifecycle),
+    ...options,
     enabled,
+    placeholderData: queryText === undefined ? undefined : keepPreviousData,
   });
-  const loadingRef = useRef(new Set<string | null>());
+  const { queryKey } = options;
+  const laneKey = JSON.stringify(queryKey);
+  const loadingRef = useRef(new Set<string>());
+  const [continuations, setContinuations] = useState<ReadonlyMap<string, "loading" | number>>(
+    () => new Map(),
+  );
+  const setContinuation = useCallback(
+    (state?: "loading" | number) => {
+      setContinuations((previous) => {
+        const next = new Map(previous);
+        if (state === undefined) next.delete(laneKey);
+        else next.set(laneKey, state);
+        return next;
+      });
+    },
+    [laneKey],
+  );
   const presentSummary = useCallback(
     (summary: ProjectSessionSummary): WorkbenchSessionPresentation => {
       const detail = getCachedProjectSessionDetail(queryClient, summary.id);
@@ -519,50 +523,53 @@ export function useWorkbenchLibrarySessionLane({
     [enabled, presentSummary, query.data, query.error, query.isFetching],
   );
   const loadMore = useCallback(async (): Promise<void> => {
-    if (loadingRef.current.has(projectId)) return;
-    const queryKey = queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle);
-    const current = queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey);
-    if (!current?.nextCursor) return;
-    loadingRef.current.add(projectId);
+    if (!enabled || loadingRef.current.has(laneKey)) return;
+    if (!queryClient.getQueryData<ProjectSessionSummaryWindow>(queryKey)?.nextCursor) return;
+    loadingRef.current.add(laneKey);
+    setContinuation("loading");
     await runWithCleanup(
       async () => {
-        const next = await listWorkbenchSessions(projectId, {
-          after: current.nextCursor,
-          first: 50,
-          wholeLibrary: projectId === null,
-          placementScope: "all",
-          order,
-          lifecycle,
-        });
-        queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
-          if (
-            !latest ||
-            latest.nextCursor !== current.nextCursor ||
-            latest.projectionRevision !== current.projectionRevision ||
-            next.projectionRevision !== current.projectionRevision
-          )
-            return latest;
-          const knownIds = new Set(latest.items.map((item) => item.id));
-          return {
-            ...next,
-            items: [...latest.items, ...next.items.filter((item) => !knownIds.has(item.id))],
-          };
-        });
+        await loadNextProjectSessionSummaryWindow(queryClient, queryKey, (after, first) =>
+          listWorkbenchSessions(projectId, {
+            after,
+            first,
+            wholeLibrary: projectId === null,
+            placementScope: "all",
+            order,
+            lifecycle,
+            ...(search === undefined ? {} : { query: search }),
+          }),
+        );
+        setContinuation();
       },
       {
+        onError: () => setContinuation(queryClient.getQueryState(queryKey)?.dataUpdatedAt ?? 0),
         cleanup: () => {
-          loadingRef.current.delete(projectId);
+          loadingRef.current.delete(laneKey);
         },
       },
     );
-  }, [lifecycle, order, projectId, queryClient]);
+  }, [
+    enabled,
+    laneKey,
+    lifecycle,
+    order,
+    projectId,
+    queryClient,
+    queryKey,
+    search,
+    setContinuation,
+  ]);
   const retry = useCallback(async (): Promise<void> => {
-    await queryClient.refetchQueries({
-      queryKey: queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle),
-      exact: true,
-    });
-  }, [lifecycle, order, projectId, queryClient]);
-  return useMemo(() => ({ collection, loadMore, retry }), [collection, loadMore, retry]);
+    if (!loadingRef.current.has(laneKey)) setContinuation();
+    await queryClient.refetchQueries({ queryKey, exact: true });
+  }, [laneKey, queryClient, queryKey, setContinuation]);
+  const loadingMore = enabled && continuations.get(laneKey) === "loading";
+  const loadMoreFailed = enabled && continuations.get(laneKey) === query.dataUpdatedAt;
+  return useMemo(
+    () => ({ collection, loadingMore, loadMoreFailed, loadMore, retry }),
+    [collection, loadingMore, loadMoreFailed, loadMore, retry],
+  );
 }
 
 export function useWorkbenchSessionCatalog({

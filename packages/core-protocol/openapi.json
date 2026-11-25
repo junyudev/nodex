@@ -11431,48 +11431,6 @@
           }
         }
       },
-      "CollectionWindow_ProjectWorkspaceTaskSummary": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "session"
-              ],
-              "properties": {
-                "session": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
-                },
-                "thread": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "CollectionWindow_ProjectWorkspaceThreadSummary": {
         "type": "object",
         "required": [
@@ -43706,6 +43664,14 @@
                       "null"
                     ]
                   },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Case-insensitive substring of the chat title or preview.",
+                    "maxLength": 200
+                  },
                   "whole_library": {
                     "type": "boolean",
                     "description": "Every Project's chats and every chat outside a Project, instead of one scope's.\n`project_id` must then be absent."
@@ -55140,6 +55106,14 @@
           "placement_scope": {
             "$ref": "#/components/schemas/ProjectWorkspaceTaskPlacementScope"
           },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Case-insensitive substring of the chat title or preview.",
+            "maxLength": 200
+          },
           "window": {
             "$ref": "#/components/schemas/CollectionWindowRequest"
           }
@@ -55340,6 +55314,37 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ProjectWorkspaceTaskWindow": {
+        "type": "object",
+        "description": "One page of a task listing, with its count before applying the cursor or page size.",
+        "required": [
+          "items",
+          "authority",
+          "total_count"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceTaskSummary"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -63834,7 +63839,7 @@
                             ]
                           },
                           "tasks": {
-                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                            "$ref": "#/components/schemas/ProjectWorkspaceTaskWindow"
                           }
                         }
                       },
@@ -63854,7 +63859,7 @@
                           "lanes": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                              "$ref": "#/components/schemas/ProjectWorkspaceTaskWindow"
                             }
                           }
                         }
@@ -63873,7 +63878,7 @@
                             ]
                           },
                           "pinned_tasks": {
-                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                            "$ref": "#/components/schemas/ProjectWorkspaceTaskWindow"
                           }
                         }
                       },

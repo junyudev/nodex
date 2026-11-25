@@ -28,7 +28,12 @@ const page = (next: string | null = null) =>
   ({
     value: {
       kind: "sidebar_overview",
-      pinned_tasks: { items: [], next_cursor: next, authority: { projection_revision: 7 } },
+      pinned_tasks: {
+        items: [],
+        total_count: next ? 1 : 0,
+        next_cursor: next,
+        authority: { projection_revision: 7 },
+      },
     },
   }) as never;
 it.effect("mount, focus, forced refresh and notifications only project stored Core metadata", () =>
@@ -211,6 +216,7 @@ it.effect("the live snapshot leaves Runtime-bound chats to their Session rows", 
               kind: "sidebar_overview",
               pinned_tasks: {
                 items: [archivedRuntimeTask("runtime").task],
+                total_count: 1,
                 next_cursor: null,
                 authority: { projection_revision: 7 },
               },

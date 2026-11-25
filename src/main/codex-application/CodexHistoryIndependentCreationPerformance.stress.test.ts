@@ -297,6 +297,7 @@ const makePersistentForkHarness = (
                 kind: "task_window",
                 tasks: {
                   items: [],
+                  total_count: 200,
                   next_cursor: `title-cursor-${titleCatalogReads}`,
                   authority: { projection_revision: 1 },
                 },

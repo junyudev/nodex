@@ -4,10 +4,7 @@ import { turnSessionFolderIntoProject } from "../../project-application/SessionF
 import { SessionFolders } from "../../agent-backend/SessionFolders";
 import { AgentChatWorktrees } from "../../codex-application/AgentChatWorktrees";
 import { sessionFolderFromCore } from "../../core-client/project-workspace-adapter";
-import {
-  ProjectSessionPlaceCommandSchema,
-  ProjectSessionSummaryWindowInputSchema,
-} from "../../../shared/schemas/session-order";
+import { ProjectSessionPlaceCommandSchema } from "../../../shared/schemas/session-order";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as RcMap from "effect/RcMap";
@@ -501,10 +498,7 @@ export const live: Layer.Layer<
     yield* invokeEffectQuery("workspace:tasks:list", (_, projectId, input) =>
       Effect.gen(function* () {
         const startedAt = getDevRuntimeMetricStart();
-        const parsed = yield* run("workspace:tasks:list", () =>
-          ProjectSessionSummaryWindowInputSchema.parse(input ?? {}),
-        );
-        const window = yield* projects.listProjectSessionSummaryWindow(projectId, parsed);
+        const window = yield* projects.listProjectSessionSummaryWindow(projectId, input);
         yield* Effect.sync(() =>
           logDevRuntimeMetric("ipc.workspace_tasks_list", {
             projectId,

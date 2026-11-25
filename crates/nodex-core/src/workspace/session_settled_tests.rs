@@ -3,12 +3,12 @@ use super::test_support::{
     NOW, TestWorkspace, apply, context, create_project, create_session_thread, local_member, read,
     request, seeded_workspace,
 };
-use nodex_core_contracts::collection::{CollectionWindow, CollectionWindowRequest};
+use nodex_core_contracts::collection::CollectionWindowRequest;
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectSessionInvalidationScope, ProjectWorkspaceIntent,
     ProjectWorkspaceRead, ProjectWorkspaceReadValue, ProjectWorkspaceSessionSummary,
     ProjectWorkspaceSidebarSectionItemRef, ProjectWorkspaceTaskLane, ProjectWorkspaceTaskLifecycle,
-    ProjectWorkspaceTaskOrder, ProjectWorkspaceTaskSummary,
+    ProjectWorkspaceTaskOrder, ProjectWorkspaceTaskWindow,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreError, CoreErrorCode, CoreModuleEventPayload,
@@ -91,6 +91,7 @@ struct Listing<'a> {
     whole_library: bool,
     lifecycle: ProjectWorkspaceTaskLifecycle,
     order: ProjectWorkspaceTaskOrder,
+    query: Option<&'a str>,
 }
 
 const fn chats(
@@ -102,6 +103,7 @@ const fn chats(
         whole_library: false,
         lifecycle,
         order,
+        query: None,
     }
 }
 
@@ -114,6 +116,7 @@ const fn library(
         whole_library: true,
         lifecycle,
         order,
+        query: None,
     }
 }
 
@@ -123,7 +126,7 @@ fn try_page(
     listing: Listing<'_>,
     after: Option<String>,
     first: u32,
-) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, CoreError> {
+) -> Result<ProjectWorkspaceTaskWindow, CoreError> {
     let ProjectWorkspaceReadValue::TaskWindow { tasks } = module
         .read(
             reader,
@@ -136,6 +139,7 @@ fn try_page(
                     placement_scope: Default::default(),
                     lifecycle: listing.lifecycle,
                     order: listing.order,
+                    query: listing.query.map(str::to_owned),
                     window: CollectionWindowRequest {
                         after,
                         first: Some(first),
@@ -150,7 +154,7 @@ fn try_page(
     Ok(tasks)
 }
 
-fn ids(window: &CollectionWindow<ProjectWorkspaceTaskSummary>) -> Vec<String> {
+fn ids(window: &ProjectWorkspaceTaskWindow) -> Vec<String> {
     window
         .items
         .iter()
@@ -167,12 +171,17 @@ fn listed_as(
 ) -> Vec<String> {
     let mut listed = Vec::new();
     let mut after = None;
+    let mut counts = Vec::new();
     loop {
         let window = try_page(module, reader, listing, after, first).expect("task window");
         listed.extend(ids(&window));
+        counts.push(window.total_count as usize);
         match window.next_cursor {
             Some(cursor) => after = Some(cursor),
-            None => return listed,
+            None => {
+                assert!(counts.into_iter().all(|count| count == listed.len()));
+                return listed;
+            }
         }
     }
 }
@@ -477,6 +486,126 @@ fn settled_and_attention_belong_to_each_member() {
 }
 
 #[test]
+fn task_search_counts_matches_and_scopes_its_cursor() {
+    let w = seeded_workspace();
+    create_project(&w.module, "create-project", "project:a");
+    chat(&w, "title", Some("project:a"), 100);
+    chat(&w, "preview", None, 200);
+    chat(&w, "open", Some("project:a"), 300);
+    chat(&w, "wildcard", None, 400);
+    sql(
+        &w,
+        "UPDATE codex_threads SET thread_name = 'Résumé 100%_ready' WHERE thread_id = 'thread:title';
+         UPDATE codex_threads SET thread_name = 'Deployment', thread_preview = 'Résumé 100%_ready'
+            WHERE thread_id = 'thread:preview';
+         UPDATE codex_threads SET thread_name = 'Résumé 100%_ready' WHERE thread_id = 'thread:open';
+         UPDATE codex_threads SET thread_name = NULL, thread_preview = '' WHERE thread_id = 'thread:wildcard';
+         UPDATE project_sessions SET no_thread_fallback_title = 'Résumé 100xaReady' WHERE id = 'session:wildcard';",
+    );
+    for id in ["title", "preview", "wildcard"] {
+        settle(
+            &w.module,
+            &format!("settle-{id}"),
+            &format!("session:{id}"),
+            true,
+        );
+    }
+
+    let filtered = Listing {
+        query: Some("  RÉSUMÉ 100%_READY  "),
+        ..library(Settled, Settlement)
+    };
+    let reader = context();
+    let first = try_page(&w.module, &reader, filtered, None, 1).expect("first match");
+    assert_eq!(first.total_count, 2);
+    assert_eq!(ids(&first), names(&["preview"]));
+    let continued = try_page(
+        &w.module,
+        &reader,
+        Listing {
+            query: Some("résumé 100%_ready"),
+            ..filtered
+        },
+        first.next_cursor.clone(),
+        1,
+    )
+    .expect("second match");
+    assert_eq!(continued.total_count, 2);
+    assert_eq!(ids(&continued), names(&["title"]));
+    assert!(continued.next_cursor.is_none());
+
+    let project = Listing {
+        project_id: Some("project:a"),
+        whole_library: false,
+        ..filtered
+    };
+    assert_eq!(listed(&w, project), names(&["title"]));
+    assert_eq!(
+        listed(
+            &w,
+            Listing {
+                lifecycle: Open,
+                order: Attention,
+                ..project
+            }
+        ),
+        names(&["open"])
+    );
+    assert_eq!(
+        listed(
+            &w,
+            Listing {
+                query: Some("   "),
+                ..filtered
+            }
+        )
+        .len(),
+        3
+    );
+
+    assert_eq!(
+        listed(
+            &w,
+            Listing {
+                query: Some("100XAREADY"),
+                ..filtered
+            }
+        ),
+        names(&["wildcard"])
+    );
+    for query in [None, Some("deployment")] {
+        assert_eq!(
+            try_page(
+                &w.module,
+                &reader,
+                Listing { query, ..filtered },
+                first.next_cursor.clone(),
+                1
+            )
+            .expect_err("invalid search continuation")
+            .code,
+            CoreErrorCode::InvalidInput
+        );
+    }
+    let too_long = "x".repeat(201);
+    assert_eq!(
+        try_page(
+            &w.module,
+            &reader,
+            Listing {
+                query: Some(&too_long),
+                ..filtered
+            },
+            None,
+            1
+        )
+        .expect_err("overlong query")
+        .code,
+        CoreErrorCode::InvalidInput
+    );
+}
+
+#[test]
 fn whole_library_lists_span_every_project_and_validate_their_shape() {
     let w = seeded_workspace();
     for project in ["project:a", "project:b", "project:archived"] {
@@ -517,6 +646,7 @@ fn whole_library_lists_span_every_project_and_validate_their_shape() {
         placement_scope: Default::default(),
         lifecycle,
         order,
+        query: None,
         window: CollectionWindowRequest {
             after: None,
             first: Some(50),
@@ -535,6 +665,14 @@ fn whole_library_lists_span_every_project_and_validate_their_shape() {
     assert_eq!(
         lanes.iter().map(ids).collect::<Vec<_>>(),
         [names(&["loose", "b"]), names(&["a"])]
+    );
+
+    assert_eq!(
+        lanes
+            .iter()
+            .map(|lane| lane.total_count)
+            .collect::<Vec<_>>(),
+        [2, 1]
     );
 
     let rejected = |listing| {
@@ -821,6 +959,7 @@ fn builtin_windows_leave_placed_chats_to_their_sections_and_scope_the_settled_sh
                 },
                 lifecycle,
                 order,
+                query: None,
                 window: CollectionWindowRequest {
                     first: Some(10),
                     after: None,

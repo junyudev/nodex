@@ -1267,6 +1267,8 @@ export interface ProjectSessionSummaryWindowInput extends ProjectSessionListOpti
   lifecycle?: ProjectSessionLifecycle;
   /** List every Project's chats and the projectless ones together; the Project must be null. */
   wholeLibrary?: boolean;
+  /** A substring of the displayed chat title or preview. */
+  query?: string;
   after?: string | null;
   first?: number;
 }
@@ -1293,6 +1295,8 @@ export interface SessionSideChatWindow {
 
 export interface ProjectSessionSummaryWindow {
   items: ProjectSessionSummary[];
+  /** All chats in the listing, including the ones beyond this window. */
+  totalCount: number;
   nextCursor: string | null;
   hasMore: boolean;
   projectionRevision: number;

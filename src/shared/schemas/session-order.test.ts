@@ -20,6 +20,19 @@ describe("Session ordering inputs", () => {
     ])
       expect(ProjectSessionSummaryWindowInputSchema.safeParse(input).success).toBe(false);
   });
+  test("normalizes optional task search and bounds it by characters", () => {
+    expect(ProjectSessionSummaryWindowInputSchema.parse({ query: "  50%_done " }).query).toBe(
+      "50%_done",
+    );
+    expect(ProjectSessionSummaryWindowInputSchema.parse({ query: "  " }).query).toBeUndefined();
+    expect(
+      ProjectSessionSummaryWindowInputSchema.safeParse({ query: "🌱".repeat(200) }).success,
+    ).toBe(true);
+    expect(
+      ProjectSessionSummaryWindowInputSchema.safeParse({ query: "🌱".repeat(201) }).success,
+    ).toBe(false);
+  });
+
   test("requires one Session anchor and rejects the removed bulk order payload", () => {
     const operationId = encodeBoundedOperationId("session.place", 0, "one");
     expect(

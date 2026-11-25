@@ -2793,14 +2793,6 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
-        readonly CollectionWindow_ProjectWorkspaceTaskSummary: {
-            readonly authority: components["schemas"]["CollectionWindowAuthority"];
-            readonly items: readonly {
-                readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
-                readonly thread?: components["schemas"]["ProjectWorkspaceTaskThreadSummary"] | null;
-            }[];
-            readonly next_cursor?: string | null;
-        };
         readonly CollectionWindow_ProjectWorkspaceThreadSummary: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -10450,6 +10442,8 @@ export interface components {
                 readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
                 readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
                 readonly project_id?: string | null;
+                /** @description Case-insensitive substring of the chat title or preview. */
+                readonly query?: string | null;
                 /**
                  * @description Every Project's chats and every chat outside a Project, instead of one scope's.
                  *     `project_id` must then be absent.
@@ -13229,6 +13223,8 @@ export interface components {
             readonly lifecycle?: components["schemas"]["ProjectWorkspaceTaskLifecycle"];
             readonly order?: components["schemas"]["ProjectWorkspaceTaskOrder"];
             readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
+            /** @description Case-insensitive substring of the chat title or preview. */
+            readonly query?: string | null;
             readonly window: components["schemas"]["CollectionWindowRequest"];
         };
         /**
@@ -13275,6 +13271,14 @@ export interface components {
             readonly thread_source?: string | null;
             /** Format: int64 */
             readonly updated_at: number;
+        };
+        /** @description One page of a task listing, with its count before applying the cursor or page size. */
+        readonly ProjectWorkspaceTaskWindow: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly components["schemas"]["ProjectWorkspaceTaskSummary"][];
+            readonly next_cursor?: string | null;
+            /** Format: int32 */
+            readonly total_count: number;
         };
         readonly ProjectWorkspaceThread: {
             readonly agent_nickname?: string | null;
@@ -15018,15 +15022,15 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     readonly kind: "task_window";
-                    readonly tasks: components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"];
+                    readonly tasks: components["schemas"]["ProjectWorkspaceTaskWindow"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "task_windows";
-                    readonly lanes: readonly components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"][];
+                    readonly lanes: readonly components["schemas"]["ProjectWorkspaceTaskWindow"][];
                 } | {
                     /** @enum {string} */
                     readonly kind: "sidebar_overview";
-                    readonly pinned_tasks: components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"];
+                    readonly pinned_tasks: components["schemas"]["ProjectWorkspaceTaskWindow"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "sidebar_section_window";

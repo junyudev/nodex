@@ -7,12 +7,15 @@ import {
   getCachedProjectSessionDetail,
   listSessionSideChats,
   invalidateProjectSessionScope,
-  preferNewestProjectSessionSummaryWindow,
   projectSessionToSummary,
-  readProjectSessionSummaryWindowThrough,
   seedProjectSessionDetail,
   setProjectSessionSummaries,
 } from "./project-session-query-cache";
+import {
+  appendProjectSessionSummaryWindow,
+  preferNewestProjectSessionSummaryWindow,
+  readProjectSessionSummaryWindowThrough,
+} from "./project-session-summary-window";
 
 function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -65,6 +68,7 @@ describe("project session query cache", () => {
       client.setQueryData(key, {
         items: [],
         nextCursor: null,
+        totalCount: 0,
         hasMore: false,
         projectionRevision: 1,
       });
@@ -83,6 +87,7 @@ describe("project session query cache", () => {
     const window = (items: ProjectSession[]): ProjectSessionSummaryWindow => ({
       items: items.map(projectSessionToSummary),
       nextCursor: null,
+      totalCount: items.length,
       hasMore: false,
       projectionRevision: 4,
     });
@@ -164,6 +169,7 @@ describe("project session query cache", () => {
     client.setQueryData<ProjectSessionSummaryWindow>(settledLibrary, {
       items: [projectSessionToSummary(chat)],
       nextCursor: null,
+      totalCount: 1,
       hasMore: false,
       projectionRevision: 1,
     });
@@ -180,6 +186,7 @@ describe("project session query cache", () => {
     client.setQueryData(key, {
       items: [],
       nextCursor: null,
+      totalCount: 0,
       hasMore: false,
       projectionRevision: 1,
     });
@@ -303,6 +310,7 @@ describe("project session query cache", () => {
       {
         items: [summary],
         nextCursor: "cursor:one",
+        totalCount: 51,
         hasMore: true,
         projectionRevision: 12,
       },
@@ -322,6 +330,7 @@ describe("project session query cache", () => {
     ).toEqual({
       items: [{ ...summary, unread: true }],
       nextCursor: "cursor:one",
+      totalCount: 51,
       hasMore: true,
       projectionRevision: 12,
     });
@@ -336,7 +345,7 @@ describe("project session query cache", () => {
     let firstPageReads = 0;
 
     const window = await readProjectSessionSummaryWindowThrough({
-      previousItemCount: 51,
+      previousItemCount: () => 51,
       projectionRevision: 10,
       read: async (after, first) => {
         reads.push({ after, first });
@@ -346,6 +355,7 @@ describe("project session query cache", () => {
             return {
               items: canonical.slice(0, 50),
               nextCursor: "cursor:50",
+              totalCount: 51,
               hasMore: true,
               projectionRevision: 9,
             };
@@ -353,6 +363,7 @@ describe("project session query cache", () => {
           return {
             items: canonical.slice(0, 50),
             nextCursor: "cursor:50",
+            totalCount: 51,
             hasMore: true,
             projectionRevision: 10,
           };
@@ -360,6 +371,7 @@ describe("project session query cache", () => {
         return {
           items: canonical.slice(50),
           nextCursor: null,
+          totalCount: 51,
           hasMore: false,
           projectionRevision: 10,
         };
@@ -369,22 +381,81 @@ describe("project session query cache", () => {
     expect(reads).toEqual([
       { after: null, first: 50 },
       { after: null, first: 50 },
-      { after: "cursor:50", first: 1 },
+      { after: "cursor:50", first: 50 },
     ]);
     expect(window.items.map((item) => item.id)).toEqual(canonical.map((item) => item.id));
     expect(window.projectionRevision).toBe(10);
+  });
+
+  test("continues from the same cursor across revisions and deduplicates chats", () => {
+    const first = projectSessionToSummary(createSession({ id: "first" }));
+    const second = projectSessionToSummary(createSession({ id: "second" }));
+    const base = {
+      items: [first],
+      totalCount: 4,
+      nextCursor: "base",
+      hasMore: true,
+      projectionRevision: 4,
+    };
+    const next = {
+      items: [first, second],
+      totalCount: 5,
+      nextCursor: "next",
+      hasMore: true,
+      projectionRevision: 5,
+    };
+    const appended = appendProjectSessionSummaryWindow(base, "base", next);
+    expect(appended).toEqual({ ...next, items: [first, second] });
+    const replaced = { ...base, nextCursor: "elsewhere" };
+    expect(appendProjectSessionSummaryWindow(replaced, "base", next)).toBe(replaced);
+    expect(
+      appendProjectSessionSummaryWindow({ ...base, projectionRevision: 6 }, "base", next),
+    ).toEqual({ ...next, items: [first, second], totalCount: 4, projectionRevision: 6 });
+  });
+
+  test("refills depth across short pages without giving an older head a newer revision", async () => {
+    const items = Array.from({ length: 4 }, (_, index) =>
+      projectSessionToSummary(createSession({ id: `chat-${index}` })),
+    );
+    const read = vi.fn(async (after: string | null, _first: number) => {
+      const offset = after === null ? 0 : Number(after);
+      return {
+        items: items.slice(offset, offset + 1),
+        totalCount: 4,
+        nextCursor: String(offset + 1),
+        hasMore: true,
+        projectionRevision: 10 + offset,
+      };
+    });
+    const refetched = await readProjectSessionSummaryWindowThrough({
+      previousItemCount: () => 3,
+      read,
+    });
+
+    expect(read.mock.calls).toEqual([
+      [null, 50],
+      ["1", 50],
+      ["2", 50],
+    ]);
+    expect(refetched.items).toEqual(items.slice(0, 3));
+    expect(refetched.nextCursor).toBe("3");
+
+    const newer = { ...refetched, projectionRevision: 11 };
+    expect(preferNewestProjectSessionSummaryWindow(newer, refetched)).toBe(newer);
   });
 
   test("rejects a late older projection instead of rolling canonical activityAt back", () => {
     const newer = {
       items: [projectSessionToSummary(createSession({ id: "newer" }))],
       nextCursor: null,
+      totalCount: 1,
       hasMore: false,
       projectionRevision: 11,
     } satisfies ProjectSessionSummaryWindow;
     const older = {
       items: [projectSessionToSummary(createSession({ id: "older" }))],
       nextCursor: null,
+      totalCount: 1,
       hasMore: false,
       projectionRevision: 10,
     } satisfies ProjectSessionSummaryWindow;
@@ -398,12 +469,14 @@ describe("project session query cache", () => {
     const loaded = {
       items: [first, second],
       nextCursor: null,
+      totalCount: 2,
       hasMore: false,
       projectionRevision: 11,
     } satisfies ProjectSessionSummaryWindow;
     const lateFirstPage = {
       items: [first],
       nextCursor: "cursor:1",
+      totalCount: 2,
       hasMore: true,
       projectionRevision: 11,
     } satisfies ProjectSessionSummaryWindow;
@@ -413,6 +486,7 @@ describe("project session query cache", () => {
     const terminalRefresh = {
       items: [first],
       nextCursor: null,
+      totalCount: 1,
       hasMore: false,
       projectionRevision: 11,
     } satisfies ProjectSessionSummaryWindow;

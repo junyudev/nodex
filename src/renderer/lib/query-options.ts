@@ -1,11 +1,19 @@
 import { readModelCatalogForHost } from "../features/local-conversation/renderer-native-catalog";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  type QueryFunctionContext,
+} from "@tanstack/react-query";
 import { readDatabaseViewWindow } from "./api";
 import { invokeRendererQuery as invoke } from "./renderer-command";
 import { isHostedChat } from "./hosted-chat";
 import { queryKeys } from "./query-keys";
-import { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
+import {
+  normalizeProjectSessionSummaryQuery,
+  readProjectSessionSummaryWindowThrough,
+  shareProjectSessionSummaryWindow,
+} from "./project-session-summary-window";
 import { readSessionSummaryLane } from "./session-summary-lanes";
 import type {
   AutomationRunsInboxResponse,
@@ -131,22 +139,11 @@ export function projectSessionSummariesQueryOptions(
   order: NonNullable<ProjectSessionSummaryWindowInput["order"]> = "activity",
   lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]> = "all",
 ) {
-  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle);
   return queryOptions({
-    queryKey,
-    queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
-      const incoming = await readSessionSummaryLane(projectId, {
-        first: 50,
-        placementScope,
-        order,
-        lifecycle,
-      });
-      return preferNewestProjectSessionSummaryWindow(
-        client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),
-        incoming,
-      );
-    },
-    staleTime: 30_000,
+    queryKey: queryKeys.projectSessions.summaries(projectId, placementScope, order, lifecycle),
+    queryFn: (context) =>
+      fetchSessionSummaryWindow(context, projectId, { placementScope, order, lifecycle }),
+    ...sessionSummaryCacheOptions,
   });
 }
 
@@ -155,24 +152,39 @@ export function librarySessionSummariesQueryOptions(
   projectId: string | null,
   order: NonNullable<ProjectSessionSummaryWindowInput["order"]>,
   lifecycle: NonNullable<ProjectSessionSummaryWindowInput["lifecycle"]>,
+  query?: string | null,
 ) {
-  const queryKey = queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle);
+  const search = normalizeProjectSessionSummaryQuery(query);
   return queryOptions({
-    queryKey,
-    queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
-      const incoming = await readSessionSummaryLane(projectId, {
-        first: 50,
+    queryKey: queryKeys.projectSessions.librarySummaries(projectId, order, lifecycle, search),
+    queryFn: (context) =>
+      fetchSessionSummaryWindow(context, projectId, {
         wholeLibrary: projectId === null,
         placementScope: "all",
         order,
         lifecycle,
-      });
-      return preferNewestProjectSessionSummaryWindow(
-        client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),
-        incoming,
-      );
-    },
-    staleTime: 30_000,
+        ...(search === undefined ? {} : { query: search }),
+      }),
+    ...sessionSummaryCacheOptions,
+  });
+}
+
+const sessionSummaryCacheOptions = {
+  structuralSharing: shareProjectSessionSummaryWindow,
+  staleTime: 30_000,
+};
+
+function fetchSessionSummaryWindow(
+  { client, queryKey, signal }: QueryFunctionContext,
+  projectId: string | null,
+  input: ProjectSessionSummaryWindowInput,
+): Promise<ProjectSessionSummaryWindow> {
+  return readProjectSessionSummaryWindowThrough({
+    previousItemCount: () =>
+      client.getQueryData<ProjectSessionSummaryWindow>(queryKey)?.items.length ?? 0,
+    read: (after, first) =>
+      readSessionSummaryLane(projectId, { ...input, first, ...(after === null ? {} : { after }) }),
+    signal,
   });
 }
 

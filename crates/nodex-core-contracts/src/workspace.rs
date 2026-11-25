@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::agent::AgentBackendBinding;
-use crate::collection::{CollectionWindow, CollectionWindowRequest};
+use crate::collection::{CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest};
 use crate::inbox::{
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 84;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 85;
 
 /// Retry-key admission shared by the application tools and native CLI.
 pub const RETRY_KEY_MAX_SCALARS: usize = 128;
@@ -259,6 +259,9 @@ pub enum ProjectWorkspaceRead {
         lifecycle: ProjectWorkspaceTaskLifecycle,
         #[serde(default)]
         order: ProjectWorkspaceTaskOrder,
+        /// Case-insensitive substring of the chat title or preview.
+        #[schema(max_length = 200)]
+        query: Option<String>,
         window: CollectionWindowRequest,
     },
     /// Up to [`MAX_PROJECT_WORKSPACE_TASK_LANES`] lanes of one scope's task list, in request
@@ -605,13 +608,13 @@ pub enum ProjectWorkspaceReadValue {
         search_revision: i64,
     },
     TaskWindow {
-        tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
+        tasks: ProjectWorkspaceTaskWindow,
     },
     TaskWindows {
-        lanes: Vec<CollectionWindow<ProjectWorkspaceTaskSummary>>,
+        lanes: Vec<ProjectWorkspaceTaskWindow>,
     },
     SidebarOverview {
-        pinned_tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
+        pinned_tasks: ProjectWorkspaceTaskWindow,
     },
     SidebarSectionWindow {
         sections: CollectionWindow<ProjectWorkspaceSidebarSectionSummary>,
@@ -833,7 +836,19 @@ pub struct ProjectWorkspaceTaskLane {
     pub lifecycle: ProjectWorkspaceTaskLifecycle,
     #[serde(default)]
     pub order: ProjectWorkspaceTaskOrder,
+    /// Case-insensitive substring of the chat title or preview.
+    #[schema(max_length = 200)]
+    pub query: Option<String>,
     pub window: CollectionWindowRequest,
+}
+
+/// One page of a task listing, with its count before applying the cursor or page size.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceTaskWindow {
+    pub items: Vec<ProjectWorkspaceTaskSummary>,
+    pub next_cursor: Option<String>,
+    pub authority: CollectionWindowAuthority,
+    pub total_count: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

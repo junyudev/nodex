@@ -122,6 +122,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
                     },
                   },
                 ],
+                total_count: 1,
                 next_cursor: null,
                 authority: { projection_revision: 1 },
               },

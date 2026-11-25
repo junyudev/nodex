@@ -38,13 +38,23 @@ const emptyCoreWindow = (kind: "project_window" | "sidebar_overview" | "task_win
       ? ({
           value: {
             kind,
-            pinned_tasks: { items: [], next_cursor: null, authority: { projection_revision: 1 } },
+            pinned_tasks: {
+              items: [],
+              total_count: 0,
+              next_cursor: null,
+              authority: { projection_revision: 1 },
+            },
           },
         } as never)
       : ({
           value: {
             kind,
-            tasks: { items: [], next_cursor: null, authority: { projection_revision: 1 } },
+            tasks: {
+              items: [],
+              total_count: 0,
+              next_cursor: null,
+              authority: { projection_revision: 1 },
+            },
           },
         } as never);
 
@@ -119,6 +129,7 @@ const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
       coreTask("thread-acp", { driver: "acpRegistry", instanceId: "claude-code" }),
       ...(kind === "task_window" ? [runtimeTask("session-runtime")] : []),
     ],
+    total_count: kind === "task_window" ? 3 : 2,
     next_cursor: null,
     authority: { projection_revision: 1 },
   };

@@ -65,7 +65,7 @@ where
     )
 }
 
-fn assemble_with_budget<T, I, Mint>(
+pub(crate) fn assemble_with_budget<T, I, Mint>(
     candidates: I,
     first: usize,
     authority: CollectionWindowAuthority,

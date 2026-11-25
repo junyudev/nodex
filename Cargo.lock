@@ -1426,6 +1426,7 @@ name = "nodex-core"
 version = "0.5.14"
 dependencies = [
  "base64 0.23.1",
+ "caseless",
  "chrono",
  "chrono-tz",
  "fs2",

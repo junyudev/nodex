@@ -1246,6 +1246,7 @@ fn chat_windows_and_inbox_counts_follow_the_same_current_turn() {
                 placement_scope: ProjectWorkspaceTaskPlacementScope::All,
                 lifecycle: ProjectWorkspaceTaskLifecycle::Open,
                 order: ProjectWorkspaceTaskOrder::Attention,
+                query: None,
                 window: CollectionWindowRequest {
                     after,
                     first: Some(1),

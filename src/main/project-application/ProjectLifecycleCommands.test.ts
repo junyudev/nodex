@@ -120,6 +120,7 @@ const testRuntime = (
         nextCursor: null,
         hasMore: false,
         projectionRevision: 1,
+        totalCount: sessions.length,
       }),
     setProjectLifecycle,
   } as unknown as ProjectWorkspaceService);

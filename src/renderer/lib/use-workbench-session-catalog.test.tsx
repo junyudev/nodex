@@ -30,6 +30,7 @@ vi.mock("./api", () => ({
 }));
 
 import {
+  useWorkbenchLibrarySessionLane,
   useWorkbenchSessionCatalog,
   useWorkbenchSessionCollections,
   type WorkbenchSessionCatalogWindowPort,
@@ -93,6 +94,7 @@ function makeWindow(
 ): ProjectSessionSummaryWindow {
   return {
     items,
+    totalCount: items.length,
     nextCursor: null,
     hasMore: false,
     projectionRevision: 1,
@@ -208,6 +210,86 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
 }
 
 describe("useWorkbenchSessionCatalog", () => {
+  test("scopes Settled continuations and their retry state to the normalized search", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const first = makeSummary("roadmap", "alpha");
+    const next = makeSummary("roadmap-details", "alpha");
+    const other = makeSummary("other", "alpha");
+    let rejectContinuation!: (error: Error) => void;
+    const continuation = new Promise<ProjectSessionSummaryWindow>((_resolve, reject) => {
+      rejectContinuation = reject;
+    });
+    let attempts = 0;
+    invokeMock.mockImplementation(
+      (_channel: string, _projectId: string | null, input: ProjectSessionSummaryWindowInput) => {
+        if (input.query !== "roadmap") return Promise.resolve(makeWindow([other]));
+        if (!input.after) {
+          return Promise.resolve(
+            makeWindow([first], {
+              totalCount: 2,
+              nextCursor: "roadmap-cursor",
+              hasMore: true,
+            }),
+          );
+        }
+        attempts += 1;
+        return attempts === 1
+          ? continuation
+          : Promise.resolve(makeWindow([next], { totalCount: 2, projectionRevision: 2 }));
+      },
+    );
+    const { result, rerender } = renderHook(
+      ({ search }) =>
+        useWorkbenchLibrarySessionLane({
+          projectId: null,
+          order: "settlement",
+          lifecycle: "settled",
+          enabled: true,
+          query: search,
+          resolveScene: (session) =>
+            materializeInitialWorkbenchScene({
+              kind: "session",
+              sessionId: session.id,
+            }),
+        }),
+      { wrapper, initialProps: { search: "  roadmap " } },
+    );
+
+    await waitFor(() => expect(result.current.collection.totalCount).toBe(2));
+    let loadMore!: Promise<void>;
+    await act(async () => {
+      loadMore = result.current.loadMore();
+    });
+    expect(result.current.loadingMore).toBe(true);
+    await act(async () => {
+      rejectContinuation(new Error("Network unavailable"));
+      await loadMore;
+    });
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.loadMoreFailed).toBe(true);
+
+    rerender({ search: " " });
+    await waitFor(() => expect(result.current.collection.projections[0]?.id).toBe(other.id));
+    expect(result.current.loadMoreFailed).toBe(false);
+    rerender({ search: "roadmap" });
+    expect(result.current.collection.projections[0]?.id).toBe(first.id);
+    expect(result.current.loadMoreFailed).toBe(true);
+    await act(async () => result.current.retry());
+    expect(result.current.loadMoreFailed).toBe(false);
+
+    await act(async () => result.current.loadMore());
+    await waitFor(() => {
+      expect(result.current.collection.projections.map((chat) => chat.id)).toEqual([
+        first.id,
+        next.id,
+      ]);
+    });
+    expect(result.current.collection.totalCount).toBe(2);
+  });
+
   test("pages and refreshes built-in sidebar lanes independently from the complete picker", async () => {
     const section = makeSummary("section-chat", "alpha");
     const visible = makeSummary("visible-chat", "alpha");
@@ -223,9 +305,9 @@ describe("useWorkbenchSessionCatalog", () => {
       if (revision === 2) return makeWindow([moved, visible], { projectionRevision: revision });
       if (input.after) {
         expect(input.after).toBe("builtin-next");
-        return makeWindow([next]);
+        return makeWindow([next], { totalCount: 2 });
       }
-      return makeWindow([visible], { nextCursor: "builtin-next", hasMore: true });
+      return makeWindow([visible], { totalCount: 2, nextCursor: "builtin-next", hasMore: true });
     };
     const requests: { readonly projectId: string | null; readonly lanes: string[] }[] = [];
     const laneName = (input: ProjectSessionSummaryWindowInput) =>
@@ -908,7 +990,7 @@ describe("useWorkbenchSessionCatalog", () => {
     ).toEqual(["session:alpha", "session:beta"]);
   });
 
-  test("ignores a continuation from an older projection after the first page advances", async () => {
+  test("ignores a continuation when the cached first page has a different cursor", async () => {
     let resolveContinuation!: (window: ProjectSessionSummaryWindow) => void;
     invokeMock.mockImplementation(
       (channel: string, projectId: string | null, input?: { after?: string }) => {
@@ -943,7 +1025,7 @@ describe("useWorkbenchSessionCatalog", () => {
       queryKeys.projectSessions.summaries("alpha"),
       makeWindow([makeSummary("session:beta", "alpha")], {
         hasMore: true,
-        nextCursor: "cursor:one",
+        nextCursor: "cursor:two",
         projectionRevision: 2,
       }),
     );

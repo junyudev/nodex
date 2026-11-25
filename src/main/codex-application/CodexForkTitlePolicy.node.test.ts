@@ -35,6 +35,7 @@ const taskWindow = (
       kind: "task_window",
       tasks: {
         items,
+        total_count: items.length + (nextCursor === null ? 0 : 1),
         next_cursor: nextCursor,
         authority: { projection_revision: 1 },
       },

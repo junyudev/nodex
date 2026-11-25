@@ -20,6 +20,15 @@ export const ProjectSessionSummaryWindowInputSchema = z
     placementScope: z.enum(["all", "builtin"]).optional(),
     lifecycle: z.enum(["all", "open", "settled"]).optional(),
     wholeLibrary: z.boolean().optional(),
+    query: z
+      .string()
+      .trim()
+      .refine(
+        (query) => Array.from(query).length <= 200,
+        "Chat search is limited to 200 characters",
+      )
+      .transform((query) => query || undefined)
+      .optional(),
     includeArchived: z.boolean().optional(),
     after: z.string().min(1).nullable().optional(),
     first: z.number().int().min(1).max(200).optional(),

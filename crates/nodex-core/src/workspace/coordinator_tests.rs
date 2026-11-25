@@ -98,6 +98,7 @@ fn coordinator_managed_state_projects_to_sessions_and_invalidates_on_each_toggle
                 placement_scope: ProjectWorkspaceTaskPlacementScope::All,
                 lifecycle: Default::default(),
                 order: ProjectWorkspaceTaskOrder::Activity,
+                query: None,
                 window: CollectionWindowRequest::default(),
             },
         ) else {

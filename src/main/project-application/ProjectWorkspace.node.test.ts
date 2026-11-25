@@ -175,8 +175,9 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
           kind: "task_window",
           tasks: {
             items: [],
-            next_cursor: null,
+            next_cursor: "next",
             authority: { projection_revision: 7 },
+            total_count: 51,
           },
         },
       } satisfies ProjectWorkspaceReadSnapshot);
@@ -187,6 +188,7 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
       placementScope: "builtin",
       after: "sidebar-cursor",
       first: 50,
+      query: "  roadmap ",
     });
     // Every Project's open chats, ordered by when each came back to a person.
     yield* workspace.listProjectSessionSummaryWindow(null, {
@@ -214,6 +216,7 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
         placement_scope: "builtin",
         lifecycle: "all",
         order: "activity",
+        query: "roadmap",
         window: { after: "sidebar-cursor", first: 50 },
       },
       {
@@ -234,6 +237,7 @@ it.effect("keeps Session directories complete and scopes sidebar pages explicitl
     assert.equal(scoped._tag, "ProjectWorkspaceError");
     assert.equal(observed.length, 3);
     assert.equal(sidebar.projectionRevision, 7);
+    assert.equal(sidebar.totalCount, 51);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -245,6 +249,7 @@ it.effect("reads several lanes of one scope's chat list from one Core read", () 
       items: [],
       next_cursor: null,
       authority: { projection_revision: projectionRevision },
+      total_count: projectionRevision + 50,
     });
     const reads: CoreModuleClients["workspace"]["read"] = (input) => {
       if (input.kind !== "task_windows") return Effect.die("Unexpected Core read");
@@ -257,11 +262,15 @@ it.effect("reads several lanes of one scope's chat list from one Core read", () 
 
     const lanes = yield* workspace.listProjectSessionSummaryLanes("project:one", [
       { first: 50 },
-      { first: 50, placementScope: "builtin", order: "manual" },
+      { first: 50, placementScope: "builtin", order: "manual", query: "  road " },
     ]);
     assert.deepEqual(
       lanes.map((lane) => lane.projectionRevision),
       [1, 2],
+    );
+    assert.deepEqual(
+      lanes.map((lane) => lane.totalCount),
+      [51, 52],
     );
     assert.deepEqual(observed, [
       {
@@ -281,6 +290,7 @@ it.effect("reads several lanes of one scope's chat list from one Core read", () 
             placement_scope: "builtin",
             lifecycle: "all",
             order: "manual",
+            query: "road",
             window: { after: null, first: 50 },
           },
         ],

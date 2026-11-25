@@ -411,6 +411,7 @@ fn remote_members_read_and_reply_to_turns_with_member_bound_receipts() {
                         nodex_core_contracts::workspace::ProjectWorkspaceTaskPlacementScope::All,
                     lifecycle: nodex_core_contracts::workspace::ProjectWorkspaceTaskLifecycle::Open,
                     order: nodex_core_contracts::workspace::ProjectWorkspaceTaskOrder::Attention,
+                    query: None,
                     window: CollectionWindowRequest::default(),
                 },
             ) else {

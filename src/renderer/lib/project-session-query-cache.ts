@@ -12,53 +12,6 @@ import { projectSessionDetailQueryOptions } from "./query-options";
 import { queryKeys } from "./query-keys";
 import { invokeRendererQuery } from "./renderer-command";
 
-export { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
-
-export type ProjectSessionSummaryWindowReader = (
-  after: string | null,
-  first: number,
-) => Promise<ProjectSessionSummaryWindow>;
-
-export async function readProjectSessionSummaryWindowThrough({
-  previousItemCount,
-  projectionRevision,
-  read,
-}: {
-  previousItemCount: number;
-  projectionRevision: number;
-  read: ProjectSessionSummaryWindowReader;
-}): Promise<ProjectSessionSummaryWindow> {
-  const requestedItemCount = Math.max(50, previousItemCount);
-  let first = await read(null, 50);
-  if (first.projectionRevision < projectionRevision) {
-    first = await read(null, 50);
-  }
-  if (first.projectionRevision < projectionRevision) {
-    throw new Error("Canonical chat order has not reached the committed revision");
-  }
-
-  const items = [...first.items];
-  const knownIds = new Set(items.map((item) => item.id));
-  let cursor = first.nextCursor;
-  let latest = first;
-  while (items.length < requestedItemCount && cursor !== null) {
-    const next = await read(cursor, Math.min(50, requestedItemCount - items.length));
-    for (const item of next.items) {
-      if (knownIds.has(item.id)) continue;
-      knownIds.add(item.id);
-      items.push(item);
-    }
-    cursor = next.nextCursor;
-    latest = next;
-  }
-  return {
-    items,
-    nextCursor: cursor,
-    hasMore: cursor !== null || latest.hasMore,
-    projectionRevision: latest.projectionRevision,
-  };
-}
-
 export function sortProjectSessionSummariesForSidebar(
   summaries: readonly ProjectSessionSummary[],
 ): ProjectSessionSummary[] {
@@ -136,6 +89,7 @@ export function setProjectSessionSummaries(
     queryKeys.projectSessions.summaries(projectId),
     (current) => ({
       items: [...summaries],
+      totalCount: current?.totalCount ?? summaries.length,
       nextCursor: current?.nextCursor ?? null,
       hasMore: current?.hasMore ?? false,
       projectionRevision: current?.projectionRevision ?? 0,
@@ -144,6 +98,7 @@ export function setProjectSessionSummaries(
   return (
     installed ?? {
       items: [...summaries],
+      totalCount: summaries.length,
       nextCursor: null,
       hasMore: false,
       projectionRevision: 0,
@@ -172,6 +127,7 @@ export function seedProjectSessionDetail(
       return {
         ...current,
         items: next,
+        totalCount: current.totalCount + next.length - current.items.length,
       };
     },
   );
@@ -250,7 +206,8 @@ export function applyProjectSessionSettled(
       if ((lifecycle === "open" && settled) || (lifecycle === "settled" && !settled)) return [];
       return [{ ...item, ...patch }];
     });
-    if (lifecycle === "settled" && settled) {
+    const filtered = wholeLibraryKey && typeof key.at(-2) === "string";
+    if (lifecycle === "settled" && settled && !filtered) {
       const known = new Set(items.map((item) => item.id));
       items.unshift(...changedSummaries.filter((item) => inScope(item) && !known.has(item.id)));
     }
@@ -259,7 +216,11 @@ export function applyProjectSessionSettled(
       items.every((item, index) => item === window.items[index])
     )
       continue;
-    const installed = queryClient.setQueryData(key, { ...window, items });
+    const installed = queryClient.setQueryData(key, {
+      ...window,
+      items,
+      totalCount: window.totalCount + items.length - window.items.length,
+    });
     rollback.push(() => {
       queryClient.setQueryData<ProjectSessionSummaryWindow>(key, (current) =>
         current === installed ? window : current,

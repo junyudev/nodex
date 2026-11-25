@@ -210,9 +210,7 @@ mod tests {
         kind: ProjectWorkspaceTaskOrder,
         after: Option<String>,
         first: u32,
-    ) -> nodex_core_contracts::collection::CollectionWindow<
-        nodex_core_contracts::workspace::ProjectWorkspaceTaskSummary,
-    > {
+    ) -> nodex_core_contracts::workspace::ProjectWorkspaceTaskWindow {
         let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
@@ -222,6 +220,7 @@ mod tests {
                 placement_scope: Default::default(),
                 lifecycle: Default::default(),
                 order: kind,
+                query: None,
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     after,
                     first: Some(first),
@@ -573,6 +572,7 @@ mod tests {
                         placement_scope: Default::default(),
                         lifecycle: Default::default(),
                         order: other,
+                        query: None,
                         window: nodex_core_contracts::collection::CollectionWindowRequest {
                             after: first.next_cursor,
                             first: Some(2),

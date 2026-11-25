@@ -8,6 +8,7 @@ import { readSessionSummaryLane } from "./session-summary-lanes";
 
 const windowFor = (input: ProjectSessionSummaryWindowInput): ProjectSessionSummaryWindow => ({
   items: [],
+  totalCount: 0,
   nextCursor: null,
   hasMore: false,
   projectionRevision: input.first ?? 0,

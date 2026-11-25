@@ -697,6 +697,7 @@ fn read_budget_gate_large_fixture() {
                     placement_scope: Default::default(),
                     lifecycle: Default::default(),
                     order: Default::default(),
+                    query: None,
                     window: CollectionWindowRequest {
                         after: None,
                         first: Some(200),
@@ -732,6 +733,7 @@ fn read_budget_gate_large_fixture() {
                     placement_scope: Default::default(),
                     lifecycle: Default::default(),
                     order: Default::default(),
+                    query: None,
                     window: CollectionWindowRequest {
                         after: Some(workspace_cursor),
                         first: Some(200),
