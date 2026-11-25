@@ -398,7 +398,7 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("emits OpenCode variant defaults so trait picker can resolve a visible selection", () =>
+  it.effect("advertises reasoning variants and their defaults for listed and custom models", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {
         providerList: {
@@ -430,7 +430,9 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
         ],
       };
 
-      const snapshot = yield* checkProvider(makeOpenCodeSettings());
+      const snapshot = yield* checkProvider(
+        makeOpenCodeSettings({ customModels: ["custom/reasoning-model"] }),
+      );
       const model = snapshot.models.find((entry) => entry.slug === "openai/gpt-5.4");
 
       NodeAssert.ok(model);
@@ -438,6 +440,12 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
         (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
       );
       NodeAssert.ok(variantDescriptor && variantDescriptor.type === "select");
+      NodeAssert.equal(variantDescriptor.role, "reasoning");
+      const customVariant = snapshot.models
+        .find((entry) => entry.slug === "custom/reasoning-model")
+        ?.capabilities?.optionDescriptors?.find((descriptor) => descriptor.id === "variant");
+      NodeAssert.ok(customVariant?.type === "select");
+      NodeAssert.equal(customVariant.role, "reasoning");
       NodeAssert.equal(
         variantDescriptor.options.find((option) => option.isDefault === true)?.id,
         "medium",
@@ -568,10 +576,13 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
         snapshot.models.map((model) => model.slug),
         ["opencode/big-pickle", "opencode/space-bunny-free"],
       );
-      const variant = snapshot.models.find((model) => model.slug === "opencode/space-bunny-free")
-        ?.capabilities?.optionDescriptors?.[0];
+      const variant = snapshot.models
+        .find((model) => model.slug === "opencode/space-bunny-free")
+        ?.capabilities?.optionDescriptors?.find((descriptor) => descriptor.id === "variant");
+      NodeAssert.ok(variant?.type === "select");
+      NodeAssert.equal(variant.role, "reasoning");
       NodeAssert.deepEqual(
-        variant?.type === "select" ? variant.options.map((option) => option.id) : [],
+        variant.options.map((option) => option.id),
         ["low", "medium", "high"],
       );
       NodeAssert.equal(runtimeMock.state.sdkClientInputs.length, 0);
