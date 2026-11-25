@@ -248,12 +248,23 @@ export const packageFilesNode: PackageFilesPort = {
 
 export const canonicalPackageRoot = (directory: string) => io(() => canonicalRoot(directory));
 
+interface CopyOptions {
+  /**
+   * Leave out, below the subtree roots, the entries package reads exclude anyway: special
+   * files and links that escape the package. By default they reject the copy.
+   */
+  readonly omitUnreadable?: boolean;
+  /** Flush each file to disk. A copy that is discarded after a crash can skip it. */
+  readonly durable?: boolean;
+}
+
 async function copyPackageFile(
   root: string,
   source: string,
   entry: Extract<Entry, { kind: "file" }>,
   destination: string,
   signal: AbortSignal,
+  durable: boolean,
 ) {
   const bytes = await readFile(root, source, entry.stat, signal);
   const handle = await open(destination, "wx", 0o600);
@@ -261,7 +272,7 @@ async function copyPackageFile(
     await handle.writeFile(bytes);
     // Preserve executable bits without copying special permission bits.
     await handle.chmod(0o600 | (Number(entry.stat.mode) & 0o111));
-    await handle.sync();
+    if (durable) await handle.sync();
   } finally {
     await handle.close();
   }
@@ -271,13 +282,14 @@ async function copyPackageFile(
 export function copyPackageSubtrees(
   directory: string,
   subtrees: readonly { readonly source: string; readonly target: string }[],
+  options: CopyOptions = {},
 ) {
   const source = io(async (signal) => {
     const root = await canonicalRoot(directory);
     return { root, ...(await inventory(root, signal)) };
   });
   return Effect.flatMap(source, ({ root, entries, children }) =>
-    copySubtrees(root, entries, children, subtrees),
+    copySubtrees(root, entries, children, subtrees, options),
   );
 }
 
@@ -286,6 +298,7 @@ function copySubtrees(
   entries: ReadonlyMap<string, Entry>,
   children: ReadonlyMap<string, readonly string[]>,
   subtrees: readonly { readonly source: string; readonly target: string }[],
+  { omitUnreadable = false, durable = true }: CopyOptions,
 ) {
   // Wait for destination writes to finish before the caller can clean up staging.
   return io(async (signal) => {
@@ -306,11 +319,13 @@ function copySubtrees(
           fail("package-limit", "The projected package exceeds the total byte limit.", source);
         const entry = entries.get(resolved.path);
         if (entry?.kind !== "file") fail("filesystem-error", "Expected a package file.", source);
-        await copyPackageFile(root, resolved.path, entry, target, signal);
+        await copyPackageFile(root, resolved.path, entry, target, signal, durable);
         return;
       }
-      if (resolved.kind !== "directory" || ancestors.includes(resolved.path))
+      if (resolved.kind !== "directory" || ancestors.includes(resolved.path)) {
+        if (omitUnreadable && ancestors.length) return;
         fail("unsafe-path", "The projected package contains an unsafe or circular link.", source);
+      }
       await mkdir(target, { recursive: true, mode: 0o700 });
       const chain = [...ancestors, resolved.path];
       for (const name of children.get(resolved.path) ?? []) {

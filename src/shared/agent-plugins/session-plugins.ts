@@ -24,6 +24,12 @@ export interface SessionPluginSkill {
   readonly pluginId: string;
   /** Invocation name inside `skillsRoot`, qualified by its plugin when names collide. */
   readonly alias: string;
+  /**
+   * The Skill's directory relative to `skillsRoot`. It stays at its place inside a copy of its
+   * plugin's package, so the scripts, references and assets it names relative to the plugin
+   * resolve.
+   */
+  readonly directory: string;
   readonly description: string;
   readonly userInvocable?: false;
 }
@@ -43,8 +49,9 @@ export interface SessionPlugins {
   /** Changes whenever the resolved set changes. Backends refresh at their next safe point. */
   readonly revision: string;
   /**
-   * Shared, immutable plugin directory for the delivered Skills, with
-   * `.claude-plugin/plugin.json` and `skills/<alias>/`. Null when no Skills are delivered.
+   * Shared, immutable plugin directory for the delivered Skills: a copy of each plugin's package
+   * under `plugins/<name>/`, and a `.claude-plugin/plugin.json` that lists each Skill's
+   * directory. Null when no Skills are delivered.
    */
   readonly skillsRoot: string | null;
   readonly skills: readonly SessionPluginSkill[];

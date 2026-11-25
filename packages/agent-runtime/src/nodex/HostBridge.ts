@@ -55,6 +55,7 @@ const decodePlugins = Schema.decodeUnknownEffect(
           Schema.Struct({
             pluginId: Schema.String,
             alias: Schema.String,
+            directory: Schema.String,
             description: Schema.String,
             userInvocable: Schema.optionalKey(Schema.Literal(false)),
           }),

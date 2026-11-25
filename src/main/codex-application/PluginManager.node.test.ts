@@ -2180,12 +2180,25 @@ it.effect("loads Project catalogs, reuses packages, and signals inventory invali
     const harness = make({
       profileHome: profile,
       codexHome: profile,
-      plugins: [pluginSummary({ id: "a@custom", name: "a", installed: true, enabled: true })],
+      plugins: [
+        pluginSummary({ id: "a@custom", name: "a", installed: true, enabled: true }),
+        pluginSummary({
+          id: `browser@${policy.marketplaceName}`,
+          name: "browser",
+          installed: true,
+          enabled: true,
+        }),
+      ],
       events: Stream.fromPubSub(nativeEvents),
     });
     yield* withManager(harness, (manager, database) =>
       Effect.gen(function* () {
         const initial = yield* manager.loadCatalog(null);
+        // Desktop Tools deliver the managed Browser plugin; the catalog would deliver it twice.
+        assert.deepEqual(
+          initial.snapshot.entries.map(({ id }) => id),
+          ["a@custom"],
+        );
         yield* manager.loadCatalog("p");
         assert.deepEqual(
           harness.calls

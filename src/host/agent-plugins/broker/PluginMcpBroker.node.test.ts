@@ -607,6 +607,7 @@ it.live("serves only current Project skills and contains and bounds package read
       await writeFile(join(base, "secret"), "outside");
       await writeFile(join(dir, "SKILL.md"), "first generation");
       await writeFile(join(dir, "guide.txt"), "supporting text");
+      await writeFile(join(root, "reference.md"), "plugin reference");
       await writeFile(join(dir, "oversize.txt"), "x".repeat(64 * 1024 + 1));
       await symlink(join(base, "secret"), join(dir, "escape.txt"));
     });
@@ -638,7 +639,10 @@ it.live("serves only current Project skills and contains and bounds package read
     expect((yield* call("read_plugin_skill", { ...selection, file: "guide.txt" })).value).toEqual({
       text: "supporting text",
     });
-    for (const file of ["../../../secret", "escape.txt", "oversize.txt"]) {
+    expect(
+      (yield* call("read_plugin_skill", { ...selection, file: "../../reference.md" })).value,
+    ).toEqual({ text: "plugin reference" });
+    for (const file of ["../../../secret", "/etc/hosts", "escape.txt", "oversize.txt"]) {
       expect((yield* call("read_plugin_skill", { ...selection, file })).result.isError).toBe(true);
     }
     for (const pluginId of ["disabled", "other-project"]) {

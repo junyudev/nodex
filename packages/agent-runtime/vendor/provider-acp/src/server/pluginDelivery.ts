@@ -41,6 +41,6 @@ export function acpPluginSkillInstructions(catalogAttached: boolean): string | u
     "Use the `nodex_plugin_skills` MCP server to find installed skills for this Project.",
     "Call `list_plugin_skills` when a task or a skill mention calls for one.",
     "Pass the selected entry’s `installationId` and `skill` to `read_plugin_skill`.",
-    "Use its `file` argument to read a supporting file listed in the result.",
+    "Use its `file` argument to read a supporting file listed in the result, or a file the skill names by a path relative to its directory, such as `../../references/guide.md`.",
   ].join("\n");
 }
