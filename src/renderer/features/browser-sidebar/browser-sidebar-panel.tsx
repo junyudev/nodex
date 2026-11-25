@@ -138,6 +138,7 @@ import {
   RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE,
   RIGHT_PANEL_COMPOSER_OVERLAY_ZERO_RESERVE_VALUE,
 } from "@/lib/right-panel-composer-overlay-reserve";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import {
   applyBrowserAnnotationAnchorUpdate,
@@ -3545,8 +3546,7 @@ function BrowserViewportResizeHandles({
   onViewportChange: (viewport: BrowserSidebarViewport) => void;
 }) {
   const intl = useIntl();
-  const activeCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(() => () => activeCleanupRef.current?.(), []);
+  const startPointerDrag = usePointerDrag();
   const bump = (dimension: "width" | "height", delta: number) => {
     const current = dimension === "width" ? viewport.width || 1024 : viewport.height || 768;
     onViewportChange(updateBrowserViewportDimension(viewport, dimension, current + delta));
@@ -3554,17 +3554,8 @@ function BrowserViewportResizeHandles({
   const beginDrag =
     (dimension: "width" | "height", direction: -1 | 1) =>
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      activeCleanupRef.current?.();
-      const target = event.currentTarget;
-      const pointerId = event.pointerId;
       const startPointer = dimension === "width" ? event.clientX : event.clientY;
       const startValue = dimension === "width" ? viewport.width : viewport.height;
-      const previousCursor = document.body.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      document.body.style.cursor = dimension === "width" ? "ew-resize" : "ns-resize";
-      document.body.style.userSelect = "none";
-      target.setPointerCapture?.(pointerId);
       let latestPointer = startPointer;
       let frame: number | null = null;
       const commit = () => {
@@ -3572,29 +3563,17 @@ function BrowserViewportResizeHandles({
         const delta = (latestPointer - startPointer) * direction;
         onViewportChange(updateBrowserViewportDimension(viewport, dimension, startValue + delta));
       };
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        if (moveEvent.pointerId !== pointerId) return;
-        latestPointer = dimension === "width" ? moveEvent.clientX : moveEvent.clientY;
-        if (frame === null) frame = window.requestAnimationFrame(commit);
-      };
-      const cleanup = () => {
-        if (frame !== null) window.cancelAnimationFrame(frame);
-        target.removeEventListener("pointermove", onPointerMove);
-        target.removeEventListener("pointerup", cleanup);
-        target.removeEventListener("pointercancel", cleanup);
-        if (target.hasPointerCapture?.(pointerId)) {
-          target.releasePointerCapture?.(pointerId);
-        }
-        document.body.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        if (activeCleanupRef.current === cleanup) {
-          activeCleanupRef.current = null;
-        }
-      };
-      activeCleanupRef.current = cleanup;
-      target.addEventListener("pointermove", onPointerMove);
-      target.addEventListener("pointerup", cleanup);
-      target.addEventListener("pointercancel", cleanup);
+      startPointerDrag(event, {
+        onMove: (moveEvent) => {
+          latestPointer = dimension === "width" ? moveEvent.clientX : moveEvent.clientY;
+          if (frame === null) frame = window.requestAnimationFrame(commit);
+        },
+        onEnd: (end) => {
+          if (frame === null) return;
+          window.cancelAnimationFrame(frame);
+          if (end !== "dispose") commit();
+        },
+      });
     };
   const onResizeKeyDown =
     (dimension: "width" | "height", direction: -1 | 1) =>

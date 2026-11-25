@@ -2362,7 +2362,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     const resizeStrip = screen.getByTestId("sidebar-resize-strip");
     await act(async () => {
       fireEvent.pointerDown(resizeStrip, { button: 0, pointerId: 1, clientX: 300 });
-      fireEvent.pointerMove(window, { pointerId: 1, clientX: 200 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 200 });
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -2392,7 +2392,7 @@ describe("workbench session shell / library-shell-navigation", () => {
       const resizeStrip = screen.getByTestId("sidebar-resize-strip");
       await act(async () => {
         fireEvent.pointerDown(resizeStrip, { button: 0, pointerId: 2, clientX: 300 });
-        fireEvent.pointerMove(window, { pointerId: 2, clientX: 100 });
+        fireEvent.pointerMove(window, { buttons: 1, pointerId: 2, clientX: 100 });
         await Promise.resolve();
       });
       await settleAsyncRender();
@@ -2426,7 +2426,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
     await act(async () => {
       fireEvent.pointerDown(resizeStrip, { button: 0, pointerId: 1, clientX: 600 });
-      fireEvent.pointerMove(window, { pointerId: 1, clientX: 720 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 1, clientX: 720 });
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -2585,7 +2585,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
     await act(async () => {
       fireEvent.pointerDown(expandStrip, { button: 0, pointerId: 8, clientX: 300 });
-      fireEvent.pointerMove(window, { pointerId: 8, clientX: 360 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 8, clientX: 360 });
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -2610,7 +2610,7 @@ describe("workbench session shell / library-shell-navigation", () => {
 
     await act(async () => {
       fireEvent.pointerDown(resizeStrip, { button: 0, pointerId: 9, clientX: 360 });
-      fireEvent.pointerMove(window, { pointerId: 9, clientX: 100 });
+      fireEvent.pointerMove(window, { buttons: 1, pointerId: 9, clientX: 100 });
       await Promise.resolve();
     });
     await settleAsyncRender();

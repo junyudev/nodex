@@ -5,6 +5,7 @@ import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { useFileSearch } from "@/lib/use-file-search";
 import { describeFileSearchIncomplete } from "@/lib/file-search-status";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { FileTreeFilter } from "@/components/ui/file-tree-filter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1377,34 +1378,28 @@ export function WorkspaceFilesPanel({
     );
   }, [localFile, selectedPath]);
 
+  const startPointerDrag = usePointerDrag();
   const startResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
       const startX = event.clientX;
       const startWidth = treeWidth;
       let latestWidth = startWidth;
       const bodyWidth = bodyRef.current?.getBoundingClientRect().width ?? 0;
-
-      const onMove = (moveEvent: PointerEvent) => {
-        const nextWidth = clampWorkspaceTreeWidth(
-          startWidth - (moveEvent.clientX - startX),
-          bodyWidth,
-        );
-        latestWidth = nextWidth;
-        setTreeWidth(nextWidth);
-      };
-      const onUp = () => {
-        persistTabState({
-          ...persistedTabStateRef.current,
-          treeWidth: latestWidth,
-        });
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-      };
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp, { once: true });
+      startPointerDrag(event, {
+        onMove: (moveEvent) => {
+          latestWidth = clampWorkspaceTreeWidth(
+            startWidth - (moveEvent.clientX - startX),
+            bodyWidth,
+          );
+          setTreeWidth(latestWidth);
+        },
+        onEnd: (end) => {
+          if (end === "dispose") return;
+          persistTabState({ ...persistedTabStateRef.current, treeWidth: latestWidth });
+        },
+      });
     },
-    [persistTabState, treeWidth],
+    [persistTabState, startPointerDrag, treeWidth],
   );
 
   const resizeTreeByKeyboard = useCallback(

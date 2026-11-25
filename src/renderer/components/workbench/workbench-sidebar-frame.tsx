@@ -1,6 +1,4 @@
 import {
-  useEffect,
-  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -11,6 +9,7 @@ import {
   CODEX_SIDEBAR_FLOATING_ASIDE_CLASS,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
 } from "@/lib/codex-sidebar-auto-reveal";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 
 /** A pinned sidebar owns the outer start corners of the shared page surface. */
@@ -53,10 +52,8 @@ export function WorkbenchSidebarFrame({
   testId = "workbench-sidebar",
 }: WorkbenchSidebarFrameProps) {
   const [resizing, setResizing] = useState(false);
-  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const startPointerDrag = usePointerDrag();
   const resizeSurface: SidebarResizeSurface = floating ? "floating" : "inline";
-
-  useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   const setResizeActive = (active: boolean) => {
     setResizing(active);
@@ -64,63 +61,30 @@ export function WorkbenchSidebarFrame({
   };
 
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (resizeDisabled || event.button !== 0) return;
-    event.preventDefault();
-    resizeCleanupRef.current?.();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-
+    if (resizeDisabled) return;
     const resolveZoom = getWindowZoom ?? (() => 1);
     const startX = event.clientX / resolveZoom();
     const startWidth = width;
-    const pointerId = event.pointerId;
     let lastWidth = startWidth;
     let didMove = false;
-
-    setResizeActive(true);
-
-    const resolveNextWidth = (nextEvent: PointerEvent) =>
-      startWidth + (nextEvent.clientX / resolveZoom() - startX);
-
-    function stopResize() {
-      resizeCleanupRef.current = null;
-      setResizeActive(false);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerCancel);
-    }
-
-    function onPointerMove(nextEvent: PointerEvent) {
-      if (nextEvent.pointerId !== pointerId) return;
-      nextEvent.preventDefault();
-      didMove = didMove || nextEvent.clientX / resolveZoom() !== startX;
-      lastWidth = resolveNextWidth(nextEvent);
-      onResizeWidth(lastWidth, "live", resizeSurface);
-    }
-
-    function onPointerUp(nextEvent: PointerEvent) {
-      if (nextEvent.pointerId !== pointerId) return;
-      nextEvent.preventDefault();
-      if (didMove) onResizeWidth(resolveNextWidth(nextEvent), "end", resizeSurface);
-      stopResize();
-    }
-
-    function onPointerCancel(nextEvent: PointerEvent) {
-      if (nextEvent.pointerId !== pointerId) return;
-      if (didMove) onResizeWidth(lastWidth, "end", resizeSurface);
-      stopResize();
-    }
-
-    resizeCleanupRef.current = stopResize;
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerCancel);
+    const started = startPointerDrag(event, {
+      onMove: (moveEvent) => {
+        const pointerX = moveEvent.clientX / resolveZoom();
+        didMove = didMove || pointerX !== startX;
+        lastWidth = startWidth + pointerX - startX;
+        onResizeWidth(lastWidth, "live", resizeSurface);
+      },
+      onEnd: (end) => {
+        if (end !== "dispose" && didMove) onResizeWidth(lastWidth, "end", resizeSurface);
+        setResizeActive(false);
+      },
+    });
+    if (started) setResizeActive(true);
   };
 
   const handleResizeClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (resizeDisabled || event.detail !== 2) return;
     event.preventDefault();
-    resizeCleanupRef.current?.();
-    setResizeActive(false);
     onResizeWidth(CODEX_SIDEBAR_WIDTH_DEFAULT_PX, "reset", resizeSurface);
   };
 

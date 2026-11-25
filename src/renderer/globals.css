@@ -38,6 +38,15 @@
   button {
     @apply cursor-pointer;
   }
+
+  /* A pointer drag (lib/pointer-drag.ts) keeps the pressed pointer in this document. Embedded
+     guest pages take pointer input in their own process and would swallow its moves and release. */
+  :root[data-pointer-drag] {
+    user-select: none;
+  }
+  :root[data-pointer-drag] :is(iframe, webview) {
+    pointer-events: none !important;
+  }
 }
 
 @custom-variant dark (&:is(.dark *));

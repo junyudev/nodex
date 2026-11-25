@@ -1,5 +1,6 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
+import { usePointerDrag } from "@/lib/pointer-drag";
 import {
   useCallback,
   useEffect,
@@ -1277,32 +1278,18 @@ export function CalendarGrid({
     return Math.max(ALL_DAY_LANE_MIN_HEIGHT, Math.min(ALL_DAY_LANE_MAX_HEIGHT, Math.round(height)));
   }, []);
 
+  const startPointerDrag = usePointerDrag();
   const handleAllDayResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-
       const startY = event.clientY;
       const startHeight = allDayLaneHeight;
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        const delta = moveEvent.clientY - startY;
-        onAllDayLaneHeightChange(clampAllDayLaneHeight(startHeight + delta));
-      };
-      const onPointerUp = () => {
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("pointercancel", onPointerUp);
+      startPointerDrag(event, {
+        onMove: (moveEvent) => {
+          onAllDayLaneHeightChange(clampAllDayLaneHeight(startHeight + moveEvent.clientY - startY));
+        },
+      });
     },
-    [allDayLaneHeight, clampAllDayLaneHeight, onAllDayLaneHeightChange],
+    [allDayLaneHeight, clampAllDayLaneHeight, onAllDayLaneHeightChange, startPointerDrag],
   );
 
   const handleAllDaySeparatorKeyDown = useCallback(
