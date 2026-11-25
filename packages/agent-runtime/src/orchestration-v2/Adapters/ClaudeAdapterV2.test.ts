@@ -2669,6 +2669,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly refuseSourceRootsOnce?: boolean;
     readonly onHostPermissions?: ClaudeAdapterV2.ClaudeAgentSdkQuerySession["setHostPermissions"];
     readonly startupFrames?: ReadonlyArray<SDKMessage>;
+    readonly onEventRecorded?: Effect.Effect<void>;
     readonly resolveSettings?: (typeof import("@anthropic-ai/claude-agent-sdk"))["resolveSettings"];
   }) =>
     Effect.gen(function* () {
@@ -2902,6 +2903,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             if (event.type === "message.delivery.updated") {
               yield* Queue.offer(messageDeliveryReceipts, event);
             }
+            if (options?.onEventRecorded !== undefined) yield* options.onEventRecorded;
           }),
         ),
         Effect.forkScoped,
@@ -16764,7 +16766,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect("answers settled workflow members from a transcript, or the snapshot excerpt", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeWorkflowHarness;
+        const recordedEvents = yield* Queue.unbounded<void>();
+        const harness = yield* makeWorkflowHarnessWithOptions({
+          onEventRecorded: Queue.offer(recordedEvents, undefined).pipe(Effect.asVoid),
+        });
+        // Transcript reads use real filesystem I/O before emitting the answer.
+        const waitForRecordedEvent = Effect.fnUntraced(function* (matches: () => boolean) {
+          while (!matches()) yield* Queue.take(recordedEvents);
+        });
         const now = yield* DateTime.now;
 
         yield* harness.runtime.startTurn(
@@ -16825,9 +16834,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           harness.sdkMessages,
           workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001009", state: "done" }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => threadMessages(harness.events, secondThreadId).length === 2,
-          "settled workflow member answers",
         );
 
         const coordinator = workflowCoordinatorEvents(harness.events).at(-1)?.subagent;
@@ -16854,15 +16862,13 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* harness.offerAndWait(
           workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001015", state: "done" }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => workflowCoordinatorEvents(harness.events).length > coordinatorEventsBeforeRepeat,
-          "repeated settled workflow snapshot",
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () =>
             threadMessages(harness.events, firstThreadId).at(-1)?.message.text ===
             "A1 from the transcript\n\nA1 continued",
-          "continued workflow transcript answer",
         );
         assert.lengthOf(workflowMemberEvents(harness.events, 2), memberEventsBeforeRepeat);
         assert.lengthOf(threadMessages(harness.events, secondThreadId), 2);
@@ -16877,9 +16883,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* harness.offerAndWait(
           workflowSnapshot({ uuid: "00000000-0000-4000-8000-000000001016", state: "done" }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => threadMessages(harness.events, secondThreadId).length === 3,
-          "late workflow transcript answer",
         );
         assert.lengthOf(workflowMemberEvents(harness.events, 2), memberEventsBeforeRepeat);
         assert.equal(
@@ -16903,9 +16908,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attempt: 2,
           }),
         );
-        yield* awaitUntil(
-          () => currentAssistantAnswers().join("\n\n").includes("Second answer"),
-          "two-turn workflow member answer",
+        yield* waitForRecordedEvent(() =>
+          currentAssistantAnswers().join("\n\n").includes("Second answer"),
         );
         assert.equal(currentAssistantAnswers().join("\n\n"), "First answer\n\nSecond answer");
         assert.notDeepEqual(
@@ -16920,9 +16924,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attempt: 3,
           }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => workflowMemberEvents(harness.events, 1).at(-1)?.subagent.status === "running",
-          "retried workflow member running",
         );
         assert.notInclude(currentAssistantAnswers().join("\n\n"), "First answer");
         assert.notInclude(currentAssistantAnswers().join("\n\n"), "Second answer");
@@ -16947,11 +16950,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attempt: 3,
           }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () =>
             threadMessages(harness.events, firstThreadId).at(-1)?.message.text ===
             "A1 retry answer",
-          "retried workflow member answer",
         );
         assert.deepEqual(currentAssistantAnswers(), ["A1 retry answer"]);
         assert.lengthOf(threadMessages(harness.events, firstThreadId), answerEventsDuringRetry + 1);
@@ -16964,9 +16966,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attempt: 4,
           }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => currentAssistantAnswers().at(-1) === "Retry in progress.",
-          "retry progress answer",
         );
         yield* Queue.offer(
           harness.sdkMessages,
@@ -16977,9 +16978,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             omitResult: true,
           }),
         );
-        yield* awaitUntil(
+        yield* waitForRecordedEvent(
           () => currentAssistantAnswers().at(-1) === "No answer from this workflow attempt.",
-          "empty retry answer",
         );
         assert.deepEqual(currentAssistantAnswers(), ["No answer from this workflow attempt."]);
       }).pipe(
