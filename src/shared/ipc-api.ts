@@ -1,3 +1,4 @@
+import type { DeepLinkOpenEvents } from "./nodex-deeplink";
 import type { AgentProfile, AgentProfilesUpdate } from "./agents/profiles";
 import type { ChangelogFeed } from "./changelog-feed";
 import type { ProfileAgentDriver } from "./agents/registry";
@@ -3253,7 +3254,7 @@ export interface IpcApi
 /** The endpoint table guarantees argument tuples. */
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
-export interface IpcEvents {
+export interface IpcEvents extends DeepLinkOpenEvents {
   "settings:language:changed": import("./i18n/locales").LanguageSettings;
   "agent-plugins:app-event": PluginAppViewEvent;
   "skills:changed": SkillsChangedEvent;

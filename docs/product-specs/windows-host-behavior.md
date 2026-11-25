@@ -39,9 +39,10 @@ chat sections, New chat and Quit. Sections show three chats before a More submen
 Titles use at most 35 Unicode codepoints. Existing chat and Workspace owners supply
 the bounded catalog, activity, unread state and ordering; the tray owns no history.
 
-New chat opens the current Project's default draft, or a projectless draft when
-there is no Project context. Choosing a chat resolves its current Workspace
-placement. Quit asks for confirmation while local chats or clock Automations would
+The menu lists chats from the personal Space. Choosing a chat resolves its current
+Workspace placement there. New chat opens the default draft for the current Project
+in the personal Space. With no personal Project in focus, it opens a projectless draft
+in the personal Space. Quit asks for confirmation while local chats or clock Automations would
 be interrupted, then uses ordinary graceful Desktop shutdown. Cancel keeps Nodex
 running. Process termination bypasses this interactive confirmation.
 

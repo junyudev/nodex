@@ -253,17 +253,17 @@ const pageOwnershipPathSnapshot = () => ({
   },
 });
 
-const pageLocationSnapshot = () => ({
+const pageLocationSnapshot = (projectId: string | null = "project:test") => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
   value: {
     kind: "page_location" as const,
-    value: { page_id: "page:one", project_id: "project:test" },
+    value: { page_id: "page:one", project_id: projectId },
   },
 });
 
-const viewLocationSnapshot = () => ({
+const viewLocationSnapshot = (projectId: string | null = "project:test") => ({
   contract_version: 4 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
@@ -273,7 +273,7 @@ const viewLocationSnapshot = () => ({
       view_id: "view:test",
       data_source_id: "source:test",
       database_id: "database:test",
-      project_id: "project:test",
+      ...(projectId === null ? {} : { project_id: projectId }),
     },
   },
 });
@@ -666,6 +666,24 @@ describe("Core Library Module Adapter", () => {
       { kind: "page_location", page_id: "page:one" },
       { kind: "view_location", view_id: "view:test" },
     ]);
+  });
+
+  test("keeps Library Page and View locations without a Project", async () => {
+    const client = new FakeCoreClient();
+    client.enqueueRead(pageLocationSnapshot(null));
+    client.enqueueRead(viewLocationSnapshot(null));
+    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
+
+    await expect(adapter.findPageLocation("page:one")).resolves.toEqual({
+      pageId: "page:one",
+      projectId: null,
+    });
+    await expect(adapter.findViewLocation("view:test")).resolves.toEqual({
+      viewId: "view:test",
+      dataSourceId: "source:test",
+      databaseId: "database:test",
+      projectId: null,
+    });
   });
 
   test("maps Library lifecycle metadata without a Project default or implicit query", async () => {
