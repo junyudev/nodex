@@ -1488,6 +1488,7 @@ function AppShellTabContextMenu({
       <div
         className="contents"
         onContextMenu={(event) => {
+          if (!isEventWithinCurrentTarget(event)) return;
           event.preventDefault();
           void openNativeMenu();
         }}

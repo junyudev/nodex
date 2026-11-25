@@ -155,6 +155,7 @@ import {
 } from "../database-view-mutation-history";
 import { databaseListNestingContinuations } from "./database-list-nesting-lines";
 import { DATABASE_LIST_THEME_CLASS_NAME } from "./database-list-theme";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
   endLocalBlockDragSession,
@@ -1720,7 +1721,7 @@ export function DatabaseList({
   useSurfaceHistoryFocus(hostRef, mutationHistory);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.defaultPrevented || dndActive) return;
+    if (event.defaultPrevented || dndActive || !isEventWithinCurrentTarget(event)) return;
     if (
       handleDatabaseViewMutationHistoryKeyDown({
         ...historyInput,

@@ -37,6 +37,7 @@ import {
 } from "../../../../shared/clipboard-paste";
 import type { ClipboardPastePayload } from "../../../../shared/types";
 import type { NfmPasteTarget } from "./nfm-paste-target";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { attachNativePastePayload } from "./nfm-paste-event";
 import {
   type NfmPageMentionMenuEditor,
@@ -485,6 +486,7 @@ export function NfmEditorContextMenu({
 
   const handleContextMenuCapture = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
+      if (!isEventWithinCurrentTarget(event)) return;
       pendingMentionTargetRef.current = resolvePageMentionContextTarget(editor, event.target);
     },
     [editor],

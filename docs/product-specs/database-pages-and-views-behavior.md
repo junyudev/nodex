@@ -567,8 +567,9 @@ conflict rolls back without clearing the readable List; a new gesture uses fresh
 occurrence authority. Successful moves are silent.
 Their opaque Core recipe enters the window's bounded content history for the
 same Library, presentation route, and Store epoch. Page body, Page title, Board and
-List shortcuts replay this same interaction order; native input drafts,
-comboboxes, menus and independent editors retain their input boundaries.
+List shortcuts replay this same interaction order. Native input drafts,
+comboboxes, menus, popovers such as Linked chats, and independent editors
+retain their input boundaries.
 
 The content owner reserves each data gesture before asynchronous preparation and
 serializes its forward commands and inverses. Later replies fill their original

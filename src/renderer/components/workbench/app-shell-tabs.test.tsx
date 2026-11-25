@@ -1669,6 +1669,33 @@ describe("AppShellTabs leading tab", () => {
     },
   );
 
+  test.each(["native", "browser"] as const)(
+    "keeps the %s Chat tab menu closed when right-clicking a portaled dialog",
+    async (menu) => {
+      const showContextMenu = vi.fn(async () => null);
+      const bridge = window as unknown as { electronBridge?: Record<string, unknown> };
+      const previousBridge = bridge.electronBridge;
+      if (menu === "native") bridge.electronBridge = { ...previousBridge, showContextMenu };
+      try {
+        const view = renderAppShellTabs({
+          leadingTab: makeLeadingTab({
+            selected: true,
+            actions: createPortal(<h2>Snooze until</h2>, document.body),
+            contextMenuItems: [
+              { id: "move-right", label: "Move to right pane", onSelect: vi.fn() },
+            ],
+          }),
+        });
+        const title = view.getByRole("heading", { name: "Snooze until" });
+        await interact(() => fireEvent.contextMenu(title, { button: 2 }));
+        expect(showContextMenu).not.toHaveBeenCalled();
+        expect(view.queryByRole("menuitem", { name: "Move to right pane" })).toBeNull();
+      } finally {
+        bridge.electronBridge = previousBridge;
+      }
+    },
+  );
+
   test("the desktop shows the leading tab menu natively, with each item's icon", async () => {
     const showContextMenu = vi.fn(async () => "move-right");
     const onMoveLeft = vi.fn();

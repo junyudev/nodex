@@ -1,4 +1,5 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
+import { PropertyOptionPicker } from "@/components/database/property-option-picker";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -54,7 +55,13 @@ const page = (input: {
   height: 44,
 });
 
-const TestPage = ({ item }: { readonly item: DatabaseListPageRow }) => {
+const TestPage = ({
+  item,
+  children,
+}: {
+  readonly item: DatabaseListPageRow;
+  readonly children?: ReactNode;
+}) => {
   const { attributes, listeners, setNodeRef, active, target } = useDatabaseListPageDnd(item);
   return (
     <div
@@ -66,7 +73,7 @@ const TestPage = ({ item }: { readonly item: DatabaseListPageRow }) => {
       data-target={target?.kind === "page" ? target.pointerEdge : undefined}
     >
       {item.row.title}
-      <button type="button">Property</button>
+      {children ?? <button type="button">Property</button>}
     </div>
   );
 };
@@ -226,6 +233,57 @@ describe("Database List dnd-kit controller", () => {
     expect(document.body.querySelector("[data-database-list-drag-overlay=true]")).toBeNull();
     expect(commits).toEqual([]);
   });
+
+  test.each(["mouse", "touch"] as const)(
+    "keeps a List row from dragging when a %s press starts in its Priority picker",
+    async (input) => {
+      const source = page({ key: "source", pageId: "Source", top: 0 });
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rect(0));
+      const view = render(
+        <DatabaseListDndProvider
+          rows={[source]}
+          selection={emptyDatabaseListSelection()}
+          scrollerRef={{ current: document.createElement("div") }}
+          disabled={false}
+          onCommit={() => undefined}
+        >
+          <TestPage item={source}>
+            <PropertyOptionPicker
+              label="Priority"
+              openOnMount
+              mode="single"
+              options={[{ id: "p1-high", name: "High" }]}
+              selectedIds={["p1-high"]}
+              onSelectedIdsChange={() => undefined}
+            />
+          </TestPage>
+        </DatabaseListDndProvider>,
+      );
+      const options = await view.findByRole("listbox");
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          if (input === "mouse") {
+            fireEvent.mouseDown(options, { clientX: 20, clientY: 20, buttons: 1 });
+            fireEvent.mouseMove(document, { clientX: 40, clientY: 40, buttons: 1 });
+          } else {
+            fireEvent.touchStart(options, { touches: [{ clientX: 20, clientY: 20 }] });
+            vi.advanceTimersByTime(200);
+          }
+          await Promise.resolve();
+        });
+        expect(document.body.querySelector("[data-database-list-drag-overlay=true]")).toBeNull();
+      } finally {
+        await act(async () => {
+          if (input === "mouse") fireEvent.mouseUp(document);
+          else fireEvent.touchEnd(options, { touches: [] });
+          vi.runOnlyPendingTimers();
+          await Promise.resolve();
+        });
+        vi.useRealTimers();
+      }
+    },
+  );
 
   test("silently settles when a Page is returned to its original sibling slot", async () => {
     const first = page({ key: "first", pageId: "First", top: 0 });

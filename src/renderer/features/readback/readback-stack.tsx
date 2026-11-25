@@ -28,6 +28,7 @@ import { APP_SHELL_READBACK_LAYER_INDEX } from "@/lib/app-shell-layers";
 import { toastFailure } from "@/lib/failure-toast";
 import { projectDetailQueryOptions, projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { useSessionRowStatus } from "@/lib/use-session-execution";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { cn } from "@/lib/utils";
 import { replyToReadback, stopReadbackRun } from "./readback-actions";
 import type { ReadbackCloseReason, ReadbackStore } from "./readback-store";
@@ -83,8 +84,9 @@ function useReadbackChat(readback: Readback) {
   };
 }
 
-/** A click that follows a link, presses a control or ends a text selection is not "open". */
+/** Opening the chat requires a click on the Readback text itself. */
 function opensChat(event: MouseEvent<HTMLElement>) {
+  if (!isEventWithinCurrentTarget(event)) return false;
   if (event.target instanceof Element && event.target.closest("a, button, textarea")) return false;
   return (event.currentTarget.ownerDocument.getSelection()?.toString() ?? "").length === 0;
 }

@@ -24,6 +24,7 @@ import {
   useDatabaseViewPresentation,
   databaseOperationsRequirePlacementFence,
 } from "@/lib/database-view-presentation";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
   type DatabaseViewLayout,
@@ -1485,6 +1486,7 @@ function BoardDatabaseViewSurface({
   useSurfaceHistoryFocus(surfaceRef, mutationHistory);
 
   const handleListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isEventWithinCurrentTarget(event)) return;
     if (
       handleDatabaseViewMutationHistoryKeyDown({
         ...historyInput,

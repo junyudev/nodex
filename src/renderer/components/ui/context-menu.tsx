@@ -1,4 +1,5 @@
 import { mergeProps } from "@base-ui/react/merge-props";
+import type { BaseUIEvent } from "@base-ui/react/types";
 import { handleMenuEditorKeyDown } from "./menu-keyboard";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import {
@@ -16,9 +17,11 @@ import {
   type ReactElement,
   type ReactNode,
   type RefObject,
+  type SyntheticEvent,
 } from "react";
 
 import { APP_SHELL_FLOATING_UI_LAYER_CLASS } from "@/lib/app-shell-layers";
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { cn } from "@/lib/utils";
 import { NodexFloatingLayerProvider, useNodexFloatingLayerIndex } from "./floating-layer";
 import { makeNodexFloatingSurfaceBoundaryStyle } from "./floating-surface";
@@ -114,6 +117,10 @@ export interface NodexContextMenuTriggerProps {
   readonly disabled?: boolean;
 }
 
+function ignorePortaledContextMenuInput(event: BaseUIEvent<SyntheticEvent>) {
+  if (!isEventWithinCurrentTarget(event)) event.preventBaseUIHandler();
+}
+
 export const NodexContextMenuTrigger = forwardRef<HTMLDivElement, NodexContextMenuTriggerProps>(
   function NodexContextMenuTrigger({ children, ...props }, ref) {
     if (!isValidElement(children)) {
@@ -123,6 +130,8 @@ export const NodexContextMenuTrigger = forwardRef<HTMLDivElement, NodexContextMe
       <ContextMenuPrimitive.Trigger
         ref={ref}
         data-slot="context-menu-trigger"
+        onContextMenu={ignorePortaledContextMenuInput}
+        onTouchStart={ignorePortaledContextMenuInput}
         render={children}
         {...props}
       />

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { queryKeys } from "@/lib/query-keys";
 import { LinkOpeningProvider } from "@/lib/web-link-navigation";
@@ -231,6 +231,32 @@ describe("Readback stack", () => {
     });
     expect(opened.map((readback) => readback.runId)).toEqual([RUN_ID]);
     expect(closed).toEqual(["opened"]);
+  });
+
+  test("dismissing an image preview leaves the Readback and its chat alone", async () => {
+    const { card, opened, closed } = await renderStack(
+      makeReadback({ text: "![Build diagram](https://example.com/build.png)" }),
+    );
+    const image = screen.getByRole("img", { name: "Build diagram" });
+    await act(async () => {
+      fireEvent.load(image);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Build diagram" }));
+      await Promise.resolve();
+    });
+    const preview = screen.getByRole("dialog", { name: "Image preview" });
+    const emptySpace = within(preview).getByTestId("image-preview-dismiss-area");
+    await act(async () => {
+      fireEvent.click(emptySpace);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("dialog", { name: "Image preview" })).toBeNull();
+    expect(opened).toEqual([]);
+    expect(closed).toEqual([]);
+    expect(card()).not.toBeNull();
   });
 
   test("offers Stop only while its own Run is working, and stops exactly that Run", async () => {

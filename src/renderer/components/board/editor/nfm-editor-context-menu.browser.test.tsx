@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { NodexPopover, NodexPopoverContent } from "@/components/ui/popover";
+import { NfmCreateLinkDialogSurface } from "./nfm-link-toolbar-surface";
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import { captureNfmPasteTarget, createNfmPasteTargetPlugin } from "./nfm-paste-target";
 import { readNativePastePayload } from "./nfm-paste-event";
-import { NfmEditorContextMenuPreview, runNfmEditorContextCommand } from "./nfm-editor-context-menu";
+import {
+  NfmEditorContextMenu,
+  NfmEditorContextMenuPreview,
+  runNfmEditorContextCommand,
+} from "./nfm-editor-context-menu";
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
 
@@ -17,6 +23,34 @@ afterEach(() => {
 });
 
 describe("markdown editor context menu", () => {
+  test("right-clicking the link picker preserves the input's context menu", async () => {
+    const view = render(
+      <NfmEditorContextMenu editor={{ isEditable: true }}>
+        <NodexPopover open>
+          <NodexPopoverContent>
+            <NfmCreateLinkDialogSurface
+              urlLabel="Page or URL"
+              urlPlaceholder="Paste or type a link"
+              urlValue=""
+              submitLabel="Add link"
+              onUrlChange={() => undefined}
+              onUrlKeyDown={() => undefined}
+              onSubmit={() => undefined}
+            />
+          </NodexPopoverContent>
+        </NodexPopover>
+      </NfmEditorContextMenu>,
+    );
+    const input = await view.findByRole("textbox", { name: "Page or URL" });
+    let browserMenuAllowed = false;
+    await act(async () => {
+      browserMenuAllowed = fireEvent.contextMenu(input, { button: 2 });
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("menuitem", { name: "Paste" })).toBeNull();
+    expect(browserMenuAllowed).toBe(true);
+  });
+
   test("does not retry a failed native read against a newer browser clipboard", async () => {
     const originalApi = window.api;
     const originalClipboard = navigator.clipboard;

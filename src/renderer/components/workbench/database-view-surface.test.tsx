@@ -87,6 +87,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 const optionRuntime = vi.hoisted(() => ({ read: vi.fn() }));
 const pageChatRuntime = vi.hoisted(() => ({
+  readWindow: vi.fn<typeof import("@/lib/page-chat-runtime").readPageChatWindow>(),
   summaries: [] as Array<{
     pageId: string;
     relatedCount: number;
@@ -108,6 +109,7 @@ vi.mock("@/lib/page-chat-runtime", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/page-chat-runtime")>();
   return {
     ...original,
+    readPageChatWindow: pageChatRuntime.readWindow,
     readPageChatActivitySummaries: async () => ({
       summaries: pageChatRuntime.summaries,
       projectionRevision: 1,
@@ -788,6 +790,7 @@ describe("DatabaseViewSurface", () => {
   beforeEach(() => {
     resetContextualKeyboardActionRegistryForTests();
     pageChatRuntime.summaries = [];
+    pageChatRuntime.readWindow.mockReset();
     optionRuntime.read.mockReset().mockImplementation(async (_context, property) => ({
       options:
         property.propertyId === statusPropertyId
@@ -1947,7 +1950,7 @@ describe("DatabaseViewSurface", () => {
   });
 
   test.each(["board", "list"] as const)(
-    "%s routes data Undo through its owner and keeps nested input history separate",
+    "%s keeps Undo scoped to the view when a Property input or Linked chats has focus",
     async (layout) => {
       const current = layout === "board" ? boardModel() : listModel();
       const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(current));
@@ -2009,10 +2012,46 @@ describe("DatabaseViewSurface", () => {
         commitOperations,
       });
       commitOperations.mockClear();
+      pageChatRuntime.summaries = [
+        {
+          pageId: "page-focused",
+          relatedCount: 2,
+          workingCount: 0,
+          waitingOnApprovalCount: 0,
+          waitingOnUserInputCount: 0,
+          errorCount: 0,
+          unreadCount: 0,
+          soleSessionId: null,
+          work: { activeChat: null, latestReport: null, managedSessionCount: 0 },
+          runtimeSessionIds: [],
+        },
+      ];
+      pageChatRuntime.readWindow.mockResolvedValue({
+        items: ["Investigation", "Follow-up"].map((displayTitle, index) => ({
+          sessionId: `session-${index}`,
+          projectId: "project-1",
+          projectName: "Nodex",
+          displayTitle,
+          threadId: null,
+          executionRef: null,
+          threadPreview: "",
+          threadStatus: null,
+          threadArchived: false,
+          unread: false,
+          report: null,
+          sessionArchived: false,
+          conversationRecencyAt: 1,
+          linkedAt: timestamp,
+        })),
+        nextCursor: null,
+        hasMore: false,
+        projectionRevision: 1,
+      });
       const screen = render(
         <DatabaseViewSurface
           model={current}
           presentationLayout={layout}
+          pageActionPort={{ openRelatedChat: () => undefined }}
           searchQuery=""
           onOpenPage={() => undefined}
           mutationHistory={history}
@@ -2032,8 +2071,28 @@ describe("DatabaseViewSurface", () => {
           await Promise.resolve();
         });
         expect(commitOperations).not.toHaveBeenCalled();
+        const linkedChats = await screen.findByRole("button", { name: "2 linked chats" });
         await act(async () => {
           nestedInput.remove();
+          fireEvent.click(linkedChats);
+          await Promise.resolve();
+        });
+        const picker = await screen.findByRole("dialog", { name: "Linked chats" });
+        const chat = await within(picker).findByRole("button", { name: /^Investigation/u });
+        await act(async () => {
+          chat.focus();
+          fireEvent.keyDown(chat, { key: "z", metaKey: true });
+          await Promise.resolve();
+        });
+        expect(commitOperations).not.toHaveBeenCalled();
+        await act(async () => {
+          fireEvent.keyDown(chat, { key: "Escape" });
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(screen.queryByRole("dialog", { name: "Linked chats" })).toBeNull(),
+        );
+        await act(async () => {
           row.focus();
           fireEvent.keyDown(row, { key: "z", metaKey: true });
           fireEvent.keyDown(row, { key: "z", metaKey: true });

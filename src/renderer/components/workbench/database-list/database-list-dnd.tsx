@@ -34,10 +34,12 @@ import {
   type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type SyntheticEvent,
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { isEventWithinCurrentTarget } from "@/lib/react-event-ownership";
 import { StatusIcon } from "@/lib/status-presentation";
 import { cn } from "@/lib/utils";
 import type { DatabaseListMoveTargetV2 } from "../../../../shared/database-module-v2";
@@ -80,8 +82,9 @@ export const DATABASE_LIST_DND_INTERACTIVE_SELECTOR = [
   "[contenteditable=true]",
 ].join(",");
 
-const activatorIsAllowed = (event: { readonly nativeEvent?: Event }): boolean => {
-  const target = event.nativeEvent?.target;
+const activatorIsAllowed = (event: SyntheticEvent): boolean => {
+  if (!isEventWithinCurrentTarget(event)) return false;
+  const target = event.target;
   return !(target instanceof Element && target.closest(DATABASE_LIST_DND_INTERACTIVE_SELECTOR));
 };
 
