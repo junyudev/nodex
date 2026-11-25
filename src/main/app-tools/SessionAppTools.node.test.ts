@@ -47,9 +47,10 @@ test("preserves every target within the shared wait budget and explicitly defers
   const result = boundSessionWaitResult(input);
   assert.isAtMost(toolResultBytes({ ...result }), 32 * 1024);
   assert.deepEqual(
-    result.targets.map(({ progress: _progress, ...target }) => target),
+    result.targets.map(({ progress: _progress, url: _url, ...target }) => target),
     input.targets.map(({ progress: _progress, ...target }) => target),
   );
+  assert.equal(result.targets[0]?.url, "nodex://sessions/session%3A0");
   assert.isTrue(result.targets.some((target) => target.progress?.reason === "response_budget"));
   assert.isTrue(result.targets.some((target) => target.progress?.latestMessage !== null));
   assert.deepEqual(result.errors, []);

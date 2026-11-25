@@ -34,7 +34,27 @@ const input: AppToolInvocation = {
   },
 };
 const output = {
-  data: { libraryId: "library", project: null },
+  data: {
+    libraryId: "library",
+    project: null,
+    databases: [
+      {
+        databaseId: "database",
+        name: "Planning",
+        isBound: true,
+        dataSources: [],
+        views: [
+          {
+            viewId: "view:planning",
+            dataSourceId: "source",
+            name: "Plans",
+            layout: "list",
+            isDefault: true,
+          },
+        ],
+      },
+    ],
+  },
 };
 
 it.effect("uses captured native-call identity and validates the semantic result", () =>
@@ -89,7 +109,19 @@ it.effect("uses captured native-call identity and validates the semantic result"
           }),
       } as unknown as NodexAgentApplication["Service"]),
     );
-    assert.deepStrictEqual((yield* execute(input)).structuredContent, output);
+    const observed = yield* execute(input);
+    assert.deepStrictEqual(observed.structuredContent, {
+      data: {
+        ...output.data,
+        databases: output.data.databases.map((database) => ({
+          ...database,
+          views: database.views.map((view) => ({
+            ...view,
+            url: "nodex://views/view%3Aplanning",
+          })),
+        })),
+      },
+    });
     invalidOutput = true;
     assert.strictEqual((yield* execute(input)).isError, true);
     conflict = true;

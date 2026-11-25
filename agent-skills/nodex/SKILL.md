@@ -10,6 +10,8 @@ Run `nodex` directly for Nodex content, including from scripts. Use
 If a connection or identity error stops a batch, follow its recovery before
 resuming. Keep the managed binding so Core records Agent authorship.
 
+When a reply names a Nodex Page, Database View or chat the person can open, use a Markdown reference. Copy the tool’s `url` when it provides one. Use `<nodex://pages/ID>` or `<nodex://sessions/ID>` for live titles, `<nodex://views/ID>` for a View, or `[text](nodex://pages/ID)` when your own words read better. Append `#BLOCK_ID` to a Page URL to point to one Block. Write references outside code spans.
+
 ## Choose a route for the task
 
 | Task                                          | Default route                                                                                               |

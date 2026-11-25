@@ -176,7 +176,10 @@ it.effect("reprojects displayed occurrence conditions through exact Agent author
     assert.equal(result.readiness, "observed");
     assert.equal(result.collapseTreatment, "captured_selection");
     assert.equal(result.display.coverage.totalOccurrenceCount, null);
-    assert.deepEqual(result.query.result.rows, [["page:target", "Core title"]]);
+    assert.deepEqual(result.query.result.columns, ["page_id", "title", "url"]);
+    assert.deepEqual(result.query.result.rows, [
+      ["page:target", "Core title", "nodex://pages/page%3Atarget"],
+    ]);
     assert.deepEqual(requests[0], {
       kind: "capture_view",
       sceneOwner: { kind: "library" },

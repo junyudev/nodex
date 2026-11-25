@@ -16,6 +16,7 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { make as makeAppToolOperation } from "./AppToolOperation";
 import { captureAppToolAuthority, type AppToolCaller } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 /** Core's refusal tells the Agent what to do instead; other failures keep a stable code. */
@@ -87,11 +88,13 @@ export const makeWithCapture = (
           operationId: operation.operationId,
         });
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-      return toolSuccess({
-        operationId: operation.operationId,
-        recorded: true,
-        ...result.value.value,
-      });
+      return toolSuccess(
+        withSessionUrl({
+          operationId: operation.operationId,
+          recorded: true,
+          ...result.value.value,
+        }),
+      );
     });
     const replyToOrigin = Effect.fn("WorkAppTools.replyToOrigin")(function* (
       input: AppToolInvocation,

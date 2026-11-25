@@ -1,4 +1,5 @@
 use crate::cli::MutationArgs;
+use crate::deeplink::LinkedPage;
 use crate::error::{CliError, CliErrorCode};
 use crate::input::read_json;
 use crate::runtime::{CommandOutput, map_client_error, map_core_error, selected_project};
@@ -50,8 +51,9 @@ pub(crate) struct PageBatchOutput {
     pub commit_seq: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<nodex_core_contracts::library::LibraryCommitValue>,
-    #[serde(flatten)]
-    pub result: nodex_core_contracts::library::LibraryAgentCreatePagesResult,
+    pub pages: Vec<LinkedPage<nodex_core_contracts::library::LibraryAgentCreatedPage>>,
+    pub document_commits: Vec<nodex_core_contracts::library::LibraryBlockTransferDocumentCommit>,
+    pub affected_database_ids: Vec<String>,
 }
 fn default_true() -> bool {
     true
@@ -131,7 +133,14 @@ pub(crate) fn execute(
             .iter()
             .any(|field| field == "commit")
             .then(|| committed.outcome().clone()),
-        result: pages.clone(),
+        pages: pages
+            .pages
+            .iter()
+            .cloned()
+            .map(|page| LinkedPage::new(page, |page| &page.page_id))
+            .collect::<Result<_, _>>()?,
+        document_commits: pages.document_commits.clone(),
+        affected_database_ids: pages.affected_database_ids.clone(),
     })
     .map(CommandOutput::Json)
     .map_err(|error| CliError::new(CliErrorCode::Internal, error.to_string()))

@@ -121,7 +121,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["members", "list"] => document::<Vec<Member>>(),
         ["members", "me"] => document::<Member>(),
         ["tree"] => document::<crate::runtime::TreeRoot>(),
-        ["read"] => document::<LibraryPageProjectionFile>(),
+        ["read"] => document::<crate::deeplink::LinkedPage<LibraryPageProjectionFile>>(),
         ["page", "show"] => document::<crate::runtime::PageShowResult>(),
         ["page", "prepare"] => document::<LibraryPageOperationPreparation>(),
         ["sed"] => document::<crate::runtime::SedOutput>(),

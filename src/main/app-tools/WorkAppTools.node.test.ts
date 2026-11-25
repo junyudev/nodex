@@ -145,6 +145,7 @@ it.effect("start_work admits the caller's stable operation and records a valid P
       recorded: true,
       pageId: "page",
       sessionId: "session",
+      url: "nodex://sessions/session",
       launchId: "launch",
     });
     assert.deepEqual(inputs[0], inputs[1]);

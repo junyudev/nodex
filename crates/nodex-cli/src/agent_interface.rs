@@ -12,7 +12,7 @@ use crate::error::{CliError, CliErrorCode};
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
 const MACHINE_HELP_SCHEMA_VERSION: u32 = 4;
-const MARKDOWN_REVISION: u32 = 7;
+const MARKDOWN_REVISION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -2049,9 +2049,12 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 
 fn result_revision(path: &[&str]) -> u32 {
     match path {
-        ["context"] | ["search"] | ["page", "file", "read"] => 2,
-        ["read"] | ["sql", _] | ["page", "properties", _] | ["backup", "create"] => 2,
-        ["page", "create" | "create-batch" | "move" | "duplicate"] => 2,
+        ["context"] | ["sql", _] | ["backup", "create"] => 2,
+        ["page", "file", "read"] | ["page", "properties", "prepare-batch"] => 2,
+        ["ls" | "tree" | "sed" | "patch"] | ["block", _] | ["draft", "apply"] => 2,
+        ["page", "show" | "insert" | "replace" | "rename"] => 2,
+        ["read" | "search"] | ["page", "properties", "set" | "apply"] => 3,
+        ["page", "create" | "create-batch" | "move" | "duplicate"] => 3,
         ["data-source", "configure"] => 3,
         ["data-source", _] => 2,
         _ => 1,

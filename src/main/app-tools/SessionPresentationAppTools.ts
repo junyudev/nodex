@@ -13,6 +13,11 @@ import type { WorkbenchAppToolContext } from "./WorkbenchControl";
 import { make as makeTarget, type SessionPresentationOpening } from "./SessionPresentationTarget";
 import { make as makeWindowSelection } from "./SessionPresentationWindow";
 import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
+import {
+  buildPageDeepLink,
+  buildSessionDeepLink,
+  buildViewDeepLink,
+} from "../../shared/nodex-deeplink";
 import { isAgentPresentedBrowserUrl } from "../../shared/browser-url-policy";
 
 /** What the receipt reports was opened, so an Agent never has to guess how a file is shown. */
@@ -20,6 +25,10 @@ const presentedSurface = (opening: SessionPresentationOpening) => {
   if ("existingTabId" in opening)
     return { surface: opening.surface, ...(opening.url ? { url: opening.url } : {}) };
   const { kind, config } = opening.surface;
+  if (kind === "page_stage")
+    return { surface: kind, url: buildPageDeepLink({ pageId: config.pageId }) };
+  if (kind === "db_view" && config.target.kind === "database-view")
+    return { surface: kind, url: buildViewDeepLink({ viewId: config.target.databaseViewId }) };
   return { surface: kind, ...(kind === "browser" && config.url ? { url: config.url } : {}) };
 };
 
@@ -142,7 +151,11 @@ export const make = Effect.gen(function* () {
       window,
       sessionId,
       ...receipt,
-      ...(opening ? presentedSurface(opening) : {}),
+      ...(opening
+        ? presentedSurface(opening)
+        : receipt.error
+          ? {}
+          : { url: buildSessionDeepLink({ sessionId }) }),
       ...(reloaded === undefined ? {} : { reloaded }),
     });
   });

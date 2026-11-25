@@ -85,7 +85,7 @@ fn every_leaf_exposes_machine_readable_help_without_core() {
     assert_eq!(document["command"], "nodex page move");
     assert_eq!(document["capability"], "pageWrite");
     assert_eq!(document["effect"], "write");
-    assert_eq!(document["resultSchemaRevision"], 2);
+    assert_eq!(document["resultSchemaRevision"], 3);
 }
 
 #[test]

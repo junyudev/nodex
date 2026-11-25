@@ -1,3 +1,7 @@
+use crate::error::{CliError, CliErrorCode};
+use serde::Serialize;
+use utoipa::ToSchema;
+
 const PROTOCOL_PREFIX: &str = "nodex://";
 const MAX_ID_BYTES: usize = 512;
 
@@ -33,6 +37,35 @@ pub fn build(kind: NodexDeepLinkKind, id: &str) -> Option<String> {
         kind.path(),
         id = percent_encode(id)
     ))
+}
+
+pub(crate) fn resource_url(kind: NodexDeepLinkKind, id: &str) -> Result<String, CliError> {
+    build(kind, id).ok_or_else(|| {
+        CliError::new(
+            CliErrorCode::Internal,
+            "Validated Core identity cannot be encoded as a Nodex link",
+        )
+    })
+}
+
+pub(crate) fn page_url(id: &str) -> Result<String, CliError> {
+    resource_url(NodexDeepLinkKind::Page, id)
+}
+
+/// Adds a link to a primary CLI result while retaining its typed Core fields.
+#[derive(Serialize, ToSchema)]
+pub(crate) struct LinkedPage<T> {
+    #[serde(flatten)]
+    #[schema(inline)]
+    pub page: T,
+    pub url: String,
+}
+
+impl<T> LinkedPage<T> {
+    pub(crate) fn new(page: T, page_id: impl FnOnce(&T) -> &str) -> Result<Self, CliError> {
+        let url = page_url(page_id(&page))?;
+        Ok(Self { page, url })
+    }
 }
 
 pub fn parse(value: &str) -> Option<NodexDeepLink> {

@@ -518,6 +518,8 @@ HTML style tags are read but never written.
 ### Links and mentions
 
 A link to a Page with its own text stays a link: `[Roadmap](nodex://pages/ID)`.
+Append `#BLOCK_ID` to open a specific Block in the Page, as in
+`[Milestone](nodex://pages/ID#BLOCK_ID)`.
 An autolink to a Page, `<nodex://pages/ID>`, is a Page mention, which shows the
 Page's current title. An autolink to a Session, `<nodex://sessions/ID>`, is a
 chat mention, which shows the chat's current title. A mention's text is never in the exact text, so

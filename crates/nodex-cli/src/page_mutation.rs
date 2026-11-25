@@ -22,6 +22,7 @@ use crate::cli::{
     BlockDeleteArgs, BlockInsertArgs, BlockMoveArgs, BlockUpdateArgs, PageInsertArgs,
     PageRenameArgs, PageReplaceArgs, PatchArgs,
 };
+use crate::deeplink::page_url;
 use crate::error::{CliError, CliErrorCode};
 use crate::patch::PatchDocument;
 use crate::runtime::{
@@ -617,6 +618,8 @@ pub(crate) struct SemanticMutationResult<'a> {
     pub operation_id: String,
     pub duplicate: bool,
     pub page_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     pub document_id: String,
     pub generation: i64,
     pub head_seq: i64,
@@ -669,6 +672,7 @@ pub(crate) fn semantic_mutation_result(
         operation_id: receipt.mutation.operation_id.clone(),
         duplicate: receipt.mutation.duplicate,
         page_id: page_id.map(str::to_owned),
+        url: page_id.map(page_url).transpose()?,
         document_id: outcome.document_id.clone(),
         generation: outcome.generation,
         head_seq: outcome.head_seq,

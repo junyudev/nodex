@@ -826,6 +826,10 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     assert!(created["result"]["commit"].is_object());
     assert_eq!(created["result"]["pages"].as_array().unwrap().len(), 2);
     for page in created["result"]["pages"].as_array().unwrap() {
+        assert_eq!(
+            page["url"],
+            format!("nodex://pages/{}", page["page_id"].as_str().unwrap())
+        );
         assert_eq!(page["block_ids"], serde_json::json!([]));
         assert_eq!(page["body_blocks_created"], 1);
         assert_eq!(
@@ -1060,6 +1064,7 @@ fn verify_direct_body_and_title_edits(home: &Path) {
     assert_eq!(stale["ok"], false);
     let after_title = success(home, &["read", page]);
     assert_eq!(after_title["content"], initial["content"]);
+    assert_eq!(after_title["url"], format!("nodex://pages/{page}"));
     let block = serde_json::json!({ "local_id": "first", "block_type": "paragraph", "props": {}, "content": { "kind": "value", "value": [{ "type": "text", "text": "Inserted block", "styles": {} }] }, "children": [] });
     let inserted = input(
         home,
@@ -1071,6 +1076,7 @@ fn verify_direct_body_and_title_edits(home: &Path) {
     assert_eq!(search["items"].as_array().unwrap().len(), 1);
     let hit = &search["items"][0];
     assert_eq!(hit["page_id"], page);
+    assert_eq!(hit["url"], format!("nodex://pages/{page}"));
     assert_eq!(hit["title"], "Renamed Page");
     assert_eq!(hit["matches"].as_array().unwrap().len(), 1);
     assert_eq!(hit["matches"][0]["source"], "body");
@@ -3031,6 +3037,7 @@ fn page_move_accepts_explicit_page_destinations_and_prepares_a_source_move() {
         ],
     );
     assert_eq!(batch["pages"][0]["page_id"], PAGE_A);
+    assert_eq!(batch["pages"][0]["url"], format!("nodex://pages/{PAGE_A}"));
     assert_eq!(batch["pages"][1]["page_id"], PAGE_B);
     assert_eq!(batch["pages"][0]["location"]["page_id"], parent_id);
     assert_eq!(batch["pages"][1]["location"]["page_id"], parent_id);

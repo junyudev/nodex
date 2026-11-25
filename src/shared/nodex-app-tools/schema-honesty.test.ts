@@ -5,6 +5,7 @@ import {
   toolInputSchemaProblem,
 } from "@nodex/agent-runtime/tool-input-schema";
 import { z } from "zod";
+import { appContentToolContracts } from "./content-catalog";
 import { appToolCatalog } from "./catalog";
 import { appToolArgumentSchemas } from "./argument-schemas";
 import { nativeAppToolCatalog } from "../../main/app-tools/HostedAppToolCatalog";
@@ -205,4 +206,71 @@ test.each([
   for (const key of ["", "😀".repeat(129), "\ud800"]) {
     expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(false);
   }
+});
+
+test("hosted content results validate their links alongside the semantic data", () => {
+  const pageId = "page:one";
+  const pageUrl = "nodex://pages/page%3Aone";
+  const location = { kind: "page", pageId };
+  const fetch = appContentToolContracts.fetch;
+  const resource = {
+    id: "block/a",
+    pageKey: null,
+    type: "paragraph",
+    lifecycle: "active",
+    location,
+  };
+  const fetchOutput = { data: { resource } };
+  const linkedFetch = fetch.serializeOutput(fetchOutput);
+  expect(linkedFetch).toMatchObject({
+    success: true,
+    data: { data: { resource: { ...resource, url: `${pageUrl}#block%2Fa` } } },
+  });
+  expect(
+    fetch.outputSchema.safeParse({
+      data: { resource: { ...resource, url: `${pageUrl}#block%2Fa` } },
+    }).success,
+  ).toBe(true);
+
+  expect(
+    fetch.serializeOutput({
+      data: { resource: { ...resource, id: pageId, type: "page" } },
+    }),
+  ).toMatchObject({ success: true, data: { data: { resource: { url: pageUrl } } } });
+
+  const view = { viewId: "view:one", dataSourceId: "source", name: "Plans", layout: "list" };
+  const row = {
+    pageId,
+    pageKey: null,
+    title: "Plan",
+    values: {},
+    placement: { viewId: view.viewId, groupKey: null },
+  };
+  const queryOutput = {
+    data: {
+      database: { databaseId: "database", name: "Planning" },
+      dataSource: { dataSourceId: "source", name: "Plans", properties: [] },
+      view,
+      rows: [row],
+    },
+  };
+  const query = appContentToolContracts.query_database_view;
+  expect(query.serializeOutput(queryOutput)).toEqual({
+    success: true,
+    data: {
+      data: {
+        ...queryOutput.data,
+        view: { ...view, url: "nodex://views/view%3Aone" },
+        rows: [{ ...row, url: pageUrl }],
+      },
+    },
+  });
+  expect(query.outputSchema.safeParse(queryOutput).success).toBe(false);
+
+  const page = { pageId, pageKey: null, location, bodyBlocksCreated: 1 };
+  const create = appContentToolContracts.create_pages;
+  expect(create.serializeOutput({ data: { created: 1, pages: [page] } })).toEqual({
+    success: true,
+    data: { data: { created: 1, pages: [{ ...page, url: pageUrl }] } },
+  });
 });

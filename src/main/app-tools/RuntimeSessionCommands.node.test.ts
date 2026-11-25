@@ -322,6 +322,7 @@ it.effect(
       const execute = yield* f.execute;
       const result = yield* execute({ caller: f.caller, name: "fork_session", arguments: {} });
       assert.isFalse(result.isError ?? false);
+      assert.equal(result.structuredContent?.url, "nodex://sessions/fork");
       const call = f.calls.find((call) => call.name === "fork")!;
       assert.deepEqual((call.input as { source: unknown }).source, {
         sessionId: "session:root",
@@ -353,8 +354,10 @@ it.effect(
           target: { type: "project", projectId: "project", environment: { type: "local" } },
         },
       };
-      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
-      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+      const created = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+      const replayed = yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+      assert.equal(created.structuredContent?.url, "nodex://sessions/new");
+      assert.equal(replayed.structuredContent?.url, created.structuredContent?.url);
       const launches = f.calls.filter((call) => call.name === "launch");
       assert.deepEqual(launches[0]!.input, launches[1]!.input);
       assert.equal(

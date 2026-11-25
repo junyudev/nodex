@@ -49,6 +49,7 @@ use crate::cli::{
     PrepareOperation, ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs,
     ServiceArgs,
 };
+use crate::deeplink::{LinkedPage, page_url};
 use crate::error::{CliError, CliErrorCode};
 
 #[derive(Clone, Debug)]
@@ -951,7 +952,8 @@ fn read_page(
     };
     if json_output {
         return Ok(CommandOutput::Json(
-            serde_json::to_value(value).map_err(internal)?,
+            serde_json::to_value(LinkedPage::new(*value, |page| &page.page_id)?)
+                .map_err(internal)?,
         ));
     }
     Ok(CommandOutput::Bytes(value.content.into_bytes()))
@@ -959,7 +961,7 @@ fn read_page(
 
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct PageShowResult {
-    pub page: nodex_core_contracts::library::LibraryPageProjectionFile,
+    pub page: LinkedPage<nodex_core_contracts::library::LibraryPageProjectionFile>,
     pub turn: nodex_core_contracts::workspace::PageTurn,
     pub follows: Vec<nodex_core_contracts::sources::PageThreadFollow>,
     pub unresolved_deliveries: Vec<nodex_core_contracts::sources::ThreadDelivery>,
@@ -1042,7 +1044,7 @@ fn show_page(
     if json_output {
         return Ok(CommandOutput::Json(
             serde_json::to_value(PageShowResult {
-                page: *page,
+                page: LinkedPage::new(*page, |page| &page.page_id)?,
                 turn,
                 follows,
                 unresolved_deliveries,
@@ -1139,6 +1141,7 @@ fn sed_page(
                 start: range.start,
                 end: range.end,
             },
+            url: page_url(&value.page_id)?,
             page_id: value.page_id,
             page_key: value.page_key,
         })
@@ -1614,6 +1617,7 @@ pub(crate) enum TreeRoot {
 pub(crate) enum TreeNode {
     Page {
         page_id: String,
+        url: String,
         title: String,
         #[schema(no_recursion)]
         children: Vec<TreeNode>,
@@ -1766,6 +1770,7 @@ fn read_page_tree_node(
         }
     }
     Ok(TreeNode::Page {
+        url: page_url(&content.page_id)?,
         page_id: content.page_id,
         title: content.title,
         children,
@@ -1795,6 +1800,7 @@ fn render_tree_node(node: &TreeNode, depth: usize, output: &mut String) {
             page_id,
             title,
             children,
+            ..
         } => {
             output.push_str(&format!("Page {title} @{page_id}\n"));
             for child in children {
@@ -2590,6 +2596,7 @@ mod tests {
 
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct SedOutput {
+    pub url: String,
     content: String,
     range: LineRangeOutput,
     page_id: String,

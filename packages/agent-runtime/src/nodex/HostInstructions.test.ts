@@ -50,6 +50,14 @@ it.effect.each(["approval-required", "auto", "full-access"] as const)(
       expect(params.additionalContext?.nodex_tools?.value).toContain(
         "prefer `nodex_app` tools there.",
       );
+      expect(params.additionalContext?.nodex_tools?.value).toContain("Copy the tool’s `url`");
+      expect(params.additionalContext?.nodex_tools?.value).toContain("<nodex://pages/ID>");
+      expect(params.additionalContext?.nodex_tools?.value).toContain("<nodex://views/ID>");
+      expect(params.additionalContext?.nodex_tools?.value).toContain("<nodex://sessions/ID>");
+      expect(params.additionalContext?.nodex_tools?.value).toContain("Append #BLOCK_ID");
+      expect(params.additionalContext?.nodex_tools?.value).toContain(
+        "Write references outside code spans.",
+      );
     }),
 );
 

@@ -1,3 +1,5 @@
+import { buildPageDeepLink, buildViewDeepLink } from "../../shared/nodex-deeplink";
+import { withSessionUrl } from "../../shared/nodex-app-tools/reference-urls";
 import { captureAppToolAuthority, type AppToolAuthorityCapture } from "./AppToolCaller";
 import { sameWorkbenchObservedTarget } from "../../shared/nodex-app-tools/workbench";
 import * as Effect from "effect/Effect";
@@ -186,6 +188,11 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             observationId: record.observationId,
             tabId: parsed.data.tabId,
             ...content,
+            ...(content.kind === "page"
+              ? { url: buildPageDeepLink({ pageId: content.document.ownerPageId }) }
+              : content.kind === "database_view"
+                ? { url: buildViewDeepLink({ viewId: content.display.databaseViewId }) }
+                : {}),
           });
         }
         if (input.name === "get_session_context") {
@@ -201,11 +208,11 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
               ? presentation.value.read(calling.threadId, calling.runId)
               : null;
           const selected = yield* select({ sessionId: calling.sessionId, anchor, ...parsed.data });
-          const execution = {
+          const execution = withSessionUrl({
             ...calling,
             ...(calling.runId === null ? {} : { turnId: calling.runId }),
             executionProjectId: calling.projectId,
-          };
+          });
           if (selected.status !== "selected")
             return toolSuccess({ ...execution, presentation: selected }, 24 * 1024);
           const record = yield* observations.capture(principal, selected.reference);

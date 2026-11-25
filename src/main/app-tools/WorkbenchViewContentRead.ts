@@ -1,5 +1,6 @@
 import type { components } from "@nodex/core-protocol";
 import * as Effect from "effect/Effect";
+import { buildPageDeepLink } from "../../shared/nodex-deeplink";
 import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { WorkbenchViewSnapshot } from "../../shared/nodex-app-tools/workbench-view-content";
 import { toCoreAgentExecutionAuthorization } from "../core-client/core-agent-execution-authorization";
@@ -11,6 +12,23 @@ import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import type { WorkbenchContentReadInput } from "./WorkbenchContentRead";
 
 type CoreQueryResult = components["schemas"]["DatabaseDisplayedViewQueryResult"];
+const withOccurrenceUrls = (query: CoreQueryResult): CoreQueryResult => {
+  const { result } = query;
+  const pageColumn = result.columns.indexOf("page_id");
+  if (pageColumn < 0) return query;
+  return {
+    ...query,
+    result: {
+      ...result,
+      columns: [...result.columns, "url"],
+      rows: result.rows.map((row) => {
+        const pageId = row[pageColumn];
+        return [...row, typeof pageId === "string" ? buildPageDeepLink({ pageId }) : null];
+      }),
+    },
+  };
+};
+
 type QueryFailureStatus =
   | "access_denied"
   | "unavailable"
@@ -169,7 +187,7 @@ export const make = Effect.gen(function* () {
       kind: "database_view",
       readiness: purpose === "display" ? "observed" : "effective_query",
       observedAt: new Date().toISOString(),
-      query: snapshot.value.value,
+      query: withOccurrenceUrls(snapshot.value.value),
       display,
       collapseTreatment: purpose === "display" ? "captured_selection" : "ignored",
     };

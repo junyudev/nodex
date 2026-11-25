@@ -1,3 +1,4 @@
+use crate::deeplink::page_url;
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{CommandOutput, selected_project, unwrap_library};
 use clap::Args;
@@ -31,6 +32,7 @@ pub(crate) struct SearchOutput {
 #[derive(Serialize, ToSchema)]
 pub(crate) struct SearchHit {
     pub page_id: String,
+    pub url: String,
     pub page_key: Option<String>,
     pub title: String,
     pub archived: bool,
@@ -63,9 +65,12 @@ fn text(parts: Vec<LibraryPageSearchTextPart>) -> String {
     parts.into_iter().map(|part| part.text).collect()
 }
 
-impl From<LibraryProjectPageSearchHit> for SearchHit {
-    fn from(hit: LibraryProjectPageSearchHit) -> Self {
-        Self {
+impl TryFrom<LibraryProjectPageSearchHit> for SearchHit {
+    type Error = CliError;
+
+    fn try_from(hit: LibraryProjectPageSearchHit) -> Result<Self, CliError> {
+        Ok(Self {
+            url: page_url(&hit.page_id)?,
             page_id: hit.page_id,
             page_key: hit.page_key,
             title: hit.title,
@@ -106,7 +111,7 @@ impl From<LibraryProjectPageSearchHit> for SearchHit {
                     }),
                 })
                 .collect(),
-        }
+        })
     }
 }
 
@@ -147,7 +152,10 @@ pub(crate) fn execute(
         truncated,
         coverage,
         scope: "ranked_search_evidence",
-        items: items.into_iter().map(SearchHit::from).collect(),
+        items: items
+            .into_iter()
+            .map(SearchHit::try_from)
+            .collect::<Result<_, _>>()?,
         limit: args.limit.unwrap_or(20),
         commit_seq: snapshot.commit_head,
     })

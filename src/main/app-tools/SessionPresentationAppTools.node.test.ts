@@ -306,6 +306,7 @@ it.effect(
       );
       assert.strictEqual(result.structuredContent?.status, "queued");
       assert.strictEqual(result.structuredContent?.sessionId, "caller-session");
+      assert.strictEqual(result.structuredContent?.url, "nodex://pages/page");
       assert.isTrue(subject.requests.every((request) => request.window === windowA));
       const body = subject.requests.at(-1)!.body;
       assert.strictEqual(body.kind, "command");
@@ -336,6 +337,7 @@ it.effect(
         ),
       );
       assert.strictEqual(result.structuredContent?.status, "navigated");
+      assert.strictEqual(result.structuredContent?.url, "nodex://sessions/target");
       assert.deepEqual(subject.requests.at(-1), {
         window: windowB,
         body: {
