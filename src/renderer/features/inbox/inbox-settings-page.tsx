@@ -195,9 +195,9 @@ export function InboxSettingsPage() {
             defaultMessage: "Nodex runs on",
           })}
           description={intl.formatMessage({
-            id: "inbox.inboxSettingsPage.nodexRoutesOftenAndNever",
+            id: "inbox.inboxSettingsPage.nodexRoutesOftenSoItsDefault",
             defaultMessage:
-              "Nodex routes often and never does the work itself, so on Codex it starts on the economical GPT-6.1 Sol.",
+              "Nodex routes often and never does the work itself, so its default is each Agent's economical model.",
           })}
         >
           <div className="w-72 max-w-full">

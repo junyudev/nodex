@@ -233,8 +233,8 @@ describe("Inbox destination and Agent selection", () => {
         projectId: null,
         prompt: "Compare both",
         agent: {
-          instanceId: "automatic",
-          model: null,
+          instanceId: "codex",
+          model: "gpt-6-astra",
           reasoningEffort: "high",
           serviceTier: null,
         },
@@ -393,7 +393,7 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([codexProvider(), claudeProvider()]);
     renderQuery(<InboxSettingsPage />);
     const trigger = await screen.findByRole("button", { name: "New chat model" });
-    await waitFor(() => expect(trigger.textContent).toBe("GPT-6 Astra · Medium"));
+    await waitFor(() => expect(trigger.textContent).toBe("GPT-6 Astra · MediumDefault"));
     await click("New chat model");
     await act(async () => {
       fireEvent.click(screen.getByRole("option", { name: /Opus 5\.5/ }));
@@ -460,7 +460,7 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     renderQuery(<InboxSettingsPage />, client);
     const model = await screen.findByRole("button", { name: "Suggestion model" });
-    expect(model.textContent).toBe("Precise model");
+    expect(model.textContent).toBe("Precise modelDefault");
     await waitFor(() => expect(agentRuntimeRuntime.catalog).toHaveBeenCalledTimes(2));
     await act(async () => pending.resolve([provider("codex", "codex", "Codex")]));
     await settleAsyncRender();
@@ -470,7 +470,7 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([provider("codex", "codex", "Codex")]);
     renderQuery(<InboxSettingsPage />);
     const model = await screen.findByRole("button", { name: "Suggestion model" });
-    await waitFor(() => expect(model.textContent).toBe("Precise model"));
+    await waitFor(() => expect(model.textContent).toBe("Precise modelDefault"));
     const pending = deferredCatalog();
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     await act(async () => {
@@ -478,12 +478,12 @@ describe("Inbox destination and Agent selection", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(agentRuntimeRuntime.catalog).toHaveBeenCalledTimes(2));
-    expect(model.textContent).toBe("Precise model");
+    expect(model.textContent).toBe("Precise modelDefault");
     const next = provider("codex", "codex", "Work Codex");
     await act(async () =>
       pending.resolve([{ ...next, models: [{ ...next.models[0]!, name: "Updated model" }] }]),
     );
-    await waitFor(() => expect(model.textContent).toBe("Work Codex · Updated model"));
+    await waitFor(() => expect(model.textContent).toBe("Work Codex · Updated modelDefault"));
   });
 
   test("reports a disabled Agent only after the catalog resolves and recovers on its settings event", async () => {
@@ -528,14 +528,14 @@ describe("Inbox destination and Agent selection", () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([provider("codex", "codex", "Codex")]);
     renderQuery(<InboxSettingsPage />);
     const model = await screen.findByRole("button", { name: "Suggestion model" });
-    await waitFor(() => expect(model.textContent).toBe("Precise model"));
+    await waitFor(() => expect(model.textContent).toBe("Precise modelDefault"));
     vi.mocked(agentRuntimeRuntime.catalog).mockRejectedValue(new Error("offline"));
     await act(async () => {
       for (const listener of agentSettingsListeners) listener();
       await Promise.resolve();
     });
     await screen.findByRole("button", { name: "Retry" });
-    expect(model.textContent).toBe("Precise model");
+    expect(model.textContent).toBe("Precise modelDefault");
   });
 
   test("does not expose editable default settings when the settings read failed", async () => {

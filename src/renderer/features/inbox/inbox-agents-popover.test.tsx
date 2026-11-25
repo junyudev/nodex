@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
-import { DEFAULT_INBOX_SETTINGS } from "../../../shared/inbox";
+import { DEFAULT_INBOX_AGENT_CHOICE, DEFAULT_INBOX_SETTINGS } from "../../../shared/inbox";
 import { InboxAgentsPopover } from "./inbox-agents-popover";
 import { CLAUDE_INSTANCE_ID, inboxAgentsFixture } from "./inbox-agents.test-support";
 
@@ -20,8 +20,9 @@ describe("the Inbox's settings panel", () => {
     await click(screen.getByRole("button", { name: "Inbox settings" }));
 
     // Suggestions look things up and choose models, so Codex suggests at High until told otherwise.
+    // Until chosen, Nodex picks both, and says so.
     const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
-    expect(suggestion.textContent).toBe("GPT-6 Astra · High");
+    expect(suggestion.textContent).toBe("GPT-6 Astra · HighDefault");
     await click(suggestion);
     const suggestionEffort = screen.getByRole("slider", { name: "Effort" });
     expect(suggestionEffort.getAttribute("aria-valuetext")).toBe("High");
@@ -29,10 +30,11 @@ describe("the Inbox's settings panel", () => {
       fireEvent.keyDown(suggestionEffort, { key: "ArrowLeft" });
       await settleAsyncRender();
     });
+    // An effort set on the default keeps the model it ran on.
     expect(agents.save).toHaveBeenLastCalledWith({
       suggestionAgent: {
-        instanceId: "automatic",
-        model: null,
+        instanceId: "codex",
+        model: "gpt-6-astra",
         reasoningEffort: "medium",
         serviceTier: null,
       },
@@ -48,7 +50,7 @@ describe("the Inbox's settings panel", () => {
     });
 
     const chat = screen.getByRole("button", { name: "New chat model" });
-    expect(chat.textContent).toBe("GPT-6 Astra · Medium");
+    expect(chat.textContent).toBe("GPT-6 Astra · MediumDefault");
     await click(chat);
     const effort = screen.getByRole("slider", { name: "Effort" });
     expect(effort.getAttribute("aria-valuetext")).toBe("Medium");
@@ -58,12 +60,35 @@ describe("the Inbox's settings panel", () => {
     });
     expect(agents.save).toHaveBeenLastCalledWith({
       chatAgent: {
-        instanceId: "automatic",
-        model: null,
+        instanceId: "codex",
+        model: "gpt-6-astra",
         reasoningEffort: "high",
         serviceTier: null,
       },
     });
+  });
+
+  test("a chosen model can go back to Nodex's default, which the menu names", async () => {
+    const agents = inboxAgentsFixture({
+      settings: {
+        ...DEFAULT_INBOX_SETTINGS,
+        chatAgent: {
+          instanceId: CLAUDE_INSTANCE_ID,
+          model: "claude-opus-5-5",
+          reasoningEffort: null,
+          serviceTier: null,
+        },
+      },
+    });
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    const chat = await screen.findByRole("button", { name: "New chat model" });
+    expect(chat.textContent).toBe("Work · Opus 5.5 · High");
+    await click(chat);
+    const useDefault = await screen.findByRole("button", { name: /^Use the default/ });
+    expect(useDefault.textContent).toBe("Use the defaultGPT-6 Astra · Medium");
+    await click(useDefault);
+    expect(agents.save).toHaveBeenLastCalledWith({ chatAgent: DEFAULT_INBOX_AGENT_CHOICE });
   });
 
   test("turning suggestions off leaves their model visible but not choosable", async () => {

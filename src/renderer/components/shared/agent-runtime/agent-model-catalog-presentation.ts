@@ -84,6 +84,13 @@ export interface AgentModelCatalogPresentation {
     readonly checked: boolean;
     readonly change: (checked: boolean) => void;
   }[];
-  /** Owner actions about the choice itself, listed last; each closes the menu first. */
-  readonly actions?: readonly { readonly label: string; readonly run: () => void }[];
+  /**
+   * Owner actions about the choice itself, listed last; each closes the menu first. A hint says
+   * quietly at the row's end what the action leads to.
+   */
+  readonly actions?: readonly {
+    readonly label: string;
+    readonly hint?: string;
+    readonly run: () => void;
+  }[];
 }

@@ -593,11 +593,12 @@ export const supportsInboxStructuredGeneration = (
 ): boolean => agentDefinition(provider.driver).capabilities.inbox !== undefined;
 
 /**
- * Suggestions run for every captured message, so Codex defaults to its economical Sol model
+ * Suggestions run for every captured message, so each Agent defaults to an economical model
  * rather than its catalog default.
  */
 const INBOX_SUGGESTION_MODEL_PREFERENCES: Readonly<Partial<Record<string, string>>> = {
   codex: "gpt-6.2-sol",
+  claudeAgent: "claude-sonnet-5-5",
 };
 
 /** The model an omitted suggestion model resolves to; the catalog default when the preference is absent. */
@@ -719,12 +720,27 @@ export type InboxModelResolution =
 
 const AUTOMATIC_INBOX_AGENT = "automatic";
 
+/**
+ * Nodex's default for what suggestions or new chats run on: it picks the Agent, model, effort and
+ * speed from the catalog as it is, until the person chooses their own.
+ */
+export const DEFAULT_INBOX_AGENT_CHOICE: InboxAgentChoice = {
+  instanceId: AUTOMATIC_INBOX_AGENT,
+  model: null,
+  reasoningEffort: null,
+  serviceTier: null,
+};
+
+/** Whether Nodex picks the choice's Agent, rather than the person having named one. */
+export const isAutomaticInboxAgentChoice = (choice: Pick<InboxAgentChoice, "instanceId">) =>
+  choice.instanceId === AUTOMATIC_INBOX_AGENT;
+
 export function resolveInboxAgentChoice(
   providers: readonly InboxProvider[],
   choice: InboxAgentChoice,
   purpose: "chat" | "suggestion",
 ): InboxAgentChoice {
-  if (choice.instanceId !== AUTOMATIC_INBOX_AGENT) return choice;
+  if (!isAutomaticInboxAgentChoice(choice)) return choice;
   const eligible = providers.filter(
     (provider) =>
       !spendsNodexCredit(provider) &&
@@ -867,20 +883,10 @@ export const clampInboxSuggestionConcurrency = (value: number): number =>
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   dispatchMode: "suggest",
   suggestions: "automatic",
-  suggestionAgent: {
-    instanceId: AUTOMATIC_INBOX_AGENT,
-    model: null,
-    reasoningEffort: null,
-    serviceTier: null,
-  },
+  suggestionAgent: DEFAULT_INBOX_AGENT_CHOICE,
   suggestionConcurrency: 5,
   instructions: "",
-  chatAgent: {
-    instanceId: AUTOMATIC_INBOX_AGENT,
-    model: null,
-    reasoningEffort: null,
-    serviceTier: null,
-  },
+  chatAgent: DEFAULT_INBOX_AGENT_CHOICE,
   suggestionsChooseModels: true,
   useModelGuide: true,
   showPageBesideNewChats: true,
