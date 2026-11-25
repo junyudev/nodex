@@ -131,6 +131,10 @@ function onAnnotationPointerMove(event: PointerEvent): void {
     updateOverlay(null);
     return;
   }
+  if (annotationSelectionMode === "region") {
+    onAnnotationPointerDrag(event);
+    return;
+  }
   const target = event
     .composedPath()
     .find(
@@ -171,7 +175,7 @@ function onAnnotationPointerDown(event: PointerEvent): void {
       )
   )
     return;
-  if (!annotationActive() || annotationSelectionMode !== "region") return;
+  if (event.button !== 0 || !annotationActive() || annotationSelectionMode !== "region") return;
   event.preventDefault();
   event.stopImmediatePropagation();
   regionStart = {
@@ -204,6 +208,10 @@ function updateRegionOverlay(x: number, y: number): void {
 
 function onAnnotationPointerDrag(event: PointerEvent): void {
   if (!regionStart || event.pointerId !== regionStart.pointerId) return;
+  if ((event.buttons & 1) === 0) {
+    cancelRegionSelection();
+    return;
+  }
   event.preventDefault();
   event.stopImmediatePropagation();
   updateRegionOverlay(event.clientX, event.clientY);
@@ -216,14 +224,14 @@ function onAnnotationPointerUp(event: PointerEvent): void {
   }
   event.preventDefault();
   event.stopImmediatePropagation();
-  regionStart = null;
+  cancelRegionSelection();
+  if (event.button !== 0) return;
   const rect = {
     x: Math.min(start.x, event.clientX),
     y: Math.min(start.y, event.clientY),
     width: Math.abs(event.clientX - start.x),
     height: Math.abs(event.clientY - start.y),
   };
-  updateOverlay(null);
   if (rect.width < 4 || rect.height < 4) return;
   const element =
     hitTestBrowserAnnotation(start.document, start.x, start.y) ?? start.document.documentElement;
@@ -240,6 +248,11 @@ function onAnnotationPointerCancel(event: PointerEvent): void {
   if (!regionStart || event.pointerId !== regionStart.pointerId) return;
   event.preventDefault();
   event.stopImmediatePropagation();
+  cancelRegionSelection();
+}
+
+function cancelRegionSelection(): void {
+  if (!regionStart) return;
   regionStart = null;
   updateOverlay(null);
 }
@@ -260,7 +273,6 @@ function disableAnnotationMode(): void {
   window.removeEventListener("pointermove", onAnnotationPointerMove, true);
   window.removeEventListener("click", onAnnotationClick, true);
   window.removeEventListener("pointerdown", onAnnotationPointerDown, true);
-  window.removeEventListener("pointermove", onAnnotationPointerDrag, true);
   window.removeEventListener("pointerup", onAnnotationPointerUp, true);
   window.removeEventListener("pointercancel", onAnnotationPointerCancel, true);
 }
@@ -822,8 +834,7 @@ function onAnnotationKeyDown(event: KeyboardEvent): void {
   event.preventDefault();
   event.stopImmediatePropagation();
   if (regionStart) {
-    regionStart = null;
-    updateOverlay(null);
+    cancelRegionSelection();
     return;
   }
   ipcRenderer.send("browser-annotation-cancel");
@@ -884,7 +895,6 @@ function observeAnnotationDocument(doc: Document): void {
   doc.addEventListener("pointermove", onAnnotationPointerMove, true);
   doc.addEventListener("click", onAnnotationClick, true);
   doc.addEventListener("pointerdown", onAnnotationPointerDown, true);
-  doc.addEventListener("pointermove", onAnnotationPointerDrag, true);
   doc.addEventListener("pointerup", onAnnotationPointerUp, true);
   doc.addEventListener("pointercancel", onAnnotationPointerCancel, true);
   doc.addEventListener("keydown", onAnnotationKeyDown, true);
@@ -900,7 +910,14 @@ function observeAnnotationDocument(doc: Document): void {
   );
   doc.addEventListener("scroll", scheduleAnchorUpdates, true);
   doc.defaultView?.addEventListener("resize", scheduleAnchorUpdates);
-  doc.defaultView?.addEventListener("blur", () => suspendAnnotation(false));
+  const cancelDocumentRegion = () => {
+    if (doc === document || doc === regionStart?.document) cancelRegionSelection();
+  };
+  doc.defaultView?.addEventListener("blur", () => {
+    cancelDocumentRegion();
+    suspendAnnotation(false);
+  });
+  doc.defaultView?.addEventListener("pagehide", cancelDocumentRegion);
   observeAnnotationRoot(doc);
   discoverAnnotationFrames(doc);
 }

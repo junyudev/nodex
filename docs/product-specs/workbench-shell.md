@@ -310,7 +310,8 @@ Cmd/Ctrl+Enter sends it as its own chat message. Entered from the page menu's
 Quick annotate, which starts at the clicked target, the two are swapped. The
 editor shows both actions and their shortcuts. Shift+Enter adds a line. Escape
 cancels an editor or gesture first, then leaves annotation mode when neither is
-open.
+open. Region selection follows the held primary pointer. Returning to the page
+after releasing outside it, losing focus, or leaving the page cancels the region.
 
 Saved notes have numbered pins and chat composer attachments. The Annotate
 control shows the saved count. A pin reopens its note for editing or removal.

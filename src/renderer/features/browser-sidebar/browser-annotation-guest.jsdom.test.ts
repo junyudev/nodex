@@ -104,3 +104,58 @@ test("same-mode synchronization preserves selected targets and saved pins surviv
   sync({}, []);
   target.remove();
 });
+
+test.each(["released outside the page", "blur", "pagehide"])(
+  "cancels a region when the pointer is %s",
+  async (interruption) => {
+    await import("../../../preload/browser-guest");
+    const mode = guest.listeners.get("browser-annotation-mode")!;
+    mode({}, { enabled: true, sessionId: "region-editor", selectionMode: "region" });
+    guest.send.mockClear();
+
+    const pointer = (type: string, x: number, y: number, buttons: number) =>
+      document.body.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          button: type === "pointermove" ? -1 : 0,
+          buttons,
+          clientX: x,
+          clientY: y,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+
+    try {
+      pointer("pointerdown", 10, 20, 1);
+      pointer("pointermove", 30, 40, 1);
+      const overlay = document.querySelector<HTMLDivElement>(
+        "[data-nodex-browser-annotation-overlay]",
+      )!;
+      expect(overlay.style.display).toBe("block");
+
+      if (interruption === "released outside the page") {
+        pointer("pointermove", 50, 60, 0);
+      } else {
+        window.dispatchEvent(new Event(interruption));
+      }
+      expect(overlay.style.display).toBe("none");
+      pointer("pointerup", 50, 60, 0);
+      expect(guest.send).not.toHaveBeenCalledWith(
+        "browser-annotation-selection",
+        expect.anything(),
+      );
+
+      pointer("pointerdown", 50, 60, 1);
+      pointer("pointerup", 70, 80, 0);
+      expect(guest.send).toHaveBeenCalledWith(
+        "browser-annotation-selection",
+        expect.objectContaining({
+          anchor: expect.objectContaining({ rect: { x: 50, y: 60, width: 20, height: 20 } }),
+        }),
+      );
+    } finally {
+      mode({}, { enabled: false });
+    }
+  },
+);
