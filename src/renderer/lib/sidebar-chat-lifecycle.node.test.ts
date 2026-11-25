@@ -262,9 +262,10 @@ describe("resolveNextChatNeedingReader", () => {
 });
 
 describe("sidebar lifecycle preferences", () => {
-  it("defaults to arranging by attention and settling idle chats after a week", () => {
-    expect(normalizeSidebarOrganize(undefined)).toBe("attention");
-    expect(normalizeSidebarOrganize("project")).toBe("project");
+  it("defaults to the Project tree and settling idle chats after a week", () => {
+    expect(normalizeSidebarOrganize(undefined)).toBe("project");
+    expect(normalizeSidebarOrganize("attention")).toBe("attention");
+    expect(normalizeSidebarOrganize("unknown")).toBe("project");
     expect(normalizeSidebarAutoSettleDays(undefined)).toBe(7);
     expect(normalizeSidebarAutoSettleDays(3)).toBe(3);
     expect(normalizeSidebarAutoSettleDays(0)).toBe(7);

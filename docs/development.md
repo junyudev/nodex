@@ -594,10 +594,11 @@ Sessions so they remain unread without Agent authentication. No Agent is started
 vp run dev --home "$HOME/repo/nodex/runs.local/chat-status" --seed sidebar/chat-status
 ```
 
-`sidebar/attention` opens in By attention with chats across Nodex, Core, Web,
-and the Library, including a pending snooze, a woken chat, and a Release
-Section that By project shows. Core has a question and an intake message, and
-Web has a Page ready for review. Expand Snoozed and Settled to see their chats.
+`sidebar/attention` seeds chats across Nodex, Core, Web, and the Library,
+including a pending snooze, a woken chat, and a Release Section that By project
+shows. Core has a question and an intake message, and Web has a Page ready for
+review. Turn on `Arrange by attention` (`⌥⌘U`) to see the lanes, then expand
+Snoozed and Settled to see their chats.
 
 ```bash
 vp run dev --home "$HOME/repo/nodex/runs.local/chat-lifecycle-attention" --seed sidebar/attention

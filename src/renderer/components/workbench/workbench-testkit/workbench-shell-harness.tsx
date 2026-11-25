@@ -5246,8 +5246,8 @@ export function getHeaderShellSlot(
 }
 
 /**
- * How the next workbench arranges open chats. These suites cover the Project tree, so it is the
- * default; a test of the lanes that arrange chats by attention opts in before it renders.
+ * How the next workbench arranges open chats: the Project tree, as a new Profile does, unless a
+ * test of the lanes that arrange chats by attention opts in before it renders.
  */
 let sidebarOrganizeForTest: "attention" | "project" = "project";
 const NO_INBOX_COUNTS: InboxCounts = {

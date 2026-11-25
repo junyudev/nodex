@@ -41,7 +41,6 @@ test("arranges chats by attention and applies sidebar actions to their live lane
       label: "sidebar-attention",
       scenarioId: SIDEBAR_ATTENTION_SCENARIO_ID,
       seedThrough: "core",
-      preserveSidebarArrangement: true,
       onFailure: async ({ page, readRuntimeLogs }) => {
         await testInfo.attach("sidebar-attention-runtime-logs", {
           body: await readRuntimeLogs(),
@@ -75,6 +74,10 @@ test("arranges chats by attention and applies sidebar actions to their live lane
       const waitingGlyph = inbox.getByLabel("Something in the Inbox waits for your answer");
 
       await test.step("show the seeded lanes, Page wording, and Library Inbox", async () => {
+        // Chats sit under their Projects until the toggle beside Search arranges them by attention.
+        await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "false");
+        await arrangeByAttention.click();
+        await expect(arrangeByAttention).toHaveAttribute("aria-pressed", "true");
         await expect
           .poll(() =>
             sidebar

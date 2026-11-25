@@ -100,7 +100,8 @@ describe("Workbench profile preferences", () => {
       },
       listExtraPages: { pages: 2, "project:alpha": 1 },
       chatOrder: "manual",
-      organize: "attention",
+      // A Profile that never chose an arrangement keeps chats under their Projects.
+      organize: "project",
       // A scope that is not a Project id shows every Project.
       scopeProjectId: null,
       // Active always shows, so only the lists that can hide stay hidden.

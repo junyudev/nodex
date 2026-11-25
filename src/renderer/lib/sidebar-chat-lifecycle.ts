@@ -296,11 +296,12 @@ export function resolveAutoSettleIdleBefore(now: number, days: number): number {
 }
 
 /**
- * How the sidebar arranges the reader's open chats: by whose move each one is, across every
- * Project, or grouped under the Project each belongs to.
+ * How the sidebar arranges the reader's open chats: grouped under the Project each belongs to,
+ * or by whose move each one is, across every Project.
  */
 export type SidebarOrganize = "attention" | "project";
 
+/** Chats sit under their Projects until the reader turns on the arrangement by attention. */
 export function normalizeSidebarOrganize(value: unknown): SidebarOrganize {
-  return value === "project" ? "project" : "attention";
+  return value === "attention" ? "attention" : "project";
 }

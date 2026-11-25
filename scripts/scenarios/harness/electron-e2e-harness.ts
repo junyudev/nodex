@@ -36,7 +36,6 @@ const repositoryRoot = process.cwd();
 const DEFAULT_RUNTIME_LOG_CHARS = 32_768;
 const APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS = 60_000;
 /** How long a first launch waits for Home to paint before leaving its sidebar as it opened. */
-const SIDEBAR_ARRANGEMENT_TIMEOUT_MS = 15_000;
 
 type ScenarioPreloadApi = {
   invoke<Channel extends keyof IpcApi>(
@@ -333,8 +332,6 @@ export interface ElectronHarnessInput {
   readonly windows?: E2eWindowPresentation;
   /** Opens on an empty Profile, as a person first starting Nodex does; others get one Project. */
   readonly emptyProfile?: boolean;
-  /** Leave the sidebar in the Profile's own arrangement. */
-  readonly preserveSidebarArrangement?: boolean;
 }
 
 export class ElectronScenarioHarness {
@@ -352,7 +349,6 @@ export class ElectronScenarioHarness {
   /** True until the first launch has settled what the Profile starts with. */
   #needsScenarioProject: boolean;
   /** A Profile still in setup has no Home to arrange; every other Profile is arranged once. */
-  #sidebarArranged: boolean;
 
   private constructor(
     profile: IsolatedProfile,
@@ -364,10 +360,8 @@ export class ElectronScenarioHarness {
     isolateHostDirectories = false,
     windows?: E2eWindowPresentation,
     emptyProfile = false,
-    preserveSidebarArrangement = false,
   ) {
     this.#needsScenarioProject = !emptyProfile;
-    this.#sidebarArranged = emptyProfile || preserveSidebarArrangement;
     this.profile = profile;
     this.#cwd = cwd;
     this.#codexApiKey = codexApiKey;
@@ -413,7 +407,6 @@ export class ElectronScenarioHarness {
         input.isolateHostDirectories,
         input.windows,
         input.emptyProfile,
-        input.preserveSidebarArrangement,
       );
     } catch (error) {
       const cleanup = await cleanupIsolatedProfile({
@@ -482,33 +475,11 @@ export class ElectronScenarioHarness {
     this.#page = page;
     if (options?.phase === "first-window") return page;
     await this.waitForApplicationReady();
-    await this.arrangeSidebarByProject(page);
     // A scenario starts where setup leaves a person: New Chat in their Project.
     if (createdScenarioProject)
       await page.getByRole("button", { name: "Start new chat in My Project", exact: true }).click();
     await this.ensureCodexApiKeyLogin(page);
     return page;
-  }
-
-  /**
-   * Scenarios drive the Project tree, which lists each Project's chats beneath it. A new Profile
-   * arranges chats by attention instead, so the harness switches once and the Profile remembers
-   * it. A scenario of the attention lanes switches back with the same toggle.
-   */
-  private async arrangeSidebarByProject(page: Page): Promise<void> {
-    if (this.#sidebarArranged) return;
-    this.#sidebarArranged = true;
-    const arrangement = page.locator("[data-app-action-sidebar-organize]");
-    // Initialization can land before Home paints. A launch that opens elsewhere keeps its default.
-    const shown = await arrangement
-      .waitFor({ state: "visible", timeout: SIDEBAR_ARRANGEMENT_TIMEOUT_MS })
-      .then(() => true)
-      .catch(() => false);
-    if (!shown) return;
-    if ((await arrangement.getAttribute("data-app-action-sidebar-organize")) !== "attention")
-      return;
-    await arrangement.click();
-    await page.locator('[data-app-action-sidebar-organize="project"]').waitFor();
   }
 
   private async ensureCodexApiKeyLogin(page: Page): Promise<void> {
