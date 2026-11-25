@@ -12,6 +12,11 @@ import { resolveBrowserUseHostCapability } from "../../shared/browser-use-host-c
 import type { BrowserSidebarEvent } from "../browser/BrowserSidebarEventHub";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
+import {
+  preferredBrowserExtension,
+  projectBrowserConnectionFacts,
+  type DefaultBrowserIdentity,
+} from "../browser-use/chrome/browser-connection-facts";
 import { makeBrowserUseIabApi } from "../browser-use/browser-use-iab-api";
 import {
   BrowserUseNativePipeServerError,
@@ -42,6 +47,7 @@ export class BrowserUseRuntimeError extends Schema.TaggedError<BrowserUseRuntime
 export class BrowserUseRuntime extends Context.Service<
   BrowserUseRuntime,
   {
+    readonly preferredExtensionInstanceId?: Effect.Effect<string | undefined>;
     readonly availableBackends: () => readonly BrowserRuntimeBackend[];
     readonly captureRoute: (
       input: BrowserUseRouteCapture,
@@ -98,6 +104,7 @@ interface BrowserUseRegistryPort {
 
 export interface BrowserUseRuntimePorts {
   readonly browserEvents: Stream.Stream<BrowserSidebarEvent>;
+  readonly preferredExtensionInstanceId?: Effect.Effect<string | undefined>;
   readonly chromeProviderReady?: () => boolean;
   readonly makeRegistry: Effect.Effect<BrowserUseRegistryPort, BrowserUseRuntimeError, Scope.Scope>;
   readonly releaseCredentialOwner: (ownerWebContentsId: number) => Effect.Effect<void>;
@@ -216,6 +223,7 @@ const make = (
 
     return BrowserUseRuntime.of({
       availableBackends,
+      preferredExtensionInstanceId: ports.preferredExtensionInstanceId,
       captureRoute,
       focusPresentation: registry.focusPresentation,
       promoteRoute,
@@ -231,6 +239,7 @@ export interface BrowserUseRuntimeOptions {
     readonly runtimeStateHome: string;
   };
   readonly appVersion: string;
+  readonly readDefaultBrowserIdentity: () => Promise<DefaultBrowserIdentity | null>;
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly isPackaged: boolean;
@@ -249,6 +258,21 @@ export const live = (
     Effect.gen(function* () {
       const browser = yield* BrowserApplication;
       const chrome = yield* ChromeControlRuntime;
+      const readBrowserConnections = (refresh: boolean) =>
+        Effect.gen(function* () {
+          const identity = yield* Effect.tryPromise(options.readDefaultBrowserIdentity).pipe(
+            Effect.orElseSucceed(() => null),
+          );
+          const inventory = yield* (
+            chrome.browserInventory?.(refresh) ??
+              Effect.sync(() => ({
+                instances: [],
+                families: [],
+                status: chrome.snapshot().status,
+              }))
+          );
+          return projectBrowserConnectionFacts(options.platform, identity, inventory);
+        });
       const profile = yield* BrowserProfileRuntime;
       const callbacks = yield* ScopedCallbackRuntime;
       const getCapability = (runtime = options.browserRuntime) => {
@@ -275,6 +299,11 @@ export const live = (
       return yield* make({
         browserEvents: browser.events.events,
         chromeProviderReady: chrome.available,
+        preferredExtensionInstanceId: Effect.suspend(() =>
+          chrome.available()
+            ? readBrowserConnections(false).pipe(Effect.map(preferredBrowserExtension))
+            : Effect.succeed(undefined),
+        ),
         releaseCredentialOwner: profile.credentials.releaseOwner,
         makeRegistry: (() => {
           const appSessionId = randomUUID();
@@ -297,6 +326,7 @@ export const live = (
                       : "unavailable",
                   grantDownload: profile.download.grantAgentDownload,
                   policyStore: profile.policy,
+                  readBrowserConnections: () => callbacks.runPromise(readBrowserConnections(true)),
                   route,
                 }),
               createServer: (handler) => {

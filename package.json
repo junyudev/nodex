@@ -84,6 +84,7 @@
     "core:binaries:build:dev": "tsx scripts/desktop-build.ts rust-dev",
     "core:binaries:build:release": "tsx scripts/desktop-build.ts rust-release",
     "core:test-support:build:dev": "cargo build -p nodex-core-server --all-targets",
+    "browser-peer-bridge:build": "tsx scripts/build-browser-peer-bridge.ts",
     "clipboard-bridge:build": "tsx scripts/build-clipboard-bridge.ts",
     "notification-bridge:build": "tsx scripts/build-notification-bridge.ts",
     "devicecheck-bridge:build": "tsx scripts/build-devicecheck-bridge.ts",

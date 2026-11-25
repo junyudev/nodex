@@ -26,7 +26,7 @@ import {
 
 interface NativeBridgeBuild {
   readonly architecture: "arm64";
-  readonly name: "clipboard" | "devicecheck" | "notifications";
+  readonly name: "browser-peer" | "clipboard" | "devicecheck" | "notifications";
   readonly script: string;
   readonly repositoryRoot: string;
 }
@@ -177,7 +177,12 @@ export function buildNativeBridge(input: NativeBridgeBuild): "built" | "reused" 
       ],
       { cwd: repositoryRoot, env: environment, stdio: "inherit" },
     );
-    const binary = path.join(buildRoot, "build", "Release", `nodex_${name}.node`);
+    const binary = path.join(
+      buildRoot,
+      "build",
+      "Release",
+      `nodex_${name.replaceAll("-", "_")}.node`,
+    );
     chmodSync(binary, 0o755);
     const sha256 = verifyBinary(binary, architecture);
     // Publish complete files only. A racing or interrupted pair cannot match both hashes.

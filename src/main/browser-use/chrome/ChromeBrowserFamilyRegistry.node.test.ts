@@ -10,6 +10,7 @@ import {
   parseChromeBrowserAuthority,
   resolveChromeNativeMessagingManifestPaths,
   resolveWindowsChromeProfileRoot,
+  withMacChromiumFamilies,
 } from "./ChromeBrowserFamilyRegistry";
 import {
   TEST_CHROME_AUTHORITY,
@@ -55,6 +56,22 @@ describe("Chrome browser family registry", () => {
         expectedSize: bytes.byteLength,
       }),
     ).resolves.toEqual(TEST_CHROME_AUTHORITY);
+    const macOptions = {
+      descriptorPath,
+      expectedExtensionIds: TEST_CHROME_EXTENSION_IDS,
+      expectedHostName: TEST_CHROME_HOST_NAME,
+      expectedSha256: createHash("sha256").update(bytes).digest("hex"),
+      expectedSize: bytes.byteLength,
+      platform: "darwin" as const,
+    };
+    const mac = await loadChromeBrowserAuthority(macOptions);
+    expect(getChromeBrowserFamilyByBundleId(mac, "company.thebrowser.dia")?.family).toBe("dia");
+    expect(getChromeBrowserFamilyByBundleId(mac, "company.thebrowser.Browser")?.family).toBe("arc");
+    expect(mac.extensionIds).toEqual(TEST_CHROME_EXTENSION_IDS);
+    expect(withMacChromiumFamilies(mac)).toBe(mac);
+    await fs.writeFile(descriptorPath, Buffer.from(bytes).fill(0x20, 0, 1));
+    await expect(loadChromeBrowserAuthority(macOptions)).rejects.toThrow("hash check");
+    await fs.writeFile(descriptorPath, bytes);
     await expect(
       loadChromeBrowserAuthority({
         descriptorPath,

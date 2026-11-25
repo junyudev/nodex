@@ -14,6 +14,7 @@ import {
 import { resolveBrowserUseNativePipeDirectory } from "../browser-use-native-pipe-server";
 import {
   getChromeBrowserFamily,
+  getChromeBrowserFamilyByBundleId,
   type ChromeBrowserAuthority,
   type ChromeBrowserFamily,
 } from "./ChromeBrowserFamilyRegistry";
@@ -38,11 +39,19 @@ interface ChromeExtensionBackendInfo {
   readonly extensionInstanceId: string;
 }
 
-interface RegisteredChromeExtension extends ChromeExtensionBackendInfo {
-  readonly socketPath: string;
+export interface ChromeBrowserPeerIdentity {
+  readonly bundleId: string;
+  readonly teamId: string;
+  readonly iconPath: string;
 }
 
-export interface ChromeExtensionInstanceSnapshot extends ChromeExtensionBackendInfo {}
+export interface ChromeExtensionInstanceSnapshot extends ChromeExtensionBackendInfo {
+  readonly application?: { readonly family: ChromeBrowserFamily; readonly iconPath: string };
+}
+
+interface RegisteredChromeExtension extends ChromeExtensionInstanceSnapshot {
+  readonly socketPath: string;
+}
 
 export interface ChromeExtensionPipeRegistrySnapshot {
   readonly instances: readonly ChromeExtensionInstanceSnapshot[];
@@ -77,6 +86,7 @@ export interface ChromeExtensionPipeRegistryOptions {
   readonly onDiagnostic?: (diagnostic: { readonly code: string; readonly detail?: string }) => void;
   readonly onSnapshot?: (snapshot: ChromeExtensionPipeRegistrySnapshot) => void;
   readonly requestTimeoutMs?: number;
+  readonly readBrowserPeer?: (socket: net.Socket) => ChromeBrowserPeerIdentity | null;
   readonly socketPeerAuthorizer?: BrowserUseSocketPeerAuthorizer;
   readonly windows?: WindowsChromePipeTransport;
 }
@@ -113,6 +123,20 @@ function parseBackendInfo(
     extensionInstanceId,
     family: family.family,
   };
+}
+
+function resolveBrowserApplication(
+  authority: ChromeBrowserAuthority,
+  info: ChromeExtensionBackendInfo,
+  peer: ChromeBrowserPeerIdentity | null,
+): ChromeExtensionInstanceSnapshot["application"] {
+  if (!peer) return undefined;
+  const browser = getChromeBrowserFamilyByBundleId(authority, peer.bundleId);
+  if (!browser || !browser.extensionIds.includes(info.extensionId)) return undefined;
+  if (browser.signingTeamId && browser.signingTeamId !== peer.teamId) return undefined;
+  // Only the OS can distinguish a Chrome-compatible report from a real Chrome process.
+  if (browser.family !== info.family && info.family !== "chrome") return undefined;
+  return { family: browser.family, iconPath: peer.iconPath };
 }
 
 function authorizeExpectedPeer(
@@ -258,19 +282,26 @@ async function requestSocket(
   timeoutMs: number,
   socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer,
   expectedPeerIdentity: ChromeNativeHostPeerIdentity,
+  options?: {
+    readonly onVerifiedSocket?: (socket: net.Socket) => void;
+    readonly afterResponse?: (socket: net.Socket, response: unknown) => Promise<void>;
+  },
 ): Promise<unknown> {
   const socket = net.createConnection(socketPath);
   try {
-    return await requestStream(socket, method, params, timeoutMs, (send) =>
+    const response = await requestStream(socket, method, params, timeoutMs, (send) =>
       socket.once("connect", () => {
         try {
           authorizeExpectedPeer(socket, socketPeerAuthorizer, expectedPeerIdentity);
+          options?.onVerifiedSocket?.(socket);
           send();
         } catch (error) {
           socket.destroy(error instanceof Error ? error : new Error(String(error)));
         }
       }),
     );
+    await options?.afterResponse?.(socket, response);
+    return response;
   } finally {
     socket.destroy();
   }
@@ -303,11 +334,7 @@ function publicSnapshot(
   revision: number,
 ): ChromeExtensionPipeRegistrySnapshot {
   return {
-    instances: instances.map(({ extensionId, extensionInstanceId, family }) => ({
-      extensionId,
-      extensionInstanceId,
-      family,
-    })),
+    instances: instances.map(({ socketPath: _socketPath, ...instance }) => instance),
     providerReady: instances.length > 0,
     revision,
   };
@@ -325,6 +352,8 @@ function sameInstances(
       entry.extensionId === candidate.extensionId &&
       entry.extensionInstanceId === candidate.extensionInstanceId &&
       entry.family === candidate.family &&
+      entry.application?.family === candidate.application?.family &&
+      entry.application?.iconPath === candidate.application?.iconPath &&
       entry.socketPath === candidate.socketPath
     );
   });
@@ -340,6 +369,7 @@ export class ChromeExtensionPipeRegistry {
   private readonly onDiagnostic: NonNullable<ChromeExtensionPipeRegistryOptions["onDiagnostic"]>;
   private readonly onSnapshot: NonNullable<ChromeExtensionPipeRegistryOptions["onSnapshot"]>;
   private readonly requestTimeoutMs: number;
+  private readonly readBrowserPeer: ChromeExtensionPipeRegistryOptions["readBrowserPeer"];
   private readonly socketPeerAuthorizer: BrowserUseSocketPeerAuthorizer | undefined;
   private readonly windows: WindowsChromePipeTransport | undefined;
   private windowsStopped = false;
@@ -379,6 +409,7 @@ export class ChromeExtensionPipeRegistry {
     this.onSnapshot = options.onSnapshot ?? (() => undefined);
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.socketPeerAuthorizer = options.socketPeerAuthorizer;
+    this.readBrowserPeer = options.readBrowserPeer;
   }
 
   snapshot(): ChromeExtensionPipeRegistrySnapshot {
@@ -486,32 +517,39 @@ export class ChromeExtensionPipeRegistry {
       return;
     }
     await validateSocketPath(this.directory, instance.socketPath);
-    const currentInfo = parseBackendInfo(
-      await requestSocket(
-        instance.socketPath,
-        "getInfo",
-        { session_id: sessionId, turn_id: "pip-focus" },
-        remainingTimeout(),
-        this.socketPeerAuthorizer!,
-        this.expectedPeerIdentity!,
-      ),
-      this.authority,
-    );
-    if (
-      !currentInfo ||
-      currentInfo.extensionInstanceId !== instance.extensionInstanceId ||
-      currentInfo.extensionId !== instance.extensionId ||
-      currentInfo.family !== instance.family
-    ) {
-      throw new Error("Chrome extension instance changed before focus");
-    }
     await requestSocket(
       instance.socketPath,
-      "focusTab",
-      { session_id: sessionId, tabId: numericTabId },
+      "getInfo",
+      { session_id: sessionId, turn_id: "pip-focus" },
       remainingTimeout(),
       this.socketPeerAuthorizer!,
       this.expectedPeerIdentity!,
+      {
+        afterResponse: async (socket, response) => {
+          const current = parseBackendInfo(response, this.authority);
+          if (
+            !current ||
+            current.extensionInstanceId !== instance.extensionInstanceId ||
+            current.extensionId !== instance.extensionId ||
+            current.family !== instance.family
+          ) {
+            throw new Error("Chrome extension instance changed before focus");
+          }
+          if (instance.application) {
+            const peer = this.readBrowserPeer?.(socket) ?? null;
+            const application = resolveBrowserApplication(this.authority, current, peer);
+            if (application?.family !== instance.application.family) {
+              throw new Error("Browser application changed before focus");
+            }
+          }
+          await requestStream(
+            socket,
+            "focusTab",
+            { session_id: sessionId, tabId: numericTabId },
+            remainingTimeout(),
+          );
+        },
+      },
     );
   }
 
@@ -632,6 +670,7 @@ export class ChromeExtensionPipeRegistry {
       try {
         const windows = this.windows;
         if (!windows) await validateSocketPath(this.directory, socketPath);
+        let peer: ChromeBrowserPeerIdentity | null = null;
         const response = windows
           ? await windows.withPeer(
               socketPath,
@@ -645,11 +684,26 @@ export class ChromeExtensionPipeRegistry {
               this.requestTimeoutMs,
               this.socketPeerAuthorizer!,
               this.expectedPeerIdentity!,
+              {
+                onVerifiedSocket: (socket) => {
+                  try {
+                    peer = this.readBrowserPeer?.(socket) ?? null;
+                  } catch {
+                    this.onDiagnostic({ code: "browser-peer-attribution-failed" });
+                  }
+                },
+              },
             );
         const info = parseBackendInfo(response, this.authority);
         if (windows && info && !getChromeBrowserFamily(this.authority, info.family)?.windows)
           return null;
-        return info ? ({ ...info, socketPath } satisfies RegisteredChromeExtension) : null;
+        if (!info) return null;
+        const application = resolveBrowserApplication(this.authority, info, peer);
+        return {
+          ...info,
+          socketPath,
+          ...(application ? { application } : {}),
+        } satisfies RegisteredChromeExtension;
       } catch {
         return null;
       }

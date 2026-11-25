@@ -50,6 +50,7 @@ import {
   readChromeNativeHostIdentity,
   type ChromeNativeHostInstallResult,
 } from "../browser-use/chrome/ChromeNativeHostInstaller";
+import type { BrowserConnectionInventory } from "../browser-use/chrome/browser-connection-facts";
 import { createBrowserUsePeerAuthorizer } from "../browser-use/browser-use-peer-authorizer";
 import type {
   BrowserRuntimeAvailability,
@@ -78,13 +79,17 @@ export class ChromeControlRuntime extends Context.Service<
   ChromeControlRuntime,
   {
     readonly available: () => boolean;
+    readonly browserInventory?: (refresh: boolean) => Effect.Effect<BrowserConnectionInventory>;
     readonly changes: Stream.Stream<ChromeControlRuntimeChange>;
     readonly focusPresentation: (
       input: ChromeExtensionFocusInput,
     ) => Effect.Effect<void, ChromeControlRuntimeError>;
     readonly isConnectedInstance: (family: string, extensionInstanceId: string) => boolean;
     readonly refresh: Effect.Effect<ChromeControlRuntimeSnapshot, ChromeControlRuntimeError>;
-    readonly resolveBrowserIconPath: (family: string) => string | null;
+    readonly resolveBrowserIconPath: (
+      family: string,
+      extensionInstanceId?: string,
+    ) => string | null;
     readonly snapshot: () => ChromeControlRuntimeSnapshot;
     readonly updateWindowsRegistration?: (
       action: ChromeControlSettingsAction,
@@ -105,6 +110,8 @@ export interface ChromeControlExtensionRegistryPort {
 
 export interface ChromeControlRuntimePorts {
   readonly registrationKind: ChromeHostRegistration["kind"];
+  readonly authority?: ChromeBrowserAuthority | null;
+  readonly isBrowserRunning?: (bundleId: string) => boolean | null;
   readonly browserIconPaths?: ReadonlyMap<string, string>;
   readonly bundleSupported: boolean;
   readonly installNativeHost: () => Promise<ChromeNativeHostInstallResult>;
@@ -363,6 +370,7 @@ export const makeChromeControlRuntime = (
 
     return ChromeControlRuntime.of({
       available: () => snapshot().providerReady,
+      browserInventory: (refresh) => readBrowserInventory(ports, snapshot, () => registry, refresh),
       changes,
       focusPresentation: (input) => {
         if (!snapshot().providerReady || !registry) {
@@ -392,11 +400,50 @@ export const makeChromeControlRuntime = (
             catch: (cause) => new ChromeControlRuntimeError({ operation: "refresh", cause }),
           }).pipe(Effect.asVoid, Effect.map(snapshot))
         : Effect.succeed(snapshot()),
-      resolveBrowserIconPath: (family) => ports.browserIconPaths?.get(family) ?? null,
+      resolveBrowserIconPath: (family, id) => {
+        const instance = registrySnapshot().instances.find(
+          (candidate) => candidate.family === family && candidate.extensionInstanceId === id,
+        );
+        if (instance?.application) {
+          const appFamily = instance.application.family;
+          return ports.browserIconPaths?.get(appFamily) ?? (instance.application.iconPath || null);
+        }
+        if (id && family === "chrome") return null;
+        return ports.browserIconPaths?.get(family) ?? null;
+      },
       snapshot,
     });
   });
 };
+
+function readBrowserInventory(
+  ports: ChromeControlRuntimePorts,
+  snapshot: () => ChromeControlRuntimeSnapshot,
+  getRegistry: () => ChromeControlExtensionRegistryPort | null,
+  refresh: boolean,
+): Effect.Effect<BrowserConnectionInventory> {
+  return Effect.gen(function* () {
+    const registry = getRegistry();
+    if (refresh && registry) {
+      yield* Effect.tryPromise(() => registry.refresh()).pipe(Effect.ignore);
+    }
+    const status = snapshot();
+    const families = ports.authority?.families ?? [];
+    const runningFamilies = new Map<string, boolean>();
+    if (refresh && ports.isBrowserRunning) {
+      for (const family of families) {
+        const running = ports.isBrowserRunning(family.bundleId);
+        if (running !== null) runningFamilies.set(family.family, running);
+      }
+    }
+    return {
+      families,
+      runningFamilies,
+      instances: status.providerReady ? (registry?.snapshot().instances ?? []) : [],
+      status: status.status,
+    };
+  });
+}
 
 function makeWindowsChromeControlRuntime(
   ports: ChromeControlRuntimePorts,
@@ -506,6 +553,7 @@ function makeWindowsChromeControlRuntime(
     yield* reconcile();
     return ChromeControlRuntime.of({
       available: () => snapshot().providerReady,
+      browserInventory: (refresh) => readBrowserInventory(ports, snapshot, () => registry, refresh),
       changes: Stream.callback(
         (queue) =>
           Effect.acquireRelease(
@@ -554,6 +602,10 @@ export interface ChromeControlRuntimeOptions {
   readonly peerAuthorizationMode: BrowserUsePeerAuthorizationMode;
   readonly platform: NodeJS.Platform;
   readonly architecture?: string;
+  readonly isBrowserRunning?: ChromeControlRuntimePorts["isBrowserRunning"];
+  readonly readBrowserPeer?: ConstructorParameters<
+    typeof ChromeExtensionPipeRegistry
+  >[0]["readBrowserPeer"];
   readonly localAppData?: string;
   readonly runtimeStateHome: string;
   readonly windowsInstallationDirectory?: string;
@@ -567,6 +619,7 @@ async function verifyAttestedIconPaths(
   if (chrome.status !== "available") return new Map();
   const result = new Map<string, string>();
   for (const family of authority.families) {
+    if (!family.browserIconAssetPath) continue;
     const artifactRelativePath = `${chrome.plugin.root}/${family.browserIconAssetPath}`;
     const artifact = bundle.manifest.artifacts.find(
       (candidate) => candidate.path === artifactRelativePath && candidate.kind === "data",
@@ -862,6 +915,8 @@ const chromeControlLayer = (
           : undefined;
 
       return yield* makeChromeControlRuntime({
+        authority,
+        isBrowserRunning: options.isBrowserRunning,
         browserIconPaths,
         bundleSupported:
           bundleSupported &&
@@ -876,6 +931,7 @@ const chromeControlLayer = (
           return new ChromeExtensionPipeRegistry({
             authority,
             expectedPeerIdentity: peerIdentity,
+            readBrowserPeer: options.readBrowserPeer,
             onDiagnostic: (diagnostic) => logger.warn("Chrome provider diagnostic", diagnostic),
             onSnapshot: (snapshot) =>
               logger.info("Chrome provider connection changed", {
@@ -940,6 +996,12 @@ export const live = (
       };
       return ChromeControlRuntime.of({
         available: () => current?.available() ?? false,
+        browserInventory: (refresh) =>
+          Effect.suspend(
+            () =>
+              current?.browserInventory?.(refresh) ??
+              Effect.succeed({ families: [], instances: [], status: snapshot().status }),
+          ),
         changes: Stream.unwrap(
           ready.pipe(
             Effect.map((service) =>
@@ -973,7 +1035,7 @@ export const live = (
             ? Effect.sync(snapshot)
             : ready.pipe(Effect.flatMap((service) => service.refresh)),
         ),
-        resolveBrowserIconPath: (family) => current?.resolveBrowserIconPath(family) ?? null,
+        resolveBrowserIconPath: (family, id) => current?.resolveBrowserIconPath(family, id) ?? null,
         snapshot,
         updateWindowsRegistration: options.windowsBrowserReady
           ? (action) =>

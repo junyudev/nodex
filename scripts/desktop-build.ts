@@ -79,7 +79,7 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
 
 function buildMacBridges(target: DesktopBuildTarget): void {
   if (target.runtime !== "macos") return;
-  for (const bridge of ["clipboard", "devicecheck", "notification"])
+  for (const bridge of ["browser-peer", "clipboard", "devicecheck", "notification"])
     task(`${bridge}-bridge:build`, target.arch);
 }
 

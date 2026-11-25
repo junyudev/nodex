@@ -21,6 +21,11 @@ import {
 } from "./browser-use-input-translation";
 import type { BrowserUsePolicyReader } from "./browser-use-policy-store";
 
+import {
+  BROWSER_CONNECTIONS_COMMAND,
+  type BrowserConnectionFacts,
+} from "./chrome/browser-connection-facts";
+
 const DEFAULT_CDP_COMMAND_TIMEOUT_MS = 20_000;
 const DEFAULT_PAGE_READY_TIMEOUT_MS = 15_000;
 const DEFAULT_CURSOR_ARRIVAL_TIMEOUT_MS = 1_500;
@@ -86,6 +91,7 @@ export interface BrowserUseIabApiOptions {
     ttlMs?: number,
   ) => void;
   pageReadyTimeoutMs?: number;
+  readBrowserConnections?: () => Promise<BrowserConnectionFacts>;
   policyStore?: BrowserUsePolicyReader;
   subscribeWebviewAttached: (listener: (event: BrowserSidebarTabIdentity) => void) => () => void;
 }
@@ -220,6 +226,7 @@ function assertAllowedBrowserUseNavigationUrl(value: unknown): string {
 class BrowserUseIabApiState implements BrowserUseIabApi {
   private readonly appSessionId: string;
   private readonly appVersion: string;
+  private readonly readBrowserConnections: BrowserUseIabApiOptions["readBrowserConnections"];
   private readonly applyCommand: BrowserUseIabApiOptions["applyCommand"];
   private readonly asyncRuntime: BrowserUseIabAsyncRuntime;
   private readonly browser: BrowserAutomationHost;
@@ -250,6 +257,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
   private readonly unsubscribeNavigationBlocked: () => void;
 
   constructor(options: BrowserUseIabApiOptions) {
+    this.readBrowserConnections = options.readBrowserConnections;
     this.appSessionId = options.appSessionId;
     this.appVersion = options.appVersion;
     this.applyCommand = options.applyCommand;
@@ -909,8 +917,11 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
 
   private async executeUnhandledCommand(rawParams: unknown): Promise<Record<string, unknown>> {
     const params = this.requireSession(rawParams);
-    this.recordTurn(params);
     const type = typeof params.type === "string" ? params.type : "";
+    if (type === BROWSER_CONNECTIONS_COMMAND && this.readBrowserConnections) {
+      return { ...(await this.readBrowserConnections()) };
+    }
+    this.recordTurn(params);
     const selected =
       this.selectedTabId === null ? null : (this.controlledTabs.get(this.selectedTabId) ?? null);
     if (type === "browser_visibility_get") {

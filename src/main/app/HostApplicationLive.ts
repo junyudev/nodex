@@ -1,3 +1,5 @@
+import { loadMacBrowserPeer } from "../platform/electron/MacBrowserPeer";
+import { readDefaultBrowserIdentity } from "../platform/electron/SystemDefaultBrowser";
 import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import { matchesPinnedCodexAppServerIdentity } from "../codex/codex-runtime";
 import { ExecutionNode } from "../../host/ExecutionNodeLive";
@@ -194,6 +196,7 @@ const chromeControl = Layer.unwrap(
         codex.desktopTools.browserRuntime.status !== "available"
           ? codex.desktopTools.browserRuntimeActivation.available.pipe(Effect.asVoid)
           : undefined,
+      ...(platform === "darwin" ? loadMacBrowserPeer(config) : undefined),
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
       windowsInstallationDirectory:
         config.isPackaged && platform === "win32" ? path.dirname(config.resourcesPath) : undefined,
@@ -216,6 +219,7 @@ const browserUse = Layer.unwrap(
     const codex = yield* CodexPlatform;
     return browserUseRuntimeLive({
       appVersion: config.appVersion,
+      readDefaultBrowserIdentity,
       get browserRuntime() {
         return codex.desktopTools.browserRuntime;
       },

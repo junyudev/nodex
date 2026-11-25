@@ -113,6 +113,8 @@ mac:
       to: native/nodex-sparkle.node
     - from: .generated/sparkle-runtime/${arch}/sparkle-runtime.json
       to: native/sparkle-runtime.json
+    - from: .generated/browser-peer-runtime/${arch}/nodex-browser-peer.node
+      to: native/nodex-browser-peer.node
     - from: .generated/clipboard-runtime/${arch}/nodex-clipboard.node
       to: native/nodex-clipboard.node
     - from: .generated/notifications-runtime/${arch}/nodex-notifications.node
@@ -141,6 +143,7 @@ mac:
   hardenedRuntime: true
   binaries:
     - Contents/Resources/ripgrep-runtime/rg
+    - Contents/Resources/native/nodex-browser-peer.node
     - Contents/Resources/native/nodex-clipboard.node
     - Contents/Resources/native/nodex-notifications.node
     - Contents/Resources/native/nodex-devicecheck.node

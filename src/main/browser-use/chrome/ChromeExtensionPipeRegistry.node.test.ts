@@ -10,6 +10,7 @@ import {
   ChromeExtensionPipeRegistry,
   isSafeChromeExtensionSocketDirectoryMetadata,
 } from "./ChromeExtensionPipeRegistry";
+import { withMacChromiumFamilies } from "./ChromeBrowserFamilyRegistry";
 import { TEST_CHROME_AUTHORITY } from "./chrome-test-fixture";
 
 const roots: string[] = [];
@@ -195,6 +196,51 @@ describe("Chrome extension pipe registry", () => {
       params: { session_id: "thread-1", tabId: 42 },
     });
     registry.stop();
+  });
+
+  test("keeps protocol identity while resolving Dia and Arc through the signed browser peer", async () => {
+    const directory = await makeDirectory();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    await makeBackend(directory, "extension.sock", { extensionInstanceId: "profile" }, requests);
+    let bundleId = "company.thebrowser.dia";
+    let teamId = "S6N382Y83G";
+    let authorized = 0;
+    let attributed = 0;
+    const registry = new ChromeExtensionPipeRegistry({
+      directory,
+      authority: withMacChromiumFamilies(TEST_CHROME_AUTHORITY),
+      expectedPeerIdentity: peerIdentity,
+      socketPeerAuthorizer: () => {
+        authorized += 1;
+        return authorizePeer();
+      },
+      readBrowserPeer: () => {
+        expect(authorized).toBe(++attributed);
+        return { bundleId, teamId, iconPath: "/AppIcon.icns" };
+      },
+    });
+
+    expect((await registry.refresh()).instances).toMatchObject([
+      { family: "chrome", extensionInstanceId: "profile", application: { family: "dia" } },
+    ]);
+    bundleId = "company.thebrowser.Browser";
+    expect((await registry.refresh()).instances).toMatchObject([
+      { family: "chrome", extensionInstanceId: "profile", application: { family: "arc" } },
+    ]);
+    const beforeFocus = authorized;
+    const focus = { extensionInstanceId: "profile", sessionId: "owner", tabId: "1" };
+    await registry.focusPresentation(focus);
+    expect(authorized - beforeFocus).toBe(1);
+    expect(requests.at(-1)).toMatchObject({ method: "focusTab", params: { tabId: 1 } });
+
+    bundleId = "company.thebrowser.dia";
+    await expect(registry.focusPresentation(focus)).rejects.toThrow(
+      "Browser application changed before focus",
+    );
+    expect(requests.at(-1)?.method).toBe("getInfo");
+
+    teamId = "WRONGTEAM";
+    expect((await registry.refresh()).instances[0]?.application).toBeUndefined();
   });
 
   test("fails closed for duplicate instance identities and unsafe tab ids", async () => {

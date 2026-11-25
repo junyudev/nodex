@@ -17,6 +17,10 @@ import {
   type BrowserUseCdpEvent,
   type BrowserUseIabAsyncRuntime,
 } from "./browser-use-iab-api";
+import {
+  BROWSER_CONNECTIONS_COMMAND,
+  type BrowserConnectionFacts,
+} from "./chrome/browser-connection-facts";
 import type { BrowserUsePolicyReader } from "./browser-use-policy-store";
 
 const testAsyncRuntime: BrowserUseIabAsyncRuntime = {
@@ -299,7 +303,10 @@ class FakeBrowserService extends EventEmitter {
   }
 }
 
-const makeApi = (policyStore?: BrowserUsePolicyReader) => {
+const makeApi = (
+  policyStore?: BrowserUsePolicyReader,
+  readBrowserConnections?: () => Promise<BrowserConnectionFacts>,
+) => {
   const service = new FakeBrowserService();
   const grantDownload = vi.fn();
   return makeBrowserUseIabApi({
@@ -315,6 +322,7 @@ const makeApi = (policyStore?: BrowserUsePolicyReader) => {
     buildFlavor: "production",
     grantDownload,
     policyStore,
+    readBrowserConnections,
     route: {
       browserConversationId: "conversation-1",
       browserViewScopeId: "scope-1",
@@ -339,6 +347,40 @@ const withApi = <A>(
 ) => makeApi(policyStore).pipe(Effect.flatMap((context) => Effect.promise(() => run(context))));
 
 describe("BrowserUseIabApi", () => {
+  it.effect("reads live connection facts only through the owning Browser session", () =>
+    Effect.gen(function* () {
+      let name = "Dia";
+      const { api } = yield* makeApi(undefined, async () => ({
+        defaultBrowser: {
+          name,
+          family: name.toLowerCase(),
+          supported: true,
+          running: null,
+          connection: "disconnected",
+        },
+        connectedBrowsers: [],
+        supportedBrowsers: [],
+        extensionControl: "extension-disconnected",
+      }));
+      const params = { type: BROWSER_CONNECTIONS_COMMAND, session_id: "thread-1" };
+      yield* Effect.promise(async () => {
+        expect(await api.dispatch("executeUnhandledCommand", params)).toMatchObject({
+          defaultBrowser: { name: "Dia" },
+        });
+        name = "Arc";
+        expect(await api.dispatch("executeUnhandledCommand", params)).toMatchObject({
+          defaultBrowser: { name: "Arc" },
+        });
+        await expect(
+          api.dispatch("executeUnhandledCommand", {
+            ...params,
+            session_id: "another-chat",
+          }),
+        ).rejects.toThrow();
+      });
+    }),
+  );
+
   it.effect("focuses the exact controlled tab and makes its embedded page visible", () =>
     withApi(async ({ api, service }) => {
       const tab = (await api.dispatch("createTab", {

@@ -20,18 +20,62 @@ import os from "node:os";
 import path from "node:path";
 
 function makeTestBrowserPluginReconciler(
-  options: Omit<BrowserPluginReconcilerOptions, "client"> & {
+  options: Omit<BrowserPluginReconcilerOptions, "client" | "codexHome"> & {
+    readonly browserCacheMissing?: boolean;
     readonly client: {
       readonly request: (method: string, params?: unknown) => Promise<unknown>;
     };
   },
 ) {
+  const codexHome = path.join(options.runtimeStateHome, "fixture-codex");
+  const marketplaceName = nodexDesktopToolMarketplaceName(options.runtimeStateHome);
+  const skill =
+    options.browserRuntime.status === "available"
+      ? path.relative(
+          options.browserRuntime.bundle.browserPluginRoot,
+          options.browserRuntime.bundle.paths.browserPluginDocs,
+        )
+      : "docs/SKILL.md";
+  const cachePath = path.join(
+    codexHome,
+    "plugins/cache",
+    marketplaceName,
+    "browser",
+    MATERIALIZED_BROWSER_VERSION,
+    skill,
+  );
+  const source = path.join(
+    options.runtimeStateHome,
+    ".tmp",
+    "bundled-marketplaces",
+    marketplaceName,
+    "plugins/browser",
+    skill,
+  );
+  const publishBrowserSkill = () => {
+    if (!fs.existsSync(source)) return;
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.copyFileSync(source, cachePath);
+  };
   return makeBrowserPluginReconciler({
     ...options,
+    codexHome,
     get browserRuntime() {
       return options.browserRuntime;
     },
-    client: browserPluginRequestPortFromPromise(options.client),
+    client: browserPluginRequestPortFromPromise({
+      request: async (method, params) => {
+        if (method === "plugin/list" && !options.browserCacheMissing) publishBrowserSkill();
+        const result = await options.client.request(method, params);
+        if (
+          method === "plugin/install" &&
+          (params as { pluginName?: string }).pluginName === "browser"
+        ) {
+          publishBrowserSkill();
+        }
+        return result;
+      },
+    }),
   });
 }
 
@@ -66,6 +110,8 @@ async function makeRuntime() {
     runtimeStateHome,
   };
 }
+
+const MATERIALIZED_BROWSER_VERSION = "1.0.0-test+nodex.6";
 
 function plugin(input: {
   enabled: boolean;
@@ -139,7 +185,7 @@ describe("BrowserPluginReconciler", () => {
                             enabled: globallyEnabled,
                             installed,
                             marketplaceName: fixture.marketplaceName,
-                            version: "1.0.0-test",
+                            version: MATERIALIZED_BROWSER_VERSION,
                           }),
                         ],
                       },
@@ -256,7 +302,7 @@ describe("BrowserPluginReconciler", () => {
                     marketplaceName: fixture.marketplaceName,
                     enabled: false,
                     installed: true,
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_BROWSER_VERSION,
                   }),
                 ],
               },
@@ -284,7 +330,7 @@ describe("BrowserPluginReconciler", () => {
             status: "unavailable",
           },
           enabled: true,
-          installedVersion: "1.0.0-test",
+          installedVersion: MATERIALIZED_BROWSER_VERSION,
           marketplaceRoot: fixture.marketplaceRoot,
           status: "ready",
         });
@@ -319,7 +365,7 @@ describe("BrowserPluginReconciler", () => {
                     marketplaceName: fixture.marketplaceName,
                     enabled: false,
                     installed: true,
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_BROWSER_VERSION,
                   }),
                 ],
               },
@@ -348,78 +394,66 @@ describe("BrowserPluginReconciler", () => {
     }),
   );
 
-  it.effect("installs and verifies a missing or stale plugin", () =>
-    Effect.gen(function* () {
-      const fixture = yield* Effect.promise(() => makeRuntime());
-      let marketplaceAdded = false;
-      let installed = false;
-      const request = vi.fn(async (method: string) => {
-        if (method === "marketplace/add") {
-          marketplaceAdded = true;
-          return {
-            marketplaceName: fixture.marketplaceName,
-            installedRoot: fixture.marketplaceRoot,
-            alreadyAdded: false,
-          };
-        }
-        if (method === "plugin/list") {
-          return {
-            featuredPluginIds: [],
-            marketplaceLoadErrors: [],
-            marketplaces: marketplaceAdded
-              ? [
-                  {
-                    interface: null,
-                    name: fixture.marketplaceName,
-                    path: fixture.marketplacePath,
-                    plugins: [
-                      plugin({
-                        marketplaceName: fixture.marketplaceName,
-                        enabled: false,
-                        installed,
-                        version: installed ? "1.0.0-test" : "0.9.0",
-                      }),
-                    ],
-                  },
-                ]
-              : [],
-          };
-        }
-        if (method === "plugin/install") {
-          installed = true;
-          return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
-        }
-        if (method === "config/batchWrite")
-          return {
-            status: "ok",
-            version: "test",
-            filePath: "/fixture/config.toml",
-            overriddenMetadata: null,
-          };
-        if (method === "skills/list") return { data: [] };
-        throw new Error(`Unexpected request: ${method}`);
-      });
-
-      try {
-        const reconciler = yield* makeTestBrowserPluginReconciler({
-          browserRuntime: fixture.browserRuntime,
-          client: { request },
-          runtimeStateHome: fixture.runtimeStateHome,
+  it.effect(
+    "refreshes a stale installed skill even when the marketplace reports the new version",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* Effect.promise(() => makeRuntime());
+        const request = vi.fn(async (method: string) => {
+          if (method === "plugin/list") {
+            return {
+              featuredPluginIds: [],
+              marketplaceLoadErrors: [],
+              marketplaces: [
+                {
+                  interface: null,
+                  name: fixture.marketplaceName,
+                  path: fixture.marketplacePath,
+                  plugins: [
+                    plugin({
+                      marketplaceName: fixture.marketplaceName,
+                      enabled: false,
+                      installed: true,
+                      version: MATERIALIZED_BROWSER_VERSION,
+                    }),
+                  ],
+                },
+              ],
+            };
+          }
+          if (method === "plugin/install") {
+            return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
+          }
+          if (method === "config/batchWrite")
+            return {
+              status: "ok",
+              version: "test",
+              filePath: "/fixture/config.toml",
+              overriddenMetadata: null,
+            };
+          if (method === "skills/list") return { data: [] };
+          throw new Error(`Unexpected request: ${method}`);
         });
-        expect(yield* reconciler.ensureInstalled).toMatchObject({ status: "ready" });
-        expect(request.mock.calls.map(([method]) => method)).toEqual([
-          "plugin/list",
-          "marketplace/add",
-          "plugin/list",
-          "plugin/install",
-          "config/batchWrite",
-          "skills/list",
-          "plugin/list",
-        ]);
-      } finally {
-        fs.rmSync(fixture.root, { force: true, recursive: true });
-      }
-    }),
+
+        try {
+          const reconciler = yield* makeTestBrowserPluginReconciler({
+            browserRuntime: fixture.browserRuntime,
+            browserCacheMissing: true,
+            client: { request },
+            runtimeStateHome: fixture.runtimeStateHome,
+          });
+          expect(yield* reconciler.ensureInstalled).toMatchObject({ status: "ready" });
+          expect(request.mock.calls.map(([method]) => method)).toEqual([
+            "plugin/list",
+            "plugin/install",
+            "config/batchWrite",
+            "skills/list",
+            "plugin/list",
+          ]);
+        } finally {
+          fs.rmSync(fixture.root, { force: true, recursive: true });
+        }
+      }),
   );
 
   it.effect("installs Browser and Computer Use from the materialized marketplace", () =>
@@ -441,7 +475,7 @@ describe("BrowserPluginReconciler", () => {
                     marketplaceName: fixture.marketplaceName,
                     enabled: false,
                     installed: installed.has("browser"),
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_BROWSER_VERSION,
                   }),
                   plugin({
                     marketplaceName: fixture.marketplaceName,
@@ -519,7 +553,7 @@ describe("BrowserPluginReconciler", () => {
                     marketplaceName: fixture.marketplaceName,
                     enabled: false,
                     installed: true,
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_BROWSER_VERSION,
                   }),
                 ],
               },
@@ -590,7 +624,7 @@ describe("BrowserPluginReconciler", () => {
                           marketplaceName: fixture.marketplaceName,
                           enabled: false,
                           installed: true,
-                          version: "1.0.0-test",
+                          version: MATERIALIZED_BROWSER_VERSION,
                         }),
                       ],
                     },
@@ -637,7 +671,7 @@ describe("BrowserPluginReconciler", () => {
                     marketplaceName: fixture.marketplaceName,
                     enabled: false,
                     installed,
-                    version: "1.0.0-test",
+                    version: MATERIALIZED_BROWSER_VERSION,
                   }),
                 ],
               },
@@ -697,7 +731,7 @@ describe("BrowserPluginReconciler", () => {
             status: "unavailable",
           },
           enabled: true,
-          installedVersion: "1.0.0-test",
+          installedVersion: MATERIALIZED_BROWSER_VERSION,
           marketplaceRoot: fixture.marketplaceRoot,
           status: "ready",
         });
@@ -735,7 +769,7 @@ describe("BrowserPluginReconciler", () => {
                       marketplaceName: fixture.marketplaceName,
                       enabled: false,
                       installed: installed.has("browser"),
-                      version: "1.0.0-test",
+                      version: MATERIALIZED_BROWSER_VERSION,
                     }),
                     plugin({
                       marketplaceName: fixture.marketplaceName,

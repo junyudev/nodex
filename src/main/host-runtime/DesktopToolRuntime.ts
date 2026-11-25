@@ -83,6 +83,7 @@ interface DesktopToolRuntimeLayerOptions {
   readonly windows?: DesktopToolRuntimeOptions["windows"];
   readonly platform?: string;
   readonly availableBackends: () => readonly BrowserRuntimeBackend[];
+  readonly preferredExtensionInstanceId?: Effect.Effect<string | undefined>;
   readonly codexDesktopToolsCompatible?: () => boolean;
   readonly hostPlugins?: (
     computerUseAvailable: boolean,
@@ -195,10 +196,14 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
                   .hostPlugins(computerUse?.status === "available")
                   .pipe(hostMaterialization.withPermits(1))
               : yield* plugins.ensureInstalled;
+            const preferredExtensionInstanceId = yield* (
+              options.preferredExtensionInstanceId ?? Effect.succeed(undefined)
+            );
             return yield* Effect.try({
               try: () =>
                 new BrowserUseThreadConfigBuilder({
                   availableBackends: options.availableBackends,
+                  preferredExtensionInstanceId,
                   browserRuntime: options.browserRuntime,
                   windows: options.windows,
                   codexHome: options.codexHome,
@@ -222,6 +227,9 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
                 Effect.flatMap((current) =>
                   Effect.gen(function* () {
                     const inventory = yield* options.listPlugins?.(cwd) ?? Effect.succeed(null);
+                    const preferredExtensionInstanceId = yield* (
+                      options.preferredExtensionInstanceId ?? Effect.succeed(undefined)
+                    );
                     return yield* Effect.try({
                       try: () => {
                         const disabledDesktopPluginIds =
@@ -235,6 +243,7 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
                           availableBackends: () =>
                             current.browserPluginReady ? options.availableBackends() : [],
                           browserRuntime: options.browserRuntime,
+                          preferredExtensionInstanceId,
                           windows: options.windows,
                           codexHome: options.codexHome,
                           disabledDesktopPluginIds,
@@ -289,6 +298,7 @@ export const live = (
       });
       return yield* make({
         availableBackends: browserUse.availableBackends,
+        preferredExtensionInstanceId: browserUse.preferredExtensionInstanceId,
         get browserRuntime() {
           return options.browserRuntime;
         },
@@ -313,6 +323,7 @@ export const live = (
         plugins: (availableBackends) =>
           makeBrowserPluginReconciler({
             availableBackends,
+            codexHome: options.codexHome,
             get browserRuntime() {
               return options.browserRuntime;
             },

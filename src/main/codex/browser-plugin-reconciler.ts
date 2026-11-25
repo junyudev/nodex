@@ -89,6 +89,7 @@ export interface BrowserPluginReconcilerOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly client: BrowserPluginRequestPort;
   readonly computerUseAvailable?: () => boolean;
+  readonly codexHome: string;
   readonly runtimeStateHome: string;
 }
 
@@ -120,6 +121,7 @@ type BundledMarketplaceSnapshot = {
 type ReconcileEnvironment = {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly client: BrowserPluginRequestPort;
+  readonly codexHome: string;
   readonly runtimeStateHome: string;
   readonly marketplaceName: string;
 };
@@ -243,6 +245,7 @@ function reconcilePlugin(
     marketplacePath: string;
     pluginName: DesktopToolPluginName;
     version: string | null;
+    refreshInstall?: boolean;
   },
 ): Effect.Effect<boolean, BrowserPluginReconcileError> {
   if (!input.desired) {
@@ -259,7 +262,8 @@ function reconcilePlugin(
       ),
     );
   }
-  if (isPluginReady(input.current, input.version)) return Effect.succeed(false);
+  if (!input.refreshInstall && isPluginReady(input.current, input.version))
+    return Effect.succeed(false);
   if (!input.current) {
     return Effect.fail(
       reconcileError(
@@ -270,6 +274,7 @@ function reconcilePlugin(
   }
   return Effect.gen(function* () {
     if (
+      input.refreshInstall ||
       !input.current?.installed ||
       (input.current.localVersion ?? input.current.version) !== input.version
     ) {
@@ -294,6 +299,30 @@ function reconcilePlugin(
     });
     return true;
   });
+}
+
+function browserSkillIsInstalled(
+  codexHome: string,
+  materialized: MaterializedDesktopToolMarketplace,
+  relativeSkillPath: string,
+): Effect.Effect<boolean> {
+  const installed = path.join(
+    codexHome,
+    "plugins",
+    "cache",
+    materialized.marketplaceName,
+    "browser",
+    materialized.browserPluginVersion,
+    relativeSkillPath,
+  );
+  // Plugin/list describes the marketplace version even when the installed cache is older.
+  return Effect.tryPromise(async () => {
+    const [expected, actual] = await Promise.all([
+      fs.promises.readFile(path.join(materialized.browserPluginRoot, relativeSkillPath)),
+      fs.promises.readFile(installed),
+    ]);
+    return expected.equals(actual);
+  }).pipe(Effect.orElseSucceed(() => false));
 }
 
 function removeInstalledPlugins(
@@ -431,7 +460,7 @@ export const materializeHostDesktopToolPlugins = Effect.fn("DesktopTools.materia
       status: "ready",
       marketplaceRoot: materialized.rootPath,
       enabled: desired.browserAvailable,
-      installedVersion: desired.browserAvailable ? bundle.manifest.browserPlugin.version : null,
+      installedVersion: desired.browserAvailable ? materialized.browserPluginVersion : null,
       chrome:
         desired.chromeAvailable && chrome.status === "available" && materialized.chromePluginRoot
           ? {
@@ -517,6 +546,17 @@ function reconcile(
       );
     }
 
+    const relativeSkillPath = path.relative(
+      bundle.browserPluginRoot,
+      bundle.paths.browserPluginDocs,
+    );
+    const browserSkillCurrent = browserSkillIsInstalled(
+      environment.codexHome,
+      materialized,
+      relativeSkillPath,
+    );
+    const refreshBrowserInstall = desiredState.browserAvailable && !(yield* browserSkillCurrent);
+
     let changed = false;
     changed =
       (yield* reconcilePlugin(environment, {
@@ -524,7 +564,8 @@ function reconcile(
         desired: desiredState.browserAvailable,
         marketplacePath: marketplace.marketplacePath,
         pluginName: "browser",
-        version: bundle.manifest.browserPlugin.version,
+        version: materialized.browserPluginVersion,
+        refreshInstall: refreshBrowserInstall,
       })) || changed;
     const chromeCapability = bundle.manifest.capabilities.browserUse.backends.chrome;
     changed =
@@ -557,7 +598,8 @@ function reconcile(
 
     const browserPlugin = findPlugin(marketplace, "browser");
     const browserReady = desiredState.browserAvailable
-      ? isPluginReady(browserPlugin, bundle.manifest.browserPlugin.version)
+      ? isPluginReady(browserPlugin, materialized.browserPluginVersion) &&
+        (!refreshBrowserInstall || (yield* browserSkillCurrent))
       : !browserPlugin?.installed && !browserPlugin?.enabled;
     if (!browserReady) {
       return reconciliationFailure(
@@ -595,9 +637,7 @@ function reconcile(
       chrome,
       computerUse,
       enabled: desiredState.browserAvailable,
-      installedVersion: desiredState.browserAvailable
-        ? bundle.manifest.browserPlugin.version
-        : null,
+      installedVersion: desiredState.browserAvailable ? materialized.browserPluginVersion : null,
       marketplaceRoot: materialized.rootPath,
       status: "ready" as const,
     };
@@ -613,6 +653,7 @@ export const makeBrowserPluginReconciler = (
     const runtimeStateHome = path.resolve(options.runtimeStateHome);
     const environment: Omit<ReconcileEnvironment, "browserRuntime"> = {
       client: options.client,
+      codexHome: options.codexHome,
       runtimeStateHome,
       marketplaceName: nodexDesktopToolMarketplaceName(runtimeStateHome),
     };

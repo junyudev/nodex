@@ -62,6 +62,30 @@ describe("BrowserUseThreadConfigBuilder", () => {
     await expect(builder.build()).resolves.toBeNull();
   });
 
+  test("sets the preferred instance only for a REPL with a connected extension backend", async () => {
+    const { browserRuntime } = await makeVerifiedRuntime();
+    const options = {
+      codexHome: "/tmp/native-codex-home",
+      browserRuntime,
+      runtimeStateHome: "/tmp/nodex-agent",
+      preferredExtensionInstanceId: "dia-profile",
+    };
+    const connected = await new BrowserUseThreadConfigBuilder({
+      ...options,
+      availableBackends: () => ["iab", "chrome"],
+    }).build();
+    expect(connected?.["mcp_servers.node_repl"]).toMatchObject({
+      env: { BROWSER_USE_PREFERRED_EXTENSION_INSTANCE_ID: "dia-profile" },
+    });
+    const disconnected = await new BrowserUseThreadConfigBuilder(options).build();
+    expect(disconnected?.["mcp_servers.node_repl"]).toMatchObject({
+      env: { BROWSER_USE_AVAILABLE_BACKENDS: "iab" },
+    });
+    expect(disconnected?.["mcp_servers.node_repl"]).not.toMatchObject({
+      env: { BROWSER_USE_PREFERRED_EXTENSION_INSTANCE_ID: expect.any(String) },
+    });
+  });
+
   test("builds the pinned Node REPL config only from verified paths", async () => {
     const { browserRuntime, bundleRoot } = await makeVerifiedRuntime();
     const runtimeStateHome = path.join(bundleRoot, "..", "state");

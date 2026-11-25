@@ -34,6 +34,25 @@ Local chats receive the desktop tools alongside the user's own MCP servers. Code
 
 An Agent's JavaScript session keeps what the Agent has set up in it, such as its connection to the Browser, for as long as the chat's Runtime runs it. A message sent while the Agent is working redirects the Agent at once but does not discard that session: a script already running finishes, and the Agent's next script runs after it with everything still in place. Stopping the reply is what stops a running script, and it starts the session over.
 
+### Choosing a browser
+
+On macOS, Nodex connects to Chrome, Edge, Brave, Opera, Vivaldi, Dia and Arc through the
+ChatGPT extension. A connection uses the existing browser profile and its sign-ins. The
+in-app Browser keeps its own sign-ins. Browser Use can report the current HTTPS default
+browser, whether Nodex supports it, and which extension profiles are connected. On macOS,
+Browser Use checks whether a supported browser is running by its application identity. Nodex
+identifies Dia and Arc from their signed running applications. If it cannot verify a
+Chrome-compatible browser's app, it reports the app identity as unknown. Tab focus stays
+bound to the exact connected extension and tab.
+
+An explicitly selected browser or tab remains in force for the task. For account work
+without a named browser, the Agent prefers a connected profile with the site open, then a
+connected profile of the system default browser, then the in-app Browser. An open tab
+helps the Agent choose where to start. The requested page determines whether sign-in is
+required. If the expected browser is unavailable, the Agent explains which browser it
+selected and what the user can do. If the user named the unavailable browser, the Agent
+reports the reason and waits for it to connect or for the user to choose another browser.
+
 ### Existing browsers on Windows
 
 Nodex connects to Chrome and Edge through the ChatGPT extension. Browser Settings shows **Waiting for extension** until an allowed extension instance connects. **Ready** means Nodex can address that instance and its tabs. Browser discovery uses the extension's exact ID and instance ID.

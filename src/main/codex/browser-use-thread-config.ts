@@ -85,6 +85,7 @@ type BrowserUseThreadConfigBuilderOptions = {
   computerUsePluginReady?: () => boolean;
   computerUseRuntime?: () => ComputerUseRuntimeResult | null;
   codexHome: string;
+  preferredExtensionInstanceId?: string;
   disabledDesktopPluginIds?: readonly string[];
   runtimeStateHome: string;
 };
@@ -96,6 +97,7 @@ function buildNodeReplServer(
   availableBackends: readonly BrowserRuntimeBackend[],
   computerUseRuntime: AvailableMacComputerUse | null,
   hostManaged: boolean,
+  preferredExtensionInstanceId: string | undefined,
   windows?: WindowsReplOptions,
 ) {
   const mac = bundle.manifest.targetPlatform === "darwin";
@@ -151,6 +153,9 @@ function buildNodeReplServer(
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = BROWSER_USE_IN_APP_INSTRUCTIONS;
   }
   if (availableBackends.includes("chrome")) {
+    if (preferredExtensionInstanceId) {
+      env.BROWSER_USE_PREFERRED_EXTENSION_INSTANCE_ID = preferredExtensionInstanceId;
+    }
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME =
       "Control the Chrome browser in conjunction with the Chrome Plugin.";
   }
@@ -195,12 +200,14 @@ export class BrowserUseThreadConfigBuilder {
   private readonly browserRuntime: BrowserRuntimeAvailability;
   private readonly computerUsePluginReady: () => boolean;
   private readonly computerUseRuntime: () => ComputerUseRuntimeResult | null;
+  private readonly preferredExtensionInstanceId: string | undefined;
   private readonly codexHome: string;
   private readonly disabledDesktopPluginIds: readonly string[];
   private readonly runtimeStateHome: string;
 
   constructor(options: BrowserUseThreadConfigBuilderOptions) {
     this.windows = options.windows;
+    this.preferredExtensionInstanceId = options.preferredExtensionInstanceId;
     const targetPath = this.windows ? path.win32 : path;
     this.availableBackends = options.availableBackends ?? (() => ["iab"]);
     this.browserRuntime = options.browserRuntime;
@@ -282,6 +289,7 @@ export class BrowserUseThreadConfigBuilder {
         availableBackends,
         availableComputerUseRuntime,
         plugins !== undefined,
+        this.preferredExtensionInstanceId,
         windows,
       ),
       availableBackends,

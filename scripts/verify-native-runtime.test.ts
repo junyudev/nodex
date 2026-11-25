@@ -113,7 +113,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       })),
     });
     const codeObjects = resolveNodexNativeCodeObjects(appPath, manifest);
-    expect(codeObjects).toHaveLength(manifest.binaries.length + 3);
+    expect(codeObjects).toHaveLength(manifest.binaries.length + 4);
+    expect(codeObjects).toContain(
+      path.join(appPath, "Contents/Resources/native/nodex-browser-peer.node"),
+    );
     expect(codeObjects).toContain(
       path.join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
     );
