@@ -682,7 +682,9 @@ export function InstanceModels({ instanceId }: { readonly instanceId: string }) 
         id: "modelPolicy.agentModels.models",
         defaultMessage: "Models",
       })}
-      detail={expanded ? modelsOnSummary(policy, provider, intl) : modelsOnPreview(policy, provider, intl)}
+      detail={
+        expanded ? modelsOnSummary(policy, provider, intl) : modelsOnPreview(policy, provider, intl)
+      }
       expanded={expanded}
       onExpandedChange={setExpanded}
     >
