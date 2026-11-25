@@ -203,6 +203,23 @@ function fixtureContent(relativePath: string): string {
   if (relativePath === "marketplace/plugins/browser/docs/SKILL.md") {
     return "# Browser\n\n## Browser selection\nVendor selection guidance.\n\n## After setup\nVendor recovery guidance.\n\n## Using the Browser\n";
   }
+  if (relativePath === "marketplace/plugins/computer-use/skills/computer-use/SKILL.md") {
+    return [
+      "---",
+      "name: computer-use",
+      "description: Operate native applications.",
+      "---",
+      "",
+      "## Reading screenshots",
+      "",
+      "Read the screenshot from its file URL.",
+      "",
+      "# Computer Use Confirmations Policy",
+      "",
+      "Request confirmation before risky actions.",
+      "",
+    ].join("\n");
+  }
   if (relativePath.endsWith("/.codex-plugin/plugin.json")) {
     const name = relativePath.includes("/computer-use/")
       ? "computer-use"
