@@ -471,6 +471,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly isPackaged?: boolean;
   readonly settingsPath: string;
+  readonly allowTemporaryWorktreeRoot?: boolean;
   readonly secretEncryption?: SecretEncryptionAdapter;
 }) {
   const source: ApplicationSettingsDocumentSource = {
@@ -478,6 +479,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     environment: Object.freeze({ ...input.environment }),
     ...(input.isPackaged === undefined ? {} : { isPackaged: input.isPackaged }),
     settingsPath: input.settingsPath,
+    allowTemporaryWorktreeRoot: input.allowTemporaryWorktreeRoot ?? false,
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
@@ -648,6 +650,9 @@ export const live: Layer.Layer<ApplicationSettings, never, MainConfig | SecretEn
         environment: config.environment,
         isPackaged: config.isPackaged,
         settingsPath: config.profileSettingsPath,
+        // Scenario test mode requires a validated Desktop run lease for temporary worktree roots.
+        allowTemporaryWorktreeRoot:
+          config.isolatedRunId !== null && config.environment.NODE_ENV === "test",
         secretEncryption: yield* SecretEncryption,
       };
       yield* Effect.sync(() => {

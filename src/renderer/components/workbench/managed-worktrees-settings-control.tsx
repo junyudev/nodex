@@ -1,5 +1,6 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, useIntl } from "@/lib/i18n";
+import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RefreshIcon } from "@/components/shared/icons";
@@ -304,8 +305,8 @@ export function ManagedWorktreesSettingControl({
         },
         {
           cleanup: () => setSavingSetting(false),
-          onError: () => {
-            toast.danger(
+          onError: (error) => {
+            toastFailure(
               patch.autoDeleteLimit !== undefined
                 ? getIntl().formatMessage({
                     id: "settings.worktrees.failedToSaveAutoDeleteLimit",
@@ -320,6 +321,7 @@ export function ManagedWorktreesSettingControl({
                       id: "settings.worktrees.failedToSaveWorktreeRoot",
                       defaultMessage: "Failed to save worktree root",
                     }),
+              error,
             );
             return false;
           },

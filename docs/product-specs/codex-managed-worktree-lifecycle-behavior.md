@@ -207,7 +207,8 @@ or cleanup cannot be hidden by deleting the durable execution metadata.
 The Worktrees settings surface owns three Main-persisted preferences:
 
 - `Worktree root`: the root for future managed worktrees; blank uses the
-  default. Changing it does not make existing worktrees unmanaged.
+  default. Changing it does not make existing worktrees unmanaged. Persistent Profiles
+  reject system temporary directories and use the default if one is already saved.
 - `Automatically delete old worktrees`: enabled by default.
 - `Auto-delete limit`: an integer of at least one, defaulting to 15. The saved
   value remains when automatic deletion is disabled.
