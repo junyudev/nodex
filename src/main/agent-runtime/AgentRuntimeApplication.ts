@@ -1,3 +1,7 @@
+import {
+  readDecisionRun,
+  readDecisionRunState,
+} from "../../host/nodex-decisions/decision-run-role";
 import { agentDefinition } from "../../shared/agents/registry";
 import { CHAT_REPLY_PREVIEW_BATCH_LIMIT } from "../../shared/chat-reply-preview";
 import { antigravityAgent } from "../../shared/agents/antigravity";
@@ -9,7 +13,7 @@ import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
 import { make as makeChatMessageDelivery } from "./ChatMessageDelivery";
 import { HostWorkspace } from "../../host/HostWorkspace";
-import { effectiveHolds } from "../../host/work-application/execution-holds";
+import { effectiveHolds, spaceHeld } from "../../host/work-application/execution-holds";
 import type { InsightsOrigin, InsightsUsageSource } from "../../shared/insights";
 import {
   automaticModelCatalog,
@@ -724,7 +728,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const applied = yield* core.workspace
       .apply(input.operation, undefined, input.binding.project_id ?? null)
       .pipe(Effect.result);
-    if (applied._tag === "Success") return;
+    if (applied._tag === "Success") return applied.success;
     const proof = yield* host(
       core.workspace.read({
         kind: "agent_runtime_session_binding_by_execution",
@@ -1009,6 +1013,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     } while (after !== undefined);
   });
 
+  const rootRecoveryModel = Effect.fnUntraced(function* (
+    connection: AgentRuntimeApplicationConnection,
+  ) {
+    const providers = automaticModelCatalog(
+      yield* projectCatalog(yield* connection.request("providers.read", {})),
+    );
+    const selectable = providers.filter(
+      (entry) => entry.enabled && !entry.checkPending && entry.models.length > 0,
+    );
+    const provider = selectable.find((entry) => entry.instanceId === "codex") ?? selectable[0];
+    const model =
+      provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
+    if (!provider || !model)
+      return yield* failure("thread", "No Agent model is available to open this conversation");
+    return { instanceId: provider.instanceId, model };
+  });
+
   /**
    * A bound Session whose launch stopped before its root Thread existed. The binding is the
    * durable intent, so the Thread is created from product metadata the first time it is used.
@@ -1017,6 +1038,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const ensureRootThread = Effect.fn("AgentRuntimeApplication.ensureRootThread")(function* (
     connection: AgentRuntimeApplicationConnection,
     binding: Binding,
+    decisionSelection?: AgentRuntimeLaunch["modelSelection"],
   ) {
     const existing = yield* connection.request("thread.read", {
       threadId: binding.runtime_thread_id,
@@ -1042,17 +1064,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         const session = yield* host(readSession(binding.session_id, projectId));
         const title =
           session.value.kind === "session" ? session.value.session.display_title.trim() : "";
-        const providers = automaticModelCatalog(
-          yield* projectCatalog(yield* connection.request("providers.read", {})),
-        );
-        const selectable = providers.filter(
-          (entry) => entry.enabled && !entry.checkPending && entry.models.length > 0,
-        );
-        const provider = selectable.find((entry) => entry.instanceId === "codex") ?? selectable[0];
-        const model =
-          provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
-        if (!provider || !model)
-          return yield* failure("thread", "No Agent model is available to open this conversation");
+        const decision = decisionSelection
+          ? true
+          : projectId === null && (yield* host(readDecisionRun(core, binding.session_id))) !== null;
+        const modelSelection = decisionSelection ?? (yield* rootRecoveryModel(connection));
         yield* upsertProject(connection, scope);
         yield* dispatch(connection, {
           type: "thread.create",
@@ -1063,13 +1078,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           threadId: binding.runtime_thread_id,
           projectId: scope.id,
           title: title || NEW_CHAT_TITLE,
-          modelSelection: { instanceId: provider.instanceId, model },
+          modelSelection,
           runtimeMode: yield* defaultRuntimeMode,
           interactionMode: "default",
           branch: null,
           worktreePath: scope.workspaceRoot,
-          createdBy: "user",
-          creationSource: "web",
+          createdBy: decision ? "system" : "user",
+          creationSource: decision ? "server" : "web",
         });
         return yield* connection.request("thread.read", { threadId: binding.runtime_thread_id });
       }),
@@ -1458,6 +1473,126 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       );
     });
 
+  const assertWritableChat = Effect.fn("AgentRuntimeApplication.assertWritableChat")(function* (
+    sessionId: string,
+    operation: string,
+  ) {
+    if (yield* asExecutionOwner(readDecisionRun(core, sessionId)))
+      return yield* failure(operation, "Decision runs are read-only");
+  });
+
+  // Retirement waits for an already admitted Host message, then prevents all later sends.
+  const withDecisionInput = <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+    withSessionLane(`decision-input:${sessionId}`, use);
+
+  /**
+   * A decision whose request ended keeps its transcript. A run that already finished is only
+   * acknowledged; one still working is stopped once `stopWorking` says its grace has passed, so
+   * an ordinary decision finishes its last words instead of ending as "Stopped".
+   */
+  const retireDecisionRun = Effect.fn("AgentRuntimeApplication.retireDecisionRun")(function* (
+    sessionId: string,
+    retire: { readonly stopWorking: boolean } = { stopWorking: true },
+  ) {
+    if (yield* CoreApplicationAgent)
+      return yield* failure("decision-run", "Decision runs require Host authority");
+    const state = yield* host(readDecisionRunState(core, sessionId));
+    if (!state.decision_run || state.pending) return "retired" as const;
+    if (options.runtimeExists && !(yield* options.runtimeExists)) return "waiting" as const;
+    const connection = yield* options.connect;
+    const binding = yield* readBinding(connection, sessionId, false);
+    const threadId = binding.runtime_thread_id;
+    const thread = yield* connection.request("thread.read", { threadId });
+    const working =
+      thread !== null &&
+      thread.deletedAt === null &&
+      (yield* connection.request("execution.activity", { rootThreadIds: [threadId] })).items.some(
+        (item) => item.rootThreadId === threadId,
+      );
+    if (working && !retire.stopWorking) return "waiting" as const;
+    if (working) {
+      yield* connection.request("thread.stop", {
+        threadId,
+        commandId: commandId("decision-stop", { sessionId, threadId }),
+        reason: "The Nodex decision request ended.",
+        retire: true,
+      });
+    }
+    yield* host(
+      core.workspace.apply({
+        operationId: createOperationId("agent-runtime.decision-stop"),
+        intent: { kind: "acknowledge_decision_run_stopped", session_id: sessionId },
+      }),
+    );
+    return "retired" as const;
+  });
+
+  /** Bind and prepare a decision's empty root. The delivery must commit before it gets input. */
+  const prepareDecisionRun = Effect.fn("AgentRuntimeApplication.prepareDecisionRun")(
+    function* (input: {
+      readonly decision: components["schemas"]["NodexDecisionRunInput"];
+      readonly title: string;
+      readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
+    }) {
+      yield* validateCaller();
+      if (yield* CoreApplicationAgent)
+        return yield* failure("decision-run", "Decision runs require Host authority");
+      if (yield* spaceHeld(core)) return null;
+      const launchId = commandId("decision", input.decision);
+      const sessionId = launchId;
+      const connection = yield* options.connect;
+      const threadId = launchThreadId(launchId, sessionId);
+      const binding = {
+        session_id: sessionId,
+        project_id: null,
+        runtime_id: connection.identity.runtimeId,
+        runtime_thread_id: threadId,
+        launch_request_id: launchId,
+      };
+      const admitted = yield* creatingRootThread(
+        sessionId,
+        Effect.gen(function* () {
+          const previous = yield* lookupDestinationBinding(sessionId);
+          if (previous) {
+            if (!matchesBinding(previous, binding))
+              return yield* failure(
+                "decision-run",
+                "The decision's execution store is unavailable",
+              );
+            return previous;
+          }
+          yield* connection.request("models.assert", {
+            modelSelection: input.modelSelection,
+            origin: "person",
+          });
+          if (yield* spaceHeld(core)) return null;
+          const applied = yield* bindExecution({
+            binding,
+            operation: {
+              operationId: createOperationId("agent-runtime.decision-run"),
+              intent: {
+                kind: "create_agent_runtime_session",
+                ...binding,
+                title: input.title,
+                initial_page_ids: [],
+                agent_selection: agentRuntimeWorkSelection(input.modelSelection),
+                decision_run: input.decision,
+              },
+            },
+          });
+          return yield* readBinding(
+            connection,
+            applied?.outcome.affected_session_ids[0] ?? sessionId,
+            true,
+          );
+        }),
+      );
+      if (!admitted || (yield* spaceHeld(core))) return null;
+      yield* ensureRootThread(connection, admitted, input.modelSelection);
+      return admitted.session_id;
+    },
+  );
+
   const launch = Effect.fn("AgentRuntimeApplication.launch")(function* (input: AgentRuntimeLaunch) {
     const provenance = yield* CoreApplicationAgent;
 
@@ -1469,6 +1604,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       !input.title.trim()
     )
       return yield* failure("launch", "Launch identity and title are required");
+    yield* assertWritableChat(input.sessionId, "launch");
     if (!input.resources?.length) yield* assertMessage(input.message);
     else if (!validId(input.message.messageId))
       return yield* failure("message", "Message identity is required");
@@ -1482,10 +1618,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       launch_request_id: input.launchId,
     };
     yield* validateCaller();
-    if (
-      (input.messageOrigin === "host" || input.coordinator) &&
-      (yield* CoreApplicationAgent) !== null
-    )
+    if (input.messageOrigin === "host" && (yield* CoreApplicationAgent) !== null)
       return yield* failure("launch", "Host launches require Desktop authority");
     const previousBinding = yield* lookupDestinationBinding(input.sessionId);
     if (previousBinding && !matchesBinding(previousBinding, binding))
@@ -1628,7 +1761,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
                 }),
                 intent: {
                   kind: "create_agent_runtime_session",
-                  ...(input.coordinator ? { coordinator: true } : {}),
                   ...binding,
                   title: input.title.trim(),
                   initial_page_ids: [...new Set(input.initialPageIds ?? [])],
@@ -2829,6 +2961,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "fork",
         "A distinct destination Session and stable fork identity are required",
       );
+    yield* assertWritableChat(input.source.sessionId, "fork");
     const connection = yield* options.connect;
     const threadId = agentExecutionThreadId(
       hash({
@@ -3025,6 +3158,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeMergeBackInput,
   ) {
     if (!validId(input.requestId)) return yield* failure("merge", "Request identity is required");
+    yield* assertWritableChat(input.sessionId, "merge");
     const connection = yield* options.connect;
     const fork = yield* targetInfo(connection, input, true);
     const sourceThreadId = agentRuntimeForkSource(fork.thread);
@@ -3043,6 +3177,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       owner?.value.kind === "agent_runtime_session_binding" ? owner.value.binding : null;
     if (!source || source.deletedAt !== null || !binding)
       return yield* failure("merge", "The chat this fork came from is no longer available");
+    yield* assertWritableChat(binding.session_id, "merge");
     const target = yield* targetInfo(
       connection,
       { sessionId: binding.session_id, threadId: source.id },
@@ -3083,6 +3218,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     if (!validId(input.requestId))
       return yield* failure("clear-context", "Request identity is required");
+    yield* assertWritableChat(input.sessionId, "clear-context");
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
     const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
@@ -3179,7 +3315,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
       },
       queueAfterActive = false,
+      checkedDecisionInput = false,
     ) {
+      if (!checkedDecisionInput) yield* assertWritableChat(input.sessionId, "message");
       const connection = yield* options.connect;
       const loaded = yield* targetInfo(connection, input, true);
       if (
@@ -3423,6 +3561,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     if (input.origin === "host" && (yield* CoreApplicationAgent) !== null)
       return yield* failure("message", "Host input requires Desktop authority");
+    const decision = yield* asExecutionOwner(readDecisionRunState(core, input.sessionId));
+    if (decision.decision_run) {
+      if (input.origin !== "host" || input.mode !== "queue")
+        return yield* failure("message", "Decision runs are read-only");
+      if (!decision.pending) return yield* failure("message", "The Nodex decision request ended");
+    }
     if (input.messageFingerprint) {
       const replay = yield* replayMessage({
         ...input,
@@ -3449,6 +3593,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ...(input.mode === "queue" ? {} : { intent: input.mode }),
       },
       input.mode === "queue",
+      true,
     );
     const prepared = yield* prepareMessage(connection, loaded.threadId, outgoing);
     yield* recordDelivery(input.sessionId, prepared, {
@@ -3534,6 +3679,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
     input: AgentRuntimeSessionTarget & { readonly runId: string },
   ) {
+    yield* assertWritableChat(input.sessionId, "stop");
     const connection = yield* options.connect;
     yield* authorizeSession(input.sessionId);
     const loaded = yield* targetInfo(connection, input);
@@ -3546,6 +3692,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const respond = Effect.fn("AgentRuntimeApplication.respond")(function* (
     input: AgentRuntimeResponseInput,
   ) {
+    yield* assertWritableChat(input.sessionId, "response");
     const connection = yield* options.connect;
     if (
       !validId(input.requestId) ||
@@ -3776,6 +3923,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     unknown,
     Scope.Scope
   > {
+    yield* assertWritableChat(input.sessionId, "queue");
     if (!validId(input.requestId)) return yield* failure("queue", "Request identity is invalid");
     if (
       input.action === "reorder" &&
@@ -3919,6 +4067,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("rollback", "Rollback identity is invalid");
     if (!options.subscribeExecutionChanges)
       return yield* failure("rollback", "Execution observation is unavailable");
+    yield* assertWritableChat(input.sessionId, "rollback");
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
     const changes = yield* options.subscribeExecutionChanges;
@@ -4483,6 +4632,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           };
         }),
       ),
+    retireDecisionRun: (sessionId: string, retire?: { readonly stopWorking: boolean }) =>
+      withDecisionInput(
+        sessionId,
+        ownedWrite("decision-stop", retireDecisionRun(sessionId, retire)),
+      ),
+    prepareDecisionRun: (input: Parameters<typeof prepareDecisionRun>[0]) =>
+      ownedWrite("decision-run", prepareDecisionRun(input)),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
     sessionControlReceipt: (input: AgentRuntimeOperations["session-control.receipt"]["input"]) =>
       ownedWrite(
@@ -4502,12 +4658,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ownedWrite(
         "session-queue",
         Effect.gen(function* () {
+          const mutating = input.action !== "list" && input.action !== "read";
+          if (mutating) yield* assertWritableChat(input.sessionId, "session-queue");
           const connection = yield* options.connect;
-          const loaded = yield* targetInfo(
-            connection,
-            input,
-            input.action !== "list" && input.action !== "read",
-          );
+          const loaded = yield* targetInfo(connection, input, mutating);
           const original =
             input.action === "edit" && input.queuedId
               ? yield* connection.request("thread.run-message", {
@@ -4587,6 +4741,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ownedWrite(
         "stop-session",
         Effect.gen(function* () {
+          yield* assertWritableChat(input.sessionId, "stop-session");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input, true);
           const result = yield* connection.request("thread.stop", {
@@ -4899,8 +5054,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { runtimeId: connection.identity.runtimeId, ...page };
         }),
       ),
-    /** Observation never repairs roots, reconciles execution, or reads transcript bodies. */
-    observeSessionMetadata: (input: { readonly sessionId: string }) =>
+    /** Observation never repairs roots, reconciles execution, or loads conversation history. */
+    observeSessionMetadata: (input: {
+      readonly sessionId: string;
+      readonly includeLastReply?: boolean;
+    }) =>
       owned(
         "observe-session-metadata",
         Effect.gen(function* () {
@@ -4925,7 +5083,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const activity = yield* connection.request("execution.activity", {
             rootThreadIds: [threadId],
           });
-          return { metadata, execution, details, activity: activity.items[0] ?? null };
+          const reply =
+            input.includeLastReply &&
+            execution.status === "completed" &&
+            execution.runId &&
+            !activity.items[0]?.hasWork &&
+            !execution.continuationPending
+              ? (yield* connection
+                  .request("threads.latest-replies", { threadIds: [threadId] })
+                  .pipe(Effect.orElseSucceed(() => [])))[0]
+              : null;
+          return {
+            metadata,
+            execution,
+            details,
+            activity: activity.items[0] ?? null,
+            lastReply: reply?.runId === execution.runId ? (reply?.text ?? null) : null,
+          };
         }),
       ),
     sessionMetadata: (
@@ -5102,8 +5276,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     message: (input: Parameters<typeof message>[0]) =>
       ownedWrite("message", message(input).pipe(Effect.scoped)),
-    sendMessage: (input: Parameters<typeof sendMessage>[0]) =>
-      ownedWrite("send-message", sendMessage(input).pipe(Effect.scoped)),
+    sendMessage: (input: Parameters<typeof sendMessage>[0]) => {
+      const send = ownedWrite("send-message", sendMessage(input).pipe(Effect.scoped));
+      return input.origin === "host" ? withDecisionInput(input.sessionId, send) : send;
+    },
     replayMessage: (input: Parameters<typeof replayMessage>[0]) =>
       owned("message-replay", replayMessage(input)),
     resumeMessageLaunch: (input: Parameters<typeof resumeMessageLaunch>[0]) =>

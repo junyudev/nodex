@@ -505,6 +505,7 @@ export interface ThreadManagementServiceShape {
   readonly stopDelegatedTasks: (input: {
     readonly threadId: ThreadId;
     readonly cancelTurns?: boolean;
+    readonly retire?: boolean | undefined;
     readonly commandId: CommandId;
     readonly reason?: string | undefined;
   }) => Effect.Effect<
@@ -1291,6 +1292,7 @@ const make = Effect.gen(function* () {
             ? { delegatedConversation: { parentThreadId: input.threadId } }
             : {}),
           ...(input.reason === undefined ? {} : { reason: input.reason }),
+          ...(input.retire ? { retire: true } : {}),
         }).pipe(
           Effect.andThen(stopDelegatedTasks({ ...input, threadId })),
           Effect.catch((error) =>

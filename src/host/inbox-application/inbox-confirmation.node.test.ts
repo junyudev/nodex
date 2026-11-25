@@ -9,7 +9,7 @@ import {
   type InboxDispatchAction,
 } from "../../shared/inbox";
 import { InboxPreparedConfirmationSchema } from "../../shared/schemas/inbox";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import { bindTestRouting, captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 
 type Provider = Effect.Success<ReturnType<AgentRuntimeApplication["Service"]["catalog"]>>[number];
 
@@ -108,7 +108,7 @@ it.effect(
           { name: "audit", reason: "Audit the homepage." },
           { name: "review", reason: "Review the current copy." },
         ];
-        const { inbox, projectId } = yield* inboxOverRealCore(
+        const { inbox, client, projectId } = yield* inboxOverRealCore(
           Effect.void,
           () => Effect.succeed([codex, { ...codex, instanceId: "other-agent" }]),
           () => DEFAULT_INBOX_SETTINGS,
@@ -133,8 +133,10 @@ it.effect(
           basis,
         });
         const [request] = yield* inbox.suggestionRequests(1);
+        const decisionSessionId = yield* bindTestRouting({ inbox, client }, request!);
         yield* inbox.settleSuggestion({
           request_id: request!.request_id,
+          decision_session_id: decisionSessionId,
           generation: request!.generation,
           titles: [],
           produced_by: "Nodex",

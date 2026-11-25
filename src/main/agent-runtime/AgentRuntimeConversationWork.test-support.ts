@@ -12,7 +12,7 @@ import {
   withCoreScenario,
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
-import { NODEX_COORDINATOR_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordinator";
+import { NODEX_COORDINATION_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordination";
 import type { RuntimeCorpus } from "../../../scripts/scenarios/runtime/corpora/runtime-corpora";
 import type { AgentRuntimeSessionEvent } from "../../shared/agent-runtime-api";
 import {
@@ -85,7 +85,7 @@ const acquireScenario = Effect.acquireRelease(
       release = resolve;
     });
     const completed = withCoreScenario(
-      { scenarioId: NODEX_COORDINATOR_SCENARIO_ID },
+      { scenarioId: NODEX_COORDINATION_SCENARIO_ID },
       async (scenario) => {
         resume(Effect.succeed({ scenario, release, completed }));
         await released;

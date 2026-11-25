@@ -25,7 +25,7 @@ import {
 } from "../settings/ApplicationSettings";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { live } from "./CodexThreadNotificationRuntime";
-import { turnSpeaksThroughNodex } from "../../host/coordinator/notification-session";
+import { chatNotificationRole } from "../../host/work-observation/notification-session";
 
 it.effect("releases every Codex notification listener with the Main Scope", () =>
   Effect.gen(function* () {
@@ -51,8 +51,13 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
             } as CoreAuthority["Service"]),
             Layer.succeed(CoreModules, {
               workspace: {
-                read: () =>
-                  Effect.succeed({ value: { kind: "read_managed_session", managed: null } }),
+                read: (request: { kind: string }) =>
+                  Effect.succeed({
+                    value:
+                      request.kind === "decision_run"
+                        ? { kind: "decision_run", decision_run: null }
+                        : { kind: "managed_chat", managed: null },
+                  }),
               },
             } as never),
             Layer.succeed(CodexApplicationEventHub, {
@@ -146,46 +151,50 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
   }),
 );
 
-it.effect("a finished turn stays quiet only when Nodex speaks for it", () =>
-  Effect.gen(function* () {
-    const core = (managed: readonly string[]) =>
-      ({
-        workspace: {
-          read: (request: { readonly kind: string; readonly session_id?: string }) =>
-            Effect.succeed({
-              value:
-                request.kind === "read_coordinator"
-                  ? { kind: "read_coordinator", session_id: "nodex" }
-                  : {
-                      kind: "read_managed_session",
-                      managed: managed.includes(request.session_id ?? "") ? {} : null,
-                    },
-            }),
-        },
-      }) as never;
-    const finished = (sessionId: string) =>
-      ({
-        type: "turn-completed",
-        hostId: "local",
-        conversation: {
-          conversationId: `thread-${sessionId}`,
-          runtimeSessionId: sessionId,
-          title: sessionId,
-          threadSource: null,
-          parentThreadId: null,
-          source: null,
-          sideConversationParentNavigationPath: null,
-        },
-        turnId: `turn-${sessionId}`,
-        status: "completed",
-        lastAgentMessage: "Done.",
-        heartbeatAssistantMessage: null,
-        automationNotificationDecision: null,
-        hasPendingContinuation: false,
-      }) as never;
-    // Nodex speaks only through its posts, and for the chats it manages.
-    assert.isTrue(yield* turnSpeaksThroughNodex(core([]), finished("nodex")));
-    assert.isTrue(yield* turnSpeaksThroughNodex(core(["work"]), finished("work")));
-    assert.isFalse(yield* turnSpeaksThroughNodex(core([]), finished("chat")));
-  }),
+it.effect(
+  "classifies decision runs separately from managed chats and ordinary chat attention",
+  () =>
+    Effect.gen(function* () {
+      const core = (managed: readonly string[]) =>
+        ({
+          workspace: {
+            read: (request: { readonly kind: string; readonly session_id?: string }) =>
+              Effect.succeed({
+                value:
+                  request.kind === "decision_run"
+                    ? {
+                        kind: "decision_run",
+                        decision_run: request.session_id === "decision" ? {} : null,
+                      }
+                    : {
+                        kind: "managed_chat",
+                        managed: managed.includes(request.session_id ?? "") ? {} : null,
+                      },
+              }),
+          },
+        }) as never;
+      const finished = (sessionId: string) =>
+        ({
+          type: "turn-completed",
+          hostId: "local",
+          conversation: {
+            conversationId: `thread-${sessionId}`,
+            runtimeSessionId: sessionId,
+            title: sessionId,
+            threadSource: null,
+            parentThreadId: null,
+            source: null,
+            sideConversationParentNavigationPath: null,
+          },
+          turnId: `turn-${sessionId}`,
+          status: "completed",
+          lastAgentMessage: "Done.",
+          heartbeatAssistantMessage: null,
+          automationNotificationDecision: null,
+          hasPendingContinuation: false,
+        }) as never;
+      assert.equal(yield* chatNotificationRole(core([]), finished("decision")), "decision");
+      assert.equal(yield* chatNotificationRole(core(["work"]), finished("work")), "managed");
+      assert.equal(yield* chatNotificationRole(core([]), finished("chat")), "chat");
+    }),
 );

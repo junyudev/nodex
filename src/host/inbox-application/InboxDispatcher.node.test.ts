@@ -22,18 +22,18 @@ import { testLayer as configLayer } from "../../main/app/MainConfig";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../../main/logging/logger";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import { CoreModuleResponseError } from "../../main/core-client/core-client";
+import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { InboxApplication } from "./InboxApplication";
 import {
   captureInbox,
-  bindTestCoordinator,
   inboxOverRealCore,
   suggestionHostLayer,
 } from "./InboxApplication.test-support";
-import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import { DecisionRuns, makeRetirement } from "../nodex-decisions/DecisionRuns";
+import { seedDecisionRun } from "../../../scripts/scenarios/seed/decision-run";
 import { inboxDispatchActionToCore } from "../../main/core-client/inbox-adapter";
 import { validateInboxSuggestions } from "./inbox-suggestions";
 import { make } from "./InboxDispatcher";
-import { inboxRoutingIdentity } from "./inbox-suggestions";
 
 type Runtime = AgentRuntimeApplication["Service"];
 type Provider = Effect.Success<ReturnType<Runtime["catalog"]>>[number];
@@ -86,12 +86,11 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
     { ...suggestionAgent, usageLimits: mode === "paused" ? tight : undefined },
   ];
   const catalog = vi.fn<Runtime["catalog"]>(() => Effect.sync(() => providers));
-  const { inbox, client, projectId } = yield* inboxOverRealCore(
+  const { inbox, core, client, projectId } = yield* inboxOverRealCore(
     Effect.void,
     catalog,
     () => current,
   );
-  const coordinatorId = yield* bindTestCoordinator(client);
   const generated = vi.fn<Runtime["sendMessage"]>((input) =>
     Effect.gen(function* () {
       const data = generationInput(input);
@@ -127,6 +126,7 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
       yield* inbox.settleSuggestion({
         request_id: request!.request_id,
         generation: request!.generation,
+        decision_session_id: input.sessionId,
         titles: [],
         suggestions: validated.suggestions.map((suggestion) => ({
           proposal_id: createUuidV7(),
@@ -146,7 +146,18 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
   );
   // Source directories that exist on this machine; every other path is missing.
   const directories = new Set<string>();
-  const stopHostInput = vi.fn<Runtime["stopHostInput"]>(() => Effect.succeed(undefined));
+  const retireDecisionRun = vi.fn<Runtime["retireDecisionRun"]>((session_id) =>
+    core.workspace
+      .apply({
+        operationId: createUuidV7(),
+        intent: { kind: "acknowledge_decision_run_stopped", session_id },
+      })
+      .pipe(Effect.as("retired" as const), Effect.orDie),
+  );
+  const retirement = yield* makeRetirement.pipe(
+    Effect.provideService(CoreModules, core),
+    Effect.provideService(AgentRuntimeApplication, { retireDecisionRun } as unknown as Runtime),
+  );
   const dispatcher = yield* make.pipe(
     Effect.provideService(LibraryModule, {
       readFileBlob: () => Effect.die("Text-only suggestions must not read image files"),
@@ -156,10 +167,15 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
       fit: () => Effect.die("Text-only suggestions must not fit images"),
     } as unknown as NativePromptImages["Service"]),
     Effect.provideService(InboxApplication, inbox),
-    Effect.provideService(CoordinatorSession, {
-      ensure: () => Effect.succeed(coordinatorId),
-      isCoordinator: () => Effect.succeed(true),
-    } as never),
+    Effect.provideService(DecisionRuns, {
+      hasCapacity: () => Effect.succeed(true),
+      routingTitle: () => Effect.succeed("Nodex · Routing a message"),
+      begin: (decision, title, deliver) =>
+        Effect.promise(() => seedDecisionRun(client, decision, title)).pipe(
+          Effect.flatMap(deliver),
+          Effect.as(true),
+        ),
+    }),
     Effect.provideService(ApplicationSettings, {
       snapshot: () => Effect.sync(() => ({ inbox: current })),
     } as unknown as ApplicationSettings["Service"]),
@@ -179,7 +195,6 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
           { name: "disabled", path: "/repo/disabled", enabled: false },
         ]),
       skillDestinationForSession: () => Effect.succeed(null),
-      stopHostInput,
       runOutcome: () => Effect.succeed(null),
       messageAdmission: () => Effect.succeed(null),
     } as unknown as Runtime),
@@ -206,8 +221,8 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
     client,
     ...dispatcher,
     generated,
-    stopHostInput,
-    coordinatorId,
+    retireDecisionRun,
+    reconcileRetirement: retirement.reconcile,
     catalog,
     item,
     request,
@@ -587,8 +602,8 @@ it.effect.each(["stop", "archive", "request again"] as const)(
           generated,
           item,
           request,
-          stopHostInput,
-          coordinatorId,
+          retireDecisionRun,
+          reconcileRetirement,
         } = yield* harness("automatic");
         const read = vi.spyOn(inbox, "pendingSuggestionRequestIds");
         yield* reconcile;
@@ -604,6 +619,9 @@ it.effect.each(["stop", "archive", "request again"] as const)(
           }),
         );
         const stopped = active[0]!;
+        const stoppedSessionId = (yield* inbox.suggestionRequest(stopped.requestId))?.delivery
+          ?.decision_session_id;
+        if (!stoppedSessionId) return assert.fail("Missing routing delivery");
         const waiting = yield* captureInbox(inbox, "A message waiting for capacity");
         const refill = yield* holdNextGeneration(generated);
         if (change === "stop") {
@@ -635,19 +653,11 @@ it.effect.each(["stop", "archive", "request again"] as const)(
         yield* reconcile;
         const input = yield* Deferred.await(refill.started);
         assert.isTrue(yield* Deferred.isDone(stopped.interrupted));
-        assert.deepEqual(stopHostInput.mock.calls, [
-          [
-            {
-              sessionId: coordinatorId,
-              messageId: inboxRoutingIdentity(stopped.request).messageId,
-            },
-          ],
-          [
-            {
-              sessionId: coordinatorId,
-              messageId: inboxRoutingIdentity(stopped.request, true).messageId,
-            },
-          ],
+        // A worker without a routing lane still finds the retired execution in Core.
+        yield* reconcileRetirement;
+        yield* reconcileRetirement;
+        assert.deepEqual(retireDecisionRun.mock.calls, [
+          [stoppedSessionId, { stopWorking: false }],
         ]);
         assert.isFalse(yield* Deferred.isDone(active[1]!.interrupted));
         assert.isFalse(yield* Deferred.isDone(active[2]!.interrupted));

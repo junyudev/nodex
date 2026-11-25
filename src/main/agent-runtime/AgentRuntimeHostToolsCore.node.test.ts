@@ -1,3 +1,4 @@
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { runWithScenarioCore } from "../../../scripts/scenarios/adapters/core-client-seed-runtime";
 import { expect, test } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -15,13 +16,18 @@ import { AgentRuntimeApplication } from "./AgentRuntimeApplication";
 import { make } from "./AgentRuntimeHostTools";
 
 type Model = components["schemas"];
-test("Coordinator Host replies queue a Channel outbox item and read/submit settle an Automation assessment", async () => {
+test("decision runs assess events and active work chats reply to the GitHub requester", async () => {
   await withCoreScenario(
     { scenarioId: "automations/events" },
     async ({ client, manifest, runtime }) => {
-      const coordinator = manifest.entityIdsByKey!.eventCoordinator!;
-      const { provenance, command } = await prepareSeededAutomationCheck(client, coordinator, 2);
+      const { sessionId, provenance, command } = await prepareSeededAutomationCheck(client, 2);
       const a = provenance.authority;
+      await client.recordAgentRun({
+        session_id: sessionId,
+        run_id: a.turn_id,
+        driver: "codex",
+        label: "Codex",
+      });
       const authority = {
         threadId: a.thread_id,
         rootThreadId: a.root_thread_id,
@@ -31,7 +37,7 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
         storeEpoch: a.store_epoch,
         admittedAtMs: Date.now(),
         runtime: {
-          sessionId: coordinator,
+          sessionId,
           runtimeId: a.runtime!.runtime_id,
           turnKind: "run" as const,
         },
@@ -43,13 +49,19 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
           workspace: {
             read: (read: ProjectWorkspaceRead) =>
               Effect.tryPromise(() => client.workspaceRead(read)),
+            admitToolOperation: (input: Parameters<typeof client.admitAppToolOperation>[0]) =>
+              Effect.tryPromise(() => client.admitAppToolOperation(input)),
             apply: (input: ProjectWorkspaceApplyInput) =>
               Effect.tryPromise(() => client.workspaceApply(input)),
           },
         } as never),
         Layer.mock(AgentRuntimeApplication, { runOutcome: () => Effect.succeed(null) } as never),
       );
-      const call = (name: string, input: Record<string, unknown>) =>
+      const call = (
+        name: string,
+        input: Record<string, unknown>,
+        callerAuthority: NodexAgentTurnContext = authority,
+      ) =>
         runWithScenarioCore(
           runtime,
           Effect.gen(function* () {
@@ -57,11 +69,11 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
             return yield* execute(
               createHostedAppToolCaller({
                 backend: "codex",
-                authority,
+                authority: callerAuthority,
                 callId: createUuidV7(),
                 generation: 1,
                 isActive: () => true,
-                capture: Effect.succeed(authority),
+                capture: Effect.succeed(callerAuthority),
               }),
               name,
               input,
@@ -175,6 +187,8 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
       if (inbox.value.kind !== "inbox_window") throw new Error("Missing Inbox");
       const entry = inbox.value.items.items.find((item) => item.source.kind === "github")!;
       expect(entry).toBeDefined();
+      const workSessionId = createUuidV7();
+      const workThreadId = createUuidV7();
       await client.workspaceApply({
         operationId: createUuidV7(),
         intent: {
@@ -194,13 +208,44 @@ test("Coordinator Host replies queue a Channel outbox item and read/submit settl
             model_selection: { instanceId: "codex", model: "model" },
             interaction_mode: "default",
           },
-          session_id: createUuidV7(),
+          session_id: workSessionId,
         },
       });
-      const reply = await call("reply_to_origin", {
-        pageId: entry.page_id,
-        body: "I have started on this request.",
+      await client.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "create_agent_runtime_session",
+          session_id: workSessionId,
+          project_id: manifest.projectId,
+          title: thread.title,
+          initial_page_ids: [entry.page_id],
+          runtime_id: authority.runtime.runtimeId,
+          runtime_thread_id: workThreadId,
+          launch_request_id: createUuidV7(),
+        },
       });
+      const work = {
+        ...authority,
+        threadId: workThreadId,
+        rootThreadId: workThreadId,
+        turnId: createUuidV7(),
+        actorProjectId: manifest.projectId,
+        runtime: { ...authority.runtime, sessionId: workSessionId },
+      };
+      await client.recordAgentRun({
+        session_id: workSessionId,
+        run_id: work.turnId,
+        driver: "codex",
+        label: "Codex",
+      });
+      const reply = await call(
+        "reply_to_origin",
+        {
+          pageId: entry.page_id,
+          body: "I have started on this request.",
+        },
+        work,
+      );
       expect(reply, JSON.stringify(reply)).toMatchObject({
         structuredContent: { pageId: entry.page_id, queued: true },
       });

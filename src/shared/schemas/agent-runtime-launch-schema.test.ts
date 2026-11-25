@@ -28,7 +28,7 @@ describe("agent runtime launch boundary", () => {
   test("rejects launch fields that only Main may set", () => {
     const hostOnly = [
       { messageOrigin: "host" },
-      { coordinator: true },
+      { decisionRun: { kind: "routing", request_id: "request", generation: 1 } },
       { messageFingerprint: "fingerprint-1" },
       {
         automationExecution: {

@@ -1,7 +1,6 @@
 import { ChatSearch } from "../chat-search/ChatSearch";
 import { LibraryModule } from "../library-application/LibraryModule";
 import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
-import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
 import { NodexEntryNotifications } from "../../host/NotificationIntents";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -90,7 +89,6 @@ export const hostToolTestServices = Layer.mergeAll(
   Layer.mock(CodexTurnAuthority, {} as never),
   Layer.mock(GitHubSourceAdapter, {}),
   Layer.mock(CoreSessionAccess, {}),
-  Layer.mock(CoordinatorSession, { isCoordinator: () => Effect.succeed(true) }),
   Layer.mock(ProjectWorkspace, {
     listProjects: Effect.succeed([]),
     listSidebarSections: () =>

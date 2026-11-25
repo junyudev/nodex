@@ -66,8 +66,8 @@ export interface InboxSuggestionRequestIdentity {
   readonly correction?: string | null;
 }
 
-export { InboxSuggestionOutput } from "../../shared/nodex-app-tools/coordinator-schema";
-import { InboxSuggestionOutput } from "../../shared/nodex-app-tools/coordinator-schema";
+export { InboxSuggestionOutput } from "../../shared/nodex-app-tools/decision-run-schemas";
+import { InboxSuggestionOutput } from "../../shared/nodex-app-tools/decision-run-schemas";
 
 const clip = (text: string, maximum: number) =>
   text.length <= maximum ? text : `${text.slice(0, maximum - 1)}…`;

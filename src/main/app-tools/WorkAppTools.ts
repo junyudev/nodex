@@ -1,7 +1,12 @@
 import { WorkApplication } from "../../host/work-application/WorkApplication";
 import * as Effect from "effect/Effect";
+import { countWords } from "../../shared/word-count";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
-import { reportWorkSchema, startWorkSchema } from "../../shared/nodex-app-tools/work-schema";
+import {
+  replyToOriginSchema,
+  reportWorkSchema,
+  startWorkSchema,
+} from "../../shared/nodex-app-tools/work-schema";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -25,7 +30,7 @@ const reportFailure = coreFailure({
   message: "The work report could not be recorded",
 });
 
-/** Appends with the captured execution provenance; Core atomically records the report and its work event. */
+/** Appends with the captured execution provenance; Core atomically records the report and updates the Page Turn. */
 export const makeWithCapture = (
   captureCaller: (caller: AppToolCaller) => Effect.Effect<NodexAgentTurnContext | null>,
 ) =>
@@ -88,8 +93,51 @@ export const makeWithCapture = (
         ...result.value.value,
       });
     });
+    const replyToOrigin = Effect.fn("WorkAppTools.replyToOrigin")(function* (
+      input: AppToolInvocation,
+    ) {
+      const parsed = parseAppToolArguments(replyToOriginSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
+      const { pageId, body } = parsed.data;
+      const words = countWords(body);
+      if (words === 0 || words > 100)
+        return toolFailure("body_too_long", `Reply has ${words} words; use 1 to 100.`);
+      if (body.includes("<!-- nodex:")) return toolFailure("reserved_marker");
+      const operation = yield* admit(input, parsed.data);
+      if (!operation.success) return operation.result;
+      const provenance = toCoreAgentTurnProvenance(
+        identity.identity.profileId,
+        operation.authority,
+      );
+      const sent = yield* core.workspace
+        .apply(
+          {
+            operationId: operation.operationId,
+            intent: {
+              kind: "agent_command",
+              provenance,
+              intent: {
+                kind: "source",
+                command: { kind: "reply_to_origin", page_id: pageId, body },
+              },
+            },
+          },
+          undefined,
+          provenance.authority.actor_project_id,
+        )
+        .pipe(Effect.result);
+      if (sent._tag === "Failure") {
+        const failure = coreFailure({
+          code: "origin_reply_unavailable",
+          message: "The reply could not be queued",
+        })(sent.failure);
+        return toolFailure(failure.code, failure.message);
+      }
+      return toolSuccess({ pageId, queued: true });
+    });
     return Effect.fn("WorkAppTools.execute")(function* (input: AppToolInvocation) {
       if (input.name === "start_work") return yield* start(input);
+      if (input.name === "reply_to_origin") return yield* replyToOrigin(input);
       const parsed = parseAppToolArguments(reportWorkSchema, input.arguments);
       if (!parsed.success) return parsed.result;
       const operation = yield* admit(input, parsed.data);

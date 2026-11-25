@@ -164,7 +164,7 @@ const requireSuccess = <Value>(
 const captureOpenTodo = async (port: ScenarioSeedPort, body: string, scope?: InboxScope) => {
   const message = await port.sendInboxMessage(body, scope);
   // Advice settles suggestion work; only confirming it would handle the message.
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [message.pageId],
     action: { type: "keep" },
     kind: "todo",
@@ -257,7 +257,7 @@ const materializeInboxTriage = async (
   const kept = await port.sendInboxMessage(
     "Compare changelog layouts when we revisit the release notes.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [kept.pageId],
     action: { type: "keep" },
     kind: "todo",
@@ -289,7 +289,7 @@ const materializeInboxTriage = async (
   const newChat = await port.sendInboxMessage(
     "Homepage feels like a dev tool. Maybe it should read like a personal assistant? Use $positioning-context.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [newChat.pageId],
     action: {
       type: "new_chat",
@@ -311,7 +311,7 @@ const materializeInboxTriage = async (
   });
 
   const sendToChat = await port.sendInboxMessage("Project rows flicker on hover in the sidebar.");
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [sendToChat.pageId],
     action: {
       type: "send_to_chat",
@@ -325,7 +325,7 @@ const materializeInboxTriage = async (
   });
 
   const move = await port.sendInboxMessage("Document ⇧⌘D in the keyboard shortcuts reference.");
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [move.pageId],
     action: { type: "move_to_project", projectId: project.id },
     kind: "todo",
@@ -353,7 +353,7 @@ const materializeInboxTriage = async (
       `![Settings toolbar](nodex://files/${screenshotFileId})`,
     ].join("\n"),
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [pictured.pageId],
     action: {
       type: "send_to_chat",
@@ -374,7 +374,7 @@ const materializeInboxTriage = async (
     "Board columns waste a lot of space on narrow windows.",
     nodexInbox,
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [projectNewChat.pageId],
     action: {
       type: "new_chat",
@@ -402,7 +402,7 @@ const materializeInboxTriage = async (
     "Sidebar section headers should stick while scrolling.",
     nodexInbox,
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [projectSendToChat.pageId],
     action: {
       type: "send_to_chat",
@@ -419,7 +419,7 @@ const materializeInboxTriage = async (
     "The pricing page still calls the app a beta.",
     nodexInbox,
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [projectMove.pageId],
     action: { type: "move_to_project", projectId: website.id },
     kind: "todo",
@@ -474,7 +474,7 @@ const materializeInboxTriage = async (
     "Reference for the new sidebar spacing.",
     nodexInbox,
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [waitingNote.pageId],
     action: { type: "save_to_notes", parentPageId: notesSectionId },
     kind: "note",
@@ -590,7 +590,7 @@ const materializeInboxTriage = async (
   const snoozeSuggested = await port.sendInboxMessage(
     "Revisit the pricing page copy in three days.",
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [snoozeSuggested.pageId],
     action: {
       type: "snooze",

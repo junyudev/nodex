@@ -1,4 +1,3 @@
-import { replyToOriginTool } from "./coordinator-schema";
 import { sessionQuestionTool } from "./session-question-schema";
 import { sessionControlToolCatalog } from "./session-control-schemas";
 import { sessionHandoffTool, handoffStatusTool } from "./session-handoff-schemas";
@@ -15,9 +14,10 @@ import { createSessionTool } from "./session-launch-schema";
 import { sessionForkTool } from "./session-fork-schema";
 import { sessionMergeTool } from "./session-merge-schema";
 import { sessionMessageTool } from "./session-message-schema";
-import { coordinatorToolCatalog } from "./coordinator-schema";
+import { decisionRunToolCatalog } from "./decision-run-schemas";
 import {
   reportWorkTool,
+  replyToOriginTool,
   startWorkTool,
   handBackMessageTool,
   followThreadTool,
@@ -53,10 +53,10 @@ export const appToolGroups = {
     sessionMergeTool,
   ],
   inbox: [sendToInboxTool],
-  work: [reportWorkTool, startWorkTool],
+  work: [reportWorkTool, startWorkTool, replyToOriginTool],
   followThread: [followThreadTool],
   messageHandback: [handBackMessageTool],
-  coordinator: [replyToOriginTool, ...coordinatorToolCatalog],
+  decisions: decisionRunToolCatalog,
   automations: [automationTool],
   workspace: [...sidebarToolCatalog, ...sessionToolCatalog],
   sessionControls: sessionControlToolCatalog,

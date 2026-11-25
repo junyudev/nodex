@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { make } from "./InboxApplication";
 import { StoreAdministration } from "../../main/core-runtime/StoreAdministration";
-import { routingFixture } from "./coordinator-inbox.test-support";
+import { routingFixture } from "./routing-decisions.test-support";
 it.effect("re-arms only the problem named by a validated person retry", () =>
   Effect.gen(function* () {
     const f = yield* routingFixture();

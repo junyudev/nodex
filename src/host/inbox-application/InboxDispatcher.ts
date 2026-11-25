@@ -18,12 +18,12 @@ import {
   AgentRuntimeApplication,
   agentRuntimeFailureReason,
 } from "../../main/agent-runtime/AgentRuntimeApplication";
-import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import { DecisionRuns } from "../nodex-decisions/DecisionRuns";
 import type { CoreInboxSuggestionRequest } from "../../main/core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../../main/logging/logger";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
-import { InboxApplication, type InboxApplicationError } from "./InboxApplication";
+import { InboxApplication } from "./InboxApplication";
 import {
   INBOX_SUGGESTION_BATCH,
   inboxRoutingIdentity,
@@ -43,14 +43,12 @@ export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
   const settings = yield* ApplicationSettings;
   const runtime = yield* AgentRuntimeApplication;
-  const coordinator = yield* CoordinatorSession;
+  const decisions = yield* DecisionRuns;
   const skillInventory = yield* makeInboxSkills;
   const prepareContext = yield* makeRoutingContext;
   const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
   const admission = yield* Semaphore.make(1);
-  const fibers = yield* FiberSet.make<void, InboxApplicationError>();
-  const inFlight = new Map<string, Fiber.Fiber<void, InboxApplicationError>>();
   const unsettled = new Set<string>();
   let previousPolicy: InboxSuggestionPolicy["kind"] | null = null;
 
@@ -79,11 +77,8 @@ export const make = Effect.gen(function* () {
   ) {
     let request = picked;
     if (yield* inbox.executionHeld({ pageIds: request.context.entries.map((e) => e.page_id) }))
-      return;
+      return "deferred" as const;
     if (!request.delivery) {
-      const session = yield* coordinator.ensure().pipe(Effect.result);
-      if (session._tag === "Failure")
-        return yield* fail(request, agentRuntimeFailureReason(session.failure));
       const prepared = yield* prepareContext(current).pipe(Effect.result);
       if (prepared._tag === "Failure")
         return yield* fail(request, agentRuntimeFailureReason(prepared.failure));
@@ -100,9 +95,26 @@ export const make = Effect.gen(function* () {
               context.agents?.candidates.map((candidate) => candidate.instance_id) ?? [],
             )
           : [];
-      yield* inbox.beginRouting(request, session.success, offers);
+      const title = yield* decisions.routingTitle(request.page_ids);
+      const decision = {
+        kind: "routing" as const,
+        request_id: request.request_id,
+        generation: request.generation,
+      };
+      const reservation = yield* decisions
+        .begin(decision, title, (sessionId) => inbox.beginRouting(request, sessionId, offers))
+        .pipe(Effect.result);
       const begun = yield* inbox.suggestionRequest(request.request_id);
       if (!begun || begun.generation !== request.generation) return;
+      if (!begun.delivery && (yield* settings.snapshot()).inbox.suggestions === "off") return;
+      if (!begun.delivery && reservation._tag === "Failure") {
+        if (reservation.failure instanceof InboxRuntimeError)
+          return yield* fail(request, reservation.failure.message);
+        if (!(yield* inbox.executionHeld({ pageIds: request.page_ids })))
+          return yield* Effect.fail(reservation.failure);
+      }
+      // An unreserved request must release its worker so existing reservations can resume.
+      if (!begun.delivery) return "deferred" as const;
       request = begun;
     }
     const delivery = request.delivery;
@@ -120,14 +132,14 @@ export const make = Effect.gen(function* () {
       if (!accepted) {
         const receipt = yield* runtime
           .messageAdmission({
-            sessionId: delivery.coordinator_session_id,
+            sessionId: delivery.decision_session_id,
             messageId: identity.messageId,
           })
-          .pipe(Effect.result);
+          .pipe(Effect.timeout("5 seconds"), Effect.result);
         if (receipt._tag === "Success" && receipt.success?.status === "rejected")
           return yield* fail(
             request,
-            receipt.success.error || "The Coordinator rejected this message",
+            receipt.success.error || "Nodex rejected this routing message",
           );
         accepted = receipt._tag === "Success" && receipt.success?.status === "accepted";
       }
@@ -141,16 +153,14 @@ export const make = Effect.gen(function* () {
         const messageIdentity = followup ? inboxRoutingIdentity(request, true) : identity;
         const attempt = yield* Effect.gen(function* () {
           const receipt = yield* runtime.messageAdmission({
-            sessionId: delivery.coordinator_session_id,
+            sessionId: delivery.decision_session_id,
             messageId: messageIdentity.messageId,
           });
           if (receipt?.status === "accepted") return true;
           if (receipt?.status === "rejected") {
-            yield* fail(request, receipt.error || "The Coordinator rejected this message");
+            yield* fail(request, receipt.error || "Nodex rejected this routing message");
             return "settled" as const;
           }
-          // Reset never redirects uncertain requests to a different Coordinator.
-          if (!(yield* coordinator.isCoordinator(delivery.coordinator_session_id))) return false;
           if ((yield* settings.snapshot()).inbox.suggestions === "off") return false;
           const context = yield* prepareContext(current).pipe(
             Effect.tapError((error) => fail(request, agentRuntimeFailureReason(error))),
@@ -163,7 +173,7 @@ export const make = Effect.gen(function* () {
             const latest = yield* inbox.suggestionRequest(request.request_id);
             if (!latest || latest.generation !== request.generation) return "settled" as const;
             yield* runtime.sendMessage({
-              sessionId: delivery.coordinator_session_id,
+              sessionId: delivery.decision_session_id,
               origin: "host",
               mode: "queue",
               messageFingerprint: messageIdentity.fingerprint,
@@ -201,7 +211,7 @@ export const make = Effect.gen(function* () {
               }),
           }).pipe(Effect.tapError((error) => fail(request, error.message)));
           yield* runtime.sendMessage({
-            sessionId: delivery.coordinator_session_id,
+            sessionId: delivery.decision_session_id,
             origin: "host",
             mode: "queue",
             messageFingerprint: messageIdentity.fingerprint,
@@ -233,13 +243,21 @@ export const make = Effect.gen(function* () {
       );
     }
   });
+  type RoutingError = Effect.Error<ReturnType<typeof suggest>>;
+  type RoutingResult = Effect.Success<ReturnType<typeof suggest>>;
+  const fibers = yield* FiberSet.make<RoutingResult, RoutingError>();
+  const inFlight = new Map<string, Fiber.Fiber<RoutingResult, RoutingError>>();
   const readPolicy = Effect.fn("InboxDispatcher.readPolicy")(function* () {
     const current = (yield* settings.snapshot()).inbox;
-    const policy = inboxSuggestionPolicy(
-      current,
-      yield* runtime.catalog(),
-      yield* Clock.currentTimeMillis,
-    );
+    const catalog =
+      current.suggestions === "automatic"
+        ? yield* runtime.catalog().pipe(Effect.timeout("5 seconds"), Effect.result)
+        : null;
+    // Durable deliveries still need settlement when their execution owner is unavailable.
+    const policy =
+      catalog?._tag === "Failure"
+        ? { kind: "on_request" as const }
+        : inboxSuggestionPolicy(current, catalog?.success ?? [], yield* Clock.currentTimeMillis);
     if (policy.kind === "paused" && previousPolicy !== "paused")
       logger.info("Inbox automatic suggestions paused", { ...policy.pause });
     if (policy.kind === "automatic" && previousPolicy === "paused")
@@ -271,7 +289,7 @@ export const make = Effect.gen(function* () {
         (preparation.policy.kind !== "off" ||
           (item.delivery !== undefined && item.delivery !== null)),
     );
-    if (!request) return;
+    if (!request || (!request.delivery && !(yield* decisions.hasCapacity("routing")))) return;
 
     const latest = yield* readPolicy();
     if (latest.policy.kind === "off" && !request.delivery) {
@@ -309,25 +327,6 @@ export const make = Effect.gen(function* () {
     while (next) {
       const { requestId, fiber } = next;
       const settled = yield* Fiber.await(fiber);
-      yield* inbox.cancelledRoutingDeliveries([requestId]).pipe(
-        Effect.flatMap((deliveries) =>
-          Effect.forEach(
-            deliveries,
-            (delivery) =>
-              Effect.forEach(
-                [false, true],
-                (followup) =>
-                  runtime.stopHostInput({
-                    sessionId: delivery.coordinator_session_id,
-                    messageId: inboxRoutingIdentity(delivery, followup).messageId,
-                  }),
-                { discard: true },
-              ),
-            { discard: true },
-          ),
-        ),
-        recoverPass,
-      );
       next = yield* admission.withPermit(
         Effect.gen(function* () {
           inFlight.delete(requestId);
@@ -337,6 +336,7 @@ export const make = Effect.gen(function* () {
             yield* warnUnsettled;
             return;
           }
+          if (Exit.isSuccess(settled) && settled.value === "deferred") unsettled.add(requestId);
           const admitted = yield* nextRequest;
           if (admitted) return yield* startRequest(admitted);
         }),

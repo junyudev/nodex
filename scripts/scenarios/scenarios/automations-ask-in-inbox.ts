@@ -127,7 +127,7 @@ const materializeAutomationsAskInInbox = async (
     "The dependency policy is ready for the next maintenance pass.",
     projectInbox(project.id),
   );
-  await port.proposeInboxDispatch({
+  await port.settleRoutingSuggestion({
     pageIds: [note.pageId],
     action: { type: "keep" },
     kind: "note",

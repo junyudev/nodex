@@ -495,23 +495,11 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async createCoordinatorSession(): Promise<never> {
-    throw new Error("Coordinator admission is seeded only through Core");
-  }
   async recordSessionExecution(): Promise<never> {
     throw new Error("Execution observations are seeded through Core");
   }
   async readPageTurn(pageId: string) {
     return (await this.#invoke("work:turn", pageId)).turn;
-  }
-  async setSessionManaged(sessionId: string, managed: boolean): Promise<void> {
-    requireSuccess(
-      await this.#invoke("project-sessions:set-managed", {
-        operationId: createUuidV7(),
-        payload: { sessionId, managed },
-      }),
-      "Manage scenario chat",
-    );
   }
   async setPageWork(): Promise<never> {
     throw new Error("Agent work is seeded only through Core");
@@ -539,9 +527,6 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       await this.#invoke("inbox:activity", { scope: { kind: "all" }, filter: "all", first: 100 })
     ).rows;
   }
-  async writeTurnNote(): Promise<never> {
-    throw new Error("Turn notes are seeded only through Core");
-  }
   async handBackChatMessage(): Promise<never> {
     throw new Error("Handback seeding requires Core");
   }
@@ -549,8 +534,8 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     throw new Error("Not supported");
   }
 
-  async settleCoordinatorSuggestion(): Promise<never> {
-    throw new Error("Coordinator suggestions are seeded only through Core");
+  async settleRoutingSuggestion(): Promise<never> {
+    throw new Error("Routing suggestions are seeded only through Core");
   }
   async setInboxRoutingConsent(): Promise<never> {
     throw new Error("Member consent scenarios must seed through Core");
@@ -562,10 +547,6 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
 
   async prepareInboxSuggestions(): Promise<void> {
     throw new Error("Automatic Inbox advice is prepared only through Core");
-  }
-
-  async proposeInboxDispatch(): Promise<void> {
-    throw new Error("Inbox suggestions are seeded only through Core; renderers cannot propose");
   }
 
   async dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void> {

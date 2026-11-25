@@ -11,9 +11,9 @@ import {
   type ScenarioSeedPort,
 } from "../contracts";
 
-export const NODEX_COORDINATOR_SCENARIO_ID = "nodex-coordinator";
-export const NODEX_COORDINATOR_SCENARIO_REVISION = 12;
-export const COORDINATOR_AGENT = {
+export const NODEX_COORDINATION_SCENARIO_ID = "nodex-coordination";
+export const NODEX_COORDINATION_SCENARIO_REVISION = 13;
+export const WORK_AGENT = {
   selection: { instanceId: "codex", model: "gpt-5.5", effort: "medium" },
   launch: "ask",
 } as const;
@@ -64,6 +64,7 @@ const CARDS = {
     launch: "automatic",
   },
   needsYou: { title: "Choose session retention", status: "review", live: "input" },
+  reply: { title: "Choose how to publish release notes", status: "doing", live: "reply" },
   done: {
     title: "Add copy link action",
     status: "done",
@@ -77,7 +78,7 @@ type CardRecipeFields = {
   readonly status: WorkflowStatus;
   readonly outcome?: "ready" | "blocked" | "failed" | "dropped";
   readonly summary?: string;
-  readonly live?: "working" | "input" | "queued";
+  readonly live?: "working" | "input" | "queued" | "reply";
   readonly launch?: "automatic";
   /** A person paused this Page's work. */
   readonly paused?: true;
@@ -87,7 +88,7 @@ type CardRecipeFields = {
 };
 type CardRecipe = CardRecipeFields & { readonly blockedBy?: CardKey };
 
-export interface NodexCoordinatorScenarioFacts extends ScenarioFacts {
+export interface NodexCoordinationScenarioFacts extends ScenarioFacts {
   readonly cardCount: number;
   readonly managedChatCount: number;
   readonly reportCounts: Readonly<Record<"ready" | "blocked" | "failed" | "dropped", number>>;
@@ -101,12 +102,12 @@ export interface NodexCoordinatorScenarioFacts extends ScenarioFacts {
   readonly automaticBlockedCount: number;
 }
 
-export const requireNodexCoordinatorFacts = (value: unknown): NodexCoordinatorScenarioFacts => {
+export const requireNodexCoordinationFacts = (value: unknown): NodexCoordinationScenarioFacts => {
   const envelope = parseScenarioFacts(value);
-  const candidate = value as Partial<NodexCoordinatorScenarioFacts>;
+  const candidate = value as Partial<NodexCoordinationScenarioFacts>;
   if (
-    envelope.scenarioId !== NODEX_COORDINATOR_SCENARIO_ID ||
-    envelope.scenarioRevision !== NODEX_COORDINATOR_SCENARIO_REVISION ||
+    envelope.scenarioId !== NODEX_COORDINATION_SCENARIO_ID ||
+    envelope.scenarioRevision !== NODEX_COORDINATION_SCENARIO_REVISION ||
     ![
       candidate.cardCount,
       candidate.managedChatCount,
@@ -119,9 +120,9 @@ export const requireNodexCoordinatorFacts = (value: unknown): NodexCoordinatorSc
     !candidate.inboxRowCounts ||
     !Array.isArray(candidate.planSteps)
   ) {
-    throw new Error("nodex-coordinator facts are invalid");
+    throw new Error("nodex-coordination facts are invalid");
   }
-  return value as NodexCoordinatorScenarioFacts;
+  return value as NodexCoordinationScenarioFacts;
 };
 
 const valueOf = <T>(
@@ -135,15 +136,14 @@ const valueOf = <T>(
 const identity = (values: Readonly<Record<string, string>> | undefined, key: string): string => {
   const id = values?.[key];
   if (id) return id;
-  throw new Error("nodex-coordinator identity missing: " + key);
+  throw new Error("nodex-coordination identity missing: " + key);
 };
 
 const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace) => {
   const project = await port.createProject({ name: "Nodex", sources: [workspace] });
   if (!project.defaultDatabaseViewId) throw new Error("Nodex has no Board");
-  const coordinator = await port.createCoordinatorSession();
   const pages: Record<string, string> = {};
-  const entities: Record<string, string> = { coordinator };
+  const entities: Record<string, string> = {};
   for (const [key, recipe] of Object.entries<CardRecipe>(CARDS)) {
     // Filing retains the Library Inbox as this result's home even though its card lives on the Board.
     const pageId =
@@ -170,32 +170,32 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     await port.setPageWork(project.id, pageId, {
       assignee: {
         kind: "agent",
-        instance_id: COORDINATOR_AGENT.selection.instanceId,
-        model: COORDINATOR_AGENT.selection.model,
-        effort: COORDINATOR_AGENT.selection.effort,
+        instance_id: WORK_AGENT.selection.instanceId,
+        model: WORK_AGENT.selection.model,
+        effort: WORK_AGENT.selection.effort,
       },
       auto_start: recipe.launch === "automatic",
     });
     if (recipe.paused) await port.pauseWork({ kind: "page", page_id: pageId });
     if (!recipe.outcome && !recipe.live) continue;
-    // Work with a checkout runs in an Agent chat, as starting it would create; the rest use
-    // native chats with their own status.
-    const chat = recipe.branch
-      ? await port.createWorkChat({ projectId: project.id, pageId, title: recipe.title })
-      : await port.createRelatedChat({
-          handOff: true,
-          projectId: key === "ready" || key === "failed" || key === "needsYou" ? null : project.id,
-          relatedPageIds: [pageId],
-          noThreadFallbackTitle: recipe.title,
-          thread: {
-            threadId: createUuidV7(),
-            threadName: recipe.title,
-            threadPreview: recipe.summary ?? "Working through the keyboard interaction.",
-            statusType: recipe.live ? "active" : "idle",
-            statusActiveFlags: recipe.live === "input" ? ["waitingOnUserInput"] : [],
-            unread: false,
-          },
-        });
+    const chat = await port.createWorkChat({
+      projectId: project.id,
+      pageId,
+      title: recipe.title,
+      selection: WORK_AGENT.selection,
+      ...(!recipe.branch && recipe.live !== "reply"
+        ? {
+            thread: {
+              threadId: createUuidV7(),
+              threadName: recipe.title,
+              threadPreview: recipe.summary ?? "Working through the keyboard interaction.",
+              statusType: recipe.live ? "active" : "idle",
+              statusActiveFlags: recipe.live === "input" ? ["waitingOnUserInput"] : [],
+              unread: false,
+            },
+          }
+        : {}),
+    });
     entities[key + "Session"] = chat.sessionId;
     if (chat.threadId) entities[key + "Thread"] = chat.threadId;
     if (recipe.branch)
@@ -209,7 +209,6 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
           ? { pullRequest: { number: recipe.pullRequest, state: "OPEN" as const } }
           : {}),
       });
-    // A report also hands these linked chats to Nodex. Live states need the same managed membership.
     if (recipe.outcome)
       await port.reportPageWork({
         sessionId: chat.sessionId,
@@ -217,12 +216,12 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
         outcome: recipe.outcome,
         summary: recipe.summary!,
       });
-    else await port.setSessionManaged(chat.sessionId, true);
     if (recipe.live)
       await port.recordSessionExecution(chat.sessionId, {
-        state: recipe.live === "input" ? "waiting" : recipe.live,
+        state: recipe.live === "input" ? "waiting" : recipe.live === "reply" ? "idle" : recipe.live,
         runId: `scenario:${key}`,
-        runStartedAt: 0,
+        // A reply asks the person only about a Run that began after its chat took the work.
+        runStartedAt: recipe.live === "reply" ? Date.now() + 1 : 0,
         pendingRequestIds: recipe.live === "input" ? ["scenario:question"] : [],
         pendingRequests:
           recipe.live === "input"
@@ -243,7 +242,13 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
                 waitingSince: new Date().toISOString(),
               }
             : null,
-        terminalStatus: null,
+        terminalStatus: recipe.live === "reply" ? "completed" : null,
+        ...(recipe.live === "reply"
+          ? {
+              lastReplyExcerpt:
+                "The release notes are drafted. Should I publish them with the release or now?",
+            }
+          : {}),
         personStopped: false,
         stalled: false,
         progressFingerprint: `scenario:${key}`,
@@ -308,16 +313,15 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
   await port.setInboxRoutingConsent(true);
   const started = await port.sendInboxMessage("Audit README links.");
   pages.startedRequest = started.pageId;
-  const startedProposal = await port.settleCoordinatorSuggestion({
-    coordinatorSessionId: coordinator,
+  const startedProposal = await port.settleRoutingSuggestion({
     pageIds: [started.pageId],
     action: {
       type: "new_chat",
       projectId: project.id,
       agent: {
-        instanceId: COORDINATOR_AGENT.selection.instanceId,
-        model: COORDINATOR_AGENT.selection.model,
-        reasoningEffort: COORDINATOR_AGENT.selection.effort,
+        instanceId: WORK_AGENT.selection.instanceId,
+        model: WORK_AGENT.selection.model,
+        reasoningEffort: WORK_AGENT.selection.effort,
         serviceTier: null,
       },
       prompt: "Audit README links.",
@@ -325,44 +329,28 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
     },
     kind: "todo",
     summary: "Continue the README check.",
-    rationale: null,
+    rationale: "The request names a focused README check in the Nodex Project.",
     explicitRequest: true,
     automaticDispatch: true,
   });
-  await port.confirmInboxRequestByNodex(startedProposal, COORDINATOR_AGENT.selection);
+  await port.confirmInboxRequestByNodex(startedProposal, WORK_AGENT.selection);
   await port.completeInboxDispatch(startedProposal, createUuidV7());
 
   const question = await port.sendInboxMessage("What is still waiting on me?");
   pages.question = question.pageId;
   pages.answer = (
     await port.answerInboxQuestion({
-      coordinatorSessionId: coordinator,
       questionPageId: question.pageId,
       body: "Session retention needs your decision. Search indexing needs fresh credentials.",
     })
   ).pageId;
-  await port.writeTurnNote({
-    coordinatorSessionId: coordinator,
-    pageId: identity(pages, "ready"),
-    sessionId: identity(entities, "readySession"),
-    body: "README install typo fixed; checked all docs. Ready for review.",
-    notify: false,
-  });
-  await port.writeTurnNote({
-    coordinatorSessionId: coordinator,
-    pageId: identity(pages, "failed"),
-    sessionId: identity(entities, "failedSession"),
-    body: "Update the search service key to continue indexing.",
-    notify: true,
-  });
   const returned = await port.handBackChatMessage({
     body: "Update the keyboard shortcut guide.",
     reason: "The keyboard navigation chat owns this change.",
   });
   pages.handedBack = returned.pageId;
   entities.handedBackSession = returned.sessionId;
-  await port.settleCoordinatorSuggestion({
-    coordinatorSessionId: coordinator,
+  await port.settleRoutingSuggestion({
     pageIds: [returned.pageId],
     action: {
       type: "send_to_chat",
@@ -400,9 +388,8 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
       body: "Check a fresh Profile and keyboard navigation through setup.",
       blockedBy: ["simplify"],
     },
-  ].map((step) => ({ ...step, projectId: project.id, agent: COORDINATOR_AGENT.selection }));
-  entities.planProposal = await port.settleCoordinatorSuggestion({
-    coordinatorSessionId: coordinator,
+  ].map((step) => ({ ...step, projectId: project.id, agent: WORK_AGENT.selection }));
+  entities.planProposal = await port.settleRoutingSuggestion({
     pageIds: [plan.pageId],
     action: { type: "plan", summary: "A smoother first run", steps },
     kind: "todo",
@@ -412,8 +399,8 @@ const materialize: ScenarioDomainRecipe["materialize"] = async (port, workspace)
   entities.sourceProblem = await port.recordSourceProblem();
   return {
     version: 1,
-    scenarioId: NODEX_COORDINATOR_SCENARIO_ID,
-    scenarioRevision: NODEX_COORDINATOR_SCENARIO_REVISION,
+    scenarioId: NODEX_COORDINATION_SCENARIO_ID,
+    scenarioRevision: NODEX_COORDINATION_SCENARIO_REVISION,
     projectId: project.id,
     databaseViewId: project.defaultDatabaseViewId,
     pageIdsByKey: pages,
@@ -431,7 +418,7 @@ const rowCounts = (items: readonly InboxItem[]) => {
 const inspect = async (
   port: ScenarioSeedPort,
   manifest: ScenarioManifest,
-): Promise<NodexCoordinatorScenarioFacts> => {
+): Promise<NodexCoordinationScenarioFacts> => {
   const library = (await port.readInbox()).items;
   const history = await port.readHandledMessages();
   const project = (await port.readInbox(projectInbox(manifest.projectId))).items;
@@ -442,12 +429,12 @@ const inspect = async (
   );
   if (
     dispatched.pageWork?.assignee?.kind !== "agent" ||
-    dispatched.pageWork.assignee.instance_id !== COORDINATOR_AGENT.selection.instanceId ||
+    dispatched.pageWork.assignee.instance_id !== WORK_AGENT.selection.instanceId ||
     dispatched.pageWork.auto_start
   )
     throw new Error("Dispatched work must retain its receiving Agent without automatic starts");
   if (plan?.action.type !== "plan" || plan.state !== "open")
-    throw new Error("Expected an open Coordinator plan");
+    throw new Error("Expected an open routing plan");
   const counts = { ready: 0, blocked: 0, failed: 0, dropped: 0 };
   const states: Record<string, number> = {};
   let managedChatCount = 0;
@@ -460,7 +447,7 @@ const inspect = async (
     if (
       detail.title !== recipe.title ||
       detail.pageWork?.assignee?.kind !== "agent" ||
-      detail.pageWork.assignee.model !== COORDINATOR_AGENT.selection.model
+      detail.pageWork.assignee.model !== WORK_AGENT.selection.model
     )
       throw new Error("Card did not retain its Agent Assignee: " + key);
     managedChatCount += activity.work.managedSessionCount;
@@ -487,7 +474,7 @@ const inspect = async (
     const state = (await port.readPageTurn(pageId)).reason ?? "none";
     states[state] = (states[state] ?? 0) + 1;
   }
-  return requireNodexCoordinatorFacts({
+  return requireNodexCoordinationFacts({
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
     cardCount: (await port.readBoard(manifest.projectId, manifest.databaseViewId)).totalRows,
@@ -505,10 +492,10 @@ const inspect = async (
   });
 };
 
-export const nodexCoordinatorScenario: ScenarioDomainRecipe = {
-  id: NODEX_COORDINATOR_SCENARIO_ID,
-  revision: NODEX_COORDINATOR_SCENARIO_REVISION,
+export const nodexCoordinationScenario: ScenarioDomainRecipe = {
+  id: NODEX_COORDINATION_SCENARIO_ID,
+  revision: NODEX_COORDINATION_SCENARIO_REVISION,
   materialize,
   inspect,
-  parseFacts: requireNodexCoordinatorFacts,
+  parseFacts: requireNodexCoordinationFacts,
 };

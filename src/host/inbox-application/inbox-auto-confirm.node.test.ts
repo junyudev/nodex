@@ -4,7 +4,7 @@ import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX, type InboxSettings } from "../..
 import { writeRoutingConsent } from "./InboxRoutingConsent";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import { bindTestRouting, captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 
 type Provider = Effect.Success<ReturnType<AgentRuntimeApplication["Service"]["catalog"]>>[number];
 const provider: Provider = {
@@ -42,8 +42,10 @@ it.effect.each(["suggest", "act_on_requests"] as const)(
           basis: [original.basis],
         });
         const request = (yield* inbox.suggestionRequests(1))[0]!;
+        const decisionSessionId = yield* bindTestRouting({ inbox, client }, request);
         yield* inbox.settleSuggestion({
           request_id: request.request_id,
+          decision_session_id: decisionSessionId,
           generation: request.generation,
           titles: [],
           suggestions: [

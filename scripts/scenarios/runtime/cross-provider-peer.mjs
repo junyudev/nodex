@@ -106,16 +106,12 @@ if (
   ["team-host", "mobile-gateway"].includes(plan().scenario) &&
   process.argv.includes("exec")
 ) {
-  let prompt = "";
-  for await (const chunk of process.stdin) prompt += chunk;
+  for await (const _chunk of process.stdin) {
+  }
   fs.writeFileSync(
     argument("--output-last-message"),
     JSON.stringify({
-      title: prompt.includes("Nodex is ready.")
-        ? "Nodex"
-        : plan().scenario === "mobile-gateway"
-          ? "Phone work"
-          : "Host runner task",
+      title: plan().scenario === "mobile-gateway" ? "Phone work" : "Host runner task",
     }),
   );
   process.exit(0);
@@ -601,7 +597,7 @@ async function answerHosted(prompt, server, native) {
       ? await finishHostedAnswer(prompt, server, native)
       : "Host received your reply.";
   if (!prompt.startsWith("# ") || !prompt.includes(`Page ID: ${recipe.pageId}`))
-    return "Nodex is monitoring the team Space.";
+    return "The hosted chat is ready.";
   fs.writeFileSync(marker, recipe.pageId);
   const shellEnvironment = { ...process.env, CODEX_THREAD_ID: native.threadId };
   for (let index = 0; index < process.argv.length - 1; index++) {
@@ -746,7 +742,7 @@ async function answerMobile(prompt, server, native) {
     return "The reference is ready to keep.";
   }
   if (!prompt.includes("<send_user_message_question_reply>")) {
-    if (!prompt.includes(`Page ID: ${plan().pageId}`)) return "Nodex is monitoring your work.";
+    if (!prompt.includes(`Page ID: ${plan().pageId}`)) return "The phone chat is ready.";
     emitAsyncQuestion(native, "mobile", "Which scope should the phone use?", [
       "Project",
       "Library",

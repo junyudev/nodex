@@ -32,7 +32,7 @@ const mergeSessionChanges = (
   };
 };
 
-/** Read-model fanout only: no Coordinator, Agent Runtime, scheduler or Source producer.
+/** Read-model fanout only: no Agent Runtime, scheduler or Source producer.
  * A Space rename on the host rereads the name for this desktop's switcher and Home title. */
 export const live = (spaceRenamed: Effect.Effect<void>) =>
   Layer.effect(

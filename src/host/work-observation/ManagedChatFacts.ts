@@ -47,7 +47,10 @@ type ManagedSession = Extract<
 export class NativeManagedChatFacts extends Context.Service<
   NativeManagedChatFacts,
   {
-    readonly read: (session: ManagedSession) => Effect.Effect<ChatFacts, unknown>;
+    readonly read: (
+      session: ManagedSession,
+      includeLastReply: boolean,
+    ) => Effect.Effect<ChatFacts, unknown>;
   }
 >()("nodex/host/NativeManagedChatFacts") {}
 
@@ -57,7 +60,7 @@ export const make = Effect.gen(function* () {
   const runtime = yield* AgentRuntimeApplication;
   const native = Option.getOrUndefined(yield* Effect.serviceOption(NativeManagedChatFacts));
   const read = Effect.fn("ManagedChatFacts.read")(
-    function* (sessionId: string) {
+    function* (sessionId: string, includeLastReply = false) {
       const before = yield* core.workspace.read(
         { kind: "session", session_id: sessionId },
         undefined,
@@ -69,9 +72,12 @@ export const make = Effect.gen(function* () {
       const binding = session.execution_ref;
       let facts: ChatFacts;
       if (binding) {
-        const snapshot = yield* runtime.observeSessionMetadata({ sessionId });
+        const snapshot = yield* runtime.observeSessionMetadata({
+          sessionId,
+          includeLastReply: includeLastReply || !!session.page_turn,
+        });
         if (!snapshot) return unavailableManagedChatFacts;
-        const { metadata, execution, details, activity } = snapshot;
+        const { metadata, execution, details, activity, lastReply } = snapshot;
         const run = details.recentRuns.find((run) => run.runId === execution.runId);
         const runStartedAt = millis(run?.startedAt);
         const earlier = details.latestStartedRun;
@@ -110,6 +116,7 @@ export const make = Effect.gen(function* () {
               ? null
               : managedChatTerminal(execution.status),
           pendingRequests,
+          ...(lastReply ? { lastReplyExcerpt: lastReply } : {}),
           ...(run?.failureMessage ? { failureReason: run.failureMessage } : {}),
           progressFingerprint: activity?.awaitingCommands
             ? null
@@ -123,7 +130,7 @@ export const make = Effect.gen(function* () {
         };
       } else {
         if (!native) return unavailableManagedChatFacts;
-        facts = yield* native.read(session);
+        facts = yield* native.read(session, includeLastReply || !!session.page_turn);
       }
       const after = yield* core.workspace.read(
         { kind: "session", session_id: sessionId },

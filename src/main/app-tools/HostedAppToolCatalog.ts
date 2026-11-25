@@ -18,7 +18,6 @@ const commonNames = new Set([
   "follow_thread",
   "hand_back_message",
   "inbox_suggest",
-  "write_turn_note",
   "reply_to_origin",
   "answer_inbox_question",
   "start_work",

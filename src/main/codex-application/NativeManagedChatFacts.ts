@@ -9,11 +9,11 @@ import {
   managedChatFingerprint as hash,
   managedChatState as state,
   managedChatTerminal as terminal,
-} from "../../host/coordinator/ManagedChatFacts";
+} from "../../host/work-observation/ManagedChatFacts";
 import {
   unavailableManagedChatFacts,
   type ManagedChatRequest,
-} from "../../host/coordinator/managed-chat-observation";
+} from "../../host/work-observation/managed-chat-observation";
 
 /** Native Codex chats stay with their desktop conversation owner. */
 export const live = Layer.effect(
@@ -23,7 +23,7 @@ export const live = Layer.effect(
     const subagents = yield* CodexSubagentDirectory;
     const nativeDetails = yield* makeNativeSessionReadDetails;
     return {
-      read: Effect.fn("NativeManagedChatFacts.read")(function* (session) {
+      read: Effect.fn("NativeManagedChatFacts.read")(function* (session, includeLastReply) {
         if (!session.thread_id) return unavailableManagedChatFacts;
         const entry = yield* directory.resolve({
           threadId: session.thread_id,
@@ -77,7 +77,15 @@ export const live = Layer.effect(
           (details.metadata.status.type === "active" && !waiting) ||
           state(status, 0) === "working";
         if (!working && overview.completeness !== "complete") return unavailableManagedChatFacts;
+        const reply =
+          includeLastReply && !working && status === "completed"
+            ? current?.items.findLast(
+                (item) =>
+                  item.type === "agentMessage" && item.phase !== "commentary" && item.text.trim(),
+              )
+            : null;
         return {
+          ...(reply?.type === "agentMessage" ? { lastReplyExcerpt: reply.text } : {}),
           ...(entry.durable.executionProfile?.modelId
             ? {
                 agent: {

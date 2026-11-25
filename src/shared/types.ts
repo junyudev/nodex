@@ -1163,6 +1163,8 @@ export interface SessionFolder {
 
 export interface ProjectSession {
   id: string;
+  /** Read-only Nodex decision history, when this Session was opened from Activity. */
+  decisionRun?: { readonly kind: "routing" | "assessment" } | null;
   projectId: string | null;
   noThreadFallbackTitle: string;
   displayTitle: string;
@@ -1329,15 +1331,6 @@ export interface ProjectSessionRenameInput {
 
 export interface ProjectSessionPinnedInput {
   pinned: boolean;
-}
-
-export interface SessionManagedState {
-  managed: boolean;
-  since: string | null;
-}
-export interface SessionManagedInput {
-  sessionId: string;
-  managed: boolean;
 }
 
 export interface ProjectSessionSnoozeInput {

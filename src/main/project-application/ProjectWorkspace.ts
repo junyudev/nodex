@@ -25,7 +25,6 @@ import {
   ProjectSessionRenameInputSchema,
   ProjectSessionSnoozeInputSchema,
   ProjectSessionSettledInputSchema,
-  SessionManagedInputSchema,
   ProjectSessionThreadLinkInputSchema,
   ProjectSessionUpdateInputSchema,
 } from "../../shared/schemas/project-sessions";
@@ -46,7 +45,6 @@ import type {
   PageChatWindowInput,
   ProjectSession,
   ProjectSessionSettledResult,
-  SessionManagedState,
   ProjectSessionSummaryWindow,
   SessionSideChatWindow,
   SessionSideChatWindowInput,
@@ -74,7 +72,6 @@ import type {
   ProjectSessionSettledCommandInput,
   ProjectSessionsSettleIdleCommandInput,
   ProjectSessionSnoozeCommandInput,
-  ProjectSessionManagedCommandInput,
   ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -318,14 +315,10 @@ export interface ProjectWorkspaceService {
     includeArchived?: boolean,
     input?: ProjectSessionSummaryWindowInput,
   ) => ProjectWorkspaceEffect<ProjectSessionSummaryWindow>;
-  readonly readSessionManaged: (sessionId: string) => ProjectWorkspaceEffect<SessionManagedState>;
   /** Why a chat its Inbox decision started has not run yet, or null once it has. */
   readonly readSessionStart: (
     sessionId: string,
   ) => ProjectWorkspaceEffect<import("../../shared/types").ProjectSessionStart | null>;
-  readonly setSessionManaged: (
-    command: ProjectSessionManagedCommandInput,
-  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SessionManagedState>>;
   readonly listSessionSideChats: (
     sourceSessionId: string,
     input?: SessionSideChatWindowInput,
@@ -1720,17 +1713,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         return { value: yield* requireSession(sessionId), apply: applied };
       },
     );
-    const readSessionManaged = Effect.fn("ProjectWorkspace.readSessionManaged")(function* (
-      sessionId: string,
-    ) {
-      yield* requireSession(sessionId);
-      const snapshot = yield* read("session.managed.read", {
-        kind: "read_managed_session",
-        session_id: sessionId,
-      });
-      const { managed } = expectVariant(snapshot, "read_managed_session");
-      return { managed: managed !== null && managed !== undefined, since: managed?.since ?? null };
-    });
     const readSessionStart = Effect.fn("ProjectWorkspace.readSessionStart")(function* (
       sessionId: string,
     ) {
@@ -1748,24 +1730,8 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         retryable: start.retryable,
       };
     });
-    const setSessionManaged = Effect.fn("ProjectWorkspace.setSessionManaged")(function* (
-      command: ProjectSessionManagedCommandInput,
-    ) {
-      const { sessionId, managed } = yield* evaluate("session.managed.validate", () =>
-        SessionManagedInputSchema.parse(command.payload),
-      );
-      yield* requireSession(sessionId);
-      const applied = yield* applyWithId("session.managed.set", command.operationId, {
-        kind: "set_session_managed",
-        session_id: sessionId,
-        managed,
-      });
-      return { value: yield* readSessionManaged(sessionId), apply: applied };
-    });
     const service = ProjectWorkspace.of({
-      readSessionManaged,
       readSessionStart,
-      setSessionManaged,
       setProjectSessionSnooze,
       unreadChatCount: read("session.unread.count", { kind: "unread_chat_count" }).pipe(
         Effect.map((snapshot) => expectVariant(snapshot, "unread_chat_count").count),

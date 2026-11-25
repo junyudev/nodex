@@ -7,7 +7,6 @@ import type {
   CoreLocalCommitCommandChannel,
   IpcQueryChannel,
 } from "../../../shared/ipc-endpoint-policy";
-import { CoordinatorSession } from "../../../host/coordinator/CoordinatorSession";
 import { MainConfig } from "../../app/MainConfig";
 import {
   InboxApplication,
@@ -38,13 +37,12 @@ type Handler<Channel extends keyof IpcApi> = (
 export const live: Layer.Layer<
   never,
   never,
-  ElectronIpc | InboxApplication | CoordinatorSession | MainConfig | WindowRuntime
+  ElectronIpc | InboxApplication | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const inbox = yield* InboxApplication;
-    const coordinator = yield* CoordinatorSession;
     const windows = yield* WindowRuntime;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
@@ -80,8 +78,6 @@ export const live: Layer.Layer<
       task: Handler<Channel>,
     ) => invokeIpc.handleLocalCommitCommand(channel, task);
 
-    yield* invokeIpc.handlePlainCommand("inbox:open-nodex", () => coordinator.ensure());
-    yield* invokeIpc.handlePlainCommand("inbox:reset-nodex", () => coordinator.reset());
     yield* query("inbox:reply-destination", (_, pageId, body) =>
       inbox.replyDestination(pageId, body),
     );

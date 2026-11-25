@@ -13,7 +13,7 @@ import {
   routingRequest,
   keepOutput,
   invocation,
-} from "./coordinator-inbox.test-support";
+} from "./routing-decisions.test-support";
 
 it.effect("routes through inbox_suggest and records one complete settlement", () =>
   Effect.gen(function* () {
@@ -26,8 +26,9 @@ it.effect("routes through inbox_suggest and records one complete settlement", ()
     assert.deepInclude(f.send.mock.calls[0]![0], {
       origin: "host",
       mode: "queue",
-      sessionId: "nodex",
+      sessionId: "decision:request:one",
     });
+    assert.equal(f.settlements[0]!.decision_session_id, "decision:request:one");
     assert.equal(f.settlements[0]!.produced_by, "Codex · Model");
     assert.equal(f.settlements[0]!.suggestions[0]!.explicit_request, false);
   }),
@@ -98,11 +99,11 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const f = yield* routingFixture();
-      f.rejectAdmission("The Coordinator rejected this message");
+      f.rejectAdmission("Nodex rejected this routing message");
       yield* (yield* f.worker).drain;
       assert.isEmpty(f.send.mock.calls);
       assert.lengthOf(f.settlements, 1);
-      assert.equal(f.settlements[0]!.error, "The Coordinator rejected this message");
+      assert.equal(f.settlements[0]!.error, "Nodex rejected this routing message");
     }),
 );
 
@@ -138,68 +139,32 @@ it.effect(
     }),
 );
 
-it.effect("refuses non-Coordinator suggestion and post calls before any mutation", () =>
+it.effect("only the bound routing decision can settle the request", () =>
   Effect.gen(function* () {
     const f = yield* routingFixture();
-    f.setCaller("other");
-    for (const name of ["inbox_suggest", "write_turn_note"]) {
-      const result = yield* f.tool(
-        invocation(
-          name === "inbox_suggest"
-            ? keepOutput(routingRequest())
-            : { pageId: "page:work", notify: false, body: "Done", eventIds: ["event"] },
-          name,
-        ),
-      );
-      assert.isTrue(result.isError);
-      assert.equal((result.structuredContent?.error as { code: string }).code, "coordinator_only");
-    }
+    f.setCaller("ordinary-chat");
+    const result = yield* f.tool(invocation(keepOutput(routingRequest())));
+    assert.equal(
+      (result.structuredContent?.error as { code: string }).code,
+      "decision_run_required",
+    );
     assert.isEmpty(f.commands);
     assert.isEmpty(f.settlements);
   }),
 );
 
-it.effect("uses stable note identities and stays quiet on replay", () =>
+it.effect("routing uses its own capacity and does not open a run while the Space is held", () =>
   Effect.gen(function* () {
     const f = yield* routingFixture();
-    const input = invocation(
-      {
-        pageId: "page:work",
-        notify: false,
-        body: "README is ready",
-        eventIds: ["report:ready"],
-      },
-      "write_turn_note",
-    );
-    const first = yield* f.tool(input);
-    const replay = yield* f.tool({ ...input, caller: { ...input.caller, callId: "retry" } });
-    assert.isUndefined(first.isError);
-    assert.equal(first.structuredContent?.pageId, replay.structuredContent?.pageId);
-    assert.isEmpty(f.posted);
-    assert.equal(replay.structuredContent?.replay, true);
-    assert.equal(f.commands[0]!.intent.kind, "agent_command");
-  }),
-);
-
-it.effect("never redirects an uncertain request after resetting Nodex", () =>
-  Effect.gen(function* () {
-    const request = {
-      ...routingRequest(),
-      delivery: {
-        coordinator_session_id: "nodex",
-        run_started_at_ms: null,
-        last_refusal: null,
-        handed_over_at_ms: yield* Clock.currentTimeMillis,
-      },
-    };
-    const f = yield* routingFixture([request]);
-    f.reset();
     const worker = yield* f.worker;
-    const running = yield* worker.drain.pipe(Effect.forkScoped);
-    yield* TestClock.adjust(INBOX_ROUTING_HANDOVER_CAP_MS);
-    yield* Fiber.join(running);
-    assert.isEmpty(f.send.mock.calls);
-    assert.equal(f.settlements[0]!.error, "The suggestion agent timed out");
+    yield* f.setExecutionHeld(true);
+    yield* worker.trigger;
+    assert.equal(f.launches.size, 0);
+    yield* f.setExecutionHeld(false);
+    f.setPendingAssessments(8);
+    yield* worker.drain;
+    assert.equal(f.launches.size, 1);
+    assert.lengthOf(f.send.mock.calls, 1);
   }),
 );
 
@@ -216,6 +181,7 @@ it.effect("delivers at most three unsettled requests and then admits the next", 
       yield* f.tool(invocation(keepOutput(request), "inbox_suggest", request.request_id));
     yield* TestClock.adjust(1000);
     assert.lengthOf(f.send.mock.calls, 4);
+    assert.equal(new Set(f.send.mock.calls.map(([input]) => input.sessionId)).size, 4);
     yield* f.tool(invocation(keepOutput(requests[3]!), "inbox_suggest", "four"));
     yield* TestClock.adjust(1000);
     yield* Fiber.join(running);
@@ -312,7 +278,7 @@ it.effect("Off still settles a previously delivered request after restart", () =
     const delivered = {
       ...routingRequest(),
       delivery: {
-        coordinator_session_id: "nodex",
+        decision_session_id: "decision:request:one",
         run_started_at_ms: null,
         last_refusal: null,
         handed_over_at_ms: yield* Clock.currentTimeMillis,
@@ -416,7 +382,7 @@ it.effect(
       const request = {
         ...routingRequest(),
         delivery: {
-          coordinator_session_id: "nodex",
+          decision_session_id: "decision:request:one",
           handed_over_at_ms: yield* Clock.currentTimeMillis,
           run_started_at_ms: null,
           last_refusal: null,
@@ -504,11 +470,13 @@ it.effect("recovers an admitted follow-up across restart without sending it twic
     const resumed = yield* (yield* f.worker).drain.pipe(Effect.forkScoped);
     yield* TestClock.adjust(1000);
     assert.lengthOf(f.send.mock.calls, 2);
+    assert.equal(f.send.mock.calls[0]?.[0].sessionId, f.send.mock.calls[1]?.[0].sessionId);
     assert.equal(f.pending.get(request.request_id)!.delivery!.run_started_at_ms, deadline);
     yield* f.tool(invocation(keepOutput(request)));
     yield* TestClock.adjust(1000);
     yield* Fiber.join(resumed);
     assert.lengthOf(f.send.mock.calls, 2);
+    assert.equal(f.send.mock.calls[0]?.[0].sessionId, f.send.mock.calls[1]?.[0].sessionId);
     assert.isNull(f.settlements[0]!.error);
   }),
 );
@@ -520,6 +488,7 @@ it.effect("fails immediately after the follow-up ends unanswered and refuses a l
     f.setOnSend((input) => Effect.sync(() => f.completeRun(input.message.messageId)));
     yield* (yield* f.worker).drain;
     assert.lengthOf(f.send.mock.calls, 2);
+    assert.equal(f.send.mock.calls[0]?.[0].sessionId, f.send.mock.calls[1]?.[0].sessionId);
     assert.include(f.settlements[0]!.error!, "ended its follow-up without answering");
     const late = yield* f.tool(invocation(keepOutput(request)));
     assert.equal(late.structuredContent?.recorded, false);
@@ -532,7 +501,7 @@ it.effect("fences a tool answer after the unanswered follow-up ends, before the 
     const request = {
       ...routingRequest(),
       delivery: {
-        coordinator_session_id: "nodex",
+        decision_session_id: "decision:request:one",
         handed_over_at_ms: yield* Clock.currentTimeMillis,
         run_started_at_ms: null,
         last_refusal: null,
@@ -580,6 +549,7 @@ it.effect("holds an unanswered routing follow-up across restart and resumes it o
     yield* TestClock.adjust(1000);
     yield* Fiber.join(resumed);
     assert.lengthOf(f.send.mock.calls, 2);
+    assert.equal(f.send.mock.calls[0]?.[0].sessionId, f.send.mock.calls[1]?.[0].sessionId);
     assert.include(f.send.mock.calls[1]![0].message.text, "still unanswered");
     assert.lengthOf(f.settlements, 1);
     assert.isNull(f.settlements[0]!.error);

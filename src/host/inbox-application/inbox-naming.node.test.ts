@@ -1,7 +1,11 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import {
+  captureInbox,
+  inboxOverRealCore,
+  settleTestRouting,
+} from "./InboxApplication.test-support";
 import { inboxPageBasisFromCore } from "../../main/core-client/inbox-adapter";
 
 const LIBRARY = { kind: "library" } as const;
@@ -9,7 +13,7 @@ const LIBRARY = { kind: "library" } as const;
 it.effect("names a provisional title only while the message content is current", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { inbox } = yield* inboxOverRealCore();
+      const { inbox, client } = yield* inboxOverRealCore();
       const message =
         "Homepage feels like a dev tool.\nMaybe it should read like a personal assistant?";
       const { pageId } = yield* captureInbox(inbox, message);
@@ -27,16 +31,19 @@ it.effect("names a provisional title only while the message content is current",
 
       // The proposal is fenced by the named Page, so it stays confirmable.
       const proposalId = createUuidV7();
-      yield* inbox.propose({
-        proposalId,
-        pageIds: [pageId],
-        basis: [named],
-        action: { type: "keep" },
-        kind: "question",
-        summary: "Keep this question for later.",
-        rationale: null,
-        producedBy: "Test",
-      });
+      yield* settleTestRouting(
+        { inbox, client },
+        {
+          proposalId,
+          pageIds: [pageId],
+          basis: [named],
+          action: { type: "keep" },
+          kind: "question",
+          summary: "Keep this question for later.",
+          rationale: null,
+          producedBy: "Test",
+        },
+      );
       const window = yield* inbox.window({ scope: LIBRARY, filter: "inbox" });
       assert.deepInclude(window.items[0], {
         pageId,

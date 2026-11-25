@@ -4,9 +4,9 @@ import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type { ScenarioManifest } from "../contracts";
 
 /** Give the Core-seeded working chat the same live native facts during Electron inspection. */
-export async function seedCoordinatorNativeExecution(root: string, manifest: ScenarioManifest) {
+export async function seedCoordinationNativeExecution(root: string, manifest: ScenarioManifest) {
   const id = manifest.entityIdsByKey?.chainStartThread;
-  if (!id) throw new Error("Coordinator working thread is missing");
+  if (!id) throw new Error("Working thread is missing");
   const now = Math.floor(Date.now() / 1000);
   const thread: Thread = {
     id,

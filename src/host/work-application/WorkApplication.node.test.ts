@@ -92,7 +92,6 @@ it.effect(
       let launches = 0;
       let accepted = false;
       const outbox = new Map<string, Launch>();
-      const events = new Set<string>();
       const core = {
         database: {
           read: (read: DatabaseRead) =>
@@ -190,8 +189,6 @@ it.effect(
                   rejection: intent.rejection ?? null,
                 });
               }
-              if (intent.kind === "record_work_events")
-                for (const event of intent.events) events.add(event.dedupe_key);
               return { receipt: { duplicate: false } };
             }),
         },
@@ -262,69 +259,9 @@ it.effect(
       yield* (yield* delivery).drain;
       assert.equal(launches, 1);
       assert.equal([...outbox.values()].filter((l) => l.accepted_at).length, 1);
-      assert.equal(events.size, 0);
     }),
 );
 
-it.effect(
-  "records ask once per epoch across duplicate sweeps and restart, including no prerequisites",
-  () =>
-    Effect.gen(function* () {
-      let epoch = "page:zero";
-      const events = new Map<string, unknown>();
-      let starts = 0;
-      const core = {
-        database: {
-          read: () =>
-            Effect.succeed({
-              value: {
-                kind: "ready_work",
-                pages: [
-                  {
-                    page_id: "page",
-                    page_work: { ...context.page_work!, auto_start: false },
-                    prerequisites: [],
-                    readiness_epoch: epoch,
-                  },
-                ],
-              },
-            }),
-        },
-        workspace: {
-          read: (input: ProjectWorkspaceRead) =>
-            Effect.succeed({ value: { kind: input.kind, holds: [] } }),
-          apply: (input: ProjectWorkspaceApplyInput) =>
-            Effect.sync(() => {
-              if (input.intent.kind === "record_work_events")
-                for (const e of input.intent.events) events.set(e.dedupe_key, e.payload);
-              return {};
-            }),
-        },
-      };
-      const owner = makeScheduler.pipe(
-        Effect.provideService(CoreModules, core as never),
-        Effect.provideService(WorkApplication, {
-          startWork: () =>
-            Effect.sync(() => {
-              starts++;
-            }),
-        } as never),
-      );
-      const first = yield* owner;
-      yield* first.sweep;
-      yield* first.sweep;
-      yield* (yield* owner).sweep;
-      assert.equal(events.size, 1);
-      assert.equal(starts, 0);
-      epoch = "page:prerequisite-done-2";
-      yield* (yield* owner).sweep;
-      assert.equal(events.size, 2);
-      assert.deepEqual([...events.values()][0], {
-        prerequisites: [],
-        readiness_epoch: "page:zero",
-      });
-    }),
-);
 const follows: components["schemas"]["PageThreadFollow"][] = [
   {
     page_id: context.page.page_id,
@@ -516,7 +453,6 @@ it.effect("effective holds suppress both readiness wakes and outbox launches unt
     let accepted = false;
     let starts = 0;
     let deliveries = 0;
-    const events: string[] = [];
     const launch: Launch = {
       page_id: "automatic",
       project_id: "project",
@@ -573,8 +509,6 @@ it.effect("effective holds suppress both readiness wakes and outbox launches unt
           }),
         apply: (input: ProjectWorkspaceApplyInput) =>
           Effect.sync(() => {
-            if (input.intent.kind === "record_work_events")
-              events.push(...input.intent.events.map((e) => e.dedupe_key));
             if (input.intent.kind === "settle_page_work_launch") accepted = true;
             return {};
           }),
@@ -616,14 +550,12 @@ it.effect("effective holds suppress both readiness wakes and outbox launches unt
     yield* scheduler.sweep;
     yield* delivery.drain;
     assert.equal(starts, 0);
-    assert.isEmpty(events);
     assert.equal(deliveries, 0);
     held = false;
     yield* scheduler.sweep;
     yield* delivery.drain;
     yield* delivery.drain;
     assert.equal(starts, 1);
-    assert.equal(events.length, 1);
     assert.equal(deliveries, 1);
     assert.isTrue(accepted);
   }),

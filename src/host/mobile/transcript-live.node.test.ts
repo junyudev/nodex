@@ -13,7 +13,7 @@ import {
   withCoreScenario,
   type CoreScenarioContext,
 } from "../../../scripts/scenarios/harness/core-scenario-harness";
-import { NODEX_COORDINATOR_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordinator";
+import { NODEX_COORDINATION_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/nodex-coordination";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { ProjectSession } from "../../shared/types";
 import {
@@ -51,7 +51,7 @@ const acquireScenario = Effect.acquireRelease(
       release = resolve;
     });
     const completed = withCoreScenario(
-      { scenarioId: NODEX_COORDINATOR_SCENARIO_ID },
+      { scenarioId: NODEX_COORDINATION_SCENARIO_ID },
       async (scenario) => {
         resume(Effect.succeed({ scenario, release, completed }));
         await released;

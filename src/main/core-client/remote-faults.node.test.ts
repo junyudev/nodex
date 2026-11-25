@@ -400,8 +400,6 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
               progressFingerprint: waiting ? "question" : "done",
               progressSince: 0,
             },
-            events: [],
-            resolved_request_ids: waiting ? [] : ["question"],
           },
         });
       await observe(0, true);
@@ -520,28 +518,6 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
           expected_store_epoch: null,
         },
       });
-      const coordinatorSession = createUuidV7();
-      await host.workspaceApply({
-        operationId: createBoundedOperationId("answer-coordinator"),
-        intent: {
-          kind: "create_agent_runtime_session",
-          coordinator: true,
-          session_id: coordinatorSession,
-          project_id: null,
-          title: "Nodex",
-          initial_page_ids: [],
-          runtime_id: "runtime:fault-answers",
-          runtime_thread_id: "thread:fault-answers",
-          launch_request_id: "launch:fault-answers",
-        },
-      });
-      const coordinatorRun = createUuidV7();
-      const coordinator = await host.issueAgentAttribution({
-        session_id: coordinatorSession,
-        run_id: coordinatorRun,
-        driver: "codex",
-        label: "Codex",
-      });
       const privateAnswers: string[] = [];
       for (const client of [alice, bob]) {
         const questionPage = createUuidV7();
@@ -560,6 +536,52 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
             expected_store_epoch: null,
           },
         });
+        const captured = await client.workspaceRead({ kind: "inbox_entry", page_id: questionPage });
+        if (captured.value.kind !== "inbox_entry" || !captured.value.item)
+          throw new Error("Missing question basis");
+        const requestId = createUuidV7();
+        const sessionId = createUuidV7();
+        const threadId = `thread:${sessionId}`;
+        const decisionRun = createUuidV7();
+        await host.workspaceApply({
+          operationId: createUuidV7(),
+          intent: {
+            kind: "request_inbox_suggestion",
+            request_id: requestId,
+            page_ids: [questionPage],
+            basis: [captured.value.item.basis],
+            mode: "auto",
+          },
+        });
+        await host.workspaceApply({
+          operationId: createUuidV7(),
+          intent: {
+            kind: "create_agent_runtime_session",
+            decision_run: { kind: "routing", request_id: requestId, generation: 1 },
+            session_id: sessionId,
+            project_id: null,
+            title: "Nodex · Routing a question",
+            initial_page_ids: [],
+            runtime_id: "runtime:fault-answers",
+            runtime_thread_id: threadId,
+            launch_request_id: createUuidV7(),
+          },
+        });
+        await host.workspaceApply({
+          operationId: createUuidV7(),
+          intent: {
+            kind: "begin_inbox_routing",
+            request_id: requestId,
+            generation: 1,
+            decision_session_id: sessionId,
+          },
+        });
+        const decisionAttribution = await host.issueAgentAttribution({
+          session_id: sessionId,
+          run_id: decisionRun,
+          driver: "codex",
+          label: "Codex",
+        });
         await host.workspaceApply(
           {
             operationId: createBoundedOperationId("member-answer"),
@@ -568,14 +590,14 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
               provenance: {
                 profile_id: host.handshake.generation.profile_id,
                 authority: {
-                  thread_id: "thread:fault-answers",
-                  root_thread_id: "thread:fault-answers",
-                  turn_id: coordinatorRun,
+                  thread_id: threadId,
+                  root_thread_id: threadId,
+                  turn_id: decisionRun,
                   actor_project_id: null,
                   library_id: host.handshake.library_id,
                   store_epoch: host.handshake.store_epoch,
                   runtime: {
-                    session_id: coordinatorSession,
+                    session_id: sessionId,
                     runtime_id: "runtime:fault-answers",
                     turn_kind: "run",
                   },
@@ -583,6 +605,8 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
               },
               intent: {
                 kind: "answer_inbox_question",
+                request_id: requestId,
+                generation: 1,
                 question_page_id: questionPage,
                 page_id: answerPage,
                 document_id: createUuidV7(),
@@ -590,7 +614,7 @@ test("lost Work, Inbox and question responses retain Member receipts and exactly
               },
             },
           },
-          { agentAttribution: coordinator },
+          { agentAttribution: decisionAttribution },
         );
       }
       await lose({ kind: "keep_inbox_entries", page_ids: [messagePageId] });

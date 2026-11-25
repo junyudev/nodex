@@ -4,10 +4,9 @@ export const AUTOMATION_EVENTS_SCENARIO_ID = "automations/events";
 /** Extends the Automations scenario with a CI judgement; the Source remains disabled for deterministic review. */
 export const automationEventsScenario: ScenarioDomainRecipe = {
   id: AUTOMATION_EVENTS_SCENARIO_ID,
-  revision: 1,
+  revision: 2,
   async materialize(port, workspace) {
     const base = await automationsAskInInboxScenario.materialize(port, workspace);
-    const coordinator = await port.createCoordinatorSession();
     const automation = await port.createAutomation({
       kind: "cron",
       name: "Investigate failed checks",
@@ -30,15 +29,15 @@ export const automationEventsScenario: ScenarioDomainRecipe = {
         },
       },
     });
-    await port.assessAutomationCheck(coordinator, 1);
+    const assessmentRun = await port.assessAutomationCheck(1);
     return {
       ...base,
       scenarioId: AUTOMATION_EVENTS_SCENARIO_ID,
-      scenarioRevision: 1,
+      scenarioRevision: 2,
       entityIdsByKey: {
         ...base.entityIdsByKey,
         eventAutomation: automation.id,
-        eventCoordinator: coordinator,
+        assessmentRun,
       },
     };
   },
@@ -56,7 +55,7 @@ export const automationEventsScenario: ScenarioDomainRecipe = {
       decisions[0]?.description !== "Would have started “Investigate failed checks”"
     )
       throw new Error("Missing Dry run Automation decision");
-    return { scenarioId: AUTOMATION_EVENTS_SCENARIO_ID, scenarioRevision: 1 };
+    return { scenarioId: AUTOMATION_EVENTS_SCENARIO_ID, scenarioRevision: 2 };
   },
   parseFacts: parseScenarioFacts,
 };

@@ -69,6 +69,7 @@ import { PageWorkspaceError } from "../agent-backend/PageWorkspaceApplication";
 import {
   make,
   AgentRuntimeApplicationError,
+  agentRuntimeFailureReason,
   type AgentRuntimeApplication,
   type AgentRuntimeLaunch,
   type AgentRuntimeApplicationConnection,
@@ -326,6 +327,7 @@ const setup = (
     rollbackImmediate: true,
     rollbackFails: false,
     workLaunchPage: null as string | null,
+    decisionRequestPending: true,
     automationExecutionValid: true,
     automationAssessmentDecisionId: null as string | null,
     automationAssessmentValid: true,
@@ -345,6 +347,28 @@ const setup = (
             state.missingSessionLookupError
           ? Effect.fail(state.missingSessionLookupError)
           : Effect.sync(() => {
+              if (input.kind === "execution_holds")
+                return { value: { kind: input.kind, holds: state.executionHolds } };
+              if (input.kind === "decision_run") {
+                const decision = applied
+                  .map(({ intent }) => intent)
+                  .find(
+                    (intent) =>
+                      intent.kind === "create_agent_runtime_session" &&
+                      intent.session_id === input.session_id &&
+                      intent.decision_run,
+                  );
+                return {
+                  value: {
+                    kind: input.kind,
+                    decision_run:
+                      decision?.kind === "create_agent_runtime_session"
+                        ? decision.decision_run
+                        : null,
+                    pending: state.decisionRequestPending,
+                  },
+                };
+              }
               if (input.kind === "effective_execution_hold")
                 return { value: { kind: input.kind, holds: state.executionHolds } };
               if (input.kind === "agent_runtime_execution_cleanup_window")
@@ -531,6 +555,7 @@ const setup = (
       applied.push(input);
       receipt.set(input.operationId, encoded);
       const intent = input.intent;
+      if (intent.kind === "acknowledge_decision_run_stopped") return {};
       if (intent.kind === "record_chat_delivery") return {};
       if (intent.kind === "acknowledge_agent_runtime_execution_cleanup") {
         cleanups.delete(intent.cleanup_id);
@@ -570,7 +595,7 @@ const setup = (
       order.push("core.bind");
       if (state.failCoreAcknowledgment)
         return yield* Effect.fail(new Error("Core binding committed before disconnect"));
-      return {};
+      return { outcome: { affected_session_ids: [intent.session_id] } };
     });
   const request = <M extends AgentRuntimeMethod>(
     method: M,
@@ -591,6 +616,8 @@ const setup = (
           method === "tasks.cancel")
       )
         return yield* state.taskOperationError;
+      if (method === "thread.stop" || method === "thread.stop-host-input")
+        return { stopped: true } as AgentRuntimeOperations[M]["output"];
       if (method === "background.stop") {
         const request = input as AgentRuntimeOperations["background.stop"]["input"];
         return {
@@ -4085,7 +4112,7 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
           : {
               respondedBy: {
                 kind: "agent" as const,
-                senderThreadId: "coordinator",
+                senderThreadId: "source-chat",
                 senderSessionId: "source-session",
               },
               requirePending: true,
@@ -4102,7 +4129,7 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
       if (kind === "user_input") {
         assert.deepEqual(command.respondedBy, {
           kind: "agent",
-          senderThreadId: "coordinator",
+          senderThreadId: "source-chat",
           senderSessionId: "source-session",
         });
         assert.isTrue(command.requirePending);
@@ -4174,6 +4201,112 @@ it.effect(
       const addressed = fixture.calls.filter((call) => call.method === "thread.control").at(-1);
       assert.deepInclude(addressed?.input, { requestId: "optional-question", runId: "source-run" });
     }),
+);
+
+it.effect(
+  "prepares an idempotent decision root with the configured model and shared directory",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = setup({
+          projectless: {
+            engineProjectId: "profile:projectless",
+            workspaceRoot: "/profile/tasks",
+            ensureWorkspaceRoot: Effect.void,
+          },
+          prepareWorkspace: () => Effect.die("Decision runs must bypass workspace preparation"),
+        });
+        const runtime = yield* f.owner;
+        const input = {
+          decision: { kind: "routing" as const, request_id: "decision-request", generation: 1 },
+          title: "Nodex · Routing “README”",
+          modelSelection: launch.modelSelection,
+        };
+        const sessionId = yield* runtime.prepareDecisionRun(input);
+        assert.isNotNull(sessionId);
+        assert.equal(yield* runtime.prepareDecisionRun(input), sessionId);
+        const replaced = yield* runtime.prepareDecisionRun({
+          ...input,
+          decision: { ...input.decision, generation: 2 },
+        });
+        assert.isNotNull(replaced);
+        assert.notEqual(replaced, sessionId);
+        const bindings = f.applied
+          .map(({ intent }) => intent)
+          .filter((intent) => intent.kind === "create_agent_runtime_session");
+        assert.lengthOf(bindings, 2);
+        assert.deepInclude(bindings[0], {
+          project_id: null,
+          initial_page_ids: [],
+          decision_run: input.decision,
+          title: input.title,
+        });
+        const creates = [...f.commands.values()].filter(
+          (command) => command.type === "thread.create",
+        );
+        assert.lengthOf(creates, 2);
+        assert.deepInclude(creates[0], {
+          title: input.title,
+          worktreePath: "/profile/tasks",
+          modelSelection: input.modelSelection,
+          createdBy: "system",
+          creationSource: "server",
+        });
+        assert.isFalse(
+          f.calls.some(
+            ({ method }) => method === "thread.send" || method.startsWith("text.generate"),
+          ),
+        );
+        const message = { sessionId: sessionId!, message: launch.message };
+        for (const mode of ["queue", "steer"] as const) {
+          const denied = yield* runtime.sendMessage({ ...message, mode }).pipe(Effect.flip);
+          assert.include(agentRuntimeFailureReason(denied), "Decision runs are read-only");
+        }
+        const denied = yield* runtime.message(message).pipe(Effect.flip);
+        assert.include(agentRuntimeFailureReason(denied), "Decision runs are read-only");
+        assert.isFalse(f.calls.some(({ method }) => method === "thread.send"));
+        yield* runtime.sendMessage({ ...message, mode: "queue", origin: "host" });
+        assert.equal(f.calls.filter(({ method }) => method === "thread.send").length, 1);
+
+        f.state.decisionRequestPending = false;
+        const acknowledged = () =>
+          f.applied.filter(({ intent }) => intent.kind === "acknowledge_decision_run_stopped")
+            .length;
+        // A run that already finished is only acknowledged: an ordinary decision never ends "Stopped".
+        assert.equal(
+          yield* runtime.retireDecisionRun(replaced!, { stopWorking: false }),
+          "retired",
+        );
+        assert.isFalse(f.calls.some(({ method }) => method === "thread.stop"));
+        assert.equal(acknowledged(), 1);
+        // One still working keeps its grace, then stops with its transcript kept.
+        const decisionThread = String(bindings[0]!.runtime_thread_id);
+        const current = f.snapshots.get(decisionThread)!;
+        f.snapshots.set(decisionThread, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: [{ id: "run:decision", status: "running" }] as never,
+          },
+        });
+        assert.equal(
+          yield* runtime.retireDecisionRun(sessionId!, { stopWorking: false }),
+          "waiting",
+        );
+        assert.isFalse(f.calls.some(({ method }) => method === "thread.stop"));
+        assert.equal(acknowledged(), 1);
+        assert.equal(yield* runtime.retireDecisionRun(sessionId!), "retired");
+        assert.deepInclude(f.calls.find(({ method }) => method === "thread.stop")?.input, {
+          retire: true,
+        });
+        assert.equal(acknowledged(), 2);
+        const ended = yield* runtime
+          .sendMessage({ ...message, mode: "queue", origin: "host" })
+          .pipe(Effect.flip);
+        assert.include(agentRuntimeFailureReason(ended), "The Nodex decision request ended");
+        assert.equal(f.calls.filter(({ method }) => method === "thread.send").length, 1);
+      }),
+    ),
 );
 
 it.effect(

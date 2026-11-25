@@ -15,10 +15,11 @@ import {
   AgentRuntimeApplication,
   type AgentRuntimeApplicationError,
 } from "../../main/agent-runtime/AgentRuntimeApplication";
-import { makeWithCapture } from "../../main/app-tools/CoordinatorAppTools";
+import { makeWithCapture } from "../../main/app-tools/DecisionRunAppTools";
 import type { AppToolInvocation } from "../../main/app-tools/AppToolInvocationInbox";
 import { createAppToolAdmissionFixture } from "../../main/app-tools/app-tool-operation.test-fixtures";
-import { CoordinatorSession } from "../coordinator/CoordinatorSession";
+import { live as decisionRuns } from "../nodex-decisions/DecisionRuns";
+import type { components } from "@nodex/core-protocol";
 import type { CoreInboxSuggestionRequest } from "../../main/core-client/inbox-adapter";
 import type {
   ProjectWorkspaceApplyInput,
@@ -26,7 +27,6 @@ import type {
 } from "../../main/core-client/types";
 import { CoreAuthority } from "../../main/core-runtime/CoreAuthority";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
-import { NodexEntryNotifications } from "../NotificationIntents";
 import { LibraryModule } from "../../main/library-application/LibraryModule";
 import { ApplicationSettings } from "../../main/settings/ApplicationSettings";
 import {
@@ -91,6 +91,7 @@ export const keepOutput = (request: CoreInboxSuggestionRequest) => ({
     rationale: null,
   })),
 });
+const decisionId = (requestId: string) => `decision:${requestId}`;
 export const invocation = (
   args: Record<string, unknown>,
   name = "inbox_suggest",
@@ -99,7 +100,7 @@ export const invocation = (
   name,
   arguments: args,
   caller: {
-    threadId: "thread:nodex",
+    threadId: `thread:${decisionId(typeof args.request_id === "string" ? args.request_id : "request:one")}`,
     turnId: "run",
     callId,
     hostId: "local",
@@ -108,7 +109,7 @@ export const invocation = (
   },
 });
 
-export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
+export const routingFixture = Effect.fn("RoutingDecisions.fixture")(function* (
   requests: CoreInboxSuggestionRequest[] = [routingRequest()],
   files: Readonly<Record<string, { readonly mimeType: string; readonly bytes: Uint8Array }>> = {},
 ) {
@@ -119,8 +120,8 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     suggestions: "on_request",
   };
   let heldAt: number | null = null;
-  let caller = "nodex";
-  let bound = "nodex";
+  let callerOverride: string | null = null;
+  let pendingAssessments = 0;
   const pending = new Map(requests.map((request) => [request.request_id, request]));
   const settlements: InboxSuggestionSettlement[] = [];
   const commands: ProjectWorkspaceApplyInput[] = [];
@@ -129,24 +130,35 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
   let failureMessage: string | null = null;
   const completedRuns = new Set<string>();
   let runStartedAt: number | null = at;
-  const posted: unknown[] = [];
+  type Decision = components["schemas"]["NodexDecisionRunInput"];
+  const launches = new Map<string, Decision>();
+  for (const request of requests) {
+    if (!request.delivery) continue;
+    launches.set(request.delivery.decision_session_id, {
+      kind: "routing",
+      request_id: request.request_id,
+      generation: request.generation,
+    });
+  }
   let sequence = 0;
-  const authority: () => NodexAgentTurnContext = () => ({
-    threadId: `thread:${caller}`,
-    rootThreadId: `thread:${caller}`,
-    turnId: "run",
-    actorProjectId: null,
-    libraryId: "library",
-    storeEpoch: "epoch",
-    admittedAtMs: at,
-    runtime: { sessionId: caller, runtimeId: "runtime", turnKind: "run" },
-  });
+  const authority = ({ threadId }: AppToolInvocation["caller"]): NodexAgentTurnContext => {
+    const caller = callerOverride ?? threadId.replace(/^thread:/, "");
+    return {
+      threadId: `thread:${caller}`,
+      rootThreadId: `thread:${caller}`,
+      turnId: "run",
+      actorProjectId: null,
+      libraryId: "library",
+      storeEpoch: "epoch",
+      admittedAtMs: at,
+      runtime: { sessionId: caller, runtimeId: "runtime", turnKind: "run" },
+    };
+  };
   let routingStatus: InboxApplication["Service"]["routingStatus"];
   const inbox = {
     executionHeld: () => Effect.succeed(heldAt !== null),
     prepareSuggestions: () => Effect.void,
     autoConfirm: Effect.void,
-    cancelledRoutingDeliveries: () => Effect.succeed([]),
     suggestionRequests: (limit: number) => Effect.succeed([...pending.values()].slice(0, limit)),
     suggestionRequest: (id: string) => Effect.succeed(pending.get(id) ?? null),
     beginRouting: (request: CoreInboxSuggestionRequest, sessionId: string) =>
@@ -156,7 +168,7 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
         pending.set(request.request_id, {
           ...request,
           delivery: {
-            coordinator_session_id: sessionId,
+            decision_session_id: sessionId,
             run_started_at_ms: null,
             last_refusal: null,
             handed_over_at_ms: at,
@@ -181,6 +193,38 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     workspace: {
       read: (read: ProjectWorkspaceRead) =>
         Effect.sync(() => {
+          if (read.kind === "decision_run") {
+            const decision = launches.get(read.session_id);
+            return {
+              value: {
+                kind: "decision_run",
+                decision_run: decision
+                  ? {
+                      ...decision,
+                      session_id: read.session_id,
+                      created_at: new Date(at).toISOString(),
+                    }
+                  : null,
+              },
+            };
+          }
+          if (read.kind === "execution_holds")
+            return {
+              value: {
+                kind: "execution_holds",
+                holds: heldAt === null ? [] : [{ scope: { kind: "space" } }],
+              },
+            };
+          if (read.kind === "inbox_entry")
+            return { value: { kind: "inbox_entry", item: { title: "Fix README" } } };
+          if (read.kind === "decision_run_reservations")
+            return {
+              value: {
+                kind: "decision_run_reservations",
+                routing: [...pending.values()].filter((request) => request.delivery).length,
+                assessment: pendingAssessments,
+              },
+            };
           if (read.kind !== "inbox_suggestion_request") throw new Error("Unexpected routing read");
           return {
             value: {
@@ -204,13 +248,12 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
             return { receipt: { duplicate: false } };
           }
           if (input.intent.kind === "start_inbox_routing_run") {
-            const { request_id, generation, coordinator_session_id, run_started_at_ms } =
-              input.intent;
+            const { request_id, generation, decision_session_id, run_started_at_ms } = input.intent;
             const current = pending.get(request_id);
             if (
               !current?.delivery ||
               current.generation !== generation ||
-              current.delivery.coordinator_session_id !== coordinator_session_id
+              current.delivery.decision_session_id !== decision_session_id
             )
               throw new Error("Stale routing start");
             pending.set(request_id, {
@@ -226,13 +269,8 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
           const duplicate = seen.has(input.operationId);
           seen.add(input.operationId);
           const intent = input.intent.kind === "agent_command" ? input.intent.intent : null;
-          if (intent?.kind !== "write_turn_note" && intent?.kind !== "answer_inbox_question")
-            return { receipt: { duplicate } };
-          const key = JSON.stringify(
-            intent.kind === "write_turn_note"
-              ? [intent.page_id, intent.event_ids, intent.body, intent.notify]
-              : [intent.question_page_id, intent.body],
-          );
+          if (intent?.kind !== "answer_inbox_question") return { receipt: { duplicate } };
+          const key = JSON.stringify([intent.question_page_id, intent.body]);
           const id = intent.page_id;
           const existing = postPages.get(key);
           postPages.set(key, existing ?? id);
@@ -309,26 +347,21 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
             : null,
       ),
     sendMessage: send,
+    prepareDecisionRun: ({ decision }: { decision: Decision }) =>
+      Effect.sync(() => {
+        const id = decisionId(decision.request_id);
+        launches.set(id, decision);
+        return id;
+      }),
   };
   const services = Layer.mergeAll(
     Layer.succeed(InboxApplication, inbox as never),
     Layer.succeed(AgentRuntimeApplication, runtime as never),
-    Layer.succeed(CoordinatorSession, {
-      ensure: () => Effect.succeed(bound),
-      isCoordinator: (id: string) => Effect.succeed(id === bound),
-    } as never),
     Layer.succeed(ApplicationSettings, {
       snapshot: () => Effect.succeed({ inbox: current }),
     } as never),
     Layer.succeed(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Layer.succeed(CoreModules, core as never),
-    Layer.succeed(NodexEntryNotifications, {
-      drain: Effect.void,
-      posted: (post: unknown) =>
-        Effect.sync(() => {
-          posted.push(post);
-        }),
-    } as never),
     Layer.succeed(LibraryModule, {
       read: (_routing: unknown, request: LibraryModuleReadRequest) =>
         Effect.sync(() => {
@@ -376,11 +409,11 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     Effect.provideService(StoreAdministration, { requestErasure: Effect.void } as never),
   );
   routingStatus = application.routingStatus;
-  const tool = yield* makeWithCapture(() => Effect.succeed(authority())).pipe(
+  const tool = yield* makeWithCapture((caller) => Effect.succeed(authority(caller))).pipe(
     Effect.provide(services),
   );
   execute = tool;
-  const worker = make.pipe(Effect.provide(services));
+  const worker = make.pipe(Effect.provide(decisionRuns), Effect.provide(services));
   return {
     setRunStartedAt: (value: number | null) => {
       runStartedAt = value;
@@ -421,14 +454,14 @@ export const routingFixture = Effect.fn("CoordinatorInbox.fixture")(function* (
     failRun: (message: string) => {
       failureMessage = message;
     },
-    posted,
+    launches,
+    setPendingAssessments: (count: number) => {
+      pendingAssessments = count;
+    },
     catalog,
     services,
     setCaller: (id: string) => {
-      caller = id;
-    },
-    reset: () => {
-      bound = "replacement";
+      callerOverride = id;
     },
     setSuggestions: (suggestions: InboxSettings["suggestions"]) => {
       current = { ...current, suggestions };

@@ -26,7 +26,7 @@ const questions = [
 ];
 const responder = {
   kind: "agent",
-  senderThreadId: "coordinator",
+  senderThreadId: "source-chat",
   senderSessionId: "sender-session",
 } as const;
 const fixture = (

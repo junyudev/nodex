@@ -14,7 +14,7 @@ import { live as nativeManagedChatFacts } from "../../main/codex-application/Nat
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { make } from "./ManagedChatFacts";
 import {
-  diffManagedChatObservation as diff,
+  observeManagedChat,
   MANAGED_CHAT_STALL_MS as STALL,
   type ManagedChatObservation,
 } from "./managed-chat-observation";
@@ -155,26 +155,10 @@ it.effect.each(["running", "background"] as const)(
       activity = { status, hasWork: true, updatedAt: "child progressed" };
       const progress = yield* source.read("chat");
       assert.notEqual(progress.progressFingerprint, live.progressFingerprint);
-      const previous = diff({
-        sessionId: "chat",
-        facts: progress,
-        previous: null,
-        now: 0,
-        latestReportAt: null,
-      });
       activity = null;
       const quiet = yield* source.read("chat");
       assert.equal(quiet.state, "idle");
-      assert.deepEqual(
-        diff({
-          sessionId: "chat",
-          facts: quiet,
-          previous: previous.observed,
-          now: 1,
-          latestReportAt: null,
-        }).events.map((event) => event.kind),
-        ["turn_ended"],
-      );
+      assert.equal(quiet.terminalStatus, "completed");
     }),
 );
 it.effect("never stalls while the chat only waits on commands, then restarts the stall clock", () =>
@@ -200,32 +184,22 @@ it.effect("never stalls while the chat only waits on commands, then restarts the
       },
     );
     const observe = (previous: ManagedChatObservation | null, now: number) =>
-      source
-        .read("chat")
-        .pipe(
-          Effect.map((facts) =>
-            diff({ sessionId: "chat", facts, previous, now, latestReportAt: null }),
-          ),
-        );
+      source.read("chat").pipe(Effect.map((facts) => observeManagedChat({ facts, previous, now })));
     let step = yield* observe(null, 0);
-    assert.equal(step.observed.state, "working");
+    assert.equal(step.state, "working");
     // A background command can run quietly for far longer than the stall grace.
     for (const now of [STALL, STALL * 3]) {
-      step = yield* observe(step.observed, now);
-      assert.isFalse(step.observed.stalled);
-      assert.deepEqual(step.events, []);
+      step = yield* observe(step, now);
+      assert.isFalse(step.stalled);
     }
     // Once the command ends, quiet time counts again from that moment.
     awaitingCommands = false;
-    step = yield* observe(step.observed, STALL * 3 + 1);
-    assert.equal(step.observed.progressSince, STALL * 3 + 1);
-    step = yield* observe(step.observed, STALL * 4);
-    assert.isFalse(step.observed.stalled);
-    step = yield* observe(step.observed, STALL * 4 + 1);
-    assert.deepEqual(
-      step.events.map((event) => event.kind),
-      ["stalled"],
-    );
+    step = yield* observe(step, STALL * 3 + 1);
+    assert.equal(step.progressSince, STALL * 3 + 1);
+    step = yield* observe(step, STALL * 4);
+    assert.isFalse(step.stalled);
+    step = yield* observe(step, STALL * 4 + 1);
+    assert.isTrue(step.stalled);
   }),
 );
 it.effect("records an unavailable owner on missing metadata and bounded owner timeouts", () =>
@@ -411,13 +385,6 @@ it.effect.each([
             }),
         },
       );
-      const before = diff({
-        sessionId: "chat",
-        previous: null,
-        facts: yield* source.read("chat"),
-        now: 0,
-        latestReportAt: null,
-      }).observed;
       const questions = [
         {
           id: "wood",
@@ -440,24 +407,8 @@ it.effect.each([
         facts.pendingRequests.map((request) => request.id),
         answerable ? ["question"] : [],
       );
-      const ended = diff({
-        sessionId: "chat",
-        previous: before,
-        facts,
-        now: 1,
-        latestReportAt: null,
-      });
-      assert.deepEqual(
-        ended.events.map((event) => event.kind),
-        answerable ? ["attention"] : ["turn_ended"],
-      );
       if (!answerable) return;
       assert.equal(facts.pendingRequests[0]?.question, "Cedar or Maple?");
-      assert.deepEqual(
-        diff({ sessionId: "chat", previous: ended.observed, facts, now: 2, latestReportAt: null })
-          .resolvedRequestIds,
-        [],
-      );
       yield* fixture.updateQuestion("question", {
         status: capability === "message" ? "resolved" : "pending",
         responseCapability: {
@@ -465,15 +416,9 @@ it.effect.each([
           reason: "The response capability ended",
         },
       });
-      const resolved = diff({
-        sessionId: "chat",
-        previous: ended.observed,
-        facts: yield* source.read("chat"),
-        now: 3,
-        latestReportAt: null,
-      });
-      assert.deepEqual(resolved.resolvedRequestIds, ["question"]);
-      assert.isEmpty(resolved.events);
+      const resolved = yield* source.read("chat");
+      assert.isEmpty(resolved.pendingRequests);
+      assert.equal(resolved.state, "idle");
     }).pipe(Effect.provide(layerMemory)),
 );
 

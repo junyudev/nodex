@@ -278,7 +278,7 @@ test("a paired phone captures once, follows Agent Runs, answers approvals and lo
       const entry = await connected.request("inbox.message", { entryId: capture.pageId });
       if (entry.rowKind !== "intake") throw new Error("Expected intake");
       const { proposal } = entry;
-      if (!proposal) throw new Error("The Coordinator produced no suggestion");
+      if (!proposal) throw new Error("Nodex produced no suggestion");
       expect(proposal.action.type).toBe("keep");
       await connected.request("inbox.decide", {
         operationId: createUuidV7(),

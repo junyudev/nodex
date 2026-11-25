@@ -542,9 +542,6 @@
   "tests/e2e/async-user-input.spec.ts": {
     "nodex(no-explicit-test-timeout)": 7
   },
-  "tests/e2e/automation-events.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
   "tests/e2e/automation-project-target.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1
   },
@@ -810,9 +807,6 @@
   "tests/e2e/nodex-app-tools-workbench.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1
   },
-  "tests/e2e/nodex-coordinator.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
   "tests/e2e/nodex-tool-activity.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1,
     "nodex(no-real-time-wait-in-tests)": 2
@@ -910,7 +904,7 @@
     "nodex(no-explicit-test-timeout)": 5
   },
   "tests/e2e/team-host.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 43
+    "nodex(no-explicit-test-timeout)": 41
   },
   "tests/e2e/team-phone.spec.ts": {
     "nodex(no-explicit-test-timeout)": 2

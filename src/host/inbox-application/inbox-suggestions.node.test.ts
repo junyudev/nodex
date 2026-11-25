@@ -823,7 +823,7 @@ describe("Snooze routing", () => {
     expect(() => validate(fields)).toThrow();
   });
 
-  it("gives the Coordinator a clock and time zone to resolve relative times", () => {
+  it("gives a routing decision run a clock and time zone to resolve relative times", () => {
     const before = Date.now();
     const prompt = renderInboxRoutingRequest({
       context: context([message]),

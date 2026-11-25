@@ -10,17 +10,44 @@ import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 import { spaceHeld } from "../work-application/execution-holds";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { getLogger } from "../../main/logging/logger";
-import { CoordinatorSession } from "./CoordinatorSession";
+import { ASSESSMENT_CAPACITY, DecisionRuns } from "./DecisionRuns";
 import {
   assessmentIdentity,
   makeAssessmentDelivery,
   renderAssessmentRequest,
 } from "./automation-assessment-delivery";
 
+const assessmentSubject = Effect.fnUntraced(function* (
+  core: CoreModules["Service"],
+  threadId: string,
+) {
+  const match = /^github:([^:]+):([^:]+):(\d+)$/u.exec(threadId);
+  if (!match) return "an event";
+  const [, host, repositoryId, number] = match;
+  const lowerBound =
+    threadId.slice(0, -1) + String.fromCharCode(threadId.charCodeAt(threadId.length - 1) - 1) + ":";
+  // A bounded Source window can select this thread by its immediately preceding numeric range.
+  const snapshot = yield* core.workspace.read({
+    kind: "sources",
+    read: {
+      kind: "threads",
+      host: host!,
+      repository_id: repositoryId!,
+      after_id: lowerBound,
+      limit: 1,
+    },
+  });
+  if (snapshot.value.kind === "sources" && snapshot.value.value.kind === "threads") {
+    const thread = snapshot.value.value.threads[0];
+    if (thread?.id === threadId) return `${thread.repository} #${thread.number}`;
+  }
+  return `GitHub #${number}`;
+});
+
 export const make = Effect.gen(function* () {
   const delivery = yield* makeAssessmentDelivery;
   const runtime = yield* AgentRuntimeApplication;
-  const coordinator = yield* CoordinatorSession;
+  const decisions = yield* DecisionRuns;
   const settings = yield* ApplicationSettings;
   const core = yield* CoreModules;
   const lane = yield* Semaphore.make(1);
@@ -28,34 +55,32 @@ export const make = Effect.gen(function* () {
   const tick = lane.withPermits(1)(
     Effect.gen(function* () {
       if (yield* spaceHeld(core)) return;
-      const pending = yield* delivery.read({ kind: "pending", limit: 8 });
+      const pending = yield* delivery.read({ kind: "pending", limit: ASSESSMENT_CAPACITY });
       if (pending.kind !== "pending") return;
       for (const picked of pending.requests) {
         yield* Effect.gen(function* () {
           let r = picked;
-          if (!r.coordinator_session_id) {
-            const session = yield* coordinator.ensure();
-            yield* delivery.apply({
-              kind: "begin",
+          if (!r.decision_session_id) {
+            const decision = {
+              kind: "assessment" as const,
               request_id: r.request_id,
               generation: r.generation,
-              coordinator_session_id: session,
-            });
+            };
+            const begun = yield* decisions.begin(
+              decision,
+              `Nodex · Assessing ${yield* assessmentSubject(core, r.thread_id)}`,
+              (decision_session_id) =>
+                delivery
+                  .apply({ ...decision, kind: "begin", decision_session_id })
+                  .pipe(Effect.asVoid),
+            );
+            if (!begun) return;
             const current = yield* delivery.request(r.request_id);
-            if (!current || current.generation !== r.generation || !current.coordinator_session_id)
+            if (!current || current.generation !== r.generation || !current.decision_session_id)
               return;
             r = current;
           }
-          const sessionId = r.coordinator_session_id!;
-          if (!(yield* coordinator.isCoordinator(sessionId))) {
-            yield* delivery.apply({
-              kind: "fail",
-              request_id: r.request_id,
-              generation: r.generation,
-              reason: "The Coordinator changed before completing this assessment",
-            });
-            return;
-          }
+          const sessionId = r.decision_session_id!;
           const status = yield* delivery.status(r);
           if (status.failure) {
             yield* delivery.apply({
@@ -77,7 +102,7 @@ export const make = Effect.gen(function* () {
               kind: "fail",
               request_id: r.request_id,
               generation: r.generation,
-              reason: receipt.error ?? "The Coordinator rejected this assessment",
+              reason: receipt.error ?? "Nodex rejected this assessment",
             });
             return;
           }
@@ -87,6 +112,7 @@ export const make = Effect.gen(function* () {
             current.suggestionAgent,
             "suggestion",
           );
+          if (yield* spaceHeld(core)) return;
           yield* runtime.sendMessage({
             sessionId,
             origin: "host",

@@ -135,8 +135,6 @@ test("the phone façade retains the invoking Member's Turns and capture Actor", 
           progressFingerprint: "question",
           progressSince: 0,
         },
-        events: [],
-        resolved_request_ids: [],
       },
     });
     // The host's own catalog resolves the Agent a phone chooses.

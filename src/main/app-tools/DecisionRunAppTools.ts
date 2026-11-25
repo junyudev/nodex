@@ -1,4 +1,4 @@
-import { makeAssessmentDelivery } from "../../host/coordinator/automation-assessment-delivery";
+import { makeAssessmentDelivery } from "../../host/nodex-decisions/automation-assessment-delivery";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { countWords } from "../../shared/word-count";
@@ -7,16 +7,14 @@ import {
   automationAssessmentReadSchema,
   automationAssessmentSubmitSchema,
   InboxSuggestionOutput,
-  replyToOriginSchema,
-  writeTurnNoteSchema,
   answerInboxQuestionSchema,
-} from "../../shared/nodex-app-tools/coordinator-schema";
+} from "../../shared/nodex-app-tools/decision-run-schemas";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
+import { readDecisionRun } from "../../host/nodex-decisions/decision-run-role";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
 import { make as makeRoutingContext } from "../../host/inbox-application/InboxRoutingContext";
 import { validateInboxSuggestions } from "../../host/inbox-application/inbox-suggestions";
@@ -31,7 +29,7 @@ import { deriveSessionDispatchIdentity } from "./session-dispatch-identity";
 const failureMessage = (cause: { readonly message?: string; readonly cause?: unknown }) =>
   cause.cause instanceof CoreModuleResponseError
     ? cause.cause.coreError.message
-    : (cause.message ?? "The Coordinator operation could not be completed");
+    : (cause.message ?? "The decision run operation could not be completed");
 const suggestionIdentity = InboxSuggestionOutput.pick({
   request_id: true,
   generation: true,
@@ -47,7 +45,6 @@ export const makeWithCapture = (
   capture: (caller: AppToolCaller) => Effect.Effect<NodexAgentTurnContext | null>,
 ) =>
   Effect.gen(function* () {
-    const coordinator = yield* CoordinatorSession;
     const inbox = yield* InboxApplication;
     const settings = yield* ApplicationSettings;
     const core = yield* CoreModules;
@@ -55,7 +52,7 @@ export const makeWithCapture = (
     const prepare = yield* makeRoutingContext;
     const admit = yield* makeAppToolOperation;
     const assessment = yield* makeAssessmentDelivery;
-    const rememberArgumentRefusal = Effect.fn("CoordinatorAppTools.rememberArgumentRefusal")(
+    const rememberArgumentRefusal = Effect.fn("DecisionRunAppTools.rememberArgumentRefusal")(
       function* (sessionId: string, args: unknown, reason: string) {
         const identity = suggestionIdentity.safeParse(args);
         if (!identity.success) return;
@@ -63,23 +60,28 @@ export const makeWithCapture = (
         if (
           !pending ||
           pending.generation !== identity.data.generation ||
-          pending.delivery?.coordinator_session_id !== sessionId
+          pending.delivery?.decision_session_id !== sessionId
         )
           return;
         yield* inbox.recordRoutingRefusal(pending, reason);
       },
     );
-    return Effect.fn("CoordinatorAppTools.execute")(
+    return Effect.fn("DecisionRunAppTools.execute")(
       function* (input: AppToolInvocation) {
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         const authority = yield* capture(input.caller);
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-        if (!authority) return toolFailure("authority_unavailable");
+        if (!authority || authority.threadId !== authority.rootThreadId)
+          return toolFailure("authority_unavailable");
         const sessionId = authority.runtime?.sessionId;
-        if (!sessionId || !(yield* coordinator.isCoordinator(sessionId)))
+        const decision = sessionId ? yield* readDecisionRun(core, sessionId) : null;
+        const assessmentTool =
+          input.name === "automation_assessment_read" ||
+          input.name === "automation_assessment_submit";
+        if (!sessionId || decision?.kind !== (assessmentTool ? "assessment" : "routing"))
           return toolFailure(
-            "coordinator_only",
-            "Only Nodex's Coordinator Session can use this tool.",
+            "decision_run_required",
+            "Use this tool from its matching decision run.",
           );
         if (input.name === "automation_assessment_read") {
           const parsed = parseAppToolArguments(automationAssessmentReadSchema, input.arguments);
@@ -101,7 +103,7 @@ export const makeWithCapture = (
           if (!parsed.success) return parsed.result;
           const r = yield* assessment.request(parsed.data.request_id);
           if (!r || r.generation !== parsed.data.generation) return noLongerPending();
-          if (r.coordinator_session_id !== sessionId)
+          if (r.decision_session_id !== sessionId)
             return toolFailure("assessment_recipient_changed");
           const status = yield* assessment.status(r);
           if (status.failure) return toolFailure("assessment_unavailable", status.failure);
@@ -138,52 +140,21 @@ export const makeWithCapture = (
             generation: current?.generation ?? r.generation,
           });
         }
-        if (input.name === "reply_to_origin") {
-          const parsed = parseAppToolArguments(replyToOriginSchema, input.arguments);
-          if (!parsed.success) return parsed.result;
-          const words = countWords(parsed.data.body);
-          if (words === 0 || words > 100)
-            return toolFailure("body_too_long", `Reply has ${words} words; use 1 to 100.`);
-          if (parsed.data.body.includes("<!-- nodex:")) return toolFailure("reserved_marker");
-          const operation = yield* admit(
-            input,
-            authority,
-            identity.identity.profileId,
-            parsed.data,
-          );
-          if (!operation.success) return operation.result;
-          const sent = yield* core.workspace
-            .apply(
-              {
-                operationId: operation.operationId,
-                intent: {
-                  kind: "agent_command",
-                  provenance: toCoreAgentTurnProvenance(identity.identity.profileId, authority),
-                  intent: {
-                    kind: "source",
-                    command: {
-                      kind: "reply_to_origin",
-                      page_id: parsed.data.pageId,
-                      body: parsed.data.body,
-                    },
-                  },
-                },
-              },
-              undefined,
-              null,
-            )
-            .pipe(Effect.result);
-          if (sent._tag === "Failure")
-            return toolFailure("origin_reply_unavailable", failureMessage(sent.failure));
-          return toolSuccess({ pageId: parsed.data.pageId, queued: true });
-        }
-        if (input.name === "write_turn_note" || input.name === "answer_inbox_question") {
-          const parsed =
-            input.name === "write_turn_note"
-              ? parseAppToolArguments(writeTurnNoteSchema, input.arguments)
-              : parseAppToolArguments(answerInboxQuestionSchema, input.arguments);
+        if (input.name === "answer_inbox_question") {
+          const parsed = parseAppToolArguments(answerInboxQuestionSchema, input.arguments);
           if (!parsed.success) return parsed.result;
           const args = parsed.data;
+          const request = yield* inbox.suggestionRequest(decision.request_id);
+          if (request) {
+            if (
+              request.generation !== decision.generation ||
+              request.delivery?.decision_session_id !== sessionId
+            )
+              return toolFailure("request_unavailable");
+            const status = yield* inbox.routingStatus(request);
+            if (status.failureMessage || (yield* Clock.currentTimeMillis) >= status.deadline)
+              return noLongerPending();
+          }
           const words = countWords(args.body);
           if (words > 100)
             return toolFailure(
@@ -200,35 +171,23 @@ export const makeWithCapture = (
                 intent: {
                   kind: "agent_command",
                   provenance,
-                  intent:
-                    "pageId" in args
-                      ? {
-                          kind: "write_turn_note",
-                          page_id: args.pageId,
-                          note_id: deriveSessionDispatchIdentity(
-                            operation.operationId,
-                            "turn-note",
-                            operation.acceptedAtMs,
-                          ),
-                          body: args.body,
-                          event_ids: args.eventIds,
-                          notify: args.notify,
-                        }
-                      : {
-                          kind: "answer_inbox_question",
-                          question_page_id: args.questionPageId,
-                          page_id: deriveSessionDispatchIdentity(
-                            operation.operationId,
-                            "inbox-answer",
-                            operation.acceptedAtMs,
-                          ),
-                          document_id: deriveSessionDispatchIdentity(
-                            operation.operationId,
-                            "inbox-answer-document",
-                            operation.acceptedAtMs,
-                          ),
-                          body: args.body,
-                        },
+                  intent: {
+                    kind: "answer_inbox_question",
+                    request_id: decision.request_id,
+                    generation: decision.generation,
+                    question_page_id: args.questionPageId,
+                    page_id: deriveSessionDispatchIdentity(
+                      operation.operationId,
+                      "inbox-answer",
+                      operation.acceptedAtMs,
+                    ),
+                    document_id: deriveSessionDispatchIdentity(
+                      operation.operationId,
+                      "inbox-answer-document",
+                      operation.acceptedAtMs,
+                    ),
+                    body: args.body,
+                  },
                 },
               },
               undefined,
@@ -258,12 +217,14 @@ export const makeWithCapture = (
           return parsed.result;
         }
         const args = parsed.data;
+        if (args.request_id !== decision.request_id || args.generation !== decision.generation)
+          return toolFailure("request_unavailable");
         const request = yield* inbox.suggestionRequest(args.request_id);
         if (!request || request.generation !== args.generation) return noLongerPending();
-        if (!request.delivery || request.delivery.coordinator_session_id !== sessionId)
+        if (!request.delivery || request.delivery.decision_session_id !== sessionId)
           return toolFailure(
             "request_unavailable",
-            "This routing request was not delivered to this Coordinator.",
+            "This routing request belongs to a different decision run.",
           );
         const routing = yield* inbox.routingStatus(request);
         if (routing.failureMessage || (yield* Clock.currentTimeMillis) >= routing.deadline) {
@@ -310,6 +271,7 @@ export const makeWithCapture = (
             {
               request_id: request.request_id,
               generation: request.generation,
+              decision_session_id: sessionId,
               titles: [...validated.success.titles].map(([page_id, title]) => ({ page_id, title })),
               suggestions: validated.success.suggestions.map((suggestion, index) => ({
                 proposal_id: deriveSessionDispatchIdentity(
@@ -341,7 +303,7 @@ export const makeWithCapture = (
         return toolSuccess({ recorded: true });
       },
       Effect.catch((cause) =>
-        Effect.succeed(toolFailure("coordinator_unavailable", failureMessage(cause))),
+        Effect.succeed(toolFailure("decision_run_unavailable", failureMessage(cause))),
       ),
     );
   });
