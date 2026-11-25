@@ -30,6 +30,7 @@ import {
 } from "@nodex/runtime-contracts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -1688,28 +1689,44 @@ export const layer: Layer.Layer<
           const assistantStreaming = makeAssistantStreamingFilter(responseStreamingMode);
           // Provider events and held paragraphs reach the read model one at a time, in order.
           const ingestion = yield* Semaphore.make(1);
+          const streamingTime = Clock.monotonicTimeNanos.pipe(
+            Effect.map((nanos) => Number(nanos / 1_000_000n)),
+          );
           let heldDelivery = false;
-          const deliverHeldParagraphs = Effect.gen(function* () {
-            heldDelivery = false;
-            for (const event of assistantStreaming.takeDue(
-              DateTime.toEpochMillis(yield* DateTime.now),
-            ))
-              yield* retryObservation(
-                providerEventIngestor.ingestNormalized({
-                  analyticsContext: {
-                    modelSelection: input.modelSelection,
-                    runtimeMode: input.runtimePolicy.runtimeMode,
-                    interactionMode: input.runtimePolicy.interactionMode,
-                  },
-                  providerSessionId: input.providerSessionId,
-                  providerInstanceId: input.run.providerInstanceId,
-                  threadId: input.run.threadId,
-                  runId: input.run.id,
-                  nodeId: input.rootNode.id,
-                  event,
-                }),
-              );
-          });
+          const deliverHeldParagraphs = ingestion.withPermits(1)(
+            Effect.gen(function* () {
+              heldDelivery = false;
+              for (const event of assistantStreaming.takeDue(yield* streamingTime))
+                yield* retryObservation(
+                  providerEventIngestor.ingestNormalized({
+                    analyticsContext: {
+                      modelSelection: input.modelSelection,
+                      runtimeMode: input.runtimePolicy.runtimeMode,
+                      interactionMode: input.runtimePolicy.interactionMode,
+                    },
+                    providerSessionId: input.providerSessionId,
+                    providerInstanceId: input.run.providerInstanceId,
+                    threadId: input.run.threadId,
+                    runId: input.run.id,
+                    nodeId: input.rootNode.id,
+                    event,
+                  }),
+                );
+              const dueAt = assistantStreaming.nextDueAt();
+              heldDelivery = dueAt !== null;
+              return dueAt;
+            }),
+          );
+          const deliverWhenDue = (firstDeadline: number) =>
+            Effect.gen(function* () {
+              let dueAt: number | null = firstDeadline;
+              // A timer can wake before the deadline, or other items may still be held.
+              // Keep draining until every remaining window has been serviced.
+              while (dueAt !== null) {
+                yield* Effect.sleep(Math.max(1, dueAt - (yield* streamingTime)));
+                dueAt = yield* deliverHeldParagraphs;
+              }
+            });
           const processEvent = (rawEvent: ProviderAdapter.ProviderAdapterV2Event) =>
             Effect.gen(function* () {
               const state = yield* Ref.get(eventRouting);
@@ -1738,16 +1755,13 @@ export const layer: Layer.Layer<
               yield* ingestion.withPermits(1)(
                 Effect.gen(function* () {
                   let storedEventCount = 0;
-                  const acceptedAt = DateTime.toEpochMillis(yield* DateTime.now);
+                  const acceptedAt = yield* streamingTime;
                   const deliveredEvent = assistantStreaming.accept(event, acceptedAt);
                   // A paragraph held inside a streaming window lands when the window ends.
                   const dueAt = assistantStreaming.nextDueAt();
                   if (dueAt !== null && !heldDelivery) {
                     heldDelivery = true;
-                    yield* Effect.sleep(Math.max(0, dueAt - acceptedAt)).pipe(
-                      Effect.andThen(ingestion.withPermits(1)(deliverHeldParagraphs)),
-                      Effect.forkChild,
-                    );
+                    yield* deliverWhenDue(dueAt).pipe(Effect.forkChild);
                   }
                   if (
                     deliveredEvent &&

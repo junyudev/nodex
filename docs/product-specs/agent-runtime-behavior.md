@@ -384,9 +384,10 @@ an unrelated foreground Run. Runtime questions use this Session interface. Optio
 Launch returns execution identity without transcript bodies. Controls acquire only
 execution metadata and observe control events. Activating a transcript reader opens
 one bounded history page and publishes canonical items into the keyed
-transcript cache. Text changes notify only the affected item. Scrolling near an unloaded
-history boundary automatically requests older pages through the current conversation
-owner. Requests are serialized and reconsider viewport demand after each page; short or
+transcript cache. Text changes notify only the affected item. In paragraph streaming mode,
+a buffered paragraph appears when its delivery window ends, even if the Agent pauses.
+Scrolling near an unloaded history boundary automatically requests older pages through
+the current conversation owner. Requests are serialized and reconsider viewport demand after each page; short or
 hidden pages may continue until the gap moves out of reach or history is exhausted.
 Older pages preserve resident items and the visible reading anchor, including when a page
 adds earlier messages inside an already visible Turn. Page failures expose a retry at that gap while the loaded transcript and Composer remain usable. Missing or
