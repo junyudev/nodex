@@ -268,7 +268,7 @@ test("a worktree that cannot be prepared offers Retry and Work locally, and runs
     await expect(page.getByText("Couldn’t prepare the worktree", { exact: true })).toBeVisible({
       timeout: 45_000,
     });
-    await page.getByText("Request declined", { exact: true }).click();
+    await page.getByRole("button", { name: "Request failed", exact: true }).click();
     await expect(page.getByRole("region", { name: "Recovery diagnostics" })).toContainText(
       "fatal: invalid reference",
     );

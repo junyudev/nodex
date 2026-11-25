@@ -19,6 +19,7 @@ import { CodexShimmerProvider } from "../codex-shimmer-text";
 export interface ThreadActivityDisclosureState {
   expanded: boolean;
   onToggle: () => void;
+  ariaLabel?: string;
 }
 
 export interface ThreadActivityHeaderProps {
@@ -98,6 +99,7 @@ export function ThreadActivityHeader({
       className={headerClassName}
       data-testid={testId}
       aria-expanded={disclosure.expanded}
+      aria-label={disclosure.ariaLabel}
       onClick={disclosure.onToggle}
     >
       {content}
