@@ -83,6 +83,8 @@ import {
 } from "../../shared/composer-prediction-settings";
 import type { SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import * as path from "path";
+import { getLogger } from "../logging/logger";
+import { isSystemTempDirectory } from "../platform/node/system-temp-directory";
 import {
   closeSync,
   fsyncSync,
@@ -251,6 +253,7 @@ export interface ApplicationSettingsDocumentSource {
   /** Remote signals default on only in a released build; development and tests stay silent. */
   readonly isPackaged?: boolean;
   readonly settingsPath: string;
+  readonly allowTemporaryWorktreeRoot?: boolean;
   readonly document?: SettingsTomlDocument;
 }
 
@@ -1084,15 +1087,37 @@ export function updateCodexGitSettings(
   return getCodexGitSettings(source);
 }
 
+const warnedAboutTemporaryWorktreeRoot = new Set<string>();
+
+function normalizeWorktreeRoot(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? path.resolve(trimmed) : null;
+}
+
+function rejectsWorktreeRoot(
+  source: ApplicationSettingsDocumentSource,
+  root: string | null,
+): boolean {
+  return root !== null && !source.allowTemporaryWorktreeRoot && isSystemTempDirectory(root);
+}
+
 export function getManagedWorktreeSettings(
   source: ApplicationSettingsDocumentSource,
 ): ManagedWorktreeSettings {
   const profileServerToml = loadProfileServerTomlConfig(source);
+  const worktreeRoot =
+    typeof profileServerToml.worktree_root === "string"
+      ? normalizeWorktreeRoot(profileServerToml.worktree_root)
+      : null;
+  const useDefaultRoot = rejectsWorktreeRoot(source, worktreeRoot);
+  if (useDefaultRoot && !warnedAboutTemporaryWorktreeRoot.has(source.settingsPath)) {
+    warnedAboutTemporaryWorktreeRoot.add(source.settingsPath);
+    getLogger({ component: "worktree-settings" }).warn(
+      "Ignoring the temporary worktree root and using the Profile default",
+    );
+  }
   return {
-    worktreeRoot:
-      typeof profileServerToml.worktree_root === "string" && profileServerToml.worktree_root.trim()
-        ? path.resolve(profileServerToml.worktree_root.trim())
-        : null,
+    worktreeRoot: useDefaultRoot ? null : worktreeRoot,
     autoDeleteEnabled:
       typeof profileServerToml.worktree_auto_delete_enabled === "boolean"
         ? profileServerToml.worktree_auto_delete_enabled
@@ -1130,16 +1155,19 @@ export function updateManagedWorktreeSettings(
   ) {
     throw new Error("worktreeRoot must be a string or null");
   }
+  const worktreeRoot = normalizeWorktreeRoot(input.worktreeRoot);
+  if (rejectsWorktreeRoot(source, worktreeRoot)) {
+    throw new Error(
+      "Choose a folder outside the system’s temporary directory. The system clears it automatically.",
+    );
+  }
+
   const next = { ...loadProfileServerTomlConfig(source) };
   // Historical roots were an accidental discovery/authorization registry. A
   // managed settings write canonicalizes legacy documents to the single-root model.
   delete (next as Record<string, unknown>).worktree_known_roots;
-  if (input.worktreeRoot !== undefined) {
-    const normalized = input.worktreeRoot?.trim() ?? "";
-    if (normalized) {
-      next.worktree_root = path.resolve(normalized);
-    } else delete next.worktree_root;
-  }
+  if (worktreeRoot !== null) next.worktree_root = worktreeRoot;
+  else if (input.worktreeRoot !== undefined) delete next.worktree_root;
   if (input.autoDeleteEnabled !== undefined) {
     next.worktree_auto_delete_enabled = input.autoDeleteEnabled;
   }

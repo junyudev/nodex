@@ -6,6 +6,8 @@ import {
   openCodeProfile,
 } from "../../shared/agents/profile.test-fixtures";
 import { randomUUID } from "node:crypto";
+import { toElectronIpcRendererError } from "../platform/electron/electron-ipc-error";
+import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import {
   encodeState,
   initialState,
@@ -871,6 +873,81 @@ describe("ApplicationSettings", () => {
         assert.notProperty(server, "inbox_chat_effort");
         assert.notProperty(server, "inbox_chat_speed");
       }),
+  );
+
+  it.effect("ignores a saved temporary worktree root and warns only once", () =>
+    Effect.gen(function* () {
+      const temporaryRoot = path.join(tmpdir(), "old-worktrees");
+      const { root, settingsPath } = fixture(
+        `[server]\nworktree_root = ${JSON.stringify(temporaryRoot)}\nworktree_auto_delete_limit = 8\n`,
+      );
+      const entries: BackendLogEntry[] = [];
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          subscribeToBackendLogs((entry) => entries.push(entry), { level: "warn" }),
+        ),
+        (unsubscribe) => Effect.sync(unsubscribe),
+      );
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      const before = readFileSync(settingsPath);
+
+      for (const _ of [1, 2]) {
+        const snapshot = yield* settings.snapshot();
+        assert.strictEqual(snapshot.managedWorktrees.worktreeRoot, null);
+        assert.strictEqual(snapshot.managedWorktrees.autoDeleteLimit, 8);
+      }
+
+      assert.deepEqual(readFileSync(settingsPath), before);
+      assert.lengthOf(
+        entries.filter(
+          (entry) => entry.level === "warn" && entry.component === "worktree-settings",
+        ),
+        1,
+      );
+    }),
+  );
+
+  it.effect("rejects a temporary worktree root before writing any settings in the update", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture("[server]\nworktree_auto_delete_limit = 8\n");
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      const before = readFileSync(settingsPath);
+      const rejection = yield* settings
+        .update({
+          type: "update-managed-worktrees",
+          input: { worktreeRoot: path.join(tmpdir(), "future-worktrees"), autoDeleteLimit: 23 },
+        })
+        .pipe(Effect.flip);
+
+      assert.include(toElectronIpcRendererError(rejection).message, "Choose a folder outside");
+      assert.deepEqual(readFileSync(settingsPath), before);
+    }),
+  );
+
+  it.effect("allows a disposable scenario to save and reopen a temporary worktree root", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture();
+      const input = {
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+        allowTemporaryWorktreeRoot: true,
+      };
+      const worktreeRoot = path.join(root, "worktrees");
+      const settings = yield* makeApplicationSettings(input);
+      yield* settings.update({ type: "update-managed-worktrees", input: { worktreeRoot } });
+
+      const reopened = yield* makeApplicationSettings(input);
+      assert.strictEqual((yield* reopened.snapshot()).managedWorktrees.worktreeRoot, worktreeRoot);
+    }),
   );
 
   it.effect("ignores legacy root history and removes it on the next managed settings write", () =>
