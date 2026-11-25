@@ -127,6 +127,31 @@ function clearTextSelection(): void {
   document.getSelection()?.removeAllRanges();
 }
 
+function isSidebarDragSource(data: DragStartEvent["active"]["data"]["current"]): boolean {
+  return (
+    readSidebarGroupDndPayload(data) !== null ||
+    readSidebarSectionRootDndPayload(data) !== null ||
+    readSidebarThreadDndPayload(data)?.kind === "sidebar-item" ||
+    readSidebarLibraryDragResource(data) !== null
+  );
+}
+
+/**
+ * Whether the pointer is over the column the drop targets occupy. Between targets the nearest one
+ * keeps placement steady; beside the sidebar there is nothing to place against.
+ */
+function isPointerInDropColumn(
+  args: Parameters<CollisionDetection>[0],
+  containers: Parameters<CollisionDetection>[0]["droppableContainers"],
+): boolean {
+  const x = args.pointerCoordinates?.x;
+  if (x === undefined) return true;
+  return containers.some((container) => {
+    const rect = args.droppableRects.get(container.id);
+    return rect !== undefined && x >= rect.left && x <= rect.right;
+  });
+}
+
 const sidebarProjectCollisionDetection: CollisionDetection = (args) => {
   const activePayload = readSidebarGroupDndPayload(args.active.data.current);
   if (!activePayload) return closestCenter(args);
@@ -162,6 +187,7 @@ const sidebarProjectCollisionDetection: CollisionDetection = (args) => {
   const containerPointerCollisions = pointerWithin(eligibleArgs);
   if (containerPointerCollisions.length > 0) return containerPointerCollisions;
   if (!args.pointerCoordinates) return closestCenter(eligibleArgs);
+  if (!isPointerInDropColumn(args, eligibleContainers)) return [];
 
   const { x, y } = args.pointerCoordinates;
   return closestCenter({
@@ -300,6 +326,13 @@ export function SidebarReorderDndProvider({
   const latestCollisionRef = useRef<SidebarDragCollision | null>(null);
   const lastDragEventRef = useRef<DragMoveEvent | null>(null);
   const destinationControllerRef = useRef<SidebarThreadReorderController | null>(null);
+  // The gesture owns its source. A dragged row that unmounts mid-drag (a live refresh, pagination,
+  // a chat moving to another section) leaves dnd-kit with empty drag data, yet its lane still holds
+  // a drop indicator that only the row's controller clears.
+  const gestureSourceRef = useRef<{
+    readonly id: DragStartEvent["active"]["id"];
+    readonly data: DragStartEvent["active"]["data"]["current"];
+  } | null>(null);
   const updatePendingThreadDrops = useCallback(
     (update: (current: PendingSidebarThreadDrop[]) => PendingSidebarThreadDrop[]) => {
       setPendingThreadDrops((current) =>
@@ -343,7 +376,8 @@ export function SidebarReorderDndProvider({
         );
         const eligibleArgs = { ...args, droppableContainers: eligibleContainers };
         const pointerCollisions = pointerWithin(eligibleArgs);
-        return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(eligibleArgs);
+        if (pointerCollisions.length > 0) return pointerCollisions;
+        return isPointerInDropColumn(args, eligibleContainers) ? closestCenter(eligibleArgs) : [];
       }
       return closestCenter(args);
     },
@@ -388,8 +422,24 @@ export function SidebarReorderDndProvider({
     setActiveDrag(null);
   }, []);
 
+  const takeGestureSource = useCallback(
+    (event: DragCancelEvent): { readonly event: DragCancelEvent; readonly vanished: boolean } => {
+      const source = gestureSourceRef.current;
+      gestureSourceRef.current = null;
+      if (isSidebarDragSource(event.active.data.current) || source?.id !== event.active.id) {
+        return { event, vanished: false };
+      }
+      return {
+        event: { ...event, active: { ...event.active, data: { current: source.data } } },
+        vanished: true,
+      };
+    },
+    [],
+  );
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      gestureSourceRef.current = { id: event.active.id, data: event.active.data.current };
       latestCollisionRef.current = null;
       lastDragEventRef.current = null;
       cancelDestinationController();
@@ -493,7 +543,7 @@ export function SidebarReorderDndProvider({
     if (event !== null) refreshDragTarget(event);
   }, [refreshDragTarget]);
 
-  const handleDragCancel = useCallback(
+  const cancelGesture = useCallback(
     (event: DragCancelEvent) => {
       cancelDestinationController(event);
       const projectPayload = readSidebarGroupDndPayload(event.active.data.current);
@@ -518,8 +568,19 @@ export function SidebarReorderDndProvider({
     [cancelDestinationController, resetGestureState],
   );
 
+  const handleDragCancel = useCallback(
+    (event: DragCancelEvent) => cancelGesture(takeGestureSource(event).event),
+    [cancelGesture, takeGestureSource],
+  );
+
   const handleDragEnd = useCallback(
     (sensorEvent: DragEndEvent) => {
+      const source = takeGestureSource(sensorEvent);
+      // A source that left the sidebar mid-drag has nothing left to place.
+      if (source.vanished) {
+        cancelGesture(source.event);
+        return;
+      }
       const { event, pointerY } = resolveSidebarDragFrame(sensorEvent, latestCollisionRef.current);
       const destinationController = destinationControllerRef.current;
       destinationControllerRef.current = null;
@@ -593,6 +654,7 @@ export function SidebarReorderDndProvider({
       });
     },
     [
+      cancelGesture,
       getThreadIdByThreadKey,
       homeContainerIdByThreadId,
       onProjectDrop,
@@ -600,6 +662,7 @@ export function SidebarReorderDndProvider({
       onThreadDrop,
       onThreadError,
       resetGestureState,
+      takeGestureSource,
       updatePendingThreadDrops,
     ],
   );

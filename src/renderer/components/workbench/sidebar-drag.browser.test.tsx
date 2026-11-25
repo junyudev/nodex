@@ -495,6 +495,76 @@ describe("sidebar project group dnd", () => {
       }
     });
 
+    test("places nothing when the pointer is released beside the sidebar", async () => {
+      const committedOrders: string[][] = [];
+      const view = render(
+        <SidebarReorderDndProvider>
+          <ProjectReorderHarness onCommit={(order) => committedOrders.push(order)} />
+        </SidebarReorderDndProvider>,
+      );
+      const list = view.getByRole("list", { name: "Projects" });
+      const alphaRect = view.getByTestId("project-alpha").getBoundingClientRect();
+      const betaRect = view.getByTestId("project-beta").getBoundingClientRect();
+      const pointer = { isPrimary: true, pointerId: 19, pointerType: "mouse" } as const;
+      const pointerX = alphaRect.left + alphaRect.width / 2;
+      const besideX = Math.min(window.innerWidth - 2, alphaRect.right + 120);
+      expect(besideX).toBeGreaterThan(alphaRect.right);
+
+      try {
+        await act(async () => {
+          fireEvent.pointerDown(view.getByTestId("project-beta-activator"), {
+            ...pointer,
+            button: 0,
+            clientX: betaRect.left + betaRect.width / 2,
+            clientY: betaRect.top + betaRect.height / 2,
+          });
+          fireEvent.pointerMove(document, {
+            ...pointer,
+            buttons: 1,
+            clientX: pointerX,
+            clientY: betaRect.top + betaRect.height / 2 - 8,
+          });
+          fireEvent.pointerMove(document, {
+            ...pointer,
+            buttons: 1,
+            clientX: pointerX,
+            clientY: alphaRect.top + 4,
+          });
+          await Promise.resolve();
+        });
+        await waitFor(() => {
+          expect(list.querySelectorAll("[role='presentation']")).toHaveLength(1);
+        });
+
+        await act(async () => {
+          fireEvent.pointerMove(document, {
+            ...pointer,
+            buttons: 1,
+            clientX: besideX,
+            clientY: alphaRect.top + 4,
+          });
+          await Promise.resolve();
+        });
+        await waitFor(() => {
+          expect(list.querySelectorAll("[role='presentation']")).toHaveLength(0);
+        });
+        await act(async () => {
+          fireEvent.pointerUp(document, {
+            ...pointer,
+            button: 0,
+            clientX: besideX,
+            clientY: alphaRect.top + 4,
+          });
+          await Promise.resolve();
+        });
+
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        expect(committedOrders).toEqual([]);
+      } finally {
+        view.unmount();
+      }
+    });
+
     test("keeps an acknowledged project order until canonical props render it", async () => {
       let resolveCanonicalCommit!: () => void;
       const canonicalCommit = new Promise<void>((resolve) => {
@@ -1272,6 +1342,32 @@ describe("sidebar thread reorder", () => {
     );
   }
 
+  function LiveThreadReorderHarness({
+    onDrop,
+    threadKeys,
+  }: {
+    onDrop: (drop: SidebarThreadDropRequest) => void;
+    threadKeys: string[];
+  }) {
+    return (
+      <SidebarReorderDndProvider
+        getThreadIdByThreadKey={(threadKey) => `thread-${threadKey}`}
+        onThreadDrop={(drop) => {
+          onDrop(drop);
+          return null;
+        }}
+      >
+        <div
+          aria-label="Live Project chats"
+          role="list"
+          style={{ display: "flex", flexDirection: "column", width: 240 }}
+        >
+          <SemanticThreadRows threadKeys={threadKeys} />
+        </div>
+      </SidebarReorderDndProvider>
+    );
+  }
+
   function readRenderedThreadKeys(list: HTMLElement): string[] {
     return Array.from(list.querySelectorAll<HTMLElement>("[data-thread-key]"))
       .filter((row) => row.closest("[role='list']") === list)
@@ -1980,6 +2076,76 @@ describe("sidebar thread reorder", () => {
         view.unmount();
       }
     });
+
+    test.each([
+      ["release", () => fireEvent.pointerUp(document, { button: 0, pointerId: 11 })],
+      ["cancellation", () => fireEvent.pointerCancel(document, { pointerId: 11 })],
+      ["Escape", () => fireEvent.keyDown(document, { code: "Escape", key: "Escape" })],
+    ])(
+      "clears the drop indicator on %s after the dragged chat leaves the lane mid-drag",
+      async (_name, end) => {
+        const drops: SidebarThreadDropRequest[] = [];
+        const onDrop = (drop: SidebarThreadDropRequest) => drops.push(drop);
+        const view = render(
+          <LiveThreadReorderHarness onDrop={onDrop} threadKeys={["alpha", "beta", "gamma"]} />,
+        );
+        const list = view.getByRole("list", { name: "Live Project chats" });
+        const betaRect = view.getByTestId("canonical-thread-beta").getBoundingClientRect();
+        const alphaRect = view.getByTestId("canonical-thread-alpha").getBoundingClientRect();
+        const pointer = { isPrimary: true, pointerId: 11, pointerType: "mouse" } as const;
+        const x = alphaRect.left + alphaRect.width / 2;
+        let ended = false;
+
+        try {
+          await act(async () => {
+            fireEvent.pointerDown(view.getByTestId("canonical-thread-beta"), {
+              ...pointer,
+              button: 0,
+              clientX: x,
+              clientY: betaRect.top + betaRect.height / 2,
+            });
+            fireEvent.pointerMove(document, {
+              ...pointer,
+              buttons: 1,
+              clientX: x,
+              clientY: betaRect.top + betaRect.height / 2 - 8,
+            });
+            fireEvent.pointerMove(document, {
+              ...pointer,
+              buttons: 1,
+              clientX: x,
+              clientY: alphaRect.top + 4,
+            });
+            await Promise.resolve();
+          });
+          await waitFor(() => {
+            expect(list.querySelector("[role='presentation']")).not.toBeNull();
+          });
+
+          // A live refresh moves the dragged chat out of this lane while the lane stays mounted.
+          await act(async () => {
+            view.rerender(
+              <LiveThreadReorderHarness onDrop={onDrop} threadKeys={["alpha", "gamma"]} />,
+            );
+            await Promise.resolve();
+          });
+          await act(async () => {
+            end();
+            ended = true;
+            await Promise.resolve();
+          });
+
+          await waitFor(() => {
+            expect(list.querySelector("[role='presentation']")).toBeNull();
+          });
+          expect(drops).toEqual([]);
+          expect(readRenderedThreadKeys(list)).toEqual(["alpha", "gamma"]);
+        } finally {
+          if (!ended) fireEvent.pointerUp(document, { ...pointer, button: 0 });
+          view.unmount();
+        }
+      },
+    );
 
     test("starts a drag from an open rich tooltip without replacing the sortable host", async () => {
       const errors: ErrorEvent[] = [];
