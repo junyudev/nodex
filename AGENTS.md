@@ -175,6 +175,9 @@ Release notes are a required deliverable only for **release-note-worthy** user-v
    - **Ship** (default): rebase onto `origin/main` and push to `main`. Never force-push `main`; it can erase commits other Agents just pushed.
    - **Show**: open a pull request and merge it right away when the change deserves a record for later review.
    - **Ask**: for risky changes (migrations, release and installer paths, protocol changes, broad refactors), open a pull request and end the turn; Nodex returns the CI result. Merge with `gh pr merge --rebase` once the `required` check passes, or push fixes.
+
+   When a broad local check such as `check:changed` has waited about 15 minutes in the machine queue, land through a pull request as for **Ask**, even a change you would Ship: CI runs the broad checks, only the focused tests stay local, and the merge waits for `required` unless the task says not to merge yet.
+
 3. Keep local `main` a mirror of `origin/main`.
 4. If Main CI fails on commits you pushed, fix forward right away. Before chasing a failure your change cannot explain, check whether `main` is already red: `gh run list --workflow ci-main.yml --branch main --limit 3`.
 
@@ -197,7 +200,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 - Electron E2E: `vp run test:e2e tests/e2e/<spec>.spec.ts`. A standalone `--` before the file makes Playwright collect the whole suite; a focused run's banner reads `Running 1 test`.
 - Semantic gate: `vp run typecheck`, the same task as `lint` and `check:semantic` with a shared cache, covers types and lint; `vp run --no-cache check:semantic` forces real analysis.
 - Broader: `vp run build` for build configuration, entrypoints, packaging, or startup failures; `vp run test` when targeted suites cannot bound a change's impact; `vp run test:all` for a release gate.
-- The semantic gate, test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU and memory budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling or retrying it. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
+- The semantic gate, test suites, E2E runs, and Rust tests from all worktrees queue for one computer-wide CPU and memory budget. A `[machine-budget] ... is waiting` line is the queue working: let the command wait, in the background if needed, rather than cancelling and retrying it. A long wait is a reason to land through a pull request, as step 2 of [Verification](#verification) describes, not to retry. See [Sharing the computer between checkouts](docs/development.md#sharing-the-computer-between-checkouts).
 
 ### UI evidence boundary
 

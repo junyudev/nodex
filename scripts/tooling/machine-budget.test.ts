@@ -93,6 +93,21 @@ test("runs claims one at a time while the computer is short of memory", () => {
   );
 });
 
+test("points a long wait at CI instead of reassuring it", async () => {
+  const lines: string[] = [];
+  const first = await acquireMachineBudget({ weight: 4, memoryGiB: 2, label: "first" }, context());
+  const second = acquireMachineBudget(
+    { weight: 2, memoryGiB: 2, label: "second" },
+    context({ longWaitMs: 30, log: (line) => lines.push(line) }),
+  );
+  expect(await settled(second, 120)).toBe(false);
+  expect(lines[0]).toContain("Queueing is expected");
+  // The moment the wait turns long is reported, without waiting for the next periodic line.
+  expect(lines.at(-1)).toContain("push a pull request and let CI run it");
+  first.release();
+  (await second).release();
+});
+
 test("queues a claim until an earlier holder releases", async () => {
   const lines: string[] = [];
   const report = path.join(directory, "queue.jsonl");
