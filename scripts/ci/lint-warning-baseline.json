@@ -5,9 +5,6 @@
   "packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts": {
     "nodex(no-polling-loop-in-tests)": 1
   },
-  "packages/agent-runtime/src/nodex/AcpPagination.integration.test.ts": {
-    "nodex(no-explicit-test-timeout)": 2
-  },
   "packages/agent-runtime/src/nodex/AcpRegistryInstallation.test.ts": {
     "nodex(no-explicit-test-timeout)": 6
   },

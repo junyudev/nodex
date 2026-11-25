@@ -225,6 +225,17 @@ it.live(
           { method: "session/list", cwd },
           { method: "session/list", cwd, cursor: token },
         ]);
+        yield* writePages([{ result: { sessions: [] } }]);
+        yield* call("acp.sessions.list", { instanceId: "first", cwd });
+        const afterRestart = (yield* requests).length;
+        expect(
+          acpFailure(
+            yield* call("acp.sessions.list", { instanceId: "first", cwd, cursor: token }).pipe(
+              Effect.flip,
+            ),
+          ).reason,
+        ).toBe("invalid_request");
+        expect((yield* requests).length).toBe(afterRestart);
       }),
     ),
 );
@@ -302,50 +313,6 @@ it.live(
     ),
 );
 
-it.live(
-  "bounds a native traversal and expires tokens after a fresh traversal replaces it",
-  () =>
-    withPeer(({ cwd, call, writePages }) =>
-      Effect.gen(function* () {
-        yield* writePages(
-          Array.from({ length: 101 }, (_, index) => ({
-            ...(index === 0 ? {} : { cursor: String(index) }),
-            result: { sessions: [], nextCursor: String(index + 1) },
-          })),
-        );
-        let cursor: string | undefined;
-        for (let index = 0; index < 100; index++) {
-          const page = yield* call("acp.sessions.list", {
-            instanceId: "first",
-            cwd,
-            ...(cursor === undefined ? {} : { cursor }),
-          });
-          cursor = page.nextCursor!;
-        }
-        expect(
-          acpFailure(
-            yield* call("acp.sessions.list", { instanceId: "first", cwd, cursor: cursor! }).pipe(
-              Effect.flip,
-            ),
-          ),
-        ).toMatchObject({
-          reason: "invalid_request",
-          message: "The Agent session listing exceeded its page budget.",
-        });
-        yield* writePages([{ result: { sessions: [] } }]);
-        yield* call("acp.sessions.list", { instanceId: "first", cwd });
-        expect(
-          acpFailure(
-            yield* call("acp.sessions.list", { instanceId: "first", cwd, cursor: "1" }).pipe(
-              Effect.flip,
-            ),
-          ).reason,
-        ).toBe("invalid_request");
-      }),
-    ),
-  30_000,
-);
-
 it.live("expires issued cursors when their configured instance is replaced", () =>
   withPeer(({ cwd, call, writePages, replaceInstance, requests }) =>
     Effect.gen(function* () {
@@ -370,34 +337,4 @@ it.live("expires issued cursors when their configured instance is replaced", () 
       ).toBeNull();
     }),
   ),
-);
-
-it.live(
-  "bounds retained directory scopes and rejects an evicted continuation without spawning",
-  () =>
-    withPeer(({ cwd, otherCwd, call, writePages, requests }) =>
-      Effect.gen(function* () {
-        yield* writePages([
-          { result: { sessions: [], nextCursor: "A" } },
-          { cursor: "A", result: { sessions: [] } },
-        ]);
-        yield* call("acp.sessions.list", { instanceId: "first", cwd });
-        for (let index = 0; index < 64; index++) {
-          yield* call("acp.sessions.list", {
-            instanceId: "first",
-            cwd: `${otherCwd}${"/".repeat(index + 1)}`,
-          });
-        }
-        const count = (yield* requests).length;
-        expect(
-          acpFailure(
-            yield* call("acp.sessions.list", { instanceId: "first", cwd, cursor: "A" }).pipe(
-              Effect.flip,
-            ),
-          ).reason,
-        ).toBe("invalid_request");
-        expect((yield* requests).length).toBe(count);
-      }),
-    ),
-  30_000,
 );

@@ -37,6 +37,7 @@ import { AcpManagementError, acpFailure } from "./AcpFailures.ts";
 import type { AgentAcpFailure, AgentAcpOperation } from "./AcpManagementContract.ts";
 import * as ProviderAuthentication from "./ProviderAuthentication.ts";
 import { withCurrentAcpInstance } from "./AcpManagementLifecycle.ts";
+import { makeAcpSessionTraversals } from "./AcpSessionTraversals.ts";
 
 const request = <M extends string, S extends Schema.Constraint>(method: M, input: S) =>
   Schema.Struct({ id: Schema.String, method: Schema.Literal(method), input });
@@ -175,15 +176,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
   const operations = yield* makeOperations(runtimeGeneration);
   const mutation = yield* Semaphore.make(1);
   const pagination = yield* Semaphore.make(1);
-  // Cursors are issued by a particular instance generation and execution directory.
-  // A fresh first-page request replaces that query's bounded, volatile traversal.
-  const listPages = new Map<
-    string,
-    {
-      source: ProviderInstance["snapshot"];
-      cursors: Map<string, ReadonlyArray<string>>;
-    }
-  >();
+  const traversals = makeAcpSessionTraversals();
 
   const instance = Effect.fn("AcpManagement.instance")(function* (id: ProviderInstanceId) {
     const current = (yield* policy.current)[id];
@@ -564,34 +557,13 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
         return yield* pagination.withPermit(
           Effect.gen(function* () {
             const selected = yield* instance(request.input.instanceId);
-            const key = JSON.stringify([request.input.instanceId, request.input.cwd]);
-            const previous = listPages.get(key);
-            const ancestry =
-              request.input.cursor === undefined
-                ? []
-                : previous?.source === selected.snapshot
-                  ? previous.cursors.get(request.input.cursor)
-                  : undefined;
-            if (ancestry === undefined)
-              return yield* failure(
-                "The Agent could not complete this request. Refresh its state and retry.",
-              );
+            const page = yield* traversals.begin(request.input, selected.snapshot);
             const result = yield* selected.acpSessionManagement.listSessions(request.input);
             if ((yield* instance(request.input.instanceId)).snapshot !== selected.snapshot)
               return yield* failure(
                 "The ACP configuration changed. Retry against the current instance.",
               );
-            if (result.nextCursor !== null && ancestry.includes(result.nextCursor))
-              return yield* failure("The Agent returned a repeated session cursor.");
-            if (result.nextCursor !== null && ancestry.length >= 100)
-              return yield* failure("The Agent session listing exceeded its page budget.");
-            if (
-              request.input.cursor !== undefined &&
-              result.nextCursor !== null &&
-              !previous!.cursors.has(result.nextCursor) &&
-              previous!.cursors.size >= 100
-            )
-              return yield* failure("The Agent session listing exceeded its page budget.");
+            const commit = yield* page.prepareCommit(result.nextCursor);
             const config = yield* configuration(request.input.instanceId);
             const sourceFingerprint = fingerprint(
               config.settings,
@@ -612,15 +584,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (runtimeGeneration
                 }),
               { concurrency: 8 },
             );
-            const traversal =
-              request.input.cursor === undefined
-                ? { source: selected.snapshot, cursors: new Map<string, ReadonlyArray<string>>() }
-                : previous!;
-            if (result.nextCursor !== null)
-              traversal.cursors.set(result.nextCursor, [...ancestry, result.nextCursor]);
-            listPages.delete(key);
-            listPages.set(key, traversal);
-            if (listPages.size > 64) listPages.delete(listPages.keys().next().value!);
+            commit();
             return { ...result, sessions: mapped };
           }),
         );
