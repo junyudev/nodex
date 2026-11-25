@@ -65,8 +65,8 @@ primary is shown and activated first. Each following renderer activates after th
 reports readiness or the bounded coordinator advances it. This avoids simultaneous full Workbench
 imports while preserving every restored Window Session.
 
-Workbench state owners load with the application. Settings, Automations, conversation views,
-terminal, and file editor surfaces load when their route or panel is rendered, so unopened
+Workbench state owners load with the application. Settings, Automations, Inbox, conversation
+views, terminal, and file editor surfaces load when their route or panel is rendered, so unopened
 surfaces do not delay the initial Workbench. Their loading boundaries retain the surrounding
 Workbench and its state. Renderer readiness waits for the initial route's data selection and
 visible loading boundaries to commit their content; committing an empty loading fallback does

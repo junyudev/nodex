@@ -5,6 +5,9 @@ import { lazySurface } from "@/bootstrap/application-surface";
 export const DbViewSessionTab = lazySurface(
   async () => (await import("./workbench-db-view-panel")).DbViewSessionTab,
 );
+export const InboxRoute = lazySurface(
+  async () => (await import("@/features/inbox/inbox-route")).InboxRoute,
+);
 export const WorkbenchDatabaseViewSurface = lazySurface(
   async () => (await import("./workbench-database-view-surface")).WorkbenchDatabaseViewSurface,
 );

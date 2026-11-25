@@ -60,7 +60,6 @@ import {
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { INSIGHTS_ROOT_PATH } from "@/features/insights/insights-routes";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
-import { InboxRoute } from "@/features/inbox/inbox-route";
 import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../shared/inbox";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import { parseDatabaseId } from "../../../shared/database-identities";
@@ -411,6 +410,7 @@ import type { PanelDestination } from "./panel-destination-picker-model";
 import {
   DbViewSessionTab,
   FirstRunOverlay,
+  InboxRoute,
   PluginAppBreadcrumb,
   PluginAppView,
   WorkbenchBrowserSidebarPanel,
