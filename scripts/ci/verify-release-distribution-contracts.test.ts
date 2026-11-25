@@ -19,6 +19,60 @@ test("repository distributions require all native architectures before protected
   expect(() => verifyReleaseDistributionWorkflows(workflows())).not.toThrow();
 });
 
+test.each([
+  "certification",
+  "distribution",
+  "windows-distribution",
+  "mobile-distribution",
+  "assemble",
+  "promote",
+])("rejects the dispatch SHA as the Nightly %s source", (name) => {
+  const files = workflows();
+  const nightly = requireRecord(files.get("nightly-release.yml"), "Nightly");
+  const jobs = requireRecord(nightly.jobs, "Nightly jobs");
+  const job = requireRecord(jobs[name], "Nightly job");
+  files.set("nightly-release.yml", {
+    ...nightly,
+    jobs: {
+      ...jobs,
+      [name]: {
+        ...job,
+        with: { ...requireRecord(job.with, "Nightly inputs"), source_sha: "${{ github.sha }}" },
+      },
+    },
+  });
+  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow(
+    `Nightly ${name} must use the verified candidate source SHA`,
+  );
+});
+
+test("rejects finalizing Nightly from the dispatch checkout", () => {
+  const files = workflows();
+  const nightly = requireRecord(files.get("nightly-release.yml"), "Nightly");
+  const jobs = requireRecord(nightly.jobs, "Nightly jobs");
+  const finalizer = requireRecord(jobs["finalize-sparkle"], "Nightly finalizer");
+  const [checkout, ...steps] = Array.isArray(finalizer.steps) ? finalizer.steps : [];
+  files.set("nightly-release.yml", {
+    ...nightly,
+    jobs: {
+      ...jobs,
+      "finalize-sparkle": {
+        ...finalizer,
+        steps: [
+          {
+            ...requireRecord(checkout, "Nightly finalizer checkout"),
+            with: { ref: "${{ github.sha }}" },
+          },
+          ...steps,
+        ],
+      },
+    },
+  });
+  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow(
+    "Nightly finalization must check out and use the verified candidate source SHA",
+  );
+});
+
 test("rejects cross-CPU packaging and missing native architecture cells", () => {
   for (const cells of [
     [{ arch: "x64", runner: "windows-latest" }],

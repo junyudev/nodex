@@ -94,10 +94,10 @@ export function verifyBuildIdentityAtRef(options: {
 
 export function resolveNightlyCandidate(options: {
   readonly cwd: string;
-  readonly head: string;
+  readonly sourceSha: string;
 }): NightlyCandidateResolution {
   const cwd = resolve(options.cwd);
-  const sourceSha = git(cwd, ["rev-parse", `${options.head}^{commit}`]);
+  const sourceSha = git(cwd, ["rev-parse", `${options.sourceSha}^{commit}`]);
   const parents = git(cwd, ["rev-list", "--parents", "-n", "1", sourceSha]).split(/\s+/);
   if (parents.length === 2 && isVersionAdvance(cwd, parents[1], sourceSha)) {
     return { shouldRelease: false, reason: "version-advance-only", sourceSha };

@@ -124,7 +124,7 @@ describe("release candidate identity", () => {
       git(repository, "add", "changes");
       git(repository, "commit", "-m", "Fix sync");
       const source = git(repository, "rev-parse", "HEAD");
-      expect(resolveNightlyCandidate({ cwd: repository, head: source })).toMatchObject({
+      expect(resolveNightlyCandidate({ cwd: repository, sourceSha: source })).toMatchObject({
         shouldRelease: true,
         identity: { version: "0.4.0" },
       });
@@ -150,7 +150,7 @@ describe("release candidate identity", () => {
         `Nodex-Release-Source: ${source}`,
       );
       const head = git(repository, "rev-parse", "HEAD");
-      expect(resolveNightlyCandidate({ cwd: repository, head })).toEqual({
+      expect(resolveNightlyCandidate({ cwd: repository, sourceSha: head })).toEqual({
         shouldRelease: false,
         reason: "version-advance-only",
         sourceSha: head,
