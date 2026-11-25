@@ -1,11 +1,14 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
+  codexReplScratchParent,
   desktopToolHostBindingNames,
   nodeReplServerDefinition,
+  reapCodexReplScratch,
   withoutDesktopToolHostBindings,
 } from "./desktop-tool-environment";
 
@@ -29,12 +32,14 @@ const foreignHostEnvironment = {
 interface ObservedSandboxLaunch {
   readonly argv: readonly string[];
   readonly env: Readonly<Record<string, string>>;
+  readonly scratchMode?: number;
 }
 
 /** Runs the closed launcher with Node executing an owned recording sandbox entrypoint. */
 function launchNodeRepl(input: {
   readonly declared: Readonly<Record<string, string>>;
   readonly persisted: Readonly<Record<string, string>>;
+  readonly scratchParent?: string;
 }): ObservedSandboxLaunch {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-node-repl-launcher-"));
   temporaryRoots.push(root);
@@ -45,13 +50,15 @@ function launchNodeRepl(input: {
     recorder,
     [
       "const env = { ...process.env };",
+      'const scratchMode = env.TMPDIR && require("node:fs").statSync(env.TMPDIR, { throwIfNoEntry: false })?.mode;',
       'const argv = [require("node:path").basename(process.argv[1]), ...process.argv.slice(2)];',
-      "process.stdout.write(JSON.stringify({ argv, env }));",
+      "process.stdout.write(JSON.stringify({ argv, env, scratchMode }));",
     ].join("\n"),
   );
   const definition = nodeReplServerDefinition({
     codexCliPath: process.execPath,
     env: input.declared,
+    scratchParent: input.scratchParent,
     nodePath: process.execPath,
     nodeReplPath: "/runtime/bin/node_repl",
   });
@@ -175,4 +182,64 @@ describe("node_repl launcher", () => {
       expect(policy.get(`set.${name}`)).toBe(value);
     }
   });
+
+  test.skipIf(process.platform !== "darwin")("leases private scratch for each Codex launch", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-repl-scratch-"));
+    temporaryRoots.push(root);
+    const parent = codexReplScratchParent(path.join(root, "trusted"));
+    const launch = () =>
+      launchNodeRepl({
+        declared: {},
+        persisted: { TMPDIR: root, NODE_REPL_SCRATCH_PARENT: root },
+        scratchParent: parent,
+      });
+    const first = launch();
+    const second = launch();
+    expect(first.env.TMPDIR).not.toBe(second.env.TMPDIR);
+    for (const run of [first, second]) {
+      const scratch = run.env.TMPDIR!;
+      expect(path.dirname(scratch)).toBe(fs.realpathSync(parent));
+      expect(run.scratchMode! & 0o777).toBe(0o700);
+      expect(run.env).not.toHaveProperty("NODE_REPL_SCRATCH_PARENT");
+      expect(pinnedPolicy(run.argv).get("set.TMPDIR")).toBe(scratch);
+      expect(fs.existsSync(scratch)).toBe(false);
+    }
+  });
+
+  test.skipIf(process.platform !== "darwin")(
+    "reaps abandoned scratch and preserves live leases",
+    async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-repl-reap-"));
+      temporaryRoots.push(root);
+      const state = path.join(root, "trusted");
+      const parent = codexReplScratchParent(state);
+      const scope = "11111111-1111-4111-8111-111111111111";
+      const staleScope = "22222222-2222-4222-8222-222222222222";
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          "process.stdout.write('ready'); process.stdin.resume();",
+          JSON.stringify({ scratchScope: scope }),
+        ],
+        { env: { ELECTRON_RUN_AS_NODE: "1" }, stdio: ["pipe", "pipe", "ignore"] },
+      );
+      const exited = once(child, "close");
+      try {
+        await Promise.race([once(child.stdout, "data"), exited]);
+        const abandoned = path.join(parent, `repl-2147483647-${scope}-a1b2c3`);
+        const recycled = path.join(parent, `repl-${child.pid}-${staleScope}-b2c3d4`);
+        const live = path.join(parent, `repl-${child.pid}-${scope}-d4e5f6`);
+        const unrelated = path.join(parent, "other");
+        for (const lease of [abandoned, recycled, live, unrelated]) {
+          fs.mkdirSync(lease, { recursive: true });
+        }
+        await reapCodexReplScratch(state);
+        expect(fs.readdirSync(parent).sort()).toEqual(["other", path.basename(live)].sort());
+      } finally {
+        child.stdin.end();
+        await exited;
+      }
+    },
+  );
 });

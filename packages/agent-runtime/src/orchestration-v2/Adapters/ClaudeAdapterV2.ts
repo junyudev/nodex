@@ -10402,6 +10402,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 turnInput.hostSourceRoots,
               );
             const attachTurn = Effect.gen(function* () {
+              if (turnInput.prepareDesktopToolPolicy) {
+                const nativeMode = querySession.permissionMode;
+                const requestedMode = turnInput.runtimePolicy.runtimeMode;
+                const effectiveMode =
+                  nativeMode === "bypassPermissions"
+                    ? requestedMode
+                    : nativeMode === "auto" && requestedMode !== "approval-required"
+                      ? "auto"
+                      : "approval-required";
+                yield* turnInput.prepareDesktopToolPolicy(effectiveMode);
+              }
               querySession.lastTurn = context;
               yield* Ref.set(activeTurn, context);
               yield* emitProviderEvent({

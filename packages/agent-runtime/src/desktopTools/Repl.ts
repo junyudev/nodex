@@ -36,9 +36,10 @@ interface ReplOptions {
 function desktopToolTransport(
   options: ReplOptions,
   onReceive: (message: JSONRPCMessage) => void,
-): Transport {
+): Transport & { readonly scratchRoot: string | undefined } {
   let child: ChildProcessWithoutNullStreams | undefined;
   let stop: (() => Promise<void>) | undefined;
+  let scratchRoot: string | undefined;
   let closing: Promise<void> | undefined;
   let notifiedClosed = false;
   let cancelTimedOut = false;
@@ -50,7 +51,10 @@ function desktopToolTransport(
   const buffer = new ReadBuffer();
   const cancellationAcks = new Map<RequestId, { done: Promise<void>; resolve: () => void }>();
   const windows = process.platform === "win32";
-  const transport: Transport = {
+  const transport: Transport & { readonly scratchRoot: string | undefined } = {
+    get scratchRoot() {
+      return scratchRoot;
+    },
     async start() {
       const launched = spawnDesktopReplProcess(options.home, options.sessionId, {
         command: options.server.command,
@@ -61,6 +65,7 @@ function desktopToolTransport(
       });
       child = launched.child;
       stop = launched.stop;
+      scratchRoot = launched.scratchRoot;
       // Runtime diagnostics can contain code or private configuration; never relay stderr.
       child.stderr.resume();
       child.stdin.on("error", (error) => transport.onerror?.(error));
@@ -155,15 +160,16 @@ function desktopToolTransport(
 /** One lazy client per Thread. Concurrent callers share startup and a crash clears the slot. */
 export function makeRepl(options: ReplOptions) {
   let current: Promise<Client> | undefined;
-  let running: Client | undefined;
+  let running: { readonly client: Client; readonly scratchRoot: string | undefined } | undefined;
   const transports = new Set<Transport>();
   let closed = false;
 
-  const get = () => {
+  // The next launch uses this cwd. The caller releases the current process before rebinding it.
+  const get = (cwd = options.cwd) => {
     if (closed) return Promise.reject(new Error("Desktop Tool runtime closed"));
     if (current) return current;
     const elicitations = new Map<RequestId, AbortController>();
-    const transport = desktopToolTransport(options, (message) => {
+    const transport = desktopToolTransport({ ...options, cwd }, (message) => {
       if (isJSONRPCRequest(message) && message.method === "elicitation/create") {
         elicitations.set(message.id, new AbortController());
       }
@@ -192,7 +198,7 @@ export function makeRepl(options: ReplOptions) {
     });
     const forget = () => {
       if (current === starting) current = undefined;
-      if (running === client) running = undefined;
+      if (running?.client === client) running = undefined;
       for (const controller of elicitations.values()) controller.abort();
       void transport.close().then(() => transports.delete(transport));
     };
@@ -208,7 +214,7 @@ export function makeRepl(options: ReplOptions) {
       })
       .then(() => {
         if (closed || current !== starting) throw new Error("Desktop Tool runtime closed");
-        running = client;
+        running = { client, scratchRoot: transport.scratchRoot };
         return client;
       })
       .catch(() => {
@@ -232,5 +238,11 @@ export function makeRepl(options: ReplOptions) {
     await Promise.resolve();
     await Promise.all([...transports].map((transport) => transport.close()));
   };
-  return { get, running: () => running, release, close };
+  return {
+    get,
+    running: () => running?.client,
+    scratchRoot: () => running?.scratchRoot,
+    release,
+    close,
+  };
 }

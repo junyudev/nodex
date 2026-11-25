@@ -829,6 +829,8 @@ function codexExecutionPolicy(
       type: "workspaceWrite",
       writableRoots: [...new Set(compactStrings([policy.cwd, ...sourceRoots, attachmentsDir]))],
       networkAccess: false,
+      // Keep Codex's default :tmpdir grant. The Desktop Tool REPL resolves it against the
+      // separate TMPDIR its own launcher supplies.
     },
   };
 }

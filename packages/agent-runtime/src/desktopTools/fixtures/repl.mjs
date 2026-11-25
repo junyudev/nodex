@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
 const pending = new Map();
@@ -44,6 +45,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (method !== "tools/call") return;
   trace({ event: params.name, arguments: params.name === "turn_ended" ? params.arguments : undefined });
   const code = params.arguments?.code;
+  if (code === "scratch") return success(id, { tmpDir: tmpdir() });
   if (code === "crash") process.exit(1);
   if (code === "long" || code === "slow") {
     // "slow" finishes by itself unless it is cancelled first; "long" only ends by cancellation.

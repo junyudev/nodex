@@ -19,6 +19,7 @@ import {
 } from "../codex/browser-plugin-reconciler";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
 import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
+import { reapCodexReplScratch } from "../codex/desktop-tool-environment";
 import type { NodeExecutionRuntime } from "../platform/node/NodeExecutionRuntime";
 import {
   BrowserUseThreadConfigBuilder,
@@ -109,6 +110,11 @@ interface DesktopToolRuntimeLayerOptions {
 
 const make = (options: DesktopToolRuntimeLayerOptions) =>
   Effect.gen(function* () {
+    if (options.platform === "darwin") {
+      yield* Effect.tryPromise(() => reapCodexReplScratch(options.runtimeStateHome)).pipe(
+        Effect.catch((cause) => Effect.logWarning("Could not reap Desktop Tool scratch", cause)),
+      );
+    }
     const plugins = yield* options.plugins(options.availableBackends);
     const hostMaterialization = yield* Semaphore.make(1);
     const snapshot = Effect.gen(function* () {

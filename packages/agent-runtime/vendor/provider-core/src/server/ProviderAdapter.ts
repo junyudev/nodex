@@ -507,6 +507,8 @@ export interface ProviderAdapterV2TurnInput {
   readonly hostCliShell?: import("./ExecutionHost.ts").HostCliShell;
   /** Current Project Sources supplied by the host for this admitted Turn. */
   readonly hostSourceRoots?: readonly string[];
+  /** Record the mode confirmed by the native adapter before it runs the prompt. */
+  readonly prepareDesktopToolPolicy?: (runtimeMode: RuntimeMode) => Effect.Effect<void>;
   readonly hostOrchestrationInstructions?: string;
   readonly appThread: OrchestrationV2AppThread;
   readonly threadId: ThreadId;

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isAbsolute } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   CallToolResultSchema,
@@ -37,6 +38,7 @@ import {
 import { field } from "../orchestration-v2/unknownField.ts";
 import { makeCaptures, publicArguments } from "./Captures.ts";
 import { makeRepl } from "./Repl.ts";
+import { replSandboxMetadata, type ReplExecutionPolicy } from "./ReplSandboxState.ts";
 import { readDesktopToolSkills } from "./Skills.ts";
 
 export const desktopToolsPath = "/mcp/node_repl";
@@ -62,6 +64,7 @@ interface Turn {
   readonly identity: HostTurnIdentity;
   readonly metadata: { session_id: string; thread_id: string; turn_id: string };
   readonly controller: AbortController;
+  readonly executionPolicy?: ReplExecutionPolicy;
   started?: Promise<void>;
 }
 
@@ -79,6 +82,7 @@ interface Ports {
   ) => Promise<ProviderApprovalDecision>;
   readonly isAllowedForChat: (threadId: ThreadId) => Promise<boolean>;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly attachmentsDir?: string;
 }
 
 export function desktopSessionId(threadId: ThreadId): string {
@@ -96,6 +100,14 @@ const toolError = (text: string): CallToolResult => ({
   isError: true,
 });
 const terminal = (status: string) => status !== "running" && status !== "pending";
+
+const sameRunOwner = (a: HostTurnIdentity, b: HostTurnIdentity) =>
+  a.runId === b.runId &&
+  a.attemptId === b.attemptId &&
+  a.providerInstanceId === b.providerInstanceId &&
+  a.providerSessionId === b.providerSessionId &&
+  a.providerThreadId === b.providerThreadId &&
+  a.nativeGeneration === b.nativeGeneration;
 
 /** Settles with `work`, or rejects as soon as `signal` aborts and leaves `work` running. */
 const whileWaiting = <A>(work: Promise<A>, signal: AbortSignal) =>
@@ -126,7 +138,35 @@ export function makeDesktopTools(
   const replIdleReleaseMs = options.replIdleReleaseMs ?? REPL_IDLE_RELEASE_MS;
   const captures = makeCaptures();
   const threads = new Map<ThreadId, Thread>();
+  const runPolicies = new Map<
+    ThreadId,
+    {
+      readonly identity: HostTurnIdentity;
+      readonly policy: ReplExecutionPolicy;
+    }
+  >();
+  const managesSandbox = process.platform === "darwin";
   let closed = false;
+
+  const prepareRun = (
+    identity: HostTurnIdentity,
+    runtimeMode: RuntimeMode,
+    sourceRoots: readonly string[],
+  ) => {
+    if (closed || !managesSandbox) return;
+    const previous = runPolicies.get(identity.threadId);
+    if (previous && sameRunOwner(previous.identity, identity)) return;
+    const writableRoots = [identity.cwd, ...sourceRoots, ports.attachmentsDir].filter(
+      (path): path is string => typeof path === "string" && isAbsolute(path),
+    );
+    const thread = threads.get(identity.threadId);
+    const retired = previous && thread?.turns.get(previous.identity.attemptId);
+    if (thread && retired) void thread.end(retired, "Interrupt");
+    runPolicies.set(identity.threadId, {
+      identity,
+      policy: { runtimeMode, cwd: identity.cwd, writableRoots: [...new Set(writableRoots)].sort() },
+    });
+  };
 
   const observe = (turn: Turn, observation: DesktopTurnObservation) =>
     ports
@@ -182,6 +222,37 @@ export function makeDesktopTools(
       },
     });
 
+    let appliedPolicy: ReplExecutionPolicy | undefined;
+    let clientQueue = Promise.resolve();
+    const client = (policy?: ReplExecutionPolicy, validate?: () => void) => {
+      if (!managesSandbox) return repl.get();
+      const pending = clientQueue.then(async () => {
+        validate?.();
+        if (policy && !isDeepStrictEqual(appliedPolicy, policy)) {
+          if (appliedPolicy || policy.cwd !== launch.cwd) await repl.release();
+          validate?.();
+          appliedPolicy = policy;
+        }
+        return await repl.get(appliedPolicy ? appliedPolicy.cwd : launch.cwd);
+      });
+      clientQueue = pending.then(
+        () => {},
+        () => {},
+      );
+      return pending;
+    };
+    const sandboxMetadata = (policy: ReplExecutionPolicy | undefined) => {
+      if (!policy) return {};
+      const scratchRoot = repl.scratchRoot();
+      if (!scratchRoot) throw new Error("Desktop Tool scratch directory unavailable");
+      return replSandboxMetadata(
+        policy,
+        policy.cwd ?? process.cwd(),
+        scratchRoot,
+        launch.tools.server.env.CODEX_CLI_PATH,
+      );
+    };
+
     const end = (turn: Turn, hook: "Stop" | "Interrupt") => {
       if (!turns.delete(turn.identity.attemptId)) return Promise.resolve();
       turn.controller.abort();
@@ -198,6 +269,7 @@ export function makeDesktopTools(
                   session_id: turn.metadata.session_id,
                   turn_id: turn.metadata.turn_id,
                 },
+                ...(turn.executionPolicy ? { _meta: sandboxMetadata(turn.executionPolicy) } : {}),
               },
             },
             CallToolResultSchema,
@@ -229,7 +301,8 @@ export function makeDesktopTools(
     };
     return {
       launch,
-      repl,
+      client,
+      sandboxMetadata,
       invocations,
       abandoned,
       turns,
@@ -326,12 +399,18 @@ export function makeDesktopTools(
     };
   };
 
-  const getClient = async (caller: DesktopCaller, expected: Thread, signal?: AbortSignal) => {
+  const getClient = async (
+    caller: DesktopCaller,
+    expected: Thread,
+    signal?: AbortSignal,
+    policy?: ReplExecutionPolicy,
+    assertCurrent?: () => void,
+  ) => {
     // Prepare can publish the new launcher while the old process group is draining.
     await pendingCloses.get(caller.threadId);
     signal?.throwIfAborted();
     if (lookup(caller) !== expected) throw new Error("Desktop tools are unavailable");
-    return await expected.repl.get();
+    return await expected.client(policy, assertCurrent ?? (() => signal?.throwIfAborted()));
   };
 
   const initialize = async (caller: DesktopCaller, signal?: AbortSignal) => {
@@ -406,11 +485,15 @@ export function makeDesktopTools(
     if (!authority || lookup(caller) !== thread || requestSignal.aborted)
       return toolError("Desktop tools require an active turn");
     const { identity, runtimeMode } = authority;
+    const prepared = runPolicies.get(caller.threadId);
+    if (managesSandbox && (!prepared || !sameRunOwner(prepared.identity, identity)))
+      return toolError("Desktop tool execution policy is unavailable");
     const sessionId = desktopSessionId(caller.threadId);
     const turn: Turn = thread.turns.get(identity.attemptId) ?? {
       identity,
       metadata: { session_id: sessionId, thread_id: sessionId, turn_id: identity.attemptId },
       controller: new AbortController(),
+      ...(prepared ? { executionPolicy: prepared.policy } : {}),
     };
     thread.turns.set(identity.attemptId, turn);
     thread.keepKernel();
@@ -421,17 +504,26 @@ export function makeDesktopTools(
     const startedAtMs = Date.now();
     thread.invocations.set(callId, invocation);
 
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      if (
+        lookup(caller) !== thread ||
+        (managesSandbox && runPolicies.get(caller.threadId) !== prepared)
+      )
+        throw new Error("Desktop tool execution policy was retired");
+    };
+
     const execute = async (): Promise<CallToolResult> => {
       // Subscribe before rechecking so retirement during the first admission read cannot be missed.
       const live = await ports.admit(caller);
       if (live?.identity.attemptId !== identity.attemptId || signal.aborted)
         return toolError("Desktop tool call cancelled");
-      const client = await getClient(caller, thread, signal);
+      const discovery = await getClient(caller, thread, signal);
       let cursor: string | undefined;
       let visible = false;
       const visited = new Set<string>();
       do {
-        const page = await client.request(
+        const page = await discovery.request(
           { method: "tools/list", params: cursor === undefined ? undefined : { cursor } },
           ListToolsResultSchema,
           { signal },
@@ -457,6 +549,15 @@ export function makeDesktopTools(
         return toolError("Desktop tool call cancelled");
       // One kernel runs this Thread's calls, so a call its caller gave up on finishes first.
       await whileWaiting(Promise.all(thread.abandoned), signal);
+      let client = discovery;
+      if (turn.executionPolicy) {
+        const current = await ports.admit(caller);
+        if (!current || !sameRunOwner(current.identity, identity))
+          return toolError("Desktop tool call cancelled");
+        assertCurrent();
+        client = await getClient(caller, thread, signal, turn.executionPolicy, assertCurrent);
+        assertCurrent();
+      }
       // The REPL can only cancel running JavaScript by resetting its kernel, which discards
       // every binding the Agent has built. A caller that stops waiting, as a provider does when
       // a new message redirects its turn, is not a reason to do that: the call belongs to the
@@ -467,7 +568,11 @@ export function makeDesktopTools(
           params: {
             name: params.name,
             arguments: args,
-            _meta: { callId, [turnMetadataKey]: turn.metadata },
+            _meta: {
+              callId,
+              [turnMetadataKey]: turn.metadata,
+              ...thread.sandboxMetadata(turn.executionPolicy),
+            },
           },
         },
         CallToolResultSchema,
@@ -523,6 +628,8 @@ export function makeDesktopTools(
 
   return {
     prepare,
+    managesSandbox,
+    prepareRun,
     initialize,
     list,
     call,
@@ -531,6 +638,8 @@ export function makeDesktopTools(
     hasCaptures: captures.has,
     retire(threadId: ThreadId, match: (identity: HostTurnIdentity) => boolean, status: string) {
       if (!terminal(status)) return;
+      const prepared = runPolicies.get(threadId);
+      if (prepared && match(prepared.identity)) runPolicies.delete(threadId);
       const thread = threads.get(threadId);
       if (!thread) return;
       for (const turn of thread.turns.values())
@@ -539,10 +648,12 @@ export function makeDesktopTools(
     },
     async closeThread(threadId: ThreadId) {
       captures.clear(threadId);
+      runPolicies.delete(threadId);
       await remove(threadId);
     },
     async close() {
       closed = true;
+      runPolicies.clear();
       for (const threadId of threads.keys()) void remove(threadId);
       await Promise.all(pendingCloses.values());
     },

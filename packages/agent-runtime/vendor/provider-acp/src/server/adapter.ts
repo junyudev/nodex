@@ -9803,6 +9803,20 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               });
             }
             yield* validateModelSelection(turnInput.modelSelection);
+            if (turnInput.prepareDesktopToolPolicy) {
+              const { runtimeMode, maxRuntimeMode } = turnInput.runtimePolicy;
+              const ceiling =
+                maxRuntimeMode && isRuntimeModeAbove(runtimeMode, maxRuntimeMode)
+                  ? maxRuntimeMode
+                  : runtimeMode;
+              const modeId = (yield* runtime.getModeState)?.currentModeId;
+              const nativeMode = flavor.runtimeModeForSessionMode
+                ? (modeId && flavor.runtimeModeForSessionMode(modeId)) || "approval-required"
+                : ceiling;
+              yield* turnInput.prepareDesktopToolPolicy(
+                isRuntimeModeAbove(nativeMode, ceiling) ? ceiling : nativeMode,
+              );
+            }
             yield* Ref.set(lastTurnRoute, {
               threadId: turnInput.threadId,
               providerThreadId: turnInput.providerThread.id,

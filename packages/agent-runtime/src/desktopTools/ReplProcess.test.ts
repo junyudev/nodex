@@ -1,15 +1,18 @@
 // @effect-diagnostics nodeBuiltinImport:off -- exercises real process and lease lifetime
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vite-plus/test";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { makeRepl } from "./Repl.ts";
 import { reapDesktopReplProcesses } from "./ReplProcess.ts";
 
 const posix = process.platform === "darwin" || process.platform === "linux";
+const macos = process.platform === "darwin";
 const groups = () =>
   execFileSync("/bin/ps", ["-ax", "-o", "pid=,pgid=,stat="], { encoding: "utf8" })
     .trim()
@@ -19,6 +22,7 @@ const groups = () =>
     .map(([pid, group]) => ({ pid: Number(pid), group: Number(group) }));
 
 const fixture = fileURLToPath(new URL("./fixtures/repl-owner.ts", import.meta.url));
+const replFixture = fileURLToPath(new URL("./fixtures/repl.mjs", import.meta.url));
 const startOwner = (home: string, mode: string) =>
   spawn(process.execPath, ["--import", "tsx", fixture, home, mode], {
     stdio: ["ignore", "ignore", "inherit", "ipc"],
@@ -27,18 +31,24 @@ const startOwner = (home: string, mode: string) =>
 it.skipIf(!posix).each(["idle", "in-flight"])(
   "reaps the %s REPL group after SIGKILL and recovers the writer lease",
   async (mode) => {
-    const home = await mkdtemp(join(tmpdir(), "nodex-repl-lifetime-"));
+    const root = await mkdtemp(join(tmpdir(), "nodex-repl-lifetime-"));
+    const home = join(root, "runtime");
+    await mkdir(home);
     const owner = startOwner(home, mode);
     const exited = once(owner, "exit");
     let group: number | undefined;
     try {
       const [ready] = (await once(owner, "message", {
         signal: AbortSignal.timeout(5_000),
-      })) as [{ nodeReplPid: number; kernelPid: number }];
+      })) as [{ nodeReplPid: number; kernelPid: number; scratchRoot?: string }];
       const directory = join(home, "desktop-repl");
-      const [record] = await readdir(directory);
+      const record = (await readdir(directory)).find((name) => name.endsWith(".json"));
       group = (JSON.parse(await readFile(join(directory, record!), "utf8")) as { group: number })
         .group;
+      if (macos) {
+        expect(ready.scratchRoot).toBeDefined();
+        expect(await readFile(join(ready.scratchRoot!, "fixture"), "utf8")).toBe(mode);
+      }
       expect(
         new Set(
           groups()
@@ -64,15 +74,91 @@ it.skipIf(!posix).each(["idle", "in-flight"])(
       }
       expectGroupGone();
       expect(await readdir(directory)).toEqual([]);
+      if (ready.scratchRoot)
+        await expect(stat(ready.scratchRoot)).rejects.toMatchObject({ code: "ENOENT" });
       if (mode === "in-flight")
         expect(await readdir(join(home, "codex", "node_repl", "active_execs"))).toEqual([]);
     } finally {
       if (owner.exitCode === null && owner.signalCode === null) owner.kill("SIGKILL");
       await exited;
-      await rm(home, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   },
 );
+
+const fixtureRepl = (home: string, sessionId: string, command: string = process.execPath) =>
+  makeRepl({
+    home,
+    sessionId,
+    server: {
+      command,
+      args: [replFixture, join(home, sessionId + ".jsonl")],
+      env: { TMPDIR: join(home, "ambient-tmp") },
+    },
+    environment: {},
+    cwd: home,
+    elicit: async () => ({ action: "decline" }),
+  });
+
+it.skipIf(!macos)(
+  "leases private scratch to each REPL and releases only the stopped lease",
+  async () => {
+    const parent = await mkdtemp(join(tmpdir(), "nodex-repl-scratch-"));
+    const home = join(parent, "runtime");
+    await mkdir(home);
+    const first = fixtureRepl(home, "a".repeat(64));
+    const sibling = fixtureRepl(home, "b".repeat(64));
+    try {
+      const [client] = await Promise.all([first.get(), sibling.get()]);
+      const root = first.scratchRoot()!;
+      const siblingRoot = sibling.scratchRoot()!;
+      expect(root).not.toBe(siblingRoot);
+      expect(dirname(root)).toBe(await realpath(parent));
+      expect((await stat(root)).mode & 0o777).toBe(0o700);
+      const result = await client.request(
+        { method: "tools/call", params: { name: "js", arguments: { code: "scratch" } } },
+        CallToolResultSchema,
+      );
+      expect(result.structuredContent).toEqual({ tmpDir: root });
+      const siblingFile = join(siblingRoot, "fixture");
+      await writeFile(siblingFile, "sibling lease");
+
+      await first.release();
+      expect(first.scratchRoot()).toBeUndefined();
+      await expect(stat(root)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(siblingFile, "utf8")).toBe("sibling lease");
+      const nextCwd = await mkdtemp(join(home, "new-cwd-"));
+      const replacement = await first.get(nextCwd);
+      expect(first.scratchRoot()).not.toBe(root);
+      const response = await replacement.request(
+        { method: "tools/call", params: { name: "js", arguments: { code: "cwd" } } },
+        CallToolResultSchema,
+      );
+      expect(response.structuredContent?.cwd).toBe(await realpath(nextCwd));
+    } finally {
+      await Promise.all([first.close(), sibling.close()]);
+      await rm(parent, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(!macos)("cleans up scratch if the REPL launcher cannot start", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "nodex-repl-failed-"));
+  const home = join(parent, "runtime");
+  await mkdir(home);
+  const repl = fixtureRepl(home, "a".repeat(64), join(home, "missing-executable"));
+  try {
+    await expect(repl.get()).rejects.toThrow("Desktop Tool runtime unavailable");
+    expect(repl.scratchRoot()).toBeUndefined();
+    await vi.waitFor(async () => {
+      expect(await readdir(join(home, "desktop-repl"))).toEqual([]);
+      expect(await readdir(parent)).toEqual(["runtime"]);
+    });
+  } finally {
+    await repl.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
 
 it.skipIf(!posix).each(["exited", "reused", "draining", "leader gone", "leader without argv"])(
   "reaps stale execution records when the watchdog is %s",

@@ -6,9 +6,9 @@ import {
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { readFile, readdir, rm } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { readFile, readdir, realpath, rm } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
@@ -65,6 +65,12 @@ interface ProcessRow {
 
 function recordDirectory(home: string) {
   return join(home, "desktop-repl");
+}
+
+/** Derive the cleanup target from the validated receipt name, which owns exactly one directory. */
+function scratchDirectory(home: string, token: string) {
+  // The Runtime home is a trusted code root. Keep agent-writable scratch outside that subtree.
+  return join(dirname(home), "host-desktop-repl-" + token);
 }
 
 function parseRecord(value: unknown, token: string): ReplRecord {
@@ -125,6 +131,7 @@ async function readJson(path: string): Promise<unknown> {
 async function reapRecord(
   record: ReplRecord,
   path: string,
+  scratchRoot: string | undefined,
   snapshot: () => Promise<readonly ProcessRow[]>,
 ) {
   const deadline = Date.now() + 5_000;
@@ -145,6 +152,7 @@ async function reapRecord(
     await delay(25);
     rows = await snapshot();
   }
+  if (scratchRoot) await rm(scratchRoot, { recursive: true, force: true });
   if (record.codexHome) {
     const activeExecs = join(record.codexHome, "node_repl", "active_execs");
     const live = new Set(rows.map(({ pid }) => pid));
@@ -180,10 +188,14 @@ export async function reapDesktopReplProcesses(
   } catch (error) {
     if (!missing(error)) throw error;
   }
-  for (const name of await jsonFiles(directory)) {
+  const receipts = await jsonFiles(directory);
+  if (receipts.length === 0) return;
+  const scratchHome = process.platform === "darwin" ? await realpath(home) : undefined;
+  for (const name of receipts) {
     const path = join(directory, name);
     const record = parseRecord(await readJson(path), name.slice(0, -5));
-    await reapRecord(record, path, snapshot);
+    const scratchRoot = scratchHome && scratchDirectory(scratchHome, record.token);
+    await reapRecord(record, path, scratchRoot, snapshot);
   }
 }
 
@@ -212,6 +224,7 @@ export function spawnDesktopReplProcess(home: string, sessionId: string, launch:
     });
     return {
       child,
+      scratchRoot: undefined,
       async stop() {
         child.kill();
         await exited;
@@ -222,6 +235,8 @@ export function spawnDesktopReplProcess(home: string, sessionId: string, launch:
   const token = randomUUID();
   const directory = recordDirectory(home);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const scratchRoot =
+    process.platform === "darwin" ? scratchDirectory(realpathSync(home), token) : undefined;
   const child = spawn(process.execPath, ["-e", watchdogSource, "--", watchdogPrefix + token], {
     detached: true,
     env: {},
@@ -234,6 +249,13 @@ export function spawnDesktopReplProcess(home: string, sessionId: string, launch:
   const path = join(directory, token + ".json");
   const codexHome = launch.env.CODEX_HOME;
   let record: ReplRecord | undefined;
+  const stop = async () => {
+    if (child.connected) child.disconnect();
+    await exited;
+    if (!record) return;
+    // Keep evidence for the next startup if the process table or filesystem is unavailable.
+    await reapRecord(record, path, scratchRoot, processes).catch(() => {});
+  };
   if (child.pid) {
     try {
       // The watchdog can create a launcher only after the record is committed.
@@ -243,34 +265,27 @@ export function spawnDesktopReplProcess(home: string, sessionId: string, launch:
         psOptions,
       ).trim();
       if (!startPattern.test(started)) throw new Error("Could not identify Desktop Tool watchdog");
-      record = {
+      const receipt: ReplRecord = {
         token,
         group: child.pid,
         started,
         sessionId,
         ...(codexHome && isAbsolute(codexHome) ? { codexHome } : {}),
       };
-      writeFileSync(path + ".tmp", JSON.stringify(record), { mode: 0o600 });
+      writeFileSync(path + ".tmp", JSON.stringify(receipt), { mode: 0o600 });
       renameSync(path + ".tmp", path);
-      child.send(launch, (error) => {
+      record = receipt;
+      // Commit the receipt first so a crash during provisioning can never orphan scratch.
+      if (scratchRoot) mkdirSync(scratchRoot, { mode: 0o700 });
+      const env = scratchRoot ? { ...launch.env, TMPDIR: scratchRoot } : launch.env;
+      child.send({ ...launch, env }, (error) => {
         if (error && child.connected) child.disconnect();
       });
     } catch (error) {
-      // A failed ledger write leaves the watchdog idle. Closing its private IPC
-      // endpoint lets it exit without having started the launcher.
-      if (child.connected) child.disconnect();
+      // Closing the private IPC endpoint ends the idle watchdog and reaps any committed receipt.
+      void stop();
       throw error;
     }
   }
-  return {
-    child,
-    async stop() {
-      if (child.connected) child.disconnect();
-      await exited;
-      if (record) {
-        // Keep evidence for the next startup if the process table or filesystem is unavailable.
-        await reapRecord(record, path, processes).catch(() => {});
-      }
-    },
-  };
+  return { child, scratchRoot, stop };
 }

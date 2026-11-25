@@ -20,6 +20,7 @@ import {
   type ProviderDriverKind,
   type ProviderThreadId,
   type ProviderTurnId,
+  type RuntimeMode,
 } from "@nodex/runtime-contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -2321,9 +2322,29 @@ export const layerWithOptions = (
                                   cause,
                                 }),
                             ),
-                            Effect.flatMap((host) =>
-                              runtime.startTurn({
+                            Effect.flatMap((host) => {
+                              const identity = host.identity;
+                              const prepareDesktopToolPolicy =
+                                desktopTools?.managesSandbox &&
+                                identity &&
+                                runtime.driver !== "codex"
+                                  ? (mode: RuntimeMode) =>
+                                      Effect.sync(() =>
+                                        desktopTools.prepareRun(
+                                          identity,
+                                          mode,
+                                          host.sourceRoots ?? [],
+                                        ),
+                                      )
+                                  : undefined;
+                              // OpenCode's rules come directly from the admitted policy. Claude and ACP
+                              // can narrow it when configuring their native session.
+                              const openCode = runtime.driver === "opencode";
+                              const starting = runtime.startTurn({
                                 ...input,
+                                ...(!openCode && prepareDesktopToolPolicy
+                                  ? { prepareDesktopToolPolicy }
+                                  : {}),
                                 ...(host.identity === undefined
                                   ? {}
                                   : { hostExecutionIdentity: host.identity }),
@@ -2354,8 +2375,14 @@ export const layerWithOptions = (
                                           ? `${executionHost.orchestrationInstructions}\n\n${subagentInstructions(input.appThread.mayDelegate === false)}`
                                           : executionHost.orchestrationInstructions,
                                     }),
-                              }),
-                            ),
+                              });
+                              return openCode && prepareDesktopToolPolicy
+                                ? Effect.andThen(
+                                    prepareDesktopToolPolicy(input.runtimePolicy.runtimeMode),
+                                    starting,
+                                  )
+                                : starting;
+                            }),
                             turnMetrics("send", input.modelSelection.model),
                           ),
                       (_, exit) =>

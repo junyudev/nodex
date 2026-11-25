@@ -4336,8 +4336,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             provenance: {},
           }),
         });
-        yield* harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
+        const desktopModes: string[] = [];
+        yield* harness.runtime.startTurn({
+          ...makeClaudeTestTurnInput({
             threadId: harness.threadId,
             providerThread: harness.providerThread,
             now: yield* DateTime.now,
@@ -4345,7 +4346,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             text: "Continue",
             attachments: [],
           }),
-        );
+          prepareDesktopToolPolicy: (mode) =>
+            Effect.sync(() => {
+              desktopModes.push(mode);
+            }),
+        });
+        assert.deepEqual(desktopModes, [
+          { auto: "auto", acceptEdits: "approval-required", bypassPermissions: "full-access" }[
+            expected
+          ],
+        ]);
         assert.equal(harness.getOpenedOptions()?.permissionMode, expected);
         assert.equal(
           harness.getOpenedOptions()?.allowDangerouslySkipPermissions,

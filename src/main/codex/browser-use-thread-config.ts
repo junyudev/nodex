@@ -18,6 +18,7 @@ import {
   windowsComputerUseReplEnvironment,
 } from "./computer-use-runtime-config";
 import {
+  codexReplScratchParent,
   nodeReplServerDefinition,
   windowsReplSystemEnvironment,
   windowsDesktopToolCodexHome,
@@ -26,6 +27,24 @@ import {
 const BROWSER_USE_IN_APP_INSTRUCTIONS =
   "Control the in-app browser in conjunction with the Browser Plugin.";
 const COMPUTER_USE_INSTRUCTIONS = "Control desktop apps on macOS through Computer Use.";
+
+const MAC_NODE_REPL_INSTRUCTIONS = [
+  "Use `js` for persistent, redeclarable top-level bindings, `js_reset` to clear bindings, and `js_add_node_module_dir` to add package directories.",
+  "",
+  "On macOS the effective chat permission mode governs JavaScript and child commands:",
+  "",
+  "| Mode | Reads | Writes | Direct network |",
+  "| --- | --- | --- | --- |",
+  "| Ask for approval or Approve for me | Paths allowed by the sandbox | Execution workspace, Project Sources, attachments and scratch, subject to sandbox protections | Blocked |",
+  "| Full access | OS-account access | OS-account access | Allowed within host policy |",
+  "| Codex read-only context | Paths allowed by the sandbox | Blocked by default | Blocked by default |",
+  "",
+  "Codex also honors writable roots in its native workspace policy. Browser and app access have separate consent.",
+  "`nodeRepl.cwd` and `nodeRepl.tmpDir` report paths. Scratch is removed when the REPL process exits. Host-managed REPLs are released after 30 minutes idle. Bindings clear on kernel reset or when its effective policy or working directory changes.",
+  "",
+  "For a secret handoff, keep the value in a binding. Spawn the intended executable with an argument array and piped stdin. Pass the value using `child.stdin.end(value)`. `gh secret set NAME --repo owner/repo` reads the value from stdin.",
+  "Never put the value in tool arguments, environment variables, output, logs, files or the clipboard. If an independent value is available, compare a short SHA-256 prefix locally and report only match or no match. Report the command outcome separately.",
+].join("\n");
 
 type BrowserUseThreadConfig = NonNullable<ThreadStartParams["config"]>;
 
@@ -76,8 +95,10 @@ function buildNodeReplServer(
   codexHome: string,
   availableBackends: readonly BrowserRuntimeBackend[],
   computerUseRuntime: AvailableMacComputerUse | null,
+  hostManaged: boolean,
   windows?: WindowsReplOptions,
 ) {
+  const mac = bundle.manifest.targetPlatform === "darwin";
   const targetPath = windows ? path.win32 : path;
   const availableBackendsValue = availableBackends.join(",");
   // app-server installs local marketplace plugins into versioned directories
@@ -121,6 +142,11 @@ function buildNodeReplServer(
     NODE_REPL_TRUSTED_SERVICES: JSON.stringify(trustedServices),
     NODE_REPL_TRUSTED_CODE_PATHS: trustedCodePaths,
   };
+  if (mac) {
+    env.NODE_REPL_TOOL_OVERRIDES = JSON.stringify({
+      server_instructions: MAC_NODE_REPL_INSTRUCTIONS,
+    });
+  }
   if (availableBackends.includes("iab")) {
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = BROWSER_USE_IN_APP_INSTRUCTIONS;
   }
@@ -138,10 +164,16 @@ function buildNodeReplServer(
     env.SKY_CUA_SERVICE_PATH = computerUseRuntime.appPath;
   }
 
+  if (mac && hostManaged) {
+    // The Runtime sets the real value at spawn. Declaring the key pins it past Codex config.
+    env.TMPDIR = "";
+  }
+
   return nodeReplServerDefinition({
     windowsJobLauncher: windows?.jobLauncher,
     codexCliPath: bundle.paths.codexCli,
     env,
+    scratchParent: mac && !hostManaged ? codexReplScratchParent(runtimeStateHome) : undefined,
     nodePath: bundle.paths.node,
     nodeReplPath: bundle.paths.nodeRepl,
   });
@@ -249,6 +281,7 @@ export class BrowserUseThreadConfigBuilder {
         this.codexHome,
         availableBackends,
         availableComputerUseRuntime,
+        plugins !== undefined,
         windows,
       ),
       availableBackends,

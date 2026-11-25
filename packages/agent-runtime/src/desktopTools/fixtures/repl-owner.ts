@@ -34,13 +34,15 @@ await Effect.runPromise(
             elicit: async () => ({ action: "decline" }),
           });
           const client = await repl.get();
+          const scratchRoot = repl.scratchRoot();
+          if (scratchRoot) await writeFile(join(scratchRoot, "fixture"), mode);
           const [started] = (await readFile(trace, "utf8")).split("\n");
           if (!started) throw new Error("Fixture REPL did not report its process IDs");
           const { pid: nodeReplPid, kernelPid } = JSON.parse(started) as {
             pid: number;
             kernelPid: number;
           };
-          if (mode === "idle") process.send!({ nodeReplPid, kernelPid });
+          if (mode === "idle") process.send!({ nodeReplPid, kernelPid, scratchRoot });
           else {
             const call = client.request(
               {
@@ -55,7 +57,7 @@ await Effect.runPromise(
                     join(activeExecs, "fixture.json"),
                     JSON.stringify({ sessionId, nodeReplPid, kernelPid }),
                   );
-                  process.send!({ nodeReplPid, kernelPid });
+                  process.send!({ nodeReplPid, kernelPid, scratchRoot });
                 },
               },
             );
