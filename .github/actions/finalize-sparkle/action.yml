@@ -9,7 +9,7 @@ inputs:
     description: Use rehearsal notes
     required: false
   architecture:
-    description: arm64, windows-x64 or windows-arm64
+    description: arm64 or windows-x64
     required: true
   channel:
     description: stable or nightly update channel

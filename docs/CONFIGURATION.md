@@ -349,7 +349,7 @@ first enabled profile reads them and continues each copy as its account; see
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the
 installed `opencode` executable. Use **Agent > OpenCode** to disable it or configure an instance.
 If OpenCode is missing, Nodex can run its official installer after you choose to install it.
-On Windows, installation downloads the official standalone executable for x64 or arm64.
+On Windows, installation downloads the official x64 standalone executable.
 Installation uses your operating-system user directory. Nodex verifies the installed
 executable and discovers it immediately, without requiring an application restart.
 Choose its profile directory or leave it empty for Nodex's isolated

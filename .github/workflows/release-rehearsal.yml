@@ -89,7 +89,7 @@ jobs:
       csc_link: ${{ secrets.CSC_LINK }}
 
   windows-distribution:
-    name: build native Windows distributions
+    name: build Windows x64 installer
     needs: [validate, certification]
     permissions:
       actions: read
@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        architecture: [arm64, windows-x64, windows-arm64]
+        architecture: [arm64, windows-x64]
     runs-on: macos-26
     # Deltas are an optimisation. A finalizer that stalls must not hold a release for six hours.
     timeout-minutes: 120

@@ -12,7 +12,7 @@ export const SOCIAL_CARDS = {
   },
   download: {
     file: "og-download.png",
-    alt: "Download Nodex, free and open source, for macOS on Apple silicon and Windows 11 on x64 and Arm, or with Homebrew.",
+    alt: "Download Nodex, free and open source, for macOS on Apple silicon and Windows 11 on x64, or with Homebrew.",
   },
   changelog: {
     file: "og-changelog.png",

@@ -6,7 +6,7 @@ runs:
     - name: Prepare native rustup
       shell: pwsh
       run: |
-        $target = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+        $target = 'x86_64-pc-windows-msvc'
         $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
         if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
           Invoke-WebRequest "https://static.rust-lang.org/rustup/dist/$target/rustup-init.exe" -OutFile "$env:RUNNER_TEMP\rustup-init.exe"

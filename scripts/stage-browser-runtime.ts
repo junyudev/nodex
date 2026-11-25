@@ -304,7 +304,7 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
         "--app-server-runtime-version <version> --app-server-source-commit <commit> " +
         "--app-server-protocol-schema-fingerprint <sha256> " +
         "--app-server-entrypoint-sha256 <sha256> --target-platform <platform> " +
-        "--target-arch <arch> (macOS requires arm64)",
+        "--target-arch <arch> (macOS arm64 or Windows x64)",
     );
   }
   return {

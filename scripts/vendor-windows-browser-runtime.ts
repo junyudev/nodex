@@ -184,7 +184,7 @@ function inspectEmbeddedPublisher(certificate: Buffer): WindowsAuthenticodePubli
   return { subject, issuer };
 }
 
-function destinationFor(relative: string, arch: WindowsBrowserRuntimeArch): string | null {
+function destinationFor(relative: string): string | null {
   if (CLI_FILES.includes(relative)) return `codex-cli/bin/${relative}`;
   if (relative === "native/windows-account.node") return relative;
   if (relative === "cua_node/bin/node.exe" || relative === "cua_node/bin/node_repl.exe") {
@@ -195,18 +195,18 @@ function destinationFor(relative: string, arch: WindowsBrowserRuntimeArch): stri
     relative === "cua_node/bin/LICENSE" ||
     relative.startsWith(`${MODULES}/`)
   ) {
-    if (relative.includes("/prebuilds/") && !relative.includes(`/prebuilds/win32-${arch}/`))
+    if (relative.includes("/prebuilds/") && !relative.includes("/prebuilds/win32-x64/"))
       return null;
     return `runtime/${relative.slice("cua_node/".length)}`;
   }
   if (!relative.startsWith(PLUGINS)) return null;
   const pluginPath = relative.slice(PLUGINS.length);
   if (!/^(?:browser|chrome|computer-use)\//u.test(pluginPath)) return null;
-  if (pluginPath.includes("/prebuilds/") && !pluginPath.includes(`/prebuilds/win32-${arch}/`))
+  if (pluginPath.includes("/prebuilds/") && !pluginPath.includes("/prebuilds/win32-x64/"))
     return null;
   if (
     pluginPath.startsWith("chrome/extension-host/") &&
-    !pluginPath.startsWith(`chrome/extension-host/windows/${arch}/`)
+    !pluginPath.startsWith("chrome/extension-host/windows/x64/")
   )
     return null;
   return `marketplace/plugins/${pluginPath}`;
@@ -272,7 +272,7 @@ export function vendorWindowsBrowserRuntime(options: Options): WindowsBrowserRun
   const descriptor = JSON.parse(
     readMapped(`${RESOURCE_ROOT}${PLUGINS}chrome/scripts/extension-ids.json`).toString(),
   );
-  const helper = arch === "arm64" ? "codex-computer-use-arm64.exe" : "codex-computer-use.exe";
+  const helper = "codex-computer-use.exe";
   const moduleRoot = "runtime/bin/node_modules";
   const marketplaceManifest = "marketplace/.agents/plugins/marketplace.json";
   const browser = "marketplace/plugins/browser";
@@ -318,7 +318,7 @@ export function vendorWindowsBrowserRuntime(options: Options): WindowsBrowserRun
     }
     for (const relative of files.keys()) {
       const destination = relative.startsWith(RESOURCE_ROOT)
-        ? destinationFor(relative.slice(RESOURCE_ROOT.length), arch)
+        ? destinationFor(relative.slice(RESOURCE_ROOT.length))
         : null;
       if (destination) write(destination, readMapped(relative));
     }
@@ -327,7 +327,7 @@ export function vendorWindowsBrowserRuntime(options: Options): WindowsBrowserRun
       ...CLI_FILES.map((file) => `codex-cli/bin/${file}`),
       `${swift}/VCRUNTIME140.dll`,
       `${swift}/MSVCP140.dll`,
-      ...(arch === "x64" ? [`${swift}/VCRUNTIME140_1.dll`] : []),
+      `${swift}/VCRUNTIME140_1.dll`,
       `${moduleRoot}/@oai/cua/bin/windows/${helper}`,
     ]) {
       if (!pe.has(name)) throw new Error(`Desktop Tool dependency missing: ${name}`);

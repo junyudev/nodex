@@ -212,7 +212,7 @@ export type MacBrowserRuntimeManifest = BrowserRuntimeManifestCommon & {
   };
 };
 
-export type WindowsBrowserRuntimeArch = "x64" | "arm64";
+export type WindowsBrowserRuntimeArch = "x64";
 export type WindowsAuthenticodePublisherPolicy = {
   subject: string;
   issuer: string;
@@ -247,14 +247,14 @@ export type WindowsBrowserRuntimeManifest = BrowserRuntimeManifestCommon & {
 };
 
 export type BrowserRuntimeManifest = MacBrowserRuntimeManifest | WindowsBrowserRuntimeManifest;
-export type BrowserRuntimeTargetKey = "darwin-arm64" | "win32-x64" | "win32-arm64";
+export type BrowserRuntimeTargetKey = "darwin-arm64" | "win32-x64";
 
 export function browserRuntimeTargetKey(
   platform: string,
   arch: string,
 ): BrowserRuntimeTargetKey | null {
   if (platform === "darwin" && arch === "arm64") return "darwin-arm64";
-  if (platform === "win32" && (arch === "x64" || arch === "arm64")) return `win32-${arch}`;
+  if (platform === "win32" && arch === "x64") return `win32-${arch}`;
   return null;
 }
 
@@ -717,6 +717,7 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
   };
 
   if (targetPlatform === "win32") {
+    if (targetArch !== "x64") return null;
     const browserUse = parseBrowserUseCapability(value.capabilities.browserUse, () => ({}));
     const computerUse = parseWindowsComputerUse(value.capabilities.computerUse);
     const sourcePackage = parseWindowsBrowserRuntimePackageIdentity(value.sourcePackage);

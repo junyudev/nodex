@@ -40,12 +40,12 @@ const item: WindowsUpdateItem = {
   expectedBytes: bytes.length,
   signature,
 };
-const config = (architecture: "x64" | "arm64" = "x64") => ({
+const config = () => ({
   schemaVersion: 1,
-  architecture,
+  architecture: "x64",
   updates: "enabled",
   buildVersion: "1.1.1",
-  feedUrls: windowsUpdateFeedUrls(architecture),
+  feedUrls: windowsUpdateFeedUrls("x64"),
   publicKey: APP_UPDATE_PUBLIC_KEY,
 });
 const xmlItem = (version = "1.1.2", arch = "x64") =>
@@ -66,9 +66,9 @@ const untilEvent = (events: AppUpdaterEvent[], type: AppUpdaterEvent["type"]) =>
   expect.poll(() => events.some((event) => event.type === type)).toBe(true);
 
 describe("packaged Windows update trust", () => {
-  test.each(["x64", "arm64"] as const)("accepts the pinned %s feeds", (architecture) => {
-    expect(parseWindowsAppUpdateConfig(config(architecture))).toMatchObject({
-      architecture,
+  test("accepts the pinned x64 feeds", () => {
+    expect(parseWindowsAppUpdateConfig(config())).toMatchObject({
+      architecture: "x64",
       updates: "enabled",
     });
   });
@@ -93,7 +93,7 @@ describe("packaged Windows update trust", () => {
     ).toBe("disabled");
     expect(() => parseWindowsAppUpdateConfig({ ...config(), updates: "disabled" })).toThrow();
   });
-  test("packaged entry point enforces key and Electron architecture before acquisition", async () => {
+  test("packaged entry point enforces key and update availability before acquisition", async () => {
     const root = directory();
     await mkdir(join(root, "native"));
     await writeFile(
@@ -107,14 +107,6 @@ describe("packaged Windows update trust", () => {
         directory: join(root, "updates"),
       }),
     ).toThrow();
-    await writeFile(join(root, "native", "app-update.json"), JSON.stringify(config()));
-    expect(() =>
-      createPackagedWindowsAppUpdaterPlatform({
-        resourcesPath: root,
-        architecture: "arm64",
-        directory: root,
-      }),
-    ).toThrow("architecture");
     await writeFile(
       join(root, "native", "app-update.json"),
       JSON.stringify({ ...config(), updates: "disabled", feedUrls: null }),
@@ -133,7 +125,7 @@ describe("Windows appcast selection", () => {
   test("selects the newest architecture-qualified build, independent of item order", () => {
     expect(
       selectWindowsUpdate(
-        feed(xmlItem("1.1.3"), xmlItem("1.1.99", "arm64"), xmlItem("1.1.2")),
+        feed(xmlItem("1.1.3"), xmlItem("1.1.99", "ia32"), xmlItem("1.1.2")),
         "x64",
         "1.1.1",
       ),

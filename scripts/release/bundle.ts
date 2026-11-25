@@ -33,7 +33,6 @@ import { parseSparkleArchitectureUpdateManifest } from "./sparkle-manifest";
 
 import {
   RELEASE_ARCHITECTURES,
-  WINDOWS_ARCHITECTURES,
   windowsInstallerName,
   type ReleaseArchitecture,
   type MacArchitecture,
@@ -52,16 +51,25 @@ import {
   type MobilePlatform,
 } from "./mobile";
 export type { MacArchitecture } from "./targets";
-export const RELEASE_BUNDLE_SCHEMA_VERSION = 7;
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 8;
 /** Bundles that carry every desktop target; schema 5 adds Nodex Mobile. */
-export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [4, 5, 6, 7];
+export const COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS: readonly number[] = [
+  4,
+  5,
+  6,
+  7,
+  RELEASE_BUNDLE_SCHEMA_VERSION,
+];
 /** Every bundle a published release may carry, back to the last macOS-only format. */
-export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [3, 4, 5, 6, 7];
+export const RELEASE_HISTORY_SCHEMA_VERSIONS: readonly number[] = [
+  3,
+  ...COMPLETE_RELEASE_BUNDLE_SCHEMA_VERSIONS,
+];
 /** Where a bundle keeps its certified iOS build: TestFlight receives it, GitHub never does. */
 export const TESTFLIGHT_DIRECTORY = "testflight";
 
-export interface ReleaseArtifactIdentity {
-  readonly architecture?: ReleaseArchitecture;
+export interface ReleaseArtifactIdentity<Architecture extends string = ReleaseArchitecture> {
+  readonly architecture?: Architecture;
   readonly bytes: number;
   readonly name: string;
   readonly role:
@@ -215,9 +223,12 @@ const artifactIdentity = (
 const readJson = (filePath: string): unknown =>
   JSON.parse(readFileSync(filePath, "utf8")) as unknown;
 
-const parseArtifact = (value: unknown): ReleaseArtifactIdentity => {
+const parseArtifact = <Architecture extends string>(
+  value: unknown,
+  architectures: readonly Architecture[],
+): ReleaseArtifactIdentity<Architecture> => {
   if (!isRecord(value)) throw new Error("Release artifact identity is invalid.");
-  const architecture = value.architecture as ReleaseArchitecture | undefined;
+  const architecture = value.architecture as Architecture | undefined;
   if (
     typeof value.name !== "string" ||
     basename(value.name) !== value.name ||
@@ -226,8 +237,7 @@ const parseArtifact = (value: unknown): ReleaseArtifactIdentity => {
     typeof value.sha256 !== "string" ||
     typeof value.role !== "string" ||
     !ARTIFACT_ROLES.has(value.role as ReleaseArtifactIdentity["role"]) ||
-    (architecture !== undefined &&
-      !RELEASE_ARCHITECTURES.includes(architecture as ReleaseArchitecture))
+    (architecture !== undefined && !architectures.includes(architecture))
   ) {
     throw new Error("Release artifact identity is invalid.");
   }
@@ -290,18 +300,26 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
       candidate.agentSkills,
       "Architecture Agent Skills identity",
     ),
-    artifacts: candidate.artifacts.map(parseArtifact),
+    artifacts: candidate.artifacts.map((artifact) =>
+      parseArtifact(artifact, RELEASE_ARCHITECTURES),
+    ),
     version,
     buildIdentity,
   } as ArchitectureBuildManifest;
 }
 
+const LEGACY_RELEASE_ARCHITECTURES = ["arm64", "windows-x64", "windows-arm64"] as const;
+type ReleaseHistoryArchitecture = (typeof LEGACY_RELEASE_ARCHITECTURES)[number];
+
 type ReleaseHistoryBundle = Omit<
   ReleaseBundleManifest,
-  "schemaVersion" | "architectures" | "mobile"
+  "schemaVersion" | "architectures" | "assets" | "mobile"
 > & {
-  readonly schemaVersion: 3 | 4 | 5 | 6 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
-  readonly architectures: Readonly<Partial<ReleaseBundleManifest["architectures"]>>;
+  readonly schemaVersion: 3 | 4 | 5 | 6 | 7 | typeof RELEASE_BUNDLE_SCHEMA_VERSION;
+  readonly architectures: Readonly<
+    Partial<Record<ReleaseHistoryArchitecture, ReleaseBundleManifest["architectures"]["arm64"]>>
+  >;
+  readonly assets: readonly ReleaseArtifactIdentity<ReleaseHistoryArchitecture>[];
   readonly mobile?: ReleaseBundleManifest["mobile"];
 };
 
@@ -342,7 +360,7 @@ const parseMobileBuilds = (
   return builds as ReleaseBundleManifest["mobile"];
 };
 
-/** History may consume the last macOS-only bundle format; production admission requires every target. */
+/** Read published history back to the last macOS-only bundle format. */
 export function parseReleaseHistoryBundle(value: unknown): ReleaseHistoryBundle {
   return parseBundleManifest(value, true);
 }
@@ -356,9 +374,16 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   const candidate = value as Partial<ReleaseHistoryBundle>;
   const macOnlyHistory = allowHistory && candidate.schemaVersion === 3;
   const current = candidate.schemaVersion === RELEASE_BUNDLE_SCHEMA_VERSION;
-  const hasCertifiedMobile = current || candidate.schemaVersion === 6;
+  const hasCertifiedMobile =
+    current || candidate.schemaVersion === 7 || candidate.schemaVersion === 6;
+  const hasComponentManifest = current || candidate.schemaVersion === 7;
   const hasMobile = hasCertifiedMobile || candidate.schemaVersion === 5;
-  const architectures = macOnlyHistory ? (["arm64"] as const) : RELEASE_ARCHITECTURES;
+  const architectures = macOnlyHistory
+    ? (["arm64"] as const)
+    : current
+      ? RELEASE_ARCHITECTURES
+      : LEGACY_RELEASE_ARCHITECTURES;
+  const windowsArchitectures = architectures.filter((architecture) => architecture !== "arm64");
   if (
     !(allowHistory ? RELEASE_HISTORY_SCHEMA_VERSIONS : [RELEASE_BUNDLE_SCHEMA_VERSION]).includes(
       candidate.schemaVersion as number,
@@ -427,7 +452,7 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   const mobile = hasCertifiedMobile
     ? parseMobileBuilds(candidate.mobile, buildIdentityOf(releaseIdentity))
     : undefined;
-  const assets = candidate.assets.map(parseArtifact);
+  const assets = candidate.assets.map((asset) => parseArtifact(asset, architectures));
   const names = assets.map(({ name }) => name);
   if (new Set(names).size !== names.length)
     throw new Error("Release Bundle contains duplicate asset names.");
@@ -452,39 +477,23 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       "sparkle-full",
       "arm64",
     ],
-    ...(current
+    ...(hasComponentManifest
       ? ([[appComponentManifestName(version), "components-manifest", "arm64"]] as const)
       : []),
     [`Nodex-${version}-appcast-arm64.xml`, "sparkle-appcast", "arm64"],
     [`Nodex-${version}-update-arm64.json`, "sparkle-update-manifest", "arm64"],
-    ...(macOnlyHistory
-      ? []
-      : WINDOWS_ARCHITECTURES.flatMap((architecture) => [
-          [
-            windowsInstallerName(version, architecture),
-            "windows-installer",
-            `windows-${architecture}`,
-          ] as const,
-          ...(releaseIdentity.channel === "stable"
-            ? [
-                [
-                  windowsInstallerName("latest", architecture),
-                  "windows-installer",
-                  `windows-${architecture}`,
-                ] as const,
-              ]
-            : []),
-          [
-            `Nodex-${version}-appcast-windows-${architecture}.xml`,
-            "sparkle-appcast",
-            `windows-${architecture}`,
-          ] as const,
-          [
-            `Nodex-${version}-update-windows-${architecture}.json`,
-            "sparkle-update-manifest",
-            `windows-${architecture}`,
-          ] as const,
-        ])),
+    ...windowsArchitectures.flatMap((architecture) => [
+      [`Nodex-${version}-${architecture}.exe`, "windows-installer", architecture] as const,
+      ...(releaseIdentity.channel === "stable"
+        ? [[`Nodex-latest-${architecture}.exe`, "windows-installer", architecture] as const]
+        : []),
+      [`Nodex-${version}-appcast-${architecture}.xml`, "sparkle-appcast", architecture] as const,
+      [
+        `Nodex-${version}-update-${architecture}.json`,
+        "sparkle-update-manifest",
+        architecture,
+      ] as const,
+    ]),
     ...(hasMobile && candidate.mobile
       ? ([
           [candidate.mobile.android.artifact.name, "android-apk", undefined],
@@ -515,11 +524,9 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
       throw new Error("Stable DMG alias must have identical bytes to its versioned download.");
     }
   }
-  for (const architecture of WINDOWS_ARCHITECTURES) {
-    const versioned = assets.find(
-      ({ name }) => name === windowsInstallerName(version, architecture),
-    );
-    const alias = assets.find(({ name }) => name === windowsInstallerName("latest", architecture));
+  for (const architecture of windowsArchitectures) {
+    const versioned = assets.find(({ name }) => name === `Nodex-${version}-${architecture}.exe`);
+    const alias = assets.find(({ name }) => name === `Nodex-latest-${architecture}.exe`);
     if (alias && (alias.sha256 !== versioned?.sha256 || alias.bytes !== versioned?.bytes)) {
       throw new Error(
         "Windows stable installer alias must have identical bytes to its versioned installer.",
@@ -804,9 +811,7 @@ export function assembleReleaseBundle(options: {
   readonly arm64Directory: string;
   readonly arm64UpdateDirectory: string;
   readonly windowsX64Directory: string;
-  readonly windowsArm64Directory: string;
   readonly windowsX64UpdateDirectory: string;
-  readonly windowsArm64UpdateDirectory: string;
   readonly windowsPublicKey?: string;
   readonly androidDirectory: string;
   readonly iosDirectory: string;
@@ -881,76 +886,56 @@ export function assembleReleaseBundle(options: {
     }
   }
 
-  const windows = (
-    [
-      ["x64", options.windowsX64Directory, options.windowsX64UpdateDirectory],
-      ["arm64", options.windowsArm64Directory, options.windowsArm64UpdateDirectory],
-    ] as const
-  ).map(([architecture, buildDirectory, updateDirectory]) => {
-    const target = `windows-${architecture}` as const;
-    const build = readArchitectureDirectory(buildDirectory);
-    const updateName = `Nodex-${version}-update-${target}.json`;
-    const updatePath = join(resolve(updateDirectory), updateName);
-    const update = parseWindowsArchitectureUpdateManifest(readJson(updatePath));
-    if (
-      build.architecture !== target ||
-      build.updates !== "enabled" ||
-      !isDeepStrictEqual(build.buildIdentity, buildIdentity) ||
-      JSON.stringify(update.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
-      update.architecture !== target ||
-      JSON.stringify(build.agentSkills) !== JSON.stringify(arm64.agentSkills) ||
-      ["agentSha256", "browserSha256", "sparkleSha256"].some(
-        (key) => Reflect.get(build.runtimeLocks, key) !== Reflect.get(arm64.runtimeLocks, key),
-      )
-    ) {
-      throw new Error(
-        "Windows and macOS builds must share one release identity, Skills tree and runtime locks.",
-      );
+  const windowsTarget = "windows-x64";
+  const windowsBuildDirectory = resolve(options.windowsX64Directory);
+  const windowsUpdateDirectory = resolve(options.windowsX64UpdateDirectory);
+  const windowsBuild = readArchitectureDirectory(windowsBuildDirectory);
+  const windowsUpdateName = `Nodex-${version}-update-${windowsTarget}.json`;
+  const windowsUpdatePath = join(windowsUpdateDirectory, windowsUpdateName);
+  const windowsUpdate = parseWindowsArchitectureUpdateManifest(readJson(windowsUpdatePath));
+  if (
+    windowsBuild.architecture !== windowsTarget ||
+    windowsBuild.updates !== "enabled" ||
+    !isDeepStrictEqual(windowsBuild.buildIdentity, buildIdentity) ||
+    JSON.stringify(windowsUpdate.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
+    windowsUpdate.architecture !== windowsTarget ||
+    JSON.stringify(windowsBuild.agentSkills) !== JSON.stringify(arm64.agentSkills) ||
+    ["agentSha256", "browserSha256", "sparkleSha256"].some(
+      (key) => Reflect.get(windowsBuild.runtimeLocks, key) !== Reflect.get(arm64.runtimeLocks, key),
+    )
+  ) {
+    throw new Error(
+      "Windows and macOS builds must share one release identity, Skills tree and runtime locks.",
+    );
+  }
+  const installerPath = join(windowsBuildDirectory, windowsUpdate.full.name);
+  const appcastPath = join(windowsUpdateDirectory, windowsUpdate.appcast.name);
+  for (const [filePath, identity] of [
+    [installerPath, windowsUpdate.full],
+    [appcastPath, windowsUpdate.appcast],
+  ] as const) {
+    assertRegularFile(filePath);
+    if (lstatSync(filePath).size !== identity.bytes || sha256File(filePath) !== identity.sha256) {
+      throw new Error(`Windows artifact ${identity.name} does not match its update manifest.`);
     }
-    const installerPath = join(resolve(buildDirectory), update.full.name);
-    const appcastPath = join(resolve(updateDirectory), update.appcast.name);
-    for (const [filePath, identity] of [
-      [installerPath, update.full],
-      [appcastPath, update.appcast],
-    ] as const) {
-      assertRegularFile(filePath);
-      if (lstatSync(filePath).size !== identity.bytes || sha256File(filePath) !== identity.sha256) {
-        throw new Error(`Windows artifact ${identity.name} does not match its update manifest.`);
-      }
-      verifyFileSignature(
-        filePath,
-        identity.edSignature,
-        options.windowsPublicKey ?? readConfiguredPublicKey(),
-      );
-    }
-    verifySparkleAppcastContract(readFileSync(appcastPath, "utf8"), update);
-    copy(buildDirectory, update.full.name, "windows-installer", target);
-    if (releaseIdentity.channel === "stable")
-      copy(
-        buildDirectory,
-        update.full.name,
-        "windows-installer",
-        target,
-        windowsInstallerName("latest", architecture),
-      );
-    copy(updateDirectory, update.appcast.name, "sparkle-appcast", target);
-    copy(updateDirectory, updateName, "sparkle-update-manifest", target);
-    return [
-      target,
-      {
-        manifestSha256: sha256File(join(resolve(buildDirectory), "architecture-build.json")),
-        preparedBuildGeneration: build.preparedBuild.generation,
-        updateManifestSha256: sha256File(updatePath),
-      },
-      build.runtimeLocks.nodeSha256,
-      build.runtimeLocks.ripgrepSha256,
-    ] as const;
-  });
-  if (windows[0][2] !== windows[1][2])
-    throw new Error("Windows builds must share one Node runtime lock.");
-
-  if (windows[0][3] !== windows[1][3])
-    throw new Error("Windows builds must share one ripgrep runtime lock.");
+    verifyFileSignature(
+      filePath,
+      identity.edSignature,
+      options.windowsPublicKey ?? readConfiguredPublicKey(),
+    );
+  }
+  verifySparkleAppcastContract(readFileSync(appcastPath, "utf8"), windowsUpdate);
+  copy(windowsBuildDirectory, windowsUpdate.full.name, "windows-installer", windowsTarget);
+  if (releaseIdentity.channel === "stable")
+    copy(
+      windowsBuildDirectory,
+      windowsUpdate.full.name,
+      "windows-installer",
+      windowsTarget,
+      windowsInstallerName("latest", "x64"),
+    );
+  copy(windowsUpdateDirectory, windowsUpdate.appcast.name, "sparkle-appcast", windowsTarget);
+  copy(windowsUpdateDirectory, windowsUpdateName, "sparkle-update-manifest", windowsTarget);
 
   const mobile = Object.fromEntries(
     MOBILE_PLATFORMS.map((platform) => {
@@ -989,10 +974,11 @@ export function assembleReleaseBundle(options: {
   const manifest: ReleaseBundleManifest = {
     agentSkills: arm64.agentSkills,
     architectures: {
-      ...(Object.fromEntries(windows.map(([target, evidence]) => [target, evidence])) as Record<
-        "windows-x64" | "windows-arm64",
-        ReleaseBundleManifest["architectures"]["arm64"]
-      >),
+      "windows-x64": {
+        manifestSha256: sha256File(join(windowsBuildDirectory, "architecture-build.json")),
+        preparedBuildGeneration: windowsBuild.preparedBuild.generation,
+        updateManifestSha256: sha256File(windowsUpdatePath),
+      },
       arm64: {
         manifestSha256: sha256File(join(arm64Root, "architecture-build.json")),
         preparedBuildGeneration: arm64.preparedBuild.generation,
@@ -1003,8 +989,10 @@ export function assembleReleaseBundle(options: {
     mobile,
     runtimeLocks: {
       ...arm64.runtimeLocks,
-      nodeSha256: windows[0][2],
-      ...(windows[0][3] ? { ripgrepSha256: windows[0][3] } : {}),
+      nodeSha256: windowsBuild.runtimeLocks.nodeSha256,
+      ...(windowsBuild.runtimeLocks.ripgrepSha256
+        ? { ripgrepSha256: windowsBuild.runtimeLocks.ripgrepSha256 }
+        : {}),
     },
     schemaVersion: RELEASE_BUNDLE_SCHEMA_VERSION,
     releaseIdentity,

@@ -189,7 +189,7 @@ win:
   requestedExecutionLevel: asInvoker
   target:
     - target: nsis
-      arch: [x64, arm64]
+      arch: [x64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
     - from: .generated/codex-runtime/agent-runtime

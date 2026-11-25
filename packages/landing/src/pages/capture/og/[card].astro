@@ -26,12 +26,12 @@ const agents = [
 
 const platforms = [
   { platform: "macos", name: "macOS", detail: "Apple silicon, macOS 15 or later" },
-  { platform: "windows", name: "Windows 11", detail: "x64 and Arm" },
+  { platform: "windows", name: "Windows 11", detail: "x64" },
 ] as const;
 
 // Shipped entries with no version beside them: the image is not recorded again with each release.
 const changes = [
-  { kind: "Added", lead: "Nodex runs on Windows 11, on both x64 and Arm PCs." },
+  { kind: "Added", lead: "Use Nodex in Simplified Chinese." },
   { kind: "Changed", lead: "Backups no longer wait for your Agents." },
   { kind: "Fixed", lead: "Codex chats running side by side no longer all stop at once." },
 ];

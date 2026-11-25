@@ -4,7 +4,7 @@ Nodex ships ripgrep for local workspace file-name search, workspace text search,
 and the native CLI's read-only `rg` command. The same [release lock](ripgrep.lock.json)
 pins the executable Nodex can install for SSH text search when the remote login
 has no trusted ripgrep. The supported desktop targets are macOS arm64 and Windows
-x64/arm64. SSH fallback also covers macOS x64 and Linux x64/arm64.
+x64. SSH fallback also covers macOS x64 and Linux x64/arm64.
 
 To update the pin, use the official [ripgrep release assets](https://github.com/BurntSushi/ripgrep/releases).
 Update the version and record each archive URL, size, SHA-256, and executable

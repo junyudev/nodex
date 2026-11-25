@@ -178,7 +178,7 @@ export function createWindowsAppUpdaterPlatform(
 
 export function createPackagedWindowsAppUpdaterPlatform(options: {
   readonly resourcesPath: string;
-  readonly architecture: "x64" | "arm64";
+  readonly architecture: "x64";
   readonly directory: string;
 }): AppUpdaterPlatform | null {
   const config = readWindowsAppUpdateConfig(options.resourcesPath);

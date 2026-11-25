@@ -21,7 +21,7 @@ export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CHANGELOG_URL = "/changelog/";
 export const BREW_COMMAND = "brew install --cask junyudev/tap/nodex";
 
-export type DownloadTarget = "macos" | "windows-x64" | "windows-arm64" | "ios" | "android";
+export type DownloadTarget = "macos" | "windows-x64" | "ios" | "android";
 
 const LATEST = `${RELEASES_URL}/latest/download`;
 
@@ -32,7 +32,6 @@ const LATEST = `${RELEASES_URL}/latest/download`;
 export const DOWNLOADS: Readonly<Record<DownloadTarget, string>> = {
   macos: `${LATEST}/Nodex-latest-arm64.dmg`,
   "windows-x64": `${LATEST}/Nodex-latest-windows-x64.exe`,
-  "windows-arm64": `${LATEST}/Nodex-latest-windows-arm64.exe`,
   ios: "https://testflight.apple.com/join/Yz8Kpcty",
   android: `${LATEST}/Nodex-latest-android.apk`,
 };

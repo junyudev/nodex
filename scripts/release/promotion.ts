@@ -107,13 +107,7 @@ function downloadReleaseIndex(repo: string, release: GitHubRelease) {
 }
 
 const artifact = (kind: string, sha: string): string => `nodex-${kind}-${sha}`;
-const distributionArtifacts = [
-  "macos-arm64",
-  "windows-x64",
-  "windows-arm64",
-  "mobile-android",
-  "mobile-ios",
-];
+const distributionArtifacts = ["macos-arm64", "windows-x64", "mobile-android", "mobile-ios"];
 const nightlyArtifacts = [
   ...distributionArtifacts,
   "build-identity",

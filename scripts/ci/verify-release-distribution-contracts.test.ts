@@ -73,23 +73,15 @@ test("rejects finalizing Nightly from the dispatch checkout", () => {
   );
 });
 
-test("rejects cross-CPU packaging and missing native architecture cells", () => {
-  for (const cells of [
-    [{ arch: "x64", runner: "windows-latest" }],
-    [
-      { arch: "x64", runner: "windows-latest" },
-      { arch: "arm64", runner: "windows-latest" },
-    ],
-  ]) {
-    const files = workflows();
-    const windows = requireRecord(files.get("_windows-distribution.yml"), "Windows");
-    const installer = requireRecord(requireRecord(windows.jobs, "Jobs").installer, "Installer");
-    files.set("_windows-distribution.yml", {
-      ...windows,
-      jobs: { installer: { ...installer, strategy: { matrix: { include: cells } } } },
-    });
-    expect(() => verifyReleaseDistributionWorkflows(files)).toThrow("native runners");
-  }
+test("requires a native x64 Windows distribution job", () => {
+  const files = workflows();
+  const windows = requireRecord(files.get("_windows-distribution.yml"), "Windows");
+  const installer = requireRecord(requireRecord(windows.jobs, "Jobs").installer, "Installer");
+  files.set("_windows-distribution.yml", {
+    ...windows,
+    jobs: { installer: { ...installer, "runs-on": "ubuntu-latest" } },
+  });
+  expect(() => verifyReleaseDistributionWorkflows(files)).toThrow("native runner");
 });
 
 test.each(["nightly-release.yml", "release-rehearsal.yml"])(

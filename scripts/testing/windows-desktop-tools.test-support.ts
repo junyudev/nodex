@@ -36,8 +36,7 @@ export function windowsDesktopToolConformanceCandidate(
   repositoryRoot: string,
   arch: string,
 ): TestedBrowserAppServerPair | undefined {
-  if (arch !== "x64" && arch !== "arm64")
-    throw new Error(`Unsupported Windows Desktop Tool architecture: ${arch}`);
+  if (arch !== "x64") throw new Error(`Unsupported Windows Desktop Tool architecture: ${arch}`);
   const lock = readBrowserRuntimeReleaseLock(resolveBrowserRuntimeReleaseLockPath(repositoryRoot));
   const target = `win32-${arch}` as const;
   const asset = lock.assets[target];

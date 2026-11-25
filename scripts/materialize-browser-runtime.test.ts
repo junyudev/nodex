@@ -174,86 +174,83 @@ describe.skipIf(process.platform === "win32")("materializeBrowserRuntime", () =>
   });
 });
 
-test.each(["x64", "arm64"] as const)(
-  "archives, materializes and stages the unpublished Windows %s closure",
-  async (arch) => {
-    const root = makeRoot("nodex-browser-materialize-win-");
-    const sourceRoot = path.join(root, "source");
-    const outputPath = path.join(root, "output");
-    const manifest = writeWindowsBrowserRuntimeFixture(sourceRoot, arch);
-    const other = writeBrowserRuntimeFixture(path.join(root, "mac"));
-    const archivePath = path.join(root, `nodex-browser-runtime-1.0.0-win32-${arch}.tar.gz`);
-    const archive = archiveBrowserRuntime({ outputPath: archivePath, sourceRoot });
-    const lockPath = path.join(root, "lock.json");
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({
-        assets: {
-          "darwin-arm64": {
-            ...archive,
-            assetName: "nodex-browser-runtime-1.0.0-darwin-arm64.tar.gz",
-            runtimeVersions: other.runtimeVersions,
-            url: null,
-          },
-          ...windowsBrowserRuntimeLockFixture("1.0.0"),
-          [`win32-${arch}`]: {
-            ...windowsBrowserRuntimeLockFixture("1.0.0")[`win32-${arch}`],
-            ...archive,
-            runtimeVersions: manifest.runtimeVersions,
-            sourcePackage: manifest.sourcePackage,
-            url: null,
-          },
+test("archives, materializes and stages the unpublished Windows x64 closure", async () => {
+  const arch = "x64" as const;
+  const root = makeRoot("nodex-browser-materialize-win-");
+  const sourceRoot = path.join(root, "source");
+  const outputPath = path.join(root, "output");
+  const manifest = writeWindowsBrowserRuntimeFixture(sourceRoot, arch);
+  const other = writeBrowserRuntimeFixture(path.join(root, "mac"));
+  const archivePath = path.join(root, `nodex-browser-runtime-1.0.0-win32-${arch}.tar.gz`);
+  const archive = archiveBrowserRuntime({ outputPath: archivePath, sourceRoot });
+  const lockPath = path.join(root, "lock.json");
+  fs.writeFileSync(
+    lockPath,
+    JSON.stringify({
+      assets: {
+        "darwin-arm64": {
+          ...archive,
+          assetName: "nodex-browser-runtime-1.0.0-darwin-arm64.tar.gz",
+          runtimeVersions: other.runtimeVersions,
+          url: null,
         },
-        schemaVersion: 2,
-        runtimeFamily: "browser",
-        browserPluginVersion: "1.0.0",
-        codexCompatibilityVersion: "1.0.0",
-        repository: "example/nodex",
-        tag: "browser-runtime-v1.0.0",
-        source: { buildNumber: "6067", desktopBuild: "1.0.0", product: "chatgpt-desktop" },
-      }),
-    );
-    const options = {
-      cachePath: path.join(root, "cache"),
-      lockPath,
-      outputPath,
-      targetArch: arch,
-      targetPlatform: "win32" as const,
-    };
-    await expect(materializeBrowserRuntime(options)).rejects.toThrow("is unpublished");
-    await expect(materializeBrowserRuntime({ ...options, archivePath })).resolves.toEqual(manifest);
-    const runtimeRoot = path.join(root, "staged");
-    const windowsReleaseAsset = readBrowserRuntimeReleaseLock(lockPath).assets[`win32-${arch}`];
-    if (!windowsReleaseAsset) throw new Error("Missing Windows test asset");
-    const stageOptions = {
-      windowsReleaseAsset,
-      runtimeRoot,
-      sourceRoot: outputPath,
-      targetArch: arch,
-      targetPlatform: "win32" as const,
-      appServerIdentity: {
-        targetArch: arch,
-        targetPlatform: "win32",
-        entrypointSha256: "a".repeat(64),
-        protocolSchemaFingerprint: "b".repeat(64),
-        runtimeVersion: "1.0.0",
-        sourceCommit: "c".repeat(40),
+        [`win32-${arch}`]: {
+          ...windowsBrowserRuntimeLockFixture("1.0.0")[`win32-${arch}`],
+          ...archive,
+          runtimeVersions: manifest.runtimeVersions,
+          sourcePackage: manifest.sourcePackage,
+          url: null,
+        },
       },
-    };
-    await expect(
-      stageBrowserRuntime({ ...stageOptions, targetArch: arch === "x64" ? "arm64" : "x64" }),
-    ).rejects.toThrow("does not match");
-    await expect(
-      stageBrowserRuntime({
-        ...stageOptions,
-        appServerIdentity: { ...stageOptions.appServerIdentity, entrypointSha256: "d".repeat(64) },
-      }),
-    ).rejects.toThrow("exact app-server pair");
-    await stageBrowserRuntime(stageOptions);
-    expect(
-      readBrowserRuntimeFileSha256(
-        path.join(runtimeRoot, "browser-runtime", BROWSER_RUNTIME_MANIFEST_FILENAME),
-      ),
-    ).toBe(archive.manifestSha256);
-  },
-);
+      schemaVersion: 2,
+      runtimeFamily: "browser",
+      browserPluginVersion: "1.0.0",
+      codexCompatibilityVersion: "1.0.0",
+      repository: "example/nodex",
+      tag: "browser-runtime-v1.0.0",
+      source: { buildNumber: "6067", desktopBuild: "1.0.0", product: "chatgpt-desktop" },
+    }),
+  );
+  const options = {
+    cachePath: path.join(root, "cache"),
+    lockPath,
+    outputPath,
+    targetArch: arch,
+    targetPlatform: "win32" as const,
+  };
+  await expect(materializeBrowserRuntime(options)).rejects.toThrow("is unpublished");
+  await expect(materializeBrowserRuntime({ ...options, archivePath })).resolves.toEqual(manifest);
+  const runtimeRoot = path.join(root, "staged");
+  const windowsReleaseAsset = readBrowserRuntimeReleaseLock(lockPath).assets[`win32-${arch}`];
+  if (!windowsReleaseAsset) throw new Error("Missing Windows test asset");
+  const stageOptions = {
+    windowsReleaseAsset,
+    runtimeRoot,
+    sourceRoot: outputPath,
+    targetArch: arch,
+    targetPlatform: "win32" as const,
+    appServerIdentity: {
+      targetArch: arch,
+      targetPlatform: "win32",
+      entrypointSha256: "a".repeat(64),
+      protocolSchemaFingerprint: "b".repeat(64),
+      runtimeVersion: "1.0.0",
+      sourceCommit: "c".repeat(40),
+    },
+  };
+  await expect(stageBrowserRuntime({ ...stageOptions, targetArch: "arm64" })).rejects.toThrow(
+    "does not match",
+  );
+  await expect(
+    stageBrowserRuntime({
+      ...stageOptions,
+      appServerIdentity: { ...stageOptions.appServerIdentity, entrypointSha256: "d".repeat(64) },
+    }),
+  ).rejects.toThrow("exact app-server pair");
+  await stageBrowserRuntime(stageOptions);
+  expect(
+    readBrowserRuntimeFileSha256(
+      path.join(runtimeRoot, "browser-runtime", BROWSER_RUNTIME_MANIFEST_FILENAME),
+    ),
+  ).toBe(archive.manifestSha256);
+});

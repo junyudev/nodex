@@ -210,6 +210,7 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
   const source = compileScratch ? join(compileScratch, "source") : join(temporary, "source");
   try {
     if (node.platform === "win32") {
+      if (node.architecture !== "x64") throw new Error("Unsupported Windows Node architecture");
       mkdirSync(builtPackage, { recursive: true });
       for (const name of ["package.json", "LICENSE", "lib"])
         cpSync(join(packageRoot, name), join(builtPackage, name), {
@@ -225,8 +226,6 @@ export function materializeAgentRuntimeNative(root: string): AgentRuntimeNative 
           filter: (file) => !file.endsWith(".pdb"),
         },
       );
-      if (node.architecture !== "x64" && node.architecture !== "arm64")
-        throw new Error("Unsupported Windows Node architecture");
       verifyWindowsArchitectureClosure(builtPackage, node.architecture, {
         nodeHost: node.executable,
       });

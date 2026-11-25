@@ -241,8 +241,7 @@ const main = async (): Promise<void> => {
   }
   if (command === "build-windows") {
     const architecture = required(flags, "arch");
-    if (architecture !== "x64" && architecture !== "arm64")
-      throw new Error("Windows --arch must be x64 or arm64.");
+    if (architecture !== "x64") throw new Error("Windows --arch must be x64.");
     buildWindowsDistribution({
       architecture,
       cwd: projectRoot,
@@ -276,8 +275,7 @@ const main = async (): Promise<void> => {
   if (command === "finalize-windows") {
     const architecture = required(flags, "arch");
     const channel = required(flags, "channel");
-    if (architecture !== "x64" && architecture !== "arm64")
-      throw new Error("Windows --arch must be x64 or arm64.");
+    if (architecture !== "x64") throw new Error("Windows --arch must be x64.");
     if (channel !== "stable" && channel !== "nightly")
       throw new Error("Windows --channel must be stable or nightly.");
     await finalizeWindowsArchitectureUpdate({
@@ -302,9 +300,7 @@ const main = async (): Promise<void> => {
       arm64Directory: required(flags, "arm64-dir"),
       arm64UpdateDirectory: required(flags, "arm64-update-dir"),
       windowsX64Directory: required(flags, "windows-x64-dir"),
-      windowsArm64Directory: required(flags, "windows-arm64-dir"),
       windowsX64UpdateDirectory: required(flags, "windows-x64-update-dir"),
-      windowsArm64UpdateDirectory: required(flags, "windows-arm64-update-dir"),
       androidDirectory: required(flags, "android-dir"),
       iosDirectory: required(flags, "ios-dir"),
       identity: publicationIdentity(build, channel),
@@ -404,7 +400,6 @@ const main = async (): Promise<void> => {
     await publishBrowserRuntime({
       arm64Path: required(flags, "arm64"),
       windowsX64Path: flags.get("win32-x64"),
-      windowsArm64Path: flags.get("win32-arm64"),
       lockPath: required(flags, "lock"),
       repo: required(flags, "repo"),
       tag: required(flags, "tag"),

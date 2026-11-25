@@ -4,8 +4,8 @@ import * as Effect from "effect/Effect";
 import { MainConfig, testLayer } from "../app/MainConfig";
 import { hostCapabilities } from "../../shared/host-capabilities";
 
-test.each(["x64", "arm64"])("Windows %s exposes only supported native integrations", (arch) => {
-  const capabilities = hostCapabilities("win32", arch);
+test("Windows x64 exposes only supported native integrations", () => {
+  const capabilities = hostCapabilities("win32", "x64");
   expect(capabilities).toEqual({
     backgroundService: false,
     autoUpdate: true,
@@ -28,7 +28,7 @@ it.effect("capabilities follow the supplied bootstrap snapshot", () =>
     expect(config.capabilities.dictationBackend).toBe("windows");
     expect(hostCapabilities("darwin", "arm64").deviceCheck).toBe(true);
     expect(hostCapabilities("darwin", "x64").deviceCheck).toBe(false);
-  }).pipe(Effect.provide(testLayer({ platform: "win32", arch: "arm64" }))),
+  }).pipe(Effect.provide(testLayer({ platform: "win32", arch: "x64" }))),
 );
 
 test("unsupported Windows architectures cannot acquire app updates", () => {
@@ -36,7 +36,7 @@ test("unsupported Windows architectures cannot acquire app updates", () => {
 });
 
 test("Windows can expose Browser control independently of Computer Use and PiP", () => {
-  expect(hostCapabilities("win32", "arm64", { browserReady: true })).toMatchObject({
+  expect(hostCapabilities("win32", "x64", { browserReady: true })).toMatchObject({
     browserControl: true,
     computerControl: false,
     nativePip: false,

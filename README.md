@@ -153,9 +153,8 @@ already have, or start with OpenCode's free models.
 
 - **macOS 15+** on Apple silicon: `brew install --cask junyudev/tap/nodex`, or the
   [disk image](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg).
-- **Windows 11**: installer for [x64](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe) or
-  [Arm](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-arm64.exe). It isn't code-signed yet, so if SmartScreen appears,
-  choose More info, then Run anyway.
+- **Windows 11** on x64: the [installer](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-windows-x64.exe).
+  It isn't code-signed yet, so if SmartScreen appears, choose More info, then Run anyway.
 - **iPhone and Android**: [TestFlight beta](https://testflight.apple.com/join/Yz8Kpcty) or [APK](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-android.apk). Nodex
   Mobile needs Nodex running on your computer.
 

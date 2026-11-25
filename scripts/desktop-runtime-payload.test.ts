@@ -74,17 +74,11 @@ function fixture(platform: string, arch: string) {
     write(join(resourcesPath, "app.asar.unpacked/node_modules/node-pty/build/Release", file));
   archive(join(resourcesPath, "app.asar"), ["out/main/bootstrap.js", "package.json"]);
   writePackagedStockNodeFixture(resourcesPath);
-  writeRipgrepFixture(
-    resourcesPath,
-    platform === "darwin" ? "darwin-arm64" : arch === "arm64" ? "win32-arm64" : "win32-x64",
-  );
+  writeRipgrepFixture(resourcesPath, platform === "darwin" ? "darwin-arm64" : "win32-x64");
   return { resourcesPath, sourceRoot, platform, arch, binary };
 }
-test.each([
-  ["win32", "x64"],
-  ["win32", "arm64"],
-])("%s %s ships one verified Claude closure", (platform, arch) => {
-  const input = fixture(platform, arch);
+test("Windows x64 ships one verified Claude closure", () => {
+  const input = fixture("win32", "x64");
   expect(assertDesktopRuntimePayload(input)).toBe(join(input.resourcesPath, input.binary));
   write(join(input.resourcesPath, input.binary), "damaged");
   expect(() => assertDesktopRuntimePayload(input)).toThrow("differs");
@@ -99,10 +93,10 @@ test("macOS keeps the SDK and rejects an embedded Claude Code executable", () =>
 });
 
 test.each([
-  "node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/claude.exe",
+  "node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude.exe",
   "extra/claude.exe",
 ])("rejects a second unpacked Claude at %s", (duplicate) => {
-  const input = fixture("win32", "arm64");
+  const input = fixture("win32", "x64");
   write(join(input.resourcesPath, duplicate));
   expect(() => assertDesktopRuntimePayload(input)).toThrow("exactly one Claude");
 });
@@ -135,7 +129,7 @@ test.each([
   );
 });
 test("requires the rebuilt Electron PTY before removing its fallback prebuilds", () => {
-  const input = fixture("win32", "arm64");
+  const input = fixture("win32", "x64");
   rmSync(
     join(input.resourcesPath, "app.asar.unpacked/node_modules/node-pty/build/Release/conpty.node"),
   );

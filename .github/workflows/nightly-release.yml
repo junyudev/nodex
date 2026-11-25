@@ -109,7 +109,7 @@ jobs:
       sentry_project: ${{ secrets.SENTRY_PROJECT }}
 
   windows-distribution:
-    name: build native Windows distributions
+    name: build Windows x64 installer
     if: needs.resolve.outputs.should_release == 'true'
     needs: [resolve, certification]
     permissions:
@@ -145,7 +145,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        architecture: [arm64, windows-x64, windows-arm64]
+        architecture: [arm64, windows-x64]
     runs-on: macos-26
     # Deltas are an optimisation. A finalizer that stalls must not hold a release for six hours.
     timeout-minutes: 120

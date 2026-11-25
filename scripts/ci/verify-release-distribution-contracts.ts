@@ -1,4 +1,5 @@
 import path from "node:path";
+import { RELEASE_ARCHITECTURES } from "../release/targets";
 import {
   isRecord,
   readWorkflow,
@@ -7,7 +8,7 @@ import {
   type UnknownRecord,
 } from "./github-workflow-files";
 
-const TARGETS = ["arm64", "windows-arm64", "windows-x64"];
+const TARGETS = [...RELEASE_ARCHITECTURES].sort();
 const WINDOWS_WORKFLOW = "./.github/workflows/_windows-distribution.yml";
 const MOBILE_WORKFLOW = "./.github/workflows/_mobile-distribution.yml";
 /** Only a stable release opens a build to the public TestFlight beta. */
@@ -96,18 +97,8 @@ export function verifyReleaseDistributionWorkflows(
       "Windows job-level env cannot use runner context; use a step or workspace path.",
     );
   }
-  const matrix = requireRecord(
-    requireRecord(installer.strategy, "Windows strategy").matrix,
-    "Windows matrix",
-  );
-  const cells = Array.isArray(matrix.include) ? matrix.include.filter(isRecord) : [];
-  if (
-    cells.length !== 2 ||
-    !cells.some((cell) => cell.arch === "x64" && cell.runner === "windows-latest") ||
-    !cells.some((cell) => cell.arch === "arm64" && cell.runner === "windows-11-arm") ||
-    installer["runs-on"] !== "${{ matrix.runner }}"
-  )
-    throw new Error("Windows distribution must build both CPUs on their native runners.");
+  if (installer.strategy || installer["runs-on"] !== "windows-latest")
+    throw new Error("Windows distribution must build x64 on its native runner.");
   const validation = requireRecord(
     requireRecord(workflows.get("windows.yml"), "Windows validation").jobs,
     "Windows validation jobs",

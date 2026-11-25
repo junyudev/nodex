@@ -44,7 +44,7 @@ afterEach(() => {
 });
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-function fixture(arch: "arm64" | "x64" = "x64") {
+function fixture(arch: "x64" = "x64") {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-win-desktop-tools-"));
   roots.push(runtimeRoot);
   const root = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
@@ -71,7 +71,10 @@ function fixture(arch: "arm64" | "x64" = "x64") {
       addon.size = bytes.length;
       fs.writeFileSync(manifestPath, JSON.stringify(manifest));
     },
-    load(windowsVerifier?: WindowsBrowserRuntimeVerifierPort, targetArch = arch) {
+    load(
+      windowsVerifier?: WindowsBrowserRuntimeVerifierPort,
+      targetArch: NodeJS.Architecture = arch,
+    ) {
       return resolveBrowserRuntimeBundle({
         appServerIdentity,
         runtimeRoot,
@@ -95,8 +98,15 @@ function fixture(arch: "arm64" | "x64" = "x64") {
   };
 }
 
+function foreignWindowsPe(): Buffer {
+  const bytes = fixtureWindowsPe("x64");
+  bytes.writeUInt16LE(0x14c, 0x44);
+  return bytes;
+}
+
 describe("Windows Desktop Tool manifests", () => {
-  test.each(["arm64", "x64"] as const)("round trips %s with independent capabilities", (arch) => {
+  test("round trips x64 with independent capabilities", () => {
+    const arch = "x64";
     const { manifest } = fixture(arch);
     expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
     expect(
@@ -118,26 +128,28 @@ describe("Windows Desktop Tool manifests", () => {
     expect(
       parseBrowserRuntimeManifest({ ...manifest, artifacts: [...manifest.artifacts, alias] }),
     ).toBeNull();
-    manifest.trust.pe["bin/dependency.dll"]!.machine = "arm64";
-    expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
+    expect(
+      parseBrowserRuntimeManifest({
+        ...manifest,
+        trust: { pe: { ...manifest.trust.pe, "bin/dependency.dll": { machine: "ia32" } } },
+      }),
+    ).toBeNull();
   });
 });
 
 describe("Windows Desktop Tool load", () => {
-  test.each(["arm64", "x64"] as const)(
-    "attests the %s closure through the Windows port",
-    async (arch) => {
-      const { load } = fixture(arch);
-      expect(await load(fixtureWindowsVerifier())).toMatchObject({ status: "available" });
-      expect(
-        await load(fixtureWindowsVerifier(), arch === "arm64" ? "x64" : "arm64"),
-      ).toMatchObject({ reason: "target-mismatch" });
-      expect(await load()).toMatchObject({
-        status: "unavailable",
-        message: "Windows Desktop Tool verification unavailable",
-      });
-    },
-  );
+  test("attests the x64 closure through the Windows port", async () => {
+    const arch = "x64";
+    const { load } = fixture(arch);
+    expect(await load(fixtureWindowsVerifier())).toMatchObject({ status: "available" });
+    expect(await load(fixtureWindowsVerifier(), "arm64")).toMatchObject({
+      reason: "target-mismatch",
+    });
+    expect(await load()).toMatchObject({
+      status: "unavailable",
+      message: "Windows Desktop Tool verification unavailable",
+    });
+  });
 
   test.each(["size", "hash"] as const)("rejects a wrong %s", async (kind) => {
     const { file, replacePe, load } = fixture();
@@ -148,7 +160,7 @@ describe("Windows Desktop Tool load", () => {
   });
 
   test.each([
-    ["foreign CPU", fixtureWindowsPe("arm64"), "PE machine type mismatch"],
+    ["foreign CPU", foreignWindowsPe(), "PE machine type mismatch"],
     ["unsigned image", fixtureWindowsPe("x64", null), "no embedded Authenticode signature"],
   ] as const)("rejects an attested %s", async (_name, bytes, message) => {
     const { replacePe, load } = fixture();
@@ -201,163 +213,156 @@ describe("Windows Desktop Tool load", () => {
   });
 });
 
-test.each(["arm64", "x64"] as const)(
-  "binds Windows %s path and publisher evidence through the loader",
-  async (arch) => {
-    const { load, root } = fixture(arch);
-    const secure = {
-      reparsePoint: false,
-      ownerSid: "S-1-5-18",
-      currentUserSid: "S-1-5-21-1",
-      grantsForeignWrite: false,
-    };
-    let unsafe = {};
-    let unsafePath: string | undefined;
-    let signer = FIXTURE_PUBLISHER;
-    const inspected: string[] = [];
-    const verified: string[] = [];
-    const verifier = makeWindowsBrowserRuntimeVerifier(
-      {
-        ...unsupportedWindowsDesktopTools,
-        inspectPaths: (paths) =>
-          Effect.sync(() => {
-            inspected.push(...paths);
-            return paths.map((file) => ({ ...secure, ...(file === unsafePath ? unsafe : {}) }));
-          }),
-        verifyAuthenticode: (file, strict) =>
-          Effect.sync(() => {
-            expect(strict).toBe(true);
-            verified.push(file);
-            return {
-              status: "verified",
-              signature: "embedded",
-              chain: [signer],
-              codeSigningEku: true,
-              timestampPresent: true,
-              revocation: "onlineChecked",
-            };
-          }),
-      },
-      path.dirname(root),
-      Effect.runPromise,
-    );
-    expect(await load(verifier)).toMatchObject({ status: "available" });
-    expect(inspected).toContain(path.join(root, BROWSER_RUNTIME_MANIFEST_FILENAME));
-    expect(verified).toContain(path.join(root, "bin", "dependency.dll"));
-    for (const security of [
-      { reparsePoint: true },
-      { ownerSid: "S-1-5-21-2" },
-      { grantsForeignWrite: true },
-    ]) {
-      unsafePath = path.join(root, "bin");
-      unsafe = security;
-      expect(await load(verifier)).toMatchObject({
-        reason: "platform-verification-failed",
-        message: expect.stringContaining(unsafePath),
-      });
-    }
-    unsafePath = undefined;
-    signer = { ...FIXTURE_PUBLISHER, issuer: "CN=Foreign CA" };
+test("binds Windows x64 path and publisher evidence through the loader", async () => {
+  const arch = "x64";
+  const { load, root } = fixture(arch);
+  const secure = {
+    reparsePoint: false,
+    ownerSid: "S-1-5-18",
+    currentUserSid: "S-1-5-21-1",
+    grantsForeignWrite: false,
+  };
+  let unsafe = {};
+  let unsafePath: string | undefined;
+  let signer = FIXTURE_PUBLISHER;
+  const inspected: string[] = [];
+  const verified: string[] = [];
+  const verifier = makeWindowsBrowserRuntimeVerifier(
+    {
+      ...unsupportedWindowsDesktopTools,
+      inspectPaths: (paths) =>
+        Effect.sync(() => {
+          inspected.push(...paths);
+          return paths.map((file) => ({ ...secure, ...(file === unsafePath ? unsafe : {}) }));
+        }),
+      verifyAuthenticode: (file, strict) =>
+        Effect.sync(() => {
+          expect(strict).toBe(true);
+          verified.push(file);
+          return {
+            status: "verified",
+            signature: "embedded",
+            chain: [signer],
+            codeSigningEku: true,
+            timestampPresent: true,
+            revocation: "onlineChecked",
+          };
+        }),
+    },
+    path.dirname(root),
+    Effect.runPromise,
+  );
+  expect(await load(verifier)).toMatchObject({ status: "available" });
+  expect(inspected).toContain(path.join(root, BROWSER_RUNTIME_MANIFEST_FILENAME));
+  expect(verified).toContain(path.join(root, "bin", "dependency.dll"));
+  for (const security of [
+    { reparsePoint: true },
+    { ownerSid: "S-1-5-21-2" },
+    { grantsForeignWrite: true },
+  ]) {
+    unsafePath = path.join(root, "bin");
+    unsafe = security;
     expect(await load(verifier)).toMatchObject({
       reason: "platform-verification-failed",
-      message: expect.stringContaining("publisher or issuer"),
+      message: expect.stringContaining(unsafePath),
     });
-  },
-);
+  }
+  unsafePath = undefined;
+  signer = { ...FIXTURE_PUBLISHER, issuer: "CN=Foreign CA" };
+  expect(await load(verifier)).toMatchObject({
+    reason: "platform-verification-failed",
+    message: expect.stringContaining("publisher or issuer"),
+  });
+});
 
-test.each(["arm64", "x64"] as const)(
-  "shares the %s closed launch definition across local providers",
-  async (arch) => {
-    const browserRuntime = await fixture(arch).load(fixtureWindowsVerifier());
-    if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
-    const runtimeStateHome = "C:/Users/用户/Nodex Profile/runtime";
-    const windows = {
-      jobLauncher: "C:/Program Files/Nodex/nodex-core.exe",
-      environment: {
-        SystemRoot: "C:/Windows",
-        node_repl_host_services_pipe_path: "foreign",
-        CODEX_WINDOWS_REGISTERED_CORE: "foreign",
-        Path: "foreign",
-      },
-    };
-    let computerUseRuntime: ComputerUseRuntimeResult = {
-      status: "unavailable",
-      reason: "disabled",
-      message: "Computer Use is turned off.",
-    };
-    const builder = new BrowserUseThreadConfigBuilder({
-      computerUsePluginReady: () => true,
-      computerUseRuntime: () => computerUseRuntime,
-      browserRuntime,
-      windows,
-      runtimeStateHome,
-      codexHome: "C:/Users/用户/.codex",
-    });
-    const result = builder.buildResult();
-    if (result.status !== "available") throw new Error(result.message);
-    const definition = result.config["mcp_servers.node_repl"];
-    const plugins = {
+test("shares the x64 closed launch definition across local providers", async () => {
+  const arch = "x64";
+  const browserRuntime = await fixture(arch).load(fixtureWindowsVerifier());
+  if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
+  const runtimeStateHome = "C:/Users/用户/Nodex Profile/runtime";
+  const windows = {
+    jobLauncher: "C:/Program Files/Nodex/nodex-core.exe",
+    environment: {
+      SystemRoot: "C:/Windows",
+      node_repl_host_services_pipe_path: "foreign",
+      CODEX_WINDOWS_REGISTERED_CORE: "foreign",
+      Path: "foreign",
+    },
+  };
+  let computerUseRuntime: ComputerUseRuntimeResult = {
+    status: "unavailable",
+    reason: "disabled",
+    message: "Computer Use is turned off.",
+  };
+  const builder = new BrowserUseThreadConfigBuilder({
+    computerUsePluginReady: () => true,
+    computerUseRuntime: () => computerUseRuntime,
+    browserRuntime,
+    windows,
+    runtimeStateHome,
+    codexHome: "C:/Users/用户/.codex",
+  });
+  const result = builder.buildResult();
+  if (result.status !== "available") throw new Error(result.message);
+  const definition = result.config["mcp_servers.node_repl"];
+  const plugins = {
+    status: "ready",
+    installedVersion: "1",
+    enabled: true,
+    marketplaceRoot: "C:/Nodex Profile/marketplace",
+    chrome: { status: "unavailable", reason: "backend-unavailable", message: "unused" },
+    computerUse: {
       status: "ready",
-      installedVersion: "1",
       enabled: true,
-      marketplaceRoot: "C:/Nodex Profile/marketplace",
-      chrome: { status: "unavailable", reason: "backend-unavailable", message: "unused" },
-      computerUse: {
-        status: "ready",
-        enabled: true,
-        installedVersion: "1",
-        pluginRoot: "C:/Nodex Profile/computer-use",
-      },
-    } as const;
-    const plugin = builder.buildDesktopTools(plugins);
-    expect(definition).toMatchObject(plugin!.server);
-    expect(plugin?.server.command).toBe(windows.jobLauncher);
-    const [mode, stdio, image, , environment] = plugin!.server.args;
-    expect(mode).toBe("--desktop-tools-job");
-    expect(stdio).toBe("inherit");
-    expect(image).toBe(browserRuntime.bundle.paths.nodeRepl);
-    const env = JSON.parse(environment!);
-    expect(env).toMatchObject({
-      SYSTEMROOT: "C:/Windows",
-      CODEX_HOME: "C:\\Users\\用户\\Nodex Profile\\runtime\\desktop-tools\\codex-home",
-      BROWSER_USE_AVAILABLE_BACKENDS: "iab",
-      BROWSER_USE_CODEX_APP_BUILD_FLAVOR: nodexDesktopToolMarketplaceName(
-        runtimeStateHome,
-        "win32",
-      ),
+      installedVersion: "1",
+      pluginRoot: "C:/Nodex Profile/computer-use",
+    },
+  } as const;
+  const plugin = builder.buildDesktopTools(plugins);
+  expect(definition).toMatchObject(plugin!.server);
+  expect(plugin?.server.command).toBe(windows.jobLauncher);
+  const [mode, stdio, image, , environment] = plugin!.server.args;
+  expect(mode).toBe("--desktop-tools-job");
+  expect(stdio).toBe("inherit");
+  expect(image).toBe(browserRuntime.bundle.paths.nodeRepl);
+  const env = JSON.parse(environment!);
+  expect(env).toMatchObject({
+    SYSTEMROOT: "C:/Windows",
+    CODEX_HOME: "C:\\Users\\用户\\Nodex Profile\\runtime\\desktop-tools\\codex-home",
+    BROWSER_USE_AVAILABLE_BACKENDS: "iab",
+    BROWSER_USE_CODEX_APP_BUILD_FLAVOR: nodexDesktopToolMarketplaceName(runtimeStateHome, "win32"),
+  });
+  expect(env.NODE_REPL_TRUSTED_CODE_PATHS).toContain(";");
+  expect(Object.values(env)).not.toContain("foreign");
+  expect(plugin?.server.env).toEqual({});
+  expect(nodexDesktopToolMarketplaceName(runtimeStateHome.toUpperCase(), "win32")).toBe(
+    env.BROWSER_USE_CODEX_APP_BUILD_FLAVOR,
+  );
+  expect(env.SKY_CUA_NATIVE_PIPE_DIRECTORY).toBeUndefined();
+  expect(JSON.parse(env.NODE_REPL_TRUSTED_SERVICES)).not.toHaveProperty("sky");
+  for (const nativePipePath of ["cua-first", "cua-restarted"]) {
+    computerUseRuntime = {
+      status: "available",
+      platform: "win32",
+      nativePipePath,
+      serviceExecutablePath: "C:/Nodex Profile/runtime/service.exe",
+    };
+    const withComputerUse = builder.buildResult();
+    if (withComputerUse.status !== "available") throw new Error(withComputerUse.message);
+    const desktopTools = builder.buildDesktopTools(plugins)!;
+    expect(withComputerUse.config["mcp_servers.node_repl"]).toMatchObject(desktopTools.server);
+    expect(desktopTools.pluginRoots).toContain(plugins.computerUse.pluginRoot);
+    const replEnv = JSON.parse(desktopTools.server.args[4]!);
+    expect(replEnv).toMatchObject({
+      SKY_CUA_NATIVE_PIPE: "1",
+      SKY_CUA_NATIVE_PIPE_DIRECTORY: nativePipePath,
     });
-    expect(env.NODE_REPL_TRUSTED_CODE_PATHS).toContain(";");
-    expect(Object.values(env)).not.toContain("foreign");
-    expect(plugin?.server.env).toEqual({});
-    expect(nodexDesktopToolMarketplaceName(runtimeStateHome.toUpperCase(), "win32")).toBe(
-      env.BROWSER_USE_CODEX_APP_BUILD_FLAVOR,
+    expect(JSON.parse(replEnv.NODE_REPL_TRUSTED_SERVICES)).toHaveProperty(
+      "sky",
+      "@oai/sky/service",
     );
-    expect(env.SKY_CUA_NATIVE_PIPE_DIRECTORY).toBeUndefined();
-    expect(JSON.parse(env.NODE_REPL_TRUSTED_SERVICES)).not.toHaveProperty("sky");
-    for (const nativePipePath of ["cua-first", "cua-restarted"]) {
-      computerUseRuntime = {
-        status: "available",
-        platform: "win32",
-        nativePipePath,
-        serviceExecutablePath: "C:/Nodex Profile/runtime/service.exe",
-      };
-      const withComputerUse = builder.buildResult();
-      if (withComputerUse.status !== "available") throw new Error(withComputerUse.message);
-      const desktopTools = builder.buildDesktopTools(plugins)!;
-      expect(withComputerUse.config["mcp_servers.node_repl"]).toMatchObject(desktopTools.server);
-      expect(desktopTools.pluginRoots).toContain(plugins.computerUse.pluginRoot);
-      const replEnv = JSON.parse(desktopTools.server.args[4]!);
-      expect(replEnv).toMatchObject({
-        SKY_CUA_NATIVE_PIPE: "1",
-        SKY_CUA_NATIVE_PIPE_DIRECTORY: nativePipePath,
-      });
-      expect(JSON.parse(replEnv.NODE_REPL_TRUSTED_SERVICES)).toHaveProperty(
-        "sky",
-        "@oai/sky/service",
-      );
-    }
-  },
-);
+  }
+});
 
 test("Windows Browser instructions import the absolute plugin module as a file URL", () => {
   const source =

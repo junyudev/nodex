@@ -97,23 +97,23 @@ describe.skipIf(process.platform !== "darwin")("vendoring an extracted Windows p
     const options = fixtureRoot();
     const { packageRoot, outputPath, root } = options;
     const certificate = makeCertificate(root);
-    const arch = "arm64";
+    const arch = "x64";
     const pe = fixtureWindowsPe(arch, certificate);
     const modules = "cua_node/bin/node_modules";
     const plugins = "plugins/openai-bundled/plugins";
-    const helper = "codex-computer-use-arm64.exe";
+    const helper = "codex-computer-use.exe";
     const entries = new Map<string, string | Buffer>();
     const add = (relative: string, bytes: string | Buffer) =>
       entries.set(`app/resources/${relative}`, bytes);
     entries.set(
       "AppxManifest.xml",
-      '<Package><Identity Name="OpenAI.Codex" ProcessorArchitecture="arm64" Version="1.0.0.0" Publisher="CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B"/></Package>',
+      '<Package><Identity Name="OpenAI.Codex" ProcessorArchitecture="x64" Version="1.0.0.0" Publisher="CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B"/></Package>',
     );
     add("owl-app.ini", "AppVersion=1.0.0\n");
     add(
       "cua_node/manifest.json",
       JSON.stringify({
-        target: "windows-arm64",
+        target: "windows-x64",
         platform: "windows",
         arch,
         node_path: "bin/node.exe",
@@ -134,10 +134,13 @@ describe.skipIf(process.platform !== "darwin")("vendoring an extracted Windows p
       "native/windows-account.node",
       `${modules}/@oai/cua/bin/windows/${helper}`,
       `${modules}/@oai/sky/bin/windows/${helper}`,
-      ...["codex-computer-use-swift.exe", "MSVCP140.dll", "VCRUNTIME140.dll"].map(
-        (file) => `${modules}/@oai/sky/bin/windows/swift/arm64/${file}`,
-      ),
-      `${plugins}/chrome/extension-host/windows/arm64/extension-host.exe`,
+      ...[
+        "codex-computer-use-swift.exe",
+        "MSVCP140.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll",
+      ].map((file) => `${modules}/@oai/sky/bin/windows/swift/x64/${file}`),
+      `${plugins}/chrome/extension-host/windows/x64/extension-host.exe`,
     ])
       add(file, pe);
     add(
@@ -181,9 +184,12 @@ describe.skipIf(process.platform !== "darwin")("vendoring an extracted Windows p
     const result = vendorWindowsBrowserRuntime({ ...options, targetArch: arch });
     expect(result.capabilities.computerUse.serviceExecutable).toContain(helper);
     expect(Object.keys(result.trust.pe)).toContain("native/windows-account.node");
-    expect(result.artifacts.some(({ path: relative }) => /win32-x64|updater/u.test(relative))).toBe(
-      false,
-    );
+    expect(
+      result.artifacts.some(({ path }) =>
+        path.endsWith("classic-level/prebuilds/win32-x64/classic-level.node"),
+      ),
+    ).toBe(true);
+    expect(result.artifacts.some(({ path }) => path.includes("updater"))).toBe(false);
     expect(fs.readFileSync(path.join(outputPath, result.entrypoints.codexCli))).toEqual(pe);
     fs.appendFileSync(path.join(packageRoot, "app/resources/codex.exe"), "changed");
     expect(() => vendorWindowsBrowserRuntime({ ...options, targetArch: arch })).toThrow(

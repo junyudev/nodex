@@ -5,18 +5,18 @@ export function readPeImports(
 ): readonly { readonly name: string; readonly kind: "import" | "delay" }[];
 export function assertPeDependencies(
   file: string,
-  expected: "x64" | "arm64",
+  expected: "x64",
   options?: {
     readonly systemOnly?: boolean;
     windowsAccountHostProbe?: boolean;
     readonly nodeHost?: string;
   },
 ): void;
-export function readPeArchitecture(file: string): "x64" | "arm64";
-export function assertPeArchitecture(file: string, expected: "x64" | "arm64"): void;
+export function readPeArchitecture(file: string): "x64";
+export function assertPeArchitecture(file: string, expected: "x64"): void;
 export function verifyWindowsArchitectureClosure(
   root: string,
-  expected: "x64" | "arm64",
+  expected: "x64",
   options?: {
     readonly installed?: boolean;
     readonly nodeHost?: string;

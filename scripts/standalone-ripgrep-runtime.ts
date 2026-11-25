@@ -17,7 +17,6 @@ import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutab
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { assertRipgrepRuntimePayload } from "./ripgrep-runtime-payload.mjs";
 import { assertPeDependencies } from "./windows-pe.mjs";
-import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 
 export async function stageStandaloneRipgrepRuntime(
   root: string,
@@ -70,7 +69,6 @@ export async function stageStandaloneRipgrepRuntime(
     writeFileSync(executable, bytes);
     chmodSync(executable, 0o755);
     copyFileSync(join(root, "resources/ripgrep/LICENSE"), join(staging, "LICENSE"));
-    if (target.platform === "win32") stageWindowsVcRuntime(staging, target.arch);
     verifyStage(staging);
     replaceOwnedDirectory(staging, output);
   } finally {
