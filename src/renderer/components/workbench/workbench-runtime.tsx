@@ -2655,6 +2655,11 @@ export function WorkbenchRuntime({
       "snoozeThread",
       "CmdOrCtrl+Alt+Z",
     ),
+    settleShortcutLabel: formatCommandShortcutLabel(
+      commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
+      "settleThread",
+      "CmdOrCtrl+Alt+E",
+    ),
     organizeShortcutLabel: formatCommandShortcutLabel(
       commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
       "toggleSidebarOrganize",

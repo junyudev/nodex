@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import { settleAsyncRender } from "../../test/dom";
+import { flushPendingAccepts } from "@/lib/page-accept-undo";
 import {
   fixtureSessionActivityAt,
   makeAttachedSession,
@@ -330,7 +331,7 @@ describe("workbench session shell / chat lifecycle", () => {
       ).not.toBeNull(),
     );
   });
-  test("a chat whose Page waits for the reader's review says so, and its check accepts the work", async () => {
+  test("a chat whose Page waits for the reader's review says so and offers Accept, with Undo", async () => {
     setSidebarOrganizeForTest("attention");
     const review = chat("Fix login race", {
       activityAt: fixtureSessionActivityAt(1),
@@ -353,10 +354,32 @@ describe("workbench session shell / chat lifecycle", () => {
       ),
     );
 
-    await pressSettle(screen.container, "Fix login race", "Accept and settle");
-    const accepts = invokeCalls.filter((call) => call[0] === "work:accept");
-    expect(accepts).toHaveLength(1);
-    expect(accepts[0]?.[1]).toMatchObject({ pageId: "page-login", turnEpisode: "episode-review" });
+    // A review is decided by name, not by the check that settles other chats.
+    expect(within(row).queryByRole("button", { name: "Settle" })).toBeNull();
+    await pressSettle(screen.container, "Fix login race", "Accept");
+    const accepts = () => invokeCalls.filter((call) => call[0] === "work:accept");
+    // The decision waits out its Undo window, and the row stops asking meanwhile.
+    expect(accepts()).toEqual([]);
+    await waitFor(() =>
+      expect(
+        getThreadRow(screen.container, "Fix login race").querySelector(
+          "[data-app-action-sidebar-thread-accept]",
+        ),
+      ).toBeNull(),
+    );
+    expect(
+      __getNodexToastSnapshotForTests().find((item) => item.title === "Accepted")?.action?.label,
+    ).toBe("Undo");
+
+    await act(async () => {
+      flushPendingAccepts();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(accepts()).toHaveLength(1));
+    expect(accepts()[0]?.[1]).toMatchObject({
+      pageId: "page-login",
+      turnEpisode: "episode-review",
+    });
     // Accepting is the decision; the chat settles when its work is Done, not by a second call.
     expect(setSettledCalls(review.id)).toEqual([]);
   });

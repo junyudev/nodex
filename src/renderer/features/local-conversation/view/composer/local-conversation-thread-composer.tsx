@@ -122,6 +122,7 @@ import type {
 import { ComposerActionTooltipContent } from "./composer-submit-tooltip";
 import { QueuedFollowUpSendDialog } from "./queued-follow-up-send-dialog";
 import { ComposerNoticeRail } from "./composer-notice-rail";
+import { ComposerReviewRail, useChatReview } from "./composer-review-rail";
 import { ComposerTipLine } from "./composer-tip-line";
 import {
   isComposerDictationShortcut,
@@ -4125,10 +4126,17 @@ function HydratedThreadComposer({
           ],
         }
       : null);
-  // A tip speaks only into quiet: nothing holding the composer, no suggestion answering what is
-  // being typed, and a docked composer with room above it.
+  // Work this chat's Page has ready for the reader is decided above the composer, unless
+  // something keeps the composer from sending first.
+  const chatReview = useChatReview(
+    model.composerChatKey?.kind === "session" ? model.composerChatKey.sessionId : null,
+  );
+  const composerReview = composerNotice === null ? chatReview : null;
+  const hasComposerRail = composerNotice !== null || composerReview !== null;
+  // A tip speaks only into quiet: nothing holding the composer or waiting on the reader, no
+  // suggestion answering what is being typed, and a docked composer with room above it.
   const composerTip =
-    composerNotice === null && !showPlanKeywordSuggestion && !isFloatingComposer
+    !hasComposerRail && !showPlanKeywordSuggestion && !isFloatingComposer
       ? (model.provider?.tip ?? null)
       : null;
   const composerLayout = resolveComposerAdaptiveLayout({
@@ -4137,7 +4145,7 @@ function HydratedThreadComposer({
     hasExplicitLineBreak: hasMultilinePrompt,
     promptIntrinsicWidthPx,
     compactInputWidthPx,
-    hasNotice: composerNotice !== null,
+    hasNotice: hasComposerRail,
     isDictating: showDictationRow,
   });
   const floatingComposerSingleLine = composerLayout === "single-line";
@@ -5047,6 +5055,9 @@ function HydratedThreadComposer({
       {composerNotice && !isFloatingComposer ? (
         <ComposerNoticeRail notice={composerNotice} placement="attached" />
       ) : null}
+      {composerReview && !isFloatingComposer ? (
+        <ComposerReviewRail review={composerReview} placement="attached" />
+      ) : null}
       <ComposerContextRailSlot visible={showExternalFooter}>
         <ThreadComposerStatusStrip
           model={model}
@@ -5147,12 +5158,15 @@ function HydratedThreadComposer({
             // A floating composer's frame draws the surface.
             !isFloatingComposer && COMPOSER_SURFACE_CLASS_NAME,
             floatingComposerSingleLine ? "overflow-visible rounded-full" : "overflow-y-auto",
-            (showExternalFooter || composerNotice) && "z-10",
+            (showExternalFooter || hasComposerRail) && "z-10",
           )}
         >
           <div className="relative z-10 flex min-h-0 flex-1 flex-col">
             {composerNotice && isFloatingComposer ? (
               <ComposerNoticeRail notice={composerNotice} placement="inset" />
+            ) : null}
+            {composerReview && isFloatingComposer ? (
+              <ComposerReviewRail review={composerReview} placement="inset" />
             ) : null}
             {!floatingComposerSingleLine ? (
               <ComposerAttachments>

@@ -11,7 +11,8 @@ import { usePageTurnHolder } from "@/components/workbench/page-turn";
 import { setExecutionHold } from "@/lib/execution-holds-runtime";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { pageTurnPhrase } from "@/lib/page-turn-phrase";
-import { acceptPageWork, usePageTurn } from "@/lib/page-turn-runtime";
+import { usePageTurn } from "@/lib/page-turn-runtime";
+import { acceptReviewWithUndo, useReviewAccepted } from "@/lib/page-accept-undo";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { startWork } from "@/lib/work-graph-runtime";
 
@@ -90,8 +91,10 @@ export function PageStatusTurn({
   const hostAvailable = useSpaceHostAvailable();
   const turn = data?.turn;
   const holder = usePageTurnHolder(turn);
+  // A review accepted here or anywhere else reads as decided while its Undo is offered.
+  const accepted = useReviewAccepted(turn?.reason === "review" ? turn : null);
   const phrase = turn ? pageTurnPhrase(turn, holder) : null;
-  if (!turn || !phrase) return null;
+  if (!turn || !phrase || accepted) return null;
   const run = (action: () => Promise<unknown>) => {
     setPending(true);
     void action()
@@ -112,7 +115,9 @@ export function PageStatusTurn({
   const action = statusTurnAction(intl, turn, Boolean(chat && onOpenChat));
   const perform = () => {
     if (action?.kind === "resume") run(() => setExecutionHold(action.scope, false));
-    else if (action?.kind === "accept") run(() => acceptPageWork(pageId));
+    // A review that asks the reader is held to the episode they see; another Member's is not.
+    else if (action?.kind === "accept")
+      acceptReviewWithUndo(turn, { fenced: holder.you || turn.actor.kind === "members" });
     else if (action?.kind === "start") run(() => startWork({ pageId, again: false }));
     else if (action?.kind === "open_chat" && chat) void onOpenChat?.(chat);
   };

@@ -46,7 +46,7 @@ import {
   SESSION_CONTEXT_MENU_ACTION_IDS,
 } from "./session-context-menu-model";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
-import { acceptPageWork } from "@/lib/page-turn-runtime";
+import { acceptReviewWithUndo } from "@/lib/page-accept-undo";
 import { toast } from "@/components/ui/toast";
 import { formatChatSnoozeConfirmation } from "@/lib/chat-snooze";
 import { writeTextToClipboard } from "@/lib/clipboard";
@@ -1045,9 +1045,10 @@ export function useWorkbenchSidebarController({
     [catalog, refreshSidebarThreadSnapshot, settleSessions],
   );
 
-  // Accepting the work a chat's Page waits on settles that chat, so the reader moves on.
+  // Accepting the work a chat's Page waits on settles that chat, so the reader moves on. The
+  // accept waits out its Undo window first; see page-accept-undo.
   const acceptSessionWork = useCallback(
-    async (session: ProjectSessionDomain) => {
+    (session: ProjectSessionDomain) => {
       const turn = session.pageTurn;
       if (turn?.reason !== "review") return;
       const successor =
@@ -1057,24 +1058,8 @@ export function useWorkbenchSidebarController({
               session.id,
             )
           : null;
-      try {
-        await acceptPageWork(turn.page_id, turn.episode);
-      } catch {
-        toast.danger(
-          getIntl().formatMessage({
-            id: "workbench.useWorkbenchSidebarController.acceptFailed",
-            defaultMessage: "Couldn’t accept the work",
-          }),
-        );
-        return;
-      }
+      acceptReviewWithUndo(turn);
       void openChatById(successor);
-      toast.success(
-        getIntl().formatMessage({
-          id: "workbench.useWorkbenchSidebarController.accepted",
-          defaultMessage: "Accepted",
-        }),
-      );
     },
     [activeSessionId, openChatById],
   );

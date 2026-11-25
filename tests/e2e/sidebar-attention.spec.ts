@@ -140,9 +140,18 @@ test("arranges chats by attention and applies sidebar actions to their live lane
         await expect(review).toBeVisible();
       });
 
-      await test.step("accept the review and settle its Active chat", async () => {
+      await test.step("accept the review, undo it, then accept it for good", async () => {
+        const accept = review.getByRole("button", { name: "Accept", exact: true });
         await review.hover();
-        await review.getByRole("button", { name: "Accept and settle", exact: true }).click();
+        await accept.click();
+        // Undo within the window means Core never hears of the accept: the review still asks.
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
+        await expect(review.locator("[data-app-action-sidebar-thread-preview]")).toHaveText(
+          /^Ready for your review/,
+        );
+        await review.hover();
+        await accept.click();
+        // Once the Undo window passes, the work is Done and its Active chat settles.
         await expect(review).toHaveCount(0);
         await expectChats(settled, [...initialSettled, chats.review]);
         await expect(inbox.getByLabel("2 in Inbox")).toBeVisible();

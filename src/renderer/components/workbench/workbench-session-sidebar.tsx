@@ -141,6 +141,7 @@ import { SidebarPaginatedItems, SidebarPaginatedRows } from "./sidebar-paginated
 import { SidebarChatLaneSection, SidebarSettleReadChatsButton } from "./sidebar-chat-lanes";
 import { useSidebarChatLanes, useSidebarLaneHold } from "./use-sidebar-chat-lanes";
 import { pageTurnPhrase, type PageTurnHolder } from "@/lib/page-turn-phrase";
+import { reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { sidebarSectionChatIds } from "@/lib/sidebar-section-navigation";
 import { SidebarArrangeToggle, SidebarLaneViewMenu, SidebarScopeChip } from "./sidebar-view-menu";
 import {
@@ -256,6 +257,7 @@ export interface SidebarChatLifecycle {
   /** Opens the Settled page, showing one Project's chats or every Project's. */
   readonly onOpenSettledChats: (projectId: string | null) => void;
   readonly snoozeShortcutLabel?: string;
+  readonly settleShortcutLabel?: string;
   readonly onVisibleChatsChange: (chats: readonly SidebarVisibleChat[]) => void;
   readonly organizeShortcutLabel?: string;
   /** The one Project the lanes and the Inbox entry show, or null for every Project. */
@@ -966,10 +968,22 @@ function SidebarThreadOrganizerSections({
   const runtimeActivities = useAgentRuntimeActivities();
   const arrangedByAttention = lifecycle.organize === "attention";
   const hiddenShelves = lifecycle.hiddenShelves;
+  // A review the reader accepted asks nothing more, even while its Undo window is open.
+  const acceptedReviews = useAcceptedReviews();
+  const readerTurn = useCallback(
+    (session: ProjectSessionDomain | null | undefined) => {
+      const turn = session?.pageTurn ?? null;
+      return turn && !(turn.reason === "review" && acceptedReviews.has(reviewKey(turn)))
+        ? turn
+        : null;
+    },
+    [acceptedReviews],
+  );
   const onToggleSessionSettled = lifecycle.onToggleSessionSettled;
   const onSnoozeSession = lifecycle.onSnoozeSession;
   const onAcceptSessionWork = lifecycle.onAcceptSessionWork;
   const snoozeShortcutLabel = lifecycle.snoozeShortcutLabel;
+  const settleShortcutLabel = lifecycle.settleShortcutLabel;
   const onVisibleChatsChange = lifecycle.onVisibleChatsChange;
   const openLaneSessions = useMemo(
     () =>
@@ -1490,6 +1504,7 @@ function SidebarThreadOrganizerSections({
       const hoverCardProjectLabel =
         options.hoverCardProjectLabel ??
         (item.projectId ? (projectLabelById.get(item.projectId) ?? null) : null);
+      const turn = readerTurn(session);
 
       return (
         <CodexSidebarThreadRow
@@ -1518,10 +1533,11 @@ function SidebarThreadOrganizerSections({
           }
           onWake={session ? () => onSnoozeSession(session, null) : undefined}
           snoozeShortcutLabel={snoozeShortcutLabel}
+          settleShortcutLabel={settleShortcutLabel}
           // The Page this chat works on speaks first when it waits on the reader.
-          turnLead={session?.pageTurn ? pageTurnPhrase(session.pageTurn, READER) : null}
+          turnLead={turn ? pageTurnPhrase(turn, READER) : null}
           onAccept={
-            session?.pageTurn?.reason === "review" ? () => onAcceptSessionWork(session) : undefined
+            session && turn?.reason === "review" ? () => onAcceptSessionWork(session) : undefined
           }
           onHoverCardOpenChange={(open) => {
             setSidebarHoverSurfaceOpen(`thread:${item.key}`, open);
@@ -1575,6 +1591,7 @@ function SidebarThreadOrganizerSections({
       onSnoozeSession,
       onAcceptSessionWork,
       snoozeShortcutLabel,
+      settleShortcutLabel,
       onOpenSessionContextMenu,
       onOpenSessionLinkedPage,
       onArchiveSidebarThread,
@@ -1586,6 +1603,7 @@ function SidebarThreadOrganizerSections({
       onToggleSessionPinned,
       onToggleSidebarThreadPinned,
       projectLabelById,
+      readerTurn,
       resolveSessionForItem,
       setSidebarHoverSurfaceOpen,
       sidebarArchivePendingKeys,
@@ -2027,7 +2045,7 @@ function SidebarThreadOrganizerSections({
   const openLaneSessionById = new Map(openLaneSessions.map((session) => [session.id, session]));
   const settleableReadSessions = resolveSettleableReadChats(chatLanes.active, (chatId) => {
     const session = openLaneSessionById.get(chatId);
-    return session ? hasSessionConversation(session) && session.pageTurn === null : false;
+    return session ? hasSessionConversation(session) && readerTurn(session) === null : false;
   }).flatMap((chatId) => {
     const session = openLaneSessionById.get(chatId);
     return session ? [session] : [];

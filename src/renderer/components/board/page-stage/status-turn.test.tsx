@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vite-plus/test";
 import type { PageTurn } from "../../../../shared/page-turn";
 import { REMOTE_AGENT_REASON } from "../../../../shared/space-connection";
 import { renderWithQuery as render } from "@/test/query";
+import { flushPendingAccepts } from "@/lib/page-accept-undo";
 import { PageStatusTurn } from "./status-turn";
 const state = vi.hoisted(() => ({
   reason: "ready_to_start" as PageTurn["reason"],
@@ -88,12 +89,31 @@ test("Start explains why this device cannot run the work", () => {
   expect((screen.getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByLabelText(REMOTE_AGENT_REASON)).toBeTruthy();
 });
-test("review acceptance uses the Page work acceptance command", async () => {
+test("accepting a review waits out its Undo, then accepts the episode the reader saw", async () => {
   state.reason = "review";
   render(<PageStatusTurn pageId="page" />);
   expect(screen.getByText("Ready for your review")).toBeTruthy();
   await click("Accept");
-  await waitFor(() => expect(state.accept).toHaveBeenCalledWith("page"));
+  // The review reads as decided at once; Core hears of it once Undo has passed.
+  await waitFor(() => expect(screen.queryByText("Ready for your review")).toBeNull());
+  expect(state.accept).not.toHaveBeenCalled();
+  await act(async () => {
+    flushPendingAccepts();
+    await Promise.resolve();
+  });
+  expect(state.accept).toHaveBeenCalledExactlyOnceWith("page", "episode");
+});
+test("another Member's review is accepted without holding it to an episode", async () => {
+  state.reason = "review";
+  state.actor = { kind: "member", member_id: "alice" };
+  render(<PageStatusTurn pageId="page" />);
+  await click("Accept");
+  await act(async () => {
+    flushPendingAccepts();
+    await Promise.resolve();
+  });
+  // Core fences only a review that asks the reader.
+  expect(state.accept).toHaveBeenCalledExactlyOnceWith("page", undefined);
 });
 test("another person's move names them and offers no action", () => {
   state.reason = "question";

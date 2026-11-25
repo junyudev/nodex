@@ -453,10 +453,23 @@ Start. Every other Turn also offers Open chat, which opens the Page's active
 chat, or the Page when it has none: an icon beside a review or a question with
 options, otherwise the row's filled button.
 The Page's Active chat and the Inbox show the same decision. Answering or approving
-a request in either place clears that request from both. Accept moves the Page to
-Done, which settles its Active chat for each eligible Member under the same
-rules as [idle settlement](./workbench-shell.md#layout). The chat row's
-`Accept and settle` action accepts the same review episode.
+a request in either place clears that request from both. In review, the Active chat's
+composer carries the decision on one line attached to it: the Turn's words, the Page,
+which opens beside the chat, and `Accept`. Replying instead asks the Agent for changes;
+the Page goes back to work when the Agent picks the reply up and returns to review when
+it reports ready again. A notice that keeps the composer from sending takes that line's
+place until it clears. Accept moves the Page to Done, which settles its Active chat for
+each eligible Member under the same rules as
+[idle settlement](./workbench-shell.md#layout). The chat row's `Accept` accepts the same
+review episode. Accept, wherever the person chooses it (the Inbox, the Page's Status,
+the chat or its row), waits six seconds behind an `Accepted · Undo` confirmation
+before it reaches Core, because Done can start the work that waited on the Page. The
+review reads as decided everywhere meanwhile: its Inbox row leaves, the Page's Status
+stops asking, and Undo takes it back exactly. A window that closes within those seconds
+still sends it. A review that asks the reader is accepted at the episode they saw; the
+Page's Status may also accept another Member's review, which Core accepts as it stands. The chat stays on
+screen when it is accepted from the chat, and the row moves on to the next chat when it
+was the one on screen.
 An Agent may take any of these actions on a Turn of the Member it acts for, and never on
 another Member's Turn; its instructions limit it to what the person told it to answer or
 asked it to handle. Execution approvals stay with the person's chosen permission mode.

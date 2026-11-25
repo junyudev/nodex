@@ -1,0 +1,1 @@
+Accepting work gives you a few seconds to undo it, wherever you accept it: the Inbox, the Page, its chat or its row in the sidebar. A chat waiting for your review now offers **Accept** by name on its row instead of the Settle check, and every action on a chat's row names itself when you point at it.

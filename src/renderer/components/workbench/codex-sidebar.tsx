@@ -12,6 +12,7 @@ import type {
   MouseEvent,
   PointerEvent,
   Ref,
+  ReactElement,
   ReactNode,
   SyntheticEvent,
 } from "react";
@@ -51,6 +52,7 @@ import {
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getGitWorkerClient } from "@/lib/api";
 import { openFileLink } from "@/lib/file-system-operations";
@@ -170,7 +172,7 @@ export const CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS = SIDEBAR_PROJECT_NEW_CHAT_
 export const CODEX_SIDEBAR_THREAD_ROW_CLASS =
   "group relative h-token-nav-row cursor-interaction rounded-lg py-row-y text-sm hover:bg-token-list-hover-background focus-visible:outline-offset-[-2px]";
 export const CODEX_SIDEBAR_THREAD_ACTION_RAIL_CLASS =
-  "pointer-events-none absolute right-0 top-0 z-10 mr-0.5 flex h-full w-[52px] items-center justify-end gap-2 pr-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [&:has(:focus-visible)]:opacity-100";
+  "pointer-events-none absolute right-0 top-0 z-10 mr-0.5 flex h-full w-(--sidebar-row-actions-width,52px) items-center justify-end gap-2 pr-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [&:has(:focus-visible)]:opacity-100";
 const CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS =
   "no-drag pointer-events-auto flex size-5 shrink-0 cursor-interaction items-center justify-center rounded-md leading-none text-token-foreground/70 enabled:hover:text-token-foreground focus-visible:text-token-foreground disabled:cursor-not-allowed disabled:opacity-40 [&>svg]:!h-4 [&>svg]:!w-4";
 export const CODEX_SIDEBAR_ROW_LABEL_CLASS =
@@ -2027,22 +2029,44 @@ type CodexSidebarThreadRowProps = {
   /** Ends the chat's snooze early. */
   onWake?: (item: CodexSidebarThreadItem) => void | Promise<void>;
   snoozeShortcutLabel?: string;
+  settleShortcutLabel?: string;
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
 };
 
-function settleActionLabel(intl: IntlShape, settled: boolean, accepts: boolean): string {
-  if (settled)
-    return intl.formatMessage({
-      id: "workbench.codexSidebar.reopenChat",
-      defaultMessage: "Reopen chat",
-    });
-  return accepts
-    ? intl.formatMessage({
-        id: "workbench.codexSidebar.acceptAndSettle",
-        defaultMessage: "Accept and settle",
-      })
+function settleActionLabel(intl: IntlShape, settled: boolean): string {
+  return settled
+    ? intl.formatMessage({ id: "workbench.codexSidebar.reopenChat", defaultMessage: "Reopen chat" })
     : intl.formatMessage({ id: "workbench.codexSidebar.settleChat", defaultMessage: "Settle" });
 }
+
+/** Names a row action above it, with its shortcut when the action has one for this chat. */
+function SidebarRowActionTooltip({
+  label,
+  shortcutLabel,
+  children,
+}: {
+  label: string;
+  shortcutLabel?: string;
+  children: ReactElement;
+}) {
+  return (
+    <NodexTooltip tooltipContent={label} shortcutLabel={shortcutLabel} side="top">
+      {children}
+    </NodexTooltip>
+  );
+}
+
+/** A row waiting for review widens its actions to fit Accept beside Snooze. */
+const SIDEBAR_ROW_ACCEPT_ACTIONS_STYLE = {
+  "--sidebar-row-actions-width": "5.5rem",
+  "--sidebar-row-actions-slot": "5.25rem",
+} as CSSProperties;
+
+/** The decision a review asks for, in the same solid tone as Accept in the Inbox. */
+const SIDEBAR_ROW_ACCEPT_BUTTON_CLASS = cn(
+  NODEX_BUTTON_COLOR_CLASS.primary,
+  "no-drag pointer-events-auto inline-flex h-5 shrink-0 cursor-interaction items-center rounded-md px-1.5 text-xs leading-none whitespace-nowrap focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
+);
 
 export function CodexSidebarThreadRow(props: CodexSidebarThreadRowProps) {
   return props.runtime ? (
@@ -2112,6 +2136,7 @@ function CodexSidebarThreadRowView({
   onSnooze,
   onWake,
   snoozeShortcutLabel,
+  settleShortcutLabel,
   turnLead,
   onAccept,
   linkedPageStore,
@@ -2139,6 +2164,10 @@ function CodexSidebarThreadRowView({
   const showArchiveAction = !item.disabled && Boolean(onArchive) && !showSettleAction;
   const showEndAction = showSettleAction || showArchiveAction;
   const settled = item.settledAt != null;
+  // Work waiting for the reader's review is decided here, so the row offers Accept by name.
+  const accepts = !settled && Boolean(onAccept);
+  // A shortcut acts on the chat on screen, so only that chat's actions name theirs.
+  const shortcutOnScreen = (label: string | undefined) => (active ? label : undefined);
   const showPinSlot = !item.disabled && Boolean(onTogglePinned);
   const pinButtonLabel = item.pinned
     ? intl.formatMessage({ id: "workbench.codexSidebar.unpinChat", defaultMessage: "Unpin chat" })
@@ -2257,6 +2286,7 @@ function CodexSidebarThreadRowView({
 
   const row = (
     <div
+      style={accepts ? SIDEBAR_ROW_ACCEPT_ACTIONS_STYLE : undefined}
       data-app-action-sidebar-thread-active={String(active)}
       data-app-action-sidebar-thread-grouped={String(grouped)}
       data-app-action-sidebar-thread-host-id={item.hostId}
@@ -2357,10 +2387,10 @@ function CodexSidebarThreadRowView({
             />
             <div
               className={cn(
-                "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-12 group-hover:min-w-12 group-has-[:focus-visible]:min-w-12",
+                "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-(--sidebar-row-actions-slot,3rem) group-hover:min-w-(--sidebar-row-actions-slot,3rem) group-has-[:focus-visible]:min-w-(--sidebar-row-actions-slot,3rem)",
                 // Rows that name their Project keep the slot, so the names share one edge.
                 (status || pageStatus || trailingLabel) && "min-w-[26px]",
-                actionsOpen && "min-w-12",
+                actionsOpen && "min-w-(--sidebar-row-actions-slot,3rem)",
                 // The resting pin stays interactive beside the overlaid archive action.
                 showRestingPinnedButton &&
                   showEndAction &&
@@ -2369,21 +2399,21 @@ function CodexSidebarThreadRowView({
               )}
             >
               {showRestingPinnedButton ? (
-                <button
-                  type="button"
-                  aria-label={pinButtonLabel}
-                  className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
-                  data-state={contextMenuOpen ? "open" : "closed"}
-                  data-app-action-sidebar-thread-resting-pin=""
-                  data-app-action-sidebar-thread-pin-session=""
-                  data-app-action-sidebar-thread-pin-slot=""
-                  onPointerDown={stopCodexSidebarRowActionPropagation}
-                  onMouseDown={stopCodexSidebarRowActionPropagation}
-                  onKeyDown={stopCodexSidebarRowActionPropagation}
-                  onClick={handleTogglePinnedClick}
-                >
-                  <SessionPinFilledIcon />
-                </button>
+                <SidebarRowActionTooltip label={pinButtonLabel}>
+                  <button
+                    type="button"
+                    aria-label={pinButtonLabel}
+                    className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
+                    data-state={contextMenuOpen ? "open" : "closed"}
+                    data-app-action-sidebar-thread-resting-pin=""
+                    data-app-action-sidebar-thread-pin-session=""
+                    data-app-action-sidebar-thread-pin-slot=""
+                    {...CODEX_SIDEBAR_ROW_ACTIONS_BOUNDARY}
+                    onClick={handleTogglePinnedClick}
+                  >
+                    <SessionPinFilledIcon />
+                  </button>
+                </SidebarRowActionTooltip>
               ) : null}
               {status ? (
                 <span
@@ -2459,20 +2489,22 @@ function CodexSidebarThreadRowView({
                 className="flex h-5 w-5 shrink-0 items-center justify-center"
                 data-app-action-sidebar-thread-pin-slot=""
               >
-                <button
-                  type="button"
-                  aria-label={pinButtonLabel}
-                  className={cn(
-                    CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS,
-                    !item.pinned &&
-                      "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100",
-                  )}
-                  data-state={contextMenuOpen ? "open" : "closed"}
-                  data-app-action-sidebar-thread-pin-session=""
-                  onClick={handleTogglePinnedClick}
-                >
-                  {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
-                </button>
+                <SidebarRowActionTooltip label={pinButtonLabel}>
+                  <button
+                    type="button"
+                    aria-label={pinButtonLabel}
+                    className={cn(
+                      CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS,
+                      !item.pinned &&
+                        "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100",
+                    )}
+                    data-state={contextMenuOpen ? "open" : "closed"}
+                    data-app-action-sidebar-thread-pin-session=""
+                    onClick={handleTogglePinnedClick}
+                  >
+                    {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
+                  </button>
+                </SidebarRowActionTooltip>
               </div>
             ) : null}
             {showSnoozeSlot ? (
@@ -2481,7 +2513,7 @@ function CodexSidebarThreadRowView({
                   id: "workbench.codexSidebar.snoozeChat",
                   defaultMessage: "Snooze",
                 })}
-                shortcutLabel={snoozeShortcutLabel}
+                shortcutLabel={shortcutOnScreen(snoozeShortcutLabel)}
                 current={item.snoozedUntil ?? undefined}
                 onChoose={(snoozedUntil) => void onSnooze?.(item, snoozedUntil)}
                 onWake={item.snoozedUntil && onWake ? () => void onWake(item) : undefined}
@@ -2501,42 +2533,64 @@ function CodexSidebarThreadRowView({
                 }
               />
             ) : null}
-            {showSettleAction ? (
-              <button
-                type="button"
-                aria-label={settleActionLabel(intl, settled, Boolean(onAccept))}
-                // A chat stopped on its person cannot be settled until they answer it.
-                disabled={!settled && needsAttention}
-                className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
-                data-app-action-sidebar-thread-settled={String(settled)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  // Settling a chat whose work waits for the reader's review accepts that work.
-                  void (!settled && onAccept ? onAccept(item) : onToggleSettled?.(item));
-                }}
+            {showSettleAction && accepts ? (
+              <SidebarRowActionTooltip
+                label={intl.formatMessage({
+                  id: "workbench.codexSidebar.acceptWorkTooltip",
+                  defaultMessage: "Accept the work and settle the chat",
+                })}
               >
-                {settled ? <UndoIcon /> : <CheckmarkIcon />}
-              </button>
+                <button
+                  type="button"
+                  className={SIDEBAR_ROW_ACCEPT_BUTTON_CLASS}
+                  data-app-action-sidebar-thread-accept=""
+                  onClick={() => void onAccept?.(item)}
+                >
+                  {intl.formatMessage({
+                    id: "workbench.codexSidebar.accept",
+                    defaultMessage: "Accept",
+                  })}
+                </button>
+              </SidebarRowActionTooltip>
+            ) : showSettleAction ? (
+              <SidebarRowActionTooltip
+                label={settleActionLabel(intl, settled)}
+                shortcutLabel={shortcutOnScreen(settleShortcutLabel)}
+              >
+                <button
+                  type="button"
+                  aria-label={settleActionLabel(intl, settled)}
+                  // A chat stopped on its person cannot be settled until they answer it.
+                  disabled={!settled && needsAttention}
+                  className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
+                  data-app-action-sidebar-thread-settled={String(settled)}
+                  onClick={() => void onToggleSettled?.(item)}
+                >
+                  {settled ? <UndoIcon /> : <CheckmarkIcon />}
+                </button>
+              </SidebarRowActionTooltip>
             ) : null}
             {showArchiveAction ? (
-              <button
-                type="button"
-                aria-label={intl.formatMessage({
+              <SidebarRowActionTooltip
+                label={intl.formatMessage({
                   id: "workbench.codexSidebar.archiveChat",
                   defaultMessage: "Archive chat",
                 })}
-                disabled={archiveDisabled}
-                className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
-                data-app-action-sidebar-thread-archive=""
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void onArchive?.(item);
-                }}
               >
-                <ArchiveIcon />
-              </button>
+                <button
+                  type="button"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.codexSidebar.archiveChat",
+                    defaultMessage: "Archive chat",
+                  })}
+                  disabled={archiveDisabled}
+                  className={CODEX_SIDEBAR_THREAD_ACTION_BUTTON_CLASS}
+                  data-app-action-sidebar-thread-archive=""
+                  onClick={() => void onArchive?.(item)}
+                >
+                  <ArchiveIcon />
+                </button>
+              </SidebarRowActionTooltip>
             ) : null}
           </div>
         ) : null}

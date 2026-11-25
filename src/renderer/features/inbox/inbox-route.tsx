@@ -10,7 +10,7 @@ import { openNodex } from "../../lib/inbox-runtime";
 import { InboxTurnRow } from "./inbox-turn-row";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { acceptPageWork } from "@/lib/page-turn-runtime";
+import { acceptReviewWithUndo, reviewKey, useAcceptedReviews } from "@/lib/page-accept-undo";
 import { openExternalUrl } from "@/lib/file-system-operations";
 import { startWork } from "../../lib/work-graph-runtime";
 import { readableIpcError } from "@/lib/ipc-error-message";
@@ -421,8 +421,14 @@ export function InboxRoute({
   // The Inbox's preferences arrive with the Agents they name.
   const agents = useInboxAgents();
   const settings = agents.settings;
+  // A review the reader accepted leaves at once, while its Undo is still offered.
+  const acceptedReviews = useAcceptedReviews();
+  const streamItems = stream.items.filter(
+    (item) =>
+      !(item.turn?.turn.reason === "review" && acceptedReviews.has(reviewKey(item.turn.turn))),
+  );
   // A message decided here shows where it went in its place before it leaves the Inbox.
-  const departures = useInboxDepartures(view === "inbox" ? stream.items : []);
+  const departures = useInboxDepartures(view === "inbox" ? streamItems : []);
   const actions = useInboxActions(
     projects,
     scope,
@@ -646,7 +652,7 @@ export function InboxRoute({
           }
           onReply={() => replyTo(item)}
           onAnswer={reply}
-          onAccept={() => acceptPageWork(item.pageId, data.turn.episode)}
+          onAccept={async () => acceptReviewWithUndo(data.turn)}
           onStart={() =>
             startWork({ pageId: item.pageId, again: false, turnEpisode: data.turn.episode })
           }

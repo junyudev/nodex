@@ -1,0 +1,1 @@
+Accept work from the chat where you reviewed it. When a Page is ready for your review, its chat shows the Page and **Accept** right above where you type, so you can decide without leaving what the Agent did; replying instead sends the work back with your changes.
