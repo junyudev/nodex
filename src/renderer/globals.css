@@ -176,11 +176,17 @@
  * One line of text that fades out at its end instead of ending in an ellipsis. The fade applies
  * only while the text overflows: the element's own inline scroll timeline is inactive when there
  * is nothing to scroll, so text that fits keeps its last letters.
+ *
+ * The animation is spelled in longhands on purpose. Minification folds `animation-timeline` into
+ * an `animation` shorthand, which Chromium rejects as a whole, so the fade would vanish from
+ * production builds; `truncate-fade-css.node.test.ts` holds the built output to that.
  */
 @utility truncate-fade {
   overflow: hidden;
   white-space: nowrap;
-  animation: truncate-fade-mask linear both;
+  animation-name: truncate-fade-mask;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
   animation-timeline: scroll(self inline);
 }
 
