@@ -9,7 +9,7 @@ import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
 import { RuntimeApprovals } from "../orchestration-v2/RuntimeApprovals.ts";
 import { DesktopTools, makeDesktopTools } from "./DesktopTools.ts";
 
-const make = (home: string) =>
+const make = (home: string, attachmentsDir?: string) =>
   Effect.gen(function* () {
     const projections = yield* ProjectionStoreV2;
     const events = yield* EventSinkV2;
@@ -18,6 +18,7 @@ const make = (home: string) =>
     const host = yield* ExecutionHost;
     const run = Effect.runPromise;
     const service = makeDesktopTools(home, {
+      ...(attachmentsDir === undefined ? {} : { attachmentsDir }),
       admit: ({ threadId, providerInstanceId }) =>
         run(
           Effect.gen(function* () {
@@ -126,4 +127,5 @@ const make = (home: string) =>
     return service;
   });
 
-export const layer = (home: string) => Layer.effect(DesktopTools, make(home));
+export const layer = (home: string, attachmentsDir?: string) =>
+  Layer.effect(DesktopTools, make(home, attachmentsDir));

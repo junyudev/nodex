@@ -218,9 +218,13 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     .pipe(
       Layer.provide(ResourceCleanup.layer),
       Layer.provideMerge(
-        DesktopTools.layer(configuration.home).pipe(
-          Layer.provide(RuntimeLayer.layerRuntimeApprovalsProvided),
-          Layer.provide(RuntimeLayer.layerEventSink),
+        Layer.unwrap(
+          Effect.map(ServerConfig.ServerConfig, ({ attachmentsDir }) =>
+            DesktopTools.layer(configuration.home, attachmentsDir).pipe(
+              Layer.provide(RuntimeLayer.layerRuntimeApprovalsProvided),
+              Layer.provide(RuntimeLayer.layerEventSink),
+            ),
+          ),
         ),
       ),
       Layer.provide(layerServerActivation),

@@ -53,6 +53,8 @@ See [Windows host behavior](windows-host-behavior.md#codex-sandbox).
 
 Calls to the chat's own Nodex tools never ask, in any mode. Other tools and connected apps follow
 the mode.
+On macOS, Desktop Tools apply the effective mode to JavaScript and its child processes
+as described in [JavaScript sessions](desktop-control-surfaces.md#javascript-sessions).
 
 ## Approvals
 

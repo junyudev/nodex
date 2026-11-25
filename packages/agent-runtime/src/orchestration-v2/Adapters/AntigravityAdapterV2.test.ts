@@ -2096,7 +2096,7 @@ describe("AntigravityAdapterV2 subagent reads", () => {
 });
 
 describe("AntigravityAdapterV2 runtime mode ceiling", () => {
-  const modesSetFor = (
+  const openModeSession = (
     pickedMode: string,
     modes: Pick<ProviderAdapter.ProviderAdapterV2RuntimePolicy, "runtimeMode" | "maxRuntimeMode">,
   ) =>
@@ -2137,22 +2137,31 @@ describe("AntigravityAdapterV2 runtime mode ceiling", () => {
         defaultModel: Effect.undefined,
       });
       const threadId = ThreadId.make("thread-antigravity-ceiling");
-      yield* adapter.openSession({
+      const modelSelection = {
+        instanceId,
+        model: "gemini-test-low",
+        options: [{ id: "_nodex/session-mode", value: pickedMode }],
+      };
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        ...modes,
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const session = yield* adapter.openSession({
         threadId,
         providerSessionId: ProviderSessionId.make("provider-session-antigravity-ceiling"),
-        modelSelection: {
-          instanceId,
-          model: "gemini-test-low",
-          options: [{ id: "_nodex/session-mode", value: pickedMode }],
-        },
-        runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          ...modes,
-          interactionMode: "default",
-          cwd: process.cwd(),
-        }),
+        modelSelection,
+        runtimePolicy,
       });
-      return modesSet;
-    }).pipe(Effect.provide(layerSession), Effect.scoped);
+      return { session, instanceId, threadId, modelSelection, runtimePolicy, modesSet };
+    });
+
+  const modesSetFor = (...args: Parameters<typeof openModeSession>) =>
+    openModeSession(...args).pipe(
+      Effect.map(({ modesSet }) => modesSet),
+      Effect.provide(layerSession),
+      Effect.scoped,
+    );
 
   it.effect("does not apply a picked session mode above the thread's runtime mode", () =>
     Effect.gen(function* () {
@@ -2169,6 +2178,34 @@ describe("AntigravityAdapterV2 runtime mode ceiling", () => {
       // A narrower mode is still the user's to pick.
       assert.deepEqual(yield* modesSetFor("default", { runtimeMode: "auto" }), ["auto", "default"]);
     }),
+  );
+
+  it.effect("reports the narrower native session mode to Desktop Tools", () =>
+    Effect.gen(function* () {
+      const { session, threadId, instanceId, runtimePolicy, modelSelection } =
+        yield* openModeSession("default", { runtimeMode: "full-access" });
+      const providerThread = yield* session.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const desktopModes: string[] = [];
+      yield* session.startTurn({
+        ...makeTurnInput({
+          threadId,
+          providerThread,
+          instanceId,
+          runtimePolicy,
+          modelSelection,
+          now: yield* DateTime.now,
+        }),
+        prepareDesktopToolPolicy: (mode) =>
+          Effect.sync(() => {
+            desktopModes.push(mode);
+          }),
+      });
+      assert.deepEqual(desktopModes, ["approval-required"]);
+    }).pipe(Effect.provide(layerSession), Effect.scoped),
   );
 
   it.effect("leaving Plan keeps the permission mode the thread has now", () =>

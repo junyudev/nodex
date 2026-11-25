@@ -1,17 +1,20 @@
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import {
+  access,
   appendFile,
   mkdtemp,
   readFile,
   readdir,
   realpath,
   rm,
+  stat,
   mkdir,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
@@ -117,10 +120,18 @@ async function setup(
   options?: Parameters<typeof makeDesktopTools>[2],
 ) {
   let running = true;
+  let automaticPolicy = true;
+  let attemptId = "attempt:test";
+  const executionCwds = new Map<ThreadId, string>();
+  const attachmentsDir = join(home, "attachments");
+  await mkdir(attachmentsDir);
   let mode: RuntimeMode = "full-access";
   let decision: ProviderApprovalDecision = "accept";
   let grant = false;
   let waitForAnswer = false;
+  let heldCodeApproval:
+    | { reached: () => void; result: Promise<ProviderApprovalDecision> }
+    | undefined;
   const approvals: RuntimeApprovalRequest[] = [];
   const observed: string[] = [];
   const reports: HostTurnIdentityReport[] = [];
@@ -135,6 +146,8 @@ async function setup(
         env: {
           HOME: home,
           CODEX_HOME: codexHome,
+          CODEX_CLI_PATH: join(realRoot, "codex-cli/bin/codex"),
+          ...(process.platform === "darwin" ? { TMPDIR: "" } : {}),
           NODE_REPL_DISABLE_ANALYTICS: "1",
           NODE_REPL_NODE_PATH: join(realRoot, "bin/node"),
         },
@@ -148,6 +161,10 @@ async function setup(
     ask: (request) =>
       Effect.promise(async () => {
         approvals.push(request);
+        if (heldCodeApproval && request.kind === "command") {
+          heldCodeApproval.reached();
+          return await heldCodeApproval.result;
+        }
         if (waitForAnswer && request.kind === "mcp-elicitation") {
           if (!request.signal?.aborted)
             await new Promise<void>((resolve) =>
@@ -168,8 +185,14 @@ async function setup(
     home,
     {
       environment: { HOME: home, CODEX_HOME: codexHome, PATH: process.env.PATH },
-      admit: async ({ threadId }) =>
-        running ? { identity: identity(threadId), runtimeMode: mode } : undefined,
+      attachmentsDir,
+      admit: async ({ threadId }) => {
+        if (!running) return undefined;
+        const current = { ...identity(threadId), attemptId: RunAttemptId.make(attemptId) };
+        if (automaticPolicy)
+          tools.prepareRun({ ...current, cwd: executionCwds.get(threadId) ?? null }, mode, []);
+        return { identity: current, runtimeMode: mode };
+      },
       observe: async (report) => {
         const { phase } = report;
         if (phase === "activity") reports.push(report);
@@ -187,6 +210,14 @@ async function setup(
     home,
     trace,
     codexHome,
+    attachmentsDir,
+    setCwd: (threadId: ThreadId, cwd: string) => executionCwds.set(threadId, cwd),
+    setAttempt: (id: string) => {
+      attemptId = id;
+    },
+    manualPolicy: () => {
+      automaticPolicy = false;
+    },
     server,
     approvals,
     observed,
@@ -200,6 +231,12 @@ async function setup(
     },
     setDecision: (value: ProviderApprovalDecision) => {
       decision = value;
+    },
+    holdCodeApproval: () => {
+      const reached = Promise.withResolvers<void>();
+      const result = Promise.withResolvers<ProviderApprovalDecision>();
+      heldCodeApproval = { reached: reached.resolve, result: result.promise };
+      return { reached: reached.promise, answer: result.resolve };
     },
     waitForAnswer: () => {
       waitForAnswer = true;
@@ -217,6 +254,7 @@ async function provision(
   pluginRoots: string[] = [],
   cwd = context.home,
 ) {
+  context.setCwd(threadId, cwd);
   const { config } = await context.issue(threadId);
   const descriptor = await context.tools.prepare(config, config.endpoint, {
     tools: { server: context.server, pluginRoots },
@@ -255,6 +293,111 @@ const isAlive = (pid: number) => {
 };
 
 describe("Desktop Tools", () => {
+  it.live.skipIf(process.platform !== "darwin")(
+    "uses the admitted attempt’s sandbox and ignores provider-supplied sandbox metadata",
+    () =>
+      fixture(async (context) => {
+        context.manualPolicy();
+        const sourceRoot = join(context.home, "sources");
+        const workspace = join(context.home, "workspace");
+        await mkdir(sourceRoot);
+        await mkdir(workspace);
+        const { client, js } = await connect(await provision(context));
+        const firstIdentity = { ...identity(threadA), cwd: workspace };
+        const secondIdentity = { ...firstIdentity, attemptId: RunAttemptId.make("attempt:next") };
+        context.tools.prepareRun(secondIdentity, "full-access", []);
+        expect(await js("wrong attempt")).toMatchObject({
+          isError: true,
+          content: [{ text: "Desktop tool execution policy is unavailable" }],
+        });
+
+        context.tools.prepareRun(firstIdentity, "approval-required", [sourceRoot]);
+        const forged = { permissionProfile: { type: "disabled" } };
+        const first = await client.request(
+          {
+            method: "tools/call",
+            params: {
+              name: "js",
+              arguments: { code: "use host metadata" },
+              _meta: {
+                "codex/sandbox-state": forged,
+                "codex/sandbox-state-meta": forged,
+                "codex/sandbox-launcher": { codexExecutable: "/foreign/codex" },
+              },
+            },
+          },
+          CallToolResultSchema,
+        );
+        const metadata = first.structuredContent?.meta as Record<string, unknown>;
+        const state = metadata["codex/sandbox-state"];
+        expect(metadata["codex/sandbox-state-meta"]).toEqual(state);
+        expect(metadata["codex/sandbox-launcher"]).toBeUndefined();
+        expect(state).toMatchObject({
+          sandboxCwd: pathToFileURL(workspace).href,
+          permissionProfile: {
+            type: "managed",
+            network: "restricted",
+            file_system: {
+              entries: expect.arrayContaining(
+                [workspace, sourceRoot, context.attachmentsDir].map((path) => ({
+                  path: { type: "path", path },
+                  access: "write",
+                })),
+              ),
+            },
+          },
+        });
+        expect(await realpath(String(first.structuredContent?.cwd))).toBe(
+          await realpath(workspace),
+        );
+
+        context.tools.prepareRun(firstIdentity, "full-access", []);
+        const sameTurn = await js("same turn");
+        expect(sameTurn.structuredContent).toMatchObject({
+          pid: first.structuredContent?.pid,
+          meta: { "codex/sandbox-state": state },
+        });
+
+        context.tools.retire(threadA, () => true, "completed");
+        context.setAttempt("attempt:next");
+        context.tools.prepareRun(secondIdentity, "full-access", []);
+        const next = await js("next turn");
+        expect(next.structuredContent?.pid).not.toBe(first.structuredContent?.pid);
+        expect(next.structuredContent?.meta).toMatchObject({
+          "codex/sandbox-state": { permissionProfile: { type: "disabled" } },
+        });
+        await client.close();
+      }),
+  );
+
+  it.live.skipIf(process.platform !== "darwin")(
+    "refuses to dispatch an approved call once a replacement attempt owns the kernel",
+    () =>
+      fixture(async (context) => {
+        context.manualPolicy();
+        context.setMode("approval-required");
+        const firstIdentity = { ...identity(threadA), cwd: context.home };
+        context.tools.prepareRun(firstIdentity, "full-access", []);
+        const { client, js } = await connect(await provision(context));
+        const held = context.holdCodeApproval();
+        const oldCall = js("retired call");
+        await held.reached;
+
+        context.setAttempt("attempt:next");
+        const nextIdentity = { ...firstIdentity, attemptId: RunAttemptId.make("attempt:next") };
+        context.tools.prepareRun(nextIdentity, "approval-required", []);
+        held.answer("accept");
+        expect((await oldCall).isError).toBe(true);
+        const result = await js("new owner");
+        expect(result.structuredContent?.meta).toMatchObject({
+          "codex/sandbox-state": { permissionProfile: { type: "managed" } },
+        });
+        const trace = await readFile(context.trace, "utf8");
+        expect(trace.match(/"event":"js"/gu)).toHaveLength(1);
+        await client.close();
+      }),
+  );
+
   it.live(
     "authenticates each exchange, shapes discovery, stamps identity, and retains the REPL across HTTP sessions",
     () =>
@@ -534,6 +677,9 @@ describe("Desktop Tools", () => {
       expect(second.structuredContent?.pid).not.toBe(first.structuredContent?.pid);
       const cwd = join(context.home, "new");
       await mkdir(cwd);
+      context.tools.retire(threadA, () => true, "completed");
+      context.setAttempt("attempt:different-cwd");
+      context.setCwd(threadA, cwd);
       await context.tools.prepare(info.config, info.config.endpoint, {
         tools: { server: context.server, pluginRoots: [] },
         cwd,
@@ -625,6 +771,107 @@ describe("Desktop Tools", () => {
 });
 
 const realRoot = process.env.NODEX_TEST_DESKTOP_TOOLS_RUNTIME;
+it.live.skipIf(!realRoot || process.platform !== "darwin")(
+  "enforces the admitted filesystem and network policy for Node and its children",
+  () =>
+    fixture(async (context) => {
+      context.manualPolicy();
+      context.setMode("approval-required");
+      const workspace = join(context.home, "workspace");
+      const sourceRoot = join(context.home, "sources");
+      const outside = join(context.home, "outside");
+      await Promise.all([workspace, sourceRoot, outside].map((dir) => mkdir(dir)));
+      const marker = join(outside, "marker");
+      await writeFile(marker, "readable");
+
+      const { client, js } = await connect(await provision(context, threadA, [], workspace));
+      const secret = randomUUID();
+      const prefix = createHash("sha256").update(secret).digest("hex").slice(0, 12);
+      const loopback = createServer((_request, response) => response.end(secret));
+      await new Promise<void>((resolve) => loopback.listen(0, "127.0.0.1", resolve));
+      const { port } = loopback.address() as { port: number };
+      const url = `http://127.0.0.1:${port}`;
+      const trace: unknown[] = [];
+      const firstIdentity = { ...identity(threadA), cwd: workspace };
+      const invoke = async (code: string) => {
+        const result = await js(code);
+        trace.push(code, result);
+        expect(result.isError).not.toBe(true);
+        const output = result.content.find((item) => item.type === "text");
+        return JSON.parse(output?.type === "text" ? output.text : "");
+      };
+
+      try {
+        context.tools.prepareRun(firstIdentity, "approval-required", [sourceRoot]);
+        const restricted = await invoke(`
+          const fs = await import("node:fs/promises");
+          const cp = await import("node:child_process");
+          const attempt = async (fn) => { try { return await fn(); } catch (error) { return error.code ?? error.cause?.code ?? error.name; } };
+          const write = (path) => attempt(async () => { await fs.writeFile(path, "fixture"); return "ok"; });
+          nodeRepl.write(JSON.stringify({
+            cwd: await fs.realpath(nodeRepl.cwd),
+            scratch: nodeRepl.tmpDir,
+            read: await fs.readFile(${JSON.stringify(marker)}, "utf8"),
+            writes: await Promise.all([
+              write(nodeRepl.cwd + "/probe"),
+              write(nodeRepl.tmpDir + "/probe"),
+              write(${JSON.stringify(join(sourceRoot, "probe"))}),
+              write(${JSON.stringify(join(context.attachmentsDir, "probe"))}),
+              write(${JSON.stringify(marker)}),
+            ]),
+            fetch: await attempt(async () => (await fetch(${JSON.stringify(url)}, { signal: AbortSignal.timeout(1000) })).status),
+            childWrite: cp.spawnSync("/usr/bin/touch", [${JSON.stringify(join(outside, "child"))}], { stdio: "ignore" }).status,
+            childNetwork: cp.spawnSync("/usr/bin/curl", ["-fsS", "--max-time", "1", ${JSON.stringify(url)}], { stdio: "ignore" }).status,
+          }));
+        `);
+        expect(restricted).toMatchObject({
+          cwd: await realpath(workspace),
+          read: "readable",
+          writes: ["ok", "ok", "ok", "ok", "EPERM"],
+          fetch: "EPERM",
+          childWrite: 1,
+          childNetwork: 7,
+        });
+        expect((await stat(restricted.scratch)).mode & 0o777).toBe(0o700);
+
+        context.tools.retire(threadA, () => true, "completed");
+        context.setAttempt("attempt:full");
+        context.setMode("full-access");
+        context.tools.prepareRun(
+          { ...firstIdentity, attemptId: RunAttemptId.make("attempt:full") },
+          "full-access",
+          [],
+        );
+        const full = await invoke(`
+          const value = await (await fetch(${JSON.stringify(url)})).text();
+          const { spawn } = await import("node:child_process");
+          const child = spawn("/usr/bin/shasum", ["-a", "256"], { stdio: ["pipe", "pipe", "ignore"] });
+          const output = await new Promise((resolve, reject) => {
+            let digest = "";
+            child.once("error", reject);
+            child.stdin.once("error", reject);
+            child.stdout.on("data", (chunk) => { digest += chunk; });
+            child.once("close", (status) => resolve({ status, match: digest.startsWith(${JSON.stringify(prefix)}) }));
+            child.stdin.end(value);
+          });
+          const fs = await import("node:fs/promises");
+          await fs.writeFile(${JSON.stringify(marker)}, "updated");
+          nodeRepl.write(JSON.stringify({ ...output, scratch: nodeRepl.tmpDir }));
+        `);
+        expect(full).toMatchObject({ status: 0, match: true });
+        expect(await readFile(marker, "utf8")).toBe("updated");
+        expect(full.scratch).not.toBe(restricted.scratch);
+        await expect(access(restricted.scratch)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(JSON.stringify(trace)).not.toContain(secret);
+      } finally {
+        await client.close();
+        await new Promise<void>((resolve, reject) =>
+          loopback.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    }, realRoot),
+);
+
 it.live.skipIf(!realRoot)(
   "runs the signed REPL without a provider, keeps its kernel when a caller stops waiting, and resets it when the attempt ends",
   () =>

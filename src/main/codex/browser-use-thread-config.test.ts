@@ -123,7 +123,19 @@ describe("BrowserUseThreadConfigBuilder", () => {
       env: Record<string, string>;
     };
     // The launcher keeps exactly the Desktop Tool variables Nodex declares.
-    expect(JSON.parse(nodeRepl.args[2] ?? "null")).toEqual(Object.keys(nodeRepl.env).sort());
+    const launcher = JSON.parse(nodeRepl.args[2] ?? "null") as {
+      variables: string[];
+      scratchParent: string;
+      scratchScope: string;
+    };
+    expect(launcher.variables).toEqual(Object.keys(nodeRepl.env).sort());
+    expect(launcher.scratchParent).toBe(
+      path.join(path.dirname(runtimeStateHome), "codex-repl-scratch"),
+    );
+    const next = (await builder.build())?.["mcp_servers.node_repl"] as {
+      args: string[];
+    };
+    expect(JSON.parse(next.args[2] ?? "null").scratchScope).not.toBe(launcher.scratchScope);
     expect(
       config?.["shell_environment_policy.set.BROWSER_USE_DISABLE_AMBIENT_NETWORK"],
     ).toBeUndefined();
@@ -269,7 +281,7 @@ const reconciledPlugins = (): Extract<BrowserPluginReconcileResult, { status: "r
 });
 
 describe("host Desktop Tools", () => {
-  test("shares the exact signed launcher and environment with Codex and uses reconciled plugin roots", async () => {
+  test("uses the signed launcher with Runtime-owned scratch and reconciled plugin roots", async () => {
     const { browserRuntime } = await makeVerifiedRuntime();
     const builder = new BrowserUseThreadConfigBuilder({
       browserRuntime,
@@ -291,14 +303,20 @@ describe("host Desktop Tools", () => {
       args: string[];
       env: Record<string, string>;
     };
-    expect(builder.buildDesktopTools(reconciledPlugins())).toEqual({
-      server: { command, args, env },
-      pluginRoots: [
-        path.join("/reconciled/marketplace", "plugins", "browser"),
-        "/reconciled/chrome",
-        "/reconciled/computer-use",
-      ],
+    const host = builder.buildDesktopTools(reconciledPlugins());
+    if (!host) throw new Error("Host desktop tools are unavailable");
+    expect(host.server.command).toBe(command);
+    expect(host.server.args.slice(0, 2)).toEqual(args.slice(0, 2));
+    expect(host.server.args.slice(3)).toEqual(args.slice(3));
+    expect(host.server.env).toEqual({ ...env, TMPDIR: "" });
+    expect(JSON.parse(host.server.args[2] ?? "null")).toEqual({
+      variables: Object.keys(host.server.env).sort(),
     });
+    expect(host.pluginRoots).toEqual([
+      path.join("/reconciled/marketplace", "plugins", "browser"),
+      "/reconciled/chrome",
+      "/reconciled/computer-use",
+    ]);
   });
 
   test.each([

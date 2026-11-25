@@ -1,4 +1,8 @@
-import { win32 } from "node:path";
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { readdir, rm } from "node:fs/promises";
+import { dirname, join, win32 } from "node:path";
+import { promisify } from "node:util";
 import { windowsJobCommand } from "../platform/node/WindowsDesktopTools";
 
 /**
@@ -55,6 +59,60 @@ export const DESKTOP_TOOL_RUNTIME_NAMESPACES = [
 
 type AmbientEnvironment = Readonly<Record<string, string | undefined>>;
 
+/** Writable scratch must sit outside the trusted Desktop Tool code tree. */
+export const codexReplScratchParent = (runtimeStateHome: string): string =>
+  join(dirname(runtimeStateHome), "codex-repl-scratch");
+
+const exec = promisify(execFile);
+const codexReplScratchName =
+  /^repl-([1-9]\d*)-([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})-[a-zA-Z0-9]{6}$/u;
+
+function processExists(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function ownsCodexReplScratch(pid: number, scope: string) {
+  if (!processExists(pid)) return false;
+  try {
+    const { stdout } = await exec("/bin/ps", ["-ww", "-p", String(pid), "-o", "command="], {
+      timeout: 2_000,
+    });
+    // The scope travels in the launcher argv. A recycled PID alone cannot claim a directory.
+    if (stdout.includes(`"scratchScope":"${scope}"`)) return true;
+    // A process may be exiting and no longer have its argument vector. In that case, leave its
+    // cleanup to the process or the next sweep.
+    return !stdout.trim() || /^\s*\(/u.test(stdout);
+  } catch {
+    return processExists(pid);
+  }
+}
+
+/** A startup sweep leaves directories belonging to live launchers alone. */
+export async function reapCodexReplScratch(runtimeStateHome: string) {
+  const parent = codexReplScratchParent(runtimeStateHome);
+  const entries = await readdir(parent, { withFileTypes: true }).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  });
+  await Promise.all(
+    entries.map(async (entry) => {
+      const owner = entry.isDirectory() ? codexReplScratchName.exec(entry.name) : null;
+      if (!owner) return;
+      const [, pidText, scope] = owner;
+      if (!scope) return;
+      const pid = Number(pidText);
+      if (!Number.isSafeInteger(pid) || pid > 2_147_483_647) return;
+      if (await ownsCodexReplScratch(pid, scope)) return;
+      await rm(join(parent, entry.name), { recursive: true, force: true });
+    }),
+  );
+}
+
 const isDesktopToolHostBinding = (name: string, platform: string): boolean =>
   DESKTOP_TOOL_HOST_BINDINGS.has(platform === "win32" ? name.toUpperCase() : name);
 
@@ -87,7 +145,7 @@ export function withoutDesktopToolHostBindings(
  * nearest ancestors: `node_repl -> codex -> node`. Browser peer identity remains independent from
  * the primary app-server's locked release identity.
  *
- * Its first argument lists the variables Nodex declared for `node_repl`. Codex has merged the
+ * Its first argument carries the variables Nodex declared for `node_repl`. Codex has merged the
  * shared Codex home's persisted server environment into this process, so the launcher drops every
  * undeclared Desktop Tool variable, then pins the sandbox's shell environment policy so the
  * persisted policy can neither add variables nor replace a declared value. `node_repl` receives
@@ -95,8 +153,11 @@ export function withoutDesktopToolHostBindings(
  */
 export const NODE_REPL_LAUNCHER_SOURCE = `
 const { spawn } = require("node:child_process");
+const { mkdirSync, mkdtempSync, realpathSync, rmSync } = require("node:fs");
+const { join } = require("node:path");
 const namespaces = ${JSON.stringify(DESKTOP_TOOL_RUNTIME_NAMESPACES)};
-const declared = new Set(JSON.parse(process.argv[1]));
+const { variables, scratchParent, scratchScope } = JSON.parse(process.argv[1]);
+const declared = new Set(variables);
 const [codex, subcommand, ...commandArgs] = process.argv.slice(2);
 const env = {};
 for (const [name, value] of Object.entries(process.env)) {
@@ -104,6 +165,22 @@ for (const [name, value] of Object.entries(process.env)) {
   if (declared.has(name) || !namespaces.some((prefix) => upper.startsWith(prefix))) {
     env[name] = value;
   }
+}
+let scratch;
+const releaseScratch = () => {
+  if (!scratch) return;
+  try {
+    rmSync(scratch, { recursive: true, force: true });
+  } catch {
+    // Startup recovery can retry once the launcher has exited.
+  }
+};
+if (scratchParent) {
+  mkdirSync(scratchParent, { recursive: true, mode: 0o700 });
+  scratch = mkdtempSync(join(realpathSync(scratchParent), 'repl-' + process.pid + '-' + scratchScope + '-'));
+  process.once("exit", releaseScratch);
+  declared.add("TMPDIR");
+  env.TMPDIR = scratch;
 }
 const policy = (key, value) => ["-c", "shell_environment_policy." + key + "=" + value];
 const child = spawn(
@@ -138,6 +215,8 @@ child.once("exit", (code, signal) => {
     process.off(forwardedSignal, handler);
   }
   if (signal) {
+    // An OS signal skips Node's exit event once the forwarding handler is removed.
+    releaseScratch();
     process.kill(process.pid, signal);
     return;
   }
@@ -153,6 +232,7 @@ export function nodeReplServerDefinition(input: {
   readonly windowsJobLauncher?: string;
   readonly codexCliPath: string;
   readonly env: Readonly<Record<string, string>>;
+  readonly scratchParent?: string;
   readonly nodePath: string;
   readonly nodeReplPath: string;
 }): {
@@ -185,7 +265,13 @@ export function nodeReplServerDefinition(input: {
     args: [
       "-e",
       NODE_REPL_LAUNCHER_SOURCE,
-      JSON.stringify(Object.keys(input.env).sort()),
+      JSON.stringify({
+        variables: Object.keys(input.env).sort(),
+        // Keep Codex's connection pool from sharing one launcher between chats.
+        ...(input.scratchParent
+          ? { scratchParent: input.scratchParent, scratchScope: randomUUID() }
+          : {}),
+      }),
       input.codexCliPath,
       "sandbox",
       "-P",
