@@ -1,3 +1,4 @@
+import { BROWSER_IMAGE_DRAG_TOKEN_PATTERN } from "./browser-image-drag";
 import { z } from "zod";
 import { BrowserAnnotationSaveSchema } from "../browser-annotation";
 import { BROWSER_SITE_PERMISSION_NAMES } from "./browser-permissions";
@@ -39,9 +40,15 @@ export const BrowserSidebarTabIdentitySchema = z
   })
   .strict() satisfies z.ZodType<BrowserSidebarTabIdentity>;
 
+export const BrowserImageDragTokenSchema = z
+  .string()
+  .length(32)
+  .regex(BROWSER_IMAGE_DRAG_TOKEN_PATTERN);
+
 export const BrowserGuestImageDragStartedSchema = z
   .object({
     sourceUrl: BrowserUrlSchema,
+    dragToken: BrowserImageDragTokenSchema,
   })
   .strict();
 
@@ -363,7 +370,10 @@ export const BrowserSidebarCommandSchema = z.union([
   TargetedCommandSchema({ type: z.literal("find-previous") }),
   TargetedCommandSchema({ type: z.literal("capture-screenshot") }),
   TargetedCommandSchema({ type: z.literal("print") }),
-  TargetedCommandSchema({ type: z.literal("attach-dragged-image") }),
+  TargetedCommandSchema({
+    type: z.literal("attach-dragged-image"),
+    dragToken: BrowserImageDragTokenSchema,
+  }),
   TargetedCommandSchema({
     type: z.literal("browser-use-cursor-arrived"),
     moveSequence: z.number().int().positive(),

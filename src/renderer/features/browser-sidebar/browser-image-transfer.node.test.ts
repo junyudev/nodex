@@ -80,49 +80,38 @@ describe("browser image drag state", () => {
     browserViewScopeId: "window-1",
     browserTabId: "browser-1",
   } as const;
+  const firstDrag = { ...identity, dragToken: "1".repeat(32), isActive: true };
+  const secondDrag = { ...identity, dragToken: "2".repeat(32), isActive: true };
 
   afterEach(() => {
-    clearBrowserImageDragState(attachmentConversationId);
+    clearBrowserImageDragState(firstDrag.dragToken);
+    clearBrowserImageDragState(secondDrag.dragToken);
   });
 
-  describe("browser image drag state", () => {
-    test("routes one active Browser image drag to the matching composer", () => {
-      const listener = vi.fn();
-      const unsubscribe = subscribeBrowserImageDragState(listener);
-      publishBrowserImageDragState(attachmentConversationId, {
-        ...identity,
-        isActive: true,
-      });
+  test("routes one active Browser image drag to the matching composer", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeBrowserImageDragState(listener);
+    publishBrowserImageDragState(attachmentConversationId, firstDrag);
 
-      expect(getBrowserImageDragSnapshot(attachmentConversationId)).toEqual({
-        ...identity,
-        attachmentConversationId,
-      });
-      expect(getBrowserImageDragSnapshot("another-thread")).toBeNull();
-      expect(listener).toHaveBeenCalledTimes(1);
-      unsubscribe();
+    expect(getBrowserImageDragSnapshot(attachmentConversationId)).toEqual({
+      ...identity,
+      dragToken: firstDrag.dragToken,
+      attachmentConversationId,
     });
+    expect(getBrowserImageDragSnapshot("another-thread")).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
 
-    test("ignores a stale drag-end from another Browser tab", () => {
-      publishBrowserImageDragState(attachmentConversationId, {
-        ...identity,
-        isActive: true,
-      });
-      publishBrowserImageDragState(attachmentConversationId, {
-        ...identity,
-        browserTabId: "stale-browser",
-        isActive: false,
-      });
-      expect(getBrowserImageDragSnapshot(attachmentConversationId)).toEqual({
-        ...identity,
-        attachmentConversationId,
-      });
+  test("replaces a prior chat's drag and only clears the matching token", () => {
+    publishBrowserImageDragState(attachmentConversationId, firstDrag);
+    publishBrowserImageDragState("another-thread", secondDrag);
+    expect(getBrowserImageDragSnapshot(attachmentConversationId)).toBeNull();
 
-      publishBrowserImageDragState(attachmentConversationId, {
-        ...identity,
-        isActive: false,
-      });
-      expect(getBrowserImageDragSnapshot(attachmentConversationId)).toBeNull();
-    });
+    clearBrowserImageDragState(firstDrag.dragToken);
+    expect(getBrowserImageDragSnapshot("another-thread")?.dragToken).toBe(secondDrag.dragToken);
+
+    clearBrowserImageDragState(secondDrag.dragToken);
+    expect(getBrowserImageDragSnapshot("another-thread")).toBeNull();
   });
 });

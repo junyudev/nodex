@@ -24,6 +24,7 @@ import {
 import { BrowserDownloadActionRequestSchema } from "../../../shared/browser/browser-download-schemas";
 import {
   BrowserGuestImageDragStartedSchema,
+  BrowserImageDragTokenSchema,
   BrowserLocalServerPreferencesUpdateSchema,
 } from "../../../shared/browser/browser-schemas";
 import {
@@ -486,13 +487,15 @@ export const live: Layer.Layer<
         if (!ownerForGuest(guest, event)) return;
         const input = BrowserGuestImageDragStartedSchema.safeParse(rawInput);
         if (!input.success) return;
-        guest.startImageDrag(event.sender.id, input.data.sourceUrl);
+        guest.startImageDrag(event.sender.id, input.data.sourceUrl, input.data.dragToken);
       }),
     );
-    yield* ipc.on("browser-image-drag-ended", (event) =>
+    yield* ipc.on("browser-image-drag-ended", (event, rawInput: unknown) =>
       Effect.sync(() => {
         if (!guest.isAuthorized(event.sender.id)) return;
-        guest.endImageDrag(event.sender.id);
+        const dragToken = BrowserImageDragTokenSchema.safeParse(rawInput);
+        if (!dragToken.success) return;
+        guest.endImageDrag(event.sender.id, dragToken.data);
       }),
     );
     yield* ipc.on("browser-credential-save-candidate", (event, rawInput: unknown) => {
