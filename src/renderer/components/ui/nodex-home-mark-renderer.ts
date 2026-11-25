@@ -6,6 +6,7 @@ import {
   NODEX_HOME_MARK_VERTEX_STRIDE_BYTES,
 } from "./nodex-home-mark-model.generated";
 import type { NodexHomeMarkGlyphScene } from "./nodex-home-mark-glyph-scenes.generated";
+import type { SrgbaColor } from "@/lib/css-color-srgba";
 import {
   NODEX_HOME_MARK_BASE_ROTATION,
   resolveNodexHomeMarkFramebuffer,
@@ -73,7 +74,7 @@ const FRAGMENT_SHADER = `#version 300 es
   uniform float uTopVisibility;
   uniform float uFrontVisibility;
   uniform float uMorph;
-  uniform vec3 uColor;
+  uniform vec4 uColor;
   out vec4 outColor;
 
   float sdSegmentSquared(vec2 p,vec2 a,vec2 b){
@@ -152,7 +153,7 @@ const FRAGMENT_SHADER = `#version 300 es
     white=max(white,aaFill(rightDistance));
 
     float darkMask=clamp(1.0-white,0.0,1.0);
-    outColor=vec4(uColor,darkMask);
+    outColor=vec4(uColor.rgb,darkMask*uColor.a);
   }
 `;
 
@@ -162,7 +163,7 @@ export interface NodexHomeMarkRenderFrame {
   rotation: NodexMarkMat3;
   morph: number;
   chargedScale: number;
-  color: readonly [number, number, number];
+  color: SrgbaColor;
   glyphScene: NodexHomeMarkGlyphScene;
 }
 
@@ -632,7 +633,7 @@ export function createNodexHomeMarkRenderer(input: {
     gl.uniformMatrix3fv(uniforms.camera, false, cameraMatrix);
     gl.uniformMatrix3fv(uniforms.pose, false, writeColumnMajor(rotation, poseMatrix));
     gl.uniform1f(uniforms.morph, morph);
-    gl.uniform3f(uniforms.color, color[0], color[1], color[2]);
+    gl.uniform4f(uniforms.color, color[0], color[1], color[2], color[3]);
     gl.uniform2fv(uniforms.topBoundary, topScreen);
     gl.uniform2fv(uniforms.frontBoundary, frontScreen);
     gl.uniform2fv(uniforms.topNormals, topNormals);

@@ -1,6 +1,7 @@
 import { animate, motionValue, type MotionValue } from "motion/react";
 import { useLayoutEffect, useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
+import { resolveCssColorSrgba, type SrgbaColor } from "@/lib/css-color-srgba";
 import { setNodexHomeMarkLayerOwner } from "@/lib/nodex-home-mark-layer-ownership";
 import { retireNodexHomeMarkRendererAfterPaint } from "@/lib/nodex-home-mark-renderer-retirement";
 import {
@@ -40,12 +41,11 @@ function preloadRuntime(): Promise<readonly [RendererModule, GlyphModule]> {
   return runtimeModulePromise;
 }
 
-function readElementColor(element: HTMLElement): readonly [number, number, number] {
-  const channels = getComputedStyle(element)
-    .color.match(/[\d.]+/g)
-    ?.slice(0, 3);
-  if (!channels || channels.length !== 3) return [223 / 255, 223 / 255, 223 / 255];
-  return [Number(channels[0]) / 255, Number(channels[1]) / 255, Number(channels[2]) / 255];
+const FALLBACK_COLOR: SrgbaColor = [223 / 255, 223 / 255, 223 / 255, 1];
+
+/** The canvas paints in the same color and alpha as the SVG's `currentColor`. */
+function readElementColor(element: HTMLElement): SrgbaColor {
+  return resolveCssColorSrgba(getComputedStyle(element).color) ?? FALLBACK_COLOR;
 }
 
 export function NodexHomeMark() {
@@ -59,11 +59,7 @@ export function NodexHomeMark() {
   const performanceRef = useRef<NodexHomeMarkGlyphPerformance | null>(null);
   const rendererRef = useRef<NodexHomeMarkRenderer | null>(null);
   const rendererCreationRef = useRef<Promise<NodexHomeMarkRenderer | null> | null>(null);
-  const rendererColorRef = useRef<readonly [number, number, number]>([
-    223 / 255,
-    223 / 255,
-    223 / 255,
-  ]);
+  const rendererColorRef = useRef<SrgbaColor>(FALLBACK_COLOR);
   const activeRotorsRef = useRef<ActiveRotor[]>([]);
   const scaleMotionRef = useRef(motionValue(1));
   const scaleControlsRef = useRef<AnimationControls | null>(null);
