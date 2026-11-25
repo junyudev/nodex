@@ -37,8 +37,10 @@ Local `.html` and `.htm` files without a line location or explicit native target
 open in Nodex's Browser when available, independently of URL preferences.
 Remote paths keep their execution host. Web links in either message use the
 shared destination settings, modifiers and conversation Browser context described
-in [Workbench shell](workbench-shell.md#link-opening). Page and Session links
-remain app destinations. Detailed file gestures and menus belong to
+in [Workbench shell](workbench-shell.md#link-opening). Page, View and chat links
+and mentions are [Nodex references](workbench-shell.md#nodex-references): they
+show their target's current name and open beside the chat. Detailed file
+gestures and menus belong to
 [Transcript behavior](codex-thread-transcript-behavior.md).
 
 ## Composers

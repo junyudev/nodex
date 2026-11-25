@@ -12,7 +12,8 @@ const proseSchema = {
   ...defaultSchema,
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "tel"],
+    // Nodex Page, View and chat links render as references through the anchor component.
+    href: [...(defaultSchema.protocols?.href ?? []), "tel", "nodex"],
   },
   attributes: {
     ...defaultSchema.attributes,

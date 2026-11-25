@@ -10,9 +10,10 @@ import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
 import { libraryContentRoute } from "../../../../../../shared/content-routing-context";
 import { buildPageDeepLink, buildSessionDeepLink } from "../../../../../../shared/nodex-deeplink";
+import type { NodexDestination } from "../../../../../../shared/nodex-reference";
+import { useNodexReferenceInteraction } from "@/components/nodex-reference/nodex-reference";
 import { readMarkdown } from "../../../../../../shared/nodex-markdown";
 import type { PageTargetReadModel } from "../../../../../../shared/page-targets";
-import { useConversationPageNavigation } from "../../../conversation-page-navigation";
 import {
   boundNodexRelatedPages,
   joinNodexActivityParts,
@@ -35,8 +36,6 @@ import {
   ThreadActivityDisclosure,
   ToolErrorDetail,
 } from "./tool-primitives";
-
-type OpenThread = ToolComponentProps["onOpenThread"];
 
 export interface NodexPageNamePresentation {
   readonly text: string;
@@ -105,25 +104,29 @@ export function presentNodexPageName(
   }
 }
 
-function InlineActivityLink({
+/** A Page or chat named in an activity, opened like any Nodex reference. */
+function ActivityReference({
+  destination,
   href,
   label,
-  onOpen,
 }: {
+  readonly destination: NodexDestination;
   readonly href: string;
   readonly label: string;
-  readonly onOpen: () => void;
 }) {
+  const { interactive, handlers } = useNodexReferenceInteraction({
+    destination,
+    openable: true,
+    title: label,
+  });
+  if (!interactive) return label;
   return (
     <a
       href={href}
       data-agent-activity-file-link
+      data-nodex-reference={destination.kind}
       className={ACTIVITY_INLINE_LINK_CLASS_NAME}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onOpen();
-      }}
+      {...handlers}
     >
       {label}
     </a>
@@ -131,13 +134,11 @@ function InlineActivityLink({
 }
 
 function PageLink({ pageId, label }: { readonly pageId: string; readonly label: string }) {
-  const openPage = useConversationPageNavigation();
-  if (!openPage) return label;
   return (
-    <InlineActivityLink
+    <ActivityReference
+      destination={{ kind: "page", pageId }}
       href={buildPageDeepLink({ pageId })}
       label={label}
-      onOpen={() => openPage(pageId, label)}
     />
   );
 }
@@ -168,24 +169,20 @@ function PageName({
 function ChatName({
   part,
   linked,
-  onOpenThread,
 }: {
   readonly part: Extract<NodexToolActivityPart, { kind: "chat" }>;
   readonly linked: boolean;
-  readonly onOpenThread?: OpenThread;
 }) {
   const intl = useIntl();
   const session = useQuery(projectSessionDetailQueryOptions(part.sessionId)).data;
   const label = session || part.title ? presentSessionTitle(session ?? part.title, intl) : null;
-  const threadId = part.threadId ?? session?.thread?.threadId ?? null;
   if (!label) return null;
   if (!linked) return `“${label}”`;
-  if (!threadId || !onOpenThread) return label;
   return (
-    <InlineActivityLink
+    <ActivityReference
+      destination={{ kind: "session", sessionId: part.sessionId }}
       href={buildSessionDeepLink({ sessionId: part.sessionId })}
       label={label}
-      onOpen={() => void onOpenThread(threadId, { runtimeSessionId: part.sessionId })}
     />
   );
 }
@@ -195,13 +192,11 @@ export function NodexToolActivitySentence({
   activity,
   following = false,
   linked = false,
-  onOpenThread,
 }: {
   readonly activity: Pick<NodexToolActivity, "parts">;
   /** The clause continues an earlier one in a group summary. */
   readonly following?: boolean;
   readonly linked?: boolean;
-  readonly onOpenThread?: OpenThread;
 }) {
   return joinNodexActivityParts(activity.parts, following).map((segment, index) => (
     <Fragment key={index}>
@@ -210,7 +205,7 @@ export function NodexToolActivitySentence({
       ) : segment.kind === "page" ? (
         <PageName pageId={segment.pageId} title={segment.title} linked={linked} />
       ) : (
-        <ChatName part={segment} linked={linked} onOpenThread={onOpenThread} />
+        <ChatName part={segment} linked={linked} />
       )}
     </Fragment>
   ));
@@ -361,7 +356,7 @@ function NodexToolActivityDetails({
 }
 
 /** A Nodex tool call: what it did to what. Its result and exact call each take one more step. */
-export function NodexToolActivityRow({ item, onOpenThread }: ToolComponentProps) {
+export function NodexToolActivityRow({ item }: ToolComponentProps) {
   const call = item.dynamicToolCall!;
   const activity = resolveNodexToolActivity(call)!;
   const { change } = activity;
@@ -395,7 +390,7 @@ export function NodexToolActivityRow({ item, onOpenThread }: ToolComponentProps)
       status={!call.completed ? "running" : call.success === false ? "failed" : "completed"}
       summary={
         <CodexShimmerText active={!call.completed} className="min-w-0 truncate">
-          <NodexToolActivitySentence activity={activity} linked onOpenThread={onOpenThread} />
+          <NodexToolActivitySentence activity={activity} linked />
         </CodexShimmerText>
       }
     >

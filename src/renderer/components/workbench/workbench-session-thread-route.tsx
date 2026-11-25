@@ -3,10 +3,7 @@ import { isHostedChat } from "@/lib/hosted-chat";
 import { useShownAutomationRunsRead } from "@/features/automations/use-shown-automation-runs-read";
 import { SessionStartNotice, useSessionStart } from "./session-start-notice";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
-import {
-  ConversationPageNavigationProvider,
-  type ConversationPageNavigation,
-} from "@/features/local-conversation/conversation-page-navigation";
+import { NodexReferenceSourceProvider } from "@/lib/nodex-reference-router";
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
 import { useAgentRuntimeConversationAdapter } from "@/features/local-conversation/agent-runtime-conversation-adapter";
 import { createRemoteCodexStageActions } from "@/features/local-conversation/remote-codex-stage-actions";
@@ -177,8 +174,6 @@ function SharedConnectedSessionThread({
   composerEnterBehavior: ComposerEnterBehavior;
   onQueueingEnabledChange: ThreadStageActions["onQueueingEnabledChange"];
   onOpenThread: ThreadStageActions["onOpenThread"];
-  /** Opens a Page a message references beside this chat. */
-  onOpenPage?: ConversationPageNavigation;
   onOpenSubagentsPanel: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenTurnDiffReview: ThreadStageActions["onOpenTurnDiffReview"];
   onOpenTurnDiffFileInSidePanel: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
@@ -892,9 +887,9 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
       : props.routeActive && props.threadBodyVisible,
   });
   return (
-    <ConversationPageNavigationProvider value={props.onOpenPage ?? null}>
+    <NodexReferenceSourceProvider source={{ surface: "conversation", sessionId: props.session.id }}>
       <ConnectedSessionThreadBody {...props} />
-    </ConversationPageNavigationProvider>
+    </NodexReferenceSourceProvider>
   );
 }
 

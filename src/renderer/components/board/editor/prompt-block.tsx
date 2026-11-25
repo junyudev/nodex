@@ -37,6 +37,8 @@ import { useNfmPromptRuntime } from "./nfm-prompt-runtime";
 import { useNfmPromptSendAnchor } from "./nfm-prompt-send-anchor";
 import { resolveNfmSendToThreadTitle } from "./nfm-send-to-thread-menu-model";
 import { useThreadMentionRuntime } from "./thread-mention-chip";
+import { useNodexReferenceRouter } from "@/lib/nodex-reference-router";
+import { useEditorReferenceSource } from "@/components/nodex-reference/editor-reference-source";
 
 function keepEditorSelection(event: MouseEvent<HTMLElement>) {
   if (event.button === 0) event.preventDefault();
@@ -121,6 +123,8 @@ function PromptSentRecord({
   const turn = usePromptTurn({ sessionId, messageId });
   const openChatAtMessage = useOpenChatAtMessage();
   const mentions = useThreadMentionRuntime();
+  const referenceRouter = useNodexReferenceRouter();
+  const editorSource = useEditorReferenceSource();
   const now = useMinuteNow();
   const [open, setOpen] = useState(false);
   const thread = mentions.sessions[sessionId] ?? null;
@@ -156,7 +160,11 @@ function PromptSentRecord({
   const openChat = () => {
     setOpen(false);
     if (messageId) void openChatAtMessage({ sessionId, messageId });
-    else mentions.openSession?.(sessionId);
+    else
+      void referenceRouter?.open(
+        { kind: "session", sessionId },
+        { source: editorSource, gesture: { kind: "menu", action: "open" } },
+      );
   };
 
   return (

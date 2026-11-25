@@ -17,6 +17,7 @@ import {
 import {
   reminderOpenToPageDeepLink,
   useWorkbenchCommandIngress,
+  type WorkbenchIncomingNodexLink,
   type WorkbenchPageDeepLinkRequest,
   type WorkbenchReminderOpenRequest,
   type WorkbenchSessionDeepLinkRequest,
@@ -42,7 +43,6 @@ import type {
   WindowSessionBootstrap,
 } from "@/lib/types";
 import { WorkbenchLayoutSnapshotSchema } from "../../../shared/schemas/workbench-layout";
-import { getWorkbenchSceneReturnLocation } from "../../../shared/workbench-layout";
 import { CAPTURE_TO_INBOX_COMMAND_ID } from "../../../shared/workbench-commands";
 import { toast } from "@/components/ui/toast";
 
@@ -100,7 +100,6 @@ export function WorkbenchShell({
     [windowSessionBootstrap.session.layout],
   );
   const workbenchWindow = useWorkbenchWindowState(initialWindowLayoutSnapshot);
-  const workbenchSceneLocation = getWorkbenchSceneReturnLocation(workbenchWindow.location);
   const {
     projects,
     hasMoreProjects,
@@ -149,14 +148,9 @@ export function WorkbenchShell({
     projectId: string;
     pageId: string;
   } | null>(null);
-  const [pendingSessionDeepLinkOpen, setPendingSessionDeepLinkOpen] = useState<{
-    projectId: string | null;
-    sessionId: string;
-  } | null>(null);
-  const [pendingViewDeepLinkOpen, setPendingViewDeepLinkOpen] = useState<{
-    projectId: string;
-    viewId: string;
-  } | null>(null);
+  const [incomingNodexLink, setIncomingNodexLink] = useState<WorkbenchIncomingNodexLink | null>(
+    null,
+  );
   const reconciledProjectQueryRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -249,19 +243,6 @@ export function WorkbenchShell({
     [],
   );
 
-  const handleViewDeepLinkHandled = useCallback(
-    (payload: { projectId: string; viewId: string }) => {
-      setPendingViewDeepLinkOpen((current) => {
-        if (!current) return null;
-        if (current.projectId !== payload.projectId || current.viewId !== payload.viewId) {
-          return current;
-        }
-        return null;
-      });
-    },
-    [],
-  );
-
   const handleOpenProjectPicker = useCallback(() => {
     setProjectPickerOpenTick((tick) => tick + 1);
   }, []);
@@ -299,13 +280,17 @@ export function WorkbenchShell({
     [setDbProjectState],
   );
 
-  const handlePageDeepLinkOpen = useCallback(
-    (request: WorkbenchPageDeepLinkRequest) => {
-      setPendingDeepLinkOpen(request);
-      navigateToProject(request.projectId);
-    },
-    [navigateToProject],
-  );
+  // Links from the system, reminders and other windows open through the reference router.
+  const handlePageDeepLinkOpen = useCallback((request: WorkbenchPageDeepLinkRequest) => {
+    setIncomingNodexLink({
+      destination: {
+        kind: "page",
+        pageId: request.pageId,
+        ...(request.blockId ? { blockId: request.blockId } : {}),
+      },
+      projectId: request.projectId,
+    });
+  }, []);
 
   const handleReminderOpen = useCallback(
     (request: WorkbenchReminderOpenRequest) => {
@@ -314,30 +299,19 @@ export function WorkbenchShell({
     [handlePageDeepLinkOpen],
   );
 
-  const handleSessionDeepLinkOpen = useCallback(
-    (request: WorkbenchSessionDeepLinkRequest) => {
-      setPendingSessionDeepLinkOpen(request);
-      if (request.projectId === null) return;
-      navigateToProject(request.projectId);
-    },
-    [navigateToProject],
-  );
+  const handleSessionDeepLinkOpen = useCallback((request: WorkbenchSessionDeepLinkRequest) => {
+    setIncomingNodexLink({
+      destination: { kind: "session", sessionId: request.sessionId },
+      projectId: request.projectId,
+    });
+  }, []);
 
-  const handleViewDeepLinkOpen = useCallback(
-    (request: WorkbenchViewDeepLinkRequest) => {
-      setPendingViewDeepLinkOpen(request);
-      navigateToProject(request.projectId);
-    },
-    [navigateToProject],
-  );
-
-  if (
-    pendingSessionDeepLinkOpen &&
-    workbenchSceneLocation.kind === "session" &&
-    workbenchSceneLocation.sessionId === pendingSessionDeepLinkOpen.sessionId
-  ) {
-    setPendingSessionDeepLinkOpen(null);
-  }
+  const handleViewDeepLinkOpen = useCallback((request: WorkbenchViewDeepLinkRequest) => {
+    setIncomingNodexLink({
+      destination: { kind: "view", viewId: request.viewId },
+      projectId: request.projectId,
+    });
+  }, []);
 
   const flushBeforeWindowClone = useCallback(async () => {
     await pageStagePersistRef.current?.();
@@ -470,10 +444,8 @@ export function WorkbenchShell({
       pageStageCloseRef={pageStageCloseRef}
       pageStagePersistRef={pageStagePersistRef}
       pendingPageDeepLinkOpen={pendingDeepLinkOpen}
-      pendingViewDeepLinkOpen={pendingViewDeepLinkOpen}
-      pendingSessionOpen={pendingSessionDeepLinkOpen}
       onPageDeepLinkHandled={handlePageDeepLinkHandled}
-      onViewDeepLinkHandled={handleViewDeepLinkHandled}
+      incomingNodexLink={incomingNodexLink}
       onOpenProjectSessionInNewWindow={handleOpenProjectSessionInNewWindow}
       onOpenPageInNewWindow={handleOpenPageInNewWindow}
       openPageStage={navigateToPage}

@@ -2800,69 +2800,6 @@ describe("workbench session shell / layout-panel-actions", () => {
     );
   });
 
-  test("View deep links create the requested saved View tab", async () => {
-    const emptySession = makeSession({
-      id: "session:alpha:view-deep-link",
-      tabs: [],
-      rightLayout: makePanelLayout([], null),
-    });
-    renderWorkbench({
-      sessionsByProject: { alpha: [emptySession] },
-      pendingViewDeepLinkOpen: {
-        projectId: "alpha",
-        viewId: "view:planning",
-      },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const createCall = invokeCalls.find(
-      (call) =>
-        call[0] === "window-session-view:tab-create" &&
-        (call[1] as { config?: { databaseViewId?: string } }).config?.databaseViewId ===
-          "view:planning",
-    );
-    expect(createCall).toBeDefined();
-  });
-
-  test("repeated View deep links focus the existing saved View tab", async () => {
-    const targetTab = makeSessionTab({
-      id: "tab:view-planning",
-      title: "Planning",
-      kind: "db_view",
-      config: {
-        routingContext: { kind: "project", projectId: "alpha" },
-        target: { kind: "database-view", databaseViewId: "view:planning" },
-      },
-    });
-    const otherTab = makeSessionTab({
-      id: "tab:other-view",
-      title: "Other",
-      kind: "db_view",
-      config: {
-        routingContext: { kind: "project", projectId: "alpha" },
-        target: { kind: "database-view", databaseViewId: "view:other" },
-      },
-    });
-    const session = makeSession({
-      id: "session:alpha:existing-view-deep-link",
-      tabs: [targetTab, otherTab],
-      rightLayout: makePanelLayout([targetTab.id, otherTab.id], otherTab.id),
-    });
-    const screen = renderWorkbench({
-      sessionsByProject: { alpha: [session] },
-      pendingViewDeepLinkOpen: {
-        projectId: "alpha",
-        viewId: "view:planning",
-      },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(screen.getByRole("tab", { name: "Planning", selected: true })).toBeDefined();
-    expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
-  });
-
   test("DB View action reports a missing project default View instead of silently doing nothing", async () => {
     const chatSession = makeSession({
       id: "session:alpha:no-view-chat",

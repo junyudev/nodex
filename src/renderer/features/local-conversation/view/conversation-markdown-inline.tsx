@@ -1,6 +1,8 @@
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileReferenceButton } from "@/components/shared/file-link-anchor";
+import { NodexReference } from "@/components/nodex-reference/nodex-reference";
+import { parseNodexDestination } from "../../../../shared/nodex-reference";
 import { codexComposerSkillsListQueryOptions } from "@/lib/query-options";
 import type { ConversationInlineRenderer } from "@/lib/markdown/conversation-token-renderer";
 import {
@@ -194,6 +196,19 @@ export const renderConversationInline: ConversationInlineRenderer = (
 ) => {
   const token = node.token;
   if (token.type === "link") {
+    const destination = parseNodexDestination(token.href.trim());
+    // A Nodex link written as its own URL names its target and shows the live name; one with its
+    // own words stays a link through the anchor component.
+    if (destination) {
+      const label = plainLabel(token).trim();
+      return label === token.href.trim() ? (
+        <NodexReference destination={destination} variant="mention" />
+      ) : (
+        <NodexReference destination={destination} variant="link">
+          {label}
+        </NodexReference>
+      );
+    }
     const target = resolveConversationMarkdownLink(token.href, plainLabel(token));
     return target ? <ConversationTarget target={target} href={token.href} /> : undefined;
   }

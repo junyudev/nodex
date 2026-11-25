@@ -15,6 +15,10 @@ const mentionTarget = vi.hoisted(() => ({ current: null as unknown }));
 
 vi.mock("@/lib/block-reference-queries", () => ({
   usePageTargetReadModel: () => ({ data: mentionTarget.current, loading: false, error: null }),
+  useDatabaseViewReadModel: () => ({ data: null, loading: false, error: null }),
+}));
+vi.mock("@/lib/content-page-detail", () => ({
+  useContentPageDetail: () => ({ detail: null, loading: false, error: null }),
 }));
 
 /** Nodex Markdown read and shown as a Page lays it out. */
@@ -99,15 +103,20 @@ describe("NfmRenderer", () => {
     expect(data.style.textAlign).toBe("right");
   });
 
-  test("renders owning Page UUIDs and Page mention URLs", async () => {
+  test("shows subpages and Page references as references, never as identities", async () => {
+    mentionTarget.current = {
+      status: "available",
+      page: { title: "Launch plan", preview: "", lifecycle: "active" },
+    };
     const { container } = render(
       <NfmRenderer content={'::page{id="019f-card"}\n\n::page-ref{page="019f-target"}'} />,
     );
 
     await settleAsyncRender();
 
-    expect(textContent(container)).toContain("Page · 019f-card");
-    expect(textContent(container)).toContain("Page Mention · nodex://pages/019f-target");
+    const references = container.querySelectorAll('[data-nodex-reference="page"]');
+    expect(references).toHaveLength(2);
+    expect(textContent(container)).toBe("Launch planLaunch plan");
   });
 
   test("renders inline code with the shared inline-markdown span contract", async () => {
@@ -235,19 +244,21 @@ describe("NfmRenderer", () => {
   });
 
   test("names a mentioned Page without showing its identity", () => {
-    mentionTarget.current = { status: "available", page: { title: "Launch plan" } };
+    mentionTarget.current = {
+      status: "available",
+      page: { title: "Launch plan", preview: "", lifecycle: "active" },
+    };
     const { container } = render(<NfmRenderer content={"See <nodex://pages/page-1> now."} />);
 
     expect(textContent(container)).toContain("Launch plan");
     expect(textContent(container)).not.toContain("page-1");
-    expect(container.querySelector('[href="nodex://pages/page-1"]')).toBeNull();
   });
 
-  test("calls an unresolved Page mention a Page", () => {
-    mentionTarget.current = null;
+  test("names what became of a Page it cannot show", () => {
+    mentionTarget.current = { status: "deleted", targetPageId: "page-1" };
     const { container } = render(<NfmRenderer content={"See <nodex://pages/page-1> now."} />);
 
-    expect(textContent(container)).toContain("Page");
+    expect(textContent(container)).toContain("Deleted Page");
     expect(textContent(container)).not.toContain("page-1");
   });
 

@@ -79,10 +79,11 @@ describe("markdown link actions", () => {
     expect(opener).not.toHaveBeenCalled();
   });
 
-  test("qualified foreign Pages bypass the current Space's Page port", () => {
+  test("qualified foreign Pages keep their Space for the reference router", () => {
     expect(resolveNfmLinkAction("nodex://pages/same-id?spaceId=another-space")).toEqual({
-      kind: "space-link",
+      kind: "nodex",
       href: "nodex://pages/same-id?spaceId=another-space",
+      destination: { kind: "page", pageId: "same-id", spaceId: "another-space" },
     });
   });
 
@@ -96,14 +97,14 @@ describe("markdown link actions", () => {
     expect((wwwDomain as { url: string }).url).toBe("https://www.example.com/docs");
   });
 
-  test("classifies and opens Page deeplinks through the injected Page port", async () => {
+  test("classifies and opens Page deeplinks through the reference router", async () => {
     const action = resolveNfmLinkAction("nodex://pages/page%2Falpha");
-    const opened: string[] = [];
+    const open = vi.fn(async () => "opened" as const);
 
     expect(action).toEqual({
-      kind: "page",
+      kind: "nodex",
       href: "nodex://pages/page%2Falpha",
-      pageId: "page/alpha",
+      destination: { kind: "page", pageId: "page/alpha" },
     });
     await expect(
       openNfmResolvedLinkAction(
@@ -112,18 +113,21 @@ describe("markdown link actions", () => {
         async () => true,
         { assign: () => {}, open: () => {} },
         {
-          openPage: (pageId) => {
-            opened.push(pageId);
-          },
+          router: { open },
+          source: { surface: "page" },
+          gesture: { kind: "menu", action: "open" },
         },
       ),
     ).resolves.toBe(true);
-    expect(opened).toEqual(["page/alpha"]);
+    expect(open).toHaveBeenCalledExactlyOnceWith(
+      { kind: "page", pageId: "page/alpha" },
+      { source: { surface: "page" }, gesture: { kind: "menu", action: "open" } },
+    );
     expect(windowOpenCalls).toEqual([]);
     expect(invokeCalls).toEqual([]);
   });
 
-  test("fails Page deeplinks closed without a Page navigation port", async () => {
+  test("fails Page deeplinks closed without a reference router", async () => {
     const action = resolveNfmLinkAction("nodex://pages/page-1");
 
     await expect(openNfmResolvedLinkAction(action!)).resolves.toBe(false);

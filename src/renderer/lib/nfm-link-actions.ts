@@ -1,6 +1,5 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../shared/space-connection";
-import { openSpaceLink } from "@/features/spaces/spaces-runtime";
 import {
   parseLocalFileLinkHref,
   parseFileReferenceLocation,
@@ -13,8 +12,13 @@ import { DEFAULT_NFM_AUTOLINK_SETTINGS, shouldAutoLinkValue } from "./nfm-autoli
 import { openLink } from "./link-opening";
 import type { LinkOpenRequest } from "../../shared/link-opening";
 import { isExternallyOpenableUrl } from "../../shared/browser-url-policy";
-import { rendererSpaceId, isRemoteSpace } from "./renderer-space";
-import { parsePageDeepLink, parseSessionDeepLink } from "@/lib/page-deeplink";
+import { isRemoteSpace } from "./renderer-space";
+import {
+  parseNodexDestination,
+  type NodexDestination,
+  type NodexReferenceGesture,
+} from "../../shared/nodex-reference";
+import type { NodexReferenceRouter, NodexReferenceSource } from "./nodex-reference-router";
 
 const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
   "avif",
@@ -63,9 +67,7 @@ const LIKELY_RELATIVE_FILE_SUFFIXES = new Set([
 ]);
 
 export type NfmResolvedLinkAction =
-  | { kind: "space-link"; href: string }
-  | { kind: "session"; href: string; sessionId: string }
-  | { kind: "page"; href: string; pageId: string }
+  | { kind: "nodex"; href: string; destination: NodexDestination }
   | { kind: "local-file" | "workspace-file"; href: string; target: FileLinkTarget }
   | { kind: "web-url"; href: string; url: string }
   | { kind: "literal-anchor"; href: string }
@@ -77,9 +79,11 @@ export interface NfmLinkNavigation {
   open: (url: string, target: string, features: string) => void;
 }
 
-export interface NfmPageLinkNavigation {
-  readonly openSession?: (sessionId: string) => void | Promise<void>;
-  readonly openPage?: (pageId: string) => void | Promise<void>;
+/** A Nodex link opens through the Workbench reference router, relative to its surface. */
+export interface NfmReferenceNavigation {
+  readonly router: NodexReferenceRouter | null;
+  readonly source: NodexReferenceSource;
+  readonly gesture: NodexReferenceGesture;
 }
 
 function hasExplicitProtocol(value: string): boolean {
@@ -217,17 +221,8 @@ export function resolveNfmLinkAction(
   const trimmed = href.trim();
   if (!trimmed) return null;
 
-  const sessionTarget = parseSessionDeepLink(trimmed);
-  if (sessionTarget?.spaceId && sessionTarget.spaceId !== rendererSpaceId())
-    return { kind: "space-link", href: trimmed };
-  if (sessionTarget) return { kind: "session", href: trimmed, sessionId: sessionTarget.sessionId };
-
-  const pageTarget = parsePageDeepLink(trimmed);
-  if (pageTarget?.spaceId && pageTarget.spaceId !== rendererSpaceId())
-    return { kind: "space-link", href: trimmed };
-  if (pageTarget) {
-    return { kind: "page", href: trimmed, pageId: pageTarget.pageId };
-  }
+  const destination = parseNodexDestination(trimmed);
+  if (destination) return { kind: "nodex", href: trimmed, destination };
 
   const localFileTarget = parseLocalFileLinkHref(trimmed);
   if (localFileTarget) {
@@ -330,7 +325,7 @@ export async function openNfmResolvedLinkAction(
     assign: (href) => window.location.assign(href),
     open: () => undefined,
   },
-  pageNavigation?: NfmPageLinkNavigation,
+  reference?: NfmReferenceNavigation,
   linkRequest?: Omit<LinkOpenRequest, "url" | "initiator"> & {
     readonly openLink?: typeof openLink;
   },
@@ -339,7 +334,14 @@ export async function openNfmResolvedLinkAction(
     return false;
   }
 
-  if (action.kind === "space-link") return openSpaceLink(action.href);
+  if (action.kind === "nodex") {
+    if (!reference?.router) return false;
+    const outcome = await reference.router.open(action.destination, {
+      source: reference.source,
+      gesture: reference.gesture,
+    });
+    return outcome !== "failed";
+  }
   if (action.kind === "web-url") {
     const { openLink: open = openLink, ...request } = linkRequest ?? {};
     return open({
@@ -348,18 +350,6 @@ export async function openNfmResolvedLinkAction(
       initiator: "markdown_link_click",
       ...(!/^https?:/iu.test(action.url) ? { useExternalBrowser: true } : {}),
     });
-  }
-
-  if (action.kind === "session") {
-    if (!pageNavigation?.openSession) return false;
-    await pageNavigation.openSession(action.sessionId);
-    return true;
-  }
-
-  if (action.kind === "page") {
-    if (!pageNavigation?.openPage) return false;
-    await pageNavigation.openPage(action.pageId);
-    return true;
   }
 
   if (action.kind === "literal-anchor") {

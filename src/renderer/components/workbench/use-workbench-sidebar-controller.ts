@@ -127,16 +127,10 @@ type SidebarSync = Pick<
 
 interface WorkbenchSidebarControllerInput {
   readonly projects: Project[];
-  readonly projectlessSessions: readonly ProjectSession[];
   readonly knownSessions: readonly ProjectSession[];
-  readonly activeProject: Project | null;
   readonly activeSessionId: string | null;
   readonly browserViewScopeId: string;
   readonly activeSessions: readonly ProjectSession[];
-  readonly pendingSessionOpen?: {
-    readonly projectId: string | null;
-    readonly sessionId: string;
-  } | null;
   readonly pendingWorktreeClientThreadId: string | null;
   readonly catalog: WorkbenchSessionCatalog;
   readonly sidebarCollections: WorkbenchSessionCollections;
@@ -198,13 +192,10 @@ function reportChatPinError(pin: boolean): void {
  */
 export function useWorkbenchSidebarController({
   projects,
-  projectlessSessions,
   knownSessions,
-  activeProject,
   activeSessionId,
   browserViewScopeId,
   activeSessions,
-  pendingSessionOpen,
   pendingWorktreeClientThreadId,
   catalog,
   sidebarCollections,
@@ -454,24 +445,6 @@ export function useWorkbenchSidebarController({
       warmProjectSessionDbViewBoards,
     ],
   );
-
-  useEffect(() => {
-    if (!pendingSessionOpen) return;
-    if (pendingSessionOpen.projectId === null) {
-      const targetSession = projectlessSessions.find(
-        (session) => session.id === pendingSessionOpen.sessionId,
-      );
-      if (!targetSession) return;
-      selectSession(targetSession);
-      return;
-    }
-    if (pendingSessionOpen.projectId !== activeProject?.id) return;
-    const targetSession = activeSessions.find(
-      (session) => session.id === pendingSessionOpen.sessionId,
-    );
-    if (!targetSession) return;
-    selectSession(targetSession);
-  }, [activeProject?.id, activeSessions, pendingSessionOpen, projectlessSessions, selectSession]);
 
   const toggleSessionPin = useCallback(
     async (session: ProjectSessionDomain) => {

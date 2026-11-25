@@ -1,3 +1,4 @@
+import { NodexReferenceSourceProvider } from "@/lib/nodex-reference-router";
 import { memo, useCallback, useId, useState, type ReactNode } from "react";
 import type { MotionValue } from "motion/react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
@@ -253,64 +254,68 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
     threadScopePath,
   });
   return (
-    <CodexTranscriptReadOwnerProvider conversationId={model.threadId} hostId={model.hostId}>
-      <ConversationMarkdownSourceProvider
-        projectId={model.projectId}
-        hostId={model.hostId}
-        threadId={model.threadId}
-        cwd={model.cwd}
-        workspaceRoot={model.projectWorkspacePath ?? null}
-        onOpenThread={props.actions.onOpenThread}
-        onStartNewChatWithPrompt={props.actions.onStartNewChatWithPrompt}
-        imageComposerTarget={composerTarget}
-        skills={model.skills}
-      >
-        <HookFeedbackSettingsNavigationProvider
+    <NodexReferenceSourceProvider
+      source={{ surface: "conversation", sessionId: model.sessionId?.trim() || null }}
+    >
+      <CodexTranscriptReadOwnerProvider conversationId={model.threadId} hostId={model.hostId}>
+        <ConversationMarkdownSourceProvider
+          projectId={model.projectId}
           hostId={model.hostId}
-          onOpenHooksSettings={props.actions.onOpenHooksSettings}
+          threadId={model.threadId}
+          cwd={model.cwd}
+          workspaceRoot={model.projectWorkspacePath ?? null}
+          onOpenThread={props.actions.onOpenThread}
+          onStartNewChatWithPrompt={props.actions.onStartNewChatWithPrompt}
+          imageComposerTarget={composerTarget}
+          skills={model.skills}
         >
-          <ConversationImageScopeProvider
-            composerTarget={composerTarget}
+          <HookFeedbackSettingsNavigationProvider
             hostId={model.hostId}
-            cwd={model.cwd}
-            resolveHistoryImage={props.resolveHistoryImage}
-            resolveRuntimeAttachment={props.resolveRuntimeAttachment}
+            onOpenHooksSettings={props.actions.onOpenHooksSettings}
           >
-            <ConversationToolOutputProvider
-              readToolOutput={props.readToolOutput}
-              conversationId={model.threadId}
+            <ConversationImageScopeProvider
+              composerTarget={composerTarget}
+              hostId={model.hostId}
+              cwd={model.cwd}
+              resolveHistoryImage={props.resolveHistoryImage}
+              resolveRuntimeAttachment={props.resolveRuntimeAttachment}
             >
-              <ConversationRecoveryActionsProvider
-                onContinueAfterFailure={props.actions.onContinueAfterFailure}
-                onCompactAndRetry={props.actions.onCompactAndRetry}
-                onManageFailedProvider={props.actions.onManageFailedProvider}
+              <ConversationToolOutputProvider
+                readToolOutput={props.readToolOutput}
+                conversationId={model.threadId}
               >
-                <LocalConversationThreadBodyPresentation
-                  presentation={props.presentation}
-                  model={model}
+                <ConversationRecoveryActionsProvider
+                  onContinueAfterFailure={props.actions.onContinueAfterFailure}
+                  onCompactAndRetry={props.actions.onCompactAndRetry}
+                  onManageFailedProvider={props.actions.onManageFailedProvider}
                 >
-                  {props.presentation !== "floating" && model.threadId ? (
-                    <AttachedLocalConversationThreadBody
-                      key={model.threadId}
-                      {...props}
-                      conversationId={model.threadId}
-                      resolveHistoryImage={props.resolveHistoryImage}
-                    />
-                  ) : (
-                    <LocalConversationThreadBodyLayout
-                      {...props}
-                      initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
-                      readRestoreSnapshot={readEmptyRestoreSnapshot}
-                      onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
-                    />
-                  )}
-                </LocalConversationThreadBodyPresentation>
-              </ConversationRecoveryActionsProvider>
-            </ConversationToolOutputProvider>
-          </ConversationImageScopeProvider>
-        </HookFeedbackSettingsNavigationProvider>
-      </ConversationMarkdownSourceProvider>
-    </CodexTranscriptReadOwnerProvider>
+                  <LocalConversationThreadBodyPresentation
+                    presentation={props.presentation}
+                    model={model}
+                  >
+                    {props.presentation !== "floating" && model.threadId ? (
+                      <AttachedLocalConversationThreadBody
+                        key={model.threadId}
+                        {...props}
+                        conversationId={model.threadId}
+                        resolveHistoryImage={props.resolveHistoryImage}
+                      />
+                    ) : (
+                      <LocalConversationThreadBodyLayout
+                        {...props}
+                        initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                        readRestoreSnapshot={readEmptyRestoreSnapshot}
+                        onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
+                      />
+                    )}
+                  </LocalConversationThreadBodyPresentation>
+                </ConversationRecoveryActionsProvider>
+              </ConversationToolOutputProvider>
+            </ConversationImageScopeProvider>
+          </HookFeedbackSettingsNavigationProvider>
+        </ConversationMarkdownSourceProvider>
+      </CodexTranscriptReadOwnerProvider>
+    </NodexReferenceSourceProvider>
   );
 }
 
