@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { build } from "vite";
 import { afterAll, beforeAll, expect, test, vi } from "vite-plus/test";
 import electronConfig from "../../config/electron.vite.config";
+import { createSentryPlugins } from "../../config/sentry-build";
 import { measureWorkbenchClosure } from "./startup-closure";
 
 // A Workbench root, an on-demand Canvas, and a root that imports the Canvas package
@@ -37,6 +39,30 @@ export const draw = () => ({ elements: [], drawn: true });
 let fixtureDirectory: string;
 let rendererDirectory: string;
 
+/** Builds the fixture with the production renderer configuration for the current environment. */
+const buildFixture = async (outDir: string) => {
+  const renderer = (await electronConfig({ command: "build", mode: "production" })).renderer;
+  if (!renderer?.build) throw new Error("Expected a renderer build");
+  await build({
+    configFile: false,
+    root: fixtureDirectory,
+    // The desktop renderer is served from its own directory, as electron-vite configures it.
+    base: "./",
+    logLevel: "silent",
+    // Release builds instrument chunks through the same Sentry plugin the desktop build uses.
+    plugins: createSentryPlugins(),
+    build: {
+      ...renderer.build,
+      outDir,
+      modulePreload: { polyfill: false },
+      rollupOptions: {
+        ...renderer.build.rollupOptions,
+        input: join(fixtureDirectory, "index.html"),
+      },
+    },
+  });
+};
+
 beforeAll(async () => {
   vi.stubEnv("SENTRY_AUTH_TOKEN", "");
   vi.stubEnv("SENTRY_RELEASE", "");
@@ -46,24 +72,7 @@ beforeAll(async () => {
     await mkdir(dirname(join(fixtureDirectory, file)), { recursive: true });
     await writeFile(join(fixtureDirectory, file), content);
   }
-  const renderer = (await electronConfig({ command: "build", mode: "production" })).renderer;
-  if (!renderer?.build) throw new Error("Expected a renderer build");
-  await build({
-    configFile: false,
-    root: fixtureDirectory,
-    // The desktop renderer is served from its own directory, as electron-vite configures it.
-    base: "./",
-    logLevel: "silent",
-    build: {
-      ...renderer.build,
-      outDir: rendererDirectory,
-      modulePreload: { polyfill: false },
-      rollupOptions: {
-        ...renderer.build.rollupOptions,
-        input: join(fixtureDirectory, "index.html"),
-      },
-    },
-  });
+  await buildFixture(rendererDirectory);
 });
 
 afterAll(async () => {
@@ -106,4 +115,25 @@ test("reports the import path that brings an on-demand package into the Workbenc
   ]);
   // Excalidraw's stylesheet travels with the Workbench import that reaches it.
   expect(closure.css.files).toBe(1);
+});
+
+test("release instrumentation does not count toward the Workbench budget", async () => {
+  const releaseDirectory = join(fixtureDirectory, "out-release");
+  vi.stubEnv("SENTRY_RELEASE", "nodex@0.0.0-test");
+  try {
+    await buildFixture(releaseDirectory);
+  } finally {
+    vi.stubEnv("SENTRY_RELEASE", "");
+  }
+  const release = measureWorkbenchClosure({
+    rendererDirectory: releaseDirectory,
+    rootChunkName: "application-renderer",
+    onDemandPackages: ["@excalidraw/excalidraw"],
+  });
+  const plain = measure("application-renderer");
+
+  expect(release.javaScriptFiles.map((file) => readFileSync(file, "utf8"))).toContainEqual(
+    expect.stringContaining("_sentryDebugIds"),
+  );
+  expect(release.javaScript).toEqual(plain.javaScript);
 });

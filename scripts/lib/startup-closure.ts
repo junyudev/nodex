@@ -10,6 +10,18 @@ import {
   type EmittedModuleImports,
 } from "./emitted-module-graph";
 
+/**
+ * Release builds open every chunk with Sentry's release and debug-ID registration and close it
+ * with a debug-ID comment. Their size follows the build environment, not Nodex code, so budgets
+ * measure the code between them and hold the same in every build.
+ */
+const SENTRY_CHUNK_PRELUDE =
+  /^\(function\(\)\{try\{var \w+=typeof globalThis[^\n]*?_sentryDebugIdIdentifier=`sentry-dbid-[\da-f-]{36}`\)\}catch\{\}\}\)\(\)[,;]/u;
+const SENTRY_DEBUG_ID_COMMENT = /\n\/\/# debugId=[\da-f-]{36}\n?$/u;
+
+const codeBytes = (source: string): number =>
+  Buffer.byteLength(source.replace(SENTRY_CHUNK_PRELUDE, "").replace(SENTRY_DEBUG_ID_COMMENT, ""));
+
 export interface ByteTotal {
   readonly files: number;
   readonly bytes: number;
@@ -91,7 +103,7 @@ export function measureWorkbenchClosure(options: WorkbenchClosureOptions): Workb
     const known = modules.get(file);
     if (known) return known;
     const source = readFileSync(file, "utf8");
-    const parsed = { ...emittedModuleImports(file, source), bytes: Buffer.byteLength(source) };
+    const parsed = { ...emittedModuleImports(file, source), bytes: codeBytes(source) };
     modules.set(file, parsed);
     return parsed;
   };
@@ -203,6 +215,6 @@ export function measureMainPreWindowClosure(mainDirectory: string, entry: string
   );
   return {
     files: closure.files.length,
-    bytes: closure.files.reduce((total, file) => total + Buffer.byteLength(read(file)), 0),
+    bytes: closure.files.reduce((total, file) => total + codeBytes(read(file)), 0),
   };
 }
