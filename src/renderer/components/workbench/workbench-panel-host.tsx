@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import type { AppShellLeadingTab, AppShellTabItem } from "./app-shell-tabs";
 import { PanelGroupTree } from "./panel-group-tree";
 import { EmptyRightPane } from "./workbench-panel-controls";
@@ -50,6 +50,7 @@ interface WorkbenchPanelHostProps {
   headerEndInsetPx?: number;
   leadingTab?: AppShellLeadingTab;
   contentConcealed?: boolean;
+  activeLeafRef?: Ref<HTMLDivElement>;
   renderNewTab?: (leafId: string) => ReactNode;
   renderEmptyLeaf?: (leafId: string) => ReactNode;
 }
@@ -73,6 +74,7 @@ export function WorkbenchPanelHost({
   headerEndInsetPx,
   leadingTab,
   contentConcealed,
+  activeLeafRef,
   renderNewTab,
   renderEmptyLeaf,
 }: WorkbenchPanelHostProps) {
@@ -104,6 +106,7 @@ export function WorkbenchPanelHost({
       headerEndInsetPx={headerEndInsetPx}
       leadingTab={leadingTab}
       contentConcealed={contentConcealed}
+      activeLeafRef={activeLeafRef}
       renderEmptyLeaf={(leafId) =>
         renderEmptyLeaf?.(leafId) ?? (
           <EmptyRightPane

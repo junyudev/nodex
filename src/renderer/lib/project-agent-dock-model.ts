@@ -3,6 +3,12 @@ import { getIntl } from "@/lib/i18n";
 import { projectAutomationPromptPreview } from "../../shared/automation-heartbeat";
 import type { ProjectSessionSummary } from "../../shared/types";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
+import {
+  findWorkbenchPanelLeaf,
+  findWorkbenchPanelLeafForTab,
+  getWorkbenchPanelActiveLeaf,
+  type WorkbenchPanelLayout,
+} from "../../shared/workbench-panel-layout";
 import type { WorkbenchAgentDockState } from "../../shared/workbench-scene";
 import { sortProjectSessionSummariesForSidebar } from "./project-session-query-cache";
 import type { SessionLiveIndicator } from "./session-execution";
@@ -56,6 +62,20 @@ export type ProjectAgentDockCollectionState =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly refreshError: string | null }
   | { readonly kind: "error"; readonly message: string };
+
+/** Use the rendered layout so previews and maximized groups count toward Inbox visibility. */
+export function resolveProjectAgentDockAnchor(
+  layout: WorkbenchPanelLayout,
+  inboxHomeId: string | null,
+): "hidden" | "stack" | "active-group" {
+  const inboxLeaf = findWorkbenchPanelLeafForTab(layout, inboxHomeId);
+  if (!inboxLeaf || inboxLeaf.activeTabId !== inboxHomeId) return "stack";
+
+  const maximizedLeaf = findWorkbenchPanelLeaf(layout, layout.maximizedLeafId);
+  if (maximizedLeaf) return maximizedLeaf.id === inboxLeaf.id ? "hidden" : "stack";
+
+  return getWorkbenchPanelActiveLeaf(layout).id === inboxLeaf.id ? "hidden" : "active-group";
+}
 
 function normalizeSearch(value: string): string {
   return value.trim().toLocaleLowerCase();

@@ -240,12 +240,18 @@ function isComposerOwnedTarget(target: EventTarget | null, frame: HTMLElement | 
   return target instanceof Element && target.closest(COMPOSER_FLOATING_UI_SELECTOR) !== null;
 }
 
-/** One cached DOM observation per pane; native callbacks publish measured geometry. */
-function createPaneGeometryObservation(target: HTMLElement | null) {
+/** Cache the last measurement across pane changes to keep the portal mounted. */
+function createPaneGeometryObservation() {
   let snapshot: FloatingComposerPortalGeometry | null = null;
+  let listener: (() => void) | undefined;
   const getSnapshot = () => snapshot;
-  const subscribe = (listener: () => void) => {
-    if (!target) return () => {};
+  const subscribe = (onChange: () => void) => {
+    listener = onChange;
+    return () => {
+      listener = undefined;
+    };
+  };
+  const observe = (target: HTMLElement) => {
     const view = target.ownerDocument.defaultView;
     if (!view) return () => {};
     const measure = () => {
@@ -262,10 +268,20 @@ function createPaneGeometryObservation(target: HTMLElement | null) {
       )
         return;
       snapshot = next;
-      listener();
+      listener?.();
+    };
+    // A resize can also resize the portaled frame, which has its own observer.
+    // Publish outside ResizeObserver delivery so both measurements can settle.
+    let resizeFrame: number | null = null;
+    const scheduleResizeMeasure = () => {
+      if (resizeFrame !== null) return;
+      resizeFrame = view.requestAnimationFrame(() => {
+        resizeFrame = null;
+        measure();
+      });
     };
     const resizeObserver =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleResizeMeasure);
     resizeObserver?.observe(target);
     const mutationObserver =
       typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
@@ -282,17 +298,21 @@ function createPaneGeometryObservation(target: HTMLElement | null) {
     return () => {
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
+      if (resizeFrame !== null) view.cancelAnimationFrame(resizeFrame);
       view.removeEventListener("resize", measure);
     };
   };
-  return { target, getSnapshot, subscribe };
+  return { observe, getSnapshot, subscribe };
 }
 
 /** Keeps a body portal over the pane and publishes the pane's scroll reserve. */
 function usePaneGeometry(target: HTMLElement | null, reservePx: number) {
-  const [observation, setObservation] = useState(() => createPaneGeometryObservation(target));
-  if (observation.target !== target) setObservation(createPaneGeometryObservation(target));
+  const [observation] = useState(createPaneGeometryObservation);
   const geometry = useSyncExternalStore(observation.subscribe, observation.getSnapshot);
+  useLayoutEffect(() => {
+    if (!target) return;
+    return observation.observe(target);
+  }, [observation, target]);
   useLayoutEffect(() => {
     if (!target) return;
     target.style.setProperty(

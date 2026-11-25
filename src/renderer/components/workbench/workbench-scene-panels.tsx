@@ -1,7 +1,7 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { AgentsTabIcon } from "@/features/agents/agents-surface";
 import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import {
@@ -54,6 +54,7 @@ export interface WorkbenchScenePanelsProps {
   readonly availableActions: readonly PanelNewTabAction[];
   readonly currentProjectDbViewExists: boolean;
   readonly rightPanelHeaderAfterList: ReactNode;
+  readonly rightPanelActiveLeafRef?: Ref<HTMLDivElement>;
   readonly rightPanelHeaderStartInsetWidth: number;
   readonly bottomPanelGlobalHeaderInsetWidth: number;
   readonly renderNewTab?: (panelId: PanelId, leafId: string) => ReactNode;
@@ -197,6 +198,7 @@ export function buildWorkbenchScenePanels({
   availableActions,
   currentProjectDbViewExists,
   rightPanelHeaderAfterList,
+  rightPanelActiveLeafRef,
   rightPanelHeaderStartInsetWidth,
   bottomPanelGlobalHeaderInsetWidth,
   renderNewTab,
@@ -241,6 +243,7 @@ export function buildWorkbenchScenePanels({
         isMac={isMac}
         commandKeymapState={commandKeymapState}
         currentProjectDbViewExists={currentProjectDbViewExists}
+        activeLeafRef={panelId === "right" ? rightPanelActiveLeafRef : undefined}
         renderAfterList={panelId === "right" ? () => rightPanelHeaderAfterList : undefined}
         headerStartInsetPx={panelId === "right" ? rightPanelHeaderStartInsetWidth : undefined}
         headerEndInsetPx={panelId === "bottom" ? bottomPanelGlobalHeaderInsetWidth : undefined}

@@ -12,6 +12,7 @@ import {
   useState,
   type Dispatch,
   type ReactNode,
+  type Ref,
   type SetStateAction,
   type SyntheticEvent,
   type PointerEvent as ReactPointerEvent,
@@ -70,6 +71,7 @@ interface PanelGroupTreeProps {
   leadingTab?: AppShellLeadingTab;
   /** Every group lists its tabs but selects and presents none, as while the Chat is selected. */
   contentConcealed?: boolean;
+  activeLeafRef?: Ref<HTMLDivElement>;
   onSelectTab: (leafId: string, tabId: string) => void;
   onCloseTab: (leafId: string, tabId: string) => void;
   onDirectCloseTab?: (leafId: string, tabId: string) => void;
@@ -101,6 +103,7 @@ export function PanelGroupTree({
   headerEndInsetPx,
   leadingTab,
   contentConcealed = false,
+  activeLeafRef,
   onSelectTab,
   onCloseTab,
   onDirectCloseTab,
@@ -198,6 +201,7 @@ export function PanelGroupTree({
         leadingTab={leadingTab}
         leadingTabLeafId={leadingTabLeafId}
         contentConcealed={contentConcealed}
+        activeLeafRef={activeLeafRef}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
         onDirectCloseTab={onDirectCloseTab}
@@ -350,6 +354,7 @@ function PanelGroupNode(props: {
   leadingTab?: AppShellLeadingTab;
   leadingTabLeafId: string | null;
   contentConcealed: boolean;
+  activeLeafRef?: Ref<HTMLDivElement>;
   onSelectTab: (leafId: string, tabId: string) => void;
   onCloseTab: (leafId: string, tabId: string) => void;
   onDirectCloseTab?: (leafId: string, tabId: string) => void;
@@ -469,6 +474,7 @@ function PanelGroupLeaf({
   leadingTab: treeLeadingTab,
   leadingTabLeafId,
   contentConcealed,
+  activeLeafRef,
   onSelectTab,
   onCloseTab,
   onDirectCloseTab,
@@ -519,6 +525,7 @@ function PanelGroupLeaf({
 
   return (
     <div
+      ref={isActive ? activeLeafRef : undefined}
       data-panel-group-leaf-id={leaf.id}
       data-panel-group-leaf-active={isActive ? "true" : "false"}
       className={cn(
