@@ -4,21 +4,24 @@ import { toast } from "@/components/ui/toast";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { useThreadExecutionLocation } from "@/lib/use-thread-execution-location";
 import { render, openNodexMenu } from "@/test/dom";
-import { buildThreadHandoffOperation } from "@/test/thread-handoff-fixture";
-import { ThreadExecutionLocationSelector } from "./thread-execution-location-selector";
+import {
+  ThreadExecutionLocationSelector,
+  type ThreadExecutionLocationModel,
+} from "./thread-execution-location-selector";
 
 vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
 vi.mock("@/lib/use-thread-execution-location", () => ({ useThreadExecutionLocation: vi.fn() }));
 const move = vi.fn(async () => {});
-const selector = (
+const selectorFor = (model: Partial<ThreadExecutionLocationModel> = {}) => (
   <NodexTooltipProvider>
     <ThreadExecutionLocationSelector
-      model={{ threadId: "thread", kind: "local", canMove: true }}
+      model={{ threadId: "thread", kind: "local", canMove: true, source: "present", ...model }}
       disabled={false}
       worktreeAvailable
     />
   </NodexTooltipProvider>
 );
+const selector = selectorFor();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,6 +29,7 @@ beforeEach(() => {
     operation: null,
     busy: false,
     blocked: false,
+    completedOperationId: null,
     move,
   });
 });
@@ -48,27 +52,21 @@ test("reports a rejected move with its reason", async () => {
       description: "Working tree has conflicts",
     }),
   );
-  expect(move).toHaveBeenCalledWith("worktree");
+  expect(move).toHaveBeenCalledWith("worktree", "present");
 });
 
-test("reports a failed observed move once across unrelated renders", () => {
-  vi.mocked(useThreadExecutionLocation).mockReturnValue({
-    operation: buildThreadHandoffOperation({ status: "error", message: "Branch checkout failed" }),
-    busy: false,
-    blocked: false,
-    move,
+test("works locally without a worktree, saying what can't come along", async () => {
+  const view = render(selectorFor({ kind: "worktree", source: "gone" }));
+  await openNodexMenu(view.getByRole("button", { name: "Worktree" }));
+  await act(async () => {
+    fireEvent.click(view.getByRole("menuitem", { name: "Local" }));
+    await Promise.resolve();
   });
-  const view = render(selector);
-  view.rerender(
-    <NodexTooltipProvider>
-      <ThreadExecutionLocationSelector
-        model={{ threadId: "thread", kind: "local", canMove: true }}
-        disabled
-        worktreeAvailable
-      />
-    </NodexTooltipProvider>,
-  );
-  expect(toast.danger).toHaveBeenCalledExactlyOnceWith("Couldn’t move the chat", {
-    description: "Branch checkout failed",
+  const dialog = await view.findByRole("dialog");
+  expect(dialog.textContent).toContain("This chat’s worktree no longer exists.");
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Work locally" }));
+    await Promise.resolve();
   });
+  expect(move).toHaveBeenCalledExactlyOnceWith("local", "missing");
 });

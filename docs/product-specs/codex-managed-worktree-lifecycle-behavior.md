@@ -152,9 +152,9 @@ is never downgraded.
 
 ## Availability and restore
 
-Opening a managed-worktree Chat inspects its execution location before treating
-the missing cwd as an ordinary load failure. The canonical availability is one
-of:
+Opening a Chat checks whether its working directory is usable. Nodex checks local
+working directories and managed worktrees on registered execution hosts. The
+canonical availability is one of:
 
 - `available`: the cwd is usable;
 - `restorable`: the worktree is absent and a matching snapshot exists;
@@ -167,17 +167,13 @@ holds sending and is said in the notice attached to the composer, where the next
 message would be written, as described in
 [Agent readiness and failures around the composer](agent-runtime-behavior.md#agent-readiness-and-failures-around-the-composer).
 
-A restorable Chat shows:
-
-- `Worktree cleaned up`
-- `Removed to save disk space`
-- `Restore worktree`
-
-A gone Chat shows `Working directory missing` and
-`This chat’s working directory no longer exists` without a restore action. An
-inspection failure shows `Couldn’t check worktree status` and `Retry`. A native
-Chat also holds sending, without a notice, while its first inspection is still
-running; an Agent chat does not wait for it.
+A restorable Chat offers **Restore worktree**. A Chat with a gone or restorable
+working directory also offers **Work locally** when the Project has a different,
+available primary local folder. For a restorable worktree, Nodex confirms the move
+because the saved changes stay with the snapshot. If a managed checkout still
+exists and only the Chat's subdirectory is missing, the notice reports the missing
+working directory and offers no move or restore. An inspection failure offers
+**Retry** while Nodex cannot verify a recovery destination.
 
 Restore recreates the worktree at its durable path with the snapshot ref. If an
 existing path already represents the same snapshot, restore succeeds
@@ -371,14 +367,16 @@ automatic-retention side effect.
 
 ## Moving a Chat
 
-Moving a Chat is a real execution-location transaction. It retains the same Chat
-identity and history while moving its Git state and subsequent execution
-between a checkout, a managed worktree, or a registered execution host.
+Moving a Chat changes where its subsequent work runs while retaining its
+identity and history. A move between available folders also carries the Chat's
+Git state.
 
 The attached Chat's `Continue in` selector requests a confirmed local move and
 shows the actual execution location until its canonical execution owner commits the destination. Its
-requested destination is checked against the current durable location, so a
-stale menu cannot reverse a move. Unsupported backends and host combinations fail
+requested destination is checked against the current durable location. Nodex
+also checks under the execution hold whether the source checkout still matches
+what the person confirmed. If it appeared or disappeared, the person must reopen
+the location menu before proceeding. Unsupported backends and host combinations fail
 before stopping execution or preparing files.
 
 The execution owner seals new work throughout the transaction. Runtime stores the
@@ -389,7 +387,7 @@ detached is insufficient while its work or cleanup remains pending. An idle shar
 process may remain resident. Queued messages are preserved; queues explicitly
 held by the user remain held when the move completes.
 
-The transaction:
+A move that transfers Git state follows these steps.
 
 1. Seals admission and quiesces the source execution tree.
 2. Captures source Git state and prepares the destination without destroying the source.
@@ -407,12 +405,23 @@ Explicit remote native Codex Chats switch through their own execution-host adapt
 Runtime handoff accepts only the local host.
 
 Main keeps a durable operation journal around effects that cannot share one
-database transaction. Recovery preserves at least one complete usable copy.
+database transaction. It records whether the move will transfer Git state before
+preparing the destination. If a restart interrupts source inspection or
+location-only preparation, recovery can release the hold without Git repair.
+Recovery preserves at least one complete usable copy.
 Failure before durable commit rolls back the destination and keeps the source;
 source cleanup failure after commit leaves the Chat at the destination and
 reports a recoverable warning. A follow-up prompt is sent only after durable
 commit and verified execution release. Runtime retries use one stable message identity
 and durable command receipt to prevent duplicate follow-up work.
+
+When the working directory is missing, **Work locally** continues the same Chat
+in the Project's primary local folder. Nodex uses the corresponding subdirectory
+when it exists, otherwise it uses the Project folder itself. Existing additional
+workspace roots keep their order. The move leaves branches, files, worktree
+ownership and snapshots as they are. Uncommitted changes from the missing
+worktree stay with its snapshot when one exists. Recovery verifies the Chat's
+saved location and finishes or rolls back its execution metadata.
 
 For a local checkout-to-worktree move, the host worker creates a detached
 destination, moves the source branch into it, and transfers tracked, staged,
@@ -427,7 +436,8 @@ compensation preserve the staged index as well as tracked and untracked files.
 After a rejected preparation, the original Chat resumes only when the worker
 proves that the source was untouched or completely restored.
 
-The originating tool activity observes a revisioned Main-owned operation snapshot. Repeated delivery of the same tool call reuses its operation; another conversation cannot claim that operation through presentation state. Snapshots retain the requesting Chat, target Chat, Project, execution hosts, title, direction, and available branch context. Progress and terminal results are restored from the journal on restart. Failed steps do not mark subsequent unperformed phases as successful.
+The originating tool activity observes a revisioned Main-owned operation snapshot. Repeated delivery of the same tool call reuses its operation; another conversation cannot claim that operation through presentation state. Snapshots retain the requesting Chat, target Chat, Project, execution hosts, title, direction, whether the move transfers Git state, and
+available branch context. Progress and terminal results are restored from the journal on restart. Failed steps do not mark subsequent unperformed phases as successful.
 
 Only one handoff may run for a Chat at a time. Main journals the source,
 prepared destination, runtime-switch and location-commit boundaries with an atomic

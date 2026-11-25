@@ -239,6 +239,34 @@ describe("managed worktree data-safety effects", () => {
     });
   });
 
+  test("requires every candidate repository to rule out a snapshot", async () => {
+    const input = await fixture();
+    const absent = path.join(input.root, "offline");
+    const inspectionInput = {
+      requestId: "inspect:partial-snapshot",
+      hostId: "local",
+      worktreeGitRoot: input.worktreeGitRoot,
+      cwd: input.worktreeGitRoot,
+    };
+    await rm(input.worktreeGitRoot, { recursive: true });
+    await expect(
+      inspectManagedWorktree({
+        ...inspectionInput,
+        candidateRepositoryPaths: [input.repositoryPath],
+      }),
+    ).resolves.toEqual({ availability: { state: "gone", worktree: true } });
+    for (const candidateRepositoryPaths of [
+      [absent, input.repositoryPath],
+      [input.repositoryPath, absent],
+    ]) {
+      await expect(
+        inspectManagedWorktree({ ...inspectionInput, candidateRepositoryPaths }),
+      ).resolves.toMatchObject({
+        availability: { state: "unavailable", reason: "inspection-failed" },
+      });
+    }
+  });
+
   test("runs resolved cleanup before deletion and fails closed on cleanup errors", async () => {
     const input = await fixture();
     const environmentPath = ".codex/environments/environment.toml";

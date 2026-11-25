@@ -204,6 +204,39 @@ describe("local thread handoff Git transaction", { timeout: GIT_TRANSACTION_BUDG
     expect(readFileSync(path.join(fixture.root, "untracked.txt"), "utf8")).toBe("untracked\n");
   });
 
+  test("rejects a source that was replaced by an ordinary checkout before prep", async () => {
+    const ordinary = createRepository();
+    const destination = createRepository();
+    const branch = git(ordinary.root, "branch", "--show-current");
+    dirtyRepository(ordinary.root);
+    const status = git(ordinary.root, "status", "--porcelain");
+    await expect(
+      prepareLocalThreadHandoff(
+        {
+          requestId: "replaced-checkout",
+          hostId: "local",
+          managedRoot: ordinary.managedRoot,
+          nodexHome: path.dirname(ordinary.managedRoot),
+          projectId: "project-1",
+          threadId: "thread-1",
+          threadTitle: "Move this task",
+          sourceCwd: ordinary.root,
+          sourceWorkspaceRoot: ordinary.root,
+          sourceManagedWorktreePath: ordinary.root,
+          allocatedWorktreePath: null,
+          destinationCheckoutRoot: destination.root,
+        },
+        options(),
+      ),
+    ).rejects.toMatchObject({
+      preparationRestored: true,
+      message: expect.stringContaining("linked worktree"),
+    });
+    expect(git(ordinary.root, "branch", "--show-current")).toBe(branch);
+    expect(git(ordinary.root, "status", "--porcelain")).toBe(status);
+    expect(git(ordinary.root, "stash", "list")).toBe("");
+  });
+
   test("moves a worktree branch back to a clean checkout and can compensate", async () => {
     const fixture = createRepository();
     dirtyRepository(fixture.root);

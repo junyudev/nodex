@@ -20,6 +20,7 @@ import type {
   AgentRuntimeBackgroundOutput,
   AgentRuntimeTaskCancelInput,
   AgentRuntimePreparationRetryInput,
+  AgentRuntimeWorkspaceMissingRetryInput,
   AgentRuntimeQueueInput,
   AgentRuntimeMergeBackInput,
   AgentRuntimeForkInput,
@@ -215,6 +216,15 @@ const retryPreparation = defineRendererCommand({
   trace: { scopeKind: "session" },
 });
 
+const retryWorkspaceMissingRun = defineRendererCommand({
+  key: "agent_runtime.session.retry_workspace_missing_run",
+  channel: "agent-runtime:session:retry-workspace-missing-run",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+
 const moveSession = defineRendererCommand({
   key: "agent_runtime.session.move",
   channel: "agent-runtime:session:move",
@@ -294,6 +304,9 @@ export interface AgentRuntimeRendererTransport {
   readonly retryPreparation: (
     input: AgentRuntimePreparationRetryInput,
   ) => Promise<{ readonly retried: true }>;
+  readonly retryWorkspaceMissingRun: (
+    input: AgentRuntimeWorkspaceMissingRetryInput,
+  ) => Promise<void>;
   readonly moveSession: (
     input: AgentRuntimeSessionMoveInput,
   ) => Promise<{ readonly sessionId: string; readonly projectId: string | null }>;
@@ -374,6 +387,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
     invokeRendererQuery("agent-runtime:session:background-output", input),
   cancelTask: (input) => invokePlainCommand(cancelTask, input),
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
+  retryWorkspaceMissingRun: (input) => invokePlainCommand(retryWorkspaceMissingRun, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
   composerSkills: (input) => invokeRendererQuery("agent-runtime:providers:composer-skills", input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),

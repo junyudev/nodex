@@ -136,6 +136,9 @@ import type { AgentModelPickerEntry } from "../../components/shared/agent-runtim
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 import { setLocalConversationThreadPresented } from "./local-conversation-store";
 import { resolveComposerInventoryIconUrl } from "../../../shared/codex-composer-inventory-icon";
+import { threadWorkspaceAvailabilityQuery } from "@/lib/managed-worktree-runtime";
+import { queryKeys } from "@/lib/query-keys";
+import type { ThreadWorkspaceAvailability } from "../../../shared/types";
 import { spaceQueryKey } from "@/lib/renderer-space";
 import { subscribeComposerSkillInvalidation } from "@/lib/skill-inventory-adapter";
 import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
@@ -197,22 +200,45 @@ const connectionViews = new WeakMap<AgentRuntimeConnectionState, CodexConnection
  * The latest Run failed while its workspace was being prepared: it records a preparation
  * strategy and never started. Returns its id so the user can retry or work locally.
  */
-export function failedWorkspacePreparation(
-  runs: readonly {
-    readonly id: string;
-    readonly ordinal: number;
-    readonly status: string;
-    readonly startedAt?: string | null;
-    readonly workspacePreparation?: unknown;
-  }[],
-): string | null {
-  const latest = runs.reduce<(typeof runs)[number] | null>(
-    (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
-    null,
-  );
+export function failedWorkspacePreparation(runs: readonly UnstartedRunEvidence[]): string | null {
+  const latest = latestByOrdinal(runs);
   return latest?.status === "failed" && latest.workspacePreparation && !latest.startedAt
     ? latest.id
     : null;
+}
+
+interface UnstartedRunEvidence {
+  readonly id: string;
+  readonly ordinal: number;
+  readonly status: string;
+  readonly startedAt?: string | null;
+  readonly workspacePreparation?: unknown;
+}
+
+function latestByOrdinal<T extends { readonly ordinal: number }>(runs: readonly T[]): T | null {
+  return runs.reduce<T | null>(
+    (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+    null,
+  );
+}
+
+/**
+ * The latest Run failed before it started and outside workspace preparation, such as when its
+ * working directory had disappeared. Returns its id so the chat rechecks where it runs.
+ */
+export function unstartedRunFailure(runs: readonly UnstartedRunEvidence[]): string | null {
+  const latest = latestByOrdinal(runs);
+  return latest?.status === "failed" && !latest.startedAt && !latest.workspacePreparation
+    ? latest.id
+    : null;
+}
+
+export function shouldRetryWorkspaceMissingRun(
+  failedRunId: string,
+  availability: ThreadWorkspaceAvailability["state"] | undefined,
+  attempted: ReadonlySet<string>,
+): boolean {
+  return availability === "available" && !attempted.has(failedRunId);
 }
 
 /** One supervised execution process serves every Runtime chat; an idle process starts on use. */
@@ -2228,6 +2254,62 @@ export function useAgentRuntimeConversationAdapter(input: {
   const preparationFailure = target
     ? failedWorkspacePreparation(state.conversation?.snapshot.projection.runs ?? [])
     : null;
+  // A Run that could not start may have found its working directory gone; the composer then
+  // says so and offers the fix, and fixing it sends that same message.
+  const unstartedFailure = target
+    ? unstartedRunFailure(state.conversation?.snapshot.projection.runs ?? [])
+    : null;
+  useEffect(() => {
+    if (!unstartedFailure || !targetThreadId) return;
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.threadExecution.workspace(targetThreadId),
+      exact: true,
+    });
+  }, [queryClient, targetThreadId, unstartedFailure]);
+  // The composer owns inspection. Observe its result through the same query without fetching
+  // it again; a different query function here would replace the composer's own recheck.
+  const workspace = useQuery({
+    ...threadWorkspaceAvailabilityQuery(targetThreadId ?? ""),
+    enabled: false,
+  });
+  const attemptedWorkspaceRetries = useRef(new Set<string>());
+  const availability = workspace.data?.state;
+  const { dataUpdatedAt, fetchStatus, isSuccess } = workspace;
+  useEffect(() => {
+    if (!targetThreadId || !unstartedFailure || !isSuccess || fetchStatus !== "idle") return;
+    // Invalidation and refetch can advance the cache before this effect sees the new result, so
+    // act only on the result the cache still holds, never on one a recheck is replacing.
+    const cached = queryClient.getQueryState(queryKeys.threadExecution.workspace(targetThreadId));
+    if (
+      !cached ||
+      cached.isInvalidated ||
+      cached.dataUpdatedAt !== dataUpdatedAt ||
+      cached.fetchStatus !== "idle"
+    )
+      return;
+    if (
+      !shouldRetryWorkspaceMissingRun(
+        unstartedFailure,
+        availability,
+        attemptedWorkspaceRetries.current,
+      )
+    )
+      return;
+    attemptedWorkspaceRetries.current.add(unstartedFailure);
+    void agentRuntimeRuntime
+      .retryWorkspaceMissingRun({ threadId: targetThreadId })
+      .catch((error) =>
+        console.warn("Failed to retry a Run waiting for its working directory", error),
+      );
+  }, [
+    availability,
+    dataUpdatedAt,
+    fetchStatus,
+    isSuccess,
+    queryClient,
+    targetThreadId,
+    unstartedFailure,
+  ]);
   const retryPreparation = async (runId: string, workLocally: boolean) => {
     if (!target) return;
     await agentRuntimeRuntime.retryPreparation({

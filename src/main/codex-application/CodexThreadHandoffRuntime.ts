@@ -1,10 +1,15 @@
 import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
-import { resolveCodexThreadHandoffStepLabel } from "../../shared/codex-thread-handoff";
+import {
+  CONFIRM_SOURCE_MISSING_STEP,
+  STALE_THREAD_HANDOFF_LOCATION,
+  resolveCodexThreadHandoffStepLabel,
+} from "../../shared/codex-thread-handoff";
 import type {
   CodexAppHandoffOperation,
   CodexAppHandoffStep,
   CodexAppHandoffStatusType,
   CodexThreadHandoffSnapshot,
+  ThreadHandoffSource,
 } from "../../shared/codex-thread-handoff";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -39,8 +44,9 @@ export interface CodexStartThreadHandoffInput {
   readonly operationId: string;
   readonly threadId: string;
   readonly destinationHostId: string | null;
-  /** Reject a stale attached selector rather than toggling the opposite way. */
+  /** Requested move from an attached selector. */
   readonly expectedDestination?: "local" | "worktree";
+  readonly expectedSource?: ThreadHandoffSource;
   readonly followUpPrompt: string | null;
   readonly followUpSender?: { readonly threadId: string; readonly runId?: string | null };
   readonly modeLimit?: AgentDispatchModeLimit;
@@ -167,12 +173,14 @@ const buildInitialOperation = (
   threadTitle: input.threadTitle?.trim() || input.threadId,
   projectId: source?.projectId ?? null,
   sourceHostId: source?.hostId ?? null,
+  strategy: input.expectedSource === "missing" ? "relocate" : "transfer",
+  ...(input.expectedSource ? { expectedSource: input.expectedSource } : {}),
   direction:
     source === null
       ? null
       : destinationHostId !== source.hostId
         ? "cross-host"
-        : source.managedWorktreePath
+        : source.managedWorktreePath || input.expectedDestination === "local"
           ? "worktree-to-local"
           : "local-to-worktree",
   localBranch: null,
@@ -187,6 +195,22 @@ const buildInitialOperation = (
   completedAt: null,
 });
 
+const isRelocation = (entry: CodexThreadHandoffJournalEntry): boolean =>
+  entry.strategy === "relocate" || entry.prepared?.direction === "relocate";
+
+// Before preparation, and during a location-only preparation, there are no files or
+// execution locations to restore. Legacy transfer entries in preparation stay conservative.
+const hasNoPreparedChanges = (entry: CodexThreadHandoffJournalEntry): boolean => {
+  if (entry.prepared || entry.destination) return false;
+  const phase = entry.failedPhase ?? entry.phase;
+  return (
+    phase === "queued" ||
+    phase === "inspecting-source" ||
+    phase === "stopping-turn" ||
+    (phase === "preparing-destination" && isRelocation(entry))
+  );
+};
+
 const buildOperationFromJournal = (input: {
   readonly entry: CodexThreadHandoffJournalEntry;
   readonly detail: string | null;
@@ -194,6 +218,9 @@ const buildOperationFromJournal = (input: {
   readonly destinationHostDisplayName: string;
 }): CodexAppHandoffOperation => {
   const { entry, existing } = input;
+  const relocating =
+    isRelocation(entry) || (entry.strategy === undefined && entry.expectedSource === "missing");
+  const prepared = entry.prepared?.direction === "relocate" ? null : entry.prepared;
   const destinationHostId =
     entry.destination?.hostId ?? entry.requestedDestinationHostId ?? entry.source.hostId;
   const context: Pick<
@@ -203,20 +230,20 @@ const buildOperationFromJournal = (input: {
     direction:
       destinationHostId !== entry.source.hostId
         ? "cross-host"
-        : entry.source.managedWorktreePath
+        : relocating || entry.source.managedWorktreePath || entry.requestedDestination === "local"
           ? "worktree-to-local"
           : "local-to-worktree",
-    sourceBranch: entry.prepared?.sourceBranch ?? entry.branchContext?.sourceBranch ?? null,
+    sourceBranch: prepared?.sourceBranch ?? entry.branchContext?.sourceBranch ?? null,
     localBranch:
-      entry.prepared?.direction === "to-worktree"
-        ? entry.prepared.localCheckoutBranch
-        : entry.prepared?.direction === "to-checkout"
-          ? entry.prepared.sourceBranch
+      prepared?.direction === "to-worktree"
+        ? prepared.localCheckoutBranch
+        : prepared?.direction === "to-checkout"
+          ? prepared.sourceBranch
           : (entry.branchContext?.localBranch ?? null),
     worktreeBranch:
-      entry.prepared?.direction === "to-worktree"
-        ? entry.prepared.destinationBranch
-        : (entry.prepared?.sourceBranch ?? entry.branchContext?.worktreeBranch ?? null),
+      prepared?.direction === "to-worktree"
+        ? prepared.destinationBranch
+        : (prepared?.sourceBranch ?? entry.branchContext?.worktreeBranch ?? null),
   };
   const terminal = terminalPhases.has(entry.phase) || entry.phase === "recovery-required";
   const failedPhase =
@@ -258,10 +285,12 @@ const buildOperationFromJournal = (input: {
     );
   }
   if (
-    entry.phase === "rolling-back" ||
-    entry.phase === "cleaning-rolled-back" ||
-    entry.phase === "failed" ||
-    entry.phase === "recovery-required"
+    !relocating &&
+    !hasNoPreparedChanges(entry) &&
+    (entry.phase === "rolling-back" ||
+      entry.phase === "cleaning-rolled-back" ||
+      entry.phase === "failed" ||
+      entry.phase === "recovery-required")
   ) {
     steps.push(
       buildStep(
@@ -296,6 +325,8 @@ const buildOperationFromJournal = (input: {
     threadTitle: entry.threadTitle ?? existing?.threadTitle ?? null,
     projectId: entry.source.projectId,
     sourceHostId: entry.source.hostId,
+    strategy: relocating ? "relocate" : "transfer",
+    ...(entry.expectedSource ? { expectedSource: entry.expectedSource } : {}),
     ...context,
     destinationHostId,
     destinationHostDisplayName: input.destinationHostDisplayName,
@@ -390,10 +421,12 @@ export const make = (options: {
         readonly requestThreadId: string | null | undefined;
         readonly destinationHostId?: string;
         readonly destination?: "local" | "worktree" | null;
+        readonly expectedSource?: ThreadHandoffSource;
       },
     ): Effect.Effect<void, CodexThreadHandoffRuntimeError> => {
       if (
         input.threadId === recorded.threadId &&
+        input.expectedSource === recorded.expectedSource &&
         (input.requestThreadId ?? null) === (recorded.requestThreadId ?? null) &&
         (input.destinationHostId === null ||
           recorded.destinationHostId === undefined ||
@@ -422,7 +455,9 @@ export const make = (options: {
         threadId: entry.threadId,
         requestThreadId: entry.requestThreadId,
         destinationHostId: entry.requestedDestinationHostId ?? entry.source.hostId,
-        destination: entry.source.managedWorktreePath ? "local" : "worktree",
+        expectedSource: entry.expectedSource,
+        destination:
+          entry.requestedDestination ?? (entry.source.managedWorktreePath ? "local" : "worktree"),
       });
     const requireStatusOwnership = (
       input: CodexStartThreadHandoffInput,
@@ -432,6 +467,7 @@ export const make = (options: {
         threadId: operation.threadId,
         requestThreadId: operation.requestThreadId,
         destinationHostId: operation.destinationHostId,
+        expectedSource: operation.expectedSource,
         destination:
           operation.direction === "local-to-worktree"
             ? "worktree"
@@ -626,7 +662,11 @@ export const make = (options: {
             entry,
             {
               phase: "recovery-required",
-              failedPhase: entry.phase === "recovery-required" ? entry.failedPhase : entry.phase,
+              failedPhase:
+                entry.phase === "recovery-required" ||
+                (entry.phase === "failed" && hasNoPreparedChanges(entry))
+                  ? entry.failedPhase
+                  : entry.phase,
               lastError: entry.lastError ?? failureMessage(cause),
               warnings: [...new Set([...entry.warnings, detail])].slice(-128),
               completedAt: null,
@@ -668,11 +708,26 @@ export const make = (options: {
       cause: unknown,
       observer?: (progress: CodexThreadHandoffProgress) => void,
     ) {
+      if (hasNoPreparedChanges(initial)) {
+        const lastError = initial.lastError ?? failureMessage(cause);
+        return yield* patchEntry(
+          initial,
+          {
+            phase: "failed",
+            failedPhase: initial.failedPhase ?? initial.phase,
+            lastError,
+            completedAt: yield* Clock.currentTimeMillis,
+          },
+          observer,
+          lastError,
+        );
+      }
       const cleanupOnly =
         initial.phase === "cleaning-rolled-back" ||
         (initial.phase === "recovery-required" && initial.failedPhase === "cleaning-rolled-back");
       if (
         !initial.prepared &&
+        !isRelocation(initial) &&
         (initial.phase === "preparing-destination" ||
           initial.failedPhase === "preparing-destination") &&
         !preparationRestored(cause)
@@ -757,10 +812,11 @@ export const make = (options: {
         observer,
         null,
       );
-      if (preparation && !cleanupOnly) {
+      const gitPreparation = preparation?.prepared.direction === "relocate" ? null : preparation;
+      if (gitPreparation && !cleanupOnly) {
         const gitRollback = yield* invoke(
           "rollback-preparation",
-          managedWorktrees.rollback(entry.threadId, preparation),
+          managedWorktrees.rollback(entry.threadId, gitPreparation),
           {
             operationId: entry.operationId,
             threadId: entry.threadId,
@@ -784,11 +840,11 @@ export const make = (options: {
           );
         }
       }
-      if (preparation) {
+      if (gitPreparation) {
         entry = yield* phase(entry, "cleaning-rolled-back", observer);
         const cleanup = yield* invoke(
           "cleanup-rolled-back",
-          managedWorktrees.cleanup(entry.threadId, preparation, "rolled-back"),
+          managedWorktrees.cleanup(entry.threadId, gitPreparation, "rolled-back"),
           {
             operationId: entry.operationId,
             threadId: entry.threadId,
@@ -836,6 +892,7 @@ export const make = (options: {
       }
       const preparation = { destination: initial.destination, prepared: initial.prepared };
       let entry = yield* phase(initial, "cleaning-source", observer);
+      if (preparation.prepared.direction === "relocate") return entry;
       entry = yield* invoke(
         "cleanup-committed",
         managedWorktrees.cleanup(entry.threadId, preparation, "committed"),
@@ -914,7 +971,12 @@ export const make = (options: {
     ) {
       let entry = initial;
       return yield* Effect.gen(function* () {
-        entry = yield* phase(entry, "stopping-turn", observer);
+        entry = yield* phase(entry, "inspecting-source", observer);
+        const strategy = yield* invoke("inspect-source", managedWorktrees.selectStrategy(entry), {
+          operationId: entry.operationId,
+          threadId: entry.threadId,
+        });
+        entry = yield* patchEntry(entry, { phase: "stopping-turn", strategy }, observer, null);
         yield* invoke("stop-active-turn", threadExecution.stop(entry.threadId), {
           operationId: entry.operationId,
           threadId: entry.threadId,
@@ -922,7 +984,7 @@ export const make = (options: {
         entry = yield* phase(entry, "preparing-destination", observer);
         const preparation = yield* invoke(
           "prepare-destination",
-          managedWorktrees.prepare(entry, (progress) =>
+          managedWorktrees.prepare(entry, strategy, (progress) =>
             Effect.gen(function* () {
               const id =
                 progress.phase === "snapshot-source" || progress.phase === "bundle-source"
@@ -944,7 +1006,7 @@ export const make = (options: {
                   : [...steps, nextStep],
                 updatedAt,
               };
-              yield* progress.allocatedDestination
+              yield* progress.allocatedDestination || id === CONFIRM_SOURCE_MISSING_STEP
                 ? save(entry, observer, null)
                 : emitProgress({ entry, detail: null }, observer);
             }),
@@ -956,7 +1018,10 @@ export const make = (options: {
           {
             destination: preparation.destination,
             prepared: preparation.prepared,
-            warnings: [...entry.warnings, ...preparation.prepared.warnings],
+            warnings:
+              preparation.prepared.direction === "relocate"
+                ? entry.warnings
+                : [...entry.warnings, ...preparation.prepared.warnings],
           },
           observer,
           null,
@@ -981,15 +1046,17 @@ export const make = (options: {
           ),
           { operationId: entry.operationId, threadId: entry.threadId },
         );
-        entry = yield* phase(entry, "transferring-owner", observer);
-        entry = yield* invoke(
-          "transfer-owner",
-          managedWorktrees.transferOwner(entry.threadId, preparation),
-          { operationId: entry.operationId, threadId: entry.threadId },
-        ).pipe(
-          Effect.as(entry),
-          Effect.catch((ownerCause) => addWarning(entry, ownerCause, observer)),
-        );
+        if (preparation.prepared.direction !== "relocate") {
+          entry = yield* phase(entry, "transferring-owner", observer);
+          entry = yield* invoke(
+            "transfer-owner",
+            managedWorktrees.transferOwner(entry.threadId, preparation),
+            { operationId: entry.operationId, threadId: entry.threadId },
+          ).pipe(
+            Effect.as(entry),
+            Effect.catch((ownerCause) => addWarning(entry, ownerCause, observer)),
+          );
+        }
         return yield* finishCommitted(entry, observer);
       }).pipe(Effect.catch((transactionCause) => rollback(entry, transactionCause, observer)));
     });
@@ -1018,15 +1085,17 @@ export const make = (options: {
           ),
           { operationId: entry.operationId, threadId: entry.threadId },
         );
-        entry = yield* phase(entry, "transferring-owner", observer);
-        entry = yield* invoke(
-          "recover-transfer-owner",
-          managedWorktrees.transferOwner(entry.threadId, preparation),
-          { operationId: entry.operationId, threadId: entry.threadId },
-        ).pipe(
-          Effect.as(entry),
-          Effect.catch((ownerCause) => addWarning(entry, ownerCause, observer)),
-        );
+        if (preparation.prepared.direction !== "relocate") {
+          entry = yield* phase(entry, "transferring-owner", observer);
+          entry = yield* invoke(
+            "recover-transfer-owner",
+            managedWorktrees.transferOwner(entry.threadId, preparation),
+            { operationId: entry.operationId, threadId: entry.threadId },
+          ).pipe(
+            Effect.as(entry),
+            Effect.catch((ownerCause) => addWarning(entry, ownerCause, observer)),
+          );
+        }
         return yield* finishCommitted(entry, observer);
       }).pipe(Effect.catch((recoveryCause) => rollback(entry, recoveryCause, observer)));
     });
@@ -1035,6 +1104,12 @@ export const make = (options: {
       entry: CodexThreadHandoffJournalEntry,
       observer?: (progress: CodexThreadHandoffProgress) => void,
     ) {
+      if (hasNoPreparedChanges(entry))
+        return yield* rollback(
+          entry,
+          new Error("Recovered an interrupted task handoff."),
+          observer,
+        );
       const canonical = yield* readCanonical(entry);
       if (canonical.kind === "unavailable" || canonical.kind === "ambiguous")
         return yield* requireRecovery(
@@ -1140,6 +1215,38 @@ export const make = (options: {
         };
       });
 
+    const resolveSource = (input: CodexStartThreadHandoffInput) =>
+      invoke("resolve-source", threadExecution.read(input.threadId, input.destinationHostId), {
+        operationId: input.operationId,
+        threadId: input.threadId,
+      });
+
+    const verifyRequestedDestination = Effect.fn(
+      "CodexThreadHandoffRuntime.verifyRequestedDestination",
+    )(function* (input: CodexStartThreadHandoffInput, source: CodexThreadExecutionLocation) {
+      const { expectedDestination, expectedSource } = input;
+      if (expectedDestination === undefined) return;
+      const managed = source.managedWorktreePath !== null;
+      const missing =
+        expectedSource !== undefined || (expectedDestination === "local" && !managed)
+          ? yield* invoke(
+              "check-missing-source",
+              managedWorktrees.isMissingLocalSource(input.threadId, source),
+              { threadId: input.threadId, operationId: input.operationId },
+            )
+          : false;
+      const directionMatches = expectedDestination === "worktree" ? !managed : managed || missing;
+      if (
+        directionMatches &&
+        (expectedSource === undefined || expectedSource === (missing ? "missing" : "present"))
+      )
+        return;
+      return yield* runtimeError("admit", new Error(STALE_THREAD_HANDOFF_LOCATION), {
+        operationId: input.operationId,
+        threadId: input.threadId,
+      });
+    });
+
     const start = (input: CodexStartThreadHandoffInput) =>
       runOwned(
         input.threadId,
@@ -1172,32 +1279,15 @@ export const make = (options: {
               ),
             );
           }
+          // A stale selector must not acquire a Runtime hold while work is still active.
+          if (input.expectedDestination)
+            yield* verifyRequestedDestination(input, yield* resolveSource(input));
           return yield* invoke(
             "handoff-admission",
             threadExecution.withHandoff(
               input.threadId,
               Effect.gen(function* () {
-                const source = yield* invoke(
-                  "resolve-source",
-                  threadExecution.read(input.threadId, input.destinationHostId),
-                  {
-                    operationId: input.operationId,
-                    threadId: input.threadId,
-                  },
-                );
-                if (
-                  input.expectedDestination &&
-                  (source.managedWorktreePath ? "local" : "worktree") !== input.expectedDestination
-                ) {
-                  return yield* runtimeError(
-                    "admit",
-                    new Error("Chat execution location changed. Reopen the location menu."),
-                    {
-                      operationId: input.operationId,
-                      threadId: input.threadId,
-                    },
-                  );
-                }
+                const source = yield* resolveSource(input);
                 const now = yield* Clock.currentTimeMillis;
                 const entry: CodexThreadHandoffJournalEntry = {
                   schemaVersion: 1,
@@ -1208,6 +1298,10 @@ export const make = (options: {
                   phase: "queued",
                   source,
                   requestedDestinationHostId: input.destinationHostId,
+                  ...(input.expectedDestination
+                    ? { requestedDestination: input.expectedDestination }
+                    : {}),
+                  ...(input.expectedSource ? { expectedSource: input.expectedSource } : {}),
                   destination: null,
                   prepared: null,
                   runtimeSwitched: false,

@@ -1,3 +1,4 @@
+import { CodexGitProbe, make as makeGitProbe } from "../codex-application/CodexGitProbe";
 import { ASYNC_WAIT_TIMEOUT_MS, STANDARD_TEST_TIMEOUT_MS } from "../../../config/test-timeouts";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { AgentHostRequest } from "@nodex/agent-runtime/contracts";
@@ -214,6 +215,7 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
       ensureWorkspaceRoot: Effect.void,
     },
   }).pipe(
+    Effect.provideService(CodexGitProbe, makeGitProbe({ environment: process.env })),
     Effect.provideService(CoreModules, core as never),
     Effect.provideService(ProjectWorkspace, {} as never),
     Effect.provideService(ProjectRuntimeLifecycleRuntime, { runExclusive: (_id, use) => use }),

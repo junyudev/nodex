@@ -1,3 +1,4 @@
+import { CodexGitProbe, make as makeGitProbe } from "../codex-application/CodexGitProbe";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { HostInvocation } from "../../host/HostInvocation";
 import { HostWorkspace, HostWorkspaceError } from "../../host/HostWorkspace";
@@ -11,9 +12,11 @@ import {
   type AgentRuntimeProcessDelivery,
 } from "../platform/node/AgentRuntimeProcess";
 import { assert, it } from "@effect/vitest";
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
 import {
@@ -50,6 +53,7 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreHttpError, CoreRateLimitError, CoreTransportError } from "../core-client/local-http";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
+import { makeLegacyRuntimeWorktree } from "./LegacyRuntimeWorktree";
 import { coreRuntimeError, type CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
@@ -830,6 +834,9 @@ const setup = (
                 interactionMode: command.interactionMode,
                 branch: command.branch,
                 worktreePath: command.worktreePath,
+                ...(command.executionLocation
+                  ? { executionLocation: command.executionLocation }
+                  : {}),
               },
             },
           });
@@ -968,6 +975,9 @@ const setup = (
                         ...(command.worktreePath === undefined
                           ? {}
                           : { worktreePath: command.worktreePath }),
+                        ...(command.executionLocation
+                          ? { executionLocation: command.executionLocation }
+                          : {}),
                         ...(command.branch === undefined ? {} : { branch: command.branch }),
                       }
                     : {}),
@@ -1443,6 +1453,7 @@ const setup = (
       ensureWorkspaceRoot: Effect.void,
     },
   }).pipe(
+    Effect.provideService(CodexGitProbe, makeGitProbe({ environment: process.env })),
     Effect.provideService(CoreModules, {
       workspace: coreWorkspace ?? { read, apply },
       automation: {
@@ -8574,6 +8585,11 @@ it.effect.each(["work", "inbox", "page", "active-chat"] as const)(
         const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
         assert.equal(thread.worktreePath, "/page-workspace");
         assert.equal(thread.branch, "nodex-12-work");
+        assert.deepEqual(thread.executionLocation, {
+          hostId: "local",
+          projectId: launch.projectId,
+          ...pageCheckout.location,
+        });
       }),
     ),
 );
@@ -8599,6 +8615,11 @@ it.effect("a Page chat starts at once in the checkout its Page already has", () 
       const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
       assert.equal(thread.worktreePath, "/page-workspace");
       assert.equal(thread.branch, "nodex-12-work");
+      assert.deepEqual(yield* owner.worktreeChats.location(thread.id), {
+        hostId: "local",
+        projectId: launch.projectId,
+        ...pageCheckout.location,
+      });
     }),
   ),
 );
@@ -8621,6 +8642,63 @@ it.effect("a Page chat kept out of its Page's workspace runs in the Project's ch
       const thread = fixture.snapshots.get(result.threadId)!.projection.thread;
       assert.notEqual(thread.worktreePath, "/page-workspace");
     }),
+  ),
+);
+
+it.effect("requires linked Git evidence for existing legacy Runtime checkouts", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const run = promisify(execFile);
+      const git = (cwd: string, ...args: string[]) =>
+        Effect.tryPromise(() => run("git", args, { cwd }));
+      const fs = yield* FileSystem.FileSystem;
+      const classify = yield* makeLegacyRuntimeWorktree;
+      const temporary = yield* fs.makeTempDirectoryScoped({
+        prefix: "nodex-legacy-worktree-test-",
+      });
+      const home = yield* fs.realPath(temporary);
+      const source = join(home, "source");
+      const ordinary = join(home, "beef", "other-repo");
+      const managed = join(home, "old-root", "abcd", "source");
+      const currentRoot = join(source, "current-root");
+      const current = join(currentRoot, "old-name");
+      const external = join(home, "external");
+      for (const directory of [source, ordinary, dirname(managed), currentRoot])
+        yield* fs.makeDirectory(directory, { recursive: true });
+      for (const repository of [source, ordinary]) {
+        yield* git(repository, "init");
+        yield* git(
+          repository,
+          "-c",
+          "user.name=Nodex Test",
+          "-c",
+          "user.email=test@example.test",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "base",
+        );
+      }
+      for (const checkout of [managed, current, external])
+        yield* git(source, "worktree", "add", "--detach", checkout, "HEAD");
+      const nested = join(managed, "beef", "package");
+      const missing = join(home, "previous-root", "defa", "source");
+      yield* fs.makeDirectory(nested, { recursive: true });
+      for (const [cwd, expected] of [
+        [source, null],
+        [ordinary, null],
+        [external, null],
+        [current, current],
+        [managed, managed],
+        [nested, managed],
+        [join(missing, "beef", "package"), missing],
+      ] as const) {
+        assert.equal(yield* classify(cwd, [source], Effect.succeed(currentRoot)), expected, cwd);
+      }
+    }),
+  ).pipe(
+    Effect.provideService(CodexGitProbe, makeGitProbe({ environment: process.env })),
+    Effect.provide(NodeServices.layer),
   ),
 );
 

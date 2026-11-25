@@ -1,9 +1,7 @@
-import { getIntl, useIntl } from "@/lib/i18n";
-import { toastFailure } from "@/lib/failure-toast";
-import { useEffect, useState } from "react";
+import { useIntl } from "@/lib/i18n";
+import { useState } from "react";
 import {
   ActivitySpinnerIcon,
-  CheckmarkIcon,
   ChevronDownIcon,
   LocalStatusIcon,
   WorktreeStatusIcon,
@@ -14,22 +12,16 @@ import {
   NodexDropdownSelectedIcon,
   NodexDropdownTitle,
 } from "@/components/ui/dropdown";
-import {
-  NodexDialog,
-  NodexDialogAction,
-  NodexDialogContent,
-  NodexDialogDescription,
-  NodexDialogFooter,
-  NodexDialogFrame,
-  NodexDialogTitle,
-} from "@/components/ui/dialog";
 import { useThreadExecutionLocation } from "@/lib/use-thread-execution-location";
+import { ThreadMoveDialog, type ThreadMoveSource } from "../thread-move-dialog";
 import { ThreadSummaryPanelRow } from "./thread-summary-panel-row";
 
 export interface ThreadExecutionLocationModel {
   readonly threadId: string;
   readonly kind: "local" | "worktree";
   readonly canMove: boolean;
+  /** Whether the chat's current location is still there to move changes from. */
+  readonly source: ThreadMoveSource;
 }
 
 export function ThreadExecutionLocationSelector({
@@ -42,7 +34,8 @@ export function ThreadExecutionLocationSelector({
   worktreeAvailable: boolean;
 }) {
   const intl = useIntl();
-  const { operation, busy, blocked, move } = useThreadExecutionLocation(model.threadId);
+  const location = useThreadExecutionLocation(model.threadId);
+  const { busy, blocked } = location;
   const [destination, setDestination] = useState<"local" | "worktree" | null>(null);
   const label =
     model.kind === "worktree"
@@ -55,31 +48,6 @@ export function ThreadExecutionLocationSelector({
           defaultMessage: "Local",
         });
   const Icon = model.kind === "worktree" ? WorktreeStatusIcon : LocalStatusIcon;
-  const title =
-    destination === "local"
-      ? intl.formatMessage({
-          id: "conversation.threadExecutionLocationSelector.moveToLocal",
-          defaultMessage: "Move to local",
-        })
-      : intl.formatMessage({
-          id: "conversation.threadExecutionLocationSelector.moveToWorktree",
-          defaultMessage: "Move to worktree",
-        });
-  const [previousStatus, setPreviousStatus] = useState(operation?.status);
-  if (previousStatus !== operation?.status) {
-    setPreviousStatus(operation?.status);
-    if (operation?.status === "success" || operation?.status === "warning") setDestination(null);
-  }
-  useEffect(() => {
-    if (operation?.status === "error")
-      toastFailure(
-        getIntl().formatMessage({
-          id: "conversation.threadExecutionLocationSelector.moveError",
-          defaultMessage: "Couldn’t move the chat",
-        }),
-        operation.message,
-      );
-  }, [operation?.message, operation?.status]);
 
   if (!model.canMove)
     return (
@@ -154,78 +122,12 @@ export function ThreadExecutionLocationSelector({
           })}
         </NodexDropdownItem>
       </NodexDropdownMenu>
-      <NodexDialog
-        open={destination !== null}
-        onOpenChange={(open) => {
-          if (!open) setDestination(null);
-        }}
-      >
-        <NodexDialogContent size="compact" showCloseButton={false}>
-          <NodexDialogFrame>
-            <NodexDialogTitle>{title}</NodexDialogTitle>
-            <NodexDialogDescription className="pt-3">
-              {intl.formatMessage(
-                {
-                  id: "conversation.threadExecutionLocationSelector.moveDescription",
-                  defaultMessage:
-                    "Move this chat and its uncommitted changes to {destination, select, local {the Project folder} other {a managed worktree}}.",
-                },
-                { destination: destination ?? "worktree" },
-              )}
-            </NodexDialogDescription>
-            {busy ? (
-              <div role="status" className="flex flex-col gap-2 pt-4 text-sm">
-                {operation?.steps.map((step) => (
-                  <div key={step.id} className="flex items-center gap-2">
-                    {step.status === "running" ? (
-                      <ActivitySpinnerIcon className="icon-xs" />
-                    ) : step.status === "success" ? (
-                      <CheckmarkIcon className="icon-xs" />
-                    ) : null}
-                    <span>{step.label}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <NodexDialogFooter>
-              <NodexDialogAction onClick={() => setDestination(null)}>
-                {busy
-                  ? intl.formatMessage({
-                      id: "conversation.threadExecutionLocationSelector.close",
-                      defaultMessage: "Close",
-                    })
-                  : intl.formatMessage({
-                      id: "conversation.threadExecutionLocationSelector.cancel",
-                      defaultMessage: "Cancel",
-                    })}
-              </NodexDialogAction>
-              <NodexDialogAction
-                tone="primary"
-                disabled={busy || blocked}
-                onClick={() => {
-                  if (!destination) return;
-                  void move(destination).catch((cause) =>
-                    toastFailure(
-                      intl.formatMessage({
-                        id: "conversation.threadExecutionLocationSelector.moveError",
-                        defaultMessage: "Couldn’t move the chat",
-                      }),
-                      cause,
-                    ),
-                  );
-                }}
-              >
-                {busy
-                  ? intl.formatMessage({
-                      id: "conversation.threadExecutionLocationSelector.moving",
-                      defaultMessage: "Moving…",
-                    })
-                  : title}
-              </NodexDialogAction>
-            </NodexDialogFooter>
-          </NodexDialogFrame>
-        </NodexDialogContent>
-      </NodexDialog>
+      <ThreadMoveDialog
+        location={location}
+        destination={destination}
+        source={model.source}
+        onClose={() => setDestination(null)}
+      />
     </>
   );
 }

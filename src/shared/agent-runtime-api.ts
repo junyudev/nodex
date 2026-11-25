@@ -284,6 +284,10 @@ export interface AgentRuntimeSessionMoveInput {
   readonly sessionId: string;
   readonly projectId: string | null;
 }
+export interface AgentRuntimeWorkspaceMissingRetryInput {
+  readonly threadId: string;
+}
+
 /** Retry a failed workspace preparation, or start the Run in the source checkout instead. */
 export type AgentRuntimePreparationRetryInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
@@ -547,6 +551,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:retry-preparation": {
     args: [input: AgentRuntimePreparationRetryInput];
     result: { readonly retried: true };
+  };
+  "agent-runtime:session:retry-workspace-missing-run": {
+    args: [input: AgentRuntimeWorkspaceMissingRetryInput];
+    result: void;
   };
   "agent-runtime:session:stop-task": {
     args: [input: AgentRuntimeTaskStopInput];

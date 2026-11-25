@@ -10,8 +10,6 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { CodexThreadExecution } from "../codex-application/CodexThreadExecution";
 import { make as makeHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
@@ -88,7 +86,6 @@ describe("AgentRuntimeThreadExecution", () => {
   const harness = (
     options: {
       readonly savedLocation?: CodexThreadExecutionLocation;
-      readonly gitRoot?: string;
       /** Evidence proves the stopped store has nothing to resume. */
       readonly quiet?: boolean;
       readonly invalidateAtWriter?: boolean;
@@ -106,7 +103,6 @@ describe("AgentRuntimeThreadExecution", () => {
         writer: false,
         available: true,
         connects: 0,
-        gitReads: 0,
         quiesceFails: false,
       };
       const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
@@ -167,6 +163,8 @@ describe("AgentRuntimeThreadExecution", () => {
           Effect.sync(() =>
             state.available ? { connection, thread: state.thread, sessionId: "session" } : null,
           ),
+        executionLocation: ({ thread }: { thread: Thread }) =>
+          Effect.succeed(thread.executionLocation ?? source),
         withExecutionLocation: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
           Effect.acquireUseRelease(
             Effect.sync(() => {
@@ -192,32 +190,6 @@ describe("AgentRuntimeThreadExecution", () => {
           get: () => connect,
           getUnlessQuiet: options.quiet ? Effect.succeed(null) : connect,
         } as unknown as AgentRuntimeSupervisor["Service"]),
-        Effect.provideService(ProjectWorkspace, {
-          getProjectSession: () => Effect.succeed({ projectId: "project" }),
-          getProject: () =>
-            Effect.succeed({
-              sources: [{ kind: "directory" as const, path: "/repo/shared", order: 0 }],
-            }),
-        } as unknown as ProjectWorkspace["Service"]),
-        Effect.provideService(
-          CodexGitProbe,
-          CodexGitProbe.of({
-            readPath: () =>
-              Effect.sync(() => {
-                state.gitReads++;
-                return options.gitRoot ?? "/repo/project";
-              }),
-            isNonGitWorkspace: () => Effect.succeed(false),
-            isNonGitWorkspaceOnHost: () => Effect.succeed(false),
-          }),
-        ),
-        Effect.provideService(ExecutionHostRuntime, {
-          get: () => Effect.succeed({ descriptor: { managedRoot: "/managed" } }),
-        } as unknown as ExecutionHostRuntime["Service"]),
-        Effect.provideService(
-          FileSystem.FileSystem,
-          FileSystem.makeNoop({ realPath: (value) => Effect.succeed(value) }),
-        ),
       );
       return { execution, state, calls, messages };
     });
@@ -251,7 +223,9 @@ describe("AgentRuntimeThreadExecution", () => {
         Effect.provideService(ExecutionHostRuntime, {
           get: () => Effect.succeed(null),
         } as unknown as ExecutionHostRuntime["Service"]),
-        Effect.provideService(ManagedWorktreeHandoff, {} as ManagedWorktreeHandoff["Service"]),
+        Effect.provideService(ManagedWorktreeHandoff, {
+          selectStrategy: () => Effect.succeed("transfer"),
+        } as unknown as ManagedWorktreeHandoff["Service"]),
       );
     });
 
@@ -282,6 +256,7 @@ describe("AgentRuntimeThreadExecution", () => {
         assert.isFalse(f.state.writer);
         assert.isNull(f.state.thread.executionHandoff);
         assert.deepEqual(f.state.thread.executionLocation, destination);
+        assert.deepEqual(yield* f.execution.read("thread"), destination);
         assert.deepEqual(
           f.calls.map((call) => call.method),
           [

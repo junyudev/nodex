@@ -1273,6 +1273,10 @@ export function ThreadSummaryPanelSurface({
   const hasGitEnvironmentSummary = Boolean(
     branchCwd && !activeThreadProjectless && (hasRepository || gitSummary.loading),
   );
+  // Where the chat runs stays visible, and movable, after its working directory disappears.
+  const hasEnvironment =
+    hasGitEnvironmentSummary ||
+    (executionLocation != null && executionLocation.source !== "present");
   const hasComputerUsePip =
     computerUsePip !== null && actions?.onToggleSummaryComputerUsePip !== undefined;
   const chatFolderPath = activeThreadProjectless && activeThreadId ? cwd?.trim() || null : null;
@@ -1281,7 +1285,7 @@ export function ThreadSummaryPanelSurface({
       buildThreadSummaryPanelSectionModel({
         activeThreadId,
         hasAutomation: clockAutomation !== null,
-        hasEnvironment: hasGitEnvironmentSummary,
+        hasEnvironment,
         hasFolder: chatFolderPath !== null,
         hasPlan: planRow !== null,
         outputCount: outputRows.length,
@@ -1304,7 +1308,7 @@ export function ThreadSummaryPanelSurface({
       clockAutomation,
       sideChatRows.length,
       sourceModel.count,
-      hasGitEnvironmentSummary,
+      hasEnvironment,
     ],
   );
   const primaryGitSource = gitSummary.primarySource;
@@ -1320,6 +1324,19 @@ export function ThreadSummaryPanelSurface({
   const worktreeAvailable = Boolean(
     branchCwd &&
     (branchState.currentBranch || branchState.defaultBranch || branchState.branches.length > 0),
+  );
+  const locationRow = executionLocation ? (
+    <ThreadExecutionLocationSelector
+      key={executionLocation.threadId}
+      model={executionLocation}
+      disabled={!isVisible}
+      worktreeAvailable={worktreeAvailable}
+    />
+  ) : (
+    <ThreadSummaryPanelRow
+      label={runTargetLabel}
+      icon={<LocalStatusIcon className="icon-sm text-token-foreground" />}
+    />
   );
 
   const handleOpenGitReview = useCallback(
@@ -1556,6 +1573,20 @@ export function ThreadSummaryPanelSurface({
                   );
 
                 case "environment":
+                  // A chat whose folder is gone has no repository to show, only where it runs.
+                  if (!hasGitEnvironmentSummary)
+                    return (
+                      <ThreadSummaryPanelSection
+                        key={section.kind}
+                        sectionKey="environment"
+                        title={intl.formatMessage({
+                          id: "conversation.threadFloatingSummaryPanel.environment",
+                          defaultMessage: "Environment",
+                        })}
+                      >
+                        {locationRow}
+                      </ThreadSummaryPanelSection>
+                    );
                   return (
                     <ThreadSummaryPanelSection
                       key={section.kind}
@@ -1589,19 +1620,7 @@ export function ThreadSummaryPanelSurface({
                         }
                         trailingVisible
                       />
-                      {executionLocation ? (
-                        <ThreadExecutionLocationSelector
-                          key={executionLocation.threadId}
-                          model={executionLocation}
-                          disabled={!isVisible}
-                          worktreeAvailable={worktreeAvailable}
-                        />
-                      ) : (
-                        <ThreadSummaryPanelRow
-                          label={runTargetLabel}
-                          icon={<LocalStatusIcon className="icon-sm text-token-foreground" />}
-                        />
-                      )}
+                      {locationRow}
                       {isDetachedHead ? (
                         <ThreadSummaryPanelRow
                           label={intl.formatMessage({

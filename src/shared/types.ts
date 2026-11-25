@@ -1763,15 +1763,15 @@ export type {
   UpdateAcpAgentSettingsInput,
 } from "./acp-agent-settings";
 
-export type ManagedWorktreeAvailability =
-  | { state: "not-managed" }
+export type ThreadWorkspaceAvailability =
   | { state: "available" }
   | {
       state: "restorable";
       repositoryPath: string;
       snapshotRef: string;
+      projectCheckout: string | null;
     }
-  | { state: "gone" }
+  | { state: "gone"; worktree: boolean; projectCheckout: string | null }
   | {
       state: "unavailable";
       reason: "inspection-failed" | "no-candidate-roots";
@@ -1779,7 +1779,7 @@ export type ManagedWorktreeAvailability =
     };
 
 export interface ManagedWorktreeRestoreResult {
-  availability: Extract<ManagedWorktreeAvailability, { state: "available" }>;
+  availability: Extract<ThreadWorkspaceAvailability, { state: "available" }>;
   ownerWarning: string | null;
 }
 

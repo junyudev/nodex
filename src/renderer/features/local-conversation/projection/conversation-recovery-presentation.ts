@@ -91,6 +91,11 @@ export function recoveryStatusMessage(recovery: ConversationRecovery) {
           id: "conversation.conversationRecoveryPresentation.couldNotReopen",
           defaultMessage: "Couldn't reopen this conversation",
         });
+      case "workspace_missing":
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.workingDirectoryMissing",
+          defaultMessage: "Working directory missing",
+        });
       case "refused":
         return defineMessage({
           id: "conversation.conversationRecoveryPresentation.declined",
@@ -192,6 +197,8 @@ export function recoveryAction(
   if (!recovery || recovery.state !== "failed" || !isLatestTurn || isStreamingTurn) return null;
   // Continuing would ask the provider to reopen the same conversation again.
   if (recovery.reason === "unrecoverable") return null;
+  // The composer offers the fix; once the chat has a working directory the same message runs.
+  if (recovery.reason === "workspace_missing") return null;
   if (recovery.reason === "context_budget") return "compact-and-retry";
   if (recovery.reason === "authentication" || recovery.reason === "usage_limit")
     return "manage-provider";

@@ -21,7 +21,10 @@ vi.mock("./api", () => ({
   subscribeCodexPendingWorktreesChanged: mocks.subscribe,
 }));
 
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { queryKeys } from "./query-keys";
 import {
+  threadWorkspaceAvailabilityQuery,
   listWorktreeEnvironmentConfigs,
   listWorktreeEnvironmentConfigsForWorkspace,
   managedWorktreeSettingsService,
@@ -53,6 +56,38 @@ describe("managed Worktree renderer owners", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the composer's recheck working while another surface only reads the result", async () => {
+    const answers = [
+      { state: "gone", worktree: true, projectCheckout: "/repo" },
+      { state: "available" },
+    ];
+    mocks.invoke.mockImplementation(async (channel: string) => {
+      if (channel === "worktrees:thread:availability") return answers.shift();
+      throw new Error(`Unexpected channel: ${channel}`);
+    });
+    const client = new QueryClient();
+    const composerOptions = { ...threadWorkspaceAvailabilityQuery("thread"), enabled: true };
+    const readerOptions = { ...threadWorkspaceAvailabilityQuery("thread"), enabled: false };
+    const composer = new QueryObserver(client, composerOptions);
+    const reader = new QueryObserver(client, readerOptions);
+    const unsubscribe = [composer.subscribe(() => {}), reader.subscribe(() => {})];
+    try {
+      await vi.waitFor(() => expect(composer.getCurrentResult().data?.state).toBe("gone"));
+      // Both surfaces render again, the reader last, as React does on every update.
+      composer.setOptions(composerOptions);
+      reader.setOptions(readerOptions);
+      // A move settles and invalidates the check; the passive reader must not stop the refetch.
+      await client.invalidateQueries({
+        queryKey: queryKeys.threadExecution.workspace("thread"),
+        exact: true,
+      });
+      expect(reader.getCurrentResult().data?.state).toBe("available");
+    } finally {
+      for (const stop of unsubscribe) stop();
+      client.clear();
+    }
   });
 
   it("classifies snapshot updates as returned values and destructive filesystem work as pending", async () => {

@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import type * as Scope from "effect/Scope";
 import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
+import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import type { DesktopManagedWorktreeLifecycleConsumer } from "../core-client/project-workspace-adapter";
 
 /** An Agent chat working in a managed worktree, described like a native Thread consumer. */
@@ -19,13 +20,6 @@ export interface ManagedWorktreeOwner {
   readonly ownerThreadId: string;
 }
 
-/** Where an Agent chat works, for checking and restoring its managed worktree. */
-export interface AgentChatWorkLocation {
-  readonly threadId: string;
-  readonly projectId: string | null;
-  readonly cwd: string;
-}
-
 /** Agent execution's view of all Agent chats consuming managed worktrees. */
 export interface AgentChatWorktreeSource {
   /**
@@ -36,9 +30,13 @@ export interface AgentChatWorktreeSource {
     owners: readonly ManagedWorktreeOwner[],
   ) => Effect.Effect<readonly AgentChatWorktreeConsumer[], unknown>;
   /** The chat's working location, or null when it has none on this device. */
-  readonly location: (threadId: string) => Effect.Effect<AgentChatWorkLocation | null, unknown>;
+  readonly location: (
+    threadId: string,
+  ) => Effect.Effect<CodexThreadExecutionLocation | null, unknown>;
   /** Archives the chat whose worktree is being deleted. */
   readonly archive: (threadId: string) => Effect.Effect<void, unknown>;
+  /** Sends the message that waited for the chat's working directory, now that it is back. */
+  readonly resumeAfterRestore: (threadId: string) => Effect.Effect<void, unknown>;
 }
 
 export class AgentChatWorktreesUnavailable extends Data.TaggedError(

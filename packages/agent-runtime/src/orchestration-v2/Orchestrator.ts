@@ -2583,6 +2583,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       interactionMode: command.interactionMode,
       branch: command.branch,
       worktreePath: command.worktreePath,
+      ...(command.executionLocation === undefined
+        ? {}
+        : { executionLocation: command.executionLocation }),
       activeProviderThreadId: null,
       ...(command.importedNativeThread === undefined
         ? {}

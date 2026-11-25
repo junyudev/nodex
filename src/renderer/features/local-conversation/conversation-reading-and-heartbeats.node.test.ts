@@ -2,6 +2,8 @@ import { describe, expect, it, test } from "vite-plus/test";
 import {
   failedWorkspacePreparation,
   projectAgentRuntimeConnection,
+  shouldRetryWorkspaceMissingRun,
+  unstartedRunFailure,
 } from "./agent-runtime-conversation-adapter";
 import {
   isConversationReadInteraction,
@@ -55,6 +57,27 @@ describe("Runtime chat workspace preparation", () => {
     // A newer Run supersedes an older preparation failure.
     expect(
       failedWorkspacePreparation([run({}), run({ id: "run:2", ordinal: 2, status: "completed" })]),
+    ).toBeNull();
+  });
+
+  it("retries a waiting Run once after its working directory is available", () => {
+    const attempted = new Set(["run:1"]);
+    expect(shouldRetryWorkspaceMissingRun("run:1", "available", attempted)).toBe(false);
+    expect(shouldRetryWorkspaceMissingRun("run:2", "available", attempted)).toBe(true);
+    for (const state of [undefined, "gone", "restorable", "unavailable"] as const)
+      expect(shouldRetryWorkspaceMissingRun("run:2", state, attempted)).toBe(false);
+  });
+
+  it("rechecks the working directory after any other Run that never started", () => {
+    const unprepared = { workspacePreparation: undefined };
+    expect(unstartedRunFailure([run(unprepared)])).toBe("run:1");
+    // Preparation failures carry their own recovery.
+    expect(unstartedRunFailure([run({})])).toBeNull();
+    expect(
+      unstartedRunFailure([run({ ...unprepared, startedAt: "2026-10-15T00:00:00Z" })]),
+    ).toBeNull();
+    expect(
+      unstartedRunFailure([run(unprepared), run({ id: "run:2", ordinal: 2, status: "running" })]),
     ).toBeNull();
   });
 });

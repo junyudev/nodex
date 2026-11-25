@@ -1,6 +1,10 @@
 import type { AgentDispatchModeLimit } from "@nodex/agent-runtime/contracts";
 import { AgentRuntimeModeSchema } from "../../shared/schemas/agent-runtime-api";
-import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
+import type {
+  CodexThreadHandoffBranches,
+  ThreadHandoffSource,
+  ThreadHandoffStrategy,
+} from "../../shared/codex-thread-handoff";
 import path from "node:path";
 import { z } from "zod";
 import type { CodexExecutionHostFileDescriptor } from "./codex-execution-host-file-transfer";
@@ -12,6 +16,7 @@ export const CODEX_THREAD_HANDOFF_JOURNAL_MAX_ENTRIES = 128;
 
 export const CODEX_THREAD_HANDOFF_PHASES = [
   "queued",
+  "inspecting-source",
   "stopping-turn",
   "preparing-destination",
   "switching-runtime",
@@ -69,7 +74,12 @@ export interface CodexCrossHostPreparedHandoff {
 
 export type CodexThreadHandoffPreparedArtifact =
   | CodexWorktreeWorkerPreparedHandoff
-  | CodexCrossHostPreparedHandoff;
+  | CodexCrossHostPreparedHandoff
+  | {
+      readonly direction: "relocate";
+      readonly sourceWorkspaceRoot: string;
+      readonly destinationWorkspaceRoot: string;
+    };
 
 export interface CodexThreadHandoffJournalEntry {
   readonly schemaVersion: typeof CODEX_THREAD_HANDOFF_JOURNAL_SCHEMA_VERSION;
@@ -86,6 +96,10 @@ export interface CodexThreadHandoffJournalEntry {
   readonly phase: CodexThreadHandoffPhase;
   readonly source: CodexThreadExecutionLocation;
   readonly requestedDestinationHostId: string | null;
+  readonly requestedDestination?: "local" | "worktree";
+  readonly expectedSource?: ThreadHandoffSource;
+  /** Written before destination preparation can run. */
+  readonly strategy?: ThreadHandoffStrategy;
   readonly allocatedDestination?: { readonly hostId: string; readonly worktreeGitRoot: string };
   readonly destination: CodexThreadExecutionLocation | null;
   readonly prepared: CodexThreadHandoffPreparedArtifact | null;
@@ -136,6 +150,11 @@ const fileDescriptorSchema = z
   })
   .strict();
 const preparedSchema = z.discriminatedUnion("direction", [
+  z.strictObject({
+    direction: z.literal("relocate"),
+    sourceWorkspaceRoot: absolutePath,
+    destinationWorkspaceRoot: absolutePath,
+  }),
   z
     .object({
       direction: z.literal("to-worktree"),
@@ -209,6 +228,9 @@ const entrySchema = z
     phase: z.enum(CODEX_THREAD_HANDOFF_PHASES),
     source: locationSchema,
     requestedDestinationHostId: z.string().min(1).max(512).nullable().default(null),
+    requestedDestination: z.enum(["local", "worktree"]).optional(),
+    expectedSource: z.enum(["present", "missing"]).optional(),
+    strategy: z.enum(["transfer", "relocate"]).optional(),
     allocatedDestination: z
       .object({ hostId: z.string().min(1).max(512), worktreeGitRoot: absolutePath })
       .strict()

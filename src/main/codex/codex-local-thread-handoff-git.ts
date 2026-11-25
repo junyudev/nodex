@@ -1,3 +1,6 @@
+import { realpath } from "node:fs/promises";
+import * as path from "node:path";
+import { linkedGitWorktreeRoot, LINKED_GIT_WORKTREE_PROBE } from "./codex-linked-git-worktree";
 import { hasWindowsProcessTreeReleaseFailure } from "../process-tree";
 import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { buildWorktreeThreadSlug } from "../../shared/worktree-auto-branch";
@@ -497,6 +500,16 @@ export async function prepareLocalThreadHandoff(
       if (!input.destinationCheckoutRoot) {
         throw new Error("The task has no local Project checkout destination.");
       }
+      const evidence = await runCodexGitCommand(LINKED_GIT_WORKTREE_PROBE, input.sourceCwd, {
+        signal: options.signal,
+      });
+      const root = linkedGitWorktreeRoot(evidence.stdout);
+      if (
+        !root ||
+        path.relative(await realpath(root), await realpath(input.sourceManagedWorktreePath)) !== ""
+      )
+        throw new Error("The source checkout is no longer the chat’s linked worktree.");
+
       sourceMayChange = true;
       const moved = await moveToCheckout(
         {

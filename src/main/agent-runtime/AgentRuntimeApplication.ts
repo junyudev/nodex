@@ -37,7 +37,14 @@ import {
   RUNTIME_MODE_RANK,
   NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
 } from "@nodex/agent-runtime/contracts";
-import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
+import type {
+  NativeSessionWorkspace,
+  NativeSessionWorkspaceLocation,
+} from "../agent-backend/NativeSessionWorkspace";
+import { makeLegacyRuntimeWorktree } from "./LegacyRuntimeWorktree";
+import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
+import { isExecutionWorkspacePathWithinRoot } from "../codex/codex-execution-workspace-roots";
+import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import { nativeSelectionFromState } from "../agent-backend/NativeSessionState";
 import type { components } from "@nodex/core-protocol";
 import type {
@@ -108,6 +115,7 @@ import type {
   AgentRuntimeLaunch,
   AgentRuntimeLaunchResult,
   AgentRuntimeSessionTarget,
+  AgentRuntimeWorkspaceMissingRetryInput,
   AgentRuntimeConversation,
   AgentRuntimeControlInput,
   AgentRuntimeResponseInput,
@@ -144,6 +152,24 @@ import {
   agentRuntimeForkSource,
   agentRuntimeMergeableRun,
 } from "../../shared/agent-runtime-fork-merge";
+
+const localExecutionLocation = (
+  projectId: string | null,
+  location: NativeSessionWorkspaceLocation,
+): CodexThreadExecutionLocation => ({ ...location, hostId: "local", projectId });
+
+const checkoutExecutionLocation = (
+  projectId: string | null,
+  cwd: string,
+  sourceRoots: readonly string[],
+) =>
+  localExecutionLocation(projectId, {
+    cwd,
+    workspaceRoots: [...new Set([cwd, ...sourceRoots])],
+    managedWorktreePath: null,
+    projectlessOutputDirectory: null,
+    projectlessWorkspaceBrowserRoot: null,
+  });
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 type CleanupWindow = Extract<
@@ -526,6 +552,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     );
   const hostWorkspace = yield* HostWorkspace;
+  const legacyWorktree = yield* makeLegacyRuntimeWorktree;
+  const executionHosts = Option.getOrUndefined(yield* Effect.serviceOption(ExecutionHostRuntime));
+  const currentManagedRoot = executionHosts
+    ? executionHosts.get("local").pipe(Effect.map((host) => host?.descriptor.managedRoot ?? null))
+    : Effect.succeed(null);
   const sessionOrdering = yield* makeSessionOrdering();
   const settings = yield* Effect.serviceOption(ApplicationSettings);
   const defaultRuntimeMode =
@@ -1088,6 +1119,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           interactionMode: "default",
           branch: null,
           worktreePath: scope.workspaceRoot,
+          executionLocation: checkoutExecutionLocation(
+            projectId,
+            scope.workspaceRoot,
+            scope.sourceRoots,
+          ),
           createdBy: decision ? "system" : "user",
           creationSource: decision ? "server" : "web",
         });
@@ -1415,6 +1451,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             commandId: commandId("preparation-location", { threadId, runId, attempt }),
             threadId,
             worktreePath: lease.location.cwd,
+            executionLocation: localExecutionLocation(input.projectId, lease.location),
             ...(shared?.branchName ? { branch: shared.branchName } : {}),
           });
           // The Thread owns the directory from here; a later failure must never remove it.
@@ -1939,6 +1976,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               interactionMode: prepared.message.interactionMode ?? input.interactionMode,
               branch: pageLease?.branchName ?? input.branch ?? null,
               worktreePath: cwd,
+              executionLocation: lease
+                ? localExecutionLocation(projectId, lease.location)
+                : checkoutExecutionLocation(projectId, cwd, scope.sourceRoots),
               createdBy:
                 input.messageOrigin === "host" || input.messageOrigin === "automation"
                   ? "system"
@@ -2185,8 +2225,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { retried: true as const };
   });
 
-  /** Called after restoring a Runtime chat's working directory in place. */
-  const retryWorkspaceMissingRun = (input: { readonly threadId: string }) =>
+  /** Reconciles a waiting Run after the chat's working directory becomes available. */
+  const retryWorkspaceMissingRun = (input: AgentRuntimeWorkspaceMissingRetryInput) =>
     ownedWrite(
       "retry-workspace-missing-run",
       Effect.gen(function* () {
@@ -3146,6 +3186,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             commandId: commandId("fork-workspace", { requestId: input.requestId }),
             threadId,
             worktreePath: lease.location.cwd,
+            executionLocation: localExecutionLocation(projectId, lease.location),
             branch: null,
           });
           yield* lease.attach(threadId);
@@ -4207,6 +4248,45 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* targetInfo(bound.connection, { sessionId: bound.sessionId, threadId });
     return bound;
   });
+  const executionLocation = Effect.fn("AgentRuntimeApplication.executionLocation")(function* (
+    captured: Pick<
+      NonNullable<Effect.Success<ReturnType<typeof readBoundThread>>>,
+      "thread" | "sessionId" | "projectId"
+    >,
+  ) {
+    const { thread, sessionId, projectId } = captured;
+    // Core owns Project placement even when a Chat keeps an earlier execution folder.
+    if (thread.executionLocation) return { ...thread.executionLocation, projectId };
+    const cwd = thread.worktreePath;
+    if (!cwd || !isAbsolute(cwd)) return null;
+
+    const session = yield* workspace.getProjectSession(sessionId);
+    if (!session) return null;
+    if (projectId === null && session.folder?.path === cwd) {
+      return localExecutionLocation(null, {
+        cwd,
+        workspaceRoots: [cwd],
+        managedWorktreePath: null,
+        projectlessOutputDirectory: session.folder.outputDirectory,
+        projectlessWorkspaceBrowserRoot: cwd,
+      });
+    }
+
+    const project = projectId === null ? null : yield* workspace.getProject(projectId);
+    const sourceRoots = project ? yield* hostWorkspace.resolve(project.sources) : [];
+    const managedWorktreePath = yield* legacyWorktree(cwd, sourceRoots, currentManagedRoot);
+    const primary =
+      managedWorktreePath ??
+      sourceRoots.find((root) => isExecutionWorkspacePathWithinRoot(cwd, root)) ??
+      cwd;
+    return localExecutionLocation(projectId, {
+      cwd,
+      workspaceRoots: [...new Set([primary, ...sourceRoots])],
+      managedWorktreePath,
+      projectlessOutputDirectory: null,
+      projectlessWorkspaceBrowserRoot: null,
+    });
+  });
   const seconds = (iso: string) => Math.floor(Date.parse(iso) / 1000);
   /** Agent chats as owners of managed worktrees, described like native Threads. */
   const worktreeChats: AgentChatWorktreeSource = {
@@ -4269,10 +4349,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "worktree-location",
         Effect.gen(function* () {
           const bound = yield* readBoundThread(threadId);
-          if (!bound?.thread.worktreePath) return null;
-          const session = yield* workspace.getProjectSession(bound.sessionId);
-          if (!session) return null;
-          return { threadId, projectId: session.projectId, cwd: bound.thread.worktreePath };
+          return bound ? yield* executionLocation(bound) : null;
         }),
       ),
     archive: (threadId) =>
@@ -4291,6 +4368,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           ),
         );
       }),
+    resumeAfterRestore: (threadId) => retryWorkspaceMissingRun({ threadId }),
   };
   const cleanupDeletedSessions = Effect.fn("AgentRuntimeApplication.cleanupDeletedSessions")(
     function* () {
@@ -4568,6 +4646,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     nativeThread: (threadId: string) => owned("native-thread", boundThread(threadId, false)),
     executionWorkspace: (projectId: string | null, chat?: "new" | "existing") =>
       owned("execution-workspace", executionWorkspace(projectId, chat)),
+    executionLocation,
     worktreeChats,
     refreshPageWorkspace: (pageId: string) =>
       owned("page-workspace-refresh", options.refreshPageWorkspace?.(pageId) ?? Effect.void),

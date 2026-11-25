@@ -1,6 +1,12 @@
 import { defineMessages } from "./i18n/messages";
 
+export const CONFIRM_SOURCE_MISSING_STEP = "confirm-source-missing";
+
 const CODEX_HANDOFF_STEP_LABEL_MESSAGES = defineMessages({
+  [CONFIRM_SOURCE_MISSING_STEP]: {
+    id: "shared.codexThreadHandoff.confirmSourceMissing",
+    defaultMessage: "Checking the worktree",
+  },
   "rolling-back-changes": {
     id: "shared.codexThreadHandoff.rollingBackChanges",
     defaultMessage: "Rolling back changes",
@@ -66,10 +72,17 @@ const CODEX_HANDOFF_STEP_LABEL_MESSAGES = defineMessages({
 /** Profile-owned handoff progress projected into conversation tool activity. */
 export type CodexAppHandoffStatusType = "running" | "success" | "warning" | "error";
 
+export type ThreadHandoffSource = "present" | "missing";
+export type ThreadHandoffStrategy = "transfer" | "relocate";
+
+export const STALE_THREAD_HANDOFF_LOCATION =
+  "Chat execution location changed. Reopen the location menu.";
+
 export interface ThreadExecutionHandoffInput {
   readonly threadId: string;
   readonly operationId: string;
   readonly destination: "local" | "worktree";
+  readonly expectedSource: ThreadHandoffSource;
 }
 
 /** The canonical execution location that handoff admission compares a move against. */
@@ -98,6 +111,8 @@ export interface CodexAppHandoffOperation {
   readonly projectId: string | null;
   readonly sourceHostId: string | null;
   readonly threadTitle: string | null;
+  readonly strategy: ThreadHandoffStrategy;
+  readonly expectedSource?: ThreadHandoffSource;
   readonly direction: "local-to-worktree" | "worktree-to-local" | "cross-host" | null;
   readonly localBranch: string | null;
   readonly sourceBranch: string | null;
@@ -142,6 +157,7 @@ export function resolveCodexThreadHandoffStepLabel(
 export function codexThreadHandoffStepLabelMessage(stepId: string, context: HandoffStepContext) {
   const messages = CODEX_HANDOFF_STEP_LABEL_MESSAGES;
   switch (stepId) {
+    case CONFIRM_SOURCE_MISSING_STEP:
     case "rolling-back-changes":
     case "prepare-host-transfer":
     case "transfer-host-artifacts":

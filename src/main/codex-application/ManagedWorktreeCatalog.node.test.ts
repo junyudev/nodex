@@ -2,6 +2,8 @@ import { describe } from "vite-plus/test";
 import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FileSystem from "effect/FileSystem";
+import { systemError } from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
@@ -106,6 +108,21 @@ describe("ManagedWorktreeCatalog", () => {
   ): ProjectWorkspaceService =>
     ({
       getThread: () => Effect.succeed(null),
+      getProject: (id) =>
+        overrides.readManagedWorktreeLifecycleSnapshot?.pipe(
+          Effect.map((snapshot) => {
+            const project = snapshot.projects.find((item) => item.projectId === id);
+            return project
+              ? ({
+                  sources: project.sourceRoots.map((source, order) => ({
+                    kind: "directory",
+                    path: source,
+                    order,
+                  })),
+                } as Project)
+              : null;
+          }),
+        ) ?? Effect.succeed(null),
       getProjectSession: () => Effect.succeed(null),
       listManagedWorktreeWindow: () =>
         Effect.succeed({ items: [], nextCursor: null, projectionRevision: 1 }),
@@ -151,6 +168,8 @@ describe("ManagedWorktreeCatalog", () => {
     managed: ManagedWorktreeRuntime["Service"],
     options: {
       readonly executionHosts?: ExecutionHostRuntime["Service"];
+      readonly directories?: readonly string[];
+      readonly unreadable?: string;
       readonly publish?: (event: CodexApplicationEvent) => void;
       readonly retention?: ManagedWorktreeRetentionRuntime["Service"];
       readonly agentChats?: AgentChatWorktreeSource;
@@ -209,6 +228,21 @@ describe("ManagedWorktreeCatalog", () => {
         }),
       ),
       Effect.provideService(Scope.Scope, scope),
+      Effect.provideService(
+        FileSystem.FileSystem,
+        FileSystem.makeNoop({
+          stat: (directory) =>
+            options.directories?.includes(directory)
+              ? Effect.succeed({ type: "Directory" } as FileSystem.File.Info)
+              : Effect.fail(
+                  systemError({
+                    _tag: directory === options.unreadable ? "PermissionDenied" : "NotFound",
+                    module: "FileSystem",
+                    method: "stat",
+                  }),
+                ),
+        }),
+      ),
     );
   };
 
@@ -523,7 +557,11 @@ describe("ManagedWorktreeCatalog", () => {
       const scope = yield* Scope.make();
       const catalog = yield* makeCatalog(scope, projectWorkspace, managed);
 
-      assert.deepEqual(yield* catalog.inspectThread("  "), { state: "not-managed" });
+      assert.deepEqual(yield* catalog.inspectThread("  "), {
+        state: "unavailable",
+        reason: "inspection-failed",
+        message: "The chat has no working directory",
+      });
       assert.strictEqual(threadReads, 0);
       assert.deepEqual(yield* catalog.inspectThread(thread.threadId), {
         state: "unavailable",
@@ -770,11 +808,15 @@ describe("ManagedWorktreeCatalog", () => {
     Effect.gen(function* () {
       const scope = yield* Scope.make();
       const agentThread = "nodex:thread:agent";
-      const worktreeGitRoot = path.resolve("/managed/260814-1200-abcdef01");
+      const worktreeGitRoot = path.resolve("/old-managed/260814-1200-abcdef01");
+      const cwd = path.join(worktreeGitRoot, "packages/app");
+      const directories = [worktreeGitRoot, cwd];
       let present = true;
       const archived: string[] = [];
+      const resumed: string[] = [];
       const removed: string[] = [];
       const inspected: ManagedWorktreeInspectInput[] = [];
+      const restored: ManagedWorktreeRestoreInput[] = [];
       const catalog = yield* makeCatalog(
         scope,
         makeProjectWorkspace({
@@ -809,8 +851,21 @@ describe("ManagedWorktreeCatalog", () => {
           remove: (input) =>
             Effect.sync(() => {
               removed.push(input.worktreeGitRoot);
+              directories.length = 0;
               present = false;
               return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+            }),
+          restore: (input) =>
+            Effect.sync(() => {
+              restored.push(input);
+              directories.push(worktreeGitRoot, cwd);
+              present = true;
+              return {
+                ...input,
+                repositoryPath: "/repositories/repository",
+                snapshotRef: "refs/codex/snapshots/agent",
+                ownerWarning: null,
+              };
             }),
           inspect: (input) =>
             Effect.sync(() => {
@@ -825,6 +880,7 @@ describe("ManagedWorktreeCatalog", () => {
             }),
         }),
         {
+          directories,
           agentChats: {
             consumers: (owners) =>
               Effect.succeed(
@@ -846,13 +902,22 @@ describe("ManagedWorktreeCatalog", () => {
                   title: "Agent chat",
                 })),
               ),
-            location: (threadId) =>
+            location: () =>
               Effect.succeed({
-                threadId,
+                hostId: "local",
                 projectId: "project-one",
                 cwd: `${worktreeGitRoot}/packages/app`,
+                workspaceRoots: [worktreeGitRoot],
+                managedWorktreePath: worktreeGitRoot,
+                projectlessOutputDirectory: null,
+                projectlessWorkspaceBrowserRoot: null,
               }),
             archive: (threadId) => Effect.sync(() => void archived.push(threadId)),
+            resumeAfterRestore: (threadId) =>
+              Effect.sync(() => {
+                assert.include(directories, cwd);
+                resumed.push(threadId);
+              }),
           },
         },
       );
@@ -876,6 +941,7 @@ describe("ManagedWorktreeCatalog", () => {
         state: "restorable",
         repositoryPath: "/repositories/repository",
         snapshotRef: "refs/codex/snapshots/agent",
+        projectCheckout: null,
       });
       assert.deepEqual(inspected, [
         {
@@ -885,6 +951,13 @@ describe("ManagedWorktreeCatalog", () => {
           candidateRepositoryPaths: ["/repositories/repository"],
         },
       ]);
+      assert.deepEqual(yield* catalog.restoreThread(agentThread), {
+        availability: { state: "available" },
+        ownerWarning: null,
+      });
+      assert.deepEqual(restored, [{ ...inspected[0], ownerThreadId: agentThread }]);
+      assert.deepEqual(resumed, [agentThread]);
+      assert.deepEqual(yield* catalog.inspectThread(agentThread), { state: "available" });
       yield* Scope.close(scope, Exit.void);
     }),
   );
@@ -923,6 +996,68 @@ describe("ManagedWorktreeCatalog", () => {
       assert.isFalse(removed);
       yield* Scope.close(scope, Exit.void);
     }),
+  );
+
+  it.effect(
+    "inspects local working directories and offers only the Project's available primary folder",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const checkout = path.resolve("/repo/primary");
+          const managedRoot = path.resolve("/previous-root/abcd/primary");
+          const nestedCheckout = path.resolve("/previous-root/ca11/primary");
+          const missing = path.resolve("/other/missing");
+          const unreadable = path.resolve("/other/unreadable");
+          const catalog = yield* makeCatalog(
+            yield* Scope.Scope,
+            makeProjectWorkspace({
+              getThread: (threadId) =>
+                Effect.succeed(
+                  makeThread({
+                    cwd:
+                      threadId === "managed"
+                        ? `${managedRoot}/src`
+                        : threadId === "nested"
+                          ? `${nestedCheckout}/deleted-subdirectory`
+                          : threadId,
+                    managedWorktreePath:
+                      threadId === "managed"
+                        ? managedRoot
+                        : threadId === "nested"
+                          ? nestedCheckout
+                          : null,
+                  }),
+                ),
+              getProject: () =>
+                Effect.succeed({
+                  sources: [{ kind: "directory", path: checkout, order: 0 }],
+                } as Project),
+            }),
+            makeManaged({
+              inspect: () => Effect.succeed({ availability: { state: "gone", worktree: true } }),
+            }),
+            { directories: [checkout, nestedCheckout], unreadable },
+          );
+          assert.deepEqual(yield* catalog.inspectThread(checkout), { state: "available" });
+          assert.deepEqual(yield* catalog.inspectThread(missing), {
+            state: "gone",
+            worktree: false,
+            projectCheckout: checkout,
+          });
+          assert.deepEqual(yield* catalog.inspectThread("managed"), {
+            state: "gone",
+            worktree: true,
+            projectCheckout: checkout,
+          });
+          assert.deepEqual(yield* catalog.inspectThread("nested"), {
+            state: "gone",
+            worktree: false,
+            projectCheckout: null,
+          });
+          const failure = yield* catalog.inspectThread(unreadable);
+          assert.strictEqual(failure.state, "unavailable");
+        }),
+      ),
   );
 });
 
@@ -1259,9 +1394,13 @@ describe("ExecutionHostRuntime", () => {
 });
 
 describe("CodexThreadExecution", () => {
-  it.effect.each(["local", "remote-a"])(
-    "refreshes app tools for the destination endpoint when switching runtime to %s",
-    (hostId) =>
+  it.effect.each([
+    { hostId: "local", rollback: false },
+    { hostId: "remote-a", rollback: false },
+    { hostId: "local", rollback: true },
+  ])(
+    "switches the native execution location on $hostId (relocation rollback: $rollback)",
+    ({ hostId, rollback }) =>
       Effect.scoped(
         Effect.gen(function* () {
           const scope = yield* Scope.Scope;
@@ -1311,9 +1450,10 @@ describe("CodexThreadExecution", () => {
                             thread: {
                               id: "thread-a",
                               path: "/rollouts/task.jsonl",
-                              status: { type: "notLoaded" },
+                              status: { type: rollback ? "idle" : "notLoaded" },
                             },
                           };
+                        if (method === "thread/settings/update") return {};
                         assert.strictEqual(method, "thread/resume");
                         return {
                           thread: { id: "thread-a" },
@@ -1341,11 +1481,34 @@ describe("CodexThreadExecution", () => {
             scope,
           );
 
-          yield* Context.get(context, CodexThreadExecution).switchRuntime(
-            "thread-a",
-            location,
-            null,
-          );
+          const execution = Context.get(context, CodexThreadExecution);
+          if (rollback) {
+            yield* execution.switchRuntime("thread-a", location, {
+              destination: {
+                ...location,
+                cwd: "/repo",
+                workspaceRoots: ["/repo"],
+                managedWorktreePath: null,
+              },
+              prepared: {
+                direction: "relocate",
+                sourceWorkspaceRoot: location.cwd,
+                destinationWorkspaceRoot: "/repo",
+              },
+            });
+            assert.deepEqual(
+              requests.map((request) => request.method),
+              ["thread/read", "thread/settings/update"],
+            );
+            assert.strictEqual(requests[1]?.params.cwd, location.cwd);
+            assert.deepInclude(projected[0], {
+              cwd: location.cwd,
+              managedWorktreePath: location.managedWorktreePath,
+            });
+            return;
+          }
+
+          yield* execution.switchRuntime("thread-a", location, null);
 
           assert.deepEqual(
             requests.map((request) => request.method),

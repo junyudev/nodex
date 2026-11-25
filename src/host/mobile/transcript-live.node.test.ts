@@ -22,6 +22,7 @@ import {
 } from "../../main/agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSessionActivity } from "../../main/agent-runtime/AgentRuntimeSessionActivity";
 import { AgentRuntimeSupervisor } from "../../main/agent-runtime/AgentRuntimeSupervisor";
+import { CodexGitProbe, make as makeGitProbe } from "../../main/codex-application/CodexGitProbe";
 import { CoreModules } from "../../main/core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../../main/host-runtime/DatabaseNotifierRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../../main/host-runtime/ProjectRuntimeLifecycleRuntime";
@@ -143,6 +144,7 @@ it.live(
             ensureWorkspaceRoot: Effect.void,
           },
         }).pipe(
+          Effect.provideService(CodexGitProbe, makeGitProbe({ environment: process.env })),
           Effect.provideService(CoreModules, core as never),
           Effect.provideService(ProjectWorkspace, {} as never),
           Effect.provideService(ProjectRuntimeLifecycleRuntime, {

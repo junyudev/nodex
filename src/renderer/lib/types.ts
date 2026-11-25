@@ -401,7 +401,7 @@ export type {
   RestoreBackupInput,
   RestoreBackupResult,
   ManagedWorktreeRecord,
-  ManagedWorktreeAvailability,
+  ThreadWorkspaceAvailability,
   ManagedWorktreeRestoreResult,
   ManagedWorktreeSettings,
   CodexExecutionHostSettings,

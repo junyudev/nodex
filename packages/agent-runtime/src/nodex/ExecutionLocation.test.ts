@@ -78,6 +78,7 @@ const create = Effect.fnUntraced(function* (id: string, cwd = source.cwd) {
     interactionMode: "default",
     branch: null,
     worktreePath: cwd,
+    executionLocation: { ...source, cwd, workspaceRoots: [cwd] },
     createdBy: "user",
     creationSource: "web",
   });
@@ -102,6 +103,7 @@ it.effect(
       const writer = yield* OrchestratorV2,
         store = yield* ProjectionStoreV2;
       const threadId = yield* create("thread:move");
+      assert.deepEqual((yield* store.getThread(threadId)).executionLocation, source);
       const execution = yield* make;
       const first = send(threadId, "first");
       const accepted = yield* writer.dispatch(first);

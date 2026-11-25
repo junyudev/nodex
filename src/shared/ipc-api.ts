@@ -377,7 +377,7 @@ import type {
   ProtocolListMcpServerStatusResponse,
   CodexTurnStartOptions,
   ManagedWorktreeRecord,
-  ManagedWorktreeAvailability,
+  ThreadWorkspaceAvailability,
   ManagedWorktreeRestoreResult,
   ManagedWorktreeSettings,
   CodexExecutionHostSettings,
@@ -2925,7 +2925,7 @@ export interface IpcApi
   };
   "worktrees:thread:availability": {
     args: [threadId: string];
-    result: ManagedWorktreeAvailability;
+    result: ThreadWorkspaceAvailability;
   };
   "worktrees:thread:restore": {
     args: [threadId: string];

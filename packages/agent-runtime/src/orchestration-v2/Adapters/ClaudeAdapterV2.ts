@@ -10953,6 +10953,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const live = yield* Ref.get(queryContext);
               const liveOwnsHistory =
                 live !== null && !live.stopping && live.nativeThreadId === nativeId;
+              // Claude Code 2.1.223+ can resume by ID across project directories in
+              // the same config home, even when the original working directory is gone.
+              // Confirmed absence here triggers the portable history path. A later
+              // SDK open failure in startTurn goes through Run failure settlement.
               if (nativeId && !liveOwnsHistory && queryRunner.sessionHistoryAvailable) {
                 const available = yield* queryRunner
                   .sessionHistoryAvailable({
