@@ -101,6 +101,7 @@ import {
   isClaudeProvisionalSubagentTool,
 } from "../../../vendor/provider-acp-registry/src/server/claudeAcp.ts";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../../nodex/SideChat.ts";
+import { ASYNC_WAIT_TIMEOUT_MS } from "../../testUtils/testTimeouts.ts";
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -317,14 +318,14 @@ const waitForProcesses = (pids: ReadonlyArray<number>) =>
     while (!pids.every(processExists)) {
       yield* Effect.sleep("10 millis");
     }
-  }).pipe(Effect.timeoutOption("2 seconds"));
+  }).pipe(Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS));
 
 const waitForProcessesToExit = (pids: ReadonlyArray<number>) =>
   Effect.gen(function* () {
     while (pids.some(processExists)) {
       yield* Effect.sleep("10 millis");
     }
-  }).pipe(Effect.timeoutOption("2 seconds"));
+  }).pipe(Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS));
 
 function linuxProcessStart(pid: number): string | undefined {
   try {
@@ -406,7 +407,7 @@ const waitForPublishedProcessIds = (
       }
       yield* Effect.sleep("10 millis");
     }
-  }).pipe(Effect.timeoutOption("2 seconds"));
+  }).pipe(Effect.timeoutOption(ASYNC_WAIT_TIMEOUT_MS));
 
 function makeMockRuntime(input: {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
