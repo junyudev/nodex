@@ -130,12 +130,13 @@ immediately before its CLI spawn, SDK query or OpenCode prompt submission. A non
 utility already in flight is allowed to finish; one still preparing must pass the final check.
 Cancellation cannot retract requests already delivered to a provider.
 
-The renderer's model-policy catalog includes every known model with effective on/off,
-its own switch, provider on/off, stable policy key, and whether it spends credit. Live
-credit work identifies the root conversation, executing Thread, model and instance; the
-renderer joins roots to product Session IDs using the shared activity snapshot. Activity
-and policy changes invalidate this query across windows. An incomplete activity snapshot
-must not be treated as a complete list of affected chats.
+Settings reads the shared Agent catalog, so model rows and filtering follow model discovery
+and connection changes while Settings is open. The catalog includes every known model with
+effective on/off, its own switch, provider on/off, a stable policy key, and whether it spends
+credit. Live credit work identifies the root conversation, executing Thread, model and
+instance. The renderer joins roots to product Session IDs using the shared activity snapshot.
+Activity and policy changes refresh the credit work across windows. An incomplete activity
+snapshot must not be treated as a complete list of affected chats.
 
 ## Native limits
 

@@ -50,6 +50,7 @@ vi.mock("@/lib/renderer-transport", () => ({
       agentSettingsListeners.add(listener);
       return () => agentSettingsListeners.delete(listener);
     },
+    subscribeModelPolicyChanges: () => () => {},
   }),
 }));
 

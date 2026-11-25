@@ -1,6 +1,5 @@
-import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import {
   ModelPolicySchema,
   sameModelPolicy,
@@ -17,7 +16,9 @@ import {
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "../../lib/renderer-command";
+import { queryKeys } from "../../lib/query-keys";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
+import { useAgentRuntimeProviders } from "../../lib/use-agent-runtime-providers";
 
 const queryKey = ["settings", "modelPolicy"] as const;
 const updateCommand = defineRendererCommand({
@@ -121,14 +122,12 @@ export function resetModelPolicyOwnersForTests(): void {
   owners = new WeakMap();
 }
 
-export async function readModelPolicyCatalog() {
-  const [providers, activity, running] = await Promise.all([
-    agentRuntimeRuntime.catalog(),
+async function readModelPolicyCreditWork() {
+  const [activity, running] = await Promise.all([
     invokeRendererQuery("agent-runtime:activity:read"),
     invokeRendererQuery("agent-runtime:models:running-credit"),
   ]);
   return {
-    providers,
     runningOnCredit: running.map((run) => ({
       ...run,
       sessionId:
@@ -137,12 +136,17 @@ export async function readModelPolicyCatalog() {
     complete: activity.complete,
   };
 }
-/** Reactive across windows: activity and policy notifications invalidate a canonical read. */
+/** Use the shared provider inventory and join it with live credit work for confirmation. */
 export function useModelPolicyCatalog() {
   const client = useQueryClient();
+  const {
+    data: providers,
+    error: providerError,
+    isPending: providersPending,
+  } = useAgentRuntimeProviders();
   useLayoutEffect(() => {
     const refresh = () => {
-      void client.invalidateQueries({ queryKey: ["model-policy", "catalog"] });
+      void client.invalidateQueries({ queryKey: queryKeys.agentRuntime.creditWork(), exact: true });
     };
     const transport = resolveRendererTransport();
     const unsubPolicy = transport.subscribeModelPolicyChanges(refresh);
@@ -152,10 +156,23 @@ export function useModelPolicyCatalog() {
       unsubActivity?.();
     };
   }, [client]);
-  return useQuery({
-    queryKey: ["model-policy", "catalog"],
-    queryFn: readModelPolicyCatalog,
+  const {
+    data: creditWork,
+    error: creditWorkError,
+    isPending: creditWorkPending,
+  } = useQuery({
+    queryKey: queryKeys.agentRuntime.creditWork(),
+    queryFn: readModelPolicyCreditWork,
     retry: false,
     staleTime: 0,
   });
+  const data = useMemo(
+    () => (providers && creditWork ? { providers, ...creditWork } : undefined),
+    [providers, creditWork],
+  );
+  return {
+    data,
+    error: providerError ?? creditWorkError,
+    isPending: providersPending || creditWorkPending,
+  };
 }

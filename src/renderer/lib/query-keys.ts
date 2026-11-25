@@ -29,6 +29,7 @@ export const queryKeys = {
   /** Agent command lines found on this computer. */
   agentRuntime: {
     providers: () => spaceQueryKey(["agentRuntime", "providers"] as const),
+    creditWork: () => spaceQueryKey(["agentRuntime", "creditWork"] as const),
     subscriptionUsage: () => spaceQueryKey(["agentRuntime", "subscriptionUsage"] as const),
     memberActionsAll: () => spaceQueryKey(["agentRuntime", "memberActions"] as const),
     memberActionsOf: (sessionId: string) =>

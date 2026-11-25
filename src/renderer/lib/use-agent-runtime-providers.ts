@@ -29,10 +29,12 @@ export function useAgentRuntimeProviders() {
       });
     };
     const stopSettings = transport.subscribeAgentSettingsChanges(invalidate);
+    const stopPolicy = transport.subscribeModelPolicyChanges(invalidate);
     const stopCatalog = subscribeAgentCatalogRefresh(invalidate);
     const stopReadiness = subscribeProviderComponentReadiness(invalidate);
     return () => {
       stopSettings();
+      stopPolicy();
       stopCatalog();
       stopReadiness();
     };
