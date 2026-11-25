@@ -6,7 +6,8 @@ import { filesForSuite } from "./test-suites";
 import { testObservation } from "./vitest-observation";
 import { defineConfig } from "vite-plus";
 
-const testFiles = filesForSuite("effect-codex", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("effect-codex", tier);
 
 export default defineConfig({
   test: {
@@ -17,6 +18,7 @@ export default defineConfig({
     environment: "node",
     include: testFiles.include,
     exclude: testFiles.exclude,
+    passWithNoTests: tier !== "default",
     maxWorkers: 2,
   },
 });

@@ -18,7 +18,7 @@ jobs:
     name: nightly static contracts
     uses: ./.github/workflows/_static-checks.yml
     with:
-      groups_json: '["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"]'
+      groups_json: '["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"]'
       timing_prefix: nightly-static
 
   rust-checks:
@@ -27,7 +27,6 @@ jobs:
     with:
       full_workspace: true
       run_fast: true
-      run_migration: true
       run_protocol: true
       timing_prefix: nightly-rust
 
@@ -35,7 +34,7 @@ jobs:
     name: nightly application and browser tests
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
+      gate_plan_json: &full_gate_plan '{"allGates":true,"appTestSuites":["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"draft":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"rustFast":true,"rustFull":true,"staticGroups":["types","source-ownership","ui-contracts","ci-contracts","repository-contracts","tooling-contracts","dependency-security","generated","landing"],"testMode":"full","windowsChecks":false}'
       suites_json: &all_application_suites '["unit","effect-codex","agent-runtime","core-client","main","renderer","integration","browser"]'
       timing_prefix: nightly-app
 
@@ -49,6 +48,26 @@ jobs:
       # Stress, runtime contracts, and Electron E2E can occupy the other three macOS slots.
       max_parallel: 2
       timing_prefix: nightly-app-macos
+
+  app-nightly:
+    name: nightly application test tier
+    runs-on: ubuntu-latest
+    env:
+      CI_TIMING_JOB: nightly-app-nightly
+      NODEX_TEST_TIMINGS: .generated/ci-timings
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/run-nightly-tests
+      - name: Upload nightly application timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: timings-nightly-app-nightly-${{ github.run_attempt }}
+          path: .generated/ci-timings/
+          if-no-files-found: ignore
+          retention-days: 14
 
   stress:
     name: nightly stress suite
@@ -127,6 +146,7 @@ jobs:
       - static-contracts
       - rust-checks
       - app-tests
+      - app-nightly
       - app-tests-macos
       - stress
       - runtime-contracts

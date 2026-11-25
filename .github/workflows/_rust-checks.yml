@@ -17,10 +17,6 @@ on:
         description: Run formatting, lint, nextest, and Rustdoc contracts.
         required: true
         type: boolean
-      run_migration:
-        description: Run the Store baseline migration suite.
-        required: true
-        type: boolean
       run_protocol:
         description: Verify generated protocol contracts.
         required: true
@@ -107,24 +103,5 @@ jobs:
       - run: vp install --frozen-lockfile --ignore-scripts
       - uses: ./.github/actions/setup-rust-ci
       - run: vp exec tsx scripts/ci/run-timed.ts --name protocol-contracts -- vp run core:protocol:verify
-      - if: always()
-        run: sccache --show-stats || true
-
-  migration:
-    name: store baseline migration
-    if: inputs.run_migration
-    runs-on: ubuntu-latest
-    env:
-      CI_TIMING_JOB: ${{ inputs.timing_prefix }}-migration
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ inputs.source_sha || github.sha }}
-      - uses: ./.github/actions/setup-vite-plus
-      - uses: ./.github/actions/setup-rust-ci
-      - run: >-
-          node --no-warnings scripts/ci/run-timed.ts --name rust-migration --
-          cargo test -p nodex-core --all-features --lib infrastructure:: -- --test-threads=2
       - if: always()
         run: sccache --show-stats || true

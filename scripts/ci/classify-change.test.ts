@@ -16,7 +16,6 @@ describe("CI change classification", () => {
       relatedPaths: [],
       rustFast: false,
       rustFull: false,
-      rustMigration: false,
       staticGroups: [],
       testMode: "none",
       windowsChecks: false,
@@ -40,7 +39,6 @@ describe("CI change classification", () => {
       relatedPaths: [],
       rustFast: false,
       rustFull: false,
-      rustMigration: false,
       staticGroups: ["repository-contracts"],
       testMode: "none",
       windowsChecks: false,
@@ -165,18 +163,45 @@ describe("CI change classification", () => {
     });
   });
 
+  test.each([
+    "src/main/core-client/example.nightly.node.test.ts",
+    "src/renderer/example.nightly.browser.test.tsx",
+    "scripts/ci/example.nightly.test.ts",
+    "packages/landing/src/example.nightly.jsdom.test.ts",
+    "packages/agent-runtime/src/platform/example.nightly.integration.test.ts",
+  ])("sends changes to %s only to type and CI contracts", (path) => {
+    expect(classifyChangedPaths([path, "docs/CI.md"])).toMatchObject({
+      appTestSuites: [],
+      docsOnly: false,
+      protocolContracts: false,
+      staticGroups: ["types", "ci-contracts"],
+      testMode: "none",
+      windowsChecks: false,
+    });
+  });
+
+  test("keeps existing test selection when a source edit also adds nightly coverage", () => {
+    const source = "src/main/boards/board-queries.ts";
+    const nightly = "scripts/ci/example.nightly.test.ts";
+    expect(classifyChangedPaths([source, nightly])).toMatchObject({
+      appTestSuites: ["core-client", "main", "integration"],
+      relatedPaths: [source],
+      staticGroups: ["types", "source-ownership", "ci-contracts", "repository-contracts"],
+      testMode: "related",
+    });
+  });
+
   test("routes Rust and protocol ownership without UI, stress, or macOS gates", () => {
     expect(
       classifyChangedPaths(["crates/nodex-core/src/database/relation_projection.rs"]),
     ).toMatchObject({
       appTestSuites: ["unit", "core-client", "main", "integration"],
       rustFast: true,
-      rustMigration: false,
       testMode: "full",
     });
     expect(
       classifyChangedPaths(["crates/nodex-core/src/infrastructure/migration.rs"]),
-    ).toMatchObject({ rustFast: true, rustMigration: true });
+    ).toMatchObject({ rustFast: true });
     expect(classifyChangedPaths(["src/main/core-client/core-client.ts"])).toMatchObject({
       appTestSuites: ["core-client", "main", "integration"],
       protocolContracts: true,
@@ -191,7 +216,6 @@ describe("CI change classification", () => {
       appTestSuites: APP_TEST_SUITES,
       dependencyKind: "javascript",
       rustFast: true,
-      rustMigration: true,
       staticGroups: STATIC_GROUPS,
       testMode: "full",
     });
@@ -199,7 +223,6 @@ describe("CI change classification", () => {
       appTestSuites: ["unit", "core-client", "main", "integration"],
       dependencyKind: "rust",
       rustFast: true,
-      rustMigration: true,
       testMode: "full",
     });
   });
@@ -208,7 +231,7 @@ describe("CI change classification", () => {
     expect(classifyChangedPaths([".github/actions/run-stress-tests/action.yml"])).toMatchObject({
       appTestSuites: [],
       rustFast: false,
-      staticGroups: ["ci-contracts"],
+      staticGroups: ["ci-contracts", "tooling-contracts"],
     });
     expect(classifyChangedPaths([".github/actions/setup-playwright/action.yml"])).toMatchObject({
       appTestSuites: ["browser"],
@@ -243,19 +266,19 @@ describe("CI change classification", () => {
     expect(classifyChangedPaths([".github/workflows/ci.yml", "docs/CI.md"])).toMatchObject({
       appTestSuites: [],
       rustFast: false,
-      staticGroups: ["ci-contracts"],
+      staticGroups: ["ci-contracts", "tooling-contracts"],
       testMode: "none",
     });
     expect(classifyChangedPaths([".github/workflows/ci-nightly.yml"])).toMatchObject({
       appTestSuites: [],
       rustFast: false,
-      staticGroups: ["ci-contracts"],
+      staticGroups: ["ci-contracts", "tooling-contracts"],
       testMode: "none",
     });
     expect(classifyChangedPaths([".github/workflows/_app-tests.yml"])).toMatchObject({
       appTestSuites: APP_TEST_SUITES,
       rustFast: false,
-      staticGroups: ["ci-contracts"],
+      staticGroups: ["ci-contracts", "tooling-contracts"],
       testMode: "full",
     });
     expect(classifyChangedPaths([".github/workflows/_rust-checks.yml"])).toMatchObject({
@@ -263,7 +286,6 @@ describe("CI change classification", () => {
       protocolContracts: true,
       rustFast: true,
       rustFull: true,
-      rustMigration: true,
     });
     expect(classifyChangedPaths([".github/workflows/_static-checks.yml"])).toMatchObject({
       staticGroups: STATIC_GROUPS,
@@ -272,7 +294,7 @@ describe("CI change classification", () => {
       allGates: false,
       appTestSuites: ["unit"],
       rustFast: false,
-      staticGroups: ["types", "source-ownership", "ci-contracts"],
+      staticGroups: ["types", "source-ownership", "ci-contracts", "tooling-contracts"],
       testMode: "full",
     });
   });
@@ -351,19 +373,49 @@ describe("CI change classification", () => {
     }
   });
 
-  test("selects every deterministic source gate for unknown, empty, and explicit full inputs", () => {
-    for (const candidate of [
-      classifyChangedPaths(["novel-build-input.xyz"]),
-      classifyChangedPaths([]),
-      classifyChangedPaths(["README.md"], { full: true }),
+  test("selects tooling contracts for build and tooling inputs alongside product edits", () => {
+    const source = "src/main/boards/board-queries.ts";
+    for (const path of [
+      "config/renderer-vite-shared.ts",
+      "scripts/ci/classify-change.ts",
+      "scripts/tooling/process.ts",
+      "scripts/fixtures/tooling/contract.ts",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "tsconfig.json",
+      ".github/workflows/ci.yml",
+      ".oxlintrc.json",
+      "packages/agent-runtime/vite.config.ts",
     ]) {
+      expect(classifyChangedPaths([source, path]).staticGroups, path).toContain(
+        "tooling-contracts",
+      );
+    }
+    for (const path of [
+      source,
+      "src/host/HostKernel.ts",
+      "packages/core-protocol/src/generated.ts",
+    ]) {
+      expect(classifyChangedPaths([path]).staticGroups, path).not.toContain("tooling-contracts");
+    }
+  });
+
+  test("selects deterministic source gates for unknown, empty, and explicit full inputs", () => {
+    for (const [candidate, groups] of [
+      [
+        classifyChangedPaths(["novel-build-input.xyz"]),
+        STATIC_GROUPS.filter((group) => group !== "tooling-contracts"),
+      ],
+      [classifyChangedPaths([]), STATIC_GROUPS],
+      [classifyChangedPaths(["README.md"], { full: true }), STATIC_GROUPS],
+    ] as const) {
       expect(candidate).toMatchObject({
         allGates: true,
         appTestSuites: APP_TEST_SUITES,
         protocolContracts: true,
         rustFast: true,
-        rustMigration: true,
-        staticGroups: STATIC_GROUPS,
+        staticGroups: groups,
         testMode: "full",
       });
     }

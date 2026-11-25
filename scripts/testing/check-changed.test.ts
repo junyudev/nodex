@@ -482,14 +482,8 @@ describe("changed-check steps", () => {
 
   it.each([
     ["packages/core-protocol/src/generated.ts", ["protocol contracts"]],
-    [
-      "crates/nodex-core/schema/current.sql",
-      ["rust format", "rust clippy", "rust tests", "rust migration"],
-    ],
-    [
-      "Cargo.lock",
-      ["rust format", "rust clippy", "rust tests", "protocol contracts", "rust migration"],
-    ],
+    ["crates/nodex-core/schema/current.sql", ["rust format", "rust clippy", "rust tests"]],
+    ["Cargo.lock", ["rust format", "rust clippy", "rust tests", "protocol contracts"]],
     ["src/renderer/example.tsx", []],
   ])("selects the serialized Rust lanes for %s", (file, expected) => {
     expect(

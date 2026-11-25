@@ -11,6 +11,7 @@ export const STATIC_GROUPS = [
   "ui-contracts",
   "ci-contracts",
   "repository-contracts",
+  "tooling-contracts",
   "dependency-security",
   "generated",
   "landing",
@@ -46,7 +47,6 @@ export interface CiGatePlan {
   readonly relatedPaths: readonly string[];
   readonly rustFast: boolean;
   readonly rustFull: boolean;
-  readonly rustMigration: boolean;
   readonly staticGroups: readonly StaticGroup[];
   readonly testMode: TestSelectionMode;
   readonly windowsChecks: boolean;
@@ -63,7 +63,6 @@ const PLAN_KEYS = [
   "relatedPaths",
   "rustFast",
   "rustFull",
-  "rustMigration",
   "staticGroups",
   "testMode",
   "windowsChecks",
@@ -118,7 +117,6 @@ const hasOrdinaryGates = (plan: CiGatePlan): boolean =>
   plan.appTestSuites.length > 0 ||
   plan.protocolContracts ||
   plan.rustFast ||
-  plan.rustMigration ||
   plan.windowsChecks;
 
 const assertRelatedPaths: (value: unknown) => asserts value is readonly string[] = (value) => {
@@ -151,7 +149,6 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
     "protocolContracts",
     "rustFast",
     "rustFull",
-    "rustMigration",
     "windowsChecks",
   ] as const) {
     assertBoolean(value[key], key);
@@ -181,7 +178,6 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
       candidate.testMode !== "none" ||
       candidate.protocolContracts ||
       candidate.rustFast ||
-      candidate.rustMigration ||
       candidate.windowsChecks ||
       candidate.staticGroups.some((group) => !DRAFT_STATIC_GROUPS.includes(group)))
   ) {
@@ -216,6 +212,8 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
       candidate.staticGroups.some(
         (group) =>
           group !== "landing" &&
+          group !== "types" &&
+          group !== "tooling-contracts" &&
           group !== "ci-contracts" &&
           group !== "source-ownership" &&
           group !== "repository-contracts",
@@ -223,11 +221,10 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
       candidate.appTestSuites.some((suite) => suite !== "unit" && suite !== "renderer") ||
       candidate.protocolContracts ||
       candidate.rustFast ||
-      candidate.rustMigration ||
       candidate.windowsChecks)
   ) {
     throw new Error(
-      "Landing-only plans may select landing, source ownership, CI and repository contracts, and unit/renderer tests.",
+      "Landing-only plans may select landing, types, source ownership, CI, repository and tooling contracts, and unit/renderer tests.",
     );
   }
 }
@@ -241,7 +238,7 @@ export const requiredJobIdsForGatePlan = (plan: CiGatePlan): readonly string[] =
   const jobs: string[] = [];
   if (plan.staticGroups.length > 0) jobs.push("static-contracts");
   if (plan.appTestSuites.length > 0) jobs.push("app-tests");
-  if (plan.rustFast || plan.protocolContracts || plan.rustMigration) jobs.push("rust-checks");
+  if (plan.rustFast || plan.protocolContracts) jobs.push("rust-checks");
   if (plan.windowsChecks) jobs.push("windows-checks");
   return jobs;
 };
@@ -254,7 +251,7 @@ const APP_SHARD_COUNTS = {
   main: 1,
   renderer: 2,
   integration: 1,
-  browser: 1,
+  browser: 3,
 } as const satisfies Record<AppTestSuite, number>;
 
 export function appShardCount(suite: AppTestSuite): number {
@@ -269,11 +266,9 @@ export interface AppTestSegment {
 const segmentId = ({ suite, shard }: AppTestSegment) =>
   appShardCount(suite) === 1 ? suite : `${suite}-${shard + 1}`;
 
-// Start longer segments in separate jobs first. Prefer sharing native build
-// setup when packing the remaining segments into the existing suite-job budget.
+// Start longer non-browser segments first. Prefer sharing native build setup when pairing.
 const APP_LANE_ORDER = [
   "renderer",
-  "browser",
   "core-client",
   "agent-runtime",
   "unit",
@@ -286,8 +281,9 @@ export function cachedAppLanes(plan: CiGatePlan): ReadonlyMap<string, readonly A
   const segments = APP_LANE_ORDER.filter((suite) => plan.appTestSuites.includes(suite)).flatMap(
     (suite) => Array.from({ length: appShardCount(suite) }, (_, shard) => ({ suite, shard })),
   );
-  const slots = plan.appTestSuites.length;
-  const lanes = segments.slice(0, slots).map((segment) => [segment]);
+  const hasBrowser = plan.appTestSuites.includes("browser");
+  const slots = plan.appTestSuites.length - Number(hasBrowser);
+  const lanes: AppTestSegment[][] = segments.slice(0, slots).map((segment) => [segment]);
   const native = (suite: AppTestSuite) =>
     nativeRequirements(suite, undefined, "linux").some(isNativeExecutable);
   for (const companion of segments.slice(slots)) {
@@ -295,14 +291,17 @@ export function cachedAppLanes(plan: CiGatePlan): ReadonlyMap<string, readonly A
     const paired =
       available.findLast(
         ([primary]) =>
-          primary.suite !== "browser" &&
-          primary.suite !== companion.suite &&
-          native(primary.suite) === native(companion.suite),
-      ) ??
-      available.findLast(([primary]) => primary.suite !== "browser") ??
-      available.at(-1);
+          primary.suite !== companion.suite && native(primary.suite) === native(companion.suite),
+      ) ?? available.at(-1);
     if (!paired) throw new Error("Application CI exceeds its suite-job budget.");
     paired.push(companion);
+  }
+  // Browser shards are the longest lanes and each owns a distinct result cache.
+  if (hasBrowser) {
+    const browserLanes = Array.from({ length: appShardCount("browser") }, (_, shard) => [
+      { suite: "browser" as const, shard },
+    ]);
+    lanes.unshift(...browserLanes);
   }
   return new Map(lanes.map((lane) => [lane.map(segmentId).join("+"), lane]));
 }

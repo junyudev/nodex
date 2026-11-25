@@ -46,6 +46,14 @@ describe("actual test inventory", () => {
       verifyTestInventory([file], [{ suite: "core-client", tier: "stress", files: [file] }]),
     ).toThrow("discovered");
   });
+  test("requires nightly files to be collected only by the nightly tier", () => {
+    const nightly = "src/renderer/behavior.nightly.browser.test.tsx";
+    const discovery = { suite: "browser", tier: "nightly", files: [nightly] } as const;
+    expect(() => verifyTestInventory([nightly], [discovery])).not.toThrow();
+    expect(() =>
+      verifyTestInventory([nightly], [discovery, { ...discovery, tier: "default" }]),
+    ).toThrow("expected browser:nightly");
+  });
   test("requires vendor collection and keeps live contracts outside the default tier", () => {
     const vendor = "packages/agent-runtime/vendor/contracts/src/background.test.ts";
     const live =

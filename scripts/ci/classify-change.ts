@@ -162,11 +162,6 @@ const isWindowsCheckPath = (path: string): boolean =>
         path,
       )));
 
-const isMigrationPath = (path: string): boolean =>
-  path === "crates/nodex-core/src/infrastructure/migration.rs" ||
-  path.startsWith("crates/nodex-core/schema/") ||
-  path.startsWith("crates/nodex-store-format/");
-
 const isProtocolPath = (path: string): boolean =>
   path.startsWith("crates/nodex-core-contracts/") ||
   path.startsWith("crates/nodex-core-protocol/") ||
@@ -210,6 +205,18 @@ const isJavaScriptDependencyPath = (path: string): boolean =>
   path === "pnpm-lock.yaml" ||
   path === "pnpm-workspace.yaml" ||
   /^(?:packages|third_party\/blocknote\/packages)\/[^/]+\/package\.json$/u.test(path);
+
+const isToolingContractPath = (path: string): boolean =>
+  isGitHubPath(path) ||
+  isJavaScriptDependencyPath(path) ||
+  path.startsWith("config/") ||
+  path.startsWith("scripts/ci/") ||
+  path.startsWith("scripts/tooling/") ||
+  path.startsWith("scripts/fixtures/tooling/") ||
+  /(?:^|\/)(?:tsconfig|\.oxlintrc|vite\.config)[^/]*$/u.test(path);
+
+const isNightlyTestPath = (path: string): boolean =>
+  /\.nightly\.(?:[^/]+\.)?(?:test\.[cm]?[jt]sx?|integration\.ts)$/u.test(path);
 
 const isStressTestPath = (path: string): boolean => path.includes(".stress.");
 
@@ -380,7 +387,6 @@ const createPlan = (overrides: Partial<CiGatePlan>): CiGatePlan => {
     relatedPaths: [],
     rustFast: false,
     rustFull: false,
-    rustMigration: false,
     staticGroups: [],
     testMode: "none",
     windowsChecks: false,
@@ -398,7 +404,6 @@ const allGatesPlan = (dependencyKind: DependencyKind, allGates = true): CiGatePl
     protocolContracts: true,
     rustFast: true,
     rustFull: true,
-    rustMigration: true,
     staticGroups: STATIC_GROUPS,
     testMode: "full",
   });
@@ -415,7 +420,6 @@ const githubWorkflowPlan = (paths: readonly string[]): CiGatePlan => {
     protocolContracts: rustChecks,
     rustFast: rustChecks,
     rustFull: rustChecks,
-    rustMigration: rustChecks,
     staticGroups,
     testMode: appTests ? "full" : "none",
   });
@@ -425,7 +429,7 @@ const githubActionPlan = (paths: readonly string[]): CiGatePlan => {
   if (paths.every((path) => path.startsWith(".github/workflows/"))) {
     return githubWorkflowPlan(paths);
   }
-  if (paths.every((path) => path.startsWith(".github/actions/run-stress-tests/"))) {
+  if (paths.every((path) => /^\.github\/actions\/run-(?:nightly|stress)-tests\//u.test(path))) {
     return createPlan({
       dependencyKind: "github-actions",
       staticGroups: ["ci-contracts"],
@@ -445,7 +449,6 @@ const githubActionPlan = (paths: readonly string[]): CiGatePlan => {
       protocolContracts: true,
       rustFast: true,
       rustFull: true,
-      rustMigration: true,
       staticGroups: ["ci-contracts", "repository-contracts"],
     });
   }
@@ -460,7 +463,6 @@ const sourcePlan = (
   const renderer = paths.some(isRendererPath);
   const electronMain = paths.some(isElectronMainPath);
   const rust = paths.some(isRustPath);
-  const migration = paths.some(isMigrationPath);
   const protocol = paths.some(isProtocolPath);
   const appTestSuites = testSuitesForPaths(paths);
   const staticGroups = new Set<StaticGroup>(["types"]);
@@ -485,7 +487,6 @@ const sourcePlan = (
     dependencyKind,
     protocolContracts: protocol,
     rustFast: rust,
-    rustMigration: migration,
     staticGroups: [...staticGroups],
     testMode: appTestSuites.length === 0 ? "none" : fullTests ? "full" : "related",
     relatedPaths: appTestSuites.length > 0 && !fullTests ? paths : [],
@@ -551,7 +552,6 @@ const classifyOtherPaths = (
       protocolContracts: true,
       rustFast: true,
       rustFull: true,
-      rustMigration: true,
       staticGroups: ["repository-contracts", "generated"],
     });
   }
@@ -593,17 +593,30 @@ export function classifyChangedPaths(
   options: ClassificationOptions = {},
 ): CiGatePlan {
   const paths = [...new Set(changedPaths.map(normalizePath))];
-  const plan = classifyNormalizedPaths(paths, options);
-  const staticGroups =
-    paths.some(requiresSourceTypeOwnership) && !plan.staticGroups.includes("source-ownership")
-      ? STATIC_GROUPS.filter(
-          (group) => group === "source-ownership" || plan.staticGroups.includes(group),
-        )
-      : plan.staticGroups;
+  const ordinaryPaths = paths.filter((path) => !isNightlyTestPath(path));
+  const hasNightlyTests = ordinaryPaths.length < paths.length;
+  const full = options.full === true || paths.length === 0;
+  const plan =
+    hasNightlyTests && ordinaryPaths.length === 0 && !full
+      ? createPlan({})
+      : classifyNormalizedPaths(ordinaryPaths, options);
+  const docsOnly = plan.docsOnly && !hasNightlyTests;
+  const groups = new Set(plan.staticGroups);
+  if (hasNightlyTests) {
+    groups.add("types");
+    groups.add("ci-contracts");
+  }
+  if (ordinaryPaths.some(requiresSourceTypeOwnership)) groups.add("source-ownership");
+  if (!docsOnly && (full || ordinaryPaths.some(isToolingContractPath))) {
+    groups.add("tooling-contracts");
+  } else {
+    groups.delete("tooling-contracts");
+  }
+  const staticGroups = STATIC_GROUPS.filter((group) => groups.has(group));
   if (options.draft) {
     return createPlan({
       dependencyKind: plan.dependencyKind,
-      docsOnly: plan.docsOnly,
+      docsOnly,
       draft: true,
       landingOnly: plan.landingOnly,
       staticGroups: staticGroups.filter((group) => DRAFT_STATIC_GROUPS.includes(group)),
@@ -611,8 +624,9 @@ export function classifyChangedPaths(
   }
   return createPlan({
     ...plan,
+    docsOnly,
     staticGroups,
-    windowsChecks: options.full === true || paths.some(isWindowsCheckPath),
+    windowsChecks: options.full === true || ordinaryPaths.some(isWindowsCheckPath),
   });
 }
 
@@ -663,7 +677,8 @@ const main = (): void => {
         .split("\0")
         .filter(Boolean);
   const forceFullTests = paths.some(
-    (path) => !isDocumentationPath(path) && !existsSync(resolve(cwd, path)),
+    (path) =>
+      !isDocumentationPath(path) && !isNightlyTestPath(path) && !existsSync(resolve(cwd, path)),
   );
   const document = buildChangeClassificationDocument(paths, {
     draft,

@@ -18,9 +18,11 @@ describe("GitHub classification outputs", () => {
       testMode: "related",
     });
     expect(JSON.parse(lines[2]!.slice("app_lanes=".length))).toEqual([
+      "browser-1",
+      "browser-2",
+      "browser-3",
       "renderer-1+unit-2",
       "renderer-2+unit-1",
-      "browser",
     ]);
   });
 

@@ -13,7 +13,8 @@ import {
 import { filesForSuite } from "./test-suites";
 import { createTypographyBootstrapHtmlPlugin } from "./typography-bootstrap";
 
-const testFiles = filesForSuite("browser", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("browser", tier);
 
 export default defineConfig(async () => ({
   plugins: [
@@ -61,7 +62,7 @@ export default defineConfig(async () => ({
     exclude: testFiles.exclude,
     include: testFiles.include,
     fileParallelism: false,
-    passWithNoTests: testFiles.isStress,
+    passWithNoTests: tier !== "default",
     setupFiles: ["./config/setup-test-timeouts.ts", "./src/renderer/test/setup-browser.ts"],
     ...vitestTimeouts(testFiles.isStress),
   },

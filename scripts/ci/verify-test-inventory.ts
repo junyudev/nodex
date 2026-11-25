@@ -7,14 +7,14 @@ import path from "node:path";
 import { resolveElectronE2eGrepInvert } from "../../config/playwright.e2e.config.ts";
 import {
   APP_TEST_SUITES,
-  STANDARD_TEST_SUITES,
+  NIGHTLY_TEST_SUITES,
   STRESS_TEST_SUITES,
   LIVE_TEST_SUITES,
   maintainedThirdPartyTests,
   ownersOfTest,
   type SuiteId,
 } from "../../config/test-suites.ts";
-import type { VitestTestTier } from "../../config/vitest-test-tier.ts";
+import { VITEST_TEST_TIERS, type VitestTestTier } from "../../config/vitest-test-tier.ts";
 import { discoverSuite } from "../testing/runtime.ts";
 import { withCommandSignal } from "../tooling/process.ts";
 
@@ -23,6 +23,13 @@ export interface DiscoveredSuite {
   readonly tier: VitestTestTier;
   readonly files: readonly string[];
 }
+
+const reachableSuites: Readonly<Record<VitestTestTier, readonly SuiteId[]>> = {
+  default: APP_TEST_SUITES,
+  nightly: NIGHTLY_TEST_SUITES,
+  stress: STRESS_TEST_SUITES,
+  live: LIVE_TEST_SUITES,
+};
 
 /** Candidate enumeration is independent of suite globs, including newly added files. */
 export function ownedTestCandidates(files: readonly string[]): readonly string[] {
@@ -59,14 +66,8 @@ export function verifyTestInventory(
     if (collected.length !== 1 || collected[0] !== expected) {
       problems.push(file + ": expected " + expected + ", discovered " + JSON.stringify(collected));
     }
-    const reachable =
-      tier === "live"
-        ? LIVE_TEST_SUITES.includes(suite)
-        : tier === "stress"
-          ? STRESS_TEST_SUITES.includes(suite)
-          : STANDARD_TEST_SUITES.includes(suite as Exclude<SuiteId, "browser">) ||
-            suite === "browser";
-    if (!reachable) problems.push(file + ": unreachable from standard/browser/stress/live gates");
+    if (!reachableSuites[tier].includes(suite))
+      problems.push(file + ": unreachable from the " + tier + " test gate");
   }
   if (problems.length) throw new Error("Test inventory failed:\n" + problems.join("\n"));
 }
@@ -167,7 +168,7 @@ export async function verifyRepositoryTestInventory(
   verifyRepositoryE2eTriage(root);
   const candidates = ownedTestCandidates(files);
   const discovered: DiscoveredSuite[] = [];
-  for (const tier of ["default", "stress", "live"] as const) {
+  for (const tier of VITEST_TEST_TIERS) {
     const tierSuites = tier === "live" ? LIVE_TEST_SUITES : APP_TEST_SUITES;
     for (const suite of tierSuites) {
       if (signal.aborted) throw new Error("Test inventory cancelled.");

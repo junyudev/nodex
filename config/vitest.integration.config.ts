@@ -9,7 +9,8 @@ import { filesForSuite } from "./test-suites";
 
 assertElectronTestRuntime("integration");
 
-const testFiles = filesForSuite("integration", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("integration", tier);
 
 export default defineConfig({
   test: {
@@ -23,7 +24,7 @@ export default defineConfig({
     // share of the computer instead of one worker per core.
     maxWorkers: testFiles.isStress ? 1 : 4,
     fileParallelism: !testFiles.isStress,
-    passWithNoTests: testFiles.isStress,
+    passWithNoTests: tier !== "default",
     pool: "forks",
     ...vitestTimeouts(testFiles.isStress),
   },

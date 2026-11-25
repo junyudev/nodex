@@ -14,7 +14,8 @@ import {
 import { filesForSuite, rendererNativePortTests } from "./test-suites";
 import { rendererWorkerCount } from "./renderer-worker-count";
 
-const testFiles = filesForSuite("renderer", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("renderer", tier);
 const memoryBytes = totalmem();
 // A full VM run needs room for the transform server and retiring worker processes.
 const useVmPool = !testFiles.isStress && memoryBytes >= 24 * 1024 ** 3;
@@ -42,7 +43,7 @@ export default defineConfig(async () => ({
     exclude: testFiles.exclude,
     // Vitest resolves the recycle threshold from the root config even with projects.
     vmMemoryLimit: "384MiB",
-    ...(useVmPool
+    ...(useVmPool && tier === "default"
       ? {
           projects: [
             {
@@ -64,10 +65,13 @@ export default defineConfig(async () => ({
             },
           ],
         }
-      : { include: testFiles.include, pool: "forks" as const }),
+      : {
+          include: testFiles.include,
+          pool: useVmPool ? ("vmForks" as const) : ("forks" as const),
+        }),
     maxWorkers: useVmPool ? Math.min(maxWorkers, 2) : maxWorkers,
     fileParallelism: !testFiles.isStress,
-    passWithNoTests: testFiles.isStress,
+    passWithNoTests: tier !== "default",
     ...observeTestFiles([
       // Before the other renderer setup files, which may capture the frame function.
       "./src/renderer/test/setup-animation-frames.ts",

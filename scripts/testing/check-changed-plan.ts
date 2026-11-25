@@ -124,7 +124,6 @@ function rustSteps(plan: CiGatePlan | null): CheckStep[] {
     ...(plan?.protocolContracts
       ? [rust("protocol contracts", ["run", "core:protocol:verify"])]
       : []),
-    ...(plan?.rustMigration ? [rust("rust migration", ["run", "core:test:migration"])] : []),
   ];
   return steps.length ? steps : [skip("rust", "no Rust or protocol gates selected")];
 }

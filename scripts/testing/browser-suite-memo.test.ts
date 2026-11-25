@@ -68,10 +68,9 @@ describe("browser request inputs", () => {
   });
 });
 
-it("restores one browser pass only while its collection and inputs still match", async () => {
+it("restores a browser shard only while its collection and inputs still match", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nodex-browser-cache-test-"));
   const workspaceRoot = path.join(directory, "worktree");
-  const store = path.join(directory, "store");
   const unit = "config/vitest.browser.config.ts";
   const existing = "src/renderer/existing.browser.test.ts";
   const newTest = "src/renderer/new.browser.test.ts";
@@ -84,7 +83,8 @@ it("restores one browser pass only while its collection and inputs still match",
   };
   let runs = 0;
   let report: CachedSuiteReport | undefined;
-  const run = async (files = [existing]) => {
+  const run = async (files = [existing], shard = "1of3") => {
+    const store = path.join(directory, shard, "browser");
     const code = await memoizeSuite(
       "browser",
       {
@@ -100,6 +100,7 @@ it("restores one browser pass only while its collection and inputs still match",
         repositoryRoot: workspaceRoot,
         env: {},
         signal: new AbortController().signal,
+        linuxCI: { host: "runner", directory: store, select: (file) => files.includes(file) },
         onStdout: () => {},
         onReport: (result) => {
           report = result;
@@ -149,6 +150,12 @@ it("restores one browser pass only while its collection and inputs still match",
     await put(newTest, "new test");
     await run([existing, newTest]);
     expect(report).toMatchObject({ hits: 0, ran: 2, globalKeyMisses: 2 });
+    await run([newTest], "2of3");
+    expect(report).toMatchObject({ hits: 0, ran: 1, selected: 1 });
+    await run([existing, newTest]);
+    expect(report).toMatchObject({ hits: 2, ran: 0, selected: 2 });
+    await run([newTest], "2of3");
+    expect(report).toMatchObject({ hits: 1, ran: 0, selected: 1 });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

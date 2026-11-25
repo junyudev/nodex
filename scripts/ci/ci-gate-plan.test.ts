@@ -22,7 +22,6 @@ const fullPlan: CiGatePlan = {
   relatedPaths: [],
   rustFast: true,
   rustFull: true,
-  rustMigration: true,
   staticGroups: STATIC_GROUPS,
   testMode: "full",
   windowsChecks: true,
@@ -53,18 +52,22 @@ describe("CI gate plan contract", () => {
     );
   });
 
-  test("covers each shard exactly once without adding jobs to any plan", () => {
+  test("covers each shard exactly once and gives browser shards dedicated jobs", () => {
     const expected = APP_TEST_SUITES.flatMap((suite) =>
       Array.from({ length: appShardCount(suite) }, (_, shard) => ({ suite, shard })),
     );
-    // Exercise every subset because grouping only occurs if the selected shards use the available slots.
+    // Exercise every subset because lane packing depends on which suites are selected.
     for (let mask = 0; mask < 2 ** APP_TEST_SUITES.length; mask++) {
       const plan = {
         ...fullPlan,
         appTestSuites: APP_TEST_SUITES.filter((_, index) => mask & (1 << index)),
       };
       const lanes = cachedAppLanes(plan);
-      expect(lanes.size).toBe(plan.appTestSuites.length);
+      const browser = plan.appTestSuites.includes("browser");
+      expect(lanes.size).toBe(plan.appTestSuites.length + (browser ? 2 : 0));
+      expect([...lanes.keys()].filter((lane) => lane.includes("browser"))).toEqual(
+        browser ? ["browser-1", "browser-2", "browser-3"] : [],
+      );
       expect([...lanes.values()].flat()).toHaveLength(
         expected.filter(({ suite }) => plan.appTestSuites.includes(suite)).length,
       );
@@ -73,7 +76,6 @@ describe("CI gate plan contract", () => {
       );
       expect([...lanes.values()].every((lane) => lane.length > 0 && lane.length <= 2)).toBe(true);
     }
-    expect(cachedAppLanes(fullPlan).size).toBe(8);
   });
 
   test("rejects an incomplete or repeated app matrix", () => {

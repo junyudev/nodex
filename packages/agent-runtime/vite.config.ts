@@ -7,7 +7,8 @@ import { vitestTimeouts } from "../../config/test-timeouts.ts";
 import { filesForSuite } from "../../config/test-suites.ts";
 import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
 
-const testFiles = filesForSuite("agent-runtime", resolveVitestTestTier());
+const tier = resolveVitestTestTier();
+const testFiles = filesForSuite("agent-runtime", tier);
 const localGlob = (glob: string) => glob.replace(/^packages\/agent-runtime\//u, "");
 
 export default defineConfig({
@@ -21,7 +22,7 @@ export default defineConfig({
     environment: "node",
     include: testFiles.include.map(localGlob),
     exclude: testFiles.exclude.map(localGlob),
-    passWithNoTests: testFiles.isStress,
+    passWithNoTests: tier !== "default",
     pool: "forks",
     maxWorkers: 4,
     reporters: [
