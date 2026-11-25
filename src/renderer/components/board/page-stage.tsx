@@ -98,7 +98,6 @@ interface PageStageDescriptionEditorProps {
   readonly sessionTitle?: PageStageProps["sessionTitle"];
   readonly chatProjectId?: PageStageProps["chatProjectId"];
   readonly onOpenCodexThread: PageStageProps["onOpenCodexThread"];
-  readonly onOpenSession: PageStageProps["onOpenRelatedChat"];
   readonly onOpenPage: PageStageProps["onOpenPage"];
   readonly onOpenDatabase: PageStageProps["onOpenDatabase"];
   readonly onOpenCanvas: PageStageProps["onOpenCanvas"];
@@ -154,7 +153,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   sessionTitle,
   chatProjectId,
   onOpenCodexThread,
-  onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
@@ -312,7 +310,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
         sessionTitle={sessionTitle}
         chatProjectId={chatProjectId}
         onOpenCodexThread={onOpenCodexThread}
-        onOpenSession={onOpenSession}
         onOpenPage={onOpenPage}
         onOpenDatabase={onOpenDatabase}
         onOpenCanvas={onOpenCanvas}
@@ -612,7 +609,6 @@ export function PageStage(props: PageStageProps) {
           sessionTitle={props.sessionTitle}
           chatProjectId={props.chatProjectId}
           onOpenCodexThread={props.onOpenCodexThread}
-          onOpenSession={props.onOpenRelatedChat}
           onOpenPage={props.onOpenPage}
           onOpenDatabase={props.onOpenDatabase}
           onOpenCanvas={props.onOpenCanvas}

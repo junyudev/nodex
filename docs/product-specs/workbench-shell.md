@@ -243,6 +243,37 @@ Electron background-tab disposition becomes a background Browser-tab request,
 while other dispositions use default presentation. Permitted non-HTTP schemes
 open externally. External URL validation applies regardless of entry point.
 
+### Nodex references
+
+A reference to a Page, Database View or chat (`nodex://pages|views|sessions/ID`)
+renders the same way wherever it is read: a chat's messages and the Agent's
+replies, tool activity, thoughts and plans, Inbox bubbles, and Pages. A mention,
+or a link whose text is its URL or its target's name, shows the target's current
+title and icon; a link in its author's own words keeps them. Hovering shows the target: a Page's title,
+state and opening lines, a chat's Project, state and latest reply. A deleted,
+missing or archived target says so and does not open. Right-click offers Open,
+Open in new tab (Pages and Views), Open in new window (Pages and chats) and Copy
+link; Pages keep their own editor menu.
+
+Every reference opens through one Workbench router, with the same gestures as
+web links. Plain activation follows the surface it is read in:
+
+- In a chat, a Page or View opens as a tab in the chat's content panel, reused
+  when it is already open there. From the Project Agent Dock it opens as a
+  preview in the Project's active group, and double-click keeps it.
+- In an Inbox, it opens as a preview in the group to the Inbox's right, as the
+  Inbox's own Pages do.
+- In a Page, it opens in the Page's own tab group, as before.
+- A chat goes to that chat, and Back returns. A side chat of the chat being read
+  reopens its tab instead, and the Agent Dock selects a chat of its Project. A
+  reference to the chat being read does nothing.
+
+Primary (⌘ on macOS, Ctrl elsewhere) or middle activation opens a Page or View
+as a background tab and Primary+Shift as a foreground tab; Primary+Alt opens it
+in Space. A chat is a Scene and never a tab, so Primary or middle activation
+opens it in a new window. A link naming another Space opens in a window of that
+Space. Outside the Workbench a reference is shown but not offered to open.
+
 ### Links inside a Browser page
 
 A link in a Browser page behaves as it does in a desktop browser, with tabs in

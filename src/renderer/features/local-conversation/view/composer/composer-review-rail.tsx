@@ -9,7 +9,7 @@ import { useSessionLinkedPage } from "@/lib/session-linked-page";
 import { cn } from "@/lib/utils";
 import type { PageTurn } from "../../../../../shared/page-turn";
 import type { SessionLinkedPage } from "../../../../../shared/types";
-import { useConversationPageNavigation } from "../../conversation-page-navigation";
+import { useNodexReferenceInteraction } from "@/components/nodex-reference/nodex-reference";
 import { COMPOSER_ATTACHED_TAB_CLASS, ComposerAttachedTabSlot } from "../composer-context-rail";
 
 /** A chat's own Turn is always the reader's, so it is worded for them. */
@@ -53,9 +53,13 @@ export function ComposerReviewRail({
   placement: "attached" | "inset";
 }) {
   const intl = useIntl();
-  const openPage = useConversationPageNavigation();
   const { turn, phrase, page } = review;
   const pageName = page ? [page.pageKey, page.title].filter(Boolean).join(" ") : null;
+  const pageReference = useNodexReferenceInteraction({
+    destination: { kind: "page", pageId: turn.page_id },
+    openable: true,
+    ...(page?.title ? { title: page.title } : {}),
+  });
   const row = (
     <div
       role="group"
@@ -77,8 +81,8 @@ export function ComposerReviewRail({
         <button
           type="button"
           className="min-w-0 truncate-fade text-left text-token-description-foreground hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-token-focus-border disabled:no-underline"
-          disabled={!openPage}
-          onClick={() => openPage?.(turn.page_id, page?.title)}
+          disabled={!pageReference.interactive}
+          {...pageReference.handlers}
         >
           {pageName}
         </button>

@@ -13,9 +13,8 @@ import {
   resolveOrderedListMargin,
   resolveOrderedListPadding,
 } from "@/lib/ordered-list-groups";
-import { usePageTargetReadModel } from "@/lib/block-reference-queries";
-import { libraryContentRoute } from "../../../shared/content-routing-context";
-import { buildPageDeepLink } from "@/lib/page-deeplink";
+import { NodexReference } from "@/components/nodex-reference/nodex-reference";
+import { parseNodexDestination } from "../../../shared/nodex-reference";
 import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
 import type { ImagePlaceholderReference } from "../../../shared/message-agent-input";
 import type { RichTextColor } from "../../../shared/rich-text/colors";
@@ -27,15 +26,12 @@ import {
   ImageErrorTile,
   ImageLoadingTile,
 } from "@/features/local-conversation/view/shared/user-message-attachments";
-import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { formatDateMentionPlainText } from "../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
 import { classifyNfmTable } from "@/lib/nfm-table-layout";
 import { NfmReadonlyTable } from "@/components/shared/nfm-readonly-table";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { DateMentionInlineVisual } from "./date-mention-inline-visual";
-import { ThreadMentionInlineVisual } from "./thread-mention-inline-visual";
-import { PageMentionInlineVisual } from "./page-mention-inline-visual";
 import { InlineReferenceVisual } from "./inline-reference-visual";
 import { AttachmentResourceIcon } from "./attachment-resource-icon";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
@@ -79,25 +75,6 @@ export function NfmDocument({
         <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} lead={lead} />
       </div>
     </NfmDensityContext.Provider>
-  );
-}
-
-/** A mentioned Page under its current name; an identity never stands in for one. */
-function NfmPageMention({ pageId }: { readonly pageId: string }) {
-  const intl = useIntl();
-
-  const target = usePageTargetReadModel(libraryContentRoute, pageId).data;
-  return (
-    <PageMentionInlineVisual
-      className="max-w-[18rem] align-baseline"
-      title={buildPageDeepLink({ pageId })}
-      label={
-        target?.status === "available"
-          ? target.page.title.trim() ||
-            intl.formatMessage({ id: "board.nfmRenderer.untitled", defaultMessage: "Untitled" })
-          : intl.formatMessage({ id: "board.nfmRenderer.page", defaultMessage: "Page" })
-      }
-    />
   );
 }
 
@@ -451,45 +428,17 @@ function BlockComponent({
     case "image":
       return <ImageFigure block={block} className={colorClass} />;
 
-    case "pageRef": {
-      const mentionUrl = buildPageDeepLink({
-        pageId: String(block.props?.targetBlockId ?? ""),
-      });
-      return (
-        <NodexTooltip
-          tooltipContent={intl.formatMessage(
-            { id: "board.nfmRenderer.pageMentionFallback", defaultMessage: "Page mention ({url})" },
-            { url: mentionUrl },
-          )}
-        >
-          <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-dashed border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
-            <span aria-hidden="true">↗</span>
-            <span className="whitespace-nowrap">
-              {intl.formatMessage(
-                {
-                  id: "board.nfmRenderer.pageMentionBadge",
-                  defaultMessage: "Page Mention · {detail}",
-                },
-                { detail: mentionUrl },
-              )}
-            </span>
-          </div>
-        </NodexTooltip>
-      );
+    case "pageRef":
+    case "page": {
+      const pageId = String(
+        (block.type === "page" ? block.id : block.props?.targetBlockId) ?? "",
+      ).trim();
+      return pageId ? (
+        <ReferenceBlock>
+          <NodexReference destination={{ kind: "page", pageId }} variant="mention" />
+        </ReferenceBlock>
+      ) : null;
     }
-
-    case "page":
-      return (
-        <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
-          <span aria-hidden="true">▣</span>
-          <span className="whitespace-nowrap">
-            {intl.formatMessage(
-              { id: "board.nfmRenderer.pageBadge", defaultMessage: "Page · {detail}" },
-              { detail: block.id },
-            )}
-          </span>
-        </div>
-      );
 
     case "database":
       return (
@@ -510,16 +459,19 @@ function BlockComponent({
         />
       );
 
-    case "databaseViewRef":
-      return (
-        <ResourceBlock
-          label={intl.formatMessage({
-            id: "board.nfmRenderer.databaseView",
-            defaultMessage: "Database view",
-          })}
-          detail={String(block.props?.displayHint || block.props?.databaseViewId || "")}
-        />
-      );
+    case "databaseViewRef": {
+      const viewId = String(block.props?.databaseViewId ?? "").trim();
+      const hint = String(block.props?.displayHint ?? "").trim();
+      return viewId ? (
+        <ReferenceBlock>
+          <NodexReference
+            destination={{ kind: "view", viewId }}
+            variant="mention"
+            {...(hint ? { titleSnapshot: hint } : {})}
+          />
+        </ReferenceBlock>
+      ) : null;
+    }
 
     case "syncedBlockRef":
       return (
@@ -618,6 +570,18 @@ function MessageFigureImage({ image, alt }: { image: MarkdownImage; alt: string 
       />
     </ImageViewerButton>
   );
+}
+
+/** A Page or View a message points to on a line of its own. */
+function ReferenceBlock({ children }: { readonly children: ReactNode }) {
+  return <div className="my-1.5">{children}</div>;
+}
+
+function inlinePlainText(content: MarkdownInline["content"]): string {
+  if (typeof content === "string") return content;
+  return (content ?? [])
+    .map((item) => item.text ?? (item.content === undefined ? "" : inlinePlainText(item.content)))
+    .join("");
 }
 
 export function ResourceBlock({ label, detail }: { label: string; detail: string }) {
@@ -834,7 +798,11 @@ function InlineItem({
   const intl = useIntl();
 
   const props = item.props ?? {};
-  if (item.type === "link")
+  if (item.type === "link") {
+    const destination = parseNodexDestination(item.href?.trim());
+    // A link whose text is its own URL names the target, like a mention.
+    if (destination && inlinePlainText(item.content) === item.href?.trim())
+      return <NodexReference destination={destination} variant="mention" />;
     return (
       <FileLinkAnchor
         href={item.href ?? ""}
@@ -844,6 +812,7 @@ function InlineItem({
         <InlineList items={item.content} projectWorkspacePath={projectWorkspacePath} />
       </FileLinkAnchor>
     );
+  }
   if (item.type === "inlineImage")
     return <InlineImage {...inlineImageProps(props)} projectWorkspacePath={projectWorkspacePath} />;
   if (item.type === "imagePlaceholder")
@@ -883,16 +852,18 @@ function InlineItem({
       </span>
     );
   }
-  if (item.type === "threadMention")
-    return (
-      <ThreadMentionInlineVisual
-        className="max-w-[18rem] align-baseline"
-        title={String(props.uuid ?? "")}
-        label={formatThreadMentionShortUuid(String(props.uuid ?? ""))}
-      />
-    );
-  if (item.type === "pageMention")
-    return <NfmPageMention pageId={String(props.targetPageId ?? "")} />;
+  if (item.type === "threadMention") {
+    const sessionId = String(props.uuid ?? "").trim();
+    return sessionId ? (
+      <NodexReference destination={{ kind: "session", sessionId }} variant="mention" />
+    ) : null;
+  }
+  if (item.type === "pageMention") {
+    const pageId = String(props.targetPageId ?? "").trim();
+    return pageId ? (
+      <NodexReference destination={{ kind: "page", pageId }} variant="mention" />
+    ) : null;
+  }
   if (item.type === "skillMention") return <SkillMentionChip name={String(props.name ?? "")} />;
   if (item.type === "dateMention") {
     const payload = normalizeDateMention({ ...props, type: "dateMention" });

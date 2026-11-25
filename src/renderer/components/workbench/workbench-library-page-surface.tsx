@@ -1,3 +1,4 @@
+import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import { useIntl } from "@/lib/i18n";
 import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
 import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
@@ -254,8 +255,15 @@ export function WorkbenchLibraryPageSurface({
       }
       onOpenPage={
         onOpenPage
-          ? ({ pageId: nextPageId, titleSnapshot }) => {
+          ? ({ pageId: nextPageId, titleSnapshot, sourceBlockId }) => {
               onOpenPage(nextPageId, titleSnapshot);
+              // A backlink or Block link brings its Block into view once the Page shows.
+              if (sourceBlockId)
+                requestPageBlockFocus({
+                  projectId: null,
+                  pageId: nextPageId,
+                  blockId: sourceBlockId,
+                });
             }
           : undefined
       }

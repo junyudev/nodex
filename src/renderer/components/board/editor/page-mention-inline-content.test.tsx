@@ -9,10 +9,8 @@ import type { PageDetail } from "../../../../shared/page-detail";
 import type { PageTargetReadModel } from "../../../../shared/page-targets";
 import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
 import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
-import {
-  PageMentionInlineContentView,
-  resolvePageMentionPresentation,
-} from "./page-mention-inline-content";
+import { resolvePageReferencePresentation } from "@/components/nodex-reference/page-reference-presentation";
+import { PageMentionInlineContentView } from "./page-mention-inline-content";
 
 const mocks = vi.hoisted(() => ({
   target: {
@@ -97,7 +95,7 @@ describe("Page mention inline content", () => {
   });
 
   test("builds compact authorized metadata and safe unavailable states", () => {
-    const available = resolvePageMentionPresentation({
+    const available = resolvePageReferencePresentation({
       targetPageId: "page-1",
       target: availableTarget({
         page: {
@@ -116,7 +114,7 @@ describe("Page mention inline content", () => {
       tooltipPreview: "Preserve causal coverage inside the affected window.",
     });
 
-    const unavailable = resolvePageMentionPresentation({
+    const unavailable = resolvePageReferencePresentation({
       targetPageId: "page-private",
       target: null,
       loading: false,
@@ -128,7 +126,7 @@ describe("Page mention inline content", () => {
       [unavailable.tooltipTitle, unavailable.tooltipDetail, unavailable.tooltipPreview].join(" "),
     ).not.toContain("page-private");
 
-    const longPreview = resolvePageMentionPresentation({
+    const longPreview = resolvePageReferencePresentation({
       targetPageId: "page-1",
       target: availableTarget({
         page: {

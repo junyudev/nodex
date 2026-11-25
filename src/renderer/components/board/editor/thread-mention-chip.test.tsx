@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { render, settleAsyncRender, textContent } from "@/test/dom";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { createTestNodexReferenceRouter } from "@/test/nodex-reference-router";
 import type { CodexThreadSummary } from "@/lib/types";
 import {
   resolveThreadMentionChip,
@@ -60,24 +61,23 @@ describe("thread mention inline content", () => {
     expect(missing.tone).toBe("error");
   });
 
-  test("opens resolved thread mentions through the runtime callback", async () => {
-    let openedThreadId = "";
+  test("opens resolved chat mentions through the reference router", async () => {
+    const references = createTestNodexReferenceRouter();
     const view = render(
-      <NodexTooltipProvider>
-        <ThreadMentionRuntimeProvider
-          value={{
-            sessions: {
-              "019-session": createThreadSummary(),
-            },
-            resolvingIds: new Set(),
-            openSession: (threadId) => {
-              openedThreadId = threadId;
-            },
-          }}
-        >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
-        </ThreadMentionRuntimeProvider>
-      </NodexTooltipProvider>,
+      references.wrap(
+        <NodexTooltipProvider>
+          <ThreadMentionRuntimeProvider
+            value={{
+              sessions: {
+                "019-session": createThreadSummary(),
+              },
+              resolvingIds: new Set(),
+            }}
+          >
+            <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
+          </ThreadMentionRuntimeProvider>
+        </NodexTooltipProvider>,
+      ),
     );
 
     const mention = view.getByRole("button");
@@ -106,31 +106,33 @@ describe("thread mention inline content", () => {
     fireEvent.click(mention);
     await settleAsyncRender();
 
-    expect(openedThreadId).toBe("019-session");
+    expect(references.open).toHaveBeenCalledExactlyOnceWith(
+      { kind: "session", sessionId: "019-session" },
+      expect.objectContaining({ source: { surface: "page" } }),
+    );
   });
 
-  test("opens uncached thread mentions when an opener is available", async () => {
-    let openedThreadId = "";
+  test("opens uncached chat mentions while they resolve", async () => {
+    const references = createTestNodexReferenceRouter();
     const view = render(
-      <NodexTooltipProvider>
-        <ThreadMentionRuntimeProvider
-          value={{
-            sessions: {},
-            resolvingIds: new Set(["019-session"]),
-            openSession: (threadId) => {
-              openedThreadId = threadId;
-            },
-          }}
-        >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
-        </ThreadMentionRuntimeProvider>
-      </NodexTooltipProvider>,
+      references.wrap(
+        <NodexTooltipProvider>
+          <ThreadMentionRuntimeProvider
+            value={{
+              sessions: {},
+              resolvingIds: new Set(["019-session"]),
+            }}
+          >
+            <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
+          </ThreadMentionRuntimeProvider>
+        </NodexTooltipProvider>,
+      ),
     );
 
     fireEvent.click(view.getByRole("button"));
     await settleAsyncRender();
 
-    expect(openedThreadId).toBe("019-session");
+    expect(references.open).toHaveBeenCalledOnce();
     expect(document.body.querySelector('[role="dialog"]') === null).toBe(true);
   });
 
@@ -143,7 +145,6 @@ describe("thread mention inline content", () => {
               "019-session": createThreadSummary(),
             },
             resolvingIds: new Set(),
-            openSession: () => undefined,
           }}
         >
           <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />

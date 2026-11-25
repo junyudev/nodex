@@ -29,6 +29,8 @@ import {
 } from "@/components/shared/icons";
 import { MentionInlineFocusAffordance } from "../mention-inline-focus-affordance";
 import { ThreadMentionInlineVisual } from "../thread-mention-inline-visual";
+import { useNodexReferenceInteraction } from "@/components/nodex-reference/nodex-reference";
+import { useEditorReferenceSource } from "@/components/nodex-reference/editor-reference-source";
 
 export interface ThreadMentionProps {
   uuid: string;
@@ -38,7 +40,6 @@ export interface ThreadMentionRuntimeValue {
   sessions: Record<string, CodexThreadSummary>;
   resolvingIds: Set<string>;
   resolveSession?: (sessionId: string) => Promise<CodexThreadSummary | null>;
-  openSession?: (sessionId: string) => void;
 }
 
 const EMPTY_THREADS: Record<string, CodexThreadSummary> = {};
@@ -250,7 +251,15 @@ export function ThreadMentionInlineContentView({
     },
     intl,
   );
-  const canOpen = Boolean(props.uuid && runtime.openSession && !missing);
+  const editorSource = useEditorReferenceSource();
+  const reference = useNodexReferenceInteraction({
+    destination: { kind: "session", sessionId: props.uuid },
+    openable: Boolean(props.uuid) && !missing,
+    title: chip.label,
+    source: editorSource,
+    contextMenu: false,
+  });
+  const canOpen = reference.interactive;
 
   const [previousResolution, setPreviousResolution] = useState({
     uuid: props.uuid,
@@ -299,13 +308,14 @@ export function ThreadMentionInlineContentView({
       onMouseDown={(event) => {
         event.preventDefault();
       }}
+      onAuxClick={canOpen ? reference.handlers.onAuxClick : undefined}
       onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
         if (canOpen) {
-          runtime.openSession?.(props.uuid);
+          reference.handlers.onClick(event);
           return;
         }
+        event.preventDefault();
+        event.stopPropagation();
         setOpen((current) => !current);
       }}
     />

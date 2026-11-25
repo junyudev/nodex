@@ -2533,7 +2533,7 @@ export function renderWorkbench({
   sidebar,
   initialSelectedSessionId,
   workbenchCommandRequest = null,
-  pendingViewDeepLinkOpen = null,
+  incomingNodexLink = null,
   onNavigationStateChange,
   cardGetOverride = null,
   sessionGetOverride,
@@ -2566,7 +2566,7 @@ export function renderWorkbench({
   };
   initialSelectedSessionId?: string | null;
   workbenchCommandRequest?: WorkbenchCommandRequest | null;
-  pendingViewDeepLinkOpen?: ComponentProps<typeof WorkbenchShell>["pendingViewDeepLinkOpen"];
+  incomingNodexLink?: ComponentProps<typeof WorkbenchShell>["incomingNodexLink"];
   onNavigationStateChange?: ComponentProps<typeof WorkbenchShell>["onNavigationStateChange"];
   cardGetOverride?: ((projectId: string, pageId: string) => Promise<unknown> | unknown) | null;
   sessionGetOverride?: (sessionId: string) => Promise<ProjectSession | null>;
@@ -4743,7 +4743,6 @@ export function renderWorkbench({
       },
     }));
     const commandPortRef = useRef<WorkbenchCommandPort | null>(null);
-    const [pendingViewOpen, setPendingViewOpen] = useState(pendingViewDeepLinkOpen);
     const initialWorkbenchCommandConsumedRef = useRef(false);
     useLayoutEffect(() => {
       requestWorkbenchNavigation = (direction, source) => {
@@ -4845,8 +4844,7 @@ export function renderWorkbench({
         projects={renderedProjects}
         sidebar={sidebarState}
         pageStageCloseRef={createRef()}
-        pendingViewDeepLinkOpen={pendingViewOpen}
-        onViewDeepLinkHandled={() => setPendingViewOpen(null)}
+        incomingNodexLink={incomingNodexLink}
         openPageStage={() => undefined}
         onLeavePageStage={() => undefined}
         onCreateProject={onCreateProject ?? (async () => null)}

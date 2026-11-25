@@ -1,5 +1,5 @@
 import { useIntl } from "@/lib/i18n";
-import { useThreadMentionRuntime } from "@/components/board/editor/thread-mention-chip";
+import { NodexReference } from "@/components/nodex-reference/nodex-reference";
 import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
 import {
   useContext,
@@ -21,8 +21,8 @@ import { openWebLinkContextMenu } from "@/lib/web-link-context-menu";
 import { isEligibleMarkdownLinkContext, snapshotLinkActivation } from "@/lib/link-activation";
 import { useFileReferenceIntent } from "@/lib/file-reference-intent";
 import { openLink } from "@/lib/link-opening";
-import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { useLinkOpening, useWebLinkNavigation } from "@/lib/web-link-navigation";
+import { parseNodexDestination } from "../../../shared/nodex-reference";
 
 interface FileLinkAnchorProps {
   href?: string;
@@ -44,6 +44,13 @@ function isFileAction(action: ReturnType<typeof resolveNfmLinkAction>): action i
 
 const isCurrentReference = () => true;
 
+function plainChildren(children: ReactNode): string | null {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children) && children.every((child) => typeof child === "string"))
+    return children.join("");
+  return null;
+}
+
 async function handleFileReferenceContextMenu(
   event: ReactMouseEvent<HTMLElement>,
   request: Omit<FileReferenceContextMenuRequest, "x" | "y">,
@@ -57,7 +64,23 @@ async function handleFileReferenceContextMenu(
   });
 }
 
-export function FileLinkAnchor({
+/** Nodex Page, View and chat links are references; every other href keeps its file or web owner. */
+export function FileLinkAnchor(props: FileLinkAnchorProps) {
+  const href = props.href?.trim();
+  const destination = parseNodexDestination(href);
+  if (destination)
+    return plainChildren(props.children)?.trim() === href ? (
+      // A link written as its own URL names its target, as a mention does.
+      <NodexReference destination={destination} variant="mention" />
+    ) : (
+      <NodexReference destination={destination} variant="link" className={props.className}>
+        {props.children}
+      </NodexReference>
+    );
+  return <ResolvedLinkAnchor {...props} />;
+}
+
+function ResolvedLinkAnchor({
   href,
   className,
   children,
@@ -68,8 +91,6 @@ export function FileLinkAnchor({
   const intl = useIntl();
   const links = useLinkOpening();
   const intent = useFileReferenceIntent();
-  const pageHost = useBlockReferenceHostRuntime();
-  const sessionHost = useThreadMentionRuntime();
   const inheritedWorkspacePath = useContext(FileLinkWorkspaceContext);
   const router = useFileReferenceRouter();
   const webNavigation = useWebLinkNavigation();
@@ -92,17 +113,6 @@ export function FileLinkAnchor({
       event.preventDefault();
       event.stopPropagation();
       if (action.kind === "blocked" || action.kind === "unresolved-file-like") return;
-      if (action.kind === "session") {
-        sessionHost.openSession?.(action.sessionId);
-        return;
-      }
-      if (action.kind === "page") {
-        void pageHost?.openPage?.({
-          routingContext: pageHost.contentRoutingContext,
-          pageId: action.pageId,
-        });
-        return;
-      }
       if (action.kind === "web-url") {
         const element = event.currentTarget;
         const activation = snapshotLinkActivation(event);

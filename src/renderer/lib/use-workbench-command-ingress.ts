@@ -1,3 +1,4 @@
+import type { NodexDestination } from "../../shared/nodex-reference";
 import { rendererSpaceId, isRemoteSpace } from "./renderer-space";
 import {
   switchSpace,
@@ -64,8 +65,16 @@ export interface WorkbenchReminderOpenRequest {
 
 export interface WorkbenchPageDeepLinkRequest {
   readonly spaceId?: string;
-  readonly projectId: string;
+  /** The Project the Page belongs to; null for a Page that lives in Space. */
+  readonly projectId: string | null;
   readonly pageId: string;
+  readonly blockId?: string;
+}
+
+/** A Nodex link from outside the window, with the Project its target belongs to. */
+export interface WorkbenchIncomingNodexLink {
+  readonly destination: NodexDestination;
+  readonly projectId: string | null;
 }
 
 export function reminderOpenToPageDeepLink(
@@ -85,7 +94,7 @@ export interface WorkbenchSessionDeepLinkRequest {
 
 export interface WorkbenchViewDeepLinkRequest {
   readonly spaceId?: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly viewId: string;
 }
 
@@ -116,14 +125,17 @@ function parseReminderOpenRequest(value: unknown): WorkbenchReminderOpenRequest 
 function parsePageDeepLinkRequest(value: unknown): WorkbenchPageDeepLinkRequest | null {
   if (!value || typeof value !== "object") return null;
   const request = value as Record<string, unknown>;
-  if (typeof request.projectId !== "string") return null;
+  if (typeof request.projectId !== "string" && request.projectId !== null) return null;
   if (typeof request.pageId !== "string") return null;
+  if (request.blockId !== undefined && (typeof request.blockId !== "string" || !request.blockId))
+    return null;
   if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
     return null;
   return {
     ...(typeof request.spaceId === "string" ? { spaceId: request.spaceId } : {}),
     projectId: request.projectId,
     pageId: request.pageId,
+    ...(typeof request.blockId === "string" ? { blockId: request.blockId } : {}),
   };
 }
 
@@ -146,7 +158,7 @@ function parseSessionDeepLinkRequest(value: unknown): WorkbenchSessionDeepLinkRe
 function parseViewDeepLinkRequest(value: unknown): WorkbenchViewDeepLinkRequest | null {
   if (!value || typeof value !== "object") return null;
   const request = value as Record<string, unknown>;
-  if (typeof request.projectId !== "string") return null;
+  if (typeof request.projectId !== "string" && request.projectId !== null) return null;
   if (typeof request.viewId !== "string") return null;
   if (request.spaceId !== undefined && (typeof request.spaceId !== "string" || !request.spaceId))
     return null;

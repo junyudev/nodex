@@ -6,7 +6,7 @@ import type { PageTargetReadModel } from "../../../../../../shared/page-targets"
 import type { CodexDynamicToolCallView, CodexTranscriptEntry } from "../../../../../lib/types";
 import { render, textContent } from "../../../../../test/dom";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
-import { ConversationPageNavigationProvider } from "../../../conversation-page-navigation";
+import { createTestNodexReferenceRouter } from "@/test/nodex-reference-router";
 import {
   ConversationRuntimeContext,
   type ConversationRuntime,
@@ -84,17 +84,17 @@ function buildEntry(call: CodexDynamicToolCallView): CodexTranscriptEntry {
   } as unknown as CodexTranscriptEntry;
 }
 
-function renderRow(ui: ReactElement, onOpenPage: ((id: string) => void) | null = null) {
+function renderRow(ui: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const references = createTestNodexReferenceRouter();
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <ConversationPageNavigationProvider value={onOpenPage}>
-          {ui}
-        </ConversationPageNavigationProvider>
+        {references.wrap(ui, { surface: "conversation", sessionId: "chat-reading" })}
       </TooltipProvider>
     </QueryClientProvider>,
   );
+  return Object.assign(view, { open: references.open });
 }
 
 describe("presentNodexPageName", () => {
@@ -146,10 +146,7 @@ describe("presentNodexPageName", () => {
 describe("NodexToolActivityRow", () => {
   test("names a read Page and opens it beside the chat", async () => {
     targets.current = available("Launch plan");
-    const opened: string[] = [];
-    const view = renderRow(<DynamicToolCall item={buildEntry(buildCall({}))} />, (pageId) => {
-      opened.push(pageId);
-    });
+    const view = renderRow(<DynamicToolCall item={buildEntry(buildCall({}))} />);
 
     const link = await view.findByRole("link", { name: "Launch plan" });
     expect(textContent(view.container)).toBe("Read Launch plan");
@@ -159,7 +156,10 @@ describe("NodexToolActivityRow", () => {
       await Promise.resolve();
     });
 
-    expect(opened).toEqual([PAGE_ID]);
+    expect(view.open).toHaveBeenCalledExactlyOnceWith(
+      { kind: "page", pageId: PAGE_ID },
+      expect.objectContaining({ source: { surface: "conversation", sessionId: "chat-reading" } }),
+    );
     expect(
       view.getByRole("button", { name: "Read Launch plan" }).getAttribute("aria-expanded"),
     ).toBe("false");
@@ -169,7 +169,6 @@ describe("NodexToolActivityRow", () => {
     targets.current = { ...authority, status: "missing", targetPageId: PAGE_ID };
     const view = renderRow(
       <DynamicToolCall item={buildEntry(buildCall({ status: "failed", success: false }))} />,
-      () => undefined,
     );
 
     expect(textContent(view.container)).toBe("Couldn't read page");
@@ -184,7 +183,6 @@ describe("NodexToolActivityRow", () => {
         isLeadingSummaryPart={false}
         variant="summary-text"
       />,
-      () => undefined,
     );
 
     expect(textContent(view.container)).toBe("read “Launch plan”");
@@ -236,7 +234,6 @@ describe("NodexToolActivityRow", () => {
           }),
         )}
       />,
-      () => undefined,
     );
 
     await act(async () => {
@@ -324,7 +321,6 @@ describe("NodexToolActivityRow", () => {
 
   test("lists the Pages a call found once it is opened", async () => {
     targets.current = available("Launch plan");
-    const opened: string[] = [];
     const view = renderRow(
       <DynamicToolCall
         item={buildEntry(
@@ -353,7 +349,6 @@ describe("NodexToolActivityRow", () => {
           }),
         )}
       />,
-      (pageId) => opened.push(pageId),
     );
 
     await act(async () => {
@@ -365,7 +360,10 @@ describe("NodexToolActivityRow", () => {
       await Promise.resolve();
     });
 
-    expect(opened).toEqual(["page-2"]);
+    expect(view.open).toHaveBeenCalledExactlyOnceWith(
+      { kind: "page", pageId: "page-2" },
+      expect.objectContaining({ titleSnapshot: "Launch FAQ" }),
+    );
     expect(textContent(view.container)).toContain("LAB-2");
   });
 
@@ -468,7 +466,6 @@ describe("NodexToolActivityRow", () => {
 
   test("opens the chat an Agent created from its name", async () => {
     sessions.current = { displayTitle: "Plan review", thread: null };
-    const opened: Array<{ id: string; context: unknown }> = [];
     const view = renderRow(
       <DynamicToolCall
         item={buildEntry(
@@ -483,9 +480,6 @@ describe("NodexToolActivityRow", () => {
             ],
           }),
         )}
-        onOpenThread={(threadId, context) => {
-          opened.push({ id: threadId, context });
-        }}
       />,
     );
 
@@ -494,7 +488,10 @@ describe("NodexToolActivityRow", () => {
       await Promise.resolve();
     });
 
-    expect(opened).toEqual([{ id: "thread-created", context: { runtimeSessionId: SESSION_ID } }]);
+    expect(view.open).toHaveBeenCalledExactlyOnceWith(
+      { kind: "session", sessionId: SESSION_ID },
+      expect.objectContaining({ titleSnapshot: "Plan review" }),
+    );
   });
 
   test("offers no chat a failed call never made", () => {
@@ -514,9 +511,6 @@ describe("NodexToolActivityRow", () => {
             ],
           }),
         )}
-        onOpenThread={() => {
-          throw new Error("A failed fork has no chat to open");
-        }}
       />,
     );
 

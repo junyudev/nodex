@@ -65,7 +65,9 @@ import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { applyLibraryModule } from "@/lib/api";
-import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
+import { useNodexReferenceRouter } from "@/lib/nodex-reference-router";
+import { snapshotLinkActivation } from "@/lib/link-activation";
+import { parseNodexDestination } from "../../../../shared/nodex-reference";
 import {
   libraryContentRoute,
   projectIdFromContentRoutingContext,
@@ -262,7 +264,6 @@ interface NfmEditorCommonProps {
   /** The Project of the chat this Page is shown beside; a Library Page sends through it. */
   chatProjectId?: string | null;
   onOpenCodexThread?: (threadId: string) => Promise<void>;
-  onOpenSession?: (sessionId: string) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: BlockReferenceHostRuntime["openDatabase"];
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
@@ -517,7 +518,6 @@ function NfmEditorInstance({
   canStartThreadInSession = false,
   sessionTitle = null,
   chatProjectId = null,
-  onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
@@ -2134,14 +2134,6 @@ function NfmEditorInstance({
     ],
   );
 
-  const openSessionMention = useCallback(
-    (sessionId: string) => {
-      if (!onOpenSession) return;
-      void onOpenSession(sessionId);
-    },
-    [onOpenSession],
-  );
-
   const createCanvasAtEmptyParagraph = useCallback(
     async ({
       blockId,
@@ -2289,25 +2281,34 @@ function NfmEditorInstance({
     return { pageId };
   };
 
-  const handleEditorClickCapture = useCallback(
-    (event: ReactMouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest("a");
-      if (!(anchor instanceof HTMLAnchorElement)) return;
-      const href = readNfmLinkHrefAtElement(editor, anchor);
-      const action = resolveNfmLinkAction(href);
-      if (action?.kind !== "page") return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!onOpenPage) return;
-      void onOpenPage({
-        routingContext: contentRoutingContext,
-        pageId: action.pageId,
-      });
-    },
-    [contentRoutingContext, editor, onOpenPage],
-  );
+  const referenceRouter = useNodexReferenceRouter();
+  /** Nodex links follow the shared reference grammar; the editor's host opens Pages in place. */
+  const handleEditorClickCapture = (event: ReactMouseEvent) => {
+    if (event.button !== 0 && event.button !== 1) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const anchor = target.closest("a");
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+    const destination = parseNodexDestination(readNfmLinkHrefAtElement(editor, anchor)?.trim());
+    if (!destination) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void referenceRouter?.open(destination, {
+      source: {
+        surface: "page",
+        ...(onOpenPage
+          ? {
+              openInPlace: (content) =>
+                content.kind === "page"
+                  ? onOpenPage({ routingContext: contentRoutingContext, pageId: content.pageId })
+                  : undefined,
+            }
+          : {}),
+      },
+      gesture: { kind: "activate", activation: snapshotLinkActivation(event) },
+      isCurrent: () => anchor.isConnected,
+    });
+  };
 
   const duplicateCanvasAfter = async (canvasBlockId: string) => {
     const session = owner.getActiveStructuralSession();
@@ -2375,15 +2376,8 @@ function NfmEditorInstance({
       sessions: threadMentionSummaryMap,
       resolvingIds: threadMentionResolvingIds,
       resolveSession: resolveSessionMention,
-      ...(onOpenSession ? { openSession: openSessionMention } : {}),
     }),
-    [
-      onOpenSession,
-      openSessionMention,
-      resolveSessionMention,
-      threadMentionResolvingIds,
-      threadMentionSummaryMap,
-    ],
+    [resolveSessionMention, threadMentionResolvingIds, threadMentionSummaryMap],
   );
 
   const agentConfigRuntimeValue = useMemo<AgentConfigRuntimeValue>(
@@ -2439,6 +2433,7 @@ function NfmEditorInstance({
         className={cn("nfm-editor relative", className)}
         spellCheck={spellcheck}
         onClickCapture={handleEditorClickCapture}
+        onAuxClickCapture={handleEditorClickCapture}
         onFocusCapture={(event) => {
           if (!editorSession) return;
           const target = event.target;

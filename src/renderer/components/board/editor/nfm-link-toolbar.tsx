@@ -1,6 +1,7 @@
 import { useIntl } from "@/lib/i18n";
 import { snapshotLinkActivation } from "@/lib/link-activation";
-import { useThreadMentionRuntime } from "./thread-mention-chip";
+import { useNodexReferenceRouter } from "@/lib/nodex-reference-router";
+import { useEditorReferenceSource } from "@/components/nodex-reference/editor-reference-source";
 import { formatKeyboardShortcut, isTableCellSelection } from "@blocknote/core";
 import { FormattingToolbarExtension, LinkToolbarExtension } from "@blocknote/core/extensions";
 import {
@@ -460,9 +461,9 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
   const dict = useDictionary();
   const { opener } = useFileLinkOpener();
   const fileReferenceRouter = useFileReferenceRouter();
-  const sessionHost = useThreadMentionRuntime();
+  const referenceRouter = useNodexReferenceRouter();
+  const editorSource = useEditorReferenceSource();
   const links = useLinkOpening();
-  const hostRuntime = useBlockReferenceHostRuntime();
   const { deleteLink } = useExtension(LinkToolbarExtension);
   const [isEditing, setIsEditing] = useState(false);
   const { copied, copy } = useCopyFeedback(COPY_FEEDBACK_MS);
@@ -471,7 +472,7 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
   const action = resolveNfmLinkAction(props.url, props.projectWorkspacePath);
   const tooltip = resolveNfmLinkTooltipLabel(action, false) ?? dict.link_toolbar.open.tooltip;
   const canOpen =
-    isOpenableLinkAction(action) && (action.kind !== "page" || Boolean(hostRuntime?.openPage));
+    isOpenableLinkAction(action) && (action.kind !== "nodex" || referenceRouter !== null);
   const { currentUrl, setCurrentUrl } = useNfmLinkEditorState(props);
 
   useEffect(() => {
@@ -615,16 +616,11 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
           opener,
           undefined,
           undefined,
-          hostRuntime?.openPage
-            ? {
-                openSession: sessionHost.openSession,
-                openPage: (pageId) =>
-                  hostRuntime.openPage?.({
-                    routingContext: hostRuntime.contentRoutingContext,
-                    pageId,
-                  }),
-              }
-            : { openSession: sessionHost.openSession },
+          {
+            router: referenceRouter,
+            source: editorSource,
+            gesture: { kind: "menu", action: "open" },
+          },
           {
             openLink: links?.openLink,
             hostId: fileReferenceRouter.hostId,

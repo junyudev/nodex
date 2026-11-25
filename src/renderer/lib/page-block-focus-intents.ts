@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 
+/** A Block to focus once its Page shows; `projectId` is null for a Library-routed Page. */
 export interface PageBlockFocusIntent {
   readonly id: number;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly pageId: string;
   readonly blockId: string;
 }
@@ -11,14 +12,15 @@ let nextIntentId = 1;
 const intents = new Map<string, PageBlockFocusIntent>();
 const listeners = new Map<string, Set<() => void>>();
 
-const focusKey = (projectId: string, pageId: string): string => `${projectId}\0${pageId}`;
+const focusKey = (projectId: string | null, pageId: string): string =>
+  `${projectId ?? ""}\0${pageId}`;
 
 const emit = (key: string): void => {
   for (const listener of listeners.get(key) ?? []) listener();
 };
 
 export const requestPageBlockFocus = (input: {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly pageId: string;
   readonly blockId: string;
 }): PageBlockFocusIntent => {
@@ -40,7 +42,7 @@ export const usePageBlockFocusIntent = (
   projectId: string | null,
   pageId: string,
 ): PageBlockFocusIntent | null => {
-  const key = projectId && pageId ? focusKey(projectId, pageId) : null;
+  const key = pageId ? focusKey(projectId, pageId) : null;
   return useSyncExternalStore(
     (listener) => {
       if (!key) return () => undefined;

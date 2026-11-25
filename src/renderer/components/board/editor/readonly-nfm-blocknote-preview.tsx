@@ -9,7 +9,8 @@ import {
   createSkillMentionInlineContentSpec,
   PageSkillMentionProvider,
 } from "./skill-mention-chip";
-import { useThreadMentionRuntime } from "./thread-mention-chip";
+import { useNodexReferenceRouter } from "@/lib/nodex-reference-router";
+import { useEditorReferenceSource } from "@/components/nodex-reference/editor-reference-source";
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
 import { nfmTableLayoutExtension } from "./nfm-table-layout-extension";
@@ -377,7 +378,8 @@ function ReadonlyNfmPreviewContent({
   const locale = useAppLocale();
   const fileRuntime = useFilePlacementRuntime();
   const fileReferenceRouter = useFileReferenceRouter();
-  const sessionHost = useThreadMentionRuntime();
+  const referenceRouter = useNodexReferenceRouter();
+  const editorSource = useEditorReferenceSource();
   const linkOpening = useLinkOpening();
   const webNavigation = useWebLinkNavigation();
   const linkIntent = useFileReferenceIntent();
@@ -470,16 +472,11 @@ function ReadonlyNfmPreviewContent({
         undefined,
         undefined,
         undefined,
-        hostRuntime?.openPage
-          ? {
-              openSession: sessionHost.openSession,
-              openPage: (targetPageId) =>
-                hostRuntime.openPage?.({
-                  routingContext: hostRuntime.contentRoutingContext,
-                  pageId: targetPageId,
-                }),
-            }
-          : { openSession: sessionHost.openSession },
+        {
+          router: referenceRouter,
+          source: editorSource,
+          gesture: { kind: "activate", activation: snapshotLinkActivation(event) },
+        },
         {
           openLink: linkOpening?.openLink,
           hostId: fileReferenceRouter.hostId,
@@ -492,12 +489,12 @@ function ReadonlyNfmPreviewContent({
     },
     [
       findAnchorAction,
-      hostRuntime,
+      referenceRouter,
+      editorSource,
       openLocalReference,
       linkOpening,
       fileReferenceRouter.hostId,
       linkIntent.markdownContext,
-      sessionHost.openSession,
     ],
   );
 
@@ -526,13 +523,32 @@ function ReadonlyNfmPreviewContent({
         openLocalReference(resolved.action, { activation: snapshotLinkActivation(event) });
         return;
       }
-      void openNfmResolvedLinkAction(resolved.action, undefined, undefined, undefined, undefined, {
-        openLink: linkOpening?.openLink,
-        hostId: fileReferenceRouter.hostId,
-        activation: snapshotLinkActivation(event),
-      });
+      const activation = snapshotLinkActivation(event);
+      void openNfmResolvedLinkAction(
+        resolved.action,
+        undefined,
+        undefined,
+        undefined,
+        {
+          router: referenceRouter,
+          source: editorSource,
+          gesture: { kind: "activate", activation },
+        },
+        {
+          openLink: linkOpening?.openLink,
+          hostId: fileReferenceRouter.hostId,
+          activation,
+        },
+      );
     },
-    [findAnchorAction, openLocalReference, linkOpening, fileReferenceRouter.hostId],
+    [
+      findAnchorAction,
+      openLocalReference,
+      referenceRouter,
+      editorSource,
+      linkOpening,
+      fileReferenceRouter.hostId,
+    ],
   );
 
   const handleContextMenuCapture = useCallback(

@@ -4,7 +4,7 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { flushPendingAccepts } from "@/lib/page-accept-undo";
 import { pageTurnPhrase } from "@/lib/page-turn-phrase";
 import type { PageTurn } from "../../../../../shared/page-turn";
-import { ConversationPageNavigationProvider } from "../../conversation-page-navigation";
+import { createTestNodexReferenceRouter } from "@/test/nodex-reference-router";
 import { ComposerReviewRail } from "./composer-review-rail";
 
 const acceptPageWork = vi.hoisted(() => vi.fn(async () => undefined));
@@ -19,10 +19,11 @@ const turn: PageTurn = {
   hold: null,
 };
 
-function renderReview(openPage = vi.fn()) {
+function renderReview() {
+  const { open, wrap } = createTestNodexReferenceRouter();
   render(
     <NodexTooltipProvider delay={0}>
-      <ConversationPageNavigationProvider value={openPage}>
+      {wrap(
         <ComposerReviewRail
           review={{
             turn,
@@ -30,11 +31,12 @@ function renderReview(openPage = vi.fn()) {
             page: { pageId: "page-login", pageKey: "WEB-1", title: "Fix login race", status: null },
           }}
           placement="attached"
-        />
-      </ConversationPageNavigationProvider>
+        />,
+        { surface: "conversation", sessionId: "chat-1" },
+      )}
     </NodexTooltipProvider>,
   );
-  return openPage;
+  return open;
 }
 
 describe("ComposerReviewRail", () => {
@@ -50,7 +52,13 @@ describe("ComposerReviewRail", () => {
       fireEvent.click(screen.getByRole("button", { name: "WEB-1 Fix login race" }));
       await Promise.resolve();
     });
-    expect(openPage).toHaveBeenCalledExactlyOnceWith("page-login", "Fix login race");
+    expect(openPage).toHaveBeenCalledExactlyOnceWith(
+      { kind: "page", pageId: "page-login" },
+      expect.objectContaining({
+        source: { surface: "conversation", sessionId: "chat-1" },
+        titleSnapshot: "Fix login race",
+      }),
+    );
   });
 
   it("accepts the episode the reader is looking at once its Undo window passes", async () => {

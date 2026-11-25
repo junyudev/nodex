@@ -40,7 +40,7 @@ The editor keeps that atom range without exposing native text-selection painting
 When an available Page mention has keyboard focus, the editor also shows a compact anchored `Open page` affordance with the `↵` Enter hint below the token; this is an action hint, not an additional editable text range.
 It remains readable when navigation is unavailable.
 Hovering the mention shows a compact tooltip resolved in the same Library: current title, archived state when applicable, and a bounded Page preview. Missing, deleted, invalid or cross-Library targets show only a state explanation; the tooltip never exposes raw IDs, deeplinks or transport errors for unavailable targets.
-Clicking or pressing `Enter` on an available mention opens the Page through the host navigator; it never delegates the internal deeplink to the browser.
+Clicking or pressing `Enter` on an available mention opens the Page through the host navigator; it never delegates the internal deeplink to the browser. Modified activation follows the shared [Nodex reference](workbench-shell.md#nodex-references) gestures: Primary or middle-click opens a background tab, Primary+Shift a foreground tab, Primary+Alt the Page in Space.
 Mention serialization never injects the target body into search, title, clipboard, or Agent prompt text.
 Right-clicking a Page Mention leads the editor context menu with the mention's own actions, separated from Cut, Copy, and Paste:
 

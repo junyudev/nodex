@@ -47,6 +47,10 @@ identity never changes when that binding or the chat title changes. Resolution
 reads metadata without resuming execution, subscribing to a transcript or
 fetching turns. Missing Sessions keep their original identity and offer copying
 it from the unavailable-state popover.
+Clicking a resolved mention goes to the chat as every [Nodex
+reference](workbench-shell.md#nodex-references) does; Primary or middle-click
+opens it in a new window. Read-only surfaces, such as a chat's messages, render
+the same mention under the chat's current title.
 
 ## Insertion
 
