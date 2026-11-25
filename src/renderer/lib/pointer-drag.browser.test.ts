@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import "@/globals.css";
+import { installGuestPointerBoundary } from "./guest-pointer-boundary";
 import {
   POINTER_DRAG_ROOT_ATTRIBUTE,
   startPointerDrag,
@@ -32,12 +33,7 @@ function mountHandle() {
   host.style.cssText = "position: fixed; inset: 0; display: flex;";
   const handle = document.createElement("div");
   handle.style.cssText = "width: 8px; cursor: col-resize;";
-  const guestFrame = document.createElement("div");
-  guestFrame.style.cssText = "position: relative; flex: 1;";
-  const guest = document.createElement("iframe");
-  guest.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; border: 0;";
-  guestFrame.append(guest);
-  host.append(handle, guestFrame);
+  host.append(handle);
   document.body.append(host);
 
   const moves: number[] = [];
@@ -51,7 +47,7 @@ function mountHandle() {
   });
   const press = (init: PointerEventInit = {}) =>
     pointer("pointerdown", handle, { button: 0, buttons: 1, clientX: 4, ...init });
-  return { host, handle, guest, guestFrame, moves, ends, press, drag: () => drag };
+  return { host, handle, moves, ends, press, drag: () => drag };
 }
 
 let mounted: ReturnType<typeof mountHandle> | null = null;
@@ -71,7 +67,7 @@ describe("startPointerDrag", () => {
   // pointer and commit where the handle was last shown.
   test.each([
     ["a seen release", "pointerup", { button: 0, buttons: 0 }],
-    // The button came up over a guest page; the next event arrives without it.
+    // The button came up behind a system interruption; the next event arrives without it.
     ["a release seen only through the next move", "pointermove", { buttons: 0 }],
     ["a release seen only through the next press", "pointerdown", { button: 0, buttons: 1 }],
   ] as const)("%s ends the drag where the handle last was", (_name, type, init) => {
@@ -103,21 +99,15 @@ describe("startPointerDrag", () => {
     expect(ends).toEqual(["cancel", "dispose"]);
   });
 
-  test("keeps guest pages from taking the pointer and shows the handle's cursor while it lasts", () => {
-    const { guest, guestFrame, press } = setup();
-    const rect = guest.getBoundingClientRect();
-    const hit = () =>
-      document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    expect(hit()).toBe(guest);
-
+  test("shows the handle's cursor and suspends text selection while it lasts", () => {
+    const { press } = setup();
     press();
-    expect(hit()).toBe(guestFrame);
     expect(getComputedStyle(document.documentElement).cursor).toBe("col-resize");
     expect(getComputedStyle(document.documentElement).userSelect).toBe("none");
 
     pointer("pointerup", document.body, { button: 0, clientX: 4 });
-    expect(hit()).toBe(guest);
     expect(getComputedStyle(document.documentElement).cursor).toBe("auto");
+    expect(getComputedStyle(document.documentElement).userSelect).toBe("auto");
   });
 
   test("keeps the document held until every overlapping drag ends", () => {
@@ -144,5 +134,65 @@ describe("startPointerDrag", () => {
     } finally {
       second.host.remove();
     }
+  });
+});
+
+describe("guest pointer boundary", () => {
+  let uninstall: () => void = () => undefined;
+  let host: HTMLElement;
+  let guest: HTMLIFrameElement;
+
+  beforeEach(() => {
+    host = document.createElement("div");
+    host.style.cssText = "position: fixed; inset: 0;";
+    guest = document.createElement("iframe");
+    guest.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; border: 0;";
+    host.append(guest);
+    document.body.append(host);
+    uninstall = installGuestPointerBoundary(window);
+  });
+
+  afterEach(() => {
+    uninstall();
+    host.remove();
+  });
+
+  function press(type: string, init: PointerEventInit = {}): void {
+    document.body.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, pointerId: 1, buttons: 1, ...init }),
+    );
+  }
+
+  function guestTakesPointer(): boolean {
+    const rect = guest.getBoundingClientRect();
+    return (
+      document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) === guest
+    );
+  }
+
+  test.each([
+    ["release", () => press("pointerup", { buttons: 0 })],
+    ["platform cancellation", () => press("pointercancel", { buttons: 0 })],
+    ["a release seen only through the next move", () => press("pointermove", { buttons: 0 })],
+    ["native drag and drop", () => document.body.dispatchEvent(new Event("dragstart"))],
+  ])("guests leave hit testing while a press is held, until its %s", (_name, end) => {
+    expect(guestTakesPointer()).toBe(true);
+
+    press("pointerdown");
+    press("pointermove");
+    expect(guestTakesPointer()).toBe(false);
+
+    end();
+    expect(guestTakesPointer()).toBe(true);
+  });
+
+  test("guests stay out of hit testing until every held pointer is released", () => {
+    press("pointerdown");
+    press("pointerdown", { pointerId: 2 });
+    press("pointerup", { buttons: 0 });
+    expect(guestTakesPointer()).toBe(false);
+
+    press("pointerup", { pointerId: 2, buttons: 0 });
+    expect(guestTakesPointer()).toBe(true);
   });
 });

@@ -4,15 +4,11 @@ import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent 
  * Window-spanning pointer drags: resize handles and sashes that follow a pressed pointer wherever
  * it travels.
  *
- * The press can be released where this document never hears about it: over an embedded guest page
- * (a Browser `<webview>` or an `<iframe>`, which take pointer input in their own process), outside
- * the window, or behind a system interruption. A drag that waits only for `pointerup` then stays
- * attached to a pointer whose button is already up, and the handle keeps following it.
- *
- * A drag therefore keeps the pointer in this document for its whole duration, by marking the root
- * with {@link POINTER_DRAG_ROOT_ATTRIBUTE} so embedded guests stop taking pointer input (see
- * `globals.css`), and treats any later event from the pointer that no longer holds the button as
- * the release it missed.
+ * Embedded guest pages cannot take the press while it lasts (see `guest-pointer-boundary.ts`), so
+ * the release normally arrives as `pointerup`. A release can still go unseen behind a system
+ * interruption, which would leave the handle following a pointer whose button is already up. A drag
+ * therefore treats any later event from its pointer that no longer holds the button as the release
+ * it missed.
  */
 
 /** How a drag finished. */
@@ -48,8 +44,8 @@ const PRIMARY_BUTTON_MASK = 1;
 const documentHolds = new WeakMap<Document, number>();
 
 /**
- * Marks the document as dragging and shows the handle's cursor everywhere, until the returned
- * release runs.
+ * Marks the document as dragging, which suspends text selection, and shows the handle's cursor
+ * everywhere, until the returned release runs.
  */
 function holdDocument(handle: Element, view: Window): () => void {
   const document = handle.ownerDocument;
