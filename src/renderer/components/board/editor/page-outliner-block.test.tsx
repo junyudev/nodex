@@ -47,6 +47,9 @@ vi.mock("@/lib/block-reference-queries", () => ({
   }),
 }));
 
+// Status glyphs read Page detail through the query layer; these rows show the Page icon.
+vi.mock("../use-page-status-glyph", () => ({ usePageStatusGlyph: () => undefined }));
+
 vi.mock("./active-page-outliner-document", () => ({
   ActivePageOutlinerDocument: (props: { rowProps: { expanded: boolean } }) => {
     activeRuntimeProps(props);
@@ -179,6 +182,58 @@ describe("PageOutlinerBlock", () => {
     });
   });
 
+  test("opens a Subpage from its title without disclosing or activating it", async () => {
+    const disclosureStore = new BlockDisclosureStateStore();
+    const activationBudget = new ReferenceSurfaceActivationBudget(1);
+    const openPage = vi.fn();
+    const view = render(
+      <BlockReferenceRuntimeProvider
+        value={{
+          contentRoutingContext: { kind: "project", projectId: "project-a" },
+          projectName: "Project A",
+          projectWorkspacePath: null,
+          hostPageId: "host-page",
+          ancestorPageIds: ["host-page"],
+          ancestorDocumentOwnerBlockIds: ["host-page"],
+          isActiveSurface: true,
+          openPage,
+        }}
+      >
+        <PageOutlinerBlock
+          relationship="child"
+          shellBlockId="nested-page"
+          targetBlockId="nested-page"
+          disclosureStore={disclosureStore}
+          activationBudget={activationBudget}
+          visibilityOverride={false}
+        />
+      </BlockReferenceRuntimeProvider>,
+    );
+    const frame = view.container.querySelector<HTMLElement>(
+      "[data-page-outliner-target='nested-page']",
+    );
+    if (!frame) throw new Error("Missing Page outliner frame");
+
+    // The link is the row's tab stop; renaming stays on the arrow-key path.
+    const openLink = view.getByRole("button", { name: "Open Nested Page" });
+    expect(openLink.tabIndex).toBe(0);
+    expect(view.getByRole("button", { name: "Edit Nested Page title" }).tabIndex).toBe(-1);
+
+    await act(async () => {
+      fireEvent.click(openLink);
+      await Promise.resolve();
+    });
+
+    expect(openPage).toHaveBeenCalledExactlyOnceWith({
+      routingContext: { kind: "project", projectId: "project-a" },
+      pageId: "nested-page",
+      titleSnapshot: "Nested Page",
+    });
+    expect(frame.dataset.pageOutlinerExpanded).toBe("false");
+    expect(frame.dataset.pageOutlinerActive).toBe("false");
+    expect(view.queryByTestId("expanded-page-runtime")).toBeNull();
+  });
+
   test("records a visual-boundary focus intent when the host arrows into a Page", async () => {
     const disclosureStore = new BlockDisclosureStateStore();
     const activationBudget = new ReferenceSurfaceActivationBudget(1);
@@ -287,7 +342,7 @@ describe("PageOutlinerBlock", () => {
     expect(activationBudget.getActiveKeys()).toHaveLength(1);
   });
 
-  test("persists disclosure by reference Block identity rather than target Page", async () => {
+  test("shows an embedded Page's body until that embed is collapsed", async () => {
     const disclosureStore = new BlockDisclosureStateStore();
     const activationBudget = new ReferenceSurfaceActivationBudget(2);
     const view = render(
@@ -321,7 +376,9 @@ describe("PageOutlinerBlock", () => {
       </BlockReferenceRuntimeProvider>,
     );
     const rows = view.container.querySelectorAll("[data-page-outliner-target='nested-page']");
-    const firstDisclosure = view.getAllByRole("button", { name: "Expand Nested Page" }).at(0);
+    expect(rows[0]?.getAttribute("data-page-outliner-expanded")).toBe("true");
+    expect(rows[1]?.getAttribute("data-page-outliner-expanded")).toBe("true");
+    const firstDisclosure = view.getAllByRole("button", { name: "Collapse Nested Page" }).at(0);
     if (!firstDisclosure) throw new Error("Missing first Page disclosure");
 
     await act(async () => {
@@ -329,9 +386,10 @@ describe("PageOutlinerBlock", () => {
       await Promise.resolve();
     });
 
-    expect(rows[0]?.getAttribute("data-page-outliner-expanded")).toBe("true");
-    expect(rows[1]?.getAttribute("data-page-outliner-expanded")).toBe("false");
-    expect(disclosureStore.isExpanded("page-ref-1")).toBe(true);
-    expect(disclosureStore.isExpanded("page-ref-2")).toBe(false);
+    // Disclosure belongs to each embed occurrence, not to the Page it shows.
+    expect(rows[0]?.getAttribute("data-page-outliner-expanded")).toBe("false");
+    expect(rows[1]?.getAttribute("data-page-outliner-expanded")).toBe("true");
+    expect(disclosureStore.isExpanded("page-ref-1", true)).toBe(false);
+    expect(disclosureStore.isExpanded("page-ref-2", true)).toBe(true);
   });
 });

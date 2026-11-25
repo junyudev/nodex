@@ -11,9 +11,7 @@ import {
   shortPageId,
 } from "@/components/nodex-reference/page-reference-presentation";
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
-import { useContentPageDetail } from "@/lib/content-page-detail";
-import { readPageDetailWorkflowStatus } from "@/lib/page-stage-properties";
-import { StatusIcon } from "@/lib/status-presentation";
+import { usePageStatusGlyph } from "../use-page-status-glyph";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { pageMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
@@ -44,15 +42,7 @@ export function PageMentionInlineContentView({
   const model = target.data;
   const availablePage = model?.status === "available" ? model.page : null;
   const available = availablePage !== null;
-  const detail = useContentPageDetail(
-    availablePage?.libraryId ?? null,
-    routingContext,
-    availablePage?.pageId ?? null,
-  );
-  const workflowStatus = readPageDetailWorkflowStatus(detail.detail);
-  const icon = workflowStatus ? (
-    <StatusIcon statusId={workflowStatus} className="size-full" />
-  ) : undefined;
+  const icon = usePageStatusGlyph(routingContext, availablePage);
   const presentation = resolvePageReferencePresentation(
     {
       targetPageId: props.targetPageId,

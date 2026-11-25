@@ -9,9 +9,9 @@ import {
   type RefCallback,
   type SyntheticEvent,
 } from "react";
-import { OpenInIcon } from "@/components/shared/icons";
+import { ChevronRightIcon, PageIcon } from "@/components/shared/icons";
 import { LoadingResultsShimmer } from "@/components/ui/loading-results-shimmer";
-import { NodexTooltip } from "@/components/ui/tooltip";
+import { INLINE_REFERENCE_UNDERLINE_STYLE } from "@/components/board/inline-reference-visual";
 import {
   BlockDisclosureStateStore,
   blockDisclosureStateStore,
@@ -49,16 +49,23 @@ export interface PageOutlinerActivation {
 export const usePageOutlinerActivation = ({
   disclosureKey,
   expandable,
+  defaultExpanded = false,
   disclosureStore = blockDisclosureStateStore,
   activationBudget = referenceSurfaceActivationBudget,
   visibilityOverride,
 }: PageOutlinerStateDependencies & {
   readonly disclosureKey: string;
   readonly expandable: boolean;
+  /** How the row shows until the reader toggles it. */
+  readonly defaultExpanded?: boolean;
 }): PageOutlinerActivation => {
   const surfaceInstanceId = useId();
   const surfaceInstanceKey = `page-outliner:${disclosureKey}:mount:${surfaceInstanceId}`;
-  const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
+  const [preferredExpanded, setExpanded] = useBlockDisclosure(
+    disclosureKey,
+    disclosureStore,
+    defaultExpanded,
+  );
   const expanded = expandable && preferredExpanded;
   const { ref: visibilityRef, visible: observedVisible } = useElementVisibility();
   const visible = visibilityOverride ?? observedVisible;
@@ -136,6 +143,8 @@ export function PageOutlinerFrame({
 export interface PageOutlinerRowContentProps {
   readonly plainTitle: string;
   readonly title: ReactNode;
+  /** The Page's identity glyph; the generic Page icon when omitted. */
+  readonly icon?: ReactNode;
   readonly stateLabel?: string | null;
   readonly metadata?: ReactNode;
   readonly expanded: boolean;
@@ -151,9 +160,16 @@ interface PageOutlinerDisclosureProps extends PageOutlinerRowChromeProps {
   readonly children: ReactNode;
 }
 
+// While the row's own header is under the pointer, its glyph yields to the
+// disclosure chevron. Child combinators keep a hovered nested row from
+// reaching an outer row's glyph.
+const HEADER_HOVER_REVEALS_CHEVRON =
+  "[&:has(>[data-page-outliner-row]:hover)>[data-page-outliner-caret]>[data-page-outliner-glyph=icon]]:hidden [&:has(>[data-page-outliner-row]:hover)>[data-page-outliner-caret]>[data-page-outliner-glyph=chevron]]:flex";
+
 /** Owns the permanent disclosure control; target runtimes replace only its slots. */
 export function PageOutlinerDisclosure({
   plainTitle,
+  icon,
   expanded,
   expandable,
   onExpandedChange,
@@ -180,10 +196,14 @@ export function PageOutlinerDisclosure({
 
   return (
     <div
-      className="bn-toggle-wrapper group/page-outliner grid! min-h-8 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-y-1 pt-1"
+      className={cn(
+        "bn-toggle-wrapper group/page-outliner grid! min-h-8 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-y-1 pt-1",
+        expandable && HEADER_HOVER_REVEALS_CHEVRON,
+      )}
       data-show-children={expanded ? "true" : "false"}
       onKeyDownCapture={handleKeyDownCapture}
     >
+      {/* Like a sidebar folder, the Page's glyph becomes its disclosure under the pointer. */}
       <button
         type="button"
         data-page-outliner-caret
@@ -204,11 +224,36 @@ export function PageOutlinerDisclosure({
         aria-expanded={expanded}
         disabled={!expandable}
         className={cn(
-          "bn-toggle-button ms-0.5 shrink-0",
-          expandable ? "cursor-pointer" : "cursor-default opacity-35",
+          "group/page-outliner-caret ms-0.5 me-1 flex h-6 w-5 shrink-0 select-none items-center justify-center rounded-[5px] text-token-description-foreground",
+          expandable
+            ? "cursor-interaction hover:bg-token-foreground/5 hover:text-token-text-secondary"
+            : "cursor-default",
         )}
         onClick={() => onExpandedChange(!expanded)}
-      />
+      >
+        <span
+          data-page-outliner-glyph="icon"
+          aria-hidden="true"
+          className={cn(
+            "flex size-4 items-center justify-center",
+            expandable &&
+              "group-hover/page-outliner-caret:hidden group-focus-visible/page-outliner-caret:hidden",
+          )}
+        >
+          {icon ?? <PageIcon className="size-full" />}
+        </span>
+        {expandable ? (
+          <span
+            data-page-outliner-glyph="chevron"
+            aria-hidden="true"
+            className="hidden size-4 items-center justify-center group-hover/page-outliner-caret:flex group-focus-visible/page-outliner-caret:flex"
+          >
+            <ChevronRightIcon
+              className={cn("size-4 transition-transform duration-200", expanded && "rotate-90")}
+            />
+          </span>
+        ) : null}
+      </button>
       {children}
     </div>
   );
@@ -222,39 +267,44 @@ export function PageOutlinerRowSlots({
   expanded,
   onOpenPage,
   children,
-}: Omit<PageOutlinerRowContentProps, "expandable" | "onExpandedChange">) {
+}: Omit<PageOutlinerRowContentProps, "expandable" | "onExpandedChange" | "icon">) {
   const intl = useIntl();
   return (
     <>
-      <div className="col-start-2 row-start-1 flex min-h-6 min-w-0 items-start gap-1 pe-0.5 text-[1em] leading-6 text-token-text-primary">
-        <div className="min-w-0 flex-1">{title}</div>
+      <div
+        data-page-outliner-row
+        className="col-start-2 row-start-1 flex min-h-6 min-w-0 items-start gap-1 pe-0.5 text-[1em] leading-6 text-token-text-primary"
+      >
+        {/* The title reads as a link to its Page and is the row's tab stop; Enter
+            opens it. Renaming in place is the arrow-key path into the title,
+            and the link yields while the title editor has focus. */}
+        <div
+          data-page-outliner-title
+          className={cn("relative min-w-0 flex-1", onOpenPage && "font-medium underline")}
+          style={onOpenPage ? INLINE_REFERENCE_UNDERLINE_STYLE : undefined}
+        >
+          {title}
+          {onOpenPage ? (
+            <button
+              type="button"
+              data-page-outliner-open
+              aria-label={intl.formatMessage(
+                { id: "components.pageOutlinerSurface.openTitle", defaultMessage: "Open {title}" },
+                { title: plainTitle },
+              )}
+              className="absolute inset-0 cursor-interaction rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-token-focus-border [[data-page-outliner-title]:has([data-embedded-surface-input]:focus-within)>&]:hidden"
+              // A pointer opens the Page without moving focus out of the editor.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void onOpenPage()}
+            />
+          ) : null}
+        </div>
         {stateLabel ? (
           <span className="shrink-0 text-[11px] text-token-description-foreground">
             {stateLabel}
           </span>
         ) : null}
         {metadata}
-        {onOpenPage ? (
-          <NodexTooltip
-            tooltipContent={intl.formatMessage({
-              id: "components.pageOutlinerSurface.openPage",
-              defaultMessage: "Open Page",
-            })}
-            side="top"
-          >
-            <button
-              type="button"
-              aria-label={intl.formatMessage(
-                { id: "components.pageOutlinerSurface.openTitle", defaultMessage: "Open {title}" },
-                { title: plainTitle },
-              )}
-              className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 group-hover/page-outliner:opacity-100 hover:bg-token-foreground/8 hover:text-token-text-primary focus-visible:opacity-100"
-              onClick={() => void onOpenPage()}
-            >
-              <OpenInIcon aria-hidden="true" className="size-3.5" />
-            </button>
-          </NodexTooltip>
-        ) : null}
       </div>
 
       {expanded ? (

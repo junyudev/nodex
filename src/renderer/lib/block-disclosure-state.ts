@@ -41,10 +41,11 @@ export class BlockDisclosureStateStore {
     private readonly persistence: BlockDisclosurePersistence = new MemoryBlockDisclosurePersistence(),
   ) {}
 
-  isExpanded = (blockId: string): boolean => {
+  /** A Block nobody has toggled shows its kind's default disclosure. */
+  isExpanded = (blockId: string, defaultExpanded = false): boolean => {
     this.assertBlockId(blockId);
     this.hydrate(blockId);
-    return this.expandedByKey.get(blockId) ?? false;
+    return this.expandedByKey.get(blockId) ?? defaultExpanded;
   };
 
   subscribe = (blockId: string, listener: Listener): (() => void) => {
@@ -59,8 +60,11 @@ export class BlockDisclosureStateStore {
   };
 
   setExpanded = (blockId: string, expanded: boolean): void => {
-    const wasExpanded = this.isExpanded(blockId);
-    if (wasExpanded === expanded) return;
+    this.assertBlockId(blockId);
+    this.hydrate(blockId);
+    // An explicit choice is recorded even when it matches the default, so a
+    // default-expanded Block that the reader collapses stays collapsed.
+    if (this.expandedByKey.get(blockId) === expanded) return;
 
     this.expandedByKey.set(blockId, expanded);
     try {
@@ -72,8 +76,8 @@ export class BlockDisclosureStateStore {
     for (const listener of this.listenersByKey.get(blockId) ?? []) listener();
   };
 
-  toggle = (blockId: string): void => {
-    this.setExpanded(blockId, !this.isExpanded(blockId));
+  toggle = (blockId: string, defaultExpanded = false): void => {
+    this.setExpanded(blockId, !this.isExpanded(blockId, defaultExpanded));
   };
 
   private hydrate(blockId: string): void {
@@ -103,12 +107,16 @@ export const blockDisclosureStateStore = new BlockDisclosureStateStore(
 export const useBlockDisclosure = (
   blockId: string,
   store: BlockDisclosureStateStore = blockDisclosureStateStore,
+  defaultExpanded = false,
 ): readonly [boolean, (expanded: boolean) => void] => {
   const subscribe = useCallback(
     (listener: Listener) => store.subscribe(blockId, listener),
     [blockId, store],
   );
-  const getSnapshot = useCallback(() => store.isExpanded(blockId), [blockId, store]);
+  const getSnapshot = useCallback(
+    () => store.isExpanded(blockId, defaultExpanded),
+    [blockId, defaultExpanded, store],
+  );
   const expanded = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const setExpanded = useCallback(
     (nextExpanded: boolean) => store.setExpanded(blockId, nextExpanded),

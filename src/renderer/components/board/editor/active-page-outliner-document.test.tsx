@@ -236,7 +236,7 @@ describe("ActivePageOutlinerDocument", () => {
     const view = render(
       <ActivePageOutlinerDocument
         target={target}
-        rowProps={rowProps(false)}
+        rowProps={{ ...rowProps(false), onOpenPage: () => undefined }}
         hostRuntime={hostRuntime}
         focusIntent={{ id: 1, kind: "boundary", direction: "down" }}
         onFocusIntentConsumed={consumed}
@@ -250,6 +250,8 @@ describe("ActivePageOutlinerDocument", () => {
       name: "Edit Nested Page title",
     }) as HTMLDivElement;
 
+    // A linked row's tab stop is its Open link; the arrow-key path still reaches the title.
+    expect(title.tabIndex).toBe(-1);
     expect(view.queryByTestId("body-editor")).toBeNull();
     expect(document.getText("title")).toBe(surface.title);
     expect(document.getXmlFragment("body")).toBe(surface.body);

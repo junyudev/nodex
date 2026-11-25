@@ -130,14 +130,18 @@ const createIncomingPages = (transfer: NfmIncomingPageTransfer): HTMLElement => 
     const disclosure = document.createElement("div");
     disclosure.className =
       "bn-toggle-wrapper group/page-outliner grid min-h-8 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-y-1 pt-1";
-    const caret = document.createElement("span");
-    caret.setAttribute("aria-hidden", "true");
-    caret.className = "bn-toggle-button ms-0.5 shrink-0 cursor-default opacity-35";
+    // Holds the Page glyph's place in the row until the real Page row mounts.
+    const glyph = document.createElement("span");
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.className = "ms-0.5 me-1 flex h-6 w-5 shrink-0 items-center justify-center";
+    const glyphPlaceholder = document.createElement("span");
+    glyphPlaceholder.className = "size-3.5 rounded-[3px] bg-token-foreground/10";
+    glyph.append(glyphPlaceholder);
     const title = document.createElement("div");
     title.className =
       "col-start-2 row-start-1 flex min-h-6 min-w-0 items-start gap-1 pe-0.5 text-[1em] leading-6 text-token-text-primary";
     const text = document.createElement("div");
-    text.className = "min-w-0 flex-1 truncate";
+    text.className = "min-w-0 flex-1 truncate font-medium";
     text.textContent =
       page.title ||
       getIntl().formatMessage({
@@ -145,7 +149,7 @@ const createIncomingPages = (transfer: NfmIncomingPageTransfer): HTMLElement => 
         defaultMessage: "Untitled",
       });
     title.append(text);
-    disclosure.append(caret, title);
+    disclosure.append(glyph, title);
     row.append(disclosure);
     host.append(row);
   }
