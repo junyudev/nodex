@@ -441,17 +441,17 @@ report summary, failure reason, or which Prerequisites finished. Text longer tha
 its two lines offers `Show more`, which opens the whole text in place, a report
 or note as the Markdown it was written in, and `Show less` closes it.
 
-Actions revalidate the episode. What the row asks the person to decide is a
-named button, the last of them filled; ways to look closer are icons before
-them, named on hover. Questions show the exact option labels: four buttons then
-More… when needed, plus Reply. Review offers Accept, Reply, and an Open PR icon
-when linked. For Agent-reported work, these actions appear once the execution tree is
-quiet and the ready report is still current. A later round in the active chat returns
-report-driven review to In Progress unless the person has since chosen a Status.
-Blocked, failed and stalled offer Reply. Newly ready work offers
-Start. Every other Turn also offers Open chat, which opens the Page's active
-chat, or the Page when it has none: an icon beside a review or a question with
-options, otherwise the row's filled button.
+Actions revalidate the episode. Questions show the exact option labels: four
+buttons then More… when needed, plus Reply. Review puts the outlined Open chat
+button after Reply and before the filled Accept button. A linked PR adds an
+Open PR icon before these buttons. For Agent-reported work, these actions appear
+once the execution tree is quiet and the ready report is still current. A later
+round in the active chat returns report-driven review to In Progress unless the
+person has since chosen a Status.
+Blocked, failed and stalled offer Reply. Newly ready work offers Start. All
+other Turns offer Open chat, which opens the Page's active chat or the Page when
+it has none. Questions with options show Open chat as an icon. Approval, blocked,
+failed, stalled and questions without options show it as a filled button.
 The Page's Active chat and the Inbox show the same decision. Answering or approving
 a request in either place clears that request from both. In review, the Active chat's
 composer carries the decision on one line attached to it: the Turn's words, the Page,

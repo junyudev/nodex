@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { render, openNodexMenu } from "@/test/dom";
 import { InboxTurnRow } from "./inbox-turn-row";
@@ -68,14 +68,28 @@ test.each(["review", "failed"] as const)(
     expect(screen.getByRole("button", { name: "Open chat" })).toBeTruthy();
   },
 );
-test.each([
-  ["question", ["Yes", "No"]],
-  ["review", []],
-] as const)("a %s turn that decides in place still opens its chat", async (reason, options) => {
+test("a question that offers options still opens its chat", async () => {
   const handlers = props();
-  render(<InboxTurnRow item={row(reason, [...options])} {...handlers} />);
+  render(<InboxTurnRow item={row("question", ["Yes", "No"])} {...handlers} />);
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    await Promise.resolve();
+  });
+  expect(handlers.onOpenChat).toHaveBeenCalledOnce();
+});
+test("a review offers a labeled Open chat button between Reply and Accept", async () => {
+  const handlers = props();
+  render(<InboxTurnRow item={row("review")} {...handlers} />);
+  const card = within(screen.getByRole("article"));
+  const openChat = card.getByRole("button", { name: "Open chat" });
+  expect(within(openChat).getByText("Open chat")).toBeTruthy();
+  expect(card.getAllByRole("button").slice(-3)).toEqual([
+    card.getByRole("button", { name: "Reply" }),
+    openChat,
+    card.getByRole("button", { name: "Accept" }),
+  ]);
+  await act(async () => {
+    fireEvent.click(openChat);
     await Promise.resolve();
   });
   expect(handlers.onOpenChat).toHaveBeenCalledOnce();
